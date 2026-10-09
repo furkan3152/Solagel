@@ -235,7 +235,7 @@ describe('server over websocket', () => {
   it('stake arena: join with an on-chain ticket, cash out, queue settlement', async () => {
     const kp = nacl.sign.keyPair();
     const pubkey = bs58.encode(kp.publicKey);
-    chain.sessions.set(`1:${pubkey}`, { address: `Session-${pubkey}`, player: pubkey, arenaId: 1, buyIn: 10_000_000, openedAt: Math.floor(Date.now() / 1000) });
+    chain.sessions.set(`1:${pubkey}`, { address: `Session-${pubkey}`, id: 1, player: pubkey, arenaId: 1, buyIn: 10_000_000, openedAt: Math.floor(Date.now() / 1000) });
     const c = await Client.connect(port);
     c.send({ t: 'hello', v: PROTOCOL_VERSION });
     await c.wait('welcome');
@@ -268,7 +268,7 @@ describe('server over websocket', () => {
   it('stake players who disconnect stay AFK and can reconnect', async () => {
     const kp = nacl.sign.keyPair();
     const pubkey = bs58.encode(kp.publicKey);
-    chain.sessions.set(`1:${pubkey}`, { address: `S2-${pubkey}`, player: pubkey, arenaId: 1, buyIn: 20_000_000, openedAt: Math.floor(Date.now() / 1000) });
+    chain.sessions.set(`1:${pubkey}`, { address: `S2-${pubkey}`, id: 2, player: pubkey, arenaId: 1, buyIn: 20_000_000, openedAt: Math.floor(Date.now() / 1000) });
     const token = app.auth.issueToken(pubkey);
     const a = await Client.connect(port);
     a.send({ t: 'hello', v: PROTOCOL_VERSION });

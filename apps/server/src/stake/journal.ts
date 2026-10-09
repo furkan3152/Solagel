@@ -11,6 +11,8 @@ export interface SettlementItem {
   player: string;
   arenaId?: number;
   session?: string;
+  /** On-chain session id (settle only); guards against settling a re-joined session. */
+  sessionId?: number;
   /** Lamports owed (settle only). */
   payout?: number;
   score: number;
@@ -26,6 +28,7 @@ export interface SettlementItem {
 export interface LiveStake {
   roomId: string;
   session: string;
+  sessionId: number;
   player: string;
   arenaId: number;
   value: number;
@@ -104,6 +107,7 @@ export class Journal {
         player: l.player,
         arenaId: l.arenaId,
         session: l.session,
+        sessionId: l.sessionId,
         payout: l.value,
         score: l.score,
         kills: l.kills,

@@ -329,6 +329,7 @@ export class Gateway {
         stake: {
           player: conn.wallet,
           session: session.address,
+          sessionId: session.id,
           arenaId: target.arenaId,
           buyIn: session.buyIn,
           value: session.buyIn,

@@ -13,6 +13,8 @@ export interface ChainProfile {
 
 export interface ChainSession {
   address: string;
+  /** On-chain `Session::id` (must be echoed in settle_session). */
+  id: number;
   player: string;
   arenaId: number;
   buyIn: number;
