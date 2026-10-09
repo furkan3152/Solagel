@@ -188,12 +188,13 @@ export type ServerMessage =
   | { t: 'chat'; pid: number; from: string; skin: number; text: string; system?: boolean }
   | { t: 'emote'; pid: number; id: number }
   | { t: 'death'; stats: DeathStats; killer: string | null; killerSkin: number | null }
-  | { t: 'cashout'; state: 'started' | 'canceled' | 'done'; endsAt?: number; value?: number; stats?: DeathStats }
+  | { t: 'cashout'; state: 'started' | 'canceled' | 'done'; ms?: number; value?: number; stats?: DeathStats }
   | { t: 'settled'; kind: 'cashout' | 'death' | 'record' | 'refund'; signature: string; payout?: number }
-  | { t: 'event'; kind: 'coinrain'; state: 'start' | 'end'; endsAt?: number }
+  | { t: 'event'; kind: 'coinrain'; state: 'start' | 'end'; ms?: number }
   | { t: 'event'; kind: 'airdrop'; state: 'start'; x: number; y: number; powerUp: PowerUpType }
-  | { t: 'powerup'; type: PowerUpType; endsAt: number }
+  | { t: 'powerup'; type: PowerUpType; ms: number }
   | { t: 'xp'; xp: number; level: number }
+  | { t: 'history'; chat: { pid: number; from: string; skin: number; text: string; system?: boolean }[] }
   | { t: 'rooms'; rooms: RoomInfo[]; online: number }
   | { t: 'error'; code: ErrorCode; message: string }
   | { t: 'pong'; ts: number; serverTime: number };
