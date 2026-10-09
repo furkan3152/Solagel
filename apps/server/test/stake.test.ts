@@ -10,6 +10,7 @@ const entry = (pid: number, value: number) => ({
   pid,
   player: `wallet${pid}`,
   session: `session${pid}`,
+  sessionId: pid,
   arenaId: 1,
   buyIn: value,
   value,
@@ -89,6 +90,7 @@ const item = (key: string, payout: number): SettlementItem => ({
 const live = (session: string, value: number): LiveStake => ({
   roomId: 'stake-1',
   session,
+  sessionId: 7,
   player: `w-${session}`,
   arenaId: 1,
   value,

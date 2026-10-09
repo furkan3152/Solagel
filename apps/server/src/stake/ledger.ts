@@ -4,6 +4,8 @@ export interface StakeEntry {
   player: string;
   /** Session PDA (base58). */
   session: string;
+  /** On-chain session id (PDAs are reused across joins; the id is unique). */
+  sessionId: number;
   arenaId: number;
   buyIn: number;
   /** Current in-game value in lamports. */
