@@ -45,9 +45,14 @@ export const RULES = {
   virusPopFraction: 0.5,
 
   decayStartMass: 150,
-  /** Fraction of mass lost per second above decayStartMass. */
+  /** Fraction of mass lost per second above decayStartMass… */
   decayPerSec: 0.0015,
+  /** …plus this much per unit of the player's TOTAL mass, so giants melt faster (splitting doesn't help). */
+  decayPerSecPerMass: 0.0000005,
   maxCellMass: 12_000,
+  /** Food respawn budget (pellets / second); eaten areas refill gradually. */
+  foodSpawnPerSec: 60,
+  coinRainFoodPerSec: 90,
 
   /** speed(r) = speedK * r^-speedExp (units / second). */
   speedK: 1900,
@@ -61,6 +66,9 @@ export const RULES = {
   shieldMs: 8_000,
   bagMassFraction: 0.15,
   bagMassMin: 40,
+
+  /** Newly spawned players are shielded this long. */
+  spawnShieldMs: 2_500,
 
   /** Stake mode: cash-out channel duration. */
   cashoutMs: 3_000,
