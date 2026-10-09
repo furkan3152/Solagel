@@ -17,7 +17,10 @@ export interface ServerConfig {
   authSecret: Buffer;
   chain: {
     cluster: string;
+    /** RPC used by the server (may contain a private API key). */
     rpcUrl: string | null;
+    /** RPC advertised to browsers (no secrets). Defaults to the public endpoint of the cluster. */
+    publicRpcUrl: string | null;
     wsUrl: string | null;
     programId: string | null;
     /** Path to a keypair JSON file, or the JSON array itself. */
@@ -60,6 +63,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     chain: {
       cluster: env.SOLANA_CLUSTER ?? 'localnet',
       rpcUrl: env.SOLANA_RPC_URL ?? null,
+      publicRpcUrl: env.PUBLIC_RPC_URL ?? null,
       wsUrl: env.SOLANA_WS_URL ?? null,
       programId: env.PROGRAM_ID ?? null,
       serverKeypair: env.SERVER_KEYPAIR ?? null,

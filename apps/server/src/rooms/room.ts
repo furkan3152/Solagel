@@ -324,6 +324,7 @@ export class Room {
       return {
         roomId: this.id,
         session: e.session,
+        sessionId: e.sessionId,
         player: e.player,
         arenaId: e.arenaId,
         value: e.value,
@@ -353,6 +354,7 @@ export class Room {
         player: entry.player,
         arenaId: entry.arenaId,
         session: entry.session,
+        sessionId: entry.sessionId,
         payout: entry.value,
         score,
         kills: stats.playersEaten,
