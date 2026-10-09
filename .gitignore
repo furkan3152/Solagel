@@ -1,0 +1,33 @@
+# deps
+node_modules/
+.pnpm-store/
+
+# builds
+dist/
+build/
+*.tsbuildinfo
+apps/web/dist/
+
+# anchor / rust
+target/
+.anchor/
+test-ledger/
+.surfpool/
+**/*.rs.bk
+
+# runtime data / secrets
+apps/server/data/
+data/
+*.keypair.json
+keys/
+.env
+.env.local
+.env.*.local
+
+# tooling
+.DS_Store
+coverage/
+playwright-report/
+test-results/
+*.log
+.vite/
