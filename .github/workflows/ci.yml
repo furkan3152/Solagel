@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typescript:
+    name: TypeScript (shared · sdk · server · web)
+    runs-on: ubuntu-latest
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Shared
+        run: pnpm -F @solagel/shared typecheck && pnpm -F @solagel/shared test
+      - name: SDK
+        run: pnpm -F @solagel/sdk typecheck && pnpm -F @solagel/sdk test
+      - name: Server
+        run: pnpm -F @solagel/server typecheck && pnpm -F @solagel/server test && pnpm -F @solagel/server build
+      - name: Web
+        run: pnpm -F @solagel/web build
+
+  program:
+    name: Anchor program (build + LiteSVM tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cache/solana
+            target
+          key: program-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+      - name: Install Rust toolchain from rust-toolchain.toml
+        run: rustup show
+      - name: Install Solana (Agave) CLI
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/v4.3.0/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Anchor CLI
+        run: npm i -g @anchor-lang/cli@1.2.1
+      - name: Build
+        run: anchor build --ignore-keys
+      - name: Test
+        run: cargo test -p solagel
