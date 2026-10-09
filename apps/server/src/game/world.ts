@@ -197,7 +197,7 @@ export class World {
     const margin = Math.min(300, width / 4);
     let best = { x: width / 2, y: height / 2 };
     let bestScore = -Infinity;
-    for (let i = 0; i < 14; i++) {
+    for (let i = 0; i < 40; i++) {
       const x = randRange(this.rng, margin, width - margin);
       const y = randRange(this.rng, margin, height - margin);
       let score = 4000;

@@ -43,10 +43,10 @@ const SKILL_BASE: Record<BotSkill, Pick<Personality, 'thinkMs' | 'aimNoise' | 'p
   2: { thinkMs: 110, aimNoise: 0.05, perception: 1.05, distraction: 0, virusAware: true, leadsTargets: true, virusShooter: true },
 };
 
-/** Difficulty mix: 40 % easy, 40 % medium, 20 % hard. */
+/** Difficulty mix: 45 % easy, 40 % medium, 15 % hard. */
 export function rollPersonality(rng: Rng): Personality {
   const r = rng();
-  const skill: BotSkill = r < 0.4 ? 0 : r < 0.8 ? 1 : 2;
+  const skill: BotSkill = r < 0.45 ? 0 : r < 0.85 ? 1 : 2;
   const styles: BotStyle[] = ['farmer', 'hunter', 'coward', 'balanced', 'balanced'];
   const style = styles[Math.floor(rng() * styles.length)];
   const jitter = () => 0.85 + rng() * 0.3;

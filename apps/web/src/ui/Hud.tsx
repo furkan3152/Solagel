@@ -359,7 +359,7 @@ export function Hud() {
       <LiveLeaderboard />
       <div className="top-center">
         {screen === 'playing' && (
-          <div className="hud-buttons">
+          <div className="hud-buttons hide-sm">
             <button className="btn btn-sm btn-ghost" onClick={() => engine()?.backToLobby()}>
               🏠 {t('hud.menu')}
             </button>
@@ -369,6 +369,11 @@ export function Hud() {
         <Banner />
         <PowerUpTimers />
       </div>
+      {screen === 'playing' && (
+        <button className="btn btn-sm btn-ghost menu-mobile" onClick={() => engine()?.backToLobby()} aria-label={t('hud.menu')}>
+          🏠
+        </button>
+      )}
       <Minimap />
       <Feed />
       {screen === 'playing' && (
