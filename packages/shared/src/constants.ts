@@ -68,7 +68,7 @@ export const RULES = {
   bagMassMin: 40,
 
   /** Newly spawned players are shielded this long. */
-  spawnShieldMs: 2_500,
+  spawnShieldMs: 3_000,
 
   /** Stake mode: cash-out channel duration. */
   cashoutMs: 3_000,

@@ -71,6 +71,7 @@ describe('bots', () => {
     const world = new World(emptyCfg());
     const bot = world.addPlayer({ spawnShield: false, name: 'bot', skin: 0, x: 1000, y: 1000, mass: 400 });
     const prey = world.addPlayer({ spawnShield: false, name: 'snack', skin: 2, x: 1290, y: 1000, mass: 60 });
+    prey.stats.joinedAt = -60_000; // a veteran, not a fresh spawn
     world.setTarget(prey.id, 1290, 1000);
     const brain = new BotBrain(hard, mulberry32(2));
     let splits = 0;
@@ -79,6 +80,19 @@ describe('bots', () => {
     });
     expect(splits).toBeGreaterThan(0);
     expect(prey.alive).toBe(false);
+  });
+
+  it('never split-attacks a human who just joined', () => {
+    const world = new World(emptyCfg());
+    const bot = world.addPlayer({ spawnShield: false, name: 'bot', skin: 0, x: 1000, y: 1000, mass: 400 });
+    const newbie = world.addPlayer({ spawnShield: false, name: 'newbie', skin: 2, x: 1290, y: 1000, mass: 60 });
+    world.setTarget(newbie.id, 1290, 1000);
+    const brain = new BotBrain(hard, mulberry32(2));
+    let splits = 0;
+    drive(world, brain, bot, 1500, (s) => {
+      if (s) splits++;
+    });
+    expect(splits).toBe(0);
   });
 
   it('does not split into prey guarded by a bigger player', () => {
