@@ -1,0 +1,14 @@
+**/node_modules
+**/dist
+target
+.anchor
+.localnet
+test-ledger
+.git
+**/data
+**/*.log
+**/.env
+**/.env.*
+!**/.env.example
+docs
+programs
