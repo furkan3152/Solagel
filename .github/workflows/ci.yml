@@ -45,7 +45,7 @@ jobs:
             target
           key: program-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
       - name: Install Rust toolchain from rust-toolchain.toml
-        run: rustup show
+        run: rustup toolchain install
       - name: Install Solana (Agave) CLI
         run: |
           sh -c "$(curl -sSfL https://release.anza.xyz/v4.3.0/install)"
