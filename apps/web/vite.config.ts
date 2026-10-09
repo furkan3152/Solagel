@@ -31,5 +31,16 @@ export default defineConfig({
     target: 'es2022',
     sourcemap: false,
     chunkSizeWarningLimit: 1200,
+    rollupOptions: {
+      output: {
+        // long-term cacheable vendor chunks
+        manualChunks(id: string) {
+          if (!id.includes('node_modules')) return undefined;
+          if (/[\\/](@solana|@anchor-lang|@wallet-standard|bn\.js|borsh|buffer|bs58|superstruct|@noble|rpc-websockets|jayson|eventemitter3)/.test(id)) return 'solana';
+          if (/[\\/](react|react-dom|scheduler|zustand)[\\/]/.test(id)) return 'react';
+          return undefined;
+        },
+      },
+    },
   },
 });

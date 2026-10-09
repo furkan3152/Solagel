@@ -953,6 +953,13 @@ a {
   gap: 8px;
 }
 
+.menu-mobile {
+  display: none !important;
+  position: absolute;
+  top: 112px;
+  left: 10px;
+}
+
 .cashout-wrap {
   position: absolute;
   bottom: 24px;
@@ -1438,6 +1445,15 @@ a {
   }
   .minimap {
     display: none;
+  }
+  .top-center {
+    top: 118px;
+  }
+  .menu-mobile {
+    display: inline-flex !important;
+  }
+  .banner {
+    font-size: 17px;
   }
   .feed {
     bottom: 180px;

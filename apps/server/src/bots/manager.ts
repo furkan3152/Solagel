@@ -16,6 +16,8 @@ export interface BotManagerOptions {
 export interface Bot {
   player: Player;
   brain: BotBrain;
+  /** Bots "go home" after a while so the leaderboard keeps changing. */
+  retireAt: number;
 }
 
 /** Emote ids (see @solagel/shared EMOTES). */
@@ -34,6 +36,8 @@ export class BotManager {
   private lastTrimAt = 0;
   private initialized = false;
   private pendingEmotes: { pid: number; id: number }[] = [];
+  /** Player ids of bots that left this tick (rooms forget their player info). */
+  retired: number[] = [];
 
   constructor(
     private readonly world: World,
@@ -68,7 +72,11 @@ export class BotManager {
       isBot: true,
       mass,
     });
-    const bot = { player, brain: new BotBrain(rollPersonality(this.rng), this.rng) };
+    const bot: Bot = {
+      player,
+      brain: new BotBrain(rollPersonality(this.rng), this.rng),
+      retireAt: this.world.now + randRange(this.rng, 4 * 60_000, 12 * 60_000),
+    };
     this.bots.set(player.id, bot);
     if (this.rng() < 0.2) this.pendingEmotes.push({ pid: player.id, id: EMOTE_GM });
     return bot;
@@ -87,6 +95,7 @@ export class BotManager {
 
   /** Called once per tick after `world.tick`. */
   update(now: number, humans: number): { emotes: { pid: number; id: number }[] } {
+    this.retired = [];
     const want = this.desired(humans);
 
     if (!this.initialized) {
@@ -112,9 +121,24 @@ export class BotManager {
       if (smallest) {
         this.bots.delete(smallest.player.id);
         this.world.removePlayer(smallest.player.id);
+        this.retired.push(smallest.player.id);
       }
     }
     if (queued > 0 && this.bots.size >= want) this.spawnQueue.length = 0;
+
+    // retire old bots (one at a time, only when they are not mid-fight)
+    for (const bot of this.bots.values()) {
+      if (now < bot.retireAt) continue;
+      if (bot.brain.lastDanger > 0.2) {
+        bot.retireAt = now + 10_000;
+        continue;
+      }
+      this.bots.delete(bot.player.id);
+      this.world.removePlayer(bot.player.id);
+      this.retired.push(bot.player.id);
+      this.spawnQueue.push(now + randRange(this.rng, 1500, 4000));
+      break;
+    }
 
     for (const bot of this.bots.values()) {
       const p = bot.player;

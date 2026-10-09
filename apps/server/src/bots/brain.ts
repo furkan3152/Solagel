@@ -13,6 +13,8 @@ export interface BotDecision {
 
 /** Approximate flight distance of a freshly split half (boost + own speed). */
 const SPLIT_REACH = RULES.splitSpeed / -Math.log(RULES.splitDecayPerSec);
+/** Bots politely steer around humans who joined less than this long ago (and never split-attack them). */
+export const NEWBIE_GRACE_MS = 25_000;
 
 interface Seen {
   x: number;
@@ -79,6 +81,7 @@ export class BotBrain {
     const threats: Cell[] = [];
     const prey: Cell[] = [];
     const others: Cell[] = [];
+    const newbies: Cell[] = [];
     const viruses: Virus[] = [];
     const foods: (Food | Eject)[] = [];
     const powerUps: PowerUp[] = [];
@@ -88,7 +91,10 @@ export class BotBrain {
           if (e.player === me) return;
           others.push(e);
           if (canEat(e.mass, smallest.mass)) threats.push(e);
-          if (canEat(big.mass, e.mass) && e.player.shieldUntil <= now) prey.push(e);
+          if (canEat(big.mass, e.mass)) {
+            if (!e.player.isBot && now - e.player.stats.joinedAt < NEWBIE_GRACE_MS) newbies.push(e);
+            else if (e.player.shieldUntil <= now) prey.push(e);
+          }
           return;
         case EntityKind.Food:
           foods.push(e);
@@ -138,6 +144,15 @@ export class BotBrain {
       }
     }
     this.lastDanger = dangerLevel;
+
+    /* ---------- newcomers: steer around fresh human spawns ---------- */
+    for (const n of newbies) {
+      for (const c of me.cells) {
+        if (!canEat(c.mass, n.mass)) continue;
+        const gap = Math.hypot(n.x - c.x, n.y - c.y) - c.r - n.r;
+        if (gap < 260) map.addDanger(angleTo(c.x, c.y, n.x, n.y), 1.1 * (1 - Math.max(0, gap) / 260) + 0.1, 2);
+      }
+    }
 
     /* ---------- danger: walls ---------- */
     const look = big.r + 240;
@@ -229,7 +244,8 @@ export class BotBrain {
     if (bestPrey && !shielded && now >= this.splitCooldownUntil && me.cells.length <= maxCellsForSplit && P.splitBravery > 0) {
       const half = big.mass / 2;
       const q = bestPrey;
-      if (canEat(half, q.mass) && q.player.shieldUntil <= now) {
+      const newbie = !q.player.isBot && now - q.player.stats.joinedAt < NEWBIE_GRACE_MS;
+      if (!newbie && canEat(half, q.mass) && q.player.shieldUntil <= now) {
         const hr = massToRadius(half);
         const d = Math.hypot(q.x - big.x, q.y - big.y);
         const reach = SPLIT_REACH * 0.85 + big.r * 0.25;

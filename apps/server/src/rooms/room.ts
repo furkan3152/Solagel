@@ -458,6 +458,7 @@ export class Room {
     if (this.bots) {
       const { emotes } = this.bots.update(world.now, this.humans.size);
       for (const e of emotes) this.broadcast({ t: 'emote', pid: e.pid, id: e.id });
+      for (const pid of this.bots.retired) for (const c of this.conns) c.view.forgetPlayer(pid);
     }
 
     if (this.ledger) this.stakeHousekeeping();
