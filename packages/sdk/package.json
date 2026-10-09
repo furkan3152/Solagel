@@ -10,10 +10,22 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "test": "vitest run --passWithNoTests",
-    "typecheck": "tsc --noEmit"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "admin": "tsx src/admin.ts",
+    "sync-idl": "node ../../scripts/sync-idl.mjs"
+  },
+  "dependencies": {
+    "@anchor-lang/core": "1.2.1",
+    "@solagel/shared": "workspace:*",
+    "@solana/web3.js": "^1.98.4",
+    "bn.js": "^5.2.1",
+    "buffer": "^6.0.3"
   },
   "devDependencies": {
+    "@types/bn.js": "^5.2.0",
+    "@types/node": "^22.19.0",
+    "tsx": "^4.23.15",
     "typescript": "~5.9.3",
     "vitest": "^5.0.3"
   }

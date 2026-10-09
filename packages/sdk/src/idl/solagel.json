@@ -1,0 +1,2778 @@
+{
+  "address": "5skf5Twyqr8M84dJ8RLGfz1NU6fR3zPDRLUvGd5y7472",
+  "metadata": {
+    "name": "solagel",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Solagel: cute coin-themed on-chain Agar.io (identity, stakes, seasons, prizes)"
+  },
+  "instructions": [
+    {
+      "name": "buy_skin",
+      "discriminator": [
+        160,
+        172,
+        148,
+        145,
+        46,
+        58,
+        70,
+        228
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "profile"
+          ]
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "profile",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  102,
+                  105,
+                  108,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "treasury",
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "skin",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "claim_season_reward",
+      "discriminator": [
+        129,
+        96,
+        145,
+        129,
+        154,
+        203,
+        29,
+        150
+      ],
+      "accounts": [
+        {
+          "name": "claimer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "season",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  97,
+                  115,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "season_id"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "season_id",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "create_arena",
+      "discriminator": [
+        174,
+        236,
+        45,
+        61,
+        197,
+        215,
+        149,
+        169
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "arena",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  114,
+                  101,
+                  110,
+                  97
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "id",
+          "type": "u16"
+        },
+        {
+          "name": "buy_in",
+          "type": "u64"
+        },
+        {
+          "name": "max_players",
+          "type": "u16"
+        }
+      ]
+    },
+    {
+      "name": "end_season",
+      "discriminator": [
+        167,
+        166,
+        166,
+        109,
+        166,
+        71,
+        15,
+        68
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "season",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  97,
+                  115,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.current_season",
+                "account": "Config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "next_season",
+          "docs": [
+            "Season `config.current_season + 1`."
+          ],
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "fund_season",
+      "discriminator": [
+        251,
+        186,
+        193,
+        242,
+        15,
+        144,
+        254,
+        67
+      ],
+      "accounts": [
+        {
+          "name": "funder",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "season",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  97,
+                  115,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.current_season",
+                "account": "Config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "initialize",
+      "docs": [
+        "Creates the config and season 1. Only the program's upgrade authority may call it."
+      ],
+      "discriminator": [
+        175,
+        175,
+        109,
+        31,
+        13,
+        152,
+        155,
+        237
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "docs": [
+            "Must be the program's upgrade authority (prevents front-running `initialize`)."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "season",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  97,
+                  115,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "const",
+                "value": [
+                  1,
+                  0,
+                  0,
+                  0
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "program",
+          "address": "5skf5Twyqr8M84dJ8RLGfz1NU6fR3zPDRLUvGd5y7472"
+        },
+        {
+          "name": "program_data",
+          "docs": [
+            "The program's ProgramData account (PDA of the upgradeable loader, seeds `[program_id]`)."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  72,
+                  111,
+                  38,
+                  149,
+                  160,
+                  93,
+                  0,
+                  23,
+                  177,
+                  15,
+                  48,
+                  252,
+                  98,
+                  121,
+                  13,
+                  150,
+                  85,
+                  64,
+                  195,
+                  168,
+                  89,
+                  155,
+                  185,
+                  173,
+                  103,
+                  216,
+                  69,
+                  152,
+                  128,
+                  182,
+                  245,
+                  57
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                2,
+                168,
+                246,
+                145,
+                78,
+                136,
+                161,
+                176,
+                226,
+                16,
+                21,
+                62,
+                247,
+                99,
+                174,
+                43,
+                0,
+                194,
+                185,
+                61,
+                22,
+                193,
+                36,
+                210,
+                192,
+                83,
+                122,
+                16,
+                4,
+                128,
+                0,
+                0
+              ]
+            }
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "InitializeArgs"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "join_arena",
+      "discriminator": [
+        135,
+        217,
+        203,
+        200,
+        93,
+        181,
+        131,
+        47
+      ],
+      "accounts": [
+        {
+          "name": "player",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "profile",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  102,
+                  105,
+                  108,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
+        {
+          "name": "arena",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  114,
+                  101,
+                  110,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "arena.id",
+                "account": "Arena"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session",
+          "docs": [
+            "One open session per player per arena: a second join fails because the PDA exists."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "arena"
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "record_game",
+      "docs": [
+        "Server-signed free-play result."
+      ],
+      "discriminator": [
+        247,
+        120,
+        117,
+        224,
+        181,
+        219,
+        180,
+        52
+      ],
+      "accounts": [
+        {
+          "name": "server",
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "profile",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  102,
+                  105,
+                  108,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "profile.owner",
+                "account": "PlayerProfile"
+              }
+            ]
+          }
+        },
+        {
+          "name": "season",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  97,
+                  115,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.current_season",
+                "account": "Config"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "RecordArgs"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "refund_session",
+      "discriminator": [
+        168,
+        87,
+        185,
+        45,
+        250,
+        170,
+        10,
+        85
+      ],
+      "accounts": [
+        {
+          "name": "player",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "session"
+          ]
+        },
+        {
+          "name": "arena",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  114,
+                  101,
+                  110,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "arena.id",
+                "account": "Arena"
+              }
+            ]
+          },
+          "relations": [
+            "session"
+          ]
+        },
+        {
+          "name": "session",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "arena"
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "register_player",
+      "discriminator": [
+        242,
+        146,
+        194,
+        234,
+        234,
+        145,
+        228,
+        42
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "profile",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  102,
+                  105,
+                  108,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "skin",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "rollover_season",
+      "discriminator": [
+        100,
+        231,
+        139,
+        192,
+        118,
+        134,
+        116,
+        197
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "old_season",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  97,
+                  115,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "season_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "current_season",
+          "docs": [
+            "`dup` so that `season_id == current_season` is reported as `InvalidSeason` by the",
+            "constraint above instead of a generic duplicate-account error."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  97,
+                  115,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.current_season",
+                "account": "Config"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "season_id",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "settle_session",
+      "docs": [
+        "Server-signed cash-out of a stake session."
+      ],
+      "discriminator": [
+        156,
+        20,
+        180,
+        117,
+        117,
+        85,
+        225,
+        128
+      ],
+      "accounts": [
+        {
+          "name": "server",
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "arena",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  114,
+                  101,
+                  110,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "arena.id",
+                "account": "Arena"
+              }
+            ]
+          },
+          "relations": [
+            "session"
+          ]
+        },
+        {
+          "name": "session",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "arena"
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
+        {
+          "name": "player",
+          "writable": true,
+          "relations": [
+            "session"
+          ]
+        },
+        {
+          "name": "profile",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  102,
+                  105,
+                  108,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
+        {
+          "name": "season",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  97,
+                  115,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.current_season",
+                "account": "Config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "treasury",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "SettleArgs"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "sweep_arena",
+      "discriminator": [
+        124,
+        38,
+        247,
+        190,
+        34,
+        58,
+        64,
+        7
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "arena",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  114,
+                  101,
+                  110,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "arena.id",
+                "account": "Arena"
+              }
+            ]
+          }
+        },
+        {
+          "name": "treasury",
+          "writable": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "update_arena",
+      "discriminator": [
+        179,
+        14,
+        84,
+        80,
+        59,
+        23,
+        182,
+        226
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "arena",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  114,
+                  101,
+                  110,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "arena.id",
+                "account": "Arena"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "enabled",
+          "type": {
+            "option": "bool"
+          }
+        },
+        {
+          "name": "max_players",
+          "type": {
+            "option": "u16"
+          }
+        }
+      ]
+    },
+    {
+      "name": "update_config",
+      "discriminator": [
+        29,
+        158,
+        252,
+        191,
+        10,
+        83,
+        219,
+        99
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "UpdateConfigArgs"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "update_profile",
+      "discriminator": [
+        98,
+        67,
+        99,
+        206,
+        86,
+        115,
+        175,
+        1
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true,
+          "relations": [
+            "profile"
+          ]
+        },
+        {
+          "name": "profile",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  102,
+                  105,
+                  108,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": {
+            "option": "string"
+          }
+        },
+        {
+          "name": "skin",
+          "type": {
+            "option": "u8"
+          }
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Arena",
+      "discriminator": [
+        243,
+        215,
+        44,
+        44,
+        231,
+        211,
+        232,
+        168
+      ]
+    },
+    {
+      "name": "Config",
+      "discriminator": [
+        155,
+        12,
+        170,
+        224,
+        30,
+        250,
+        204,
+        130
+      ]
+    },
+    {
+      "name": "PlayerProfile",
+      "discriminator": [
+        82,
+        226,
+        99,
+        87,
+        164,
+        130,
+        181,
+        80
+      ]
+    },
+    {
+      "name": "Season",
+      "discriminator": [
+        76,
+        67,
+        93,
+        156,
+        180,
+        157,
+        248,
+        47
+      ]
+    },
+    {
+      "name": "Session",
+      "discriminator": [
+        243,
+        81,
+        72,
+        115,
+        214,
+        188,
+        72,
+        144
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "ArenaJoined",
+      "discriminator": [
+        195,
+        38,
+        154,
+        241,
+        247,
+        142,
+        31,
+        5
+      ]
+    },
+    {
+      "name": "ArenaSwept",
+      "discriminator": [
+        132,
+        32,
+        57,
+        60,
+        149,
+        87,
+        201,
+        80
+      ]
+    },
+    {
+      "name": "GameRecorded",
+      "discriminator": [
+        148,
+        119,
+        18,
+        172,
+        198,
+        62,
+        150,
+        145
+      ]
+    },
+    {
+      "name": "PlayerRegistered",
+      "discriminator": [
+        175,
+        78,
+        252,
+        170,
+        75,
+        230,
+        36,
+        251
+      ]
+    },
+    {
+      "name": "ProfileUpdated",
+      "discriminator": [
+        186,
+        248,
+        62,
+        98,
+        112,
+        98,
+        161,
+        252
+      ]
+    },
+    {
+      "name": "RewardClaimed",
+      "discriminator": [
+        49,
+        28,
+        87,
+        84,
+        158,
+        48,
+        229,
+        175
+      ]
+    },
+    {
+      "name": "SeasonEnded",
+      "discriminator": [
+        231,
+        210,
+        35,
+        6,
+        231,
+        92,
+        111,
+        69
+      ]
+    },
+    {
+      "name": "SeasonFunded",
+      "discriminator": [
+        86,
+        2,
+        211,
+        175,
+        10,
+        250,
+        20,
+        35
+      ]
+    },
+    {
+      "name": "SeasonRolledOver",
+      "discriminator": [
+        70,
+        173,
+        38,
+        206,
+        53,
+        30,
+        122,
+        83
+      ]
+    },
+    {
+      "name": "SessionRefunded",
+      "discriminator": [
+        176,
+        138,
+        119,
+        46,
+        99,
+        172,
+        75,
+        152
+      ]
+    },
+    {
+      "name": "SessionSettled",
+      "discriminator": [
+        127,
+        161,
+        59,
+        136,
+        23,
+        168,
+        191,
+        149
+      ]
+    },
+    {
+      "name": "SkinPurchased",
+      "discriminator": [
+        120,
+        227,
+        216,
+        6,
+        255,
+        113,
+        22,
+        85
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "Unauthorized",
+      "msg": "Signer is not authorized for this action"
+    },
+    {
+      "code": 6001,
+      "name": "Paused",
+      "msg": "Program is paused"
+    },
+    {
+      "code": 6002,
+      "name": "InvalidFee",
+      "msg": "Invalid fee configuration"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidName",
+      "msg": "Name must be 1-16 bytes of UTF-8 without control characters"
+    },
+    {
+      "code": 6004,
+      "name": "InvalidSkin",
+      "msg": "Invalid skin id"
+    },
+    {
+      "code": 6005,
+      "name": "SkinLocked",
+      "msg": "Skin is locked"
+    },
+    {
+      "code": 6006,
+      "name": "SkinAlreadyOwned",
+      "msg": "Skin already owned"
+    },
+    {
+      "code": 6007,
+      "name": "BuyInTooLow",
+      "msg": "Buy-in is below the minimum"
+    },
+    {
+      "code": 6008,
+      "name": "InvalidMaxPlayers",
+      "msg": "Max players must be between 2 and 100"
+    },
+    {
+      "code": 6009,
+      "name": "ArenaDisabled",
+      "msg": "Arena is disabled"
+    },
+    {
+      "code": 6010,
+      "name": "ArenaFull",
+      "msg": "Arena is full"
+    },
+    {
+      "code": 6011,
+      "name": "InsufficientPot",
+      "msg": "Amount exceeds the available pot"
+    },
+    {
+      "code": 6012,
+      "name": "RefundTooEarly",
+      "msg": "Session cannot be refunded yet"
+    },
+    {
+      "code": 6013,
+      "name": "SeasonFinalized",
+      "msg": "Season is already finalized"
+    },
+    {
+      "code": 6014,
+      "name": "SeasonNotFinalized",
+      "msg": "Season is not finalized"
+    },
+    {
+      "code": 6015,
+      "name": "NotEligible",
+      "msg": "Not eligible for a season reward"
+    },
+    {
+      "code": 6016,
+      "name": "AlreadyClaimed",
+      "msg": "Reward already claimed"
+    },
+    {
+      "code": 6017,
+      "name": "ClaimWindowClosed",
+      "msg": "Claim window is closed"
+    },
+    {
+      "code": 6018,
+      "name": "ClaimWindowOpen",
+      "msg": "Claim window is still open"
+    },
+    {
+      "code": 6019,
+      "name": "InvalidSeason",
+      "msg": "Invalid season"
+    },
+    {
+      "code": 6020,
+      "name": "ArenaHasOpenSessions",
+      "msg": "Arena still has open sessions"
+    },
+    {
+      "code": 6021,
+      "name": "InvalidAmount",
+      "msg": "Invalid amount"
+    },
+    {
+      "code": 6022,
+      "name": "MathOverflow",
+      "msg": "Math overflow"
+    },
+    {
+      "code": 6023,
+      "name": "SessionMismatch",
+      "msg": "Settlement is for a different session"
+    }
+  ],
+  "types": [
+    {
+      "name": "Arena",
+      "docs": [
+        "A stake arena tier. PDA `[\"arena\", id.to_le_bytes()]`.",
+        "",
+        "The arena account itself is the vault: every lamport above its rent-exempt",
+        "minimum belongs to the pot."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "id",
+            "type": "u16"
+          },
+          {
+            "name": "buy_in",
+            "type": "u64"
+          },
+          {
+            "name": "max_players",
+            "type": "u16"
+          },
+          {
+            "name": "enabled",
+            "type": "bool"
+          },
+          {
+            "name": "open_sessions",
+            "type": "u16"
+          },
+          {
+            "name": "total_deposited",
+            "type": "u64"
+          },
+          {
+            "name": "total_paid_out",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ArenaJoined",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "arena_id",
+            "type": "u16"
+          },
+          {
+            "name": "session_id",
+            "type": "u64"
+          },
+          {
+            "name": "buy_in",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ArenaSwept",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "arena_id",
+            "type": "u16"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Config",
+      "docs": [
+        "Global configuration. PDA `[\"config\"]`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "docs": [
+              "May change the configuration, create arenas and manage seasons."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "server_authority",
+            "docs": [
+              "Game server key that signs `settle_session` and `record_game`."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "treasury",
+            "docs": [
+              "Receives skin purchases, the treasury part of fees and swept arena leftovers."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "fee_bps",
+            "docs": [
+              "Fee charged on stake profit, in basis points (≤ `MAX_FEE_BPS`)."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "season_share_bps",
+            "docs": [
+              "Part of the fee that goes to the current season prize pool, in basis points."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "skin_price",
+            "docs": [
+              "Price of a premium skin in lamports."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "current_season",
+            "docs": [
+              "Id of the season that is currently running."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "paused",
+            "docs": [
+              "Blocks new arena joins (settlements and refunds keep working)."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "total_players",
+            "type": "u64"
+          },
+          {
+            "name": "total_games",
+            "type": "u64"
+          },
+          {
+            "name": "total_sessions",
+            "type": "u64"
+          },
+          {
+            "name": "total_staked",
+            "type": "u64"
+          },
+          {
+            "name": "total_paid_out",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GameRecorded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "score",
+            "type": "u32"
+          },
+          {
+            "name": "kills",
+            "type": "u16"
+          },
+          {
+            "name": "xp",
+            "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "InitializeArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "server_authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "treasury",
+            "type": "pubkey"
+          },
+          {
+            "name": "fee_bps",
+            "type": "u16"
+          },
+          {
+            "name": "season_share_bps",
+            "type": "u16"
+          },
+          {
+            "name": "skin_price",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LeaderEntry",
+      "docs": [
+        "One row of a season leaderboard."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "points",
+            "type": "u64"
+          },
+          {
+            "name": "best_score",
+            "docs": [
+              "Best single-game score of this player during the season."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "name",
+            "type": {
+              "array": [
+                "u8",
+                16
+              ]
+            }
+          },
+          {
+            "name": "name_len",
+            "type": "u8"
+          },
+          {
+            "name": "skin",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PlayerProfile",
+      "docs": [
+        "On-chain player identity and statistics. PDA `[\"profile\", owner]`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "name",
+            "docs": [
+              "UTF-8 name bytes, zero padded; only `name[..name_len]` is meaningful."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                16
+              ]
+            }
+          },
+          {
+            "name": "name_len",
+            "type": "u8"
+          },
+          {
+            "name": "skin",
+            "docs": [
+              "Equipped skin id."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "premium_skins",
+            "docs": [
+              "Owned premium skins: bit `i` set ⇔ skin `PREMIUM_SKIN_START + i` owned."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "xp",
+            "type": "u64"
+          },
+          {
+            "name": "games_played",
+            "type": "u32"
+          },
+          {
+            "name": "kills",
+            "type": "u32"
+          },
+          {
+            "name": "best_score",
+            "type": "u32"
+          },
+          {
+            "name": "total_score",
+            "type": "u64"
+          },
+          {
+            "name": "season",
+            "docs": [
+              "Season that `season_points` belongs to."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "season_points",
+            "type": "u64"
+          },
+          {
+            "name": "stake_games",
+            "type": "u32"
+          },
+          {
+            "name": "total_staked",
+            "type": "u64"
+          },
+          {
+            "name": "total_won",
+            "type": "u64"
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "last_played",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PlayerRegistered",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ProfileUpdated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "skin",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RecordArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "score",
+            "type": "u32"
+          },
+          {
+            "name": "kills",
+            "type": "u16"
+          },
+          {
+            "name": "xp",
+            "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RewardClaimed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "season_id",
+            "type": "u32"
+          },
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "rank",
+            "type": "u8"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Season",
+      "docs": [
+        "A season with its top-20 leaderboard. PDA `[\"season\", id.to_le_bytes()]`.",
+        "",
+        "Every lamport above the rent-exempt minimum is prize money."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "id",
+            "type": "u32"
+          },
+          {
+            "name": "started_at",
+            "type": "i64"
+          },
+          {
+            "name": "ended_at",
+            "type": "i64"
+          },
+          {
+            "name": "finalized",
+            "type": "bool"
+          },
+          {
+            "name": "prize_pool",
+            "docs": [
+              "Prize pool frozen by `end_season`."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "claimed_mask",
+            "docs": [
+              "Bit `rank` set ⇔ the prize of that rank was claimed."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "count",
+            "docs": [
+              "Number of used leaderboard entries."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "entries",
+            "docs": [
+              "Sorted by `points`, descending; only `entries[..count]` are meaningful."
+            ],
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "LeaderEntry"
+                  }
+                },
+                20
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "SeasonEnded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "season_id",
+            "type": "u32"
+          },
+          {
+            "name": "prize_pool",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SeasonFunded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "season_id",
+            "type": "u32"
+          },
+          {
+            "name": "funder",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SeasonRolledOver",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "from",
+            "type": "u32"
+          },
+          {
+            "name": "to",
+            "type": "u32"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Session",
+      "docs": [
+        "An open stake session (one per player per arena). PDA `[\"session\", arena, player]`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "arena",
+            "type": "pubkey"
+          },
+          {
+            "name": "arena_id",
+            "type": "u16"
+          },
+          {
+            "name": "buy_in",
+            "type": "u64"
+          },
+          {
+            "name": "opened_at",
+            "type": "i64"
+          },
+          {
+            "name": "id",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SessionRefunded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "arena_id",
+            "type": "u16"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SessionSettled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "arena_id",
+            "type": "u16"
+          },
+          {
+            "name": "session_id",
+            "type": "u64"
+          },
+          {
+            "name": "payout",
+            "type": "u64"
+          },
+          {
+            "name": "fee",
+            "type": "u64"
+          },
+          {
+            "name": "score",
+            "type": "u32"
+          },
+          {
+            "name": "kills",
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SettleArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session_id",
+            "docs": [
+              "`Session::id` the server is settling. Session PDAs are reused when a player joins",
+              "the same arena again, so this stops a delayed/retried settlement of an old session",
+              "from being applied to a newer one at the same address."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "payout",
+            "docs": [
+              "Lamports the player cashed out with (taken from the arena pot)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "score",
+            "type": "u32"
+          },
+          {
+            "name": "kills",
+            "type": "u16"
+          },
+          {
+            "name": "xp",
+            "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SkinPurchased",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "skin",
+            "type": "u8"
+          },
+          {
+            "name": "price",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "UpdateConfigArgs",
+      "docs": [
+        "Every `Some` field replaces the stored value; `None` keeps it."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "server_authority",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "treasury",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "fee_bps",
+            "type": {
+              "option": "u16"
+            }
+          },
+          {
+            "name": "season_share_bps",
+            "type": {
+              "option": "u16"
+            }
+          },
+          {
+            "name": "skin_price",
+            "type": {
+              "option": "u64"
+            }
+          },
+          {
+            "name": "paused",
+            "type": {
+              "option": "bool"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "constants": [
+    {
+      "name": "ARENA_SEED",
+      "docs": [
+        "`Arena` PDA: `[\"arena\", id.to_le_bytes() (u16)]`."
+      ],
+      "type": "bytes",
+      "value": "[97, 114, 101, 110, 97]"
+    },
+    {
+      "name": "BPS",
+      "docs": [
+        "Basis-point denominator (100 %)."
+      ],
+      "type": "u16",
+      "value": "10000"
+    },
+    {
+      "name": "CLAIM_WINDOW_SECS",
+      "docs": [
+        "Season prizes can be claimed for this many seconds after the season ended (30 days)."
+      ],
+      "type": "i64",
+      "value": "2592000"
+    },
+    {
+      "name": "CONFIG_SEED",
+      "docs": [
+        "`Config` PDA: `[\"config\"]`."
+      ],
+      "type": "bytes",
+      "value": "[99, 111, 110, 102, 105, 103]"
+    },
+    {
+      "name": "FIRST_SEASON",
+      "docs": [
+        "Id of the first season (created by `initialize`)."
+      ],
+      "type": "u32",
+      "value": "1"
+    },
+    {
+      "name": "FREE_SKINS",
+      "docs": [
+        "Skins `0..FREE_SKINS` are free."
+      ],
+      "type": "u8",
+      "value": "8"
+    },
+    {
+      "name": "LEADERBOARD_SIZE",
+      "docs": [
+        "Number of entries kept on each season leaderboard."
+      ],
+      "type": "u8",
+      "value": "20"
+    },
+    {
+      "name": "LEVEL_SKIN_REQUIREMENTS",
+      "docs": [
+        "Level required by level-gated skins (skin 8 needs level 2 … skin 15 needs level 20)."
+      ],
+      "type": {
+        "array": [
+          "u32",
+          8
+        ]
+      },
+      "value": "[2, 3, 5, 7, 10, 13, 16, 20]"
+    },
+    {
+      "name": "LEVEL_SKIN_START",
+      "docs": [
+        "Skins `LEVEL_SKIN_START..PREMIUM_SKIN_START` are unlocked by level."
+      ],
+      "type": "u8",
+      "value": "8"
+    },
+    {
+      "name": "MAX_ARENA_PLAYERS",
+      "docs": [
+        "Maximum value of `Arena::max_players`."
+      ],
+      "type": "u16",
+      "value": "100"
+    },
+    {
+      "name": "MAX_FEE_BPS",
+      "docs": [
+        "Upper bound for `Config::fee_bps` (10 %)."
+      ],
+      "type": "u16",
+      "value": "1000"
+    },
+    {
+      "name": "MAX_NAME_LEN",
+      "docs": [
+        "Maximum player name length in bytes (UTF-8)."
+      ],
+      "type": "u8",
+      "value": "16"
+    },
+    {
+      "name": "MAX_SCORE_PER_GAME",
+      "docs": [
+        "Score of a single game is clamped to this value."
+      ],
+      "type": "u32",
+      "value": "1000000"
+    },
+    {
+      "name": "MAX_XP_PER_GAME",
+      "docs": [
+        "XP granted by a single game is clamped to this value."
+      ],
+      "type": "u32",
+      "value": "2000"
+    },
+    {
+      "name": "MIN_ARENA_PLAYERS",
+      "docs": [
+        "Minimum value of `Arena::max_players`."
+      ],
+      "type": "u16",
+      "value": "2"
+    },
+    {
+      "name": "MIN_BUY_IN",
+      "docs": [
+        "Minimum arena buy-in (0.001 SOL)."
+      ],
+      "type": "u64",
+      "value": "1000000"
+    },
+    {
+      "name": "PREMIUM_SKIN_START",
+      "docs": [
+        "Skins `PREMIUM_SKIN_START..SKIN_COUNT` are bought with SOL (bit `skin - 16` of `premium_skins`)."
+      ],
+      "type": "u8",
+      "value": "16"
+    },
+    {
+      "name": "PRIZE_RANKS",
+      "docs": [
+        "Number of leaderboard ranks that receive a season prize."
+      ],
+      "type": "u8",
+      "value": "10"
+    },
+    {
+      "name": "PRIZE_SHARES_BPS",
+      "docs": [
+        "Prize share of each season rank in basis points (sums to 10 000)."
+      ],
+      "type": {
+        "array": [
+          "u16",
+          10
+        ]
+      },
+      "value": "[3000, 2000, 1400, 1000, 800, 600, 450, 300, 250, 200]"
+    },
+    {
+      "name": "PROFILE_SEED",
+      "docs": [
+        "`PlayerProfile` PDA: `[\"profile\", owner]`."
+      ],
+      "type": "bytes",
+      "value": "[112, 114, 111, 102, 105, 108, 101]"
+    },
+    {
+      "name": "SEASON_SEED",
+      "docs": [
+        "`Season` PDA: `[\"season\", id.to_le_bytes() (u32)]`."
+      ],
+      "type": "bytes",
+      "value": "[115, 101, 97, 115, 111, 110]"
+    },
+    {
+      "name": "SESSION_REFUND_TIMEOUT_SECS",
+      "docs": [
+        "A session that was never settled can be refunded by its player after this many seconds (24 h)."
+      ],
+      "type": "i64",
+      "value": "86400"
+    },
+    {
+      "name": "SESSION_SEED",
+      "docs": [
+        "`Session` PDA: `[\"session\", arena, player]`."
+      ],
+      "type": "bytes",
+      "value": "[115, 101, 115, 115, 105, 111, 110]"
+    },
+    {
+      "name": "SKIN_COUNT",
+      "docs": [
+        "Total number of skins (ids `0..SKIN_COUNT`)."
+      ],
+      "type": "u8",
+      "value": "24"
+    },
+    {
+      "name": "XP_LEVEL_DIVISOR",
+      "docs": [
+        "`level = 1 + isqrt(xp / XP_LEVEL_DIVISOR)`."
+      ],
+      "type": "u64",
+      "value": "50"
+    }
+  ]
+}
