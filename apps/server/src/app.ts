@@ -64,6 +64,9 @@ export async function createApp(
   gateway.attach(server);
   const flushTimer = setInterval(() => leaderboards.flush(), 30_000);
   flushTimer.unref();
+  // arenas created (or a chain that came online) after startup show up in the lobby without a restart
+  const arenaTimer = setInterval(() => void rooms.ensureStakeRooms(), 30_000);
+  arenaTimer.unref();
 
   let closed = false;
   return {
@@ -85,6 +88,7 @@ export async function createApp(
       if (closed) return;
       closed = true;
       clearInterval(flushTimer);
+      clearInterval(arenaTimer);
       rooms.shutdown();
       leaderboards.flush();
       gateway.close();
