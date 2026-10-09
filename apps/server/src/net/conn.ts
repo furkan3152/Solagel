@@ -31,6 +31,9 @@ export class Conn {
 
   private tokens = 120;
   private lastRefill = Date.now();
+  /** Separate, much smaller budget for messages that hit the Solana RPC (auth, stake joins). */
+  private chainTokens = 6;
+  private chainRefill = Date.now();
 
   constructor(
     readonly ws: WebSocket,
@@ -43,6 +46,15 @@ export class Conn {
     this.lastRefill = now;
     if (this.tokens < cost) return false;
     this.tokens -= cost;
+    return true;
+  }
+
+  /** RPC-touching ops: bursts of 6, then one every 2 s (an RPC call per message would be an amplifier). */
+  allowChainOp(now = Date.now()): boolean {
+    this.chainTokens = Math.min(6, this.chainTokens + (now - this.chainRefill) / 2000);
+    this.chainRefill = now;
+    if (this.chainTokens < 1) return false;
+    this.chainTokens -= 1;
     return true;
   }
 

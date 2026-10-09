@@ -12,6 +12,7 @@ apps/web/dist/
 target/
 .anchor/
 test-ledger/
+.localnet/
 .surfpool/
 **/*.rs.bk
 

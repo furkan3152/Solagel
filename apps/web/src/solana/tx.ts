@@ -1,6 +1,6 @@
 import type { WalletContextState } from '@solana/wallet-adapter-react';
 import type { Connection, TransactionInstruction } from '@solana/web3.js';
-import { describeError, type SolagelClient } from '@solagel/sdk';
+import { confirmSignature, describeError, type SolagelClient } from '@solagel/sdk';
 import { t } from '../i18n';
 import { toast, useUi } from '../store';
 import { explorerTx } from './links';
@@ -22,12 +22,12 @@ export async function sendWalletTx(
     return null;
   }
   try {
-    const { tx, blockhash, lastValidBlockHeight } = await client.buildTransaction(ixs, wallet.publicKey, { priorityMicroLamports: 20_000 });
+    const { tx, lastValidBlockHeight } = await client.buildTransaction(ixs, wallet.publicKey, { priorityMicroLamports: 20_000 });
     const signature = await wallet.sendTransaction(tx, connection, { preflightCommitment: 'confirmed', maxRetries: 4 });
     const cluster = useUi.getState().chain?.cluster ?? 'devnet';
     toast('info', t('tx.sent'), { href: explorerTx(signature, cluster), label: 'Explorer' }, 4000);
-    const { value } = await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
-    if (value.err) throw Object.assign(new Error(`Transaction failed: ${JSON.stringify(value.err)}`), { signature });
+    // polling (not WebSocket) confirmation: works behind proxies and with HTTP-only RPCs
+    await confirmSignature(connection, signature, lastValidBlockHeight);
     toast('success', opts.success ?? t('tx.confirmed'), { href: explorerTx(signature, cluster), label: 'Explorer' });
     return signature;
   } catch (err) {

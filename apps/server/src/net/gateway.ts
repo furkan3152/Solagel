@@ -218,6 +218,10 @@ export class Gateway {
   }
 
   private async onAuth(conn: Conn, msg: Record<string, unknown>): Promise<void> {
+    if (!conn.allowChainOp()) {
+      this.error(conn, 'rate_limited', 'Too many sign-ins — wait a moment.');
+      return;
+    }
     let wallet: string | null = null;
     if (typeof msg.token === 'string') wallet = this.auth.verifyToken(msg.token);
     else if (typeof msg.pubkey === 'string' && typeof msg.message === 'string' && typeof msg.signature === 'string') {
@@ -297,6 +301,10 @@ export class Gateway {
       if (existing) {
         if (conn.player === null && room.reattach(conn, existing.pid)) return;
         this.error(conn, 'session_busy', 'You are already playing in this arena.');
+        return;
+      }
+      if (!conn.allowChainOp()) {
+        this.error(conn, 'rate_limited', 'Too many join attempts — wait a moment.');
         return;
       }
       const session = await this.chain.getSession(target.arenaId, conn.wallet);

@@ -367,6 +367,8 @@ export class Room {
     } else if (
       wallet &&
       this.deps.chain.enabled &&
+      // only players with an on-chain profile can be recorded (refreshed on sign-in and on every join)
+      (conn ?? this.humans.get(p.id))?.profile &&
       score >= this.deps.recordMinScore &&
       stats.aliveMs >= 20_000 &&
       this.deps.canRecord(wallet)
