@@ -64,6 +64,7 @@ function LiveLeaderboard() {
           <span className="lb-name">
             {e.name}
             {e.verified ? ' ✓' : ''}
+            {e.bot ? <span style={{ opacity: 0.55, fontSize: 11 }}> 🤖</span> : null}
           </span>
           <span className="lb-score">{room?.mode === 'stake' && e.value !== undefined ? formatSol(e.value) : compact(e.score)}</span>
         </div>

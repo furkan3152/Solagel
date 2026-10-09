@@ -232,6 +232,22 @@ describe('server over websocket', () => {
     d.close();
   });
 
+  it('rate-limits sign-ins (each one reads the chain)', async () => {
+    const pubkey = bs58.encode(nacl.sign.keyPair().publicKey);
+    const token = app.auth.issueToken(pubkey);
+    const c = await Client.connect(port);
+    c.send({ t: 'hello', v: PROTOCOL_VERSION });
+    await c.wait('welcome');
+    for (let i = 0; i < 8; i++) c.send({ t: 'auth', token });
+    expect((await c.wait('error', 2000, (m) => m.code === 'rate_limited')).code).toBe('rate_limited');
+    const authed = () => c.msgs.filter((m) => m.t === 'authed').length;
+    for (let i = 0; i < 40 && authed() < 6; i++) await sleep(25);
+    await sleep(100);
+    expect(authed()).toBe(6);
+    expect(c.msgs.filter((m) => m.t === 'error' && m.code === 'rate_limited').length).toBe(2);
+    c.close();
+  });
+
   it('stake arena: join with an on-chain ticket, cash out, queue settlement', async () => {
     const kp = nacl.sign.keyPair();
     const pubkey = bs58.encode(kp.publicKey);

@@ -682,7 +682,7 @@ export class SolanaChain implements ChainGateway {
       return;
     }
     if (!profile) {
-      this.log(`chain: no on-chain profile for ${short(item.player)} — free-play record dropped`);
+      this.warn('no-profile', `chain: free-play record of ${short(item.player)} dropped — no on-chain profile (logged once a minute)`);
       this.journal.remove(key);
       return;
     }
