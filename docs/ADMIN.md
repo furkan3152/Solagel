@@ -4,7 +4,9 @@ Open `/admin` on the game website. The panel uses the same English copy, pastel 
 
 ## Access and persistence
 
-Set `ADMIN_WALLETS` to comma-separated **public** Solana wallet addresses for off-chain operators. The current `config.admin` read from the deployed program can also enter. Environment-listed operators can change runtime settings and inspect/retry existing settlement records, but do not gain on-chain authority. Contract operations always require the current on-chain admin's wallet signature. No private key is entered in the panel.
+The default off-chain operator is the public wallet `D2Ts7yCiVjedo6uwqpkM44QA8J45NdVU1J3k5m6iWtvm`. Setting `ADMIN_WALLETS` to comma-separated **public** Solana wallet addresses replaces this default; explicitly setting `ADMIN_WALLETS=` disables the default operator. Leaving the variable unset retains the repository default.
+
+The current `config.admin` read from the deployed program can also enter, including when `ADMIN_WALLETS` is empty. Default and environment-listed operators can change runtime settings and inspect/retry existing settlement records, but do not gain on-chain authority. Contract operations always require the current on-chain admin's wallet signature. No private key is entered in the panel.
 
 A one-use message challenge opens a dedicated 15-minute admin session. The proof and bearer are bound to the configured cluster, program and frontend origin. Game login tokens cannot access admin endpoints. The browser keeps admin credentials in memory and clears them on wallet/network change, expiry, sign-out or refresh. Authority is checked again for each request; an on-chain admin cannot authenticate through a stale cached role during an RPC outage.
 
