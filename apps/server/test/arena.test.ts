@@ -41,7 +41,7 @@ function fixture() {
   };
   const journal = new Journal(null);
   const deps: RoomDeps = { chain, journal, leaderboards: new Leaderboards(null), canRecord: () => false, recordMinScore: 40, log: () => {} };
-  const cfg = loadConfig({ BOT_TARGET: '4', BOT_MAX: '4' });
+  const cfg = loadConfig({ BOT_TARGET: '4', BOT_MIN: '0', BOT_MAX: '4' });
   const manager = new RoomManager(cfg, deps, chain);
   const auth = new Auth(Buffer.alloc(32, 1));
   const gateway = new Gateway(cfg, manager, auth, chain, journal, () => {});
@@ -58,6 +58,122 @@ function deferred<T>() {
 }
 
 describe('continuous public arenas', () => {
+  it('refreshes arena capacity and enabled state without ejecting existing players', async () => {
+    const f = fixture();
+    const now = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
+    let maxPlayers = 4;
+    let enabled = true;
+    f.chain.listArenas = async () => [{ id: 1, address: 'arena', buyIn: 10_000_000, maxPlayers, enabled, openSessions: 0, pot: 0 }];
+    try {
+      const players = [client('a'), client('b'), client('c')];
+      for (const player of players) await join(f.gateway, player.conn);
+      const room = players[0].conn.room!;
+      const originalCells = players.map((p) => p.conn.player);
+      maxPlayers = 2;
+      clock.mockReturnValue(now + 31_000);
+      await f.manager.ensureStakeRooms();
+      expect(room.opts.maxPlayers).toBe(2);
+      expect(room.info().players).toBe(3);
+      expect(room.opts.bots!.target).toBe(2);
+      const late = client('d');
+      await join(f.gateway, late.conn);
+      expect(late.conn.player).toBeNull();
+      expect(players.map((p) => p.conn.player)).toEqual(originalCells);
+
+      maxPlayers = 4;
+      clock.mockReturnValue(now + 62_000);
+      await f.manager.ensureStakeRooms();
+      await join(f.gateway, late.conn);
+      expect(late.conn.room).toBe(room);
+      expect(room.info().players).toBe(4);
+      expect(room.ledger!.total()).toBe(40_000_000);
+
+      enabled = false;
+      clock.mockReturnValue(now + 93_000);
+      await f.manager.ensureStakeRooms();
+      expect(room.info().enabled).toBe(false);
+      expect(f.manager.list().some((r) => r.id === room.id)).toBe(false);
+      const pid = players[0].conn.player!.id;
+      room.leave(players[0].conn, 'disconnect');
+      const reconnected = client('a');
+      await join(f.gateway, reconnected.conn);
+      expect(reconnected.conn.player?.id).toBe(pid);
+      expect(room.ledger!.total()).toBe(40_000_000);
+    } finally { clock.mockRestore(); }
+  });
+
+  it('settles an activating reservation if an admin lowers capacity below the current population', async () => {
+    const f = fixture();
+    await join(f.gateway, client('a').conn);
+    await join(f.gateway, client('b').conn);
+    const pendingActivation = deferred<boolean>();
+    const started = deferred<void>();
+    f.chain.activateSession = async () => { started.resolve(); return pendingActivation.promise; };
+    const late = client('c');
+    const joining = join(f.gateway, late.conn);
+    await started.promise;
+    const room = f.manager.rooms.get('stake-1')!;
+    room.opts.maxPlayers = 2;
+    pendingActivation.resolve(true);
+    await joining;
+    expect(late.conn.player).toBeNull();
+    expect(room.humans.size).toBe(2);
+    expect(f.journal.pending).toMatchObject([{ player: 'c', payout: 10_000_000 }]);
+    expect(room.ledger!.total()).toBe(20_000_000);
+  });
+
+  it('applies admin bot targets to live and future rooms without removing human cells', async () => {
+    const f = fixture();
+    const a = client('a');
+    await join(f.gateway, a.conn);
+    const existing = a.conn.player;
+    f.manager.applyRuntime({ admissionsPaused: false, bots: { target: 9, min: 1, max: 5, privateTarget: 3 } });
+    expect(a.conn.player).toBe(existing);
+    expect(a.conn.room!.bots!.desired(1)).toBe(3); // paid capacity caps the target at 4
+    expect(f.manager.freeRoom().bots!.desired(0)).toBe(5);
+    expect(f.manager.privateRoom(null)!.bots!.desired(0)).toBe(3);
+    expect(f.journal.live()[0].value).toBe(10_000_000);
+  });
+
+  it('pauses new admissions while allowing an active paid player to reconnect and cash out', async () => {
+    const f = fixture();
+    const original = client('a');
+    await join(f.gateway, original.conn);
+    const room = original.conn.room!;
+    const pid = original.conn.player!.id;
+    room.leave(original.conn, 'disconnect');
+    f.manager.applyRuntime({ admissionsPaused: true, bots: { target: 0, min: 0, max: 0, privateTarget: 0 } });
+    const blocked = client('b');
+    await join(f.gateway, blocked.conn);
+    expect(blocked.conn.player).toBeNull();
+    const practice = client(null);
+    await send(f.gateway, practice.conn, { t: 'join', room: 'free', name: 'Guest', skin: 0 });
+    expect(practice.conn.player).toBeNull();
+    const reconnected = client('a');
+    await join(f.gateway, reconnected.conn);
+    expect(reconnected.conn.player?.id).toBe(pid);
+    await send(f.gateway, reconnected.conn, { t: 'cashout' });
+    room.world.now += RULES.cashoutMs + TICK_MS;
+    room.tick(TICK_MS);
+    expect(f.journal.pending).toMatchObject([{ player: 'a', payout: 10_000_000 }]);
+  });
+
+  it('cancels admission safely when admin pause arrives during activation', async () => {
+    const f = fixture();
+    const active = deferred<boolean>();
+    const started = deferred<boolean>();
+    f.chain.activateSession = async () => { started.resolve(true); return active.promise; };
+    const a = client();
+    const joining = join(f.gateway, a.conn);
+    await started.promise;
+    f.manager.applyRuntime({ admissionsPaused: true, bots: { target: 0, min: 0, max: 0, privateTarget: 0 } });
+    active.resolve(true);
+    await joining;
+    expect(a.conn.player).toBeNull();
+    expect(f.journal.pending).toMatchObject([{ player: 'wallet', payout: 10_000_000 }]);
+    expect(f.journal.live()).toHaveLength(0);
+  });
   it('shares one simulation when the first paid joins discover the arena concurrently', async () => {
     const { manager } = fixture();
     const rooms = await Promise.all([manager.stakeRoom(1), manager.stakeRoom(1), manager.stakeRoom(1)]);

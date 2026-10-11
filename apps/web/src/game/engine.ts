@@ -338,7 +338,7 @@ export class GameEngine {
     const now = performance.now();
     switch (m.t) {
       case 'welcome': {
-        useUi.setState({ connected: true, connecting: false, rooms: m.rooms, chain: m.chain, online: m.online });
+        useUi.setState({ connected: true, connecting: false, rooms: m.rooms, chain: m.chain, online: m.online, admissionsPaused: m.chain.admissionsPaused ?? false });
         this.world.reset();
         this.snapNext = true;
         const auth = useUi.getState().auth;
@@ -362,7 +362,7 @@ export class GameEngine {
         return;
       }
       case 'rooms':
-        useUi.setState({ rooms: m.rooms, online: m.online, ...(m.chain ? { chain: m.chain } : {}) });
+        useUi.setState({ rooms: m.rooms, online: m.online, ...(m.chain ? { chain: m.chain, admissionsPaused: m.chain.admissionsPaused ?? false } : {}) });
         return;
       case 'authed': {
         if (!this.authPending) return;

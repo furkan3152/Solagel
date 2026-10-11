@@ -1,4 +1,4 @@
-# SOL beta verification — 2026-10-11
+# SOL beta and admin verification — 2026-10-11
 
 The verified flow is: English lobby → wallet / SOL ticket → durable arena admission → on-chain activation → continuous gameplay → session-specific cash-out receipt.
 
@@ -6,10 +6,10 @@ The verified flow is: English lobby → wallet / SOL ticket → durable arena ad
 
 | Boundary | Result |
 | --- | --- |
-| Shared rules and protocol | 21 tests passed |
+| Shared rules and protocol | 23 tests passed |
 | Solana SDK and generated account/instruction IDL | 32 tests passed |
-| Server, admission races, bots, journal and settlement | 94 tests passed |
-| Browser client reconnect, receipt identity and wallet transaction outcomes | 21 tests passed |
+| Server, admin authorization, asset validation, admission, bots and settlement | 219 tests passed |
+| Browser client, admin actions/network/recovery and wallet outcomes | 68 tests passed |
 | TypeScript across the workspace | Passed |
 | Server and web production builds | Passed |
 | Anchor SBF program build | Passed |
@@ -23,6 +23,16 @@ The SDK IDL was regenerated from the actual Anchor build. WebSocket protocol v2 
 Chromium exercised the SOL-first lobby, Practice, friends' rooms, skin collection previews, settings, dark theme, how-to and mobile gameplay against the local server. There were no page errors. Existing Turkish preferences migrated to English, NFT previews offered no payment/mint button, and 320px / 390px layouts had no horizontal overflow. Screenshots are in `docs/images`.
 
 With no chain configured, the UI correctly reports paid entry unavailable and keeps practice playable. The lobby retains the original canvas character artwork, pastel palette and purple outlines.
+
+## Admin control room verification
+
+A production-build Chromium smoke test used an unfunded ephemeral Solana wallet and real Ed25519 signatures against the running HTTP server. It verified unauthorized access rejection, dedicated admin login, durable settings saves, new-entry pause reaching the lobby, disabled practice entry while paused, staged Base/ERC-721 cosmetic mappings saved without public ownership unlock, retained drafts across tabs, audit visibility and wallet logout. All six admin sections fit a 320px viewport; desktop and 390px screenshots are in `docs/images/admin-desktop.jpg` and `admin-mobile.jpg`. No page errors occurred.
+
+Reproduce after `corepack pnpm build` with `corepack pnpm -F @solagel/web smoke:admin`. The script starts an isolated server with temporary data, registers a test wallet, and deletes its temporary settings afterward. It never signs a blockchain transaction.
+
+Automated tests additionally cover dedicated nonce replay/expiry and deployment-bound bearers, current-role revocation and RPC failure, atomic settings persistence and revision conflicts, network/program-bound settings, exact SPL/Token-2022 mint parsing, NFT chain/standard/asset validation, queued-liability preservation, runtime pause during admission, and live capacity changes without ejecting existing players. Admin instruction tests use actual SDK instruction layouts and verify amounts/destinations, fee caps, authority, immutable entry prices, empty-vault sweep and the rollover window. Network tests reject a wrong-cluster RPC override or missing executable program. Canonical public-network genesis hashes were checked against read-only RPC responses. Pending admin signatures are stored separately from credentials and restored across same-tab reload/sign-out to prevent accidental repeat funding.
+
+Token launch announcements preserve SOL entry/payout units. Staged NFT identifiers never imply ownership or unlock a skin. The new admin changes do not alter the Rust program or IDL; the existing program verification below remains applicable.
 
 ## Financial regressions covered
 

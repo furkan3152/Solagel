@@ -182,7 +182,7 @@ export const en = {
   'howto.powerups': 'Airdrops drop power-ups: Magnet, Pump, HODL Shield and Mega Bag.',
   'howto.stakes': 'SOL beta arenas require a paid entry and allow joining mid-game. Eat rival cells to take their share of carried SOL. Press C to start a 3-second cash-out: you slow down and losing a cell interrupts it. Being eaten loses your carried SOL.',
   'howto.bots': 'Bots fill quiet rooms. In paid arenas they carry no SOL, give mass only, and cannot eat human players. Practice has no monetary rewards.',
-  'howto.skins': 'Skins only change your look. Starter and XP skins work now. NFTs and the pump.fun token have not launched; no NFT is needed for beta.',
+  'howto.skins': 'Skins only change your look. Starter and XP skins work now. Token launch comes before the NFT mint. NFT ownership and token gameplay are not active in the game yet; no NFT is needed for beta.',
   'howto.season': 'Verified wallet profiles track XP and unlock character skins. Paid SOL arenas can contribute to season rewards when the on-chain season is active.',
 
   'err.room_full': 'That room is full.',
@@ -193,6 +193,7 @@ export const en = {
   'err.session_busy': 'You are already playing in this arena.',
   'err.skin_locked': 'That skin is locked.',
   'err.stake_disabled': 'SOL arenas are offline.',
+  'err.admissions_paused': 'New games are temporarily paused. Active games and cash-outs remain available.',
   'err.version_mismatch': 'A new version is out — please refresh.',
   'err.rate_limited': 'Slow down a little 🐢',
   'err.bad_request': 'Something went wrong.',

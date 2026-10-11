@@ -15,6 +15,8 @@ export interface ServerConfig {
   privateRoomCapacity: number;
   bots: { target: number; min: number; max: number; privateTarget: number };
   authSecret: Buffer;
+  /** Explicit wallets allowed to administer off-chain runtime controls. */
+  adminWallets: string[];
   chain: {
     cluster: string;
     /** RPC used by the server (may contain a private API key). */
@@ -60,6 +62,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       privateTarget: int(env.PRIVATE_BOT_TARGET, 8),
     },
     authSecret: secret,
+    adminWallets: (env.ADMIN_WALLETS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
     chain: {
       cluster: env.SOLANA_CLUSTER ?? 'localnet',
       rpcUrl: env.SOLANA_RPC_URL ?? null,

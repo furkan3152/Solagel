@@ -47,4 +47,15 @@ describe('wallet transaction outcomes', () => {
     expect(mocks.confirm).not.toHaveBeenCalled();
     expect(mocks.toast).toHaveBeenLastCalledWith('warn', expect.stringContaining('rejected'), undefined, 7000);
   });
+
+  it('checks admission again after transaction building and before asking the wallet to sign', async () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const beforeSign = vi.fn(async () => { throw new Error('New entries are paused'); });
+    expect(await sendWalletTx(client, connection, wallet, [], { beforeSign })).toBeNull();
+    expect(mocks.build).toHaveBeenCalledOnce();
+    expect(beforeSign).toHaveBeenCalledOnce();
+    expect(mocks.send).not.toHaveBeenCalled();
+    expect(mocks.confirm).not.toHaveBeenCalled();
+    warning.mockRestore();
+  });
 });

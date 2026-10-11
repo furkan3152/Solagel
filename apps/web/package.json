@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
+    "smoke:admin": "node scripts/admin-smoke.mjs",
     "shot": "node scripts/shot.mjs",
     "tour": "node scripts/tour.mjs"
   },
