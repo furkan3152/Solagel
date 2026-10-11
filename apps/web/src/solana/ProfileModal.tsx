@@ -1,8 +1,9 @@
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
+import { describeError } from '@solagel/sdk';
 import { SKINS, isSkinUnlocked, sanitizeName, truncateUtf8, utf8Length } from '@solagel/shared';
 import { useState } from 'react';
 import { useT } from '../i18n';
-import { closeModal, updateSettings, useUi } from '../store';
+import { closeModal, toast, updateSettings, useUi } from '../store';
 import { Modal, SkinCanvas } from '../ui/common';
 import { refreshChain, useChainData, useSolagelClient } from './chain';
 import { signInWithWallet } from './siws';
@@ -33,17 +34,22 @@ export function ProfileModal() {
   const submit = async () => {
     if (!client || !wallet.publicKey || !valid) return;
     setBusy(true);
-    const ix = creating
-      ? await client.ix.registerPlayer(wallet.publicKey, clean, skin)
-      : await client.ix.updateProfile(wallet.publicKey, { name: clean !== profile!.name ? clean : undefined, skin: skin !== profile!.skin ? skin : undefined });
-    const sig = await sendWalletTx(client, connection, wallet, [ix], { success: creating ? '🎉 Profile created!' : '✅ Profile saved' });
-    setBusy(false);
-    if (!sig) return;
-    updateSettings({ name: clean, skin });
-    refreshChain();
-    // refresh the server's view of our profile (verified name, unlocked skins)
-    await signInWithWallet(wallet);
-    closeModal();
+    try {
+      const ix = creating
+        ? await client.ix.registerPlayer(wallet.publicKey, clean, skin)
+        : await client.ix.updateProfile(wallet.publicKey, { name: clean !== profile!.name ? clean : undefined, skin: skin !== profile!.skin ? skin : undefined });
+      const sig = await sendWalletTx(client, connection, wallet, [ix], { success: creating ? '🎉 Profile created!' : '✅ Profile saved' });
+      if (!sig) return;
+      updateSettings({ name: clean, skin });
+      // refresh the server's view of our profile (verified name, unlocked skins)
+      await signInWithWallet(wallet);
+      closeModal();
+    } catch (error) {
+      toast('error', describeError(error).message);
+    } finally {
+      refreshChain();
+      setBusy(false);
+    }
   };
 
   return (
@@ -53,7 +59,7 @@ export function ProfileModal() {
         <div className="row" style={{ justifyContent: 'center' }}>
           <SkinCanvas skin={skin} size={110} followPointer seed={2} />
         </div>
-        <input className="input" value={name} maxLength={24} placeholder={t('lobby.name')} onChange={(e) => setName(e.target.value)} style={{ textAlign: 'center' }} />
+        <input className="input" value={name} maxLength={24} aria-label={t('lobby.name')} placeholder={t('lobby.name')} onChange={(e) => setName(e.target.value)} style={{ textAlign: 'center' }} />
         <div className="muted small center">
           {t('profile.nameHint')} · {utf8Length(clean)}/16
         </div>

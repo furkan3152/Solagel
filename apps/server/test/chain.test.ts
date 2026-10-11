@@ -123,12 +123,14 @@ class FakeClient implements ChainClient {
       buyIn: 10_000_000,
       openedAt: Math.floor(T0 / 1000) - 60,
       id: 7,
+      activated: false,
       ...opts,
     };
     this.sessions.set(`${s.arenaId}:${player}`, s);
     return s;
   }
   readonly ix = {
+    activateSession: async (_server: unknown, p: Record<string, unknown>) => dummyIx(`activate:${p.arenaId}:${p.player}`),
     settleSession: async (_server: unknown, p: Record<string, unknown>) => {
       this.settles.push(p);
       return dummyIx(`${p.arenaId}:${p.player}`);
@@ -184,7 +186,9 @@ async function harness(opts: { cfg?: Partial<ServerConfig['chain']>; setup?: (c:
       onSignature(signature);
       const failure = h.failures.shift();
       if (failure !== undefined) throw failure;
-      client.sessions.delete(ixs[0].data.toString()); // settle_session closes the session
+      const tag = ixs[0].data.toString();
+      if (tag.startsWith('activate:')) client.sessions.get(tag.slice(9))!.activated = true;
+      else client.sessions.delete(tag); // settle_session closes the session
       return signature;
     },
   });
@@ -332,6 +336,37 @@ describe('SolanaChain status & reads', () => {
   });
 });
 
+describe('paid admission safety', () => {
+  it('does not open paid play while paused, but still settles existing claims', async () => {
+    const h = await harness({ setup: (c) => { c.config!.paused = true; } });
+    expect(h.chain.stakeEnabled).toBe(false);
+    const session = h.client.addSession(wallet());
+    h.journal.enqueue(settleItem(session));
+    await h.chain.processPending();
+    expect(h.journal.pending).toHaveLength(0);
+  });
+
+  it('requires a durable reservation before chain activation and never admits the same ticket twice', async () => {
+    const h = await harness();
+    const s = h.client.addSession(wallet());
+    expect(await h.chain.activateSession(s.arenaId, s.player, s.id)).toBe(false);
+    expect(h.sent).toBe(0);
+    h.journal.commit({ roomId: 'stake-1', live: [{ roomId: 'stake-1', session: s.address, sessionId: s.id, player: s.player, arenaId: s.arenaId, value: s.buyIn, score: 0, kills: 0 }] });
+    expect(await h.chain.activateSession(s.arenaId, s.player, s.id)).toBe(true);
+    expect(h.client.sessions.get(`1:${s.player}`)?.activated).toBe(true);
+    expect(await h.chain.activateSession(s.arenaId, s.player, s.id)).toBe(false);
+    h.journal.recoverLive(T0);
+    expect(h.journal.pending[0]).toMatchObject({ payout: s.buyIn, reason: 'crash', sessionId: s.id });
+  });
+
+  it('never issues an original-buy-in refund for an activated session with lost journal state', async () => {
+    const h = await harness();
+    h.client.addSession(wallet(), { activated: true, openedAt: Math.floor(T0 / 1000) - 3600 });
+    expect(await h.chain.sweepStale()).toBe(0);
+    expect(h.logs.join('\n')).toMatch(/restore its earned balance/);
+  });
+});
+
 describe('settlement worker', () => {
   it('settles, removes the item and emits onSettled', async () => {
     const h = await harness();
@@ -351,12 +386,13 @@ describe('settlement worker', () => {
       currentSeason: 3,
       treasury: h.client.config!.treasury,
     });
-    expect(h.settled).toEqual([{ key: s.address, player: s.player, signature: 'sig1', kind: 'settle', payout: 12_345_678 }]);
+    expect(h.settled).toEqual([{ key: s.address, player: s.player, signature: 'sig1', kind: 'settle', payout: 12_345_678, sessionId: s.id, arenaId: s.arenaId }]);
+    expect(h.journal.receiptsFor(s.player)).toMatchObject([{ signature: 'sig1', sessionId: s.id, arenaId: s.arenaId, payout: 12_345_678 }]);
   });
 
   it('drops items whose session is gone or belongs to a newer join', async () => {
     const h = await harness();
-    const gone = settleItem({ address: wallet(), player: wallet(), arena: wallet(), arenaId: 1, buyIn: 1, openedAt: 1, id: 3 });
+    const gone = settleItem({ address: wallet(), player: wallet(), arena: wallet(), arenaId: 1, buyIn: 1, openedAt: 1, id: 3, activated: false });
     const s = h.client.addSession(wallet(), { id: 9 });
     const old = settleItem(s, { sessionId: 8 });
     h.journal.commit({ enqueue: [gone, old] });
@@ -365,6 +401,7 @@ describe('settlement worker', () => {
     expect(h.sent).toBe(0);
     expect(h.settled).toHaveLength(0);
     expect(h.logs.filter((l) => /dropping settlement/.test(l))).toHaveLength(2);
+    expect(h.journal.receiptsFor(s.player)).toHaveLength(0);
   });
 
   it('retries transient errors with backoff', async () => {
@@ -396,7 +433,7 @@ describe('settlement worker', () => {
     expect(h.settled.map((e) => e.signature)).toEqual(['sig3']);
   });
 
-  it('maps permanent program errors to removal', async () => {
+  it('keeps financial claims when an account error does not prove the session closed', async () => {
     const h = await harness();
     const a = h.client.addSession(wallet());
     const b = h.client.addSession(wallet(), { arenaId: 2 });
@@ -407,7 +444,8 @@ describe('settlement worker', () => {
     );
     await h.chain.processPending();
     expect(h.sent).toBe(2);
-    expect(h.journal.pending).toHaveLength(0);
+    expect(h.journal.pending).toHaveLength(2);
+    expect(h.journal.pending.every((p) => p.attempts === 1)).toBe(true);
     expect(h.settled).toHaveLength(0);
   });
 
@@ -463,11 +501,12 @@ describe('settlement worker', () => {
     expect(h.journal.pending).toHaveLength(1);
     // it did land: the session is closed and the signature is confirmed
     h.client.sessions.clear();
+    (h.chain as unknown as { sentSignatures: Map<string, string> }).sentSignatures.clear(); // only the durable signature remains
     h.landed.add('sig1');
     h.clock.now += 4_000;
     await h.chain.processPending();
     expect(h.journal.pending).toHaveLength(0);
-    expect(h.settled).toEqual([{ key: s.address, player: s.player, signature: 'sig1', kind: 'settle', payout: 12_345_678 }]);
+    expect(h.settled).toEqual([{ key: s.address, player: s.player, signature: 'sig1', kind: 'settle', payout: 12_345_678, sessionId: s.id, arenaId: s.arenaId }]);
   });
 
   it('drops stale refunds whose session became live', async () => {
@@ -479,6 +518,21 @@ describe('settlement worker', () => {
     expect(h.sent).toBe(0);
     expect(h.journal.pending).toHaveLength(0);
     expect(h.logs.join('\n')).toMatch(/stale refund .* cancelled/);
+  });
+
+  it('keeps a closed session receipt recoverable while transaction history is unavailable', async () => {
+    const h = await harness();
+    const s = h.client.addSession(wallet());
+    h.journal.enqueue(settleItem(s, { submittedSignature: 'previous-send' }));
+    h.client.sessions.clear();
+    await h.chain.processPending();
+    expect(h.journal.pending).toHaveLength(1);
+    expect(h.journal.receiptsFor(s.player)).toHaveLength(0);
+    h.landed.add('previous-send');
+    h.clock.now += 4000;
+    await h.chain.processPending();
+    expect(h.journal.pending).toHaveLength(0);
+    expect(h.journal.receiptsFor(s.player)[0].signature).toBe('previous-send');
   });
 
   it('records free games for players with a profile and drops the rest', async () => {

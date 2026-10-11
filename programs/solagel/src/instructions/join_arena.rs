@@ -92,6 +92,7 @@ pub fn handle_join_arena(ctx: Context<JoinArena>) -> Result<()> {
     session.buy_in = buy_in;
     session.opened_at = now;
     session.id = session_id;
+    session.activated = false;
     session.bump = ctx.bumps.session;
 
     emit!(ArenaJoined {

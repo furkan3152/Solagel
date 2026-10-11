@@ -136,46 +136,126 @@ fn level_skins_unlock_with_xp() {
 }
 
 #[test]
-fn buy_skin_pays_treasury() {
+fn premium_purchases_are_unavailable_in_beta_and_never_move_funds() {
     let mut env = TestEnv::initialized();
     let alice = env.new_player("alice");
     let treasury = env.treasury.pubkey();
-
     let treasury_before = env.balance(&treasury);
     let alice_before = env.balance(&alice.pubkey());
-    assert_ok(env.buy_skin(&alice, 17));
-    assert_eq!(env.balance(&treasury) - treasury_before, SKIN_PRICE);
-    assert_eq!(alice_before - env.balance(&alice.pubkey()), SKIN_PRICE);
-    let profile = env.profile(&alice.pubkey());
-    assert_eq!(profile.premium_skins, 1 << 1);
-    assert_eq!(profile.skin, 17);
+    let profile_before = env
+        .svm
+        .get_account(&profile_pda(&alice.pubkey()))
+        .unwrap()
+        .data;
 
-    // Same skin again, non-premium and invalid ids fail.
-    assert_error(env.buy_skin(&alice, 17), SolagelError::SkinAlreadyOwned);
-    assert_error(env.buy_skin(&alice, 5), SolagelError::InvalidSkin);
-    assert_error(env.buy_skin(&alice, 10), SolagelError::InvalidSkin);
-    assert_error(env.buy_skin(&alice, 24), SolagelError::InvalidSkin);
-    assert_eq!(env.balance(&treasury) - treasury_before, SKIN_PRICE);
+    // The legacy entry point cannot sell or unlock any skin, including invalid ids.
+    for skin in 0..=u8::MAX {
+        assert_error(env.buy_skin(&alice, skin), SolagelError::FeatureUnavailable);
+    }
+    assert_eq!(env.balance(&treasury), treasury_before);
+    assert_eq!(env.balance(&alice.pubkey()), alice_before);
+    assert_eq!(
+        env.svm
+            .get_account(&profile_pda(&alice.pubkey()))
+            .unwrap()
+            .data,
+        profile_before
+    );
+    assert_error(
+        env.update_profile(&alice, None, Some(PREMIUM_SKIN_START)),
+        SolagelError::SkinLocked,
+    );
 
-    // An owned premium skin can be re-equipped.
-    assert_ok(env.update_profile(&alice, None, Some(0)));
-    assert_ok(env.update_profile(&alice, None, Some(17)));
-    assert_eq!(env.profile(&alice.pubkey()).skin, 17);
-
-    // The treasury account must be the configured one.
-    let fake_treasury = env.funded_keypair(SOL).pubkey();
-    let bad = ix::buy_skin(&alice.pubkey(), &fake_treasury, 18);
-    assert_error(env.send(&[bad], &[&alice]), SolagelError::Unauthorized);
-
-    // The treasury may be the buyer itself (`dup`).
+    // A configured zero price and a self-payment treasury cannot bypass the beta gate.
     assert_ok(env.update_config(UpdateConfigArgs {
+        skin_price: Some(0),
         treasury: Some(alice.pubkey()),
         ..Default::default()
     }));
-    let alice_before = env.balance(&alice.pubkey());
-    assert_ok(env.buy_skin(&alice, PREMIUM_SKIN_START + 7));
+    for skin in PREMIUM_SKIN_START..SKIN_COUNT {
+        assert_error(env.buy_skin(&alice, skin), SolagelError::FeatureUnavailable);
+    }
     assert_eq!(env.balance(&alice.pubkey()), alice_before);
+    assert_eq!(env.balance(&treasury), treasury_before);
+    assert_eq!(
+        env.svm
+            .get_account(&profile_pda(&alice.pubkey()))
+            .unwrap()
+            .data,
+        profile_before
+    );
+
+    // Account validation is retained for callers of the legacy ABI.
+    let fake_treasury = env.funded_keypair(SOL).pubkey();
+    let bad = ix::buy_skin(&alice.pubkey(), &fake_treasury, PREMIUM_SKIN_START);
+    assert_error(env.send(&[bad], &[&alice]), SolagelError::Unauthorized);
+}
+
+#[test]
+fn practice_updates_clamped_stats_without_paid_points_or_leaderboard_rewards() {
+    let mut env = TestEnv::initialized();
+    assert_ok(env.create_arena(1, MIN_BUY_IN, 10));
+    let alice = env.new_player("alice");
+    let bob = env.new_player("bob");
+    let empty_board = env.svm.get_account(&season_pda(1)).unwrap().data;
+    let alice_before = env.balance(&alice.pubkey());
+
+    assert_ok(env.record(&alice.pubkey(), u32::MAX, u16::MAX, u32::MAX));
     let profile = env.profile(&alice.pubkey());
-    assert_eq!(profile.premium_skins, (1 << 1) | (1 << 7));
-    assert_eq!(profile.skin, 23);
+    assert_eq!(profile.games_played, 1);
+    assert_eq!(profile.kills, u32::from(u16::MAX));
+    assert_eq!(profile.best_score, MAX_SCORE_PER_GAME);
+    assert_eq!(profile.total_score, u64::from(MAX_SCORE_PER_GAME));
+    assert_eq!(profile.xp, u64::from(MAX_XP_PER_GAME));
+    assert_eq!(profile.last_played, START_TS);
+    assert_eq!(profile.season_points, 0);
+    assert_eq!(
+        (profile.stake_games, profile.total_staked, profile.total_won),
+        (0, 0, 0)
+    );
+    assert_eq!(env.config().total_games, 1);
+    assert_eq!(env.config().total_staked, 0);
+    assert_eq!(env.config().total_paid_out, 0);
+    assert_eq!(env.balance(&alice.pubkey()), alice_before);
+    assert_eq!(
+        env.svm.get_account(&season_pda(1)).unwrap().data,
+        empty_board
+    );
+
+    // Practice also leaves a paid player's existing points and entire leaderboard row alone.
+    assert_ok(env.play_paid(&bob, 1, 500, 2, 100));
+    let paid_board = env.svm.get_account(&season_pda(1)).unwrap().data;
+    env.warp(1);
+    assert_ok(env.record(&bob.pubkey(), u32::MAX, 3, u32::MAX));
+    let profile = env.profile(&bob.pubkey());
+    assert_eq!(profile.games_played, 2);
+    assert_eq!(profile.kills, 5);
+    assert_eq!(profile.best_score, MAX_SCORE_PER_GAME);
+    assert_eq!(profile.total_score, 500 + u64::from(MAX_SCORE_PER_GAME));
+    assert_eq!(profile.xp, 100 + u64::from(MAX_XP_PER_GAME));
+    assert_eq!(profile.last_played, START_TS + 1);
+    assert_eq!((profile.season, profile.season_points), (1, 500));
+    assert_eq!(
+        env.svm.get_account(&season_pda(1)).unwrap().data,
+        paid_board
+    );
+    assert_eq!(env.prize_balance(1), 12_500);
+
+    // A large practice score does not make a player eligible for a funded season prize.
+    let funder = env.funded_keypair(2 * SOL);
+    assert_ok(env.fund_season(&funder, SOL));
+    assert_ok(env.end_season());
+    assert_error(env.claim(&alice, 1), SolagelError::NotEligible);
+    let finalized_board = env.svm.get_account(&season_pda(1)).unwrap().data;
+    let new_board = env.svm.get_account(&season_pda(2)).unwrap().data;
+    assert_ok(env.record(&bob.pubkey(), u32::MAX, 0, 0));
+    let profile = env.profile(&bob.pubkey());
+    assert_eq!((profile.season, profile.season_points), (1, 500));
+    assert_eq!(
+        env.svm.get_account(&season_pda(1)).unwrap().data,
+        finalized_board
+    );
+    assert_eq!(env.svm.get_account(&season_pda(2)).unwrap().data, new_board);
+    assert_eq!(env.prize_balance(1), SOL + 12_500);
+    assert_eq!(env.prize_balance(2), 0);
 }

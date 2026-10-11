@@ -173,7 +173,7 @@ export interface DeathStats {
 export type ServerMessage =
   | { t: 'welcome'; v: number; serverTime: number; rooms: RoomInfo[]; chain: ChainStatus; online: number }
   | { t: 'authed'; pubkey: string; token: string; profile: ProfileSummary | null }
-  | { t: 'joined'; room: RoomInfo; playerId: number; name: string; skin: number; value?: number }
+  | { t: 'joined'; room: RoomInfo; playerId: number; name: string; skin: number; value?: number; sessionId?: number; arenaId?: number }
   | { t: 'spectating'; room: RoomInfo; targetPid: number | null }
   | { t: 'left' }
   | {
@@ -189,13 +189,13 @@ export type ServerMessage =
   | { t: 'emote'; pid: number; id: number }
   | { t: 'death'; stats: DeathStats; killer: string | null; killerSkin: number | null }
   | { t: 'cashout'; state: 'started' | 'canceled' | 'done'; ms?: number; value?: number; stats?: DeathStats }
-  | { t: 'settled'; kind: 'cashout' | 'death' | 'record' | 'refund'; signature: string; payout?: number }
+  | { t: 'settled'; kind: 'cashout' | 'death' | 'record' | 'refund'; signature: string; payout?: number; sessionId?: number; arenaId?: number }
   | { t: 'event'; kind: 'coinrain'; state: 'start' | 'end'; ms?: number }
   | { t: 'event'; kind: 'airdrop'; state: 'start'; x: number; y: number; powerUp: PowerUpType }
   | { t: 'powerup'; type: PowerUpType; ms: number }
   | { t: 'xp'; xp: number; level: number }
   | { t: 'history'; chat: { pid: number; from: string; skin: number; text: string; system?: boolean }[] }
-  | { t: 'rooms'; rooms: RoomInfo[]; online: number }
+  | { t: 'rooms'; rooms: RoomInfo[]; online: number; chain?: ChainStatus }
   | { t: 'error'; code: ErrorCode; message: string }
   | { t: 'pong'; ts: number; serverTime: number };
 

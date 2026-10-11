@@ -9,7 +9,7 @@ import type {
 import { create } from 'zustand';
 
 export type Screen = 'lobby' | 'playing' | 'dead' | 'spectating' | 'cashedout';
-export type Lang = 'en' | 'tr';
+export type Lang = 'en';
 export type Quality = 'high' | 'low';
 export type Theme = 'light' | 'dark';
 
@@ -96,19 +96,11 @@ export interface UiState {
 
 const SETTINGS_KEY = 'solagel.settings.v1';
 
-function defaultLang(): Lang {
-  try {
-    return navigator.language?.toLowerCase().startsWith('tr') ? 'tr' : 'en';
-  } catch {
-    return 'en';
-  }
-}
-
 function loadSettings(): Settings {
   const defaults: Settings = {
     name: '',
     skin: 0,
-    lang: defaultLang(),
+    lang: 'en',
     theme: 'light',
     quality: 'high',
     sound: true,
@@ -121,7 +113,8 @@ function loadSettings(): Settings {
   };
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
-    if (raw) return { ...defaults, ...(JSON.parse(raw) as Partial<Settings>) };
+    // Migrate language preferences from earlier bilingual builds.
+    if (raw) return { ...defaults, ...(JSON.parse(raw) as Partial<Settings>), lang: 'en' };
   } catch {
     /* storage unavailable */
   }
@@ -159,7 +152,7 @@ export const useUi = create<UiState>(() => ({
 }));
 
 export function updateSettings(patch: Partial<Settings>): void {
-  const settings = { ...useUi.getState().settings, ...patch };
+  const settings: Settings = { ...useUi.getState().settings, ...patch, lang: 'en' };
   useUi.setState({ settings });
   try {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));

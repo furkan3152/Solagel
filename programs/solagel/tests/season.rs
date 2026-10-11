@@ -28,6 +28,7 @@ fn rank_of(season: &Season, player: &Keypair) -> Option<usize> {
 #[test]
 fn leaderboard_keeps_sorted_top_20() {
     let mut env = TestEnv::initialized();
+    assert_ok(env.create_arena(1, MIN_BUY_IN, 10));
     let players: Vec<Keypair> = (0..25)
         .map(|i| env.new_player(&format!("p{i:02}")))
         .collect();
@@ -35,7 +36,7 @@ fn leaderboard_keeps_sorted_top_20() {
     // Distinct scores 1 000..=25 000 in scrambled order (7 is coprime with 25).
     let score_of = |i: usize| (u32::try_from((i * 7) % 25).unwrap() + 1) * 1_000;
     for (i, player) in players.iter().enumerate() {
-        assert_ok(env.record(&player.pubkey(), score_of(i), 1, 10));
+        assert_ok(env.play_paid(player, 1, score_of(i), 1, 10));
     }
 
     let season = env.season(1);
@@ -68,7 +69,7 @@ fn leaderboard_keeps_sorted_top_20() {
         .find(|p| p.pubkey() == last.player)
         .unwrap()
         .insecure_clone();
-    assert_ok(env.record(&climber.pubkey(), 100_000, 0, 0));
+    assert_ok(env.play_paid(&climber, 1, 100_000, 0, 0));
     let season = env.season(1);
     assert_eq!(season.count, LEADERBOARD_SIZE);
     assert_sorted(&season);
@@ -85,7 +86,7 @@ fn leaderboard_keeps_sorted_top_20() {
     let outsider = players[outsider_idx].insecure_clone();
     assert!(rank_of(&season, &outsider).is_none());
     let dropped = season.entries[19];
-    assert_ok(env.record(&outsider.pubkey(), 10_000, 0, 0)); // 13 000 points
+    assert_ok(env.play_paid(&outsider, 1, 10_000, 0, 0)); // 13 000 points
     let season = env.season(1);
     assert_eq!(season.count, LEADERBOARD_SIZE);
     assert_sorted(&season);
@@ -97,7 +98,7 @@ fn leaderboard_keeps_sorted_top_20() {
     // Scores below the last entry do not get in.
     let weakest_idx = (0..25).find(|&i| score_of(i) == 1_000).unwrap();
     let weakest = players[weakest_idx].insecure_clone();
-    assert_ok(env.record(&weakest.pubkey(), 1, 0, 0));
+    assert_ok(env.play_paid(&weakest, 1, 1, 0, 0));
     assert!(rank_of(&env.season(1), &weakest).is_none());
 
     // Only the server authority records games.
@@ -124,13 +125,16 @@ fn season_lifecycle() {
     let carol = env.new_player("carol");
     let mallory = env.funded_keypair(10 * SOL);
 
-    // Season 1 ranking: alice > bob > carol. Alice's profit puts 1.25M into the pool.
+    // Season 1 ranks captured profit: Alice 50M > Bob 30M > Carol 1M lamports.
     assert_ok(env.join(&alice, 1));
     assert_ok(env.join(&bob, 1));
+    assert_ok(env.activate(&alice.pubkey(), 1));
+    assert_ok(env.activate(&bob.pubkey(), 1));
+    env.airdrop(&arena_pda(1), 80_000_000);
     assert_ok(env.settle(&alice.pubkey(), 1, 150_000_000, 5_000, 2, 100));
-    assert_ok(env.settle(&bob.pubkey(), 1, 50_000_000, 3_000, 1, 100));
-    assert_ok(env.record(&carol.pubkey(), 1_000, 0, 100));
-    let fee_cuts = 1_250_000;
+    assert_ok(env.settle(&bob.pubkey(), 1, 130_000_000, 3_000, 1, 100));
+    assert_ok(env.play_paid(&carol, 1, 1_000, 0, 100));
+    let fee_cuts = 2_025_000;
     assert_eq!(env.prize_balance(1), fee_cuts);
 
     // fund_season adds lamports to the current season.
@@ -220,7 +224,7 @@ fn season_lifecycle() {
     assert_eq!(env.prize_balance(1), 0);
 
     // Season 2 starts from zero points for returning players; season 1's board is frozen.
-    assert_ok(env.record(&alice.pubkey(), 700, 0, 0));
+    assert_ok(env.play_paid(&alice, 1, 700, 0, 0));
     let profile = env.profile(&alice.pubkey());
     assert_eq!(profile.season, 2);
     assert_eq!(profile.season_points, 700);
@@ -228,5 +232,5 @@ fn season_lifecycle() {
     assert_eq!(season2.count, 1);
     assert_eq!(season2.entries[0].player, alice.pubkey());
     assert_eq!(season2.entries[0].points, 700);
-    assert_eq!(env.season(1).entries[0].points, 5_000);
+    assert_eq!(env.season(1).entries[0].points, 50_000);
 }

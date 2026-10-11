@@ -241,6 +241,24 @@ pub mod ix {
         )
     }
 
+    pub fn activate_session(
+        server: &Pubkey,
+        player: &Pubkey,
+        arena_id: u16,
+        session_id: u64,
+    ) -> Instruction {
+        let arena = arena_pda(arena_id);
+        build(
+            solagel::instruction::ActivateSession { session_id }.data(),
+            solagel::accounts::ActivateSession {
+                server: *server,
+                config: config_pda(),
+                arena,
+                session: session_pda(&arena, player),
+            },
+        )
+    }
+
     /// `settle_session` with an explicit session account.
     pub fn settle_session_with(
         server: &Pubkey,
@@ -600,6 +618,57 @@ impl TestEnv {
 
     pub fn join(&mut self, player: &Keypair, arena_id: u16) -> TxResult {
         self.send(&[ix::join_arena(&player.pubkey(), arena_id)], &[player])
+    }
+
+    pub fn activate_as(
+        &mut self,
+        signer: &Keypair,
+        player: &Pubkey,
+        arena_id: u16,
+        session_id: u64,
+    ) -> TxResult {
+        self.send(
+            &[ix::activate_session(
+                &signer.pubkey(),
+                player,
+                arena_id,
+                session_id,
+            )],
+            &[signer],
+        )
+    }
+
+    pub fn activate(&mut self, player: &Pubkey, arena_id: u16) -> TxResult {
+        let server = self.server.insecure_clone();
+        let session_id = self.session(arena_id, player).map_or(u64::MAX, |s| s.id);
+        self.activate_as(&server, player, arena_id, session_id)
+    }
+
+    /// A complete admitted paid game with fixture profit chosen to yield `score` points.
+    /// Extra pot funding represents value captured from other paid tickets.
+    pub fn play_paid(
+        &mut self,
+        player: &Keypair,
+        arena_id: u16,
+        score: u32,
+        kills: u16,
+        xp: u32,
+    ) -> TxResult {
+        let buy_in = self.arena(arena_id).buy_in;
+        assert_ok(self.join(player, arena_id));
+        assert_ok(self.activate(&player.pubkey(), arena_id));
+        let profit = u64::from(score) * 1_000;
+        if profit > 0 {
+            self.airdrop(&arena_pda(arena_id), profit);
+        }
+        self.settle(
+            &player.pubkey(),
+            arena_id,
+            buy_in + profit,
+            score,
+            kills,
+            xp,
+        )
     }
 
     pub fn settle_as(

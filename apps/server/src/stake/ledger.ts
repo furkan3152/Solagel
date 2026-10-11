@@ -26,6 +26,8 @@ export class StakeLedger {
   join(entry: StakeEntry): void {
     if (this.entries.has(entry.pid)) throw new Error(`pid ${entry.pid} already staked`);
     if (!Number.isSafeInteger(entry.value) || entry.value < 0) throw new Error('invalid stake value');
+    if (this.all().some((e) => e.session === entry.session || e.player === entry.player)) throw new Error('session already staked');
+    if (!Number.isSafeInteger(this.total() + entry.value)) throw new Error('stake total exceeds safe accounting range');
     this.entries.set(entry.pid, { ...entry });
   }
 
@@ -50,6 +52,7 @@ export class StakeLedger {
     const from = this.entries.get(fromPid);
     const to = this.entries.get(toPid);
     if (!from || !to || from === to) return 0;
+    if (!Number.isFinite(massEaten) || !Number.isFinite(victimTotalBefore) || massEaten <= 0 || victimTotalBefore <= 0) return 0;
     let t: number;
     if (last || victimTotalBefore <= 0) {
       t = last ? from.value : 0;

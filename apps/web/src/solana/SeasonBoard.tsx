@@ -1,9 +1,10 @@
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
+import { describeError } from '@solagel/sdk';
 import { PRIZE_SHARES_BPS, formatSol } from '@solagel/shared';
 import { useEffect, useState } from 'react';
 import { SERVER } from '../config';
 import { useT } from '../i18n';
-import { useUi } from '../store';
+import { toast, useUi } from '../store';
 import { BoardRows } from '../ui/Leaderboards';
 import { refreshChain, useSolagelClient } from './chain';
 import { sendWalletTx } from './tx';
@@ -43,7 +44,7 @@ export function SeasonBoard() {
     let alive = true;
     const load = () =>
       fetch(`${SERVER.http}/api/season`)
-        .then((r) => r.json())
+        .then((r) => { if (!r.ok) throw new Error(`Season request failed (${r.status})`); return r.json(); })
         .then((d: SeasonResponse) => {
           if (!alive) return;
           if (d.enabled === false) setFailed(true);
@@ -79,10 +80,15 @@ export function SeasonBoard() {
   const claim = async () => {
     if (!client || !wallet.publicKey || !prev) return;
     setBusy(true);
-    const ix = await client.ix.claimSeasonReward(wallet.publicKey, prev.id);
-    await sendWalletTx(client, connection, wallet, [ix], { success: '🏆 Prize claimed!' });
-    setBusy(false);
-    refreshChain();
+    try {
+      const ix = await client.ix.claimSeasonReward(wallet.publicKey, prev.id);
+      await sendWalletTx(client, connection, wallet, [ix], { success: '🏆 Prize claimed!' });
+      refreshChain();
+    } catch (error) {
+      toast('error', describeError(error).message);
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -91,6 +97,7 @@ export function SeasonBoard() {
         <span>💰 {t('lb.prizePool')}</span>
         <span>{formatSol(season.prizePool, 3)}</span>
       </div>
+      <div className="muted small center">1 point per 0.000001 SOL captured profit, before fees. Mass, bots and practice earn no prize points.</div>
       {canClaim && (
         <div className="col" style={{ gap: 6 }}>
           <div className="notice">🎉 {t('lb.youWon', { rank: myPrevRank + 1 })}</div>

@@ -7,7 +7,8 @@
  *
  * A fresh wallet registers a profile, buys into an arena on-chain, logs into the game server
  * (signed message), joins the arena, cashes out and waits for the server's settle_session:
- * session closed, payout received, season leaderboard updated.
+ * admission activated on-chain, session closed, payout received, and no prize points
+ * awarded for a solo run that captures no paid value.
  *
  * Env: SOLANA_RPC_URL (default http://127.0.0.1:8899), PROGRAM_ID (default: SDK IDL address),
  *      ARENA_ID (default 1).
@@ -173,6 +174,9 @@ async function main(): Promise<void> {
     const joined = await ws.wait('joined', 15_000);
     assert(joined.value === session.buyIn, `joined with value ${joined.value}, expected the buy-in ${session.buyIn}`);
     ok(`joined ${joined.room.name} as pid ${joined.playerId} with ${sol(joined.value ?? 0)}`);
+    const activated = await client.fetchSession(arenaId, player.publicKey);
+    assert(activated?.id === session.id && activated.activated, `session #${session.id} was not activated on-chain before admission`);
+    ok(`session #${activated.id} confirmed activated on-chain`);
 
     await sleep(1_500);
     step('cash out');
@@ -185,6 +189,9 @@ async function main(): Promise<void> {
     // 5. the server settles on-chain
     step('waiting for settle_session');
     const settled = await ws.wait('settled', 90_000);
+    assert(settled.kind === 'cashout', `unexpected settlement kind ${settled.kind}`);
+    assert(settled.sessionId === session.id && settled.arenaId === arenaId, `settlement receipt identifies another ticket: ${JSON.stringify(settled)}`);
+    assert(settled.payout === payout, `settlement gross payout ${settled.payout} differs from cash-out ${payout}`);
     ok(`server reported '${settled.kind}' · ${explorerTxUrl(settled.signature, 'localnet', rpcUrl)}`);
     await waitUntil('the session account to close', 60_000, async () => {
       const s = await client.fetchSession(arenaId, player.publicKey);
@@ -204,15 +211,16 @@ async function main(): Promise<void> {
     const after = await client.fetchProfile(player.publicKey);
     assert(after && after.stakeGames === 1 && after.gamesPlayed === 1, `profile stats not updated: ${JSON.stringify(after)}`);
     assert(after.totalWon === playerAmount, `profile.totalWon ${after.totalWon} ≠ ${playerAmount}`);
+    assert(payout === session.buyIn, `solo play unexpectedly created paid value: ${payout} ≠ ${session.buyIn}`);
+    assert(after.seasonPoints === 0, `zero-profit cash-out earned ${after.seasonPoints} prize points`);
     const season = await client.fetchSeason(config.currentSeason);
     const rank = season?.entries.findIndex((e) => e.player === wallet) ?? -1;
-    assert(season && rank >= 0, `player missing from the season ${config.currentSeason} leaderboard`);
-    const entry = season.entries[rank];
-    ok(`season ${season.id} leaderboard: #${rank + 1} ${entry.name} · ${entry.points} pts · best ${entry.bestScore} · pool ${sol(season.pool)}`);
+    assert(season && rank === -1, `zero-profit player entered the season ${config.currentSeason} prize leaderboard`);
+    ok(`season ${season.id}: no prize rank for zero captured profit · pool ${sol(season.pool)}`);
 
     console.log(
-      `\n✅ e2e passed in ${elapsed().trim()}: register → join_arena → login → join → cash-out → settle_session ` +
-        `(session #${session.id}, +${sol(delta)}, xp ${after.xp}, level ${after.level}, season rank #${rank + 1})`,
+      `\n✅ e2e passed in ${elapsed().trim()}: register → join_arena → signed login → activate_session → cash-out → settle_session ` +
+        `(session #${session.id}, +${sol(delta)}, xp ${after.xp}, level ${after.level}, zero-profit prize eligibility excluded)`,
     );
   } finally {
     ws.close();

@@ -36,6 +36,10 @@ export const SolagelErrorCode = {
   InvalidAmount: 6021,
   MathOverflow: 6022,
   SessionMismatch: 6023,
+  SessionAlreadyActivated: 6024,
+  SessionActivationExpired: 6025,
+  SessionNotRefundable: 6026,
+  FeatureUnavailable: 6027,
 } as const;
 
 export type SolagelErrorName = keyof typeof SolagelErrorCode;
@@ -46,14 +50,14 @@ const FRIENDLY: Record<SolagelErrorName, string> = {
   InvalidFee: 'Invalid fee configuration.',
   InvalidName: 'Names must be 1–16 bytes long and cannot contain control characters.',
   InvalidSkin: 'That skin does not exist.',
-  SkinLocked: 'That skin is still locked — level up or buy it first.',
+  SkinLocked: 'That skin is not available for your profile yet.',
   SkinAlreadyOwned: 'You already own that skin.',
   BuyInTooLow: 'The buy-in is below the 0.001 SOL minimum.',
   InvalidMaxPlayers: 'Max players must be between 2 and 100.',
   ArenaDisabled: 'This arena is closed right now.',
   ArenaFull: 'This arena is full — try again in a moment.',
   InsufficientPot: 'The arena pot cannot cover this payout right now.',
-  RefundTooEarly: 'Refunds open 24 hours after you joined the arena.',
+  RefundTooEarly: 'Unused tickets become refundable 24 hours after purchase.',
   SeasonFinalized: 'This season has already ended.',
   SeasonNotFinalized: 'This season is still running.',
   NotEligible: 'Only the top 10 of a finished season can claim a prize.',
@@ -65,9 +69,13 @@ const FRIENDLY: Record<SolagelErrorName, string> = {
   InvalidAmount: 'Invalid amount.',
   MathOverflow: 'That amount is too large.',
   SessionMismatch: 'This settlement belongs to an older arena session.',
+  SessionAlreadyActivated: 'This ticket has already entered a game. Reconnect to your active session.',
+  SessionActivationExpired: 'This unused ticket has expired. Request its refund.',
+  SessionNotRefundable: 'This ticket entered a game. Its earned SOL balance is settled by the server.',
+  FeatureUnavailable: 'This feature is not available during the SOL beta.',
 };
 
-/** Program errors by code (6000–6023). */
+/** Program errors by code (6000–6027). */
 export const SOLAGEL_ERRORS: Readonly<Record<number, ErrorInfo>> = Object.fromEntries(
   (Object.keys(SolagelErrorCode) as SolagelErrorName[]).map((name) => [
     SolagelErrorCode[name],

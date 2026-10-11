@@ -33,6 +33,9 @@ class FakeChain implements ChainGateway {
   async getSession(arenaId: number, player: string) {
     return this.sessions.get(`${arenaId}:${player}`) ?? null;
   }
+  async activateSession() {
+    return true;
+  }
   async listArenas(): Promise<ChainArena[]> {
     return [{ id: 1, address: 'Arena1', buyIn: 10_000_000, maxPlayers: 10, enabled: true, openSessions: 0, pot: 0 }];
   }

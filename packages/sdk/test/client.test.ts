@@ -15,6 +15,16 @@ describe('instruction builders (no RPC)', () => {
   const player = Keypair.generate().publicKey;
   const treasury = Keypair.generate().publicKey;
 
+  it('activateSession binds the server admission to the exact ticket id', async () => {
+    const ix = await client.ix.activateSession(server, { player, arenaId: 2, sessionId: 41 });
+    const arena = pdas.arena(2);
+    expect(keys(ix)).toEqual([server, pdas.config(), arena, pdas.session(arena, player)].map((k) => k.toBase58()));
+    expect(meta(ix, server)).toMatchObject({ isSigner: true, isWritable: false });
+    expect(meta(ix, pdas.session(arena, player))).toMatchObject({ isSigner: false, isWritable: true });
+    expect(ix.data.length).toBe(16);
+    expect(ix.data.readBigUInt64LE(8)).toBe(41n);
+  });
+
   it('settleSession passes every account explicitly', async () => {
     const ix = await client.ix.settleSession(server, {
       player,

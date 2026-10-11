@@ -50,4 +50,12 @@ pub enum SolagelError {
     MathOverflow,
     #[msg("Settlement is for a different session")]
     SessionMismatch,
+    #[msg("Session has already been activated")]
+    SessionAlreadyActivated,
+    #[msg("Session activation deadline has passed; request a refund")]
+    SessionActivationExpired,
+    #[msg("Activated sessions require server settlement and cannot be refunded")]
+    SessionNotRefundable,
+    #[msg("This feature is unavailable during the SOL beta")]
+    FeatureUnavailable,
 }

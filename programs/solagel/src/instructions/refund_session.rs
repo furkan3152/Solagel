@@ -8,8 +8,9 @@ use crate::{
     state::{Arena, Session},
 };
 
-/// Last resort when the server never settled a session: after `SESSION_REFUND_TIMEOUT_SECS`
-/// the player gets `min(buy_in, pot)` back.
+/// Return an unused ticket after `SESSION_REFUND_TIMEOUT_SECS` when the server never
+/// admitted it to live play. Activated sessions must be settled by the server because
+/// their original buy-in may already belong to another player.
 #[derive(Accounts)]
 pub struct RefundSession<'info> {
     #[account(mut)]
@@ -34,6 +35,7 @@ pub struct RefundSession<'info> {
 pub fn handle_refund_session(ctx: Context<RefundSession>) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
     let session = &ctx.accounts.session;
+    require!(!session.activated, SolagelError::SessionNotRefundable);
     let refundable_at = session
         .opened_at
         .checked_add(SESSION_REFUND_TIMEOUT_SECS)

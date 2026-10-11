@@ -34,7 +34,7 @@ export class RoomManager {
         mode: 'free',
         name: `Coin Pond #${n}`,
         maxPlayers: this.cfg.freeRoomCapacity,
-        bots: { target: this.cfg.bots.target, min: this.cfg.bots.min, max: this.cfg.bots.max },
+        bots: { target: this.cfg.bots.target, min: 0, max: this.cfg.bots.max },
       },
       this.deps,
     );
@@ -73,7 +73,7 @@ export class RoomManager {
         name: `Private · ${c}`,
         code: c,
         maxPlayers: this.cfg.privateRoomCapacity,
-        bots: { target: this.cfg.bots.privateTarget, min: 2, max: this.cfg.bots.privateTarget },
+        bots: { target: this.cfg.bots.privateTarget, min: Math.min(this.cfg.bots.min, this.cfg.bots.privateTarget), max: this.cfg.bots.privateTarget },
       },
       this.deps,
     );
@@ -93,10 +93,12 @@ export class RoomManager {
   async stakeRoom(arenaId: number): Promise<Room | null> {
     if (!this.chain.stakeEnabled) return null;
     if (this.cfg.chain.arenaIds.length > 0 && !this.cfg.chain.arenaIds.includes(arenaId)) return null;
-    const existing = this.rooms.get(`stake-${arenaId}`);
-    if (existing) return existing;
     const arena = (await this.arenas()).get(arenaId);
     if (!arena || !arena.enabled) return null;
+    // Arena discovery is asynchronous. Recheck after it, otherwise two first
+    // joins can create separate simulations for the same on-chain arena.
+    const existing = this.rooms.get(`stake-${arenaId}`);
+    if (existing) return existing;
     const meta = arenaMeta(arenaId);
     const room = new Room(
       {
@@ -104,7 +106,7 @@ export class RoomManager {
         mode: 'stake',
         name: meta.name.en,
         maxPlayers: arena.maxPlayers,
-        bots: null,
+        bots: { target: Math.min(this.cfg.bots.target, arena.maxPlayers), min: 0, max: this.cfg.bots.max },
         stake: { arenaId, buyIn: arena.buyIn },
       },
       this.deps,
