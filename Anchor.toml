@@ -2,6 +2,9 @@ skip_local_validator = true
 
 [toolchain]
 
+[workspace]
+members = ["programs/solagel"]
+
 [features]
 resolution = true
 skip-lint = false

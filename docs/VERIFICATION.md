@@ -7,16 +7,28 @@ The verified flow is: English lobby → wallet / SOL ticket → durable arena ad
 | Boundary | Result |
 | --- | --- |
 | Shared rules and protocol | 23 tests passed |
-| Solana SDK and generated account/instruction IDL | 32 tests passed |
+| Solana SDK, generated account/instruction IDL and deployment budget | 36 tests passed |
 | Server, admin authorization, asset validation, admission, bots and settlement | 225 tests passed |
 | Browser client, admin actions/network/recovery and wallet outcomes | 68 tests passed |
 | TypeScript across the workspace | Passed |
 | Server and web production builds | Passed |
-| Anchor SBF program build | Passed |
-| Rust unit tests + LiteSVM transaction tests | 31 passed (11 unit + 20 integration) |
+| Anchor reference and compact SBF builds | Passed; compact artifact 91,208 bytes |
+| Rust unit tests + LiteSVM transaction tests | 54 passed (18 host + 30 integration + 6 differential) |
 | Rust formatting and all-target Clippy with warnings denied | Passed |
 
 The SDK IDL was regenerated from the actual Anchor build. WebSocket protocol v2 requires old clients to refresh.
+
+## Compact program and budget
+
+The deployment target is `target/deploy/solagel_compact.so`, **91,208 bytes**, SHA-256 `1cf345b9523bbb719b853e918ec995c144f75fd4870cc7aa5b61281055383de5`. The Anchor reference remains **436,328 bytes** and supplies the IDL and comparison executable. The UI and game rules were not changed by this size reduction.
+
+`corepack pnpm program:test` passed as a complete build/test command. It builds both programs, runs seven compact host tests, then runs 47 reference-host/compact-SBF/differential tests. Six differential tests run both executables in deterministic LiteSVM fixtures and compare success/failure, persisted account bytes, lamports, events and rollback. Coverage includes all 17 instructions, all skin thresholds, malformed argument tags/UTF-8, authority rotation, season rewards/rollover, extended accounts, allowed treasury aliases and session activation/refund/settlement. Ten additional security regressions cover forged ProgramData/owners/discriminators/PDAs, missing permissions, substituted system programs, prefunded accounts, stale seasons, runtime rent changes and atomic failure after transfers.
+
+Two deliberate failure improvements have narrow differential assertions: an impossible `u32::MAX` name-length prefix returns decode error 102 instead of exhausting the reference heap; advancing an exhausted `u32::MAX` season returns arithmetic error 6022 instead of a reference seed-expression panic. Both reject the entire transaction, emit no event and preserve balances/accounts. Normal tested outcomes remain strict comparisons. These tests do not claim exhaustive error-precedence equality for every combination of simultaneous invalid inputs.
+
+Compact host tests additionally check exact basis-point arithmetic against wide-integer reference values (including overflow), skin thresholds against integer square roots, fixed System Program instruction encodings against Solana's SDK, and Borsh decoding cases. Safe account guards, runtime rent and checked money arithmetic remain enabled. The build script rejects SBF stack overflow diagnostics.
+
+A live mainnet rent quote totals **0.476239840 SOL** for Program, ProgramData, Config, first season and three arenas. Adding **0.020000000 SOL** for fees/initial server operation yields **0.496239840 SOL**, below the owner's 0.5 SOL initial ceiling. The [budget record](program-budget.json) includes the artifact hash and RPC timestamp. This is a current estimate; recheck the final binary and transaction fees before signing. Hosting, prize funding, players' accounts and later asset launches are separate. No mainnet transaction was sent.
 
 ## Browser checks
 
@@ -32,7 +44,7 @@ Reproduce after `corepack pnpm build` with `corepack pnpm -F @solagel/web smoke:
 
 Automated tests additionally cover dedicated nonce replay/expiry and deployment-bound bearers, current-role revocation and RPC failure, atomic settings persistence and revision conflicts, network/program-bound settings, exact SPL/Token-2022 mint parsing, NFT chain/standard/asset validation, queued-liability preservation, runtime pause during admission, and live capacity changes without ejecting existing players. Admin instruction tests use actual SDK instruction layouts and verify amounts/destinations, fee caps, authority, immutable entry prices, empty-vault sweep and the rollover window. Network tests reject a wrong-cluster RPC override or missing executable program. Canonical public-network genesis hashes were checked against read-only RPC responses. Pending admin signatures are stored separately from credentials and restored across same-tab reload/sign-out to prevent accidental repeat funding.
 
-Token launch announcements preserve SOL entry/payout units. Staged NFT identifiers never imply ownership or unlock a skin. The new admin changes do not alter the Rust program or IDL; the existing program verification below remains applicable.
+Token launch announcements preserve SOL entry/payout units. Staged NFT identifiers never imply ownership or unlock a skin. The compact deployment program preserves the established SOL beta ABI and SDK IDL; executable comparisons below verify the tested account and payment behavior.
 
 ## Financial regressions covered
 
@@ -49,9 +61,9 @@ Token launch announcements preserve SOL entry/payout units. Staged NFT identifie
 
 ## Signed localnet flow
 
-A fresh throwaway wallet completed the final SBF program's paid flow on a local validator in 8.5 seconds: registered a profile, bought a 0.01 SOL ticket, signed server authentication, joined after confirmed on-chain activation, and cashed out. The receipt matched the exact session and arena; the session account closed. The wallet received 0.01158688 SOL: 0.01 SOL payout plus 0.00158688 SOL returned session rent. The zero-profit game earned XP but no season points or prize rank. No public-network funds were involved.
+A fresh throwaway wallet completed the final **91,208-byte compact SBF** program's paid flow on a local validator in 8.5 seconds: registered a profile, bought a 0.01 SOL ticket, signed server authentication, joined after confirmed on-chain activation, and cashed out. The receipt matched the exact session and arena; the session account closed. The wallet received 0.01158688 SOL: 0.01 SOL payout plus 0.00158688 SOL returned session rent. The zero-profit game earned XP but no season points or prize rank. No public-network funds were involved.
 
-Reproduce with `scripts/localnet.sh`, a server configured from `.localnet/server.env`, and `corepack pnpm -F @solagel/server e2e`.
+Reproduce with `scripts/localnet.sh`, a server configured from `.localnet/server.env`, and `corepack pnpm -F @solagel/server e2e`. The compact run used isolated `.localnet-compact` state on RPC port 8909 and game port 8797; the validator used its own test rent schedule, independently of the mainnet budget quote.
 
 ## Admin wallet configuration
 
