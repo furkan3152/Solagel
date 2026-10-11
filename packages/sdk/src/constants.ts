@@ -19,7 +19,7 @@ export const MAX_FEE_BPS = 1_000;
 export const MIN_BUY_IN_LAMPORTS = 1_000_000;
 export const MIN_ARENA_PLAYERS = 2;
 export const MAX_ARENA_PLAYERS = 100;
-/** A session can be refunded by its player this many seconds after `openedAt` (24 h). */
+/** An unactivated ticket can be refunded this many seconds after `openedAt` (24 h). */
 export const SESSION_REFUND_TIMEOUT_SECS = 86_400;
 /** Season prizes can be claimed for this many seconds after `endedAt` (30 days). */
 export const CLAIM_WINDOW_SECS = 2_592_000;

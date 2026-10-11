@@ -1,7 +1,7 @@
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { extname, join, normalize, resolve, sep } from 'node:path';
-import { PROTOCOL_VERSION } from '@solagel/shared';
+import { PROTOCOL_VERSION, RELEASE } from '@solagel/shared';
 import { isValidPubkey, type Auth } from './auth';
 import type { ChainGateway } from './chain/types';
 import type { ServerConfig } from './config';
@@ -119,7 +119,7 @@ export function createHttpServer(cfg: ServerConfig, ctx: Ctx): Server {
           case '/api/season':
             return json(res, 200, (await ctx.chain.season()) ?? { enabled: false });
           case '/api/config':
-            return json(res, 200, { protocol: PROTOCOL_VERSION, chain: ctx.chain.status() });
+            return json(res, 200, { protocol: PROTOCOL_VERSION, chain: ctx.chain.status(), release: RELEASE });
           case '/api/auth/nonce': {
             if (!nonceLimiter.allow(ip)) return json(res, 429, { error: 'rate_limited' });
             const pubkey = url.searchParams.get('pubkey');

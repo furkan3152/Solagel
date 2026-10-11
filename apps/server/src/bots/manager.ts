@@ -114,7 +114,7 @@ export class BotManager {
     const queued = this.spawnQueue.length;
     if (this.bots.size + queued < want) this.spawnQueue.push(now + randRange(this.rng, 400, 2500));
     // drop extra bots slowly as humans join (smallest first)
-    if (this.bots.size > want + 1 && now - this.lastTrimAt > 8000) {
+    if (this.bots.size > want && now - this.lastTrimAt > 8000) {
       this.lastTrimAt = now;
       let smallest: Bot | null = null;
       for (const b of this.bots.values()) if (!smallest || b.player.totalMass() < smallest.player.totalMass()) smallest = b;

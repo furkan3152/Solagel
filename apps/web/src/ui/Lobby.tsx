@@ -1,4 +1,4 @@
-import { isSkinUnlocked, sanitizeName } from '@solagel/shared';
+import { RELEASE, isSkinUnlocked, sanitizeName } from '@solagel/shared';
 import { useState } from 'react';
 import { engine } from '../game/instance';
 import { sound } from '../game/sound';
@@ -21,20 +21,13 @@ function TopBar() {
   return (
     <div className="topbar">
       <div className="row">
+        <span className="beta-pill">SOL BETA</span>
         <span className="pill">
           <span className={`dot ${connected ? '' : 'off'}`} />
-          {connected ? t('lobby.online', { n: online }) : <span className="hide-sm">{t('lobby.connecting')}</span>}
+          {connected ? t('lobby.online', { n: online }) : t('lobby.connecting')}
         </span>
       </div>
       <div className="topbar-right">
-        <button
-          className="btn btn-sm btn-ghost"
-          onClick={() => updateSettings({ lang: settings.lang === 'tr' ? 'en' : 'tr' })}
-          aria-label={t('settings.lang')}
-        >
-          {settings.lang === 'tr' ? '🇹🇷' : '🇬🇧'}
-          <span className="hide-sm">{settings.lang === 'tr' ? 'TR' : 'EN'}</span>
-        </button>
         <button className="btn btn-icon btn-ghost" onClick={() => updateSettings({ sound: !settings.sound })} aria-label={t('settings.sound')}>
           {settings.sound ? '🔊' : '🔈'}
         </button>
@@ -55,7 +48,7 @@ function FreePanel({ onPlay }: { onPlay: (room: string) => void }) {
   return (
     <div className="mode-panel">
       <button className="btn btn-gold btn-xl" disabled={!connected} onClick={() => onPlay('free')}>
-        ▶ {t('lobby.play')}
+        ▶ {t('lobby.playFree')}
       </button>
       {free && (
         <div className="room-line">
@@ -83,9 +76,10 @@ function PrivatePanel({ onPlay }: { onPlay: (room: string) => void }) {
           value={code}
           maxLength={5}
           placeholder={t('lobby.code')}
+          aria-label="Private practice room code"
           style={{ textTransform: 'uppercase', letterSpacing: 4, textAlign: 'center' }}
           onChange={(e) => setCode(e.target.value.replace(/[^a-z0-9]/gi, '').toUpperCase())}
-          onKeyDown={(e) => e.key === 'Enter' && code.length === 5 && onPlay(`private:${code}`)}
+          onKeyDown={(e) => e.key === 'Enter' && connected && code.length === 5 && onPlay(`private:${code}`)}
         />
         <button className="btn btn-sky" disabled={code.length !== 5 || !connected} onClick={() => onPlay(`private:${code}`)}>
           {t('lobby.joinRoom')}
@@ -95,9 +89,41 @@ function PrivatePanel({ onPlay }: { onPlay: (room: string) => void }) {
   );
 }
 
+function ReleaseRoadmap() {
+  return (
+    <section className="card side-card release-card" aria-labelledby="release-title">
+      <h2 className="side-title" id="release-title">✦ Little coins, big plans</h2>
+      <ol className="release-steps">
+        <li>
+          <span className="release-icon release-now" aria-hidden="true">◎</span>
+          <div>
+            <div className="release-heading">SOL beta <span className="badge mint">NOW</span></div>
+            <p>Enter with SOL. Gobble rivals, grow your value, and cash out. Join an ongoing arena at any time.</p>
+          </div>
+        </li>
+        <li>
+          <span className="release-icon release-nft" aria-hidden="true">✿</span>
+          <div>
+            <div className="release-heading">NFT character skins <span className="badge pink">PLANNED</span></div>
+            <p>A free mint is planned on {RELEASE.nft.platform}. Cosmetic skins for your round character; network fees may apply.</p>
+          </div>
+        </li>
+        <li>
+          <span className="release-icon release-token" aria-hidden="true">✧</span>
+          <div>
+            <div className="release-heading">Game token <span className="badge sky">PLANNED</span></div>
+            <p>Launch planned on {RELEASE.token.platform}, followed by game integration. SOL is the only beta entry currency.</p>
+          </div>
+        </li>
+      </ol>
+      <div className="release-note">The token and NFT collection have not launched. No mint or token purchase is available here yet.</div>
+    </section>
+  );
+}
+
 export function Lobby() {
   const t = useT();
-  const [mode, setMode] = useState<Mode>('free');
+  const [mode, setMode] = useState<Mode>('stakes');
   const settings = useUi((s) => s.settings);
   const auth = useUi((s) => s.auth);
   const own = useOwnership();
@@ -134,19 +160,20 @@ export function Lobby() {
               disabled={!!verifiedName}
               maxLength={16}
               placeholder={t('lobby.name')}
+              aria-label={t('lobby.name')}
               onChange={(e) => updateSettings({ name: e.target.value })}
               onKeyDown={(e) => e.key === 'Enter' && mode === 'free' && play('free')}
               style={{ textAlign: 'center' }}
             />
             <SkinPicker />
-            <div className="tabs">
-              <button className={`tab ${mode === 'free' ? 'active' : ''}`} onClick={() => setMode('free')}>
-                🎮 {t('lobby.tab.free')}
-              </button>
-              <button className={`tab ${mode === 'stakes' ? 'active' : ''}`} onClick={() => setMode('stakes')}>
+            <div className="tabs" aria-label="Game mode">
+              <button className={`tab ${mode === 'stakes' ? 'active' : ''}`} aria-pressed={mode === 'stakes'} onClick={() => setMode('stakes')}>
                 ◎ {t('lobby.tab.stakes')}
               </button>
-              <button className={`tab ${mode === 'private' ? 'active' : ''}`} onClick={() => setMode('private')}>
+              <button className={`tab ${mode === 'free' ? 'active' : ''}`} aria-pressed={mode === 'free'} onClick={() => setMode('free')}>
+                🎮 {t('lobby.tab.free')}
+              </button>
+              <button className={`tab ${mode === 'private' ? 'active' : ''}`} aria-pressed={mode === 'private'} onClick={() => setMode('private')}>
                 👯 {t('lobby.tab.private')}
               </button>
             </div>
@@ -168,6 +195,7 @@ export function Lobby() {
         </div>
         <div className="side-right">
           <ProfileCard />
+          <ReleaseRoadmap />
         </div>
       </div>
       <div className="keys">

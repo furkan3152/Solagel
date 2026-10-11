@@ -22,6 +22,10 @@ export class Conn {
   lang = 'en';
   helloed = false;
   joining = false;
+  /** Invalidates pending joins when a client leaves, switches identity or closes. */
+  actionVersion = 0;
+  /** Invalidates profile reads belonging to a previous authenticated identity. */
+  authVersion = 0;
   /** Name used for chat while dead/spectating after having played. */
   lastName: string | null = null;
   lastSkin = 0;

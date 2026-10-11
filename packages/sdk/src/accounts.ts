@@ -98,6 +98,8 @@ export interface SessionView {
   openedAt: number;
   /** Unique, increasing session id (`settle_session` must echo it). */
   id: number;
+  /** True after server admission; original-buy-in refunds are then disabled. */
+  activated: boolean;
 }
 
 export interface LeaderEntryView {
@@ -205,6 +207,7 @@ export function toSessionView(address: Address, raw: RawSession): SessionView {
     buyIn: toNumber(raw.buyIn),
     openedAt: toNumber(raw.openedAt),
     id: toNumber(raw.id),
+    activated: raw.activated,
   };
 }
 

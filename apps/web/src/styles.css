@@ -72,6 +72,13 @@ select {
   font-family: inherit;
 }
 
+button:focus-visible,
+a:focus-visible,
+input:focus-visible {
+  outline: 3px solid var(--purple);
+  outline-offset: 4px;
+}
+
 a {
   color: inherit;
 }
@@ -373,6 +380,21 @@ a {
   gap: 8px;
 }
 
+.beta-pill {
+  display: inline-flex;
+  align-items: center;
+  border: 2.5px solid var(--line);
+  border-radius: 999px;
+  background: var(--lemon);
+  color: #3d2c5e;
+  box-shadow: 0 2px 0 var(--line);
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  white-space: nowrap;
+}
+
 .side-left,
 .side-right,
 .main-col {
@@ -475,6 +497,13 @@ a {
   align-items: center;
   gap: 6px;
   cursor: pointer;
+  appearance: none;
+  border: 0;
+  border-radius: 18px;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  min-width: 0;
 }
 
 .skin-stage canvas {
@@ -487,6 +516,8 @@ a {
   font-size: 18px;
   display: flex;
   align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -535,6 +566,79 @@ a {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+.release-card {
+  margin-top: 20px;
+  overflow: hidden;
+  background: linear-gradient(150deg, var(--card), var(--card-2));
+}
+
+.release-card h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.release-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.release-steps li {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+}
+
+.release-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 2.5px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 2px 0 var(--line);
+  color: #3d2c5e;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.release-now { background: var(--mint-soft); }
+.release-nft { background: var(--pink); }
+.release-token { background: var(--sky); }
+
+.release-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.release-heading .badge {
+  padding: 2px 6px;
+  font-size: 9px;
+}
+
+.release-steps p {
+  margin: 5px 0 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.release-note {
+  padding-top: 10px;
+  border-top: 2px dashed var(--lav);
+  color: var(--ink-soft);
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .lb-list {
@@ -659,7 +763,7 @@ a {
 
 .arena {
   display: grid;
-  grid-template-columns: 44px 1fr auto;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
   padding: 10px 12px;
@@ -679,6 +783,7 @@ a {
 
 .arena-meta {
   font-size: 12px;
+  overflow-wrap: anywhere;
   color: var(--muted);
   font-weight: 600;
 }
@@ -1236,6 +1341,7 @@ a {
   border: 2.5px solid var(--line);
   border-radius: 16px;
   background: var(--card-3);
+  color: var(--text);
   padding: 8px 6px 10px;
   display: flex;
   flex-direction: column;
@@ -1245,6 +1351,10 @@ a {
   text-align: center;
   font-weight: 600;
   font-size: 13px;
+}
+
+.skin-preview-note {
+  margin-bottom: 16px;
 }
 
 .skin-tile.selected {
@@ -1381,6 +1491,7 @@ a {
 @media (max-width: 760px) {
   .topbar {
     padding: 10px 12px;
+    flex-wrap: wrap;
   }
   .topbar .logo {
     font-size: 28px;
@@ -1414,6 +1525,7 @@ a {
   }
   .topbar-right {
     gap: 6px;
+    margin-left: auto;
   }
   .topbar-right .btn-icon {
     width: 40px;
@@ -1424,6 +1536,14 @@ a {
   }
   .lobby-main {
     padding: 16px;
+  }
+  .release-card {
+    margin-top: 16px;
+  }
+  .keys {
+    padding-right: 12px;
+    padding-left: 12px;
+    line-height: 1.8;
   }
   .live-lb {
     width: 168px;
@@ -1470,6 +1590,29 @@ a {
   }
   .netstats {
     display: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .arena { grid-template-columns: 36px minmax(0, 1fr); }
+  .arena > .col { grid-column: 1 / -1; flex-direction: row; }
+  .arena > .col > .btn { flex: 1; }
+}
+
+@media (max-width: 380px) {
+  .hero .logo { font-size: 38px; }
+  .hero .logo-coin { width: 52px; height: 52px; }
+  .lobby-main { padding: 12px; }
+  .tab { font-size: 12px; padding-right: 3px; padding-left: 3px; }
+  .skin-name { font-size: 16px; }
+  .setting-row { flex-wrap: wrap; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 

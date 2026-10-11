@@ -82,19 +82,22 @@ pub(crate) fn transfer_from_wallet<'info>(
     )
 }
 
-/// Applies a finished game to `profile` and upserts the player into the leaderboard of the
-/// current `season`.
+/// Applies a paid game to `profile` and updates the current prize leaderboard only
+/// when the game earns points from captured SOL profit.
 pub(crate) fn record_result(
     profile: &mut PlayerProfile,
     season: &mut Season,
     current_season: u32,
-    score: u32,
-    kills: u16,
-    xp: u32,
+    game: GameResult,
+    earned_points: u64,
     now: i64,
 ) -> GameResult {
-    let result = logic::apply_game(profile, current_season, score, kills, xp, now);
-    let candidate = logic::leader_entry(profile, result.score);
-    logic::upsert_leaderboard(&mut season.entries, &mut season.count, candidate);
+    let result = logic::apply_game(profile, current_season, game, earned_points, now);
+    // Bot/food mass and returned buy-ins are not financial wins. Only captured
+    // profit can enroll a wallet in the prize-bearing season leaderboard.
+    if earned_points > 0 {
+        let candidate = logic::leader_entry(profile, result.score);
+        logic::upsert_leaderboard(&mut season.entries, &mut season.count, candidate);
+    }
     result
 }

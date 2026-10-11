@@ -3,9 +3,6 @@ use anchor_lang::prelude::*;
 use crate::{
     constants::*,
     error::SolagelError,
-    events::SkinPurchased,
-    instructions::shared,
-    logic,
     state::{Config, PlayerProfile},
 };
 
@@ -28,28 +25,8 @@ pub struct BuySkin<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handle_buy_skin(ctx: Context<BuySkin>, skin: u8) -> Result<()> {
-    let bit = logic::premium_skin_bit(skin).ok_or(SolagelError::InvalidSkin)?;
-    require!(
-        ctx.accounts.profile.premium_skins & bit == 0,
-        SolagelError::SkinAlreadyOwned
-    );
-
-    let price = ctx.accounts.config.skin_price;
-    shared::transfer_from_wallet(
-        &ctx.accounts.owner.to_account_info(),
-        &ctx.accounts.treasury.to_account_info(),
-        price,
-    )?;
-
-    let profile = &mut ctx.accounts.profile;
-    profile.premium_skins |= bit;
-    profile.skin = skin;
-
-    emit!(SkinPurchased {
-        owner: profile.owner,
-        skin,
-        price,
-    });
-    Ok(())
+/// Retained for instruction compatibility only. NFT skins will use verified ownership
+/// after the collection launches; this legacy SOL sale must not issue substitute rights.
+pub fn handle_buy_skin(_ctx: Context<BuySkin>, _skin: u8) -> Result<()> {
+    err!(SolagelError::FeatureUnavailable)
 }

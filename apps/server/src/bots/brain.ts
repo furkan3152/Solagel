@@ -92,7 +92,7 @@ export class BotBrain {
           others.push(e);
           if (canEat(e.mass, smallest.mass)) threats.push(e);
           if (canEat(big.mass, e.mass)) {
-            if (!e.player.isBot && now - e.player.stats.joinedAt < NEWBIE_GRACE_MS) newbies.push(e);
+            if (!e.player.isBot && (world.cfg.botsCannotEatHumans || now - e.player.stats.joinedAt < NEWBIE_GRACE_MS)) newbies.push(e);
             else if (e.player.shieldUntil <= now) prey.push(e);
           }
           return;
@@ -277,7 +277,7 @@ export class BotBrain {
 
     /* ---------- virus shot (hard bots) ---------- */
     let eject = false;
-    if (!split && P.virusShooter && chaser && dangerLevel > 0.25 && dangerLevel < 0.9 && total > 150) {
+    if (!split && P.virusShooter && chaser && !(world.cfg.botsCannotEatHumans && !chaser.player.isBot) && dangerLevel > 0.25 && dangerLevel < 0.9 && total > 150) {
       if (chaser.mass > RULES.virusMass * RULES.virusPopRatio * 1.5) {
         const aT = angleTo(big.x, big.y, chaser.x, chaser.y);
         const dT = Math.hypot(chaser.x - big.x, chaser.y - big.y);

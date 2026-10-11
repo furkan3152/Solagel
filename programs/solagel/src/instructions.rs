@@ -1,3 +1,4 @@
+pub mod activate_session;
 pub mod buy_skin;
 pub mod claim_season_reward;
 pub mod create_arena;
@@ -17,6 +18,7 @@ pub mod update_profile;
 
 pub(crate) mod shared;
 
+pub use activate_session::*;
 pub use buy_skin::*;
 pub use claim_season_reward::*;
 pub use create_arena::*;
