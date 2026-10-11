@@ -44,10 +44,25 @@ pub const FEE_BPS: u16 = 500;
 pub const SEASON_SHARE_BPS: u16 = 5_000;
 pub const SKIN_PRICE: u64 = 50_000_000;
 
-static PROGRAM_SO: &[u8] = include_bytes!(concat!(
+static REFERENCE_PROGRAM_SO: &[u8] = include_bytes!(concat!(
     env!("CARGO_TARGET_TMPDIR"),
     "/../deploy/solagel.so"
 ));
+
+/// Run the unchanged transaction suite against either implementation. The
+/// reference artifact remains stable while the compact artifact is evaluated.
+fn program_bytes() -> &'static [u8] {
+    static PROGRAM: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
+    PROGRAM.get_or_init(|| match std::env::var_os("SOLAGEL_TEST_PROGRAM") {
+        Some(path) => std::fs::read(path).expect("read selected SBF program"),
+        None => REFERENCE_PROGRAM_SO.to_vec(),
+    })
+}
+
+/// Reference artifact only, independent of the selected test implementation.
+pub fn reference_program_bytes() -> &'static [u8] {
+    REFERENCE_PROGRAM_SO
+}
 
 // ---------------------------------------------------------------------------------------
 // Addresses
@@ -238,6 +253,24 @@ pub mod ix {
             season_id,
             treasury,
             args,
+        )
+    }
+
+    pub fn activate_session(
+        server: &Pubkey,
+        player: &Pubkey,
+        arena_id: u16,
+        session_id: u64,
+    ) -> Instruction {
+        let arena = arena_pda(arena_id);
+        build(
+            solagel::instruction::ActivateSession { session_id }.data(),
+            solagel::accounts::ActivateSession {
+                server: *server,
+                config: config_pda(),
+                arena,
+                session: session_pda(&arena, player),
+            },
         )
     }
 
@@ -435,9 +468,36 @@ impl TestEnv {
     /// Program deployed as an upgradeable program with `admin` as upgrade authority.
     /// `initialize` has not been called yet.
     pub fn deployed() -> Self {
-        let admin = Keypair::new();
+        Self::deployed_with_keys(
+            program_bytes(),
+            Keypair::new(),
+            Keypair::new(),
+            Keypair::new(),
+            Keypair::new(),
+        )
+    }
+
+    /// Identical identities and balances for differential tests of explicit binaries.
+    /// The byte slice bypasses `SOLAGEL_TEST_PROGRAM` and is never written to disk.
+    pub fn deployed_with_program(program: &[u8]) -> Self {
+        Self::deployed_with_keys(
+            program,
+            Keypair::new_from_array([1; 32]),
+            Keypair::new_from_array([2; 32]),
+            Keypair::new_from_array([3; 32]),
+            Keypair::new_from_array([4; 32]),
+        )
+    }
+
+    fn deployed_with_keys(
+        program: &[u8],
+        payer: Keypair,
+        admin: Keypair,
+        server: Keypair,
+        treasury: Keypair,
+    ) -> Self {
         let mut svm = LiteSVM::new();
-        deploy_upgradeable(&mut svm, &admin.pubkey());
+        deploy_upgradeable_with_program(&mut svm, &admin.pubkey(), program);
 
         let mut clock = svm.get_sysvar::<Clock>();
         clock.unix_timestamp = START_TS;
@@ -445,10 +505,10 @@ impl TestEnv {
 
         let mut env = Self {
             svm,
-            payer: Keypair::new(),
+            payer,
             admin,
-            server: Keypair::new(),
-            treasury: Keypair::new(),
+            server,
+            treasury,
         };
         let (payer, admin, server, treasury) = (
             env.payer.pubkey(),
@@ -600,6 +660,57 @@ impl TestEnv {
 
     pub fn join(&mut self, player: &Keypair, arena_id: u16) -> TxResult {
         self.send(&[ix::join_arena(&player.pubkey(), arena_id)], &[player])
+    }
+
+    pub fn activate_as(
+        &mut self,
+        signer: &Keypair,
+        player: &Pubkey,
+        arena_id: u16,
+        session_id: u64,
+    ) -> TxResult {
+        self.send(
+            &[ix::activate_session(
+                &signer.pubkey(),
+                player,
+                arena_id,
+                session_id,
+            )],
+            &[signer],
+        )
+    }
+
+    pub fn activate(&mut self, player: &Pubkey, arena_id: u16) -> TxResult {
+        let server = self.server.insecure_clone();
+        let session_id = self.session(arena_id, player).map_or(u64::MAX, |s| s.id);
+        self.activate_as(&server, player, arena_id, session_id)
+    }
+
+    /// A complete admitted paid game with fixture profit chosen to yield `score` points.
+    /// Extra pot funding represents value captured from other paid tickets.
+    pub fn play_paid(
+        &mut self,
+        player: &Keypair,
+        arena_id: u16,
+        score: u32,
+        kills: u16,
+        xp: u32,
+    ) -> TxResult {
+        let buy_in = self.arena(arena_id).buy_in;
+        assert_ok(self.join(player, arena_id));
+        assert_ok(self.activate(&player.pubkey(), arena_id));
+        let profit = u64::from(score) * 1_000;
+        if profit > 0 {
+            self.airdrop(&arena_pda(arena_id), profit);
+        }
+        self.settle(
+            &player.pubkey(),
+            arena_id,
+            buy_in + profit,
+            score,
+            kills,
+            xp,
+        )
     }
 
     pub fn settle_as(
@@ -794,8 +905,11 @@ impl TestEnv {
 /// authority. `LiteSVM::add_program` already creates the loader-v3 `Program` account and
 /// its `ProgramData` account (with no authority); the ProgramData header is rewritten here.
 pub fn deploy_upgradeable(svm: &mut LiteSVM, authority: &Pubkey) {
-    svm.add_program(solagel::ID, PROGRAM_SO)
-        .expect("load program");
+    deploy_upgradeable_with_program(svm, authority, program_bytes());
+}
+
+fn deploy_upgradeable_with_program(svm: &mut LiteSVM, authority: &Pubkey, program: &[u8]) {
+    svm.add_program(solagel::ID, program).expect("load program");
 
     let program_account = svm.get_account(&solagel::ID).expect("program account");
     assert_eq!(program_account.owner, bpf_loader_upgradeable::ID);

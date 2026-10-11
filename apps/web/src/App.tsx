@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { lazy, Suspense, useEffect, useRef } from 'react';
+import { RuntimeConfig } from './RuntimeConfig';
 import { GameEngine } from './game/engine';
 import { setEngine } from './game/instance';
 import { useChainSync } from './solana/chain';
@@ -8,6 +9,11 @@ import { useUi } from './store';
 import { Hud } from './ui/Hud';
 import { Lobby } from './ui/Lobby';
 import { CashoutModal, DeathModal, Modals, Toasts } from './ui/Modals';
+
+const AdminPanel = lazy(() => import('./admin/AdminPanel').then((m) => ({ default: m.AdminPanel })));
+const adminMode = window.location.pathname.replace(/\/+$/, '') === '/admin';
+
+function AdminChainSync() { useChainSync(); return null; }
 
 function GameCanvas() {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -49,10 +55,15 @@ export function App() {
   return (
     <SolanaProvider>
       <div className="app" data-theme={theme}>
-        <GameCanvas />
-        <ChainSync />
-        <Screens />
-        <Modals />
+        <RuntimeConfig admin={adminMode} />
+        {adminMode ? (
+          <>
+            <AdminChainSync />
+            <Suspense fallback={<div className="notice">Loading admin console…</div>}><AdminPanel /></Suspense>
+          </>
+        ) : (
+          <><GameCanvas /><ChainSync /><Screens /><Modals /></>
+        )}
         <Toasts />
       </div>
     </SolanaProvider>

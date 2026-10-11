@@ -9,6 +9,7 @@ const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 export class RoomManager {
   readonly rooms = new Map<string, Room>();
   readonly conns = new Set<Conn>();
+  admissionsPaused = false;
   private freeCounter = 0;
   private timer: NodeJS.Timeout | null = null;
   private lastCleanup = Date.now();
@@ -20,6 +21,18 @@ export class RoomManager {
     private readonly chain: ChainGateway,
   ) {
     this.createFree();
+  }
+
+  /** Changes future admissions and live bot targets without touching active stakes. */
+  applyRuntime(settings: { admissionsPaused: boolean; bots: ServerConfig['bots'] }): void {
+    this.admissionsPaused = settings.admissionsPaused;
+    Object.assign(this.cfg.bots, settings.bots);
+    for (const room of this.rooms.values()) {
+      if (!room.opts.bots) continue;
+      const target = room.opts.mode === 'private' ? settings.bots.privateTarget : Math.min(settings.bots.target, room.opts.maxPlayers);
+      const max = room.opts.mode === 'private' ? settings.bots.privateTarget : settings.bots.max;
+      Object.assign(room.opts.bots, { target, min: room.opts.mode === 'private' ? Math.min(settings.bots.min, target, max) : 0, max });
+    }
   }
 
   /* ---------------------------------------------------------------- */
@@ -34,7 +47,7 @@ export class RoomManager {
         mode: 'free',
         name: `Coin Pond #${n}`,
         maxPlayers: this.cfg.freeRoomCapacity,
-        bots: { target: this.cfg.bots.target, min: this.cfg.bots.min, max: this.cfg.bots.max },
+        bots: { target: Math.min(this.cfg.bots.target, this.cfg.freeRoomCapacity), min: 0, max: this.cfg.bots.max },
       },
       this.deps,
     );
@@ -73,7 +86,7 @@ export class RoomManager {
         name: `Private · ${c}`,
         code: c,
         maxPlayers: this.cfg.privateRoomCapacity,
-        bots: { target: this.cfg.bots.privateTarget, min: 2, max: this.cfg.bots.privateTarget },
+        bots: { target: this.cfg.bots.privateTarget, min: Math.min(this.cfg.bots.min, this.cfg.bots.privateTarget), max: this.cfg.bots.privateTarget },
       },
       this.deps,
     );
@@ -86,6 +99,15 @@ export class RoomManager {
     const list = await this.chain.listArenas();
     const ids = new Map(list.map((a) => [a.id, { buyIn: a.buyIn, maxPlayers: a.maxPlayers, enabled: a.enabled }]));
     this.arenaCache = { at: Date.now(), ids };
+    for (const room of this.rooms.values()) {
+      if (room.opts.mode !== 'stake' || !room.opts.stake) continue;
+      const arena = ids.get(room.opts.stake.arenaId);
+      room.opts.enabled = arena?.enabled ?? false;
+      if (!arena) continue;
+      // A lowered limit blocks future admission; existing humans keep their cells and funds.
+      room.opts.maxPlayers = arena.maxPlayers;
+      if (room.opts.bots) room.opts.bots.target = Math.min(this.cfg.bots.target, arena.maxPlayers);
+    }
     return ids;
   }
 
@@ -93,10 +115,12 @@ export class RoomManager {
   async stakeRoom(arenaId: number): Promise<Room | null> {
     if (!this.chain.stakeEnabled) return null;
     if (this.cfg.chain.arenaIds.length > 0 && !this.cfg.chain.arenaIds.includes(arenaId)) return null;
-    const existing = this.rooms.get(`stake-${arenaId}`);
-    if (existing) return existing;
     const arena = (await this.arenas()).get(arenaId);
     if (!arena || !arena.enabled) return null;
+    // Arena discovery is asynchronous. Recheck after it, otherwise two first
+    // joins can create separate simulations for the same on-chain arena.
+    const existing = this.rooms.get(`stake-${arenaId}`);
+    if (existing) return existing;
     const meta = arenaMeta(arenaId);
     const room = new Room(
       {
@@ -104,8 +128,9 @@ export class RoomManager {
         mode: 'stake',
         name: meta.name.en,
         maxPlayers: arena.maxPlayers,
-        bots: null,
+        bots: { target: Math.min(this.cfg.bots.target, arena.maxPlayers), min: 0, max: this.cfg.bots.max },
         stake: { arenaId, buyIn: arena.buyIn },
+        enabled: arena.enabled,
       },
       this.deps,
     );
@@ -115,7 +140,7 @@ export class RoomManager {
 
   /** Make sure stake rooms exist for every enabled arena (shown in the lobby). */
   async ensureStakeRooms(): Promise<void> {
-    if (!this.chain.stakeEnabled) return;
+    if (!this.chain.enabled) return;
     try {
       for (const [id, a] of await this.arenas()) if (a.enabled) await this.stakeRoom(id);
     } catch (err) {
@@ -124,7 +149,7 @@ export class RoomManager {
   }
 
   list(): RoomInfo[] {
-    return [...this.rooms.values()].filter((r) => r.opts.mode !== 'private').map((r) => r.info());
+    return [...this.rooms.values()].filter((r) => r.opts.mode !== 'private' && r.opts.enabled !== false).map((r) => r.info());
   }
 
   online(): number {

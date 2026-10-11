@@ -1,0 +1,47 @@
+{
+  "checkedAt": "2026-10-11T11:39:02.642Z",
+  "program": "5skf5Twyqr8M84dJ8RLGfz1NU6fR3zPDRLUvGd5y7472",
+  "artifact": "target/deploy/solagel_compact.so",
+  "sha256": "1cf345b9523bbb719b853e918ec995c144f75fd4870cc7aa5b61281055383de5",
+  "binaryBytes": 91208,
+  "budgetLamports": 500000000,
+  "rentLamports": 476239840,
+  "allowanceLamports": 20000000,
+  "plannedLamports": 496239840,
+  "remainingLamports": 3760160,
+  "withinBudget": true,
+  "accounts": [
+    {
+      "name": "Program",
+      "bytes": 36,
+      "count": 1,
+      "rentLamports": 833120
+    },
+    {
+      "name": "ProgramData",
+      "bytes": 91253,
+      "count": 1,
+      "rentLamports": 464215480
+    },
+    {
+      "name": "Config",
+      "bytes": 162,
+      "count": 1,
+      "rentLamports": 1473200
+    },
+    {
+      "name": "First season",
+      "bytes": 1281,
+      "count": 1,
+      "rentLamports": 7157720
+    },
+    {
+      "name": "Arena",
+      "bytes": 40,
+      "count": 3,
+      "rentLamports": 2560320
+    }
+  ],
+  "note": "Read-only estimate. 0.02 SOL is an allowance for fees and initial server operation, not a fee guarantee. Hosting and prize funding are excluded. Recheck before signing; no transaction was sent.",
+  "rpcCluster": "mainnet-beta"
+}

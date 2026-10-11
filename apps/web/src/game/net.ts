@@ -13,6 +13,7 @@ export class Net {
   private retry = 0;
   private closedByUser = false;
   private pingTimer: number | null = null;
+  private reconnectTimer: number | null = null;
   rtt = 0;
 
   constructor(
@@ -22,17 +23,22 @@ export class Net {
   ) {}
 
   connect(): void {
+    if (this.ws && (this.ws.readyState === WebSocket.CONNECTING || this.ws.readyState === WebSocket.OPEN)) return;
+    this.clearTimers();
     this.closedByUser = false;
     const ws = new WebSocket(this.url);
     ws.binaryType = 'arraybuffer';
     this.ws = ws;
     ws.onopen = () => {
+      if (this.ws !== ws || this.closedByUser) return;
       this.retry = 0;
       this.send({ t: 'hello', v: PROTOCOL_VERSION, lang: this.lang() });
       this.handlers.onOpen();
+      if (this.ws !== ws || this.closedByUser) return;
       this.pingTimer = window.setInterval(() => this.send({ t: 'ping', ts: performance.now() }), 2000);
     };
     ws.onmessage = (ev) => {
+      if (this.ws !== ws || this.closedByUser) return;
       if (typeof ev.data === 'string') {
         let msg: ServerMessage;
         try {
@@ -51,16 +57,21 @@ export class Net {
       }
     };
     ws.onclose = () => {
-      if (this.pingTimer) clearInterval(this.pingTimer);
-      this.pingTimer = null;
+      if (this.ws !== ws) return;
+      this.clearTimers();
       this.ws = null;
       this.handlers.onClose();
-      if (!this.closedByUser) {
+      if (!this.closedByUser && !this.ws) {
         const delay = Math.min(8000, 500 * 2 ** this.retry++);
-        window.setTimeout(() => this.connect(), delay);
+        this.reconnectTimer = window.setTimeout(() => {
+          this.reconnectTimer = null;
+          if (!this.closedByUser) this.connect();
+        }, delay);
       }
     };
-    ws.onerror = () => ws.close();
+    ws.onerror = () => {
+      if (this.ws === ws && !this.closedByUser) ws.close();
+    };
   }
 
   get open(): boolean {
@@ -77,6 +88,16 @@ export class Net {
 
   close(): void {
     this.closedByUser = true;
-    this.ws?.close();
+    this.clearTimers();
+    const ws = this.ws;
+    this.ws = null;
+    ws?.close();
+  }
+
+  private clearTimers(): void {
+    if (this.pingTimer !== null) window.clearInterval(this.pingTimer);
+    if (this.reconnectTimer !== null) window.clearTimeout(this.reconnectTimer);
+    this.pingTimer = null;
+    this.reconnectTimer = null;
   }
 }

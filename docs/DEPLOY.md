@@ -1,143 +1,163 @@
-# Solagel — Kurulum ve Dağıtım Rehberi (Devnet → Mainnet)
+# Solagel — deployment and recovery
 
-Bu rehber; Solana programını dağıtmayı, yapılandırmayı, oyun sunucusunu ve web istemcisini yayına almayı adım adım anlatır.
-**Önce devnet'te deneyin, sonra mainnet'e geçin.**
+This guide covers the **SOL beta**. Token and NFT launch are future releases, not deployment prerequisites. Never configure a guessed pump.fun mint or OpenSea collection.
 
-> ⚠️ **Yasal & güvenlik uyarısı.** SOL ile oynanan arenalar gerçek parayla oynanan bir oyundur ve bulunduğunuz ülkede
-> lisans gerektirebilir. Akıllı kontrat bağımsız bir denetimden geçmemiştir. Mainnet'te gerçek parayla açmadan önce
-> denetim yaptırın, küçük limitlerle başlayın ve `STAKE_ENABLED=false` ile sadece ücretsiz modu açmayı değerlendirin.
+## Deployment status and budget — 2026-10-11
 
----
+Read-only `getAccountInfo` checks on the public mainnet-beta and devnet RPCs returned no account for the repository program ID `5skf5Twyqr8M84dJ8RLGfz1NU6fR3zPDRLUvGd5y7472`. The existing signed end-to-end test used a local validator; it was not a public-network deployment.
 
-## 0. Gerekenler
+The deployable compact artifact `target/deploy/solagel_compact.so` is **91,208 bytes**, down from the 436,328-byte Anchor reference. SHA-256: `1cf345b9523bbb719b853e918ec995c144f75fd4870cc7aa5b61281055383de5`. It retains all 17 SOL-beta instructions, account layouts, security checks and event payloads. Mainnet `getMinimumBalanceForRentExemption` responses give:
 
-| Araç | Sürüm | Not |
-|---|---|---|
-| Node.js | 22+ | `corepack enable` ile pnpm 10 |
-| Rust | 1.97.1 | `rust-toolchain.toml` otomatik seçer (`rustup show`) |
-| Solana (Agave) CLI | 4.3.x | `sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"` |
-| Anchor CLI | 1.2.1 | `npm i -g @anchor-lang/cli@1.2.1` |
+| Account | Allocated bytes | Rent-exempt SOL |
+| --- | ---: | ---: |
+| Program | 36 | 0.000833120 |
+| ProgramData | 91,253 | 0.464215480 |
+| Config | 162 | 0.001473200 |
+| First season | 1,281 | 0.007157720 |
+| Three arena accounts | 40 each | 0.002560320 |
+| **Total rent capital** | | **0.476239840** |
+| Fee / initial server-operation allowance | | **0.020000000** |
+| **Planned initial on-chain budget** | | **0.496239840** |
+| **Remaining below the 0.5 SOL ceiling** | | **0.003760160** |
+
+The measured plan fits the owner's **0.5 SOL** initial deployment ceiling. The previous reference build needed **2.229449440 SOL** in rent alone; deploy the compact artifact, not the reference. See the machine-readable [RPC budget record](program-budget.json).
+
+The 0.02 SOL allowance covers estimated deployment/initialization fees and an initial server-authority balance; it is not a guaranteed fee cap or perpetual operating fund. Hosting/RPC subscriptions, optional prize funding, players' own profile/session rent, and later token/NFT setup or program upgrades are separate. Most rent is capital held in accounts while open. No public deployment or real-SOL transfer was performed.
+
+Before signing, rerun the read-only budget gate against the final artifact and intended network:
 
 ```bash
-pnpm install
+corepack pnpm -F @solagel/sdk deploy-budget
+# Optional explicit artifact and RPC endpoint:
+corepack pnpm -F @solagel/sdk deploy-budget "$PWD/target/deploy/solagel_compact.so" https://api.mainnet-beta.solana.com
 ```
 
-## 1. Program anahtarı ve derleme
+Use an absolute artifact path for the explicit command when invoking pnpm with `-F` (it changes the working directory to the SDK package). The default command resolves the repository artifact automatically. This command neither signs nor sends transactions. It exits nonzero above 0.5 SOL or if rent cannot be checked; do not deploy until the measured budget fits. Fees, priority fees and rent parameters can change, so reconfirm the actual wallet transaction before signing. In environments with a configured HTTP proxy, Node 24 supports `NODE_USE_ENV_PROXY=1` for this read-only command.
 
-Repodaki `declare_id!` geliştirme sırasında üretilmiş bir adrese aittir; **kendi program anahtarınızı üretin**:
+Agave 4.3 defaults `--max-len` to the original binary length. Explicitly choosing that same length does not reduce this estimate. On initial upgradeable-loader deployment, the intermediate buffer balance is returned to the payer before ProgramData is funded in the same instruction, so initial rent is not counted twice. Future upgrades can have different temporary funding requirements. Requery rent and measure the final binary before any later deployment; network parameters and binary size can change.
+
+## 1. Toolchain and checks
+
+Use Node 22+, pnpm 10.28.0, Rust from `rust-toolchain.toml`, Agave CLI 4.3.x and Anchor CLI 1.2.1.
 
 ```bash
-solana-keygen new -o target/deploy/solagel-keypair.json   # bu dosyayı GÜVENLE yedekleyin
-anchor keys sync                                          # declare_id! + Anchor.toml güncellenir
-anchor build                                              # target/deploy/solagel.so + IDL
-pnpm -F @solagel/sdk sync-idl                             # IDL'i SDK'ya kopyalar (istemci/sunucu bunu kullanır)
-cargo test -p solagel                                     # LiteSVM testleri
+corepack pnpm install --frozen-lockfile
+corepack pnpm typecheck
+corepack pnpm test
+corepack pnpm build
+corepack pnpm program:test
+corepack pnpm -F @solagel/sdk sync-idl
+corepack pnpm -F @solagel/sdk deploy-budget
 ```
 
-## 2. Devnet
+`program:test` builds the Anchor reference/IDL and the compact artifact, runs compact host tests, then executes the original SBF suite and differential tests against the compact program. `program:build` builds only the deployable compact artifact. The build script rejects stack overflow diagnostics even if the compiler exits successfully. See [compact-program maintenance](../programs/solagel-compact/README.md).
+
+The TypeScript tests use mock gateways where appropriate. They do not prove that a deployed program accepts real transactions. After building the program, use `scripts/localnet.sh` and `corepack pnpm -F @solagel/server e2e ws://127.0.0.1:8787/ws` for the wallet → ticket → activation → gameplay → settlement flow.
+
+### Upgrade boundary
+
+This beta adds `Session.activated` and `activate_session`; account size and instruction IDL change. **Do not hot-upgrade a program with old open sessions.** Disable new entry, settle all existing sessions, verify every arena has zero open sessions, then upgrade and use a freshly generated matching IDL. For development, a fresh local validator/deployment is simplest. Do not delete a funded production ledger to reset it.
+
+## 2. Configure a devnet deployment
+
+Create your own program keypair, run `anchor keys sync`, rebuild both programs with `corepack pnpm program:test`, regenerate the SDK IDL, and rehearse on devnet using test SOL. Changing the program ID also changes every PDA and must reach the SDK/server/client together. The compact build reads the reference `declare_id!`; use the matching `target/deploy/solagel-keypair.json` for deployment, not an incidental `solagel_compact-keypair.json`. Protect program/admin/server keypairs; they are not browser configuration. The initialized admin must be the program's upgrade authority. Assign that authority to the designated admin through their own signing wallet; the repository contains only its public address.
 
 ```bash
-solana config set --url devnet
-solana-keygen new -o ~/.config/solana/id.json   # (yoksa) yönetici cüzdanı — programın upgrade authority'si olur
-solana airdrop 5                                 # gerekirse https://faucet.solana.com
-anchor deploy --provider.cluster devnet
+# Example rehearsal; replace signer paths with your locally controlled test keys.
+solana program deploy target/deploy/solagel_compact.so \
+  --program-id target/deploy/solagel-keypair.json \
+  --keypair <DEPLOY_PAYER_KEYPAIR> --upgrade-authority <ADMIN_KEYPAIR> \
+  --url https://api.devnet.solana.com \
+  --max-len "$(wc -c < target/deploy/solagel_compact.so)"
+corepack pnpm admin init --url https://api.devnet.solana.com --keypair <ADMIN_KEYPAIR> \
+  --server <SERVER_PUBLIC_KEY> --treasury <TREASURY_PUBLIC_KEY> \
+  --fee-bps 500 --season-share-bps 5000
+corepack pnpm admin create-arena --url https://api.devnet.solana.com --keypair <ADMIN_KEYPAIR> --defaults
+corepack pnpm admin status --url https://api.devnet.solana.com
 ```
 
-Sunucu anahtarı (settlement'ları imzalar) ve hazine adresi:
+Fund the server authority with test SOL for activation, settlement and recording fees. A separate server authority does not replace the user's wallet signature when purchasing a ticket.
 
-```bash
-mkdir -p keys
-solana-keygen new -o keys/server.json --no-bip39-passphrase
-solana transfer $(solana-keygen pubkey keys/server.json) 0.5 --allow-unfunded-recipient
-TREASURY=<hazine cüzdanınızın adresi>   # tercihen bir multisig (Squads) — önceden fonlanmış olmalı
-```
+Set process environment from `apps/server/.env.example`:
 
-Programı başlatın ve arenaları oluşturun (yönetici = programın upgrade authority'si olmalı; aksi halde `initialize` reddedilir):
-
-```bash
-pnpm admin init --url https://api.devnet.solana.com \
-  --server $(solana-keygen pubkey keys/server.json) --treasury $TREASURY \
-  --fee-bps 500 --season-share-bps 5000 --skin-price-sol 0.05
-pnpm admin create-arena --url https://api.devnet.solana.com --defaults   # ◎0.01 / ◎0.05 / ◎0.1
-pnpm admin status --url https://api.devnet.solana.com
-```
-
-Oyun sunucusu (`apps/server/.env`, örnek: `apps/server/.env.example`):
-
-```bash
+```text
 SOLANA_CLUSTER=devnet
 SOLANA_RPC_URL=https://api.devnet.solana.com
-PROGRAM_ID=<program id>
-SERVER_KEYPAIR=/abs/path/keys/server.json
-AUTH_SECRET=$(openssl rand -hex 32)
-DATA_DIR=./data
+PUBLIC_RPC_URL=https://api.devnet.solana.com
+PROGRAM_ID=<YOUR_DEPLOYED_PROGRAM_ID>
+SERVER_KEYPAIR=/absolute/path/to/server-keypair.json
+AUTH_SECRET=<RANDOM_PERSISTENT_SECRET>
+ADMIN_WALLETS=<OPTIONAL_COMMA_SEPARATED_PUBLIC_KEYS>
+DATA_DIR=/absolute/path/to/persistent/data
+STAKE_ENABLED=true
 ```
+
+The server requires an authoritative durable journal. `STAKE_ENABLED=false` disables new paid entry but must not discard existing claims. A program paused via `update-config --paused true` likewise stops new admission while allowing settlement. Bot target settings apply to public practice and SOL arenas; paid bots have zero monetary value and cannot eat human players. Public bots decrease to zero when enough humans are present.
+
+## 3. Hosting
+
+Run **one authoritative server per journal/arena set**. The JSON journal is not a multi-process distributed database. Multiple game replicas controlling the same arena can double-admit tickets and corrupt liabilities; horizontal scale needs explicit arena ownership and a transactional ledger first.
+
+Use a long-running host with WebSocket support and persistent disk. Mount the directory selected by `DATA_DIR`. HTTPS/WSS should terminate at a reverse proxy. Set `TRUST_PROXY=1` only when requests can reach the server exclusively through a trusted proxy which replaces forwarding headers.
 
 ```bash
-pnpm dev            # sunucu :8787 + web :5173 (Vite /ws ve /api'yi sunucuya yönlendirir)
+corepack pnpm build
+# Pass environment through the process manager or container runtime.
+node apps/server/dist/index.js
 ```
 
-## 3. Mainnet
+Set `WEB_DIST` to the absolute path of `apps/web/dist` to serve client and server together. For separate client hosting, build with `VITE_SERVER_URL=https://game.example.com` and set server `CORS_ORIGIN` to the actual frontend origin. `PUBLIC_RPC_URL` and `VITE_RPC_URL` must never contain server secrets and must target the same cluster/program as the game server.
 
-1. **Maliyet:** program ~430 KB → kalıcı kira ≈ **◎2.98**. Dağıtım sırasında buffer hesabı için geçici olarak ≈ ◎6 bulundurun
-   (dağıtımdan sonra iade edilir). Config/sezon hesapları için ≈ ◎0.02 ek.
-2. **Ücretli RPC** kullanın (Helius, QuickNode, Triton…). `SOLANA_RPC_URL` gizli anahtar içerebilir; tarayıcıya
-   gidecek `PUBLIC_RPC_URL` ise gizli olmayan (kısıtlı/domain kilitli) bir uç nokta olmalı.
-3. Dağıtım:
-   ```bash
-   solana config set --url mainnet-beta
-   anchor deploy --provider.cluster mainnet
-   pnpm admin init --url $RPC --server <SERVER_PUBKEY> --treasury <MULTISIG>
-   pnpm admin create-arena --url $RPC --defaults
-   ```
-4. **Yetkileri sağlamlaştırın** (`initialize` sonrasında):
-   - Upgrade authority'yi multisig'e taşıyın: `solana program set-upgrade-authority <PROGRAM_ID> --new-upgrade-authority <MULTISIG>`
-   - Config admin'ini multisig'e taşıyın: `pnpm admin update-config --admin <MULTISIG>`
-   - Sunucu cüzdanında sadece işlem ücretleri için az SOL tutun (≈ ◎0.2). Bakiye ◎0.05'in altına düşünce sunucu uyarır.
-5. **Acil durum:** `pnpm admin update-config --paused true` yeni girişleri durdurur; settlement ve iadeler çalışmaya devam eder.
-   Sunucu anahtarı sızarsa: `update-config --server <YENİ_ANAHTAR>`.
+The supplied Dockerfile can serve both apps; mount `/data` and the server keypair read-only. Keep the server authority funded and monitor failed RPC/settlement logs. Wallet UI must show the correct cluster before any payment.
 
-## 4. Barındırma
+## 4. Money lifecycle and failure handling
 
-### Tek konteyner (önerilen)
-Sunucu, derlenmiş web istemcisini aynı porttan servis eder:
+1. The player purchases a ticket. It is unused and holds an original-buy-in refund right after 24 hours.
+2. Admission reserves capacity and writes a durable original-value claim **before** chain activation.
+3. `activate_session` confirms on-chain before the player spawns. An activated ticket cannot use the unused-ticket refund path.
+4. Eating another human transfers already-funded value in the server ledger. Bots and pellets affect mass only.
+5. Death or successful cash-out queues an idempotent settlement for the exact `(arena, player, session_id)`.
+6. The server persists successful transaction signatures and verifies uncertain outcomes. It does not delete a monetary claim just because the RPC or authority is temporarily unavailable.
+7. The browser distinguishes a requested cash-out from the confirmed receipt and ignores receipts for other lives.
 
-```bash
-docker build -t solagel .
-docker run -d --name solagel -p 8787:8787 \
-  -v solagel-data:/data --env-file apps/server/.env \
-  -v $(pwd)/keys/server.json:/keys/server.json:ro -e SERVER_KEYPAIR=/keys/server.json \
-  solagel
-```
+Active sessions are bounded by the server's session-age limit, but their final payout still depends on a working server/RPC. The timeout is **not** a promise that an activated ticket can refund the original deposit. Disconnects leave a vulnerable cell during the grace period before automatic cash-out.
 
-- Önüne TLS sonlandıran bir ters vekil (Caddy/Nginx/Cloudflare) koyun; WebSocket yolu `/ws`.
-- **`/data` kalıcı olmalı**: `journal.json` sunucunun oyunculara borçlu olduğu ödemeleri tutar. Silinirse yarıda kalan
-  stake oturumları 15 dk sonra giriş ücretiyle iade edilir (adil ama ideal değil).
-- Fly.io / Render / Railway / bir VPS — WebSocket ve kalıcı disk destekleyen herhangi bir platform.
+### Recovery
 
-### Ayrık barındırma
-- İstemci: `VITE_SERVER_URL=https://game.example.com pnpm -F @solagel/web build` → `apps/web/dist` (Vercel/Netlify/Cloudflare Pages).
-- Sunucu: `pnpm -F @solagel/server build && node apps/server/dist/index.js` (veya Docker), `CORS_ORIGIN=https://example.com`.
+- Back up `journal.json` consistently and protect the persistent volume. It represents money owed, including original-value reservations made before activation.
+- On ordinary restart, recorded active balances become queued settlements. Preserve pending claims until their exact on-chain session/transaction is reconciled.
+- On corruption, stop paid admission, retain the damaged file and recover a known-good journal using chain receipts. Never silently replace it with an empty ledger.
+- If the journal is lost, an activated on-chain session is not evidence of its current earned balance. The server must not refund its original buy-in or invent a payout. Reconcile trusted backups/game records before resuming.
+- Unused abandoned tickets can be settled for their buy-in after 15 minutes by the server, or self-refunded by the player after 24 hours.
+- A failed wallet confirmation may still have landed. Refresh/read the session before proposing another purchase; the UI does this before each entry attempt.
 
-## 5. Operasyon
+## 5. Operations
 
-`pnpm admin` komutları `--url` verilmezse `$SOLANA_RPC_URL`'i (yoksa localnet'i), `--program` verilmezse `$PROGRAM_ID`'yi,
-imzacı olarak da `~/.config/solana/id.json`'u (`--keypair` ile değiştirilebilir) kullanır. Tüm komutlar: `pnpm admin help`.
+The English control room at `/admin` provides these operations through wallet signatures, plus live bot/admission controls, queue monitoring, and staged token/NFT configuration. See [ADMIN.md](ADMIN.md) for authorization and release workflows. Back up `admin.json` alongside the financial journal. Saved admin settings take precedence over bot environment defaults after the first save; each update checks a revision to prevent overwriting concurrent changes.
 
-| İş | Komut |
-|---|---|
-| Durum (config, arenalar, kasalar, sezon) | `pnpm admin status` |
-| Sezon ödül havuzuna bağış | `pnpm admin fund-season --sol 1` |
-| Sezonu bitir (ilk 10 ödül alır, yeni sezon başlar) | `pnpm admin end-season` |
-| 30 gün sonra talep edilmeyen ödülleri aktif sezona aktar | `pnpm admin rollover --season N` |
-| Arena aç/kapat, kapasite | `pnpm admin update-arena --id 2 --enabled false` |
-| Açık oturumu kalmamış arenanın artığını hazineye al | `pnpm admin sweep --id 2` |
 
-Önerilen ritim: her ay `end-season`; ücretlerin yarısı (varsayılan `season_share_bps=5000`) zaten otomatik olarak sezon havuzuna akar.
+`corepack pnpm admin help` lists commands. Pass the intended `--url`, `--program` and admin `--keypair`; do not rely on a different cluster's defaults.
 
-## 6. Güven modeli (özet)
+| Task | Command |
+| --- | --- |
+| Inspect config, arenas and season | `corepack pnpm admin status` |
+| Pause new paid entry | `corepack pnpm admin update-config --paused true` |
+| Disable an arena | `corepack pnpm admin update-arena --id 2 --enabled false` |
+| Fund season pool | `corepack pnpm admin fund-season --sol 1` |
+| End current season | `corepack pnpm admin end-season` |
+| Roll over unclaimed prizes after claim window | `corepack pnpm admin rollover --season N` |
+| Sweep arena with no open tickets | `corepack pnpm admin sweep --id 2` |
 
-- Para hareketlerinin tamamı zincir üstünde ve denetlenebilir (arena hesabı kasadır; ödeme kasayı aşamaz, kasa her zaman kira-muaf kalır).
-- Oyun sonucunun doğruluğu yetkili oyun sunucusuna güvenir (gerçek zamanlı oyunlar için standart hibrit model).
-- Sunucu, oturum yaşını 6 saatte zorla kapatır; oyuncu 24 saat settle edilmemiş biletini kendisi iade alabilir.
-- `settle_session` ilgili oturumun benzersiz `session_id`'sini ister; yeniden denenen eski bir ödeme aynı PDA'daki yeni oturuma uygulanamaz.
+Only captured SOL profit at paid settlement contributes to season points: `floor(max(payout − buyIn, 0) / 1000)` with amounts in lamports before fees (1 point per 0.000001 SOL profit). Zero-profit bot/food farming cannot enter the prize leaderboard. Practice keeps XP/stats without monetary rewards. Legacy `buy_skin` is disabled: no SOL purchase should be advertised as an NFT mint.
+
+## 6. Asset rollout: token, then NFT skins
+
+After creating the intended token through pump.fun, inspect its real mint in `/admin` on the configured Solana cluster. The server verifies owner program, initialization, decimals, supply and authorities. Save it as Configured for private preparation, or Launched to publish its metadata and exact official launch link in the lobby. Mint inspection does not prove pump.fun provenance. SOL remains the only gameplay currency.
+
+Token entry and payouts require separate SPL-token escrow, accounting, settlement and fee rules, followed by program deployment and signed devnet verification. Existing SOL sessions must settle under their original currency. Never relabel the lamport ledger as token units.
+
+After the token launch, configure the intended NFT chain, standard, collection identifier, OpenSea collection URL and asset-to-skin mappings. The admin registry supports preparing Solana/Metaplex or Ethereum/Base/Polygon ERC-721/ERC-1155 identifiers; it does not imply OpenSea currently supports minting every listed chain or format. Confirm the intended OpenSea mint route before deployment. Mappings target the eight cosmetic premium character skins.
+
+NFT ownership verification remains an explicit integration step after the real contract is available: validate collection membership, read finalized ownership or balances, invalidate transferred assets, and link the owning wallet with a signed proof if the NFT lives on another chain. A collection URL or token ID cannot grant a skin. Free mint has zero mint price; network fees may apply.
+
+Production still requires independent contract/security review and a successful real-wallet devnet rehearsal. No deployment or asset creation is performed by saving admin settings.

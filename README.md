@@ -1,185 +1,106 @@
 # 🪙 Solagel
 
-**Solana üzerinde sevimli, coin temalı, on-chain bir Agar.io.** Jöle gibi sallanan coin'ler lamport toplar, birbirini yer,
-SOL'lü arenalarda rakiplerinin değerini kapar. Sezon sıralaması ve ödüller zincirde tutulur.
+A jelly-coin survival arena on Solana. Join a running pond, grow, split and eat smaller opponents. The English interface keeps Solagel's original pastel colors, bold purple outlines and animated round characters.
 
-*A cute, coin-themed, on-chain Agar.io for Solana. English summary below ⬇️*
+![Solagel lobby](docs/images/lobby.webp)
 
-![Lobi](docs/images/lobby.webp)
+## Release status
 
-| Oyun | Skin mağazası | Karanlık tema (TR) |
-|---|---|---|
-| ![Oyun](docs/images/gameplay.webp) | ![Mağaza](docs/images/shop.webp) | ![Karanlık tema](docs/images/dark-tr.webp) |
-| **24 coin skin'i** | **Oyun sonu** | **Mobil** |
-| ![Skin'ler](docs/images/skins.webp) | ![Oyun sonu](docs/images/death.webp) | ![Mobil](docs/images/mobile-game.webp) |
+| Phase | Economy | Character skins |
+| --- | --- | --- |
+| **SOL beta — implemented** | SOL entry tickets, player-to-player SOL value transfers, on-chain cash-out | Starter and XP skins; future skins are previews |
+| **Token launch — next** | Token creation planned on pump.fun; admin mint inspection and release announcements are implemented. SPL gameplay requires separate escrow integration | Existing beta skins continue |
+| **NFT launch — after token** | SOL beta continues until token gameplay is implemented and verified | Free character-skin mint planned on OpenSea; collection and skin mappings can be staged in admin |
 
----
+**No Solagel token or NFT collection is bundled or minted by this codebase.** Administrators can register real assets after launch through `/admin`. There are no token sales, mint buttons, placeholder asset addresses or conversions of beta balances into future tokens. Legacy premium skin ownership remains usable, but new SOL skin purchases are disabled. A free NFT mint means no mint price; network fees may still apply.
 
-## ✨ Özellikler
+The release metadata is derived from durable admin settings and exposed at `/api/config`. Configured draft addresses remain private; explicitly announced token metadata appears in the lobby. Announcing a token does not change SOL tickets or payout units. It describes the current release, not a switch that enables unfinished assets. OpenSea mint-chain support, the collection contract and an ownership-verification approach must be confirmed before launch; a Solana wallet alone cannot prove ownership of an NFT on another chain.
 
-**Oyun**
-- Agar.io'nun klasik mekanikleri: bölünme (Space), kütle fırlatma (W), birleşme, yavaşlayan büyük hücreler, kütle erimesi.
-- **Rug Kaktüsü 🌵** (virüs): büyükken çarparsan parçalanırsın, küçükken arkasına saklanırsın, 7 kez beslenince yeni kaktüs fırlatır.
-- **Güçlendirmeler:** 🧲 Mıknatıs (yemleri çeker), 🚀 Pump (hız), 🛡️ HODL Kalkanı, 💰 Mega Çanta (anında kütle).
-  Ara sıra tüm haritaya **coin yağmuru** yağar.
-- Yeni oyunculara 3 sn doğuş kalkanı; botlar ilk 25 sn yeni gelenlere saldırmaz.
-- **Ücretsiz Oyun** (cüzdansız), **Arkadaş Odaları** (5 haneli kodla özel oda), **SOL Arenaları** (gerçek SOL ile giriş).
-- İzleyici modu, 8 emoji/emote (GM ☀️, WAGMI, 💎🙌…), filtreli sohbet (link/dolandırıcılık/küfür engeli).
+## The arena rules
 
-**Zeki botlar 🤖** — oyuncu azken odayı doldurur, oyuncu geldikçe çekilir. Her botun bir oyun tarzı (toplayıcı, avcı,
-ürkek, dengeli) ve beceri seviyesi (%45 kolay, %40 orta, %15 zor) vardır: 24 yönlü "context steering" ile tehditten kaçar,
-avın gideceği yeri tahmin edip kovalar, bölünerek avlar, kaktüsün arkasına saklanır; zor botlar kaktüs bile fırlatır.
-Birbirlerine emote atarlar ve zamanla "emekli olup" yerlerini yeni botlara bırakırlar. SOL arenalarında bot **yoktur**.
+- Public arenas run continuously. Players can join mid-game; no round countdown or synchronized start is required.
+- **SOL arenas** use on-chain tickets. Default tiers are 0.01 / 0.05 / 0.1 SOL. Each new life needs a new ticket; reconnecting to a surviving life does not.
+- Eating an opponent's cells transfers a proportional share of their **in-game SOL balance**, not their wallet balance. Kills transfer the remainder. Mass and SOL balance are separate.
+- Cash-out channels for 3 seconds. You remain vulnerable; damage interrupts it. The displayed amount is an estimate until the matching session's chain settlement confirms. The configured fee applies to profit only.
+- New spawns receive a short shield and safe-spawn placement. Quiet arenas fill with clearly identified bots; bots leave as humans arrive.
+- **Paid-arena bots provide mass only.** They carry no SOL, cannot eat human cells, cannot cash out, and cannot create rewards. A player alone with bots cannot earn SOL from them.
+- **Practice and friends' rooms** are free, have no stake or direct monetary rewards, and award no prize-bearing season points. Practice bots can eat humans. Verified practice can earn XP and regular stats.
+- NFT skins are planned to be cosmetic: no size, speed or payout advantage.
 
-**Tasarım** — her şey özgün: 24 coin karakteri (göz bebekleri hedefe bakar, yüz ifadeleri değişir: aç, korkmuş, gururlu…),
-jöle fiziği, aksesuarlar (taç, şapka, roket…), pastel "lamport" yemler, mücevherler, altın coin'ler. Açık/karanlık tema,
-**Türkçe/İngilizce**, sentezlenmiş ses efektleri, mobil dokunmatik kontroller.
+### Tickets, recovery and refunds
 
-**Sıralamalar 🏆**
-- Canlı oda sıralaması (her saniye), **Bugün** ve **Tüm zamanlar** listeleri (sunucu).
-- **On-chain sezon sıralaması** (ilk 20) + **ödül havuzu**: sezon sonunda ilk 10, havuzdan
-  %30 / %20 / %14 / %10 / %8 / %6 / %4.5 / %3 / %2.5 / %2 pay alır (talep süresi 30 gün).
+A purchased ticket is initially **unused**. Before spawning the player, the server journals its liability and confirms `activate_session` on-chain. Once activated, the session must settle against its recorded earned balance; its original buy-in can no longer be independently refunded. This prevents losing players reclaiming funds already won by opponents.
 
-**On-chain (Anchor programı `solagel`)**
-- **Profil:** isim, kuşanılan skin, XP/seviye, oyun sayısı, en iyi skor — hepsi zincirde.
-- **Skin'ler:** 8 ücretsiz, 8 seviye kilitli (seviye 2–20), 8 premium (SOL ile satın alınır, zincirde sahiplik).
-- **SOL arenaları:** ◎0.01 / ◎0.05 / ◎0.1 giriş. Birini yediğinde onun değerinin payını alırsın; istediğin an
-  **3 sn cash-out** yapıp değerini cüzdanına çekersin. Arena hesabı aynı zamanda kasadır, ödeme kasayı aşamaz.
-- **Ücret yalnızca kârdan** (varsayılan %5, en fazla %10) ve yarısı otomatik olarak sezon ödül havuzuna akar.
-- Güvenlik ağları: oturum benzersiz `session_id` taşır (eski ödeme yeni oturuma uygulanamaz), sunucu çökerse
-  oyuncular otomatik cash-out'a alınır (kalıcı günlük), 24 saat ödenmemiş bileti oyuncu kendisi iade alabilir,
-  hiç oynanmamış biletler 15 dk sonra iade edilir.
+An **unused** ticket can be self-refunded after 24 hours. The server can settle abandoned unused tickets after 15 minutes. Activated tickets depend on the durable settlement journal and server availability. On restart, journaled balances are queued for settlement; uncertain claims are retained for retry. Missing or corrupt accounting must be investigated rather than replaced with original buy-in refunds.
 
-## 🏗️ Mimari
+Disconnecting leaves your cells in the arena during the reconnect grace period. They remain vulnerable. Use cash-out for a deliberate exit. Navigating to the menu or switching identity during a paid life first requests cash-out.
 
-Gerçek zamanlı fizik (30 Hz) Solana'da çalışamaz (≈400 ms slot, işlem ücreti). Bu yüzden **hibrit** bir model kullanılır:
-oyun döngüsü yetkili bir oyun sunucusunda, **para, kimlik, istatistik, sezon ve ödüller zincirde**.
+## Run locally
 
-```
-Web istemci (Vite + React + Canvas)  ⇄  WebSocket (ikili delta snapshot)  ⇄  Oyun sunucusu (Node 22)
-        │ cüzdanla imzalı tx: profil, skin, arenaya giriş                     │ sunucu imzalı tx:
-        ▼                                                                   ▼ settle_session, record_game
-                         Solana programı `solagel` (Anchor 1.2.1)
-          Config · PlayerProfile · Arena (kasa) · Session · Season (sıralama + ödül havuzu)
-```
-
-| Klasör | İçerik |
-|---|---|
-| `programs/solagel` | Anchor programı (16 instruction) + LiteSVM testleri |
-| `packages/shared` | Oyun kuralları, formüller, ikili protokol, skin kataloğu, emote/arena verisi |
-| `packages/sdk` | TypeScript istemci (PDA'lar, instruction builder'lar, hesap okuyucular, hata çözümleme) + **admin CLI** |
-| `apps/server` | Oyun sunucusu: simülasyon, odalar, botlar, cüzdan girişi, settlement kuyruğu, REST |
-| `apps/web` | Oyun istemcisi: coin renderer, lobi, HUD, cüzdan entegrasyonu, i18n |
-| `docs/` | [Tasarım dokümanı](docs/superpowers/specs/2026-10-09-solagel-design.md), [dağıtım rehberi](docs/DEPLOY.md) |
-
-## 🚀 Hızlı başlangıç (zincirsiz)
-
-Node 22+ gerekir.
+Requires Node.js 22+ and the repository's pinned pnpm version.
 
 ```bash
 corepack enable
-pnpm install
-pnpm dev          # oyun sunucusu :8787 + web :5173
+corepack pnpm install --frozen-lockfile
+corepack pnpm dev
 ```
 
-→ **http://localhost:5173** — cüzdan gerekmez; botlarla hemen oynanır. Zincir ayarlanmadığında sunucu yalnızca
-ücretsiz modda çalışır.
+Open **http://localhost:5173**. The server runs on port 8787. With no deployed program and server signing key, SOL entry is visibly unavailable; practice, bots, private rooms and spectating remain playable.
 
-| Kontrol | Masaüstü | Mobil |
-|---|---|---|
-| Hareket | Fare | Sol alttaki joystick |
-| Bölün | `Space` | **Böl** |
-| Kütle fırlat ("bahşiş") | `W` (basılı tutulabilir) | **Bahşiş** |
-| Cash-out (SOL arenası) | `C` | 💸 |
-| Sohbet / emote | `Enter` / `1`–`8` | 💬 / 😊 |
-| İzlerken sonraki oyuncu | `Q` | ⏭ düğmesi |
+Environment examples: [server](apps/server/.env.example), [web](apps/web/.env.example). Scripts consume process environment variables; load your environment file explicitly when starting a process.
 
-## ⛓️ Yerel blockchain ile deneme (localnet)
+| Action | Desktop | Mobile |
+| --- | --- | --- |
+| Move | Mouse | Joystick |
+| Split | Space | Split |
+| Eject mass | W | Tip |
+| Cash out | C | Cash-out button |
+| Chat / emotes | Enter / 1–8 | On-screen controls |
+| Spectate next | Q | Next |
 
-Gerekenler: Rust (repo `rust-toolchain.toml` ile 1.97.1 seçer), Agave CLI 4.3, Anchor CLI 1.2.1 (`npm i -g @anchor-lang/cli@1.2.1`).
+## Admin control room
+
+![Solagel admin control room](docs/images/admin-desktop.jpg)
+
+Open **`/admin`** with an authorized wallet. The panel preserves the game’s pastel coin style and provides live room/bot controls, admission pause, settlement monitoring and retries, token inspection, staged NFT skin mappings, and wallet-signed contract operations.
+
+The designated default off-chain admin is `D2Ts7yCiVjedo6uwqpkM44QA8J45NdVU1J3k5m6iWtvm`. Set `ADMIN_WALLETS` to replace it with a comma-separated list, or explicitly set an empty value to disable this default. The current on-chain program admin is also authorized. A dedicated message signature opens a 15-minute in-memory admin session; game login tokens cannot administer the server. Only the current program admin can sign privileged contract changes. See [admin setup and launch workflow](docs/ADMIN.md).
+
+## Architecture
+
+```text
+React + Canvas browser ⇄ WebSocket ⇄ authoritative Node game server
+          │                              │
+          └──── wallet transactions ──────┼── activation + settlement
+                                         ▼
+                              Solana escrow program
+```
+
+The server runs physics at 30 Hz. Solana holds tickets, funds, profiles and season rewards. Game-result accuracy trusts the authoritative server. Only captured SOL profit contributes to the prize-bearing season leaderboard: `floor(max(payout − buyIn, 0) / 1000)` points, using lamports before the profit fee. Bot/food mass, returned buy-ins and practice earn no prize points; the top ten eligible players share the configured pool.
+
+| Directory | Purpose |
+| --- | --- |
+| `apps/web` | English React lobby, canvas rendering, wallet and ticket flows |
+| `apps/server` | Simulation, bots, room admission, auth and durable settlement |
+| `packages/shared` | Rules, protocol, skins and release metadata |
+| `packages/sdk` | Solana instructions, account decoders and admin CLI |
+| `programs/solagel` | Anchor reference implementation, IDL and SBF compatibility tests |
+| `programs/solagel-compact` | Smaller deployable program with the same escrow, activation, settlement and profile ABI |
+
+## Verification and deployment
 
 ```bash
-anchor build                      # programı derle (target/deploy)
-scripts/localnet.sh               # validator + program + config + 3 arena (anahtarlar .localnet/ içinde)
-
-# oyun sunucusu, localnet ayarlarıyla
-cd apps/server && env $(cat ../../.localnet/server.env | xargs) npx tsx src/index.ts
-# başka bir terminalde
-pnpm dev:web
-
-# uçtan uca test: profil → arenaya giriş → oyun → cash-out → on-chain ödeme → sezon sıralaması
-pnpm -F @solagel/server e2e ws://127.0.0.1:8787/ws
-scripts/localnet.sh --stop
+corepack pnpm typecheck
+corepack pnpm test
+corepack pnpm build
+corepack pnpm program:test
+corepack pnpm -F @solagel/sdk deploy-budget
 ```
 
-Tarayıcıda denemek için cüzdanınızı özel RPC `http://127.0.0.1:8899` adresine yönlendirin ve
-`solana airdrop 5 <adres> --url http://127.0.0.1:8899` ile SOL yükleyin.
+See [verification results](docs/VERIFICATION.md) and [deployment and recovery](docs/DEPLOY.md). The activation change **changes the Session account layout**. Drain and settle all existing sessions before upgrading an existing deployment, regenerate the IDL, and deploy matching server/client builds together. Never point this build at the old program layout with live tickets.
 
-> Kendi program anahtarınızla (`anchor keys sync`) derlerseniz IDL'i SDK'ya kopyalayın: `pnpm -F @solagel/sdk sync-idl`.
+The on-chain program has not had an independent security audit. A real-wallet SOL test requires a configured local validator or devnet program, RPC endpoint, funded server authority and player wallet; the default practice server does not validate real settlement.
 
-## 🌐 Devnet / Mainnet
+Historical design documents in `docs/superpowers` describe the pre-beta implementation and are not the current product rules.
 
-Adım adım rehber: **[docs/DEPLOY.md](docs/DEPLOY.md)** — program anahtarı, devnet denemesi, mainnet maliyeti
-(≈ ◎3 kalıcı kira), `pnpm admin` komutları (init, arena, sezon, acil durdurma), multisig yetkileri, Docker ile barındırma.
-
-```bash
-docker build -t solagel . && docker run -p 8787:8787 -v solagel-data:/data solagel   # → http://localhost:8787 (ücretsiz mod)
-```
-
-## 🧪 Testler
-
-```bash
-pnpm test                         # shared + sdk + server (Vitest)
-pnpm typecheck
-pnpm -F @solagel/web build
-anchor build && cargo test -p solagel   # program (LiteSVM)
-```
-
-| Paket | Kapsam |
-|---|---|
-| program | 23 test: giriş/ödeme/ücret hesabı, yetki kontrolleri, iade, sezon ödülleri, eski ödemenin yeni oturuma uygulanamaması… |
-| sdk | 30 test: PDA'lar, hesap çözümleme, ücret matematiği (program ile birebir), hata çözümleme |
-| server | 62 test: simülasyon kuralları, botlar, stake muhasebesi, çökme kurtarma, zincir işçisi, WebSocket entegrasyonu |
-| shared | 21 test: ikili codec, formüller, metin temizleme |
-
-Ek araçlar: `pnpm -F @solagel/server sim` (bot dengesi simülasyonu), `pnpm -F @solagel/web shot <url> <png>` (ekran görüntüsü).
-
-## ⚖️ Güven modeli ve uyarılar
-
-- Para hareketlerinin tamamı zincirde ve denetlenebilir; oyun sonucunun doğruluğu ise **yetkili oyun sunucusuna güvenir**
-  (gerçek zamanlı oyunlar için standart hibrit model). Sunucu anahtarı yalnızca kasadaki parayı oturumlar arasında
-  paylaştırabilir; kasadan fazlasını ödeyemez, hazineyi değiştiremez.
-- Akıllı kontrat **bağımsız bir denetimden geçmemiştir**. Mainnet'te gerçek parayla açmadan önce denetim yaptırın ve
-  küçük limitlerle başlayın.
-- SOL ile oynanan arenalar bazı ülkelerde **lisans gerektirebilir**. `STAKE_ENABLED=false` ile yalnızca ücretsiz mod açılabilir.
-
----
-
-## 🇬🇧 English summary
-
-**Solagel** is a cute, coin-themed Agar.io with a Solana on-chain layer.
-
-- **Gameplay:** split, eject, merge, "Rug Cactus" viruses, power-ups (Magnet, Pump, HODL Shield, Mega Bag), coin rain,
-  spectating, emotes, filtered chat, private rooms with 5-character codes.
-- **Smart bots** fill rooms when few humans are online: context-steering AI with play styles (farmer, hunter, coward,
-  balanced) and skill levels (flee, lead and chase prey, split-kill, hide behind cacti; hard bots shoot cacti). They make
-  room as humans join and never play in SOL arenas.
-- **Original art:** 24 jelly coin characters with expressive faces, accessories and wobbly physics. Light/dark themes,
-  Turkish/English UI, synthesized sounds, mobile touch controls.
-- **Leaderboards:** live room board, daily and all-time boards, and an **on-chain season leaderboard** (top 20) whose
-  prize pool pays the top 10.
-- **On-chain (Anchor):** profiles (name, skin, XP/level, stats), premium skins bought with SOL, **SOL arenas**
-  (◎0.01 / 0.05 / 0.1 buy-ins; eat players to take their value, cash out any time in 3 s), a fee charged on profit only
-  (default 5 %, half of it funds the season prize pool), crash-safe settlement journal, 24 h self-refunds.
-- **Architecture:** a hybrid model. The authoritative Node game server runs the 30 Hz simulation and settles results
-  on-chain. Money, identity, stats, seasons and prizes live in the Solana program.
-
-```bash
-corepack enable && pnpm install && pnpm dev     # http://localhost:5173, free play, no wallet needed
-```
-
-Localnet end-to-end test, devnet/mainnet deployment and operations are described above and in
-[docs/DEPLOY.md](docs/DEPLOY.md) (in Turkish). The program has **not been audited**, and real-money games may need a licence
-where you operate.
-
-Lisans / License: [MIT](LICENSE)
+[MIT License](LICENSE)

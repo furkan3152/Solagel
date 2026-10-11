@@ -6,18 +6,19 @@
 #   scripts/localnet.sh --stop   stop the validator started by this script
 #
 # State lives in .localnet/ (server + treasury keypairs, ledger, logs, server.env).
-# Requires `anchor build` output (target/deploy) and the Agave CLI tools.
-# Env: ADMIN_KEYPAIR (default ~/.config/solana/id.json), RPC_PORT (default 8899).
+# Requires `scripts/build-program.sh` output and the Agave CLI tools.
+# Env: ADMIN_KEYPAIR (default ~/.config/solana/id.json), RPC_PORT (default 8899),
+#      PROGRAM_ID (defaults to the SDK IDL address; must match it),
+#      SOLAGEL_PROGRAM_SO, SOLAGEL_LOCALNET_DIR (optional isolated test state).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-STATE="$ROOT/.localnet"
+STATE="${SOLAGEL_LOCALNET_DIR:-$ROOT/.localnet}"
 LEDGER="$STATE/test-ledger"
 PID_FILE="$STATE/validator.pid"
 RPC_PORT="${RPC_PORT:-8899}"
 RPC_URL="http://127.0.0.1:$RPC_PORT"
-PROGRAM_SO="$ROOT/target/deploy/solagel.so"
-PROGRAM_KEYPAIR="$ROOT/target/deploy/solagel-keypair.json"
+PROGRAM_SO="${SOLAGEL_PROGRAM_SO:-$ROOT/target/deploy/solagel_compact.so}"
 ADMIN_KEYPAIR="${ADMIN_KEYPAIR:-$HOME/.config/solana/id.json}"
 SERVER_KEYPAIR="$STATE/server.json"
 TREASURY_KEYPAIR="$STATE/treasury.json"
@@ -64,16 +65,17 @@ if [[ "${1:-}" == "--stop" ]]; then
 fi
 if [[ $# -gt 0 ]]; then die "usage: $0 [--stop]"; fi
 
-for tool in solana-test-validator solana solana-keygen curl pnpm; do
+for tool in solana-test-validator solana solana-keygen curl corepack; do
   command -v "$tool" >/dev/null || die "$tool not found in PATH"
 done
-[[ -f "$PROGRAM_SO" ]] || die "$PROGRAM_SO is missing — run \`anchor build\` at the repo root first"
-[[ -f "$PROGRAM_KEYPAIR" ]] || die "$PROGRAM_KEYPAIR is missing — run \`anchor build\` first"
-
-PROGRAM_ID="$(solana-keygen pubkey "$PROGRAM_KEYPAIR")"
+[[ -f "$PROGRAM_SO" ]] || die "$PROGRAM_SO is missing — run scripts/build-program.sh at the repo root first"
 IDL_ID="$(sed -n 's/^ *"address": *"\([1-9A-HJ-NP-Za-km-z]*\)".*/\1/p' "$ROOT/packages/sdk/src/idl/solagel.json" | head -n 1)"
-if [[ -n "$IDL_ID" && "$IDL_ID" != "$PROGRAM_ID" ]]; then
-  die "program keypair is $PROGRAM_ID but the SDK IDL is for $IDL_ID — run \`anchor keys sync && anchor build && pnpm -F @solagel/sdk sync-idl\`"
+[[ -n "$IDL_ID" ]] || die "the SDK IDL has no program address — build and sync the IDL first"
+# Local genesis preloads a program at its declared public address. It does not sign a
+# deployment and needs no program keypair, which a fresh clone cannot reproduce.
+PROGRAM_ID="${PROGRAM_ID:-$IDL_ID}"
+if [[ "$IDL_ID" != "$PROGRAM_ID" ]]; then
+  die "PROGRAM_ID is $PROGRAM_ID but the SDK IDL is for $IDL_ID — rebuild and sync the IDL for the intended local program"
 fi
 
 mkdir -p "$STATE"
@@ -128,7 +130,7 @@ airdrop 10 "$SERVER"
 airdrop 1 "$TREASURY"
 
 admin() {
-  (cd "$ROOT" && pnpm --silent -F @solagel/sdk admin --url "$RPC_URL" --keypair "$ADMIN_KEYPAIR" --program "$PROGRAM_ID" --cluster localnet "$@")
+  (cd "$ROOT" && corepack pnpm --silent -F @solagel/sdk admin --url "$RPC_URL" --keypair "$ADMIN_KEYPAIR" --program "$PROGRAM_ID" --cluster localnet "$@")
 }
 say "initializing the program"
 admin init --server "$SERVER" --treasury "$TREASURY"

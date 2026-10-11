@@ -132,9 +132,12 @@ pub fn handle_settle_session(ctx: Context<SettleSession>, args: SettleArgs) -> R
         profile,
         &mut accounts.season,
         current_season,
-        args.score,
-        args.kills,
-        args.xp,
+        logic::GameResult {
+            score: args.score,
+            kills: args.kills,
+            xp: args.xp,
+        },
+        logic::season_points_from_profit(args.payout, accounts.session.buy_in),
         now,
     );
 

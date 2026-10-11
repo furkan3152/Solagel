@@ -200,6 +200,13 @@ function createInstructionBuilders(program: Program<Solagel>, programId: PublicK
         .instruction();
     },
 
+    activateSession(server: Address, p: { player: Address; arenaId: number; sessionId: IntLike }): Promise<TransactionInstruction> {
+      return program.methods
+        .activateSession(toBN(p.sessionId))
+        .accountsPartial({ server: toPublicKey(server), config: config(), arena: arena(p.arenaId), session: session(p.arenaId, p.player) })
+        .instruction();
+    },
+
     claimSeasonReward(claimer: Address, seasonId: number): Promise<TransactionInstruction> {
       return program.methods
         .claimSeasonReward(seasonId)

@@ -13,6 +13,7 @@ target/
 .anchor/
 test-ledger/
 .localnet/
+.localnet-*/
 .surfpool/
 **/*.rs.bk
 

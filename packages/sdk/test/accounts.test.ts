@@ -13,8 +13,10 @@ import {
   prizeAmount,
   toProfileView,
   toSeasonView,
+  toSessionView,
   type RawProfile,
   type RawSeason,
+  type RawSession,
 } from '../src';
 
 // No RPC is touched: only the coder is used.
@@ -66,6 +68,15 @@ function rawProfile(owner: PublicKey, name: string, xp: number): RawProfile {
 }
 
 describe('account decoding', () => {
+  it('round-trips the activated flag in the new session layout', async () => {
+    const player = Keypair.generate().publicKey;
+    const arena = Keypair.generate().publicKey;
+    const raw: RawSession = { player, arena, arenaId: 1, buyIn: new BN(10_000_000), openedAt: new BN(123), id: new BN(42), activated: true, bump: 254 };
+    const data = await encode(ACCOUNT_NAMES.session, raw);
+    expect(data.length).toBe(8 + 32 + 32 + 2 + 8 + 8 + 8 + 1 + 1);
+    const view = toSessionView('session', coder.decode<RawSession>(ACCOUNT_NAMES.session, data));
+    expect(view).toMatchObject({ activated: true, id: 42, buyIn: 10_000_000, player: player.toBase58() });
+  });
   it('profile round-trips through the Anchor coder (UTF-8 name, numbers, level)', async () => {
     const owner = Keypair.generate().publicKey;
     const data = await encode(ACCOUNT_NAMES.profile, rawProfile(owner, 'Çağrı🚀', 800));

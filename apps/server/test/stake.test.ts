@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -60,6 +60,23 @@ describe('stake ledger', () => {
     expect(ledger.transfer(1, 2, 10, 75, true)).toBe(75_000_000);
     expect(ledger.value(1)).toBe(0);
     expect(ledger.value(2)).toBe(200_000_000);
+  });
+
+  it('rejects unsafe totals and duplicate financial tickets', () => {
+    const ledger = new StakeLedger();
+    ledger.join(entry(1, Number.MAX_SAFE_INTEGER));
+    expect(() => ledger.join(entry(2, 1))).toThrow(/safe accounting/);
+    expect(() => ledger.join({ ...entry(2, 0), session: 'session1' })).toThrow(/already staked/);
+    expect(ledger.total()).toBe(Number.MAX_SAFE_INTEGER);
+  });
+
+  it('invalid simulation masses cannot poison the balance ledger with NaN', () => {
+    const ledger = new StakeLedger();
+    ledger.join(entry(1, 100));
+    ledger.join(entry(2, 100));
+    expect(ledger.transfer(1, 2, NaN, 100, false)).toBe(0);
+    expect(ledger.transfer(1, 2, 100, Infinity, true)).toBe(0);
+    expect(ledger.total()).toBe(200);
   });
 
   it('ignores unknown players and self transfers', () => {
@@ -132,16 +149,64 @@ describe('settlement journal', () => {
     expect(j.pending).toHaveLength(1);
   });
 
-  it('a corrupted file is moved aside instead of crashing', () => {
+  it('refuses startup on a corrupt financial journal and preserves it for recovery', () => {
     const dir = mkdtempSync(join(tmpdir(), 'solagel-journal-'));
     const path = join(dir, 'journal.json');
-    writeFileSync(path, '{"version":1,"pending":[{"key"'); // truncated write
+    const broken = '{"version":1,"pending":[{"key"';
+    writeFileSync(path, broken);
     const logs: string[] = [];
-    const j = new Journal(path, (m) => logs.push(m));
-    expect(j.pending).toHaveLength(0);
+    expect(() => new Journal(path, (m) => logs.push(m))).toThrow(/refusing to start/);
     expect(logs[0]).toMatch(/unreadable/);
-    expect(existsSync(path)).toBe(false);
-    expect(readdirSync(dir).some((f) => f.includes('corrupt'))).toBe(true);
+    expect(existsSync(path)).toBe(true);
+    expect(readFileSync(path, 'utf8')).toBe(broken);
+  });
+
+  it('rejects invalid balances and competing claims without changing the last good snapshot', () => {
+    const j = new Journal(null);
+    j.commit({ roomId: 'stake-1', live: [live('s', 100)] });
+    expect(() => j.enqueue(item('s', 100))).toThrow(/duplicate financial claim/);
+    expect(() => j.enqueue(item('bad', -1))).toThrow(/invalid journal balance/);
+    expect(j.pending).toHaveLength(0);
+    expect(j.live()[0].value).toBe(100);
+  });
+
+  it('does not publish an in-memory commit when persistence fails', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'solagel-journal-'));
+    const path = join(dir, 'journal.json');
+    const j = new Journal(path);
+    j.enqueue(item('first', 10));
+    mkdirSync(`${path}.tmp`);
+    expect(() => j.enqueue(item('second', 20))).toThrow();
+    expect(j.healthy).toBe(false);
+    expect(() => j.remove('first')).toThrow(/financial activity is halted/);
+    expect(j.pending.map((p) => p.key)).toEqual(['first']);
+    expect(new Journal(path).pending.map((p) => p.key)).toEqual(['first']);
+  });
+
+  it('persists broadcast signatures so lost confirmations survive a process restart', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'solagel-journal-'));
+    const path = join(dir, 'journal.json');
+    const j = new Journal(path);
+    j.enqueue(item('s', 10));
+    j.submitted('s', 'signature-before-send');
+    expect(new Journal(path).pending[0].submittedSignature).toBe('signature-before-send');
+  });
+
+  it('archives confirmed receipts atomically and isolates them by wallet and session incarnation', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'solagel-journal-'));
+    const path = join(dir, 'journal.json');
+    const j = new Journal(path);
+    j.enqueue({ ...item('reused-session', 10), sessionId: 7 });
+    j.complete('reused-session', 'sig-old', 100);
+    j.enqueue({ ...item('reused-session', 15), sessionId: 8 });
+    j.complete('reused-session', 'sig-new', 200);
+    const recovered = new Journal(path);
+    expect(recovered.pending).toHaveLength(0);
+    expect(recovered.receiptsFor('w')).toMatchObject([
+      { signature: 'sig-old', sessionId: 7, arenaId: 1, payout: 10 },
+      { signature: 'sig-new', sessionId: 8, arenaId: 1, payout: 15 },
+    ]);
+    expect(recovered.receiptsFor('another-wallet')).toEqual([]);
   });
 
   it('retries with backoff', () => {

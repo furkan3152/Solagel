@@ -71,7 +71,7 @@ export interface ChainClient {
   fetchSession(arenaId: number, player: string): Promise<SessionView | null>;
   fetchSessions(): Promise<SessionView[]>;
   fetchSeason(id: number): Promise<SdkSeasonView | null>;
-  readonly ix: Pick<SolagelClient['ix'], 'settleSession' | 'recordGame'>;
+  readonly ix: Pick<SolagelClient['ix'], 'settleSession' | 'recordGame' | 'activateSession'>;
 }
 
 export interface SolanaChainDeps {
@@ -92,7 +92,7 @@ export interface SolanaChainDeps {
   loops?: boolean;
 }
 
-export type SettledEvent = { key: string; player: string; signature: string; kind: 'settle' | 'record'; payout?: number };
+export type SettledEvent = { key: string; player: string; signature: string; kind: 'settle' | 'record'; payout?: number; sessionId?: number; arenaId?: number };
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
@@ -180,7 +180,8 @@ const toEntry = (e: LeaderEntryView): SeasonEntry => ({ player: e.player, name: 
  */
 export class SolanaChain implements ChainGateway {
   enabled = false;
-  stakeEnabled = false;
+  private stakeAllowed = false;
+  get stakeEnabled(): boolean { return this.stakeAllowed && this.journal.healthy; }
 
   private client: ChainClient | null = null;
   private sdk: SolagelClient | null = null;
@@ -330,7 +331,7 @@ export class SolanaChain implements ChainGateway {
       this.log('chain: server authority matches again — settlements resume');
     }
     this.authorized = authorized;
-    this.stakeEnabled = authorized && this.cfg.chain.stakeEnabled;
+    this.stakeAllowed = authorized && this.cfg.chain.stakeEnabled && !config.paused;
   }
 
   /** Cached config, re-read when older than `maxAgeMs` (the cached one is kept on RPC errors). */
@@ -389,9 +390,16 @@ export class SolanaChain implements ChainGateway {
       cluster,
       programId: this.client.programId.toBase58(),
       rpcUrl: publicRpcUrl ?? clusterDefaultRpc(cluster),
-      stakeEnabled: this.stakeEnabled,
+      stakeEnabled: this.stakeEnabled && this.journal.healthy,
       currentSeason: this.config?.currentSeason ?? null,
     };
+  }
+
+  async readAdminConfig(): Promise<ConfigView | null> {
+    if (!this.client) return null;
+    const config = await this.client.fetchConfig();
+    if (config) this.applyConfig(config);
+    return config;
   }
 
   /** Cached 60 s (`fresh` bypasses). Never throws: RPC errors yield the last known value or null. */
@@ -428,10 +436,32 @@ export class SolanaChain implements ChainGateway {
     try {
       const s = await this.client.fetchSession(arenaId, player);
       if (!s) return null;
-      return { address: s.address, id: s.id, player: s.player, arenaId: s.arenaId, buyIn: s.buyIn, openedAt: s.openedAt };
+      return { address: s.address, id: s.id, player: s.player, arenaId: s.arenaId, buyIn: s.buyIn, openedAt: s.openedAt, activated: s.activated };
     } catch (err) {
       this.warn('session', `chain: session lookup failed (${firstLine(err)})`);
       return null;
+    }
+  }
+
+  async activateSession(arenaId: number, player: string, sessionId: number): Promise<boolean> {
+    if (!this.enabled || !this.client || !this.keypair || !this.stakeEnabled || !this.journal.healthy) return false;
+    try {
+      const config = await this.freshConfig();
+      if (!config || !this.stakeEnabled) return false;
+      const session = await this.client.fetchSession(arenaId, player);
+      if (!session || session.id !== sessionId || session.activated) return false;
+      // A crash after chain activation must have a durable buy-in claim to recover.
+      if (!this.journal.live().some((s) => s.session === session.address && s.sessionId === sessionId && s.player === player && s.value === session.buyIn)) {
+        this.log(`!!! chain: refusing activation of ${short(session.address)} without a durable admission reservation`);
+        return false;
+      }
+      const ix = await this.client.ix.activateSession(this.keypair.publicKey, { player, arenaId, sessionId });
+      if (this.deps.send) await withTimeout(this.deps.send([ix], () => {}), SEND_TIMEOUT_MS, 'activation');
+      else await withTimeout(this.sdk!.sendAndConfirm([ix], [this.keypair], { priorityMicroLamports: this.cfg.chain.priorityFeeMicroLamports }), SEND_TIMEOUT_MS, 'activation');
+      return true;
+    } catch (err) {
+      this.log(`chain: activation failed for ${short(player)}: ${firstLine(err)}; admission claim stays recoverable`);
+      return false;
     }
   }
 
@@ -552,7 +582,7 @@ export class SolanaChain implements ChainGateway {
 
   /** Starts due journal items, oldest first, keeping at most 4 in flight. */
   private pump(): void {
-    if (this.stopped || !this.enabled || !this.client || !this.keypair) return;
+    if (this.stopped || !this.enabled || !this.client || !this.keypair || !this.journal.healthy) return;
     const now = this.now();
     const due = this.journal.pending
       .filter((item) => item.nextAttemptAt <= now && !this.inFlight.has(item.key))
@@ -562,12 +592,12 @@ export class SolanaChain implements ChainGateway {
       const run = this.process(item)
         .catch((err) => {
           this.log(`chain: worker error on ${short(item.key)}: ${(err as Error).stack ?? err}`);
-          if (this.isPending(item.key)) this.journal.retryLater(item.key, firstLine(err), this.now());
+          if (this.journal.healthy && this.isPending(item.key)) this.journal.retryLater(item.key, firstLine(err), this.now());
         })
         .finally(() => {
           // Safety net: an item must never stay due after an attempt (no hot loop).
           const left = this.journal.pending.find((p) => p.key === item.key);
-          if (left && left.nextAttemptAt <= this.now()) this.journal.retryLater(item.key, left.lastError ?? 'no progress', this.now());
+          if (this.journal.healthy && left && left.nextAttemptAt <= this.now()) this.journal.retryLater(item.key, left.lastError ?? 'no progress', this.now());
           this.inFlight.delete(item.key);
           if (!this.stopped) this.kick();
         });
@@ -588,9 +618,9 @@ export class SolanaChain implements ChainGateway {
 
   private async processSettle(item: SettlementItem): Promise<void> {
     const { key } = item;
-    if (item.arenaId === undefined || !isPubkey(item.player) || !Number.isSafeInteger(item.payout) || (item.payout ?? -1) < 0) {
-      this.log(`!!! chain: dropping malformed settlement (needs manual review): ${JSON.stringify(item)}`);
-      this.journal.remove(key);
+    if (!Number.isInteger(item.arenaId) || !isPubkey(item.player) || !Number.isSafeInteger(item.sessionId) || !Number.isSafeInteger(item.payout) || (item.payout ?? -1) < 0) {
+      this.log(`!!! chain: malformed settlement retained for manual recovery: ${JSON.stringify(item)}`);
+      this.journal.retryLater(key, 'invalid settlement or missing exact session id; manual recovery required', this.now());
       return;
     }
     const payout = item.payout!;
@@ -607,13 +637,12 @@ export class SolanaChain implements ChainGateway {
 
     let session: SessionView | null;
     try {
-      session = await this.client!.fetchSession(item.arenaId, item.player);
+      session = await this.client!.fetchSession(item.arenaId!, item.player);
     } catch (err) {
       this.journal.retryLater(key, `session lookup failed: ${firstLine(err)}`, this.now());
       return;
     }
-    // Journal items written before session ids existed fall back to the open time.
-    const sameSession = session && (item.sessionId !== undefined ? session.id === item.sessionId : session.openedAt * 1000 <= item.createdAt);
+    const sameSession = session && session.id === item.sessionId && session.address === item.session;
     if (!session || !sameSession) {
       await this.dropFinished(item, session ? `on-chain session is #${session.id}, item is for #${item.sessionId}` : 'session already closed');
       return;
@@ -626,7 +655,7 @@ export class SolanaChain implements ChainGateway {
 
     const ix = await this.client!.ix.settleSession(this.keypair!.publicKey, {
       player: item.player,
-      arenaId: item.arenaId,
+      arenaId: item.arenaId!,
       sessionId: session.id,
       payout,
       score: clampInt(item.score, 0xffff_ffff),
@@ -643,10 +672,10 @@ export class SolanaChain implements ChainGateway {
     }
     try {
       const signature = await this.send(key, [ix]);
-      this.journal.remove(key);
+      this.journal.complete(key, signature, this.now());
       this.sentSignatures.delete(key);
       this.log(`chain: settled ${short(key)} (${item.reason ?? 'settle'}) · ${sol(payout)} → ${short(item.player)} · ${signature}`);
-      this.emit({ key, player: item.player, signature, kind: 'settle', payout });
+      this.emit({ key, player: item.player, signature, kind: 'settle', payout, sessionId: item.sessionId, arenaId: item.arenaId });
     } catch (err) {
       await this.onSendError(item, err, config.treasury);
     }
@@ -706,25 +735,32 @@ export class SolanaChain implements ChainGateway {
 
   /** The session is gone (or re-opened): drop the item, reporting our own earlier send if it landed. */
   private async dropFinished(item: SettlementItem, why: string): Promise<void> {
-    const signature = this.sentSignatures.get(item.key);
+    const signature = this.sentSignatures.get(item.key) ?? item.submittedSignature;
     this.sentSignatures.delete(item.key);
-    this.journal.remove(item.key);
-    if (signature && (await this.landed(signature))) {
-      this.log(`chain: settled ${short(item.key)} (confirmation arrived late) · ${signature}`);
-      this.emit({ key: item.key, player: item.player, signature, kind: 'settle', payout: item.payout });
+    const landed = signature ? await this.landed(signature) : false;
+    if (signature && landed === null) {
+      this.journal.retryLater(item.key, 'session closed; waiting to verify the submitted transaction receipt', this.now());
       return;
     }
+    if (signature && landed) {
+      this.journal.complete(item.key, signature, this.now());
+      this.log(`chain: settled ${short(item.key)} (confirmation arrived late) · ${signature}`);
+      this.emit({ key: item.key, player: item.player, signature, kind: 'settle', payout: item.payout, sessionId: item.sessionId, arenaId: item.arenaId });
+      return;
+    }
+    this.journal.remove(item.key);
     this.log(`chain: dropping settlement ${short(item.key)} for ${short(item.player)} — ${why} (already settled or refunded)`);
   }
 
-  private async landed(signature: string): Promise<boolean> {
+  private async landed(signature: string): Promise<boolean | null> {
     try {
-      if (this.deps.signatureLanded) return await this.deps.signatureLanded(signature);
-      if (!this.connection) return false;
+      if (this.deps.signatureLanded) return (await this.deps.signatureLanded(signature)) ? true : null;
+      if (!this.connection) return null;
       const status = (await this.connection.getSignatureStatuses([signature], { searchTransactionHistory: true })).value[0];
-      return !!status && !status.err && status.confirmationStatus !== 'processed';
+      if (!status || status.confirmationStatus === 'processed') return null;
+      return !status.err;
     } catch {
-      return false;
+      return null;
     }
   }
 
@@ -737,7 +773,11 @@ export class SolanaChain implements ChainGateway {
 
     if (code === ERR.sessionMismatch || code === ERR.accountNotInitialized || code === ERR.accountOwnedByWrongProgram) {
       if (item.kind === 'settle') {
-        await this.dropFinished(item, label);
+        // These errors can refer to a season/profile account as well as the session.
+        // Only a fresh session read may prove that our financial claim is finished.
+        const session = await this.client!.fetchSession(item.arenaId!, item.player);
+        if (!session || (item.sessionId !== undefined && session.id !== item.sessionId)) await this.dropFinished(item, label);
+        else this.journal.retryLater(key, label, this.now());
       } else {
         this.log(`chain: dropping ${what} — ${label}`);
         this.journal.remove(key);
@@ -760,8 +800,9 @@ export class SolanaChain implements ChainGateway {
         this.journal.retryLater(key, `treasury changed — retrying (${label})`, this.now());
         return;
       }
-      this.log(`!!! chain: dropping ${what} — rejected as unauthorized (${label}) ${JSON.stringify(item)}`);
-      this.journal.remove(key);
+      this.log(`!!! chain: ${what} rejected as unauthorized (${label}); financial claims stay queued`);
+      if (item.kind === 'settle') this.journal.retryLater(key, label, this.now());
+      else this.journal.remove(key);
       return;
     }
     if (code === ERR.constraintSeeds || code === ERR.constraintAddress) {
@@ -780,7 +821,10 @@ export class SolanaChain implements ChainGateway {
   }
 
   private send(key: string, ixs: TransactionInstruction[]): Promise<string> {
-    const onSignature = (signature: string) => this.sentSignatures.set(key, signature);
+    const onSignature = (signature: string) => {
+      this.journal.submitted(key, signature);
+      this.sentSignatures.set(key, signature);
+    };
     if (this.deps.send) return withTimeout(this.deps.send(ixs, onSignature), SEND_TIMEOUT_MS, 'send');
     return withTimeout(
       this.sdk!.sendAndConfirm(ixs, [this.keypair!], { priorityMicroLamports: this.cfg.chain.priorityFeeMicroLamports, onSignature }),
@@ -799,7 +843,7 @@ export class SolanaChain implements ChainGateway {
    * Returns the number of sessions queued.
    */
   async sweepStale(): Promise<number> {
-    if (this.stopped || !this.enabled || this.authorized !== true || !this.client) return 0;
+    if (this.stopped || !this.enabled || this.authorized !== true || !this.client || !this.journal.healthy) return 0;
     let sessions: SessionView[];
     try {
       sessions = await this.client.fetchSessions();
@@ -814,6 +858,10 @@ export class SolanaChain implements ChainGateway {
     const enqueue: SettlementItem[] = [];
     for (const s of sessions) {
       if (live.has(s.address) || pending.has(s.address)) continue;
+      if (s.activated) {
+        this.warn(`orphan-${s.address}`, `!!! chain: activated session ${short(s.address)} has no journal claim; restore its earned balance from backup. Original-buy-in refund is forbidden.`);
+        continue;
+      }
       if (now / 1000 - s.openedAt < STALE_SESSION_AFTER_S) continue;
       if (only.length > 0 && !only.includes(s.arenaId)) continue;
       enqueue.push({

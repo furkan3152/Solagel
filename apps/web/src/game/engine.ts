@@ -7,6 +7,7 @@ import {
   encodeTarget,
   getSkin,
   levelFromXp,
+  type ClientMessage,
   type ServerMessage,
   type SnapshotData,
 } from '@solagel/shared';
@@ -47,6 +48,15 @@ export class GameEngine {
   private snapNext = true;
   private rngState = 7;
   private wasStakeRoom: string | null = null;
+  private authenticated = false;
+  private authPending = false;
+  private pendingJoin: string | null = null;
+  private resumeStakeRoom: string | null = null;
+  private stakeSession: { arenaId: number; sessionId: number } | null = null;
+  private cashoutRequested = false;
+  private cashoutRequestedAt = 0;
+  private exitStakeRequested = false;
+  private deferredIdentity: { auth: Extract<ClientMessage, { t: 'auth' }> | null } | null = null;
   private unsub: () => void;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
@@ -55,7 +65,13 @@ export class GameEngine {
       SERVER.ws,
       {
         onOpen: () => useUi.setState({ connected: true, connecting: false }),
-        onClose: () => useUi.setState({ connected: false, connecting: true }),
+        onClose: () => {
+          this.authenticated = false;
+          this.authPending = false;
+          this.pendingJoin = null;
+          this.cashoutRequested = false;
+          useUi.setState({ connected: false, connecting: true, cashout: { state: 'idle', until: 0 } });
+        },
         onMessage: (m) => this.onMessage(m),
         onSnapshot: (s) => this.onSnapshot(s),
       },
@@ -131,20 +147,43 @@ export class GameEngine {
 
   play(room: string): void {
     sound.unlock();
+    if (this.hasActiveStake()) {
+      if (room !== this.wasStakeRoom) this.requestStakeExit();
+      return;
+    }
+    if (!this.net.open) {
+      toast('warn', 'Reconnecting to the arena. Please wait.');
+      return;
+    }
+    const auth = useUi.getState().auth;
+    if (auth && !this.authenticated) {
+      this.pendingJoin = room;
+      if (!this.authPending) this.sendAuthentication({ t: 'auth', token: auth.token });
+      return;
+    }
+    this.sendJoin(room);
+  }
+
+  private sendJoin(room: string): void {
     const { settings } = useUi.getState();
     this.net.send({ t: 'join', room, name: settings.name || 'Coinie', skin: settings.skin });
   }
 
   spectate(room?: string): void {
+    if (this.requestStakeExit()) return;
+    this.pendingJoin = null;
     this.net.send({ t: 'spectate', room });
   }
 
   spectateNext(): void {
+    if (this.requestStakeExit()) return;
     this.net.send({ t: 'spectate', next: true });
   }
 
   /** Leaves the current game and shows the lobby (spectating the busiest room). */
   backToLobby(): void {
+    if (this.requestStakeExit()) return;
+    this.pendingJoin = null;
     const s = useUi.getState();
     if (s.screen === 'playing') this.net.send({ t: 'leave' });
     this.world.myPid = null;
@@ -153,6 +192,8 @@ export class GameEngine {
   }
 
   watch(): void {
+    if (this.requestStakeExit()) return;
+    this.pendingJoin = null;
     useUi.setState({ screen: 'spectating', death: null, cashoutResult: null });
     this.net.send({ t: 'spectate', room: useUi.getState().room?.id });
   }
@@ -179,8 +220,32 @@ export class GameEngine {
 
   cashout(): void {
     const s = useUi.getState();
-    if (s.screen !== 'playing' || s.room?.mode !== 'stake' || s.cashout.state !== 'idle') return;
+    if (!this.hasActiveStake() || s.cashout.state !== 'idle' || (this.cashoutRequested && performance.now() - this.cashoutRequestedAt < 1500)) return;
+    if (!this.net.open || this.resumeStakeRoom || this.world.myPid === null) {
+      this.exitStakeRequested = true;
+      toast('warn', 'Reconnecting before cash-out. Your cell remains in the arena.');
+      return;
+    }
+    this.cashoutRequested = true;
+    this.cashoutRequestedAt = performance.now();
     this.net.send({ t: 'cashout' });
+  }
+
+  private hasActiveStake(): boolean {
+    const s = useUi.getState();
+    return s.screen === 'playing' && (s.room?.mode === 'stake' || this.wasStakeRoom !== null);
+  }
+
+  /** Paid cells must stay visible until the server finishes cash-out or reports death. */
+  private requestStakeExit(): boolean {
+    if (!this.hasActiveStake()) return false;
+    const alreadyRequested = this.exitStakeRequested;
+    this.exitStakeRequested = true;
+    this.cashout();
+    if (!alreadyRequested && this.net.open && !this.resumeStakeRoom) {
+      toast('info', 'Cash-out requested. Stay in the arena until it completes; taking damage interrupts it.');
+    }
+    return true;
   }
 
   chat(text: string): void {
@@ -189,16 +254,61 @@ export class GameEngine {
   }
 
   authToken(token: string): void {
-    this.net.send({ t: 'auth', token });
+    this.authenticate({ t: 'auth', token });
   }
 
   authSignature(pubkey: string, message: string, signature: string): void {
-    this.net.send({ t: 'auth', pubkey, message, signature });
+    this.authenticate({ t: 'auth', pubkey, message, signature });
   }
 
   logout(): void {
+    if (this.hasActiveStake()) {
+      this.deferredIdentity = { auth: null };
+      this.requestStakeExit();
+      return;
+    }
+    this.authenticated = false;
+    this.authPending = false;
+    this.pendingJoin = null;
     this.net.send({ t: 'logout' });
     useUi.setState({ auth: null });
+  }
+
+  private authenticate(message: Extract<ClientMessage, { t: 'auth' }>): void {
+    const auth = useUi.getState().auth;
+    const sameWallet = 'token' in message ? message.token === auth?.token : message.pubkey === auth?.pubkey;
+    if (this.hasActiveStake() && (!sameWallet || this.deferredIdentity)) {
+      this.deferredIdentity = { auth: message };
+      this.requestStakeExit();
+      return;
+    }
+    this.sendAuthentication(message);
+  }
+
+  private sendAuthentication(message: Extract<ClientMessage, { t: 'auth' }>): void {
+    if (!this.net.open) return;
+    this.authPending = true;
+    this.net.send(message);
+  }
+
+  private flushIdentityChange(): void {
+    const change = this.deferredIdentity;
+    this.deferredIdentity = null;
+    if (!change) return;
+    this.logout();
+    if (change.auth) this.sendAuthentication(change.auth);
+  }
+
+  private failStakeResume(): void {
+    this.resumeStakeRoom = null;
+    this.pendingJoin = null;
+    this.wasStakeRoom = null;
+    this.exitStakeRequested = false;
+    this.cashoutRequested = false;
+    this.world.reset();
+    useUi.setState({ screen: 'lobby', me: null, chatOpen: false, powerups: [], cashout: { state: 'idle', until: 0 } });
+    this.flushIdentityChange();
+    this.net.send({ t: 'spectate' });
   }
 
   static storedToken(pubkey: string): string | null {
@@ -228,30 +338,45 @@ export class GameEngine {
     const now = performance.now();
     switch (m.t) {
       case 'welcome': {
-        useUi.setState({ connected: true, connecting: false, rooms: m.rooms, chain: m.chain, online: m.online });
+        useUi.setState({ connected: true, connecting: false, rooms: m.rooms, chain: m.chain, online: m.online, admissionsPaused: m.chain.admissionsPaused ?? false });
+        this.world.reset();
+        this.snapNext = true;
         const auth = useUi.getState().auth;
-        if (auth) this.authToken(auth.token);
         this.resize();
         const screen = useUi.getState().screen;
         if (this.wasStakeRoom && (screen === 'playing' || screen === 'lobby')) {
-          // reconnect: our stake cells are still in the arena (AFK) — reclaim them
-          this.play(`stake:${this.wasStakeRoom.slice(6)}`);
+          // The server refreshes the wallet profile asynchronously. Reclaim AFK
+          // cells only after it acknowledges authentication on this connection.
+          this.resumeStakeRoom = this.wasStakeRoom;
+          this.pendingJoin = this.wasStakeRoom;
+          if (!auth) {
+            this.failStakeResume();
+            toast('warn', 'Sign in with the original wallet to resume your SOL session.');
+            return;
+          }
         } else {
           if (screen === 'playing') useUi.setState({ screen: 'lobby' });
           this.net.send({ t: 'spectate' });
         }
+        if (auth && !this.authPending) this.sendAuthentication({ t: 'auth', token: auth.token });
         return;
       }
       case 'rooms':
-        useUi.setState({ rooms: m.rooms, online: m.online });
+        useUi.setState({ rooms: m.rooms, online: m.online, ...(m.chain ? { chain: m.chain, admissionsPaused: m.chain.admissionsPaused ?? false } : {}) });
         return;
       case 'authed': {
+        if (!this.authPending) return;
+        this.authPending = false;
+        this.authenticated = true;
         useUi.setState({ auth: { pubkey: m.pubkey, token: m.token, profile: m.profile } });
         try {
           localStorage.setItem(TOKEN_KEY, JSON.stringify({ pubkey: m.pubkey, token: m.token, exp: Date.now() + 23 * 3600_000 }));
         } catch {
           /* ignore */
         }
+        const room = this.pendingJoin;
+        this.pendingJoin = null;
+        if (room) this.sendJoin(room);
         return;
       }
       case 'xp': {
@@ -264,17 +389,27 @@ export class GameEngine {
         this.world.myPid = m.playerId;
         this.world.width = m.room.width;
         this.world.height = m.room.height;
-        this.wasStakeRoom = m.room.mode === 'stake' ? m.room.id : null;
+        const arenaId = m.arenaId ?? m.room.arenaId;
+        // Public room IDs use "stake-1"; join requests use "stake:1".
+        this.wasStakeRoom = m.room.mode === 'stake' && arenaId !== undefined ? `stake:${arenaId}` : null;
+        this.resumeStakeRoom = null;
+        this.pendingJoin = null;
+        this.cashoutRequested = false;
+        this.stakeSession = m.room.mode === 'stake' && m.arenaId !== undefined && m.sessionId !== undefined
+          ? { arenaId: m.arenaId, sessionId: m.sessionId }
+          : null;
         useUi.setState({
           screen: 'playing',
           room: m.room,
           me: { pid: m.playerId, name: m.name, skin: m.skin },
           death: null,
           cashoutResult: null,
+          lastSettlement: null,
           powerups: [],
           cashout: { state: 'idle', until: 0 },
           hud: { ...useUi.getState().hud, value: m.value ?? null },
         });
+        if (this.exitStakeRequested) this.cashout();
         return;
       }
       case 'spectating': {
@@ -316,17 +451,22 @@ export class GameEngine {
         sound.death();
         this.world.myPid = null;
         this.wasStakeRoom = null;
+        this.exitStakeRequested = false;
+        this.cashoutRequested = false;
         useUi.setState({ screen: 'dead', death: { stats: m.stats, killer: m.killer, killerSkin: m.killerSkin }, powerups: [], cashout: { state: 'idle', until: 0 }, chatOpen: false });
+        this.flushIdentityChange();
         return;
       }
       case 'cashout': {
+        this.cashoutRequested = false;
         if (m.state === 'started') {
           useUi.setState({ cashout: { state: 'channel', until: now + (m.ms ?? RULES.cashoutMs) } });
           return;
         }
         if (m.state === 'canceled') {
+          this.exitStakeRequested = false;
           useUi.setState({ cashout: { state: 'idle', until: 0 } });
-          toast('warn', '💥 Cash-out interrupted!');
+          toast('warn', 'Cash-out interrupted. Stay in the arena and try again before leaving.');
           return;
         }
         sound.cashout();
@@ -334,10 +474,16 @@ export class GameEngine {
         if (me) this.particles.coinBurst(me.x, me.y, Math.max(60, me.maxR), ['#FFD54A', '#FFE873', '#FFC93C'], 40);
         this.world.myPid = null;
         this.wasStakeRoom = null;
+        this.exitStakeRequested = false;
         useUi.setState({ screen: 'cashedout', cashoutResult: { value: m.value ?? 0, stats: m.stats ?? null }, cashout: { state: 'idle', until: 0 }, chatOpen: false });
+        this.flushIdentityChange();
         return;
       }
       case 'settled':
+        // An earlier game may settle after a new one starts. Only its exact
+        // arena/session receipt can confirm the current paid game's result.
+        if (m.kind !== 'record' && (!this.stakeSession || m.arenaId !== this.stakeSession.arenaId || m.sessionId !== this.stakeSession.sessionId)) return;
+        if (m.kind === 'record' && this.stakeSession) return;
         useUi.setState({ lastSettlement: { kind: m.kind, signature: m.signature, payout: m.payout, at: Date.now() } });
         return;
       case 'event': {
@@ -361,6 +507,16 @@ export class GameEngine {
         return;
       }
       case 'error': {
+        this.cashoutRequested = false;
+        if (m.code === 'auth_failed' || m.code === 'auth_required') {
+          this.authenticated = false;
+          this.authPending = false;
+          useUi.setState({ auth: null });
+          try { localStorage.removeItem(TOKEN_KEY); } catch { /* storage unavailable */ }
+        }
+        if (this.resumeStakeRoom) this.failStakeResume();
+        else this.pendingJoin = null;
+        if (m.code === 'rate_limited') this.authPending = false;
         const key = `err.${m.code}` as const;
         toast(m.code === 'rate_limited' ? 'warn' : 'error', t(key as 'err.bad_request') || m.message, undefined, m.code === 'version_mismatch' ? 600_000 : 5000);
         if (m.code === 'skin_locked') useUi.setState((s) => ({ settings: { ...s.settings, skin: 0 } }));

@@ -22,6 +22,8 @@ import { MAX_STAKE_SESSION_AGE_S } from '../rooms/room';
 import type { Journal } from '../stake/journal';
 import { Conn } from './conn';
 
+const ACTIVATION_TIMEOUT_MS = 45_000;
+
 export const profileSummary = (p: ChainProfile | null): ProfileSummary | null =>
   p ? { name: p.name, skin: p.skin, xp: p.xp, level: levelFromXp(p.xp), premiumSkins: p.premiumSkins } : null;
 
@@ -59,7 +61,7 @@ export class Gateway {
     chain.onSettled((e) => {
       for (const conn of this.rooms.connsByWallet(e.player)) {
         const kind = e.kind === 'record' ? 'record' : (e.payout ?? 0) > 0 ? 'cashout' : 'death';
-        conn.send({ t: 'settled', kind, signature: e.signature, payout: e.payout });
+        conn.send({ t: 'settled', kind, signature: e.signature, payout: e.payout, sessionId: e.sessionId, arenaId: e.arenaId });
       }
       void this.refreshProfile(e.player);
     });
@@ -93,7 +95,7 @@ export class Gateway {
         }
       }, 25_000),
       setInterval(() => {
-        const msg = { t: 'rooms', rooms: this.rooms.list(), online: this.rooms.online() } as const;
+        const msg = { t: 'rooms', rooms: this.rooms.list(), online: this.rooms.online(), chain: { ...this.chain.status(), admissionsPaused: this.rooms.admissionsPaused } } as const;
         for (const c of this.rooms.conns) if (c.helloed && !c.player?.alive) c.send(msg);
       }, 5000),
     );
@@ -118,6 +120,8 @@ export class Gateway {
   }
 
   private onClose(conn: Conn): void {
+    conn.actionVersion++;
+    conn.authVersion++;
     const n = (this.perIp.get(conn.ip) ?? 1) - 1;
     if (n <= 0) this.perIp.delete(conn.ip);
     else this.perIp.set(conn.ip, n);
@@ -134,6 +138,22 @@ export class Gateway {
     for (const conn of this.rooms.connsByWallet(wallet)) {
       conn.profile = profile;
       if (profile) conn.send({ t: 'xp', xp: profile.xp, level: levelFromXp(profile.xp) });
+    }
+  }
+
+  private async activateTicket(arenaId: number, wallet: string, sessionId: number): Promise<boolean> {
+    if (!this.chain.activateSession) return false;
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      return await Promise.race([
+        this.chain.activateSession(arenaId, wallet, sessionId),
+        new Promise<boolean>((_, reject) => {
+          timer = setTimeout(() => reject(new Error('Arena activation timed out')), ACTIVATION_TIMEOUT_MS);
+          timer.unref();
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
     }
   }
 
@@ -166,7 +186,7 @@ export class Gateway {
           v: PROTOCOL_VERSION,
           serverTime: Date.now(),
           rooms: this.rooms.list(),
-          chain: this.chain.status(),
+          chain: { ...this.chain.status(), admissionsPaused: this.rooms.admissionsPaused },
           online: this.rooms.online(),
         });
         return;
@@ -175,6 +195,9 @@ export class Gateway {
         await this.onAuth(conn, msg);
         return;
       case 'logout':
+        conn.actionVersion++;
+        conn.authVersion++;
+        conn.room?.leave(conn, 'switch');
         conn.wallet = null;
         conn.profile = null;
         return;
@@ -188,11 +211,13 @@ export class Gateway {
           this.error(conn, 'room_not_found', 'Room not found');
           return;
         }
+        conn.actionVersion++;
         if (conn.player?.alive && conn.room !== room) conn.room?.leave(conn, 'switch');
         room.spectate(conn, msg.next === true);
         return;
       }
       case 'leave':
+        conn.actionVersion++;
         conn.room?.leave(conn, 'left');
         conn.send({ t: 'left' });
         return;
@@ -231,9 +256,24 @@ export class Gateway {
       this.error(conn, 'auth_failed', 'Wallet login failed — please sign again.');
       return;
     }
-    conn.wallet = wallet;
-    conn.profile = await this.chain.getProfile(wallet, true).catch(() => null);
+    if (conn.wallet !== wallet) {
+      conn.actionVersion++;
+      conn.authVersion++;
+      conn.room?.leave(conn, 'switch');
+      conn.wallet = wallet;
+      conn.profile = null;
+    }
+    const authVersion = conn.authVersion;
+    const profile = await this.chain.getProfile(wallet, true).catch(() => null);
+    if (!conn.open || conn.wallet !== wallet || conn.authVersion !== authVersion) return;
+    conn.profile = profile;
     conn.send({ t: 'authed', pubkey: wallet, token: this.auth.issueToken(wallet), profile: profileSummary(conn.profile) });
+    // A confirmed payout may have arrived while this wallet was offline.
+    // Clients match arena + session identity before updating a result screen.
+    for (const receipt of this.journal.receiptsFor(wallet)) {
+      conn.send({ t: 'settled', kind: receipt.payout > 0 ? 'cashout' : 'death', signature: receipt.signature,
+        payout: receipt.payout, sessionId: receipt.sessionId, arenaId: receipt.arenaId });
+    }
   }
 
   private async onJoin(conn: Conn, msg: Record<string, unknown>): Promise<void> {
@@ -244,9 +284,22 @@ export class Gateway {
       return;
     }
     conn.joining = true;
+    const actionVersion = conn.actionVersion;
+    const wallet = conn.wallet;
+    const canceled = () => !conn.open || conn.actionVersion !== actionVersion || conn.wallet !== wallet;
     try {
       const skin = Number.isInteger(msg.skin) && (msg.skin as number) >= 0 && (msg.skin as number) < SKIN_COUNT ? (msg.skin as number) : 0;
-      if (conn.wallet) conn.profile = await this.chain.getProfile(conn.wallet).catch(() => conn.profile);
+      if (wallet) {
+        const profile = await this.chain.getProfile(wallet).catch(() => conn.profile);
+        if (canceled()) return;
+        conn.profile = profile;
+      }
+      if (canceled()) return;
+      const rejoiningStake = target.mode === 'stake' && wallet && this.rooms.rooms.get(`stake-${target.arenaId}`)?.findStakeByWallet(wallet);
+      if (this.rooms.admissionsPaused && !rejoiningStake) {
+        this.error(conn, 'admissions_paused', 'New games are temporarily paused. Active games and cash-outs remain available.');
+        return;
+      }
       const own = conn.profile ? { xp: conn.profile.xp, premiumMask: conn.profile.premiumSkins } : null;
       if (!isSkinUnlocked(skin, own)) {
         this.error(conn, 'skin_locked', 'That skin is locked.');
@@ -284,36 +337,59 @@ export class Gateway {
       }
 
       // stake arena
+      // Existing players must still be able to reconnect and exit when new
+      // admissions are paused on-chain.
+      const currentRoom = this.rooms.rooms.get(`stake-${target.arenaId}`);
+      const currentStake = wallet ? currentRoom?.findStakeByWallet(wallet) : undefined;
+      if (currentRoom && currentStake) {
+        if (conn.player === null && currentRoom.reattach(conn, currentStake.pid)) return;
+        this.error(conn, 'session_busy', 'You are already playing in this arena.');
+        return;
+      }
       if (!this.chain.stakeEnabled) {
         this.error(conn, 'stake_disabled', 'High-stakes arenas are offline.');
         return;
       }
-      if (!conn.wallet) {
+      if (!wallet) {
         this.error(conn, 'auth_required', 'Connect and sign in with your wallet first.');
         return;
       }
       const room = await this.rooms.stakeRoom(target.arenaId);
+      if (canceled()) return;
       if (!room) {
         this.error(conn, 'room_not_found', 'Arena not available.');
         return;
       }
-      const existing = room.findStakeByWallet(conn.wallet);
+      const existing = room.findStakeByWallet(wallet);
       if (existing) {
         if (conn.player === null && room.reattach(conn, existing.pid)) return;
         this.error(conn, 'session_busy', 'You are already playing in this arena.');
+        return;
+      }
+      if (room.hasReservation(wallet)) {
+        this.error(conn, 'session_busy', 'Your arena ticket is being activated.');
         return;
       }
       if (!conn.allowChainOp()) {
         this.error(conn, 'rate_limited', 'Too many join attempts — wait a moment.');
         return;
       }
-      const session = await this.chain.getSession(target.arenaId, conn.wallet);
+      const session = await this.chain.getSession(target.arenaId, wallet);
+      if (canceled()) return;
       if (!session) {
         this.error(conn, 'no_session', 'No open arena ticket found for your wallet.');
         return;
       }
+      if (session.player !== wallet || session.arenaId !== target.arenaId || !Number.isSafeInteger(session.buyIn) || session.buyIn <= 0) {
+        this.error(conn, 'no_session', 'The arena ticket does not match your wallet and arena.');
+        return;
+      }
       if (this.journal.pending.some((p) => p.key === session.address)) {
         this.error(conn, 'no_session', 'Your previous game in this arena is still being settled.');
+        return;
+      }
+      if (session.activated) {
+        this.error(conn, 'no_session', 'This ticket was already played and needs settlement before another entry.');
         return;
       }
       if (Date.now() / 1000 - session.openedAt > MAX_STAKE_SESSION_AGE_S - 600) {
@@ -325,25 +401,34 @@ export class Gateway {
         return;
       }
       // re-check after the awaits above: another tab may have joined with the same ticket meanwhile
-      if (room.findStakeByWallet(conn.wallet) || room.liveSessions().includes(session.address)) {
+      if (room.findStakeByWallet(wallet) || this.rooms.liveSessions().has(session.address)) {
         this.error(conn, 'session_busy', 'You are already playing in this arena.');
         return;
       }
-      if (conn.player?.alive) conn.room?.leave(conn, 'switch');
-      room.join(conn, {
-        name,
-        skin,
-        flags: flags | PlayerFlag.Staker,
-        stake: {
-          player: conn.wallet,
-          session: session.address,
-          sessionId: session.id,
-          arenaId: target.arenaId,
-          buyIn: session.buyIn,
-          value: session.buyIn,
-          openedAt: session.openedAt,
-        },
-      });
+      const stake = { player: wallet, session: session.address, sessionId: session.id, arenaId: target.arenaId,
+        buyIn: session.buyIn, value: session.buyIn, openedAt: session.openedAt };
+      if (this.rooms.admissionsPaused) {
+        this.error(conn, 'admissions_paused', 'New games are temporarily paused. Active games and cash-outs remain available.');
+        return;
+      }
+      room.reserveStake(stake);
+      try {
+        const activated = await this.activateTicket(target.arenaId, wallet, session.id);
+        if (canceled() || !activated || !this.chain.stakeEnabled || this.rooms.admissionsPaused) {
+          room.cancelReservation(session.address);
+          if (!canceled()) this.error(conn, 'no_session', 'Arena entry could not complete. Your ticket has been queued for settlement.');
+          return;
+        }
+        if (conn.player?.alive) conn.room?.leave(conn, 'switch');
+        room.join(conn, { name, skin, flags: flags | PlayerFlag.Staker, stake });
+      } catch (err) {
+        room.cancelReservation(session.address);
+        this.log(`arena admission failed: ${(err as Error).message}`);
+        if (!canceled()) this.error(conn, 'no_session', 'Arena entry could not complete. Your ticket has been queued for settlement.');
+      }
+    } catch (err) {
+      this.log(`join failed: ${(err as Error).message}`);
+      if (!canceled()) this.error(conn, target.mode === 'stake' ? 'no_session' : 'bad_request', 'Entry is temporarily unavailable. Please try again shortly.');
     } finally {
       conn.joining = false;
     }

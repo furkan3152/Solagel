@@ -6,10 +6,11 @@ import type {
   ProfileSummary,
   RoomInfo,
 } from '@solagel/shared';
+import { RELEASE, type ReleaseStatus } from '@solagel/shared';
 import { create } from 'zustand';
 
 export type Screen = 'lobby' | 'playing' | 'dead' | 'spectating' | 'cashedout';
-export type Lang = 'en' | 'tr';
+export type Lang = 'en';
 export type Quality = 'high' | 'low';
 export type Theme = 'light' | 'dark';
 
@@ -73,6 +74,8 @@ export interface UiState {
   online: number;
   rooms: RoomInfo[];
   chain: ChainStatus | null;
+  admissionsPaused: boolean;
+  release: ReleaseStatus;
   room: RoomInfo | null;
   me: { pid: number; name: string; skin: number } | null;
   hud: { mass: number; cells: number; value: number | null; rank: number; players: number };
@@ -96,19 +99,11 @@ export interface UiState {
 
 const SETTINGS_KEY = 'solagel.settings.v1';
 
-function defaultLang(): Lang {
-  try {
-    return navigator.language?.toLowerCase().startsWith('tr') ? 'tr' : 'en';
-  } catch {
-    return 'en';
-  }
-}
-
 function loadSettings(): Settings {
   const defaults: Settings = {
     name: '',
     skin: 0,
-    lang: defaultLang(),
+    lang: 'en',
     theme: 'light',
     quality: 'high',
     sound: true,
@@ -121,7 +116,8 @@ function loadSettings(): Settings {
   };
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
-    if (raw) return { ...defaults, ...(JSON.parse(raw) as Partial<Settings>) };
+    // Migrate language preferences from earlier bilingual builds.
+    if (raw) return { ...defaults, ...(JSON.parse(raw) as Partial<Settings>), lang: 'en' };
   } catch {
     /* storage unavailable */
   }
@@ -137,6 +133,8 @@ export const useUi = create<UiState>(() => ({
   online: 0,
   rooms: [],
   chain: null,
+  admissionsPaused: false,
+  release: RELEASE,
   room: null,
   me: null,
   hud: { mass: 0, cells: 0, value: null, rank: 0, players: 0 },
@@ -159,7 +157,7 @@ export const useUi = create<UiState>(() => ({
 }));
 
 export function updateSettings(patch: Partial<Settings>): void {
-  const settings = { ...useUi.getState().settings, ...patch };
+  const settings: Settings = { ...useUi.getState().settings, ...patch, lang: 'en' };
   useUi.setState({ settings });
   try {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));

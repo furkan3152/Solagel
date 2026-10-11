@@ -66,6 +66,10 @@ pub const PRIZE_SHARES_BPS: [u16; 10] = [3000, 2000, 1400, 1000, 800, 600, 450, 
 #[constant]
 pub const MIN_BUY_IN: u64 = 1_000_000;
 
+/// One season point per 1,000 lamports captured above the original buy-in.
+/// Food, practice and zero-value bots cannot generate prize-bearing points.
+pub const LAMPORTS_PER_SEASON_POINT: u64 = 1_000;
+
 /// Minimum value of `Arena::max_players`.
 #[constant]
 pub const MIN_ARENA_PLAYERS: u16 = 2;
@@ -78,7 +82,7 @@ pub const MAX_ARENA_PLAYERS: u16 = 100;
 // Time
 // ---------------------------------------------------------------------------
 
-/// A session that was never settled can be refunded by its player after this many seconds (24 h).
+/// An unactivated ticket can be refunded by its player after this many seconds (24 h).
 #[constant]
 pub const SESSION_REFUND_TIMEOUT_SECS: i64 = 86_400;
 
@@ -118,7 +122,7 @@ pub const FREE_SKINS: u8 = 8;
 #[constant]
 pub const LEVEL_SKIN_START: u8 = 8;
 
-/// Skins `PREMIUM_SKIN_START..SKIN_COUNT` are bought with SOL (bit `skin - 16` of `premium_skins`).
+/// Reserved NFT skin ids. The legacy SOL purchase entry point is disabled during beta.
 #[constant]
 pub const PREMIUM_SKIN_START: u8 = 16;
 
