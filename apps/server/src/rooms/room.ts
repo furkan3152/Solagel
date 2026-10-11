@@ -65,6 +65,7 @@ interface ChatLine {
 }
 
 type FinishCause = 'death' | 'left' | 'cashout' | 'afk' | 'maxage' | 'kicked';
+type StakeAdmission = Omit<StakeEntry, 'pid' | 'kills'>;
 
 export class Room {
   readonly world: World;
@@ -75,12 +76,15 @@ export class Room {
   readonly humans = new Map<number, Conn | null>();
   private readonly afkSince = new Map<number, number>();
   private readonly walletOf = new Map<number, string>();
+  /** Durable tickets being activated on-chain; no cells exist for these yet. */
+  private readonly reservations = new Map<string, StakeAdmission>();
   private readonly chatLog: ChatLine[] = [];
   private readonly writer = new BinaryWriter(32 * 1024);
   private lastLbAt = 0;
   private lastJournalAt = 0;
   private lastAgeCheckAt = 0;
   private recordSeq = 0;
+  private closed = false;
   lastActivity = Date.now();
 
   constructor(
@@ -89,7 +93,7 @@ export class Room {
   ) {
     const preset = WORLD_PRESETS[opts.mode];
     const seed = opts.seed ?? (Math.random() * 2 ** 32) >>> 0;
-    this.world = new World({ ...preset, powerUps: true, coinRain: opts.mode !== 'stake', seed });
+    this.world = new World({ ...preset, powerUps: true, coinRain: opts.mode !== 'stake', botsCannotEatHumans: opts.mode === 'stake', seed });
     this.bots = opts.bots ? new BotManager(this.world, opts.bots, mulberry32(seed ^ 0xb07)) : null;
     this.ledger = opts.mode === 'stake' ? new StakeLedger() : null;
   }
@@ -115,21 +119,67 @@ export class Room {
   }
 
   get isFull(): boolean {
-    return this.humans.size >= this.opts.maxPlayers;
+    return this.humans.size + this.reservations.size >= this.opts.maxPlayers;
   }
 
   /** Stake sessions currently represented in this room. */
   liveSessions(): string[] {
-    return this.ledger ? this.ledger.all().map((e) => e.session) : [];
+    return this.ledger ? [...this.ledger.all().map((e) => e.session), ...this.reservations.keys()] : [];
   }
 
   findStakeByWallet(wallet: string): StakeEntry | undefined {
     return this.ledger?.all().find((e) => e.player === wallet);
   }
 
+  hasReservation(wallet: string): boolean {
+    return [...this.reservations.values()].some((e) => e.player === wallet);
+  }
+
+  /** Persist liability before submitting activation; ticks retain this reservation. */
+  reserveStake(entry: StakeAdmission): void {
+    if (this.closed || !this.ledger || this.isFull || this.findStakeByWallet(entry.player) || this.hasReservation(entry.player) || this.liveSessions().includes(entry.session)) {
+      throw new Error('Stake admission is unavailable');
+    }
+    this.reservations.set(entry.session, entry);
+    try {
+      this.deps.journal.commit({ roomId: this.id, live: this.liveStakes() });
+    } catch (err) {
+      this.reservations.delete(entry.session);
+      throw err;
+    }
+  }
+
+  /** Activation may have reached chain even when the browser or RPC disconnected. */
+  cancelReservation(session: string): void {
+    const entry = this.reservations.get(session);
+    if (!entry) return;
+    const now = Date.now();
+    this.reservations.delete(session);
+    try {
+      this.deps.journal.commit({
+        roomId: this.id,
+        live: this.liveStakes(),
+        enqueue: [{ kind: 'settle', key: entry.session, player: entry.player, arenaId: entry.arenaId, session: entry.session,
+          sessionId: entry.sessionId, payout: entry.value, score: 0, kills: 0, xp: 0, reason: 'kicked', attempts: 0,
+          nextAttemptAt: now, createdAt: now }],
+      });
+    } catch (err) {
+      this.reservations.set(session, entry);
+      throw err;
+    }
+    this.deps.chain.kick();
+  }
+
   private broadcast(msg: ServerMessage): void {
     const json = JSON.stringify(msg);
     for (const c of this.conns) if (c.open) c.ws.send(json);
+  }
+
+  private halt(err: unknown): void {
+    if (this.closed) return;
+    this.closed = true;
+    this.deps.log(`arena ${this.id} halted; recover journal before resuming: ${(err as Error).message}`);
+    this.broadcast({ t: 'error', code: 'stake_disabled', message: 'This arena is paused. Your saved balance is retained for recovery.' });
   }
 
   private attach(conn: Conn): void {
@@ -153,7 +203,12 @@ export class Room {
   /* Joining / leaving                                                */
   /* ---------------------------------------------------------------- */
 
-  join(conn: Conn, opts: { name: string; skin: number; flags: number; stake?: Omit<StakeEntry, 'pid' | 'kills'> }): Player {
+  join(conn: Conn, opts: { name: string; skin: number; flags: number; stake?: StakeAdmission }): Player {
+    const reserved = opts.stake ? this.reservations.get(opts.stake.session) : undefined;
+    if (this.closed || !conn.open || conn.player?.alive || (this.isFull && !reserved)) throw new Error('Connection cannot join this room');
+    if (this.ledger && (!opts.stake || opts.stake.player !== conn.wallet || this.findStakeByWallet(opts.stake.player) || this.ledger.all().some((entry) => entry.session === opts.stake!.session) || (reserved && reserved !== opts.stake))) {
+      throw new Error('A unique wallet-owned stake session is required');
+    }
     this.attach(conn);
     const player = this.world.addPlayer({ name: opts.name, skin: opts.skin, flags: opts.flags });
     this.humans.set(player.id, conn);
@@ -164,8 +219,20 @@ export class Room {
     conn.lastSkin = opts.skin;
     if (conn.wallet) this.walletOf.set(player.id, conn.wallet);
     if (this.ledger && opts.stake) {
-      this.ledger.join({ ...opts.stake, pid: player.id, kills: 0 });
-      this.deps.journal.commit({ roomId: this.id, live: this.liveStakes() });
+      try {
+        this.ledger.join({ ...opts.stake, pid: player.id, kills: 0 });
+        this.reservations.delete(opts.stake.session);
+        this.deps.journal.commit({ roomId: this.id, live: this.liveStakes() });
+      } catch (err) {
+        this.ledger.leave(player.id);
+        if (reserved) this.reservations.set(reserved.session, reserved);
+        this.world.removePlayer(player.id);
+        this.humans.delete(player.id);
+        this.walletOf.delete(player.id);
+        conn.player = null;
+        this.halt(err);
+        throw err;
+      }
     }
     conn.send({
       t: 'joined',
@@ -174,6 +241,8 @@ export class Room {
       name: player.name,
       skin: player.skin,
       value: this.ledger?.value(player.id),
+      sessionId: opts.stake?.sessionId,
+      arenaId: opts.stake?.arenaId,
     });
     conn.send({ t: 'history', chat: this.chatLog });
     return player;
@@ -182,16 +251,18 @@ export class Room {
   /** A stake player reconnected: give them their AFK cells back. */
   reattach(conn: Conn, pid: number): boolean {
     const p = this.world.players.get(pid);
-    if (!p || !p.alive || !this.humans.has(pid) || this.humans.get(pid)) return false;
+    if (this.closed || !conn.open || conn.player?.alive || !p || !p.alive || !this.humans.has(pid) || this.humans.get(pid) || this.ledger?.get(pid)?.player !== conn.wallet) return false;
     this.attach(conn);
     this.humans.set(pid, conn);
     this.afkSince.delete(pid);
     p.afk = false;
     conn.player = p;
     conn.spectating = false;
+    conn.spectatePid = null;
     conn.lastName = p.name;
     conn.lastSkin = p.skin;
-    conn.send({ t: 'joined', room: this.info(), playerId: p.id, name: p.name, skin: p.skin, value: this.ledger?.value(pid) });
+    const entry = this.ledger?.get(pid);
+    conn.send({ t: 'joined', room: this.info(), playerId: p.id, name: p.name, skin: p.skin, value: this.ledger?.value(pid), sessionId: entry?.sessionId, arenaId: entry?.arenaId });
     conn.send({ t: 'history', chat: this.chatLog });
     return true;
   }
@@ -227,6 +298,9 @@ export class Room {
   private goAfk(p: Player): void {
     this.humans.set(p.id, null);
     p.afk = true;
+    p.splitQueued = 0;
+    p.ejectQueued = false;
+    this.cancelCashout(p);
     this.afkSince.set(p.id, this.world.now);
     const c = p.center();
     this.world.setTarget(p.id, c.x, c.y);
@@ -319,7 +393,7 @@ export class Room {
 
   liveStakes(): LiveStake[] {
     if (!this.ledger) return [];
-    return this.ledger.all().map((e) => {
+    const active = this.ledger.all().map((e) => {
       const p = this.world.players.get(e.pid);
       return {
         roomId: this.id,
@@ -332,6 +406,8 @@ export class Room {
         kills: p?.stats.playersEaten ?? 0,
       };
     });
+    return [...active, ...[...this.reservations.values()].map((e) => ({ roomId: this.id, session: e.session, sessionId: e.sessionId,
+      player: e.player, arenaId: e.arenaId, value: e.value, score: 0, kills: 0 }))];
   }
 
   private finishHuman(p: Player, conn: Conn | null, cause: FinishCause, killer: Player | null = null): void {
@@ -344,8 +420,10 @@ export class Room {
     this.deps.leaderboards.submit({ name: p.name, score, skin: p.skin, wallet, kills: stats.playersEaten, at: now });
 
     const enqueue: SettlementItem[] = [];
+    let departing: StakeEntry | undefined;
     if (this.ledger?.has(p.id)) {
       const entry = this.ledger.leave(p.id)!;
+      departing = entry;
       stats.payout = entry.value;
       const reason: SettleReason = cause === 'left' ? 'afk' : cause;
       enqueue.push({
@@ -386,7 +464,13 @@ export class Room {
       });
     }
     if (enqueue.length > 0 || this.ledger) {
-      this.deps.journal.commit({ enqueue, roomId: this.ledger ? this.id : undefined, live: this.ledger ? this.liveStakes() : undefined });
+      try {
+        this.deps.journal.commit({ enqueue, roomId: this.ledger ? this.id : undefined, live: this.ledger ? this.liveStakes() : undefined });
+      } catch (err) {
+        if (departing) this.ledger!.join(departing);
+        if (this.ledger) this.halt(err);
+        throw err;
+      }
       if (enqueue.length > 0) this.deps.chain.kick();
     }
 
@@ -415,15 +499,38 @@ export class Room {
   }
 
   tick(dtMs: number): void {
+    if (this.closed) return;
+    try {
+      if (this.ledger && !this.deps.journal.healthy) throw new Error('Settlement journal is unavailable');
+      this.tickActive(dtMs);
+    } catch (err) {
+      if (this.ledger) this.halt(err);
+      throw err;
+    }
+  }
+
+  private tickActive(dtMs: number): void {
     if (this.conns.size > 0 || this.humans.size > 0) this.lastActivity = Date.now();
     if (this.sleeping) return;
     const world = this.world;
     const ev = world.tick(dtMs);
 
     // value moves with every eaten stake cell; getting hit cancels a cash-out
+    const balancesBefore = this.ledger?.all().map((entry) => ({ pid: entry.pid, value: entry.value }));
+    let valueMoved = 0;
     for (const ce of ev.cellsEaten) {
-      this.ledger?.transfer(ce.victim.id, ce.eater.id, ce.mass, ce.victimTotalBefore, ce.last);
+      valueMoved += this.ledger?.transfer(ce.victim.id, ce.eater.id, ce.mass, ce.victimTotalBefore, ce.last) ?? 0;
       if (!ce.last && ce.victim.cashoutUntil > 0) this.cancelCashout(ce.victim);
+    }
+    // Persist earned balances before publishing the resulting frame or ending
+    // victims' sessions, so a crash cannot undo an already displayed SOL gain.
+    if (valueMoved > 0) {
+      try {
+        this.deps.journal.commit({ roomId: this.id, live: this.liveStakes() });
+      } catch (err) {
+        for (const entry of balancesBefore ?? []) this.ledger!.get(entry.pid)!.value = entry.value;
+        throw err;
+      }
     }
 
     for (const k of ev.kills) {
@@ -594,6 +701,9 @@ export class Room {
 
   /** Server shutdown: cash out every stake player at their current value. */
   shutdown(): void {
+    this.closed = true;
+    if (this.ledger && !this.deps.journal.healthy) return;
+    for (const session of [...this.reservations.keys()]) this.cancelReservation(session);
     for (const [pid, c] of [...this.humans]) {
       const p = this.world.players.get(pid);
       if (p?.alive) this.finishHuman(p, c, this.ledger ? 'kicked' : 'left');

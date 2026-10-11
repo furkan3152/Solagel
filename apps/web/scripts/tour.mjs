@@ -4,7 +4,7 @@ import { chromium } from 'playwright';
 
 const [url, outDir] = process.argv.slice(2);
 mkdirSync(outDir, { recursive: true });
-const exe = process.env.CHROME_PATH;
+const exe = [process.env.CHROME_PATH, '/usr/bin/chromium', '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'].filter(Boolean).find((p) => existsSync(p));
 const browser = await chromium.launch({ executablePath: exe, args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
 const logs = [];
 
@@ -25,28 +25,28 @@ await session({ width: 1440, height: 900 }, false, async (page) => {
   await page.locator('.tab', { hasText: 'SOL' }).first().click();
   await page.waitForTimeout(400);
   await shot(page, 'stakes-tab');
-  await page.locator('.tab', { hasText: /Friends|Arkada/ }).first().click();
+  await page.locator('.tab', { hasText: 'Friends' }).first().click();
   await page.waitForTimeout(300);
   await shot(page, 'friends-tab');
-  await page.locator('button', { hasText: /Skin shop|Skin dükkanı/ }).first().click();
+  await page.locator('button', { hasText: 'Skin collection' }).first().click();
   await page.waitForTimeout(800);
   await shot(page, 'shop');
   await page.keyboard.press('Escape');
-  await page.locator('button[aria-label="Settings"], button[aria-label="Ayarlar"]').first().click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.waitForTimeout(400);
   await shot(page, 'settings');
-  await page.locator('button', { hasText: /Night Market|Gece Pazarı/ }).first().click();
-  await page.locator('button', { hasText: /Türkçe/ }).first().click();
+  await page.locator('button', { hasText: 'Night Market' }).first().click();
   await page.keyboard.press('Escape');
   await page.waitForTimeout(600);
-  await shot(page, 'dark-tr');
-  await page.locator('button', { hasText: /Nasıl oynanır|How to play/ }).first().click();
+  await shot(page, 'dark');
+  await page.locator('button', { hasText: 'How to play' }).first().click();
   await page.waitForTimeout(400);
-  await shot(page, 'howto-tr');
+  await shot(page, 'howto');
 });
 
 await session({ width: 390, height: 844 }, true, async (page) => {
   await shot(page, 'mobile-lobby');
+  await page.locator('.tab', { hasText: 'Practice' }).click();
   await page.locator('button.btn-gold.btn-xl').first().click();
   await page.waitForTimeout(2500);
   await shot(page, 'mobile-game');

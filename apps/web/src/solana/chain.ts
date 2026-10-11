@@ -1,11 +1,10 @@
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { SolagelClient, type ArenaView, type ConfigView, type ProfileView, type SessionView } from '@solagel/sdk';
-import { useCallback, useEffect, useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { create } from 'zustand';
 import { useUi } from '../store';
 
 interface ChainData {
-  /** null = unknown yet, false = program not deployed / chain disabled. */
   deployed: boolean | null;
   config: ConfigView | null;
   profile: ProfileView | null;
@@ -14,91 +13,84 @@ interface ChainData {
   sessions: Record<number, SessionView | null>;
   balance: number | null;
   loading: boolean;
+  /** Failed RPC reads never mean an absent ticket or profile. */
+  error: string | null;
+  owner: string | null;
+  updatedAt: number | null;
 }
 
-export const useChainData = create<ChainData>(() => ({
-  deployed: null,
-  config: null,
-  profile: null,
-  profileLoaded: false,
-  arenas: [],
-  sessions: {},
-  balance: null,
-  loading: false,
-}));
+const emptyData: ChainData = {
+  deployed: null, config: null, profile: null, profileLoaded: false,
+  arenas: [], sessions: {}, balance: null, loading: false, error: null,
+  owner: null, updatedAt: null,
+};
 
-let clientCache: { key: string; client: SolagelClient } | null = null;
+export const useChainData = create<ChainData>(() => ({ ...emptyData }));
 
-/** SolagelClient bound to the current RPC + program id (from the game server). */
+/** Client follows the game server's program and the selected RPC. */
 export function useSolagelClient(): SolagelClient | null {
   const { connection } = useConnection();
   const chain = useUi((s) => s.chain);
-  return useMemo(() => {
-    if (!chain?.enabled || !chain.programId) return null;
-    const key = `${connection.rpcEndpoint}|${chain.programId}`;
-    if (clientCache?.key !== key) clientCache = { key, client: new SolagelClient(connection, chain.programId) };
-    return clientCache.client;
-  }, [connection, chain?.enabled, chain?.programId]);
+  return useMemo(() => chain?.enabled && chain.programId
+    ? new SolagelClient(connection, chain.programId) : null,
+  [connection, chain?.enabled, chain?.programId]);
 }
 
-let refreshTimer: number | null = null;
+let refreshNow: () => void = () => {};
+export const refreshChain = () => refreshNow();
 
-/** Keeps config / profile / arenas / my sessions / balance fresh. Mount once (App). */
+/** Single in-flight snapshot per wallet; results from old wallets are discarded. */
 export function useChainSync(): void {
   const client = useSolagelClient();
   const { publicKey } = useWallet();
   const { connection } = useConnection();
   const owner = publicKey?.toBase58() ?? null;
-
-  const refresh = useCallback(async () => {
-    if (!client) {
-      useChainData.setState({ deployed: useUi.getState().chain ? false : null, config: null, profile: null, arenas: [], sessions: {}, profileLoaded: true });
-      return;
-    }
-    useChainData.setState({ loading: true });
-    try {
-      const deployed = await client.isDeployed();
-      if (!deployed) {
-        useChainData.setState({ deployed: false, loading: false, profileLoaded: true });
-        return;
-      }
-      const [config, arenas] = await Promise.all([client.fetchConfig(), client.fetchArenas().catch(() => [] as ArenaView[])]);
-      let profile: ProfileView | null = null;
-      const sessions: Record<number, SessionView | null> = {};
-      let balance: number | null = null;
-      if (owner) {
-        [profile, balance] = await Promise.all([client.fetchProfile(owner).catch(() => null), connection.getBalance(publicKey!).catch(() => null)]);
-        const list = await Promise.all(arenas.map((a) => client.fetchSession(a.id, owner).catch(() => null)));
-        arenas.forEach((a, i) => (sessions[a.id] = list[i]));
-      }
-      useChainData.setState({
-        deployed: true,
-        config,
-        arenas: arenas.sort((a, b) => a.buyIn - b.buyIn),
-        profile,
-        profileLoaded: true,
-        sessions,
-        balance,
-        loading: false,
-      });
-    } catch (err) {
-      console.warn('chain refresh failed', err);
-      useChainData.setState({ loading: false, profileLoaded: true });
-    }
-  }, [client, owner, connection, publicKey]);
+  const advertised = useUi((s) => s.chain !== null);
 
   useEffect(() => {
-    useChainData.setState({ profile: null, profileLoaded: !owner, sessions: {}, balance: null });
-    void refresh();
-    const id = window.setInterval(() => void refresh(), 20_000);
-    refreshNow = () => {
-      if (refreshTimer) clearTimeout(refreshTimer);
-      refreshTimer = window.setTimeout(() => void refresh(), 400);
+    let active = true;
+    let inFlight = false;
+    let queued = false;
+    useChainData.setState({ ...emptyData, owner, profileLoaded: !owner, deployed: !client && advertised ? false : null });
+    const refresh = async () => {
+      if (!active || !client) return;
+      if (inFlight) { queued = true; return; }
+      inFlight = true;
+      useChainData.setState({ loading: true });
+      try {
+        if (!(await client.isDeployed())) {
+          if (active) useChainData.setState({ ...emptyData, owner, deployed: false, profileLoaded: true });
+          return;
+        }
+        const [config, arenas, profile, balance] = await Promise.all([
+          client.fetchConfig(), client.fetchArenas(),
+          owner ? client.fetchProfile(owner) : null,
+          publicKey ? connection.getBalance(publicKey) : null,
+        ]);
+        const list = owner ? await Promise.all(arenas.map((a) => client.fetchSession(a.id, owner))) : [];
+        const sessions: Record<number, SessionView | null> = {};
+        arenas.forEach((a, i) => { sessions[a.id] = list[i] ?? null; });
+        if (active) useChainData.setState({
+          deployed: true, config, arenas: arenas.sort((a, b) => a.buyIn - b.buyIn),
+          profile, profileLoaded: true, sessions, balance, owner,
+          loading: false, error: null, updatedAt: Date.now(),
+        });
+      } catch (error) {
+        console.warn('chain refresh failed', error);
+        if (active) useChainData.setState({ loading: false, error: 'Could not refresh Solana data. Retry before buying a ticket.' });
+      } finally {
+        inFlight = false;
+        if (active && queued) { queued = false; void refresh(); }
+      }
     };
-    return () => clearInterval(id);
-  }, [refresh, owner]);
+    const requestRefresh = () => { void refresh(); };
+    refreshNow = requestRefresh;
+    requestRefresh();
+    const interval = window.setInterval(requestRefresh, 20_000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+      if (refreshNow === requestRefresh) refreshNow = () => {};
+    };
+  }, [client, owner, connection, publicKey, advertised]);
 }
-
-let refreshNow: () => void = () => {};
-/** Ask for an immediate refresh (after a transaction). */
-export const refreshChain = () => refreshNow();

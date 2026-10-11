@@ -4,7 +4,6 @@ import { engine } from '../game/instance';
 import { sound } from '../game/sound';
 import { useT } from '../i18n';
 import { explorerTx } from '../solana/links';
-import { BuySkinButton } from '../solana/BuySkinButton';
 import { WalletModal } from '../solana/WalletModal';
 import { ProfileModal } from '../solana/ProfileModal';
 import { closeModal, updateSettings, useUi } from '../store';
@@ -88,23 +87,25 @@ export function CashoutModal() {
   const settled = useUi((s) => s.lastSettlement);
   const [since] = useState(() => Date.now());
   if (!res) return null;
-  const paid = settled && settled.at >= since - 2000 && settled.kind !== 'record';
-  const profit = room?.buyIn ? res.value - room.buyIn : null;
+  const paid = settled && settled.at >= since - 2000 && settled.kind === 'cashout';
+  const value = paid && settled.payout !== undefined ? settled.payout : res.value;
+  const profit = room?.buyIn ? value - room.buyIn : null;
   return (
     <Modal>
       <div className="death-hero">
         <SkinCanvas skin={me?.skin ?? 0} size={120} expression="love" />
-        <h2>{t('cash.title')} 🎉</h2>
+        <h2>{paid ? `${t('cash.title')} 🎉` : t('cash.requested')}</h2>
         <div className="muted" style={{ fontWeight: 600 }}>
-          {t('cash.value')}
+          {paid ? t('cash.value') : t('cash.settlementValue')}
         </div>
-        <div className="big-sol">{formatSol(res.value, 4)}</div>
+        <div className="big-sol">{formatSol(value, 4)}</div>
         {profit !== null && (
           <div className="badge" style={{ background: profit >= 0 ? '#7EE8C4' : '#FF8FB8' }}>
             {t('cash.profit')}: {profit >= 0 ? '+' : '−'}
             {formatSol(Math.abs(profit), 4)}
           </div>
         )}
+        <div className="notice">{t('cash.feeNote')}</div>
         <div className="row" style={{ marginTop: 10 }}>
           {paid ? (
             <>
@@ -151,14 +152,7 @@ export function SettingsModal() {
     <Modal onClose={closeModal} title={`⚙️ ${t('settings.title')}`}>
       <div className="setting-row">
         <span>{t('settings.lang')}</span>
-        <div className="seg">
-          <button className={`btn ${s.lang === 'tr' ? 'on' : ''}`} onClick={() => updateSettings({ lang: 'tr' })}>
-            🇹🇷 Türkçe
-          </button>
-          <button className={`btn ${s.lang === 'en' ? 'on' : ''}`} onClick={() => updateSettings({ lang: 'en' })}>
-            🇬🇧 English
-          </button>
-        </div>
+        <span className="badge sky">English</span>
       </div>
       <div className="setting-row">
         <span>{t('settings.theme')}</span>
@@ -184,7 +178,7 @@ export function SettingsModal() {
       </div>
       <div className="setting-row">
         <span>{t('settings.volume')}</span>
-        <input type="range" min={0} max={1} step={0.05} value={s.volume} onChange={(e) => updateSettings({ volume: Number(e.target.value) })} />
+        <input aria-label={t('settings.volume')} type="range" min={0} max={1} step={0.05} value={s.volume} onChange={(e) => updateSettings({ volume: Number(e.target.value) })} />
       </div>
       {rows.map(([label, key]) => (
         <div className="setting-row" key={key}>
@@ -206,6 +200,8 @@ export function HowToModal() {
     ['🌵', t('howto.cactus')],
     ['🪂', t('howto.powerups')],
     ['◎', t('howto.stakes')],
+    ['🤖', t('howto.bots')],
+    ['🎨', t('howto.skins')],
     ['🏆', t('howto.season')],
   ];
   return (
@@ -230,10 +226,10 @@ export function SkinShopModal() {
   const lang = useUi((s) => s.settings.lang);
   const selected = useUi((s) => s.settings.skin);
   const own = useOwnership();
-  const [focus, setFocus] = useState(selected);
+  const [focus, setFocus] = useState(SKINS[selected] ? selected : 0);
   const def = SKINS[focus];
   const unlocked = isSkinUnlocked(focus, own);
-  useEffect(() => setFocus(selected), [selected]);
+  useEffect(() => setFocus(SKINS[selected] ? selected : 0), [selected]);
 
   const tiers: { title: string; ids: number[] }[] = [
     { title: t('skins.free'), ids: SKINS.filter((s) => s.tier === 'free').map((s) => s.id) },
@@ -243,6 +239,7 @@ export function SkinShopModal() {
 
   return (
     <Modal onClose={closeModal} wide title={`🎨 ${t('skins.shop')}`}>
+      <div className="notice skin-preview-note">{t('skins.betaNotice')}</div>
       <div className="row" style={{ alignItems: 'center', gap: 16, marginBottom: 12, flexWrap: 'wrap' }}>
         <SkinCanvas skin={focus} size={130} followPointer seed={focus + 3} />
         <div className="col grow" style={{ minWidth: 200 }}>
@@ -265,7 +262,7 @@ export function SkinShopModal() {
             ) : def.tier === 'level' ? (
               <span className="badge sky">🔒 {t('skins.level', { n: def.level ?? 0 })}</span>
             ) : (
-              <BuySkinButton skin={focus} />
+              <span className="badge pink">{t('skins.preview')}</span>
             )}
           </div>
         </div>
@@ -280,13 +277,13 @@ export function SkinShopModal() {
               const s = SKINS[id];
               const ok = isSkinUnlocked(id, own);
               return (
-                <div key={id} className={`skin-tile ${id === focus ? 'selected' : ''}`} onClick={() => setFocus(id)}>
+                <button key={id} type="button" className={`skin-tile ${id === focus ? 'selected' : ''}`} aria-pressed={id === focus} aria-label={`Preview ${s.name.en}`} onClick={() => setFocus(id)}>
                   {!ok && <span className="lock">🔒</span>}
                   <SkinCanvas skin={id} size={84} animate={id === focus} seed={id} />
                   <span>{s.name[lang]}</span>
                   {s.tier === 'level' && <span className="badge sky">Lv {s.level}</span>}
                   {s.tier === 'premium' && !ok && <span className="badge pink">{t('skins.premium')}</span>}
-                </div>
+                </button>
               );
             })}
           </div>
@@ -299,7 +296,7 @@ export function SkinShopModal() {
 export function Toasts() {
   const toasts = useUi((s) => s.toasts);
   return (
-    <div className="toasts">
+    <div className="toasts" role="status" aria-live="polite" aria-atomic="false">
       {toasts.map((x) => (
         <div key={x.id} className={`card toast ${x.kind}`}>
           <span>{x.text}</span>

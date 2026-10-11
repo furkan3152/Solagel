@@ -76,6 +76,11 @@ pub mod solagel {
         instructions::join_arena::handle_join_arena(ctx)
     }
 
+    /// Server-signed admission of a paid ticket before live play starts.
+    pub fn activate_session(ctx: Context<ActivateSession>, session_id: u64) -> Result<()> {
+        instructions::activate_session::handle_activate_session(ctx, session_id)
+    }
+
     /// Server-signed cash-out of a stake session.
     pub fn settle_session(ctx: Context<SettleSession>, args: SettleArgs) -> Result<()> {
         instructions::settle_session::handle_settle_session(ctx, args)

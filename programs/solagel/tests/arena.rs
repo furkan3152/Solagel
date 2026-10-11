@@ -1,4 +1,4 @@
-//! Arenas: `create_arena`, `update_arena`, `join_arena`, `settle_session`, `refund_session`,
+//! Arenas: `create_arena`, `update_arena`, `join_arena`, `activate_session`, `settle_session`, `refund_session`,
 //! `sweep_arena`.
 
 mod common;
@@ -98,6 +98,7 @@ fn join_arena_deposits_buy_in() {
     assert_eq!(session.buy_in, BUY_IN);
     assert_eq!(session.opened_at, START_TS);
     assert_eq!(session.id, 0);
+    assert!(!session.activated);
     let config = env.config();
     assert_eq!((config.total_sessions, config.total_staked), (1, BUY_IN));
     let profile = env.profile(&alice.pubkey());
@@ -136,6 +137,256 @@ fn join_arena_deposits_buy_in() {
     // A wallet without a profile cannot join.
     let ghost = env.funded_keypair(10 * SOL);
     assert_anchor_error(env.join(&ghost, 2), AnchorErrorCode::AccountNotInitialized);
+}
+
+#[test]
+fn activation_requires_server_and_available_arena_and_is_one_time() {
+    let mut env = TestEnv::initialized();
+    assert_ok(env.create_arena(1, BUY_IN, 10));
+    let alice = env.new_player("alice");
+    assert_ok(env.join(&alice, 1));
+    let id = env.session(1, &alice.pubkey()).unwrap().id;
+    let server = env.server.insecure_clone();
+    let before = env.balance(&alice.pubkey());
+
+    // Paying for the session does not authorize the player to admit it to gameplay.
+    assert_error(
+        env.activate_as(&alice, &alice.pubkey(), 1, id),
+        SolagelError::Unauthorized,
+    );
+    assert_error(
+        env.activate_as(&server, &alice.pubkey(), 1, id + 1),
+        SolagelError::SessionMismatch,
+    );
+    assert_ok(env.update_config(UpdateConfigArgs {
+        paused: Some(true),
+        ..Default::default()
+    }));
+    assert_error(env.activate(&alice.pubkey(), 1), SolagelError::Paused);
+    assert_ok(env.update_config(UpdateConfigArgs {
+        paused: Some(false),
+        ..Default::default()
+    }));
+    assert_ok(env.update_arena(1, Some(false), None));
+    assert_error(
+        env.activate(&alice.pubkey(), 1),
+        SolagelError::ArenaDisabled,
+    );
+    assert!(!env.session(1, &alice.pubkey()).unwrap().activated);
+    assert_ok(env.update_arena(1, Some(true), None));
+
+    assert_ok(env.activate(&alice.pubkey(), 1));
+    let session = env.session(1, &alice.pubkey()).unwrap();
+    assert!(session.activated);
+    assert_eq!(
+        (session.id, session.opened_at, session.buy_in),
+        (id, START_TS, BUY_IN)
+    );
+    assert_error(
+        env.activate(&alice.pubkey(), 1),
+        SolagelError::SessionAlreadyActivated,
+    );
+    assert_error(env.refund(&alice, 1), SolagelError::SessionNotRefundable);
+    assert_eq!(env.balance(&alice.pubkey()), before);
+    assert_eq!(env.pot(1), BUY_IN);
+    assert_eq!(env.arena(1).open_sessions, 1);
+    assert_eq!(env.config().total_games, 0);
+}
+
+#[test]
+fn activation_expires_at_refund_boundary_and_admitted_stakes_cannot_be_refunded() {
+    let mut env = TestEnv::initialized();
+    assert_ok(env.create_arena(1, BUY_IN, 10));
+    let alice = env.new_player("alice");
+    let bob = env.new_player("bob");
+    assert_ok(env.join(&alice, 1));
+    assert_ok(env.join(&bob, 1));
+
+    // The last second before the refund deadline still permits admission.
+    env.warp(SESSION_REFUND_TIMEOUT_SECS - 1);
+    assert_ok(env.activate(&alice.pubkey(), 1));
+    env.warp(1);
+    assert_error(
+        env.activate(&bob.pubkey(), 1),
+        SolagelError::SessionActivationExpired,
+    );
+    assert!(!env.session(1, &bob.pubkey()).unwrap().activated);
+    let bob_before = env.balance(&bob.pubkey());
+    assert_ok(env.refund(&bob, 1));
+    assert_eq!(
+        env.balance(&bob.pubkey()) - bob_before,
+        BUY_IN + env.session_rent()
+    );
+
+    // Once admitted, a losing player can never race settlement with a wallet refund.
+    assert_error(env.refund(&alice, 1), SolagelError::SessionNotRefundable);
+    env.warp(SESSION_REFUND_TIMEOUT_SECS);
+    assert_ok(env.update_config(UpdateConfigArgs {
+        paused: Some(true),
+        ..Default::default()
+    }));
+    assert_ok(env.update_arena(1, Some(false), None));
+    let alice_before = env.balance(&alice.pubkey());
+    assert_error(env.refund(&alice, 1), SolagelError::SessionNotRefundable);
+    assert_eq!(env.balance(&alice.pubkey()), alice_before);
+    assert_eq!(env.pot(1), BUY_IN);
+    assert!(env.session(1, &alice.pubkey()).unwrap().activated);
+
+    // Server settlement remains available during a pause or arena shutdown.
+    let args = SettleArgs {
+        session_id: env.session(1, &alice.pubkey()).unwrap().id,
+        payout: BUY_IN,
+        score: 100,
+        kills: 1,
+        xp: 10,
+    };
+    assert_error(
+        env.settle_as(&alice, &alice.pubkey(), 1, args),
+        SolagelError::Unauthorized,
+    );
+    assert_ok(env.settle(&alice.pubkey(), 1, BUY_IN, 100, 1, 10));
+    assert_eq!(
+        env.balance(&alice.pubkey()) - alice_before,
+        BUY_IN + env.session_rent()
+    );
+    assert!(env.session(1, &alice.pubkey()).is_none());
+    assert_eq!(env.arena(1).open_sessions, 0);
+    assert_eq!(env.pot(1), 0);
+    assert_eq!(env.profile(&alice.pubkey()).season_points, 0);
+    assert_eq!(env.season(1).count, 0);
+}
+
+#[test]
+fn stale_activation_cannot_admit_a_rejoined_session() {
+    let mut env = TestEnv::initialized();
+    assert_ok(env.create_arena(1, BUY_IN, 10));
+    let alice = env.new_player("alice");
+    assert_ok(env.join(&alice, 1));
+    let first_id = env.session(1, &alice.pubkey()).unwrap().id;
+    assert_ok(env.activate(&alice.pubkey(), 1));
+    assert_ok(env.settle(&alice.pubkey(), 1, BUY_IN, 0, 0, 0));
+    assert_ok(env.join(&alice, 1));
+    let second_id = env.session(1, &alice.pubkey()).unwrap().id;
+    assert_ne!(first_id, second_id);
+
+    let server = env.server.insecure_clone();
+    assert_error(
+        env.activate_as(&server, &alice.pubkey(), 1, first_id),
+        SolagelError::SessionMismatch,
+    );
+    let session = env.session(1, &alice.pubkey()).unwrap();
+    assert_eq!(session.id, second_id);
+    assert!(!session.activated);
+    assert_ok(env.activate(&alice.pubkey(), 1));
+    assert!(env.session(1, &alice.pubkey()).unwrap().activated);
+}
+
+#[test]
+fn zero_profit_settlements_do_not_enroll_wallets_for_prizes_or_change_existing_rows() {
+    let mut env = TestEnv::initialized();
+    assert_ok(env.create_arena(1, BUY_IN, 10));
+    let unused = env.new_player("unused");
+    let admitted = env.new_player("admitted");
+    let winner = env.new_player("winner");
+    let empty_board = env.svm.get_account(&season_pda(1)).unwrap().data;
+
+    // The server can return an unused ticket without granting a prize-eligible rank.
+    let unused_before = env.balance(&unused.pubkey());
+    assert_ok(env.join(&unused, 1));
+    assert_ok(env.settle(&unused.pubkey(), 1, BUY_IN, 0, 0, 0));
+    assert_eq!(env.balance(&unused.pubkey()), unused_before);
+    assert_eq!(env.profile(&unused.pubkey()).season_points, 0);
+    assert_eq!(
+        env.svm.get_account(&season_pda(1)).unwrap().data,
+        empty_board
+    );
+
+    // Even maximum mass score cannot earn a prize rank without capturing paid value.
+    assert_ok(env.join(&admitted, 1));
+    assert_ok(env.activate(&admitted.pubkey(), 1));
+    assert_ok(env.settle(&admitted.pubkey(), 1, BUY_IN, u32::MAX, 10, 100));
+    assert_eq!(env.profile(&admitted.pubkey()).season_points, 0);
+    assert_eq!(
+        env.profile(&admitted.pubkey()).best_score,
+        MAX_SCORE_PER_GAME
+    );
+    assert_eq!(
+        env.svm.get_account(&season_pda(1)).unwrap().data,
+        empty_board
+    );
+
+    // Captured profit is ranked, and a later zero-profit result leaves its row untouched.
+    assert_ok(env.play_paid(&winner, 1, 500, 1, 20));
+    let season = env.season(1);
+    assert_eq!(season.count, 1);
+    assert_eq!(season.entries[0].player, winner.pubkey());
+    assert_eq!(
+        (season.entries[0].points, season.entries[0].best_score),
+        (500, 500)
+    );
+    let ranked_board = env.svm.get_account(&season_pda(1)).unwrap().data;
+    // A rename makes an unintended leaderboard upsert observable even if points stay flat.
+    assert_ok(env.update_profile(&winner, Some("renamed"), Some(1)));
+    assert_ok(env.join(&winner, 1));
+    assert_ok(env.activate(&winner.pubkey(), 1));
+    assert_ok(env.settle(&winner.pubkey(), 1, BUY_IN, u32::MAX, 1, 20));
+    assert_eq!(env.profile(&winner.pubkey()).season_points, 500);
+    assert_eq!(env.profile(&winner.pubkey()).best_score, MAX_SCORE_PER_GAME);
+    assert_eq!(
+        env.svm.get_account(&season_pda(1)).unwrap().data,
+        ranked_board
+    );
+
+    let funder = env.funded_keypair(2 * SOL);
+    assert_ok(env.fund_season(&funder, SOL));
+    assert_ok(env.end_season());
+    assert_error(env.claim(&unused, 1), SolagelError::NotEligible);
+    assert_error(env.claim(&admitted, 1), SolagelError::NotEligible);
+    let pool = SOL + 12_500; // half of the 5% fee on the winner's 500,000-lamport profit
+    assert_eq!(env.prize_balance(1), pool);
+    let winner_before = env.balance(&winner.pubkey());
+    assert_ok(env.claim(&winner, 1));
+    assert_eq!(
+        env.balance(&winner.pubkey()) - winner_before,
+        pool * 3_000 / 10_000
+    );
+    assert_eq!(env.season(1).claimed_mask, 1);
+}
+
+#[test]
+fn season_points_round_down_captured_profit_independently_of_mass_score() {
+    let mut env = TestEnv::initialized();
+    assert_ok(env.create_arena(1, BUY_IN, 10));
+    let small_profit = env.new_player("small");
+    let winner = env.new_player("winner");
+
+    assert_ok(env.join(&small_profit, 1));
+    assert_ok(env.activate(&small_profit.pubkey(), 1));
+    env.airdrop(&arena_pda(1), 999);
+    assert_ok(env.settle(&small_profit.pubkey(), 1, BUY_IN + 999, u32::MAX, 0, 0));
+    assert_eq!(
+        env.profile(&small_profit.pubkey()).best_score,
+        MAX_SCORE_PER_GAME
+    );
+    assert_eq!(env.profile(&small_profit.pubkey()).season_points, 0);
+    assert_eq!(env.season(1).count, 0);
+
+    // A whole point is earned at 1,000 gross profit lamports, even with zero mass score.
+    assert_ok(env.join(&winner, 1));
+    assert_ok(env.activate(&winner.pubkey(), 1));
+    env.airdrop(&arena_pda(1), 1_000);
+    assert_ok(env.settle(&winner.pubkey(), 1, BUY_IN + 1_000, 0, 0, 0));
+    let profile = env.profile(&winner.pubkey());
+    assert_eq!(profile.best_score, 0);
+    assert_eq!(profile.season_points, 1);
+    let season = env.season(1);
+    assert_eq!(season.count, 1);
+    assert_eq!(season.entries[0].player, winner.pubkey());
+    assert_eq!(
+        (season.entries[0].points, season.entries[0].best_score),
+        (1, 0)
+    );
+    assert_eq!(env.prize_balance(1), 49); // floor(999 * 5%) / 2 + (1000 * 5%) / 2
 }
 
 /// Two players join a 0.1 SOL arena; payouts, fee split and stats.
@@ -209,7 +460,7 @@ fn settle_session_pays_player_and_splits_fee() {
     assert_eq!(profile.best_score, 1_234);
     assert_eq!(profile.total_score, 1_234);
     assert_eq!(profile.xp, 120);
-    assert_eq!(profile.season_points, 1_234);
+    assert_eq!(profile.season_points, 50_000);
     assert_eq!(profile.last_played, START_TS);
 
     // Settling an already closed session fails.
@@ -243,19 +494,20 @@ fn settle_session_pays_player_and_splits_fee() {
         (profile.games_played, profile.kills, profile.xp),
         (1, 1, 10)
     );
-    assert_eq!(profile.season_points, 50);
+    assert_eq!(profile.season_points, 0);
     assert_eq!(env.config().total_games, 2);
 
-    // Both players are on the season leaderboard, best first.
+    // Only captured profit enters the prize leaderboard; Bob's loss earns no rank.
     let season = env.season(1);
-    assert_eq!(season.count, 2);
-    let (first, second) = (season.entries[0], season.entries[1]);
+    assert_eq!(season.count, 1);
+    let first = season.entries[0];
     assert_eq!(first.player, alice.pubkey());
-    assert_eq!((first.points, first.best_score), (1_234, 1_234));
+    assert_eq!((first.points, first.best_score), (50_000, 1_234));
     assert_eq!(name_of(&first.name, first.name_len), "alice");
-    assert_eq!(second.player, bob.pubkey());
-    assert_eq!((second.points, second.best_score), (50, 50));
-    assert_eq!(name_of(&second.name, second.name_len), "bob");
+    assert!(season
+        .entries
+        .iter()
+        .all(|entry| entry.player != bob.pubkey()));
 
     // A closed session can be opened again (new session id). Joining is blocked while
     // paused, settling is not.

@@ -151,7 +151,12 @@ pub struct GameResult {
     pub xp: u32,
 }
 
-/// Applies one finished game to a profile (stats, XP, season points).
+/// Season points use captured SOL profit, never gameplay mass or cosmetic XP.
+pub fn season_points_from_profit(payout: u64, buy_in: u64) -> u64 {
+    payout.saturating_sub(buy_in) / LAMPORTS_PER_SEASON_POINT
+}
+
+/// Applies one paid game with independently computed financial season points.
 ///
 /// Score is clamped to `MAX_SCORE_PER_GAME` and XP to `MAX_XP_PER_GAME`. Season points
 /// are reset when the profile still carries points from an older season. All counters
@@ -159,6 +164,23 @@ pub struct GameResult {
 pub fn apply_game(
     profile: &mut PlayerProfile,
     current_season: u32,
+    game: GameResult,
+    earned_points: u64,
+    now: i64,
+) -> GameResult {
+    let result = apply_practice_game(profile, game.score, game.kills, game.xp, now);
+    if profile.season != current_season {
+        profile.season = current_season;
+        profile.season_points = 0;
+    }
+    profile.season_points = profile.season_points.saturating_add(earned_points);
+    result
+}
+
+/// Applies lifetime stats and cosmetic progression only. Practice cannot earn season
+/// points or change existing paid-play points, including after a season rollover.
+pub fn apply_practice_game(
+    profile: &mut PlayerProfile,
     score: u32,
     kills: u16,
     xp: u32,
@@ -172,11 +194,6 @@ pub fn apply_game(
     profile.best_score = profile.best_score.max(score);
     profile.total_score = profile.total_score.saturating_add(u64::from(score));
     profile.xp = profile.xp.saturating_add(u64::from(xp));
-    if profile.season != current_season {
-        profile.season = current_season;
-        profile.season_points = 0;
-    }
-    profile.season_points = profile.season_points.saturating_add(u64::from(score));
     profile.last_played = now;
 
     GameResult { score, kills, xp }
@@ -447,13 +464,33 @@ mod tests {
     }
 
     #[test]
+    fn season_points_count_only_captured_profit() {
+        assert_eq!(season_points_from_profit(0, 1_000_000), 0);
+        assert_eq!(season_points_from_profit(1_000_000, 1_000_000), 0);
+        assert_eq!(season_points_from_profit(1_000_999, 1_000_000), 0);
+        assert_eq!(season_points_from_profit(1_001_000, 1_000_000), 1);
+        assert_eq!(season_points_from_profit(150_000_000, 100_000_000), 50_000);
+        assert_eq!(season_points_from_profit(u64::MAX, 0), u64::MAX / 1_000);
+    }
+
+    #[test]
     fn apply_game_updates_profile() {
         let mut profile = PlayerProfile {
             owner: pk(1),
             season: 1,
             ..Default::default()
         };
-        let r = apply_game(&mut profile, 1, 5_000, 3, 120, 42);
+        let r = apply_game(
+            &mut profile,
+            1,
+            GameResult {
+                score: 5_000,
+                kills: 3,
+                xp: 120,
+            },
+            5_000,
+            42,
+        );
         assert_eq!(
             r,
             GameResult {
@@ -471,32 +508,97 @@ mod tests {
         assert_eq!(profile.last_played, 42);
 
         // Clamping.
-        let r = apply_game(&mut profile, 1, u32::MAX, u16::MAX, u32::MAX, 43);
+        let r = apply_game(
+            &mut profile,
+            1,
+            GameResult {
+                score: u32::MAX,
+                kills: u16::MAX,
+                xp: u32::MAX,
+            },
+            123,
+            43,
+        );
         assert_eq!(r.score, MAX_SCORE_PER_GAME);
         assert_eq!(r.xp, MAX_XP_PER_GAME);
         assert_eq!(profile.best_score, MAX_SCORE_PER_GAME);
         assert_eq!(profile.xp, 120 + u64::from(MAX_XP_PER_GAME));
         assert_eq!(profile.kills, 3 + u32::from(u16::MAX));
-        assert_eq!(profile.season_points, 5_000 + u64::from(MAX_SCORE_PER_GAME));
+        assert_eq!(profile.season_points, 5_000 + 123);
 
         // A lower score keeps the best score.
-        apply_game(&mut profile, 1, 10, 0, 0, 44);
+        apply_game(
+            &mut profile,
+            1,
+            GameResult {
+                score: 10,
+                kills: 0,
+                xp: 0,
+            },
+            0,
+            44,
+        );
         assert_eq!(profile.best_score, MAX_SCORE_PER_GAME);
 
         // New season resets season points only.
         let total_before = profile.total_score;
-        apply_game(&mut profile, 2, 700, 0, 0, 45);
+        apply_game(
+            &mut profile,
+            2,
+            GameResult {
+                score: 700,
+                kills: 0,
+                xp: 0,
+            },
+            800,
+            45,
+        );
         assert_eq!(profile.season, 2);
-        assert_eq!(profile.season_points, 700);
+        assert_eq!(profile.season_points, 800);
         assert_eq!(profile.total_score, total_before + 700);
         assert_eq!(profile.games_played, 4);
 
         // Saturation instead of overflow.
         profile.xp = u64::MAX - 1;
         profile.games_played = u32::MAX;
-        apply_game(&mut profile, 2, 0, 0, 10, 46);
+        apply_game(
+            &mut profile,
+            2,
+            GameResult {
+                score: 0,
+                kills: 0,
+                xp: 10,
+            },
+            u64::MAX,
+            46,
+        );
         assert_eq!(profile.xp, u64::MAX);
         assert_eq!(profile.games_played, u32::MAX);
+        assert_eq!(profile.season_points, u64::MAX);
+    }
+
+    #[test]
+    fn practice_updates_lifetime_stats_without_changing_paid_points() {
+        let mut profile = PlayerProfile {
+            owner: pk(1),
+            season: 7,
+            season_points: 123,
+            ..Default::default()
+        };
+        let result = apply_practice_game(&mut profile, u32::MAX, 4, u32::MAX, 42);
+        assert_eq!(result.score, MAX_SCORE_PER_GAME);
+        assert_eq!(result.xp, MAX_XP_PER_GAME);
+        assert_eq!(profile.games_played, 1);
+        assert_eq!(profile.kills, 4);
+        assert_eq!(profile.best_score, MAX_SCORE_PER_GAME);
+        assert_eq!(profile.total_score, u64::from(MAX_SCORE_PER_GAME));
+        assert_eq!(profile.xp, u64::from(MAX_XP_PER_GAME));
+        assert_eq!((profile.season, profile.season_points), (7, 123));
+        assert_eq!(profile.last_played, 42);
+        assert_eq!(
+            (profile.stake_games, profile.total_staked, profile.total_won),
+            (0, 0, 0)
+        );
     }
 
     #[test]
@@ -625,10 +727,20 @@ mod tests {
             ..Default::default()
         };
         profile.name[..3].copy_from_slice(b"bob");
-        let result = apply_game(&mut profile, 3, 250, 1, 10, 7);
+        let result = apply_game(
+            &mut profile,
+            3,
+            GameResult {
+                score: 250,
+                kills: 1,
+                xp: 10,
+            },
+            500,
+            7,
+        );
         let e = leader_entry(&profile, result.score);
         assert_eq!(e.player, pk(9));
-        assert_eq!(e.points, 1_250);
+        assert_eq!(e.points, 1_500);
         assert_eq!(e.best_score, 250);
         assert_eq!(&e.name[..3], b"bob");
         assert_eq!((e.name_len, e.skin), (3, 4));

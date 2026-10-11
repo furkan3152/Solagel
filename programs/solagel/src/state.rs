@@ -8,19 +8,19 @@ use crate::constants::{LEADERBOARD_LEN, NAME_BYTES};
 pub struct Config {
     /// May change the configuration, create arenas and manage seasons.
     pub admin: Pubkey,
-    /// Game server key that signs `settle_session` and `record_game`.
+    /// Game server key that signs activation, settlement and practice results.
     pub server_authority: Pubkey,
-    /// Receives skin purchases, the treasury part of fees and swept arena leftovers.
+    /// Receives the treasury part of fees and swept arena leftovers.
     pub treasury: Pubkey,
     /// Fee charged on stake profit, in basis points (≤ `MAX_FEE_BPS`).
     pub fee_bps: u16,
     /// Part of the fee that goes to the current season prize pool, in basis points.
     pub season_share_bps: u16,
-    /// Price of a premium skin in lamports.
+    /// Reserved legacy skin price. Skin purchases are unavailable during the beta.
     pub skin_price: u64,
     /// Id of the season that is currently running.
     pub current_season: u32,
-    /// Blocks new arena joins (settlements and refunds keep working).
+    /// Blocks new arena joins and activation (settlements and refunds keep working).
     pub paused: bool,
     pub bump: u8,
     pub total_players: u64,
@@ -49,6 +49,7 @@ pub struct PlayerProfile {
     pub total_score: u64,
     /// Season that `season_points` belongs to.
     pub season: u32,
+    /// Captured SOL profit in whole 1,000-lamport units; gameplay mass grants no points.
     pub season_points: u64,
     pub stake_games: u32,
     pub total_staked: u64,
@@ -85,6 +86,9 @@ pub struct Session {
     pub buy_in: u64,
     pub opened_at: i64,
     pub id: u64,
+    /// Set by the server before admission. An activated buy-in is at risk in live play,
+    /// so it can only be returned through authoritative settlement, never a timeout refund.
+    pub activated: bool,
     pub bump: u8,
 }
 
@@ -94,6 +98,7 @@ pub struct Session {
 )]
 pub struct LeaderEntry {
     pub player: Pubkey,
+    /// Captured SOL profit points, independent of score and cosmetic XP.
     pub points: u64,
     /// Best single-game score of this player during the season.
     pub best_score: u32,

@@ -20,6 +20,8 @@ export interface ChainSession {
   buyIn: number;
   /** Unix seconds. */
   openedAt: number;
+  /** Once activated, only the server's earned-balance settlement can close this ticket. */
+  activated?: boolean;
 }
 
 export interface ChainArena {
@@ -58,13 +60,15 @@ export interface ChainGateway {
   status(): ChainStatus;
   getProfile(owner: string, fresh?: boolean): Promise<ChainProfile | null>;
   getSession(arenaId: number, player: string): Promise<ChainSession | null>;
+  /** Confirm on-chain admission after a durable room reservation, before gameplay. */
+  activateSession(arenaId: number, player: string, sessionId: number): Promise<boolean>;
   listArenas(): Promise<ChainArena[]>;
   season(): Promise<SeasonView | null>;
   /** Wake the settlement worker (new journal items). */
   kick(): void;
   /** Ids of sessions currently owned by a room (live); never refunded as stale. */
   setLiveSessionProvider(fn: () => Set<string>): void;
-  onSettled(fn: (e: { key: string; player: string; signature: string; kind: 'settle' | 'record'; payout?: number }) => void): void;
+  onSettled(fn: (e: { key: string; player: string; signature: string; kind: 'settle' | 'record'; payout?: number; sessionId?: number; arenaId?: number }) => void): void;
   start(): Promise<void>;
   stop(): Promise<void>;
 }
@@ -81,6 +85,9 @@ export class NullChain implements ChainGateway {
   }
   async getSession(): Promise<ChainSession | null> {
     return null;
+  }
+  async activateSession(): Promise<boolean> {
+    return false;
   }
   async listArenas(): Promise<ChainArena[]> {
     return [];

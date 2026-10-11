@@ -14,6 +14,106 @@ export type Solagel = {
   },
   "instructions": [
     {
+      "name": "activateSession",
+      "docs": [
+        "Server-signed admission of a paid ticket before live play starts."
+      ],
+      "discriminator": [
+        225,
+        216,
+        111,
+        21,
+        69,
+        235,
+        96,
+        66
+      ],
+      "accounts": [
+        {
+          "name": "server",
+          "signer": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "arena",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  114,
+                  101,
+                  110,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "arena.id",
+                "account": "arena"
+              }
+            ]
+          },
+          "relations": [
+            "session"
+          ]
+        },
+        {
+          "name": "session",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "arena"
+              },
+              {
+                "kind": "account",
+                "path": "session.player",
+                "account": "session"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "sessionId",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "buySkin",
       "discriminator": [
         160,
@@ -1787,6 +1887,26 @@ export type Solagel = {
       "code": 6023,
       "name": "sessionMismatch",
       "msg": "Settlement is for a different session"
+    },
+    {
+      "code": 6024,
+      "name": "sessionAlreadyActivated",
+      "msg": "Session has already been activated"
+    },
+    {
+      "code": 6025,
+      "name": "sessionActivationExpired",
+      "msg": "Session activation deadline has passed; request a refund"
+    },
+    {
+      "code": 6026,
+      "name": "sessionNotRefundable",
+      "msg": "Activated sessions require server settlement and cannot be refunded"
+    },
+    {
+      "code": 6027,
+      "name": "featureUnavailable",
+      "msg": "This feature is unavailable during the SOL beta"
     }
   ],
   "types": [
@@ -1894,14 +2014,14 @@ export type Solagel = {
           {
             "name": "serverAuthority",
             "docs": [
-              "Game server key that signs `settle_session` and `record_game`."
+              "Game server key that signs activation, settlement and practice results."
             ],
             "type": "pubkey"
           },
           {
             "name": "treasury",
             "docs": [
-              "Receives skin purchases, the treasury part of fees and swept arena leftovers."
+              "Receives the treasury part of fees and swept arena leftovers."
             ],
             "type": "pubkey"
           },
@@ -1922,7 +2042,7 @@ export type Solagel = {
           {
             "name": "skinPrice",
             "docs": [
-              "Price of a premium skin in lamports."
+              "Reserved legacy skin price. Skin purchases are unavailable during the beta."
             ],
             "type": "u64"
           },
@@ -1936,7 +2056,7 @@ export type Solagel = {
           {
             "name": "paused",
             "docs": [
-              "Blocks new arena joins (settlements and refunds keep working)."
+              "Blocks new arena joins and activation (settlements and refunds keep working)."
             ],
             "type": "bool"
           },
@@ -2033,6 +2153,9 @@ export type Solagel = {
           },
           {
             "name": "points",
+            "docs": [
+              "Captured SOL profit points, independent of score and cosmetic XP."
+            ],
             "type": "u64"
           },
           {
@@ -2133,6 +2256,9 @@ export type Solagel = {
           },
           {
             "name": "seasonPoints",
+            "docs": [
+              "Captured SOL profit in whole 1,000-lamport units; gameplay mass grants no points."
+            ],
             "type": "u64"
           },
           {
@@ -2395,6 +2521,14 @@ export type Solagel = {
           {
             "name": "id",
             "type": "u64"
+          },
+          {
+            "name": "activated",
+            "docs": [
+              "Set by the server before admission. An activated buy-in is at risk in live play,",
+              "so it can only be returned through authoritative settlement, never a timeout refund."
+            ],
+            "type": "bool"
           },
           {
             "name": "bump",
@@ -2706,7 +2840,7 @@ export type Solagel = {
     {
       "name": "premiumSkinStart",
       "docs": [
-        "Skins `PREMIUM_SKIN_START..SKIN_COUNT` are bought with SOL (bit `skin - 16` of `premium_skins`)."
+        "Reserved NFT skin ids. The legacy SOL purchase entry point is disabled during beta."
       ],
       "type": "u8",
       "value": "16"
@@ -2751,7 +2885,7 @@ export type Solagel = {
     {
       "name": "sessionRefundTimeoutSecs",
       "docs": [
-        "A session that was never settled can be refunded by its player after this many seconds (24 h)."
+        "An unactivated ticket can be refunded by its player after this many seconds (24 h)."
       ],
       "type": "i64",
       "value": "86400"

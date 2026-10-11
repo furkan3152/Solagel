@@ -4,7 +4,7 @@ use crate::{
     constants::*,
     error::SolagelError,
     events::GameRecorded,
-    instructions::shared,
+    logic,
     state::{Config, PlayerProfile, Season},
 };
 
@@ -15,7 +15,7 @@ pub struct RecordArgs {
     pub xp: u32,
 }
 
-/// Records a free-play game (no money involved).
+/// Records practice stats and cosmetic XP only. Free play never enters the prize board.
 #[derive(Accounts)]
 pub struct RecordGame<'info> {
     #[account(
@@ -47,17 +47,8 @@ pub fn handle_record_game(ctx: Context<RecordGame>, args: RecordArgs) -> Result<
         .total_games
         .checked_add(1)
         .ok_or(SolagelError::MathOverflow)?;
-    let current_season = config.current_season;
-
-    let result = shared::record_result(
-        &mut accounts.profile,
-        &mut accounts.season,
-        current_season,
-        args.score,
-        args.kills,
-        args.xp,
-        now,
-    );
+    let result =
+        logic::apply_practice_game(&mut accounts.profile, args.score, args.kills, args.xp, now);
 
     emit!(GameRecorded {
         player: accounts.profile.owner,

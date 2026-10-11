@@ -26,6 +26,8 @@ export interface WorldConfig {
   maxPowerUps: number;
   powerUps: boolean;
   coinRain: boolean;
+  /** Paid arenas use zero-value bots: they may eat bots, never human cells. */
+  botsCannotEatHumans?: boolean;
   seed?: number;
   /** Override for tests: first coin rain delay (ms). */
   firstCoinRainMs?: number;
@@ -743,6 +745,7 @@ export class World {
         // other player's cell
         const bp = b.player;
         if (bp === ap) return;
+        if (this.cfg.botsCannotEatHumans && ap.isBot && !bp.isBot) return;
         if (aShield || bp.shieldUntil > this.now) return;
         if (!canEat(a.mass, b.mass) || !coversVictim(a.r, b.r, d)) return;
         const victimTotalBefore = bp.totalMass();
