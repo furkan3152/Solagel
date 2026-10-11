@@ -73,7 +73,7 @@ React + Canvas browser ⇄ WebSocket ⇄ authoritative Node game server
           │                              │
           └──── wallet transactions ──────┼── activation + settlement
                                          ▼
-                              Solana Anchor program
+                              Solana escrow program
 ```
 
 The server runs physics at 30 Hz. Solana holds tickets, funds, profiles and season rewards. Game-result accuracy trusts the authoritative server. Only captured SOL profit contributes to the prize-bearing season leaderboard: `floor(max(payout − buyIn, 0) / 1000)` points, using lamports before the profit fee. Bot/food mass, returned buy-ins and practice earn no prize points; the top ten eligible players share the configured pool.
@@ -84,7 +84,8 @@ The server runs physics at 30 Hz. Solana holds tickets, funds, profiles and seas
 | `apps/server` | Simulation, bots, room admission, auth and durable settlement |
 | `packages/shared` | Rules, protocol, skins and release metadata |
 | `packages/sdk` | Solana instructions, account decoders and admin CLI |
-| `programs/solagel` | Anchor escrow, activation, settlement and profile program |
+| `programs/solagel` | Anchor reference implementation, IDL and SBF compatibility tests |
+| `programs/solagel-compact` | Smaller deployable program with the same escrow, activation, settlement and profile ABI |
 
 ## Verification and deployment
 
@@ -92,8 +93,8 @@ The server runs physics at 30 Hz. Solana holds tickets, funds, profiles and seas
 corepack pnpm typecheck
 corepack pnpm test
 corepack pnpm build
-anchor build --ignore-keys
-cargo test -p solagel
+corepack pnpm program:test
+corepack pnpm -F @solagel/sdk deploy-budget
 ```
 
 See [verification results](docs/VERIFICATION.md) and [deployment and recovery](docs/DEPLOY.md). The activation change **changes the Session account layout**. Drain and settle all existing sessions before upgrading an existing deployment, regenerate the IDL, and deploy matching server/client builds together. Never point this build at the old program layout with live tickets.

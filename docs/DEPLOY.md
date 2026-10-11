@@ -6,20 +6,33 @@ This guide covers the **SOL beta**. Token and NFT launch are future releases, no
 
 Read-only `getAccountInfo` checks on the public mainnet-beta and devnet RPCs returned no account for the repository program ID `5skf5Twyqr8M84dJ8RLGfz1NU6fR3zPDRLUvGd5y7472`. The existing signed end-to-end test used a local validator; it was not a public-network deployment.
 
-The built `target/deploy/solagel.so` is **436,328 bytes**, SHA-256 `b64b313b1868ede28d18b8cf2262b6088abeef5588035b09fdf754e0de80cef1`. Current mainnet `getMinimumBalanceForRentExemption` responses give:
+The deployable compact artifact `target/deploy/solagel_compact.so` is **91,208 bytes**, down from the 436,328-byte Anchor reference. SHA-256: `1cf345b9523bbb719b853e918ec995c144f75fd4870cc7aa5b61281055383de5`. It retains all 17 SOL-beta instructions, account layouts, security checks and event payloads. Mainnet `getMinimumBalanceForRentExemption` responses give:
 
 | Account | Allocated bytes | Rent-exempt SOL |
 | --- | ---: | ---: |
 | Program | 36 | 0.000833120 |
-| ProgramData | 436,373 | 2.217425080 |
+| ProgramData | 91,253 | 0.464215480 |
 | Config | 162 | 0.001473200 |
 | First season | 1,281 | 0.007157720 |
 | Three arena accounts | 40 each | 0.002560320 |
-| **Total rent capital** | | **2.229449440** |
+| **Total rent capital** | | **0.476239840** |
+| Fee / initial server-operation allowance | | **0.020000000** |
+| **Planned initial on-chain budget** | | **0.496239840** |
+| **Remaining below the 0.5 SOL ceiling** | | **0.003760160** |
 
-Transaction fees, priority fees, server-authority operating balance, hosting/RPC services, and any optional prize funding are additional. This is a measured rent floor, not a maximum price quote. Most of this amount is capital held in accounts while they remain open, rather than burned transaction fees; closing a program to recover funds ends its operation and requires the appropriate authority.
+The measured plan fits the owner's **0.5 SOL** initial deployment ceiling. The previous reference build needed **2.229449440 SOL** in rent alone; deploy the compact artifact, not the reference. See the machine-readable [RPC budget record](program-budget.json).
 
-**The owner's 0.5 SOL real-funds ceiling is below the current mainnet deployment floor. Do not attempt this deployment against that budget.** Devnet rehearsal uses faucet test SOL and does not consume the owner's real SOL. No public deployment or transfer was performed for this estimate.
+The 0.02 SOL allowance covers estimated deployment/initialization fees and an initial server-authority balance; it is not a guaranteed fee cap or perpetual operating fund. Hosting/RPC subscriptions, optional prize funding, players' own profile/session rent, and later token/NFT setup or program upgrades are separate. Most rent is capital held in accounts while open. No public deployment or real-SOL transfer was performed.
+
+Before signing, rerun the read-only budget gate against the final artifact and intended network:
+
+```bash
+corepack pnpm -F @solagel/sdk deploy-budget
+# Optional explicit artifact and RPC endpoint:
+corepack pnpm -F @solagel/sdk deploy-budget "$PWD/target/deploy/solagel_compact.so" https://api.mainnet-beta.solana.com
+```
+
+Use an absolute artifact path for the explicit command when invoking pnpm with `-F` (it changes the working directory to the SDK package). The default command resolves the repository artifact automatically. This command neither signs nor sends transactions. It exits nonzero above 0.5 SOL or if rent cannot be checked; do not deploy until the measured budget fits. Fees, priority fees and rent parameters can change, so reconfirm the actual wallet transaction before signing. In environments with a configured HTTP proxy, Node 24 supports `NODE_USE_ENV_PROXY=1` for this read-only command.
 
 Agave 4.3 defaults `--max-len` to the original binary length. Explicitly choosing that same length does not reduce this estimate. On initial upgradeable-loader deployment, the intermediate buffer balance is returned to the payer before ProgramData is funded in the same instruction, so initial rent is not counted twice. Future upgrades can have different temporary funding requirements. Requery rent and measure the final binary before any later deployment; network parameters and binary size can change.
 
@@ -32,10 +45,12 @@ corepack pnpm install --frozen-lockfile
 corepack pnpm typecheck
 corepack pnpm test
 corepack pnpm build
-anchor build --ignore-keys
+corepack pnpm program:test
 corepack pnpm -F @solagel/sdk sync-idl
-cargo test -p solagel
+corepack pnpm -F @solagel/sdk deploy-budget
 ```
+
+`program:test` builds the Anchor reference/IDL and the compact artifact, runs compact host tests, then executes the original SBF suite and differential tests against the compact program. `program:build` builds only the deployable compact artifact. The build script rejects stack overflow diagnostics even if the compiler exits successfully. See [compact-program maintenance](../programs/solagel-compact/README.md).
 
 The TypeScript tests use mock gateways where appropriate. They do not prove that a deployed program accepts real transactions. After building the program, use `scripts/localnet.sh` and `corepack pnpm -F @solagel/server e2e ws://127.0.0.1:8787/ws` for the wallet → ticket → activation → gameplay → settlement flow.
 
@@ -45,14 +60,19 @@ This beta adds `Session.activated` and `activate_session`; account size and inst
 
 ## 2. Configure a devnet deployment
 
-Create your own program keypair, run `anchor keys sync`, build, regenerate the SDK IDL, and deploy to devnet. Protect program/admin/server keypairs; they are not browser configuration. The initialized admin must be the program's upgrade authority.
+Create your own program keypair, run `anchor keys sync`, rebuild both programs with `corepack pnpm program:test`, regenerate the SDK IDL, and rehearse on devnet using test SOL. Changing the program ID also changes every PDA and must reach the SDK/server/client together. The compact build reads the reference `declare_id!`; use the matching `target/deploy/solagel-keypair.json` for deployment, not an incidental `solagel_compact-keypair.json`. Protect program/admin/server keypairs; they are not browser configuration. The initialized admin must be the program's upgrade authority. Assign that authority to the designated admin through their own signing wallet; the repository contains only its public address.
 
 ```bash
-anchor deploy --provider.cluster devnet
-corepack pnpm admin init --url https://api.devnet.solana.com \
+# Example rehearsal; replace signer paths with your locally controlled test keys.
+solana program deploy target/deploy/solagel_compact.so \
+  --program-id target/deploy/solagel-keypair.json \
+  --keypair <DEPLOY_PAYER_KEYPAIR> --upgrade-authority <ADMIN_KEYPAIR> \
+  --url https://api.devnet.solana.com \
+  --max-len "$(wc -c < target/deploy/solagel_compact.so)"
+corepack pnpm admin init --url https://api.devnet.solana.com --keypair <ADMIN_KEYPAIR> \
   --server <SERVER_PUBLIC_KEY> --treasury <TREASURY_PUBLIC_KEY> \
   --fee-bps 500 --season-share-bps 5000
-corepack pnpm admin create-arena --url https://api.devnet.solana.com --defaults
+corepack pnpm admin create-arena --url https://api.devnet.solana.com --keypair <ADMIN_KEYPAIR> --defaults
 corepack pnpm admin status --url https://api.devnet.solana.com
 ```
 
