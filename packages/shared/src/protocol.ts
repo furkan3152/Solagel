@@ -106,11 +106,15 @@ export interface RoomInfo {
   /** Stake rooms only. */
   arenaId?: number;
   buyIn?: number;
+  /** Stake arena admission state; existing sessions can still reconnect when false. */
+  enabled?: boolean;
   /** Private rooms only. */
   code?: string;
 }
 
 export interface ChainStatus {
+  /** Runtime gate for new games; existing games and settlements remain active. */
+  admissionsPaused?: boolean;
   enabled: boolean;
   cluster: string;
   programId: string | null;
@@ -210,6 +214,7 @@ export type ErrorCode =
   | 'session_busy'
   | 'skin_locked'
   | 'stake_disabled'
+  | 'admissions_paused'
   | 'server_full'
   | 'version_mismatch';
 

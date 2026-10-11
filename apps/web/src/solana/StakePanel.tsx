@@ -1,8 +1,10 @@
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { describeError } from '@solagel/sdk';
-import { arenaMeta, formatSol, isSkinUnlocked } from '@solagel/shared';
+import { arenaMeta, formatSol, isSkinUnlocked, PROTOCOL_VERSION } from '@solagel/shared';
 import { useEffect, useRef, useState } from 'react';
 import { useT } from '../i18n';
+import { SERVER } from '../config';
+import { verifyAdminNetwork as verifyProgramNetwork } from '../admin/network';
 import { openModal, toast, useUi } from '../store';
 import { refreshChain, useChainData, useSolagelClient } from './chain';
 import { signInWithWallet } from './siws';
@@ -18,6 +20,7 @@ export function StakePanel({ onPlay }: { onPlay: (room: string) => void }) {
   const client = useSolagelClient();
   const chain = useUi((s) => s.chain);
   const connected = useUi((s) => s.connected);
+  const admissionsPaused = useUi((s) => s.admissionsPaused);
   const rooms = useUi((s) => s.rooms);
   const auth = useUi((s) => s.auth);
   const data = useChainData();
@@ -29,7 +32,7 @@ export function StakePanel({ onPlay }: { onPlay: (room: string) => void }) {
   ownerRef.current = pubkey;
   const verified = !!pubkey && auth?.pubkey === pubkey;
   const ready = !!data.updatedAt && data.owner === (pubkey ?? null) && !data.error;
-  const paidOnline = connected && !!chain?.stakeEnabled && data.deployed !== false && !data.config?.paused;
+  const paidOnline = connected && !!chain?.stakeEnabled && data.deployed !== false && !data.config?.paused && !admissionsPaused;
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now() / 1000), 1000);
@@ -64,7 +67,7 @@ export function StakePanel({ onPlay }: { onPlay: (room: string) => void }) {
         await sendWalletTx(client, connection, wallet, [ix], { success: 'Unused ticket refunded' });
         return;
       }
-      if (!useUi.getState().connected || !arena || (!session?.activated && (!useUi.getState().chain?.stakeEnabled || config?.paused || !arena.enabled))) {
+      if (!useUi.getState().connected || !arena || (!session?.activated && (useUi.getState().admissionsPaused || !useUi.getState().chain?.stakeEnabled || config?.paused || !arena.enabled))) {
         toast('warn', 'SOL arena entry is currently unavailable. Your existing ticket is kept.');
         return;
       }
@@ -77,9 +80,22 @@ export function StakePanel({ onPlay }: { onPlay: (room: string) => void }) {
       }
       if (ownerRef.current !== currentOwner) return;
       if (!session) {
+        // A fresh server read closes the polling window before opening a payment prompt.
+        const checkAdmission = async () => {
+          const response = await fetch(`${SERVER.http}/api/config`, { signal: AbortSignal.timeout(10_000), cache: 'no-store' });
+          if (!response.ok) throw new Error('Arena availability could not be checked. Please retry.');
+          const current = await response.json();
+          if (ownerRef.current !== currentOwner) throw new Error('The connected wallet changed.');
+          if (current.protocol !== PROTOCOL_VERSION || current.admissionsPaused || current.chain?.admissionsPaused || !current.chain?.stakeEnabled) {
+            throw new Error('New SOL tickets are temporarily unavailable.');
+          }
+          await verifyProgramNetwork(client, current.chain);
+          if (ownerRef.current !== currentOwner) throw new Error('The connected wallet changed.');
+        };
+        await checkAdmission();
         if (arena.openSessions >= arena.maxPlayers) { toast('warn', t('err.room_full')); return; }
         const ix = await client.ix.joinArena(player, arenaId);
-        const sig = await sendWalletTx(client, connection, wallet, [ix], { success: 'SOL ticket confirmed — entering the arena!' });
+        const sig = await sendWalletTx(client, connection, wallet, [ix], { success: 'SOL ticket confirmed — entering the arena!', beforeSign: checkAdmission });
         if (!sig) return;
       }
       if (ownerRef.current === currentOwner && useUi.getState().connected) onPlay(`stake:${arenaId}`);
@@ -103,7 +119,7 @@ export function StakePanel({ onPlay }: { onPlay: (room: string) => void }) {
         {data.config && <span className="badge mint">{t('stakes.fee', { fee: data.config.feeBps / 100 })}</span>}
       </div>
       <div className="notice small">🤖 Bots fill quiet arenas and give mass only. They carry no SOL and cannot eat players here.</div>
-      {!paidOnline && <div className="notice" role="status">{t('stakes.offline')} Practice is available without a wallet.</div>}
+      {!paidOnline && !admissionsPaused && <div className="notice" role="status">{t('stakes.offline')} Practice is available without a wallet.</div>}
       {paidOnline && gate && (
         <div className="col">
           <div className="notice">{gate.text}</div>

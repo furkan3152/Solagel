@@ -46,6 +46,7 @@ PUBLIC_RPC_URL=https://api.devnet.solana.com
 PROGRAM_ID=<YOUR_DEPLOYED_PROGRAM_ID>
 SERVER_KEYPAIR=/absolute/path/to/server-keypair.json
 AUTH_SECRET=<RANDOM_PERSISTENT_SECRET>
+ADMIN_WALLETS=<OPTIONAL_COMMA_SEPARATED_PUBLIC_KEYS>
 DATA_DIR=/absolute/path/to/persistent/data
 STAKE_ENABLED=true
 ```
@@ -91,6 +92,9 @@ Active sessions are bounded by the server's session-age limit, but their final p
 
 ## 5. Operations
 
+The English control room at `/admin` provides these operations through wallet signatures, plus live bot/admission controls, queue monitoring, and staged token/NFT configuration. See [ADMIN.md](ADMIN.md) for authorization and release workflows. Back up `admin.json` alongside the financial journal. Saved admin settings take precedence over bot environment defaults after the first save; each update checks a revision to prevent overwriting concurrent changes.
+
+
 `corepack pnpm admin help` lists commands. Pass the intended `--url`, `--program` and admin `--keypair`; do not rely on a different cluster's defaults.
 
 | Task | Command |
@@ -105,10 +109,14 @@ Active sessions are bounded by the server's session-age limit, but their final p
 
 Only captured SOL profit at paid settlement contributes to season points: `floor(max(payout − buyIn, 0) / 1000)` with amounts in lamports before fees (1 point per 0.000001 SOL profit). Zero-profit bot/food farming cannot enter the prize leaderboard. Practice keeps XP/stats without monetary rewards. Legacy `buy_skin` is disabled: no SOL purchase should be advertised as an NFT mint.
 
-## 6. Future asset launch
+## 6. Asset rollout: token, then NFT skins
 
-Before NFT launch, confirm the supported OpenSea mint chain, publish and verify the collection identifier, map owned token IDs/metadata to the existing circular character skins, and verify ownership server-side. A different mint chain requires an explicit linked-wallet proof. Free mint has a zero mint price; chain transaction fees are separate. Avoid promising supply, a mint date or existing-skin conversion before those decisions exist.
+After creating the intended token through pump.fun, inspect its real mint in `/admin` on the configured Solana cluster. The server verifies owner program, initialization, decimals, supply and authorities. Save it as Configured for private preparation, or Launched to publish its metadata and exact official launch link in the lobby. Mint inspection does not prove pump.fun provenance. SOL remains the only gameplay currency.
 
-Before token launch, create the intended token through pump.fun and verify its mint/decimals. Implement separate SPL-token escrow, accounting, settlement and fee rules; the current lamport ledger is SOL-only and must never be relabeled as token units. Existing SOL sessions must settle under their original currency. Update release metadata and enable product links only when the real collection/token and their integration are verified.
+Token entry and payouts require separate SPL-token escrow, accounting, settlement and fee rules, followed by program deployment and signed devnet verification. Existing SOL sessions must settle under their original currency. Never relabel the lamport ledger as token units.
 
-Production still requires independent contract/security review and a successful real-wallet devnet rehearsal. This guide does not imply that any deployment or asset creation has been performed.
+After the token launch, configure the intended NFT chain, standard, collection identifier, OpenSea collection URL and asset-to-skin mappings. The admin registry supports preparing Solana/Metaplex or Ethereum/Base/Polygon ERC-721/ERC-1155 identifiers; it does not imply OpenSea currently supports minting every listed chain or format. Confirm the intended OpenSea mint route before deployment. Mappings target the eight cosmetic premium character skins.
+
+NFT ownership verification remains an explicit integration step after the real contract is available: validate collection membership, read finalized ownership or balances, invalidate transferred assets, and link the owning wallet with a signed proof if the NFT lives on another chain. A collection URL or token ID cannot grant a skin. Free mint has zero mint price; network fees may apply.
+
+Production still requires independent contract/security review and a successful real-wallet devnet rehearsal. No deployment or asset creation is performed by saving admin settings.

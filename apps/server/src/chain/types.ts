@@ -1,4 +1,5 @@
 import type { ChainStatus } from '@solagel/shared';
+import type { ConfigView } from '@solagel/sdk';
 
 export interface ChainProfile {
   owner: string;
@@ -58,6 +59,8 @@ export interface ChainGateway {
   readonly enabled: boolean;
   readonly stakeEnabled: boolean;
   status(): ChainStatus;
+  /** Fresh read only: a cached admin must never authorize administrative access. */
+  readAdminConfig?(): Promise<ConfigView | null>;
   getProfile(owner: string, fresh?: boolean): Promise<ChainProfile | null>;
   getSession(arenaId: number, player: string): Promise<ChainSession | null>;
   /** Confirm on-chain admission after a durable room reservation, before gameplay. */

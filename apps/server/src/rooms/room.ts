@@ -53,6 +53,7 @@ export interface RoomOptions {
   code?: string;
   bots: BotManagerOptions | null;
   stake?: { arenaId: number; buyIn: number };
+  enabled?: boolean;
   seed?: number;
 }
 
@@ -114,6 +115,7 @@ export class Room {
       maxPlayers: this.opts.maxPlayers,
       arenaId: this.opts.stake?.arenaId,
       buyIn: this.opts.stake?.buyIn,
+      enabled: this.opts.mode === 'stake' ? this.opts.enabled ?? true : undefined,
       code: this.opts.code,
     };
   }
@@ -137,7 +139,7 @@ export class Room {
 
   /** Persist liability before submitting activation; ticks retain this reservation. */
   reserveStake(entry: StakeAdmission): void {
-    if (this.closed || !this.ledger || this.isFull || this.findStakeByWallet(entry.player) || this.hasReservation(entry.player) || this.liveSessions().includes(entry.session)) {
+    if (this.closed || this.opts.enabled === false || !this.ledger || this.isFull || this.findStakeByWallet(entry.player) || this.hasReservation(entry.player) || this.liveSessions().includes(entry.session)) {
       throw new Error('Stake admission is unavailable');
     }
     this.reservations.set(entry.session, entry);
@@ -205,7 +207,7 @@ export class Room {
 
   join(conn: Conn, opts: { name: string; skin: number; flags: number; stake?: StakeAdmission }): Player {
     const reserved = opts.stake ? this.reservations.get(opts.stake.session) : undefined;
-    if (this.closed || !conn.open || conn.player?.alive || (this.isFull && !reserved)) throw new Error('Connection cannot join this room');
+    if (this.closed || this.opts.enabled === false || !conn.open || conn.player?.alive || this.humans.size >= this.opts.maxPlayers || (this.isFull && !reserved)) throw new Error('Connection cannot join this room');
     if (this.ledger && (!opts.stake || opts.stake.player !== conn.wallet || this.findStakeByWallet(opts.stake.player) || this.ledger.all().some((entry) => entry.session === opts.stake!.session) || (reserved && reserved !== opts.stake))) {
       throw new Error('A unique wallet-owned stake session is required');
     }

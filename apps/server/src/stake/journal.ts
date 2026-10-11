@@ -118,6 +118,19 @@ export class Journal {
     return this.completed.filter((r) => r.player === player).map((r) => ({ ...r }));
   }
 
+  /** Authenticated administration only; never expose the archive publicly. */
+  allReceipts(): readonly SettlementReceipt[] {
+    return this.completed.map((r) => ({ ...r }));
+  }
+
+  /** Retry existing money claims without editing payouts, identity or submission evidence. */
+  retrySettlements(now = Date.now()): number {
+    const pending = this.pendingItems.map((p) => p.kind === 'settle' ? { ...p, nextAttemptAt: now } : p);
+    const count = pending.filter((p) => p.kind === 'settle').length;
+    if (count > 0) this.save(pending, this.liveByRoom);
+    return count;
+  }
+
   /** A confirmed send becomes a replayable receipt in the same durable write as claim removal. */
   complete(key: string, signature: string, now = Date.now()): void {
     const item = this.pendingItems.find((p) => p.key === key);

@@ -395,6 +395,13 @@ export class SolanaChain implements ChainGateway {
     };
   }
 
+  async readAdminConfig(): Promise<ConfigView | null> {
+    if (!this.client) return null;
+    const config = await this.client.fetchConfig();
+    if (config) this.applyConfig(config);
+    return config;
+  }
+
   /** Cached 60 s (`fresh` bypasses). Never throws: RPC errors yield the last known value or null. */
   async getProfile(owner: string, fresh = false): Promise<ChainProfile | null> {
     if (!this.enabled || !this.client || !isPubkey(owner)) return null;
