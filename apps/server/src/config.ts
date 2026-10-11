@@ -1,6 +1,9 @@
 import { randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
 
+/** Public operator wallet for off-chain controls only; ADMIN_WALLETS replaces this default. */
+export const DEFAULT_ADMIN_WALLET = 'D2Ts7yCiVjedo6uwqpkM44QA8J45NdVU1J3k5m6iWtvm';
+
 export interface ServerConfig {
   port: number;
   host: string;
@@ -62,7 +65,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       privateTarget: int(env.PRIVATE_BOT_TARGET, 8),
     },
     authSecret: secret,
-    adminWallets: (env.ADMIN_WALLETS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
+    // An explicitly empty override disables the repository's default operator.
+    adminWallets: (env.ADMIN_WALLETS ?? DEFAULT_ADMIN_WALLET).split(',').map((s) => s.trim()).filter(Boolean),
     chain: {
       cluster: env.SOLANA_CLUSTER ?? 'localnet',
       rpcUrl: env.SOLANA_RPC_URL ?? null,

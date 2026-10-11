@@ -8,7 +8,7 @@ The verified flow is: English lobby → wallet / SOL ticket → durable arena ad
 | --- | --- |
 | Shared rules and protocol | 23 tests passed |
 | Solana SDK and generated account/instruction IDL | 32 tests passed |
-| Server, admin authorization, asset validation, admission, bots and settlement | 219 tests passed |
+| Server, admin authorization, asset validation, admission, bots and settlement | 225 tests passed |
 | Browser client, admin actions/network/recovery and wallet outcomes | 68 tests passed |
 | TypeScript across the workspace | Passed |
 | Server and web production builds | Passed |
@@ -52,6 +52,10 @@ Token launch announcements preserve SOL entry/payout units. Staged NFT identifie
 A fresh throwaway wallet completed the final SBF program's paid flow on a local validator in 8.5 seconds: registered a profile, bought a 0.01 SOL ticket, signed server authentication, joined after confirmed on-chain activation, and cashed out. The receipt matched the exact session and arena; the session account closed. The wallet received 0.01158688 SOL: 0.01 SOL payout plus 0.00158688 SOL returned session rent. The zero-profit game earned XP but no season points or prize rank. No public-network funds were involved.
 
 Reproduce with `scripts/localnet.sh`, a server configured from `.localnet/server.env`, and `corepack pnpm -F @solagel/server e2e`.
+
+## Admin wallet configuration
+
+The designated wallet `D2Ts7yCiVjedo6uwqpkM44QA8J45NdVU1J3k5m6iWtvm` is the default off-chain administrator. Six configuration tests verify its canonical public-key encoding, explicit list overrides, explicit-empty disabling, and unchanged on-chain signer/program settings. This configuration does not assign a deployed program authority.
 
 ## Scope
 
