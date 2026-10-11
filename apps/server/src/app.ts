@@ -9,6 +9,8 @@ import { Leaderboards } from './leaderboards';
 import { Gateway } from './net/gateway';
 import { RoomManager } from './rooms/manager';
 import { Journal } from './stake/journal';
+import { AdminService } from './admin/service';
+import { AdminStore, defaultSettings } from './admin/store';
 
 export interface App {
   server: Server;
@@ -17,6 +19,7 @@ export interface App {
   journal: Journal;
   auth: Auth;
   leaderboards: Leaderboards;
+  admin: AdminService;
   /** Resolves once the HTTP server is listening; returns the bound port. */
   listen(): Promise<number>;
   close(): Promise<void>;
@@ -59,7 +62,11 @@ export async function createApp(
   await chain.start();
   await rooms.ensureStakeRooms();
 
-  const server = createHttpServer(cfg, { rooms, leaderboards, chain, auth, startedAt: Date.now() });
+  const adminStore = new AdminStore(persist ? join(cfg.dataDir, 'admin.json') : null, defaultSettings(cfg.bots),
+    { cluster: cfg.chain.cluster, programId: cfg.chain.programId });
+  const admin = new AdminService(cfg, { rooms, chain, journal, store: adminStore });
+
+  const server = createHttpServer(cfg, { rooms, leaderboards, chain, auth, admin, startedAt: Date.now() });
   const gateway = new Gateway(cfg, rooms, auth, chain, journal, log);
   gateway.attach(server);
   const flushTimer = setInterval(() => leaderboards.flush(), 30_000);
@@ -76,6 +83,7 @@ export async function createApp(
     journal,
     auth,
     leaderboards,
+    admin,
     listen: () =>
       new Promise((resolve) => {
         server.listen(cfg.port, cfg.host, () => {

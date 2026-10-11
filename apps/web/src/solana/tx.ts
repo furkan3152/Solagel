@@ -15,7 +15,7 @@ export async function sendWalletTx(
   connection: Connection,
   wallet: WalletContextState,
   ixs: TransactionInstruction[],
-  opts: { success?: string } = {},
+  opts: { success?: string; beforeSign?: () => Promise<void> } = {},
 ): Promise<string | null> {
   if (!wallet.publicKey || !wallet.sendTransaction) {
     toast('error', t('stakes.needWallet'));
@@ -25,6 +25,7 @@ export async function sendWalletTx(
   const cluster = useUi.getState().chain?.cluster ?? 'devnet';
   try {
     const { tx, lastValidBlockHeight } = await client.buildTransaction(ixs, wallet.publicKey, { priorityMicroLamports: 20_000 });
+    await opts.beforeSign?.();
     const signature = await wallet.sendTransaction(tx, connection, { preflightCommitment: 'confirmed', maxRetries: 4 });
     submittedSignature = signature;
     toast('info', t('tx.sent'), { href: explorerTx(signature, cluster), label: 'Explorer' }, 4000);

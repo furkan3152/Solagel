@@ -9,12 +9,12 @@ A jelly-coin survival arena on Solana. Join a running pond, grow, split and eat 
 | Phase | Economy | Character skins |
 | --- | --- | --- |
 | **SOL beta — implemented** | SOL entry tickets, player-to-player SOL value transfers, on-chain cash-out | Starter and XP skins; future skins are previews |
-| **NFT launch — planned** | SOL beta continues until the token economy is separately implemented and verified | Free character-skin mint planned on OpenSea; cosmetic only |
-| **Token launch — planned** | Token creation planned on pump.fun, followed by an explicit game integration | Verified collection ownership will unlock cosmetic skins |
+| **Token launch — next** | Token creation planned on pump.fun; admin mint inspection and release announcements are implemented. SPL gameplay requires separate escrow integration | Existing beta skins continue |
+| **NFT launch — after token** | SOL beta continues until token gameplay is implemented and verified | Free character-skin mint planned on OpenSea; collection and skin mappings can be staged in admin |
 
-**No Solagel token or NFT collection is launched or configured in this codebase.** There are no token sales, mint buttons, placeholder asset addresses or conversions of beta balances into future tokens. Legacy premium skin ownership remains usable, but new SOL skin purchases are disabled. A free NFT mint means no mint price; network fees may still apply.
+**No Solagel token or NFT collection is bundled or minted by this codebase.** Administrators can register real assets after launch through `/admin`. There are no token sales, mint buttons, placeholder asset addresses or conversions of beta balances into future tokens. Legacy premium skin ownership remains usable, but new SOL skin purchases are disabled. A free NFT mint means no mint price; network fees may still apply.
 
-The release metadata is exported from `packages/shared/src/release.ts` and exposed at `/api/config`. It describes the current release, not a switch that enables unfinished assets. OpenSea mint-chain support, the collection contract and a ownership-verification approach must be confirmed before launch; a Solana wallet alone cannot prove ownership of an NFT on another chain.
+The release metadata is derived from durable admin settings and exposed at `/api/config`. Configured draft addresses remain private; explicitly announced token metadata appears in the lobby. Announcing a token does not change SOL tickets or payout units. It describes the current release, not a switch that enables unfinished assets. OpenSea mint-chain support, the collection contract and an ownership-verification approach must be confirmed before launch; a Solana wallet alone cannot prove ownership of an NFT on another chain.
 
 ## The arena rules
 
@@ -57,6 +57,14 @@ Environment examples: [server](apps/server/.env.example), [web](apps/web/.env.ex
 | Cash out | C | Cash-out button |
 | Chat / emotes | Enter / 1–8 | On-screen controls |
 | Spectate next | Q | Next |
+
+## Admin control room
+
+![Solagel admin control room](docs/images/admin-desktop.jpg)
+
+Open **`/admin`** with an authorized wallet. The panel preserves the game’s pastel coin style and provides live room/bot controls, admission pause, settlement monitoring and retries, token inspection, staged NFT skin mappings, and wallet-signed contract operations.
+
+Set `ADMIN_WALLETS` to a comma-separated list of Solana public keys for off-chain management. The current on-chain program admin is also authorized. A dedicated message signature opens a 15-minute in-memory admin session; game login tokens cannot administer the server. Only the current program admin can sign privileged contract changes. See [admin setup and launch workflow](docs/ADMIN.md).
 
 ## Architecture
 

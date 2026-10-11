@@ -1,4 +1,4 @@
-import { RELEASE, isSkinUnlocked, sanitizeName } from '@solagel/shared';
+import { isSkinUnlocked, sanitizeName } from '@solagel/shared';
 import { useState } from 'react';
 import { engine } from '../game/instance';
 import { sound } from '../game/sound';
@@ -44,10 +44,11 @@ function FreePanel({ onPlay }: { onPlay: (room: string) => void }) {
   const t = useT();
   const rooms = useUi((s) => s.rooms);
   const connected = useUi((s) => s.connected);
+  const paused = useUi((s) => s.admissionsPaused);
   const free = rooms.filter((r) => r.mode === 'free').sort((a, b) => b.players - a.players)[0];
   return (
     <div className="mode-panel">
-      <button className="btn btn-gold btn-xl" disabled={!connected} onClick={() => onPlay('free')}>
+      <button className="btn btn-gold btn-xl" disabled={!connected || paused} onClick={() => onPlay('free')}>
         ▶ {t('lobby.playFree')}
       </button>
       {free && (
@@ -64,10 +65,11 @@ function PrivatePanel({ onPlay }: { onPlay: (room: string) => void }) {
   const t = useT();
   const [code, setCode] = useState('');
   const connected = useUi((s) => s.connected);
+  const paused = useUi((s) => s.admissionsPaused);
   return (
     <div className="mode-panel">
       <div className="muted small center">{t('lobby.privateDesc')}</div>
-      <button className="btn btn-pink" disabled={!connected} onClick={() => onPlay('private:new')}>
+      <button className="btn btn-pink" disabled={!connected || paused} onClick={() => onPlay('private:new')}>
         ✨ {t('lobby.createRoom')}
       </button>
       <div className="row">
@@ -79,9 +81,9 @@ function PrivatePanel({ onPlay }: { onPlay: (room: string) => void }) {
           aria-label="Private practice room code"
           style={{ textTransform: 'uppercase', letterSpacing: 4, textAlign: 'center' }}
           onChange={(e) => setCode(e.target.value.replace(/[^a-z0-9]/gi, '').toUpperCase())}
-          onKeyDown={(e) => e.key === 'Enter' && connected && code.length === 5 && onPlay(`private:${code}`)}
+          onKeyDown={(e) => e.key === 'Enter' && connected && !paused && code.length === 5 && onPlay(`private:${code}`)}
         />
-        <button className="btn btn-sky" disabled={code.length !== 5 || !connected} onClick={() => onPlay(`private:${code}`)}>
+        <button className="btn btn-sky" disabled={code.length !== 5 || !connected || paused} onClick={() => onPlay(`private:${code}`)}>
           {t('lobby.joinRoom')}
         </button>
       </div>
@@ -90,6 +92,8 @@ function PrivatePanel({ onPlay }: { onPlay: (room: string) => void }) {
 }
 
 function ReleaseRoadmap() {
+  const release = useUi((s) => s.release);
+  const tokenLive = release.token.status === 'launched';
   return (
     <section className="card side-card release-card" aria-labelledby="release-title">
       <h2 className="side-title" id="release-title">✦ Little coins, big plans</h2>
@@ -102,21 +106,22 @@ function ReleaseRoadmap() {
           </div>
         </li>
         <li>
-          <span className="release-icon release-nft" aria-hidden="true">✿</span>
+          <span className="release-icon release-token" aria-hidden="true">✧</span>
           <div>
-            <div className="release-heading">NFT character skins <span className="badge pink">PLANNED</span></div>
-            <p>A free mint is planned on {RELEASE.nft.platform}. Cosmetic skins for your round character; network fees may apply.</p>
+            <div className="release-heading">{release.token.symbol || 'Game token'} <span className="badge sky">{tokenLive ? 'TOKEN LIVE' : 'NEXT'}</span></div>
+            <p>{tokenLive ? 'Token launched. Arenas still use SOL while token gameplay is prepared.' : `The token comes first: launch on ${release.token.platform}, then game integration. Beta entry and payouts remain in SOL.`}</p>
+            {tokenLive && release.token.launchUrl && <a className="small" href={release.token.launchUrl} target="_blank" rel="noreferrer">Official token ↗</a>}
           </div>
         </li>
         <li>
-          <span className="release-icon release-token" aria-hidden="true">✧</span>
+          <span className="release-icon release-nft" aria-hidden="true">✿</span>
           <div>
-            <div className="release-heading">Game token <span className="badge sky">PLANNED</span></div>
-            <p>Launch planned on {RELEASE.token.platform}, followed by game integration. SOL is the only beta entry currency.</p>
+            <div className="release-heading">NFT character skins <span className="badge pink">AFTER TOKEN</span></div>
+            <p>A free mint is planned on {release.nft.platform} after the token launch. Your NFT will unlock a cosmetic round-character skin once collection ownership is connected.</p>
           </div>
         </li>
       </ol>
-      <div className="release-note">The token and NFT collection have not launched. No mint or token purchase is available here yet.</div>
+      <div className="release-note">SOL beta → token launch → NFT skins. NFT minting and token gameplay are not active in the game yet. Free mint excludes network fees.</div>
     </section>
   );
 }
@@ -126,10 +131,12 @@ export function Lobby() {
   const [mode, setMode] = useState<Mode>('stakes');
   const settings = useUi((s) => s.settings);
   const auth = useUi((s) => s.auth);
+  const paused = useUi((s) => s.admissionsPaused);
   const own = useOwnership();
   const verifiedName = auth?.profile?.name;
 
   const play = (room: string) => {
+    if (useUi.getState().admissionsPaused && !room.startsWith('stake:')) return;
     sound.click();
     if (!isSkinUnlocked(settings.skin, own)) {
       toast('warn', t('err.skin_locked'));
@@ -166,6 +173,7 @@ export function Lobby() {
               style={{ textAlign: 'center' }}
             />
             <SkinPicker />
+            {paused && <div className="notice" role="status">New games are temporarily paused. Active games, reconnects and cash-outs remain available.</div>}
             <div className="tabs" aria-label="Game mode">
               <button className={`tab ${mode === 'stakes' ? 'active' : ''}`} aria-pressed={mode === 'stakes'} onClick={() => setMode('stakes')}>
                 ◎ {t('lobby.tab.stakes')}
@@ -200,7 +208,7 @@ export function Lobby() {
       </div>
       <div className="keys">
         <span className="kbd">Space</span> {t('hud.split')} · <span className="kbd">W</span> {t('hud.eject')} · <span className="kbd">1–8</span>{' '}
-        {t('hud.emotes')} · <span className="kbd">Enter</span> chat · <span className="kbd">C</span> {t('hud.cashout')}
+        {t('hud.emotes')} · <span className="kbd">Enter</span> chat · <span className="kbd">C</span> {t('hud.cashout')} · <a href="/admin">Admin</a>
       </div>
     </div>
   );

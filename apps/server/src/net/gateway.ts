@@ -95,7 +95,7 @@ export class Gateway {
         }
       }, 25_000),
       setInterval(() => {
-        const msg = { t: 'rooms', rooms: this.rooms.list(), online: this.rooms.online(), chain: this.chain.status() } as const;
+        const msg = { t: 'rooms', rooms: this.rooms.list(), online: this.rooms.online(), chain: { ...this.chain.status(), admissionsPaused: this.rooms.admissionsPaused } } as const;
         for (const c of this.rooms.conns) if (c.helloed && !c.player?.alive) c.send(msg);
       }, 5000),
     );
@@ -186,7 +186,7 @@ export class Gateway {
           v: PROTOCOL_VERSION,
           serverTime: Date.now(),
           rooms: this.rooms.list(),
-          chain: this.chain.status(),
+          chain: { ...this.chain.status(), admissionsPaused: this.rooms.admissionsPaused },
           online: this.rooms.online(),
         });
         return;
@@ -295,6 +295,11 @@ export class Gateway {
         conn.profile = profile;
       }
       if (canceled()) return;
+      const rejoiningStake = target.mode === 'stake' && wallet && this.rooms.rooms.get(`stake-${target.arenaId}`)?.findStakeByWallet(wallet);
+      if (this.rooms.admissionsPaused && !rejoiningStake) {
+        this.error(conn, 'admissions_paused', 'New games are temporarily paused. Active games and cash-outs remain available.');
+        return;
+      }
       const own = conn.profile ? { xp: conn.profile.xp, premiumMask: conn.profile.premiumSkins } : null;
       if (!isSkinUnlocked(skin, own)) {
         this.error(conn, 'skin_locked', 'That skin is locked.');
@@ -402,10 +407,14 @@ export class Gateway {
       }
       const stake = { player: wallet, session: session.address, sessionId: session.id, arenaId: target.arenaId,
         buyIn: session.buyIn, value: session.buyIn, openedAt: session.openedAt };
+      if (this.rooms.admissionsPaused) {
+        this.error(conn, 'admissions_paused', 'New games are temporarily paused. Active games and cash-outs remain available.');
+        return;
+      }
       room.reserveStake(stake);
       try {
         const activated = await this.activateTicket(target.arenaId, wallet, session.id);
-        if (canceled() || !activated || !this.chain.stakeEnabled) {
+        if (canceled() || !activated || !this.chain.stakeEnabled || this.rooms.admissionsPaused) {
           room.cancelReservation(session.address);
           if (!canceled()) this.error(conn, 'no_session', 'Arena entry could not complete. Your ticket has been queued for settlement.');
           return;

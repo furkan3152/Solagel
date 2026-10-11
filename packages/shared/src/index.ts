@@ -8,3 +8,4 @@ export * from './arenas';
 export * from './names';
 export * from './text';
 export * from './release';
+export * from './admin';

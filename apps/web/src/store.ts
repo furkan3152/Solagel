@@ -6,6 +6,7 @@ import type {
   ProfileSummary,
   RoomInfo,
 } from '@solagel/shared';
+import { RELEASE, type ReleaseStatus } from '@solagel/shared';
 import { create } from 'zustand';
 
 export type Screen = 'lobby' | 'playing' | 'dead' | 'spectating' | 'cashedout';
@@ -73,6 +74,8 @@ export interface UiState {
   online: number;
   rooms: RoomInfo[];
   chain: ChainStatus | null;
+  admissionsPaused: boolean;
+  release: ReleaseStatus;
   room: RoomInfo | null;
   me: { pid: number; name: string; skin: number } | null;
   hud: { mass: number; cells: number; value: number | null; rank: number; players: number };
@@ -130,6 +133,8 @@ export const useUi = create<UiState>(() => ({
   online: 0,
   rooms: [],
   chain: null,
+  admissionsPaused: false,
+  release: RELEASE,
   room: null,
   me: null,
   hud: { mass: 0, cells: 0, value: null, rank: 0, players: 0 },
