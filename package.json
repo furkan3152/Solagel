@@ -15,8 +15,9 @@
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
-    "program:build": "anchor build",
-    "program:test": "anchor build && cargo test -p solagel",
+    "program:build": "bash scripts/build-program.sh",
+    "program:reference": "anchor build --program-name solagel --ignore-keys",
+    "program:test": "pnpm program:reference && pnpm program:build && cargo test -p solagel-compact && SOLAGEL_TEST_PROGRAM=\"$PWD/target/deploy/solagel_compact.so\" cargo test -p solagel --tests -- --include-ignored",
     "admin": "pnpm -F @solagel/sdk admin"
   }
 }

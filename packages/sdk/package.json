@@ -13,7 +13,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "admin": "tsx src/admin.ts",
-    "sync-idl": "node ../../scripts/sync-idl.mjs"
+    "sync-idl": "node ../../scripts/sync-idl.mjs",
+    "deploy-budget": "tsx src/deploy-budget.ts"
   },
   "dependencies": {
     "@anchor-lang/core": "1.2.1",
