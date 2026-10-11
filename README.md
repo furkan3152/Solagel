@@ -64,7 +64,7 @@ Environment examples: [server](apps/server/.env.example), [web](apps/web/.env.ex
 
 Open **`/admin`** with an authorized wallet. The panel preserves the game’s pastel coin style and provides live room/bot controls, admission pause, settlement monitoring and retries, token inspection, staged NFT skin mappings, and wallet-signed contract operations.
 
-Set `ADMIN_WALLETS` to a comma-separated list of Solana public keys for off-chain management. The current on-chain program admin is also authorized. A dedicated message signature opens a 15-minute in-memory admin session; game login tokens cannot administer the server. Only the current program admin can sign privileged contract changes. See [admin setup and launch workflow](docs/ADMIN.md).
+The designated default off-chain admin is `D2Ts7yCiVjedo6uwqpkM44QA8J45NdVU1J3k5m6iWtvm`. Set `ADMIN_WALLETS` to replace it with a comma-separated list, or explicitly set an empty value to disable this default. The current on-chain program admin is also authorized. A dedicated message signature opens a 15-minute in-memory admin session; game login tokens cannot administer the server. Only the current program admin can sign privileged contract changes. See [admin setup and launch workflow](docs/ADMIN.md).
 
 ## Architecture
 

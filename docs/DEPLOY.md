@@ -2,6 +2,27 @@
 
 This guide covers the **SOL beta**. Token and NFT launch are future releases, not deployment prerequisites. Never configure a guessed pump.fun mint or OpenSea collection.
 
+## Deployment status and budget — 2026-10-11
+
+Read-only `getAccountInfo` checks on the public mainnet-beta and devnet RPCs returned no account for the repository program ID `5skf5Twyqr8M84dJ8RLGfz1NU6fR3zPDRLUvGd5y7472`. The existing signed end-to-end test used a local validator; it was not a public-network deployment.
+
+The built `target/deploy/solagel.so` is **436,328 bytes**, SHA-256 `b64b313b1868ede28d18b8cf2262b6088abeef5588035b09fdf754e0de80cef1`. Current mainnet `getMinimumBalanceForRentExemption` responses give:
+
+| Account | Allocated bytes | Rent-exempt SOL |
+| --- | ---: | ---: |
+| Program | 36 | 0.000833120 |
+| ProgramData | 436,373 | 2.217425080 |
+| Config | 162 | 0.001473200 |
+| First season | 1,281 | 0.007157720 |
+| Three arena accounts | 40 each | 0.002560320 |
+| **Total rent capital** | | **2.229449440** |
+
+Transaction fees, priority fees, server-authority operating balance, hosting/RPC services, and any optional prize funding are additional. This is a measured rent floor, not a maximum price quote. Most of this amount is capital held in accounts while they remain open, rather than burned transaction fees; closing a program to recover funds ends its operation and requires the appropriate authority.
+
+**The owner's 0.5 SOL real-funds ceiling is below the current mainnet deployment floor. Do not attempt this deployment against that budget.** Devnet rehearsal uses faucet test SOL and does not consume the owner's real SOL. No public deployment or transfer was performed for this estimate.
+
+Agave 4.3 defaults `--max-len` to the original binary length. Explicitly choosing that same length does not reduce this estimate. On initial upgradeable-loader deployment, the intermediate buffer balance is returned to the payer before ProgramData is funded in the same instruction, so initial rent is not counted twice. Future upgrades can have different temporary funding requirements. Requery rent and measure the final binary before any later deployment; network parameters and binary size can change.
+
 ## 1. Toolchain and checks
 
 Use Node 22+, pnpm 10.28.0, Rust from `rust-toolchain.toml`, Agave CLI 4.3.x and Anchor CLI 1.2.1.
