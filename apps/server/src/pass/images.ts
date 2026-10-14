@@ -76,7 +76,7 @@ export class PassImages {
     return buf;
   }
 
-  private async render(n: number, seed: string | null, supply: number): Promise<Buffer> {
+  protected async render(n: number, seed: string | null, supply: number): Promise<Buffer> {
     // loaded lazily: the native module is only needed once an image is requested
     const { createCanvas } = await import('@napi-rs/canvas');
     const canvas = createCanvas(PASS_IMAGE_SIZE, PASS_IMAGE_SIZE);

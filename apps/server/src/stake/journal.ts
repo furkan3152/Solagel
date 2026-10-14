@@ -24,6 +24,11 @@ export interface SettlementItem {
   nextAttemptAt: number;
   createdAt: number;
   lastError?: string;
+  /**
+   * The player's game-token account is missing: settling waits until the player
+   * creates it (the server never pays that rent). Shown via `/api/pending`.
+   */
+  needsTokenAccount?: boolean;
 }
 
 export interface LiveStake {
@@ -101,7 +106,8 @@ export class Journal {
       const raw = JSON.parse(readFileSync(this.path, 'utf8')) as JournalFile | JournalFileV1;
       const data = migrate(raw);
       // v1 free-play `record` items: v2 writes no on-chain records, so they are dropped
-      const settle = data.pending.filter((p) => (p as { kind: string }).kind === 'settle');
+      // (any other unknown kind is kept and reaches the worker's loud "unknown kind" path)
+      const settle = data.pending.filter((p) => (p as { kind: string }).kind !== 'record');
       const legacy = data.pending.length - settle.length;
       this.pendingItems = settle;
       if (legacy > 0) this.log(`journal: dropped ${legacy} legacy free-play record item(s) (v2 writes no on-chain records)`);
@@ -236,6 +242,12 @@ export class Journal {
     this.commit({ enqueue: [item] });
   }
 
+  /** The player's token account exists now: clear the wait flag (persisted with the next write). */
+  clearNeedsTokenAccount(key: string): void {
+    const item = this.pendingItems.find((p) => p.key === key);
+    if (item) delete item.needsTokenAccount;
+  }
+
   /** Marks an item as done (settled on-chain or no longer applicable). */
   remove(key: string): void {
     const before = this.pendingItems.length;
@@ -243,13 +255,19 @@ export class Journal {
     if (this.pendingItems.length !== before) this.persist();
   }
 
-  /** Records a failed attempt with exponential backoff (max 5 minutes). */
-  retryLater(key: string, error: string, now = Date.now()): void {
+  /**
+   * Records a failed attempt with exponential backoff (max 5 minutes), or after
+   * `opts.delayMs` when given. `needsTokenAccount` true/false flags/clears a wait
+   * for the player's token account (left as is when omitted).
+   */
+  retryLater(key: string, error: string, now = Date.now(), opts: { delayMs?: number; needsTokenAccount?: boolean } = {}): void {
     const item = this.pendingItems.find((p) => p.key === key);
     if (!item) return;
     item.attempts++;
     item.lastError = error.slice(0, 300);
-    item.nextAttemptAt = now + Math.min(300_000, 2000 * 2 ** Math.min(item.attempts, 8));
+    item.nextAttemptAt = now + (opts.delayMs ?? Math.min(300_000, 2000 * 2 ** Math.min(item.attempts, 8)));
+    if (opts.needsTokenAccount === true) item.needsTokenAccount = true;
+    else if (opts.needsTokenAccount === false) delete item.needsTokenAccount;
     this.persist();
   }
 

@@ -114,10 +114,10 @@ describe('pass http routes', () => {
     server = null;
   });
 
-  async function start(chain: ChainGateway, env: Record<string, string> = {}): Promise<string> {
+  async function start(chain: ChainGateway, env: Record<string, string> = {}, passImages?: PassImages): Promise<string> {
     const dir = mkdtempSync(join(tmpdir(), 'slana-pass-http-'));
     const cfg = loadConfig({ DATA_DIR: dir, PUBLIC_URL: BASE, ...env } as NodeJS.ProcessEnv);
-    server = createHttpServer(cfg, { chain, rooms: {} as never, leaderboards: {} as never, auth: {} as never, startedAt: Date.now() });
+    server = createHttpServer(cfg, { chain, rooms: {} as never, leaderboards: {} as never, auth: {} as never, startedAt: Date.now(), passImages });
     await new Promise<void>((r) => server!.listen(0, '127.0.0.1', () => r()));
     const addr = server.address();
     return `http://127.0.0.1:${typeof addr === 'object' && addr ? addr.port : 0}`;
@@ -126,11 +126,12 @@ describe('pass http routes', () => {
   it('out of range is 404', async () => {
     const chain = new PassChain();
     const url = await start(chain);
-    for (const path of ['/pass/0.json', '/pass/3334.json', '/pass/0.png', '/pass/99999.png', '/pass/-1.json', '/pass/abc.json', '/pass/1.5.json']) {
+    for (const path of ['/pass/0.json', '/pass/3334.json', '/pass/0.png', '/pass/99999.png', '/pass/-1.json', '/pass/abc.json', '/pass/1.5.json', '/pass/01.json', '/pass/007.png', '/pass/00.json']) {
       expect((await fetch(url + path)).status, path).toBe(404);
     }
     const ok = await fetch(`${url}/pass/1.json`);
     expect(ok.status).toBe(200);
+    expect(ok.headers.get('cache-control')).toMatch(/max-age/); // PUBLIC_URL set
     const body = (await ok.json()) as { name: string; image: string };
     expect(body).toMatchObject({ name: 'Slana Pass #1', image: `${BASE}/pass/1.png` });
     expect((await fetch(`${url}/pass/collection.json`)).status).toBe(200);
@@ -151,7 +152,9 @@ describe('pass http routes', () => {
     expect(chain.calls).toEqual([wallet]);
     expect((await fetch(`${url}/api/pass/owned?wallet=nope`)).status).toBe(400);
 
-    const meta = (await (await fetch(`${url}/pass/2.json`)).json()) as { image: string };
+    const metaRes = await fetch(`${url}/pass/2.json`);
+    expect(metaRes.headers.get('cache-control')).toBe('no-store'); // Host-derived links are not cached
+    const meta = (await metaRes.json()) as { image: string };
     expect(meta.image).toBe(`${url}/pass/2.png`);
 
     let limited = 0;
@@ -159,5 +162,18 @@ describe('pass http routes', () => {
     expect(limited).toBeGreaterThan(0);
     expect((await fetch(`${url}/api/pass/owned?wallet=${wallet}`)).status).toBe(429);
     expect((await fetch(`${url}/api/config`)).status).toBe(200); // other routes keep their own limit
+  });
+
+  it('a PNG render failure returns 500 and does not hang', async () => {
+    class Broken extends PassImages {
+      protected override async render(): Promise<Buffer> {
+        throw new Error('canvas exploded');
+      }
+    }
+    const url = await start(new PassChain(), {}, new Broken(mkdtempSync(join(tmpdir(), 'slana-pass-broken-'))));
+    for (let i = 0; i < 2; i++) {
+      const res = await fetch(`${url}/pass/5.png`, { signal: AbortSignal.timeout(5000) });
+      expect(res.status).toBe(500);
+    }
   });
 });
