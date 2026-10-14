@@ -179,7 +179,7 @@ export class GameEngine {
 
   cashout(): void {
     const s = useUi.getState();
-    if (s.screen !== 'playing' || s.room?.mode !== 'stake' || s.cashout.state !== 'idle') return;
+    if (s.screen !== 'playing' || s.room?.mode !== 'arena' || s.cashout.state !== 'idle') return;
     this.net.send({ t: 'cashout' });
   }
 
@@ -235,7 +235,7 @@ export class GameEngine {
         const screen = useUi.getState().screen;
         if (this.wasStakeRoom && (screen === 'playing' || screen === 'lobby')) {
           // reconnect: our stake cells are still in the arena (AFK) — reclaim them
-          this.play(`stake:${this.wasStakeRoom.slice(6)}`);
+          this.play(`arena:${this.wasStakeRoom.slice(6)}`);
         } else {
           if (screen === 'playing') useUi.setState({ screen: 'lobby' });
           this.net.send({ t: 'spectate' });
@@ -264,7 +264,7 @@ export class GameEngine {
         this.world.myPid = m.playerId;
         this.world.width = m.room.width;
         this.world.height = m.room.height;
-        this.wasStakeRoom = m.room.mode === 'stake' ? m.room.id : null;
+        this.wasStakeRoom = m.room.mode === 'arena' ? m.room.id : null;
         useUi.setState({
           screen: 'playing',
           room: m.room,
@@ -292,7 +292,7 @@ export class GameEngine {
         useUi.setState({
           lb: m.top,
           leaders: m.leaders,
-          hud: { ...s.hud, rank: m.me?.rank ?? 0, value: m.me?.value ?? (s.room?.mode === 'stake' ? s.hud.value : null), players: m.players },
+          hud: { ...s.hud, rank: m.me?.rank ?? 0, value: m.me?.value ?? (s.room?.mode === 'arena' ? s.hud.value : null), players: m.players },
         });
         return;
       }

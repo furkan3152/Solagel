@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { EMOTES, SKINS, getSkin, isSkinUnlocked, sanitizeChat, sanitizeName, truncateUtf8, utf8Length } from '../src';
+import {
+  BASIC_SKINS,
+  EMOTES,
+  SKINS,
+  getSkin,
+  isBasicSkin,
+  isSkinUnlocked,
+  sanitizeChat,
+  sanitizeName,
+  truncateUtf8,
+  utf8Length,
+} from '../src';
 
 describe('skin catalog', () => {
   it('has 24 skins with sequential ids and the on-chain tier layout', () => {
@@ -13,14 +24,27 @@ describe('skin catalog', () => {
     expect(new Set(SKINS.map((s) => s.key)).size).toBe(24);
   });
 
-  it('unlock rules mirror the program', () => {
+  it('BASIC_SKINS are the 8 free skins, ids 0..7', () => {
+    expect(BASIC_SKINS).toHaveLength(8);
+    expect(BASIC_SKINS.map((s) => s.id)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    expect(BASIC_SKINS.every((s) => s.tier === 'free')).toBe(true);
+    expect(BASIC_SKINS.every((s, i) => s === SKINS[i])).toBe(true);
+  });
+
+  it('isBasicSkin accepts exactly ids 0..7', () => {
+    for (let id = 0; id < 8; id++) expect(isBasicSkin(id)).toBe(true);
+    for (const id of [8, 9, 15, 16, 23, 24, 999, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) expect(isBasicSkin(id), String(id)).toBe(false);
+  });
+
+  it('deprecated isSkinUnlocked is isBasicSkin, whatever the ownership', () => {
     expect(isSkinUnlocked(0, null)).toBe(true);
+    expect(isSkinUnlocked(7, null)).toBe(true);
     expect(isSkinUnlocked(8, null)).toBe(false);
-    expect(isSkinUnlocked(10, { xp: 800, premiumMask: 0 })).toBe(true); // level 5
-    expect(isSkinUnlocked(10, { xp: 799, premiumMask: 0 })).toBe(false);
-    expect(isSkinUnlocked(17, { xp: 0, premiumMask: 1 << 1 })).toBe(true);
-    expect(isSkinUnlocked(17, { xp: 1e9, premiumMask: 1 << 0 })).toBe(false);
+    // level and premium skins no longer unlock: Slana Pass NFTs replace them
+    expect(isSkinUnlocked(10, { xp: 1e9, premiumMask: 0 })).toBe(false);
+    expect(isSkinUnlocked(17, { xp: 1e9, premiumMask: 0xffffffff })).toBe(false);
     expect(isSkinUnlocked(24, { xp: 1e9, premiumMask: 0xffffffff })).toBe(false);
+    expect(isSkinUnlocked(3)).toBe(true);
   });
 
   it('falls back to skin 0 for unknown ids', () => {

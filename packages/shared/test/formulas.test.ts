@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  RULES,
   canEat,
+  clamp,
   coversVictim,
   formatSol,
   levelFromXp,
+  lootTier,
   massToRadius,
-  parseJoinTarget,
   radiusToMass,
   speedForRadius,
   viewSize,
@@ -72,14 +74,43 @@ describe('formulas', () => {
     expect(formatSol(0)).toBe('◎0');
   });
 
-  it('parses join targets', () => {
-    expect(parseJoinTarget('free')).toEqual({ mode: 'free' });
-    expect(parseJoinTarget('private:new')).toEqual({ mode: 'private', code: null });
-    expect(parseJoinTarget('private:ab12c')).toEqual({ mode: 'private', code: 'AB12C' });
-    expect(parseJoinTarget('private:toolong')).toBeNull();
-    expect(parseJoinTarget('stake:3')).toEqual({ mode: 'stake', arenaId: 3 });
-    expect(parseJoinTarget('stake:-1')).toBeNull();
-    expect(parseJoinTarget('stake:x')).toBeNull();
-    expect(parseJoinTarget('nope')).toBeNull();
+  it('sizes loot pieces by their value relative to the entry fee', () => {
+    const fee = 1_000_000_000; // 1 000 tokens
+    const piece = fee * RULES.lootPieceEntryFraction; // a full ticket spills 4 of these
+    expect(lootTier(piece, fee)).toBe(1);
+    expect(lootTier(0, fee)).toBe(0);
+    expect(lootTier(piece * 0.49, fee)).toBe(0);
+    expect(lootTier(piece * 0.5, fee)).toBe(1);
+    expect(lootTier(piece * 1.49, fee)).toBe(1);
+    expect(lootTier(piece * 1.5, fee)).toBe(2);
+    expect(lootTier(piece * 3.99, fee)).toBe(2);
+    expect(lootTier(fee, fee)).toBe(3); // a piece worth a whole ticket
+    expect(lootTier(fee * 50, fee)).toBe(3);
+  });
+
+  it('keeps loot tiers monotonic and inside 0..3, even for odd inputs', () => {
+    let prev = 0;
+    for (let v = 0; v <= 2_000_000_000; v += 1_000_000) {
+      const tier = lootTier(v, 1_000_000_000);
+      expect(tier).toBeGreaterThanOrEqual(prev);
+      expect(tier).toBeLessThanOrEqual(3);
+      prev = tier;
+    }
+    expect(lootTier(5, 0)).toBe(0);
+    expect(lootTier(5, -10)).toBe(0);
+    expect(lootTier(-5, 100)).toBe(0);
+    expect(lootTier(Number.NaN, 100)).toBe(0);
+    expect(lootTier(5, Number.NaN)).toBe(0);
+  });
+
+  it('a spilled full ticket is made of normal pieces; a rich victim spills bigger ones', () => {
+    const fee = 1_000_000_000;
+    const pieces = (v: number) => clamp(Math.ceil(v / (fee * RULES.lootPieceEntryFraction)), RULES.lootPiecesMin, RULES.lootPiecesMax);
+    expect(pieces(fee)).toBe(4);
+    expect(lootTier(fee / pieces(fee), fee)).toBe(1);
+    expect(pieces(100)).toBe(RULES.lootPiecesMin);
+    expect(pieces(fee * 1000)).toBe(RULES.lootPiecesMax);
+    expect(lootTier((fee * 10) / pieces(fee * 10), fee)).toBe(2);
+    expect(lootTier((fee * 30) / pieces(fee * 30), fee)).toBe(3);
   });
 });

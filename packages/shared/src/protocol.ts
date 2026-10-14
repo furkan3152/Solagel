@@ -1,4 +1,4 @@
-import type { RoomMode } from './constants';
+import type { League, RoomMode } from './constants';
 
 /* ------------------------------------------------------------------ */
 /* Entity / flag enums (plain objects so they work across packages)    */
@@ -10,6 +10,8 @@ export const EntityKind = {
   Eject: 3,
   Virus: 4,
   PowerUp: 5,
+  /** Tokens spilled by a bot kill; `variant` is the size tier 0..3 (see `lootTier`). */
+  Loot: 6,
 } as const;
 export type EntityKind = (typeof EntityKind)[keyof typeof EntityKind];
 
@@ -35,7 +37,10 @@ export const PlayerFlag = {
   Bot: 1,
   /** Name comes from a wallet-verified on-chain profile. */
   Verified: 2,
+  /** Plays an arena ticket (tokens at stake). */
   Staker: 4,
+  /** Plays with a Slana Pass; `PlayerInfo.pass` carries its number. */
+  Pass: 8,
 } as const;
 
 /** Binary client → server opcodes (first byte). */
@@ -58,6 +63,8 @@ export interface PlayerInfo {
   id: number;
   skin: number;
   flags: number;
+  /** Slana Pass number whose look this player wears (0 = none). */
+  pass: number;
   name: string;
 }
 
@@ -71,7 +78,7 @@ export interface EntityRecord {
   playerId?: number;
   /** Cell: CellFlag bits. */
   flags?: number;
-  /** Food: variant 0..7. Eject: skin id (for color). PowerUp: PowerUpType. */
+  /** Food: variant 0..7. Eject: skin id (for color). PowerUp: PowerUpType. Loot: size tier 0..3. */
   variant?: number;
 }
 
@@ -98,16 +105,40 @@ export interface RoomInfo {
   id: string;
   mode: RoomMode;
   name: string;
+  /** Practice rooms only. */
+  league?: League;
   width: number;
   height: number;
   players: number;
   bots: number;
   maxPlayers: number;
-  /** Stake rooms only. */
+  /** Arena rooms only. */
   arenaId?: number;
-  buyIn?: number;
+  /** Entry fee in raw token units (base units of the mint). */
+  entryFee?: number;
+  /** A Slana Pass is needed to buy a ticket. */
+  requiresPass?: boolean;
+  /** Instance (shard) number within the arena. */
+  instance?: number;
+  /** Total value of loot on the floor, raw token units. */
+  loot?: number;
   /** Private rooms only. */
   code?: string;
+}
+
+/** The Slana Pass collection as the server sees it on chain. */
+export interface PassStatus {
+  /** Collection address. */
+  collection: string;
+  supply: number;
+  minted: number;
+  perWallet: number;
+  mintOpen: boolean;
+  /** Unix seconds; the mint opens at this time. */
+  mintStartTs: number;
+  revealed: boolean;
+  /** Trait seed, published at reveal (null before). */
+  seed: string | null;
 }
 
 export interface ChainStatus {
@@ -115,8 +146,12 @@ export interface ChainStatus {
   cluster: string;
   programId: string | null;
   rpcUrl: string | null;
-  stakeEnabled: boolean;
+  /** Paid arenas are open for tickets (false when the chain is off or the token is unusable). */
+  arenasEnabled: boolean;
   currentSeason: number | null;
+  /** The game token; `symbol` is display only. */
+  token: { mint: string; symbol: string; decimals: number } | null;
+  pass: PassStatus | null;
 }
 
 export interface ProfileSummary {
@@ -127,17 +162,21 @@ export interface ProfileSummary {
   premiumSkins: number;
 }
 
-export type JoinTarget =
-  | 'free'
-  | `private:${string}`
-  | `stake:${number}`;
+export type JoinTarget = 'practice' | `private:${string}` | `arena:${number}`;
 
 export type ClientMessage =
   | { t: 'hello'; v: number; lang?: string }
   | { t: 'auth'; token: string }
   | { t: 'auth'; pubkey: string; message: string; signature: string }
   | { t: 'logout' }
-  | { t: 'join'; room: JoinTarget | string; name: string; skin: number }
+  | {
+      t: 'join';
+      room: JoinTarget | string;
+      name: string;
+      skin: number;
+      /** Address of the Slana Pass asset to play with; the server verifies ownership. */
+      pass?: string;
+    }
   | { t: 'spectate'; room?: string; next?: boolean }
   | { t: 'leave' }
   | { t: 'viewport'; w: number; h: number }
@@ -151,7 +190,7 @@ export interface LbEntry {
   name: string;
   skin: number;
   score: number;
-  /** Stake rooms: in-game value in lamports. */
+  /** Arena rooms: in-game value, raw token units. */
   value?: number;
   bot?: boolean;
   verified?: boolean;
@@ -166,14 +205,32 @@ export interface DeathStats {
   playersEaten: number;
   bestRank: number;
   xp?: number;
-  /** Stake rooms: lamports paid out (0 on death). */
+  /** Arena rooms: raw token units paid out (0 on death). */
   payout?: number;
+  /** Arena rooms: value lost on death, raw token units. */
+  valueLost?: number;
+  /** Arena rooms: the killer was a bot. */
+  byBot?: boolean;
+  /** Arena rooms: part of `valueLost` that spilled as loot (all of it on a bot kill). */
+  lootSpilled?: number;
 }
 
 export type ServerMessage =
   | { t: 'welcome'; v: number; serverTime: number; rooms: RoomInfo[]; chain: ChainStatus; online: number }
   | { t: 'authed'; pubkey: string; token: string; profile: ProfileSummary | null }
-  | { t: 'joined'; room: RoomInfo; playerId: number; name: string; skin: number; value?: number }
+  | {
+      t: 'joined';
+      room: RoomInfo;
+      playerId: number;
+      name: string;
+      skin: number;
+      /** Arena rooms: the player's in-game value, raw token units. */
+      value?: number;
+      /** Arena rooms: the ticket price, raw token units. */
+      entryFee?: number;
+      /** The ticket carries a Slana Pass (Pass power applies). */
+      hasPass?: boolean;
+    }
   | { t: 'spectating'; room: RoomInfo; targetPid: number | null }
   | { t: 'left' }
   | {
@@ -189,7 +246,18 @@ export type ServerMessage =
   | { t: 'emote'; pid: number; id: number }
   | { t: 'death'; stats: DeathStats; killer: string | null; killerSkin: number | null }
   | { t: 'cashout'; state: 'started' | 'canceled' | 'done'; ms?: number; value?: number; stats?: DeathStats }
-  | { t: 'settled'; kind: 'cashout' | 'death' | 'record' | 'refund'; signature: string; payout?: number }
+  // Arena rooms: the player's in-game value changed.
+  | {
+      t: 'value';
+      /** New value, raw token units. */
+      value: number;
+      /** Signed change that was just applied. */
+      delta: number;
+      /** eat: took a share from a player; loot: picked up loot; eaten: a player took a share from us; spill: a bot ate a cell and the share spilled as loot. */
+      reason: 'eat' | 'loot' | 'eaten' | 'spill';
+    }
+  // Amounts are raw token units: `fee` is taken from the profit and `net` (= payout - fee) reaches the wallet.
+  | { t: 'settled'; kind: 'cashout' | 'death' | 'refund'; signature: string; payout: number; fee?: number; net?: number }
   | { t: 'event'; kind: 'coinrain'; state: 'start' | 'end'; ms?: number }
   | { t: 'event'; kind: 'airdrop'; state: 'start'; x: number; y: number; powerUp: PowerUpType }
   | { t: 'powerup'; type: PowerUpType; ms: number }
@@ -209,23 +277,28 @@ export type ErrorCode =
   | 'no_session'
   | 'session_busy'
   | 'skin_locked'
-  | 'stake_disabled'
+  | 'pass_required'
+  | 'pass_invalid'
+  | 'pass_in_use'
+  | 'arenas_disabled'
   | 'server_full'
   | 'version_mismatch';
 
 /** Parse a join target into its parts. Returns null for malformed input. */
 export function parseJoinTarget(
   target: string,
-): { mode: 'free' } | { mode: 'private'; code: string | null } | { mode: 'stake'; arenaId: number } | null {
-  if (target === 'free') return { mode: 'free' };
+): { mode: 'practice' } | { mode: 'private'; code: string | null } | { mode: 'arena'; arenaId: number } | null {
+  if (target === 'practice') return { mode: 'practice' };
   if (target.startsWith('private:')) {
     const code = target.slice(8).toUpperCase();
     if (code === 'NEW') return { mode: 'private', code: null };
     return /^[A-Z0-9]{5}$/.test(code) ? { mode: 'private', code } : null;
   }
-  if (target.startsWith('stake:')) {
-    const id = Number(target.slice(6));
-    return Number.isInteger(id) && id >= 0 && id <= 65535 ? { mode: 'stake', arenaId: id } : null;
+  if (target.startsWith('arena:')) {
+    const digits = target.slice(6);
+    if (!/^\d{1,5}$/.test(digits)) return null;
+    const id = Number(digits);
+    return id <= 65535 ? { mode: 'arena', arenaId: id } : null;
   }
   return null;
 }

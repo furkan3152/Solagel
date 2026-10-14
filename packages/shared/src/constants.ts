@@ -1,5 +1,5 @@
 /** Bumped whenever the wire format changes in an incompatible way. */
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 /** Simulation + snapshot rate. */
 export const TICK_RATE = 30;
@@ -70,10 +70,28 @@ export const RULES = {
   /** Newly spawned players are shielded this long. */
   spawnShieldMs: 3_000,
 
-  /** Stake mode: cash-out channel duration. */
+  /** Arena mode: cash-out channel duration. */
   cashoutMs: 3_000,
-  /** Stake mode: disconnected players stay in the arena this long. */
+  /** Arena mode: disconnected players stay in the arena this long. */
   afkGraceMs: 45_000,
+
+  /** Slana Pass holders start with this multiple of `startMass`… */
+  passStartMassMul: 1.15,
+  /** …and cash out faster than `cashoutMs`. */
+  passCashoutMs: 2_000,
+
+  /**
+   * Loot: when a bot eats a staker, the victim's tokens spill as
+   * `clamp(ceil(value / (entryFee × lootPieceEntryFraction)), lootPiecesMin, lootPiecesMax)`
+   * pieces that fly out at `lootSpeed` and slow down (fraction of speed kept
+   * after one second = `lootFrictionPerSec`). Loot never despawns.
+   */
+  lootPiecesMin: 3,
+  lootPiecesMax: 24,
+  lootPieceEntryFraction: 0.25,
+  lootSpeed: 520,
+  lootFrictionPerSec: 0.08,
+  lootRadius: 14,
 } as const;
 
 /** View (camera) tuning shared by server visibility and client camera. */
@@ -89,14 +107,28 @@ export const VIEW = {
   maxAspect: 2.5,
 } as const;
 
+/**
+ * Room modes: `practice` is free play against bots (no wallet, no tokens),
+ * `private` is a friends' room by code, `arena` is a paid room entered with a
+ * fixed token entry fee.
+ */
+export type RoomMode = 'practice' | 'private' | 'arena';
+
+/** Practice rooms come in two leagues: `rookie` (gentler bots, for newcomers) and `pro`. */
+export type League = 'rookie' | 'pro';
+
 /** World presets per room mode. */
 export const WORLD_PRESETS = {
-  free: { width: 5600, height: 5600, foodTarget: 1100, virusTarget: 22, maxPowerUps: 3 },
+  practice: { width: 5600, height: 5600, foodTarget: 1100, virusTarget: 22, maxPowerUps: 3 },
   private: { width: 4600, height: 4600, foodTarget: 800, virusTarget: 16, maxPowerUps: 2 },
-  stake: { width: 4200, height: 4200, foodTarget: 700, virusTarget: 14, maxPowerUps: 2 },
-} as const;
+  arena: { width: 6400, height: 6400, foodTarget: 1500, virusTarget: 28, maxPowerUps: 4 },
+} as const satisfies Record<
+  RoomMode,
+  { width: number; height: number; foodTarget: number; virusTarget: number; maxPowerUps: number }
+>;
 
-export type RoomMode = keyof typeof WORLD_PRESETS;
+/** Maximum human players per room instance. */
+export const CAPACITY = { practice: 40, private: 20, arena: 50 } as const satisfies Record<RoomMode, number>;
 
 export const FOOD_VARIANTS = 8;
 /** Food variants 0..5 are pastel coins (mass 1), 6 is a gem (mass 2), 7 is a golden coin. */

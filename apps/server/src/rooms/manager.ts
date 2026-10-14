@@ -31,7 +31,7 @@ export class RoomManager {
     const room = new Room(
       {
         id: `free-${n}`,
-        mode: 'free',
+        mode: 'practice',
         name: `Coin Pond #${n}`,
         maxPlayers: this.cfg.freeRoomCapacity,
         bots: { target: this.cfg.bots.target, min: this.cfg.bots.min, max: this.cfg.bots.max },
@@ -44,10 +44,10 @@ export class RoomManager {
 
   /** Busiest free room that still has space (so players meet each other). */
   freeRoom(prefer?: Room | null): Room {
-    if (prefer && prefer.opts.mode === 'free' && !prefer.isFull) return prefer;
+    if (prefer && prefer.opts.mode === 'practice' && !prefer.isFull) return prefer;
     let best: Room | null = null;
     for (const r of this.rooms.values()) {
-      if (r.opts.mode !== 'free' || r.isFull) continue;
+      if (r.opts.mode !== 'practice' || r.isFull) continue;
       if (!best || r.humans.size > best.humans.size) best = r;
     }
     return best ?? this.createFree();
@@ -56,7 +56,7 @@ export class RoomManager {
   /** Default room for lobby spectators. */
   lobbyRoom(): Room {
     let best: Room | null = null;
-    for (const r of this.rooms.values()) if (r.opts.mode === 'free' && (!best || r.humans.size > best.humans.size)) best = r;
+    for (const r of this.rooms.values()) if (r.opts.mode === 'practice' && (!best || r.humans.size > best.humans.size)) best = r;
     return best ?? this.createFree();
   }
 
@@ -101,7 +101,7 @@ export class RoomManager {
     const room = new Room(
       {
         id: `stake-${arenaId}`,
-        mode: 'stake',
+        mode: 'arena',
         name: meta.name.en,
         maxPlayers: arena.maxPlayers,
         bots: null,
@@ -186,7 +186,7 @@ export class RoomManager {
       const idle = room.conns.size === 0 && room.humans.size === 0;
       if (!idle) continue;
       if (room.opts.mode === 'private' && now - room.lastActivity > 120_000) this.rooms.delete(room.id);
-      if (room.opts.mode === 'free' && room.id !== 'free-1' && now - room.lastActivity > 300_000) this.rooms.delete(room.id);
+      if (room.opts.mode === 'practice' && room.id !== 'free-1' && now - room.lastActivity > 300_000) this.rooms.delete(room.id);
     }
   }
 

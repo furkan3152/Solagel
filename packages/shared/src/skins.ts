@@ -1,5 +1,3 @@
-import { levelFromXp } from './formulas';
-
 export type SkinTier = 'free' | 'level' | 'premium';
 
 export type FaceStyle =
@@ -387,24 +385,28 @@ export const FREE_SKIN_IDS = SKINS.filter((s) => s.tier === 'free').map((s) => s
 
 export const getSkin = (id: number): SkinDef => SKINS[id] ?? SKINS[0];
 
+/**
+ * The basic skins (ids 0..7): free for everyone and the only looks a player
+ * can pick without a Slana Pass, which brings its own NFT look.
+ */
+export const BASIC_SKINS: readonly SkinDef[] = SKINS.slice(0, 8);
+
+export const isBasicSkin = (id: number): boolean => Number.isInteger(id) && id >= 0 && id < BASIC_SKINS.length;
+
 export interface SkinOwnership {
   xp: number;
-  /** Bit i set ⇔ premium skin (16 + i) is owned. Mirrors PlayerProfile.premium_skins. */
+  /** Bit i set ⇔ premium skin (16 + i) is owned. Mirrors the v1 PlayerProfile.premium_skins. */
   premiumMask: number;
 }
 
-/** Mirrors the on-chain unlock rule. */
-export function isSkinUnlocked(skinId: number, own: SkinOwnership | null): boolean {
-  const skin = SKINS[skinId];
-  if (!skin) return false;
-  switch (skin.tier) {
-    case 'free':
-      return true;
-    case 'level':
-      return own != null && levelFromXp(own.xp) >= (skin.level ?? 99);
-    case 'premium':
-      return own != null && ((own.premiumMask >>> (skinId - 16)) & 1) === 1;
-  }
+/**
+ * @deprecated Level and premium skins are gone in v2, so only the basic skins
+ * are ever "unlocked" and the ownership argument is ignored. Use `isBasicSkin`;
+ * this alias lives until its last caller (gateway skin check, skin picker) is
+ * rewritten.
+ */
+export function isSkinUnlocked(skinId: number, _own?: SkinOwnership | null): boolean {
+  return isBasicSkin(skinId);
 }
 
 /** Hue-shifted color for rainbow skins. */

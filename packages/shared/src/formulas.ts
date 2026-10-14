@@ -74,3 +74,18 @@ export function formatSol(lamports: number | bigint, maxDecimals = 3): string {
 
 /** Score shown to players: rounded total mass. */
 export const displayMass = (mass: number): number => Math.floor(mass);
+
+/**
+ * Size tier 0..3 of a loot piece (the Loot entity `variant`), from its value
+ * relative to the arena's entry fee (both in raw token units).
+ *
+ * A "nominal" piece is `entryFee × lootPieceEntryFraction`, which is what a
+ * victim holding exactly one ticket spills. Tier 0 is a crumb (under half of
+ * that), 1 a normal piece, 2 a big one (from 1.5×) and 3 a jackpot (from 4×,
+ * i.e. a piece worth a whole entry fee).
+ */
+export function lootTier(value: number, entryFee: number): 0 | 1 | 2 | 3 {
+  if (!(value > 0) || !(entryFee > 0)) return 0;
+  const ratio = value / (entryFee * RULES.lootPieceEntryFraction);
+  return ratio >= 4 ? 3 : ratio >= 1.5 ? 2 : ratio >= 0.5 ? 1 : 0;
+}

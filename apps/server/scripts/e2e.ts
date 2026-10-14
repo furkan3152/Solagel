@@ -122,8 +122,8 @@ async function main(): Promise<void> {
   assert(arena && arena.enabled, `arena #${arenaId} does not exist or is disabled`);
   ok(`season ${config.currentSeason} · arena #${arenaId} buy-in ${sol(arena.buyIn)} · pot ${sol(arena.pot)}`);
 
-  const health = await fetch(`${httpUrl}/api/config`).then((r) => r.json() as Promise<{ chain: { enabled: boolean; stakeEnabled: boolean } }>);
-  assert(health.chain.enabled && health.chain.stakeEnabled, `game server at ${httpUrl} has the chain/stake disabled: ${JSON.stringify(health.chain)}`);
+  const health = await fetch(`${httpUrl}/api/config`).then((r) => r.json() as Promise<{ chain: { enabled: boolean; arenasEnabled: boolean } }>);
+  assert(health.chain.enabled && health.chain.arenasEnabled, `game server at ${httpUrl} has the chain/arenas disabled: ${JSON.stringify(health.chain)}`);
 
   // 1. fresh funded wallet with a profile
   const player = Keypair.generate();
@@ -161,15 +161,15 @@ async function main(): Promise<void> {
   try {
     ws.send({ t: 'hello', v: PROTOCOL_VERSION, lang: 'en' });
     const welcome = await ws.wait('welcome', 10_000);
-    assert(welcome.chain.enabled && welcome.chain.stakeEnabled, `welcome says chain=${JSON.stringify(welcome.chain)}`);
+    assert(welcome.chain.enabled && welcome.chain.arenasEnabled, `welcome says chain=${JSON.stringify(welcome.chain)}`);
     ws.send({ t: 'auth', pubkey: wallet, message: nonce.message, signature });
     const authed = await ws.wait('authed', 15_000);
     assert(authed.pubkey === wallet && authed.profile?.name === name, `unexpected authed message ${JSON.stringify(authed)}`);
     ok(`authed as ${authed.profile?.name} (level ${authed.profile?.level})`);
 
     // 4. play: join the stake arena, then cash out
-    step(`WS join stake:${arenaId}`);
-    ws.send({ t: 'join', room: `stake:${arenaId}`, name, skin: 3 });
+    step(`WS join arena:${arenaId}`);
+    ws.send({ t: 'join', room: `arena:${arenaId}`, name, skin: 3 });
     const joined = await ws.wait('joined', 15_000);
     assert(joined.value === session.buyIn, `joined with value ${joined.value}, expected the buy-in ${session.buyIn}`);
     ok(`joined ${joined.room.name} as pid ${joined.playerId} with ${sol(joined.value ?? 0)}`);

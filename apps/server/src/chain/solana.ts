@@ -382,15 +382,17 @@ export class SolanaChain implements ChainGateway {
   status(): ChainStatus {
     const { cluster, publicRpcUrl } = this.cfg.chain;
     if (!this.enabled || !this.client) {
-      return { enabled: false, cluster, programId: null, rpcUrl: null, stakeEnabled: false, currentSeason: null };
+      return { enabled: false, cluster, programId: null, rpcUrl: null, arenasEnabled: false, currentSeason: null, token: null, pass: null };
     }
     return {
       enabled: true,
       cluster,
       programId: this.client.programId.toBase58(),
       rpcUrl: publicRpcUrl ?? clusterDefaultRpc(cluster),
-      stakeEnabled: this.stakeEnabled,
+      arenasEnabled: this.stakeEnabled,
       currentSeason: this.config?.currentSeason ?? null,
+      token: null,
+      pass: null,
     };
   }
 
