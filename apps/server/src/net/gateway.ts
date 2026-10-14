@@ -264,7 +264,7 @@ export class Gateway {
 
       if (target.mode === 'practice') {
         if (conn.player?.alive && conn.room?.opts.mode === 'practice') return; // already playing
-        const room = this.rooms.freeRoom(conn.room);
+        const room = this.rooms.practiceRoom(this.rooms.leagueFor(conn), conn.room);
         if (conn.player?.alive) conn.room?.leave(conn, 'switch');
         room.join(conn, { name, skin, flags });
         return;
@@ -295,14 +295,15 @@ export class Gateway {
         this.error(conn, 'auth_required', 'Connect and sign in with your wallet first.');
         return;
       }
-      const room = await this.rooms.stakeRoom(target.arenaId);
+      let room = await this.rooms.arenaRoom(target.arenaId);
       if (!room) {
         this.error(conn, 'room_not_found', 'Arena not available.');
         return;
       }
-      const existing = room.findStakeByWallet(conn.wallet);
+      // a ticket lives in exactly one instance of its arena
+      const existing = this.rooms.findArenaStake(target.arenaId, conn.wallet);
       if (existing) {
-        if (conn.player === null && room.reattach(conn, existing.pid)) return;
+        if (conn.player === null && existing.room.reattach(conn, existing.entry.pid)) return;
         this.error(conn, 'session_busy', 'You are already playing in this arena.');
         return;
       }
@@ -323,12 +324,14 @@ export class Gateway {
         this.error(conn, 'no_session', 'This arena ticket expired and will be refunded.');
         return;
       }
-      if (room.isFull) {
+      // the instance may have filled up during the awaits above: pick again (arena data is cached)
+      if (room.isFull) room = await this.rooms.arenaRoom(target.arenaId);
+      if (!room || room.isFull) {
         this.error(conn, 'room_full', 'Arena is full — try again in a moment.');
         return;
       }
-      // re-check after the awaits above: another tab may have joined with the same ticket meanwhile
-      if (room.findStakeByWallet(conn.wallet) || room.liveSessions().includes(session.address)) {
+      // re-check after the awaits above: another tab may have joined with the same ticket meanwhile (in any instance)
+      if (this.rooms.findArenaStake(target.arenaId, conn.wallet) || this.rooms.liveSessions().has(session.address)) {
         this.error(conn, 'session_busy', 'You are already playing in this arena.');
         return;
       }
