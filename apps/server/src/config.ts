@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
-import { CAPACITY, RULES, TOKEN_SYMBOL_DEFAULT } from '@slana/shared';
+import { CAPACITY, RULES, TOKEN_SYMBOL_DEFAULT, type ChainStatus, type MarketUrls } from '@slana/shared';
 import type { BotManagerOptions } from './bots/manager';
 
 export interface ServerConfig {
@@ -36,6 +36,12 @@ export interface ServerConfig {
    * `NODE_ENV=development` and no real chain configured (see `createChain`).
    */
   devFakeChain: boolean;
+  /**
+   * Slana Pass collection pages on the marketplaces, shown on the Pass page
+   * (`MARKET_URLS` JSON and/or `MARKET_URL_MAGICEDEN` / `_TENSOR` / `_OPENSEA`).
+   * Only http(s) URLs are kept; an empty object hides every link.
+   */
+  markets: MarketUrls;
   chain: {
     cluster: string;
     /** RPC used by the server (may contain a private API key). */
@@ -64,6 +70,49 @@ const num = (v: string | undefined, d: number): number => {
   const n = Number(v);
   return v !== undefined && v.trim() !== '' && Number.isFinite(n) ? n : d;
 };
+
+const MARKET_KEYS: Record<string, keyof MarketUrls> = { magiceden: 'magicEden', tensor: 'tensor', opensea: 'opensea' };
+
+/** An absolute http(s) URL, else null (never a `javascript:` or relative link on the page). */
+function httpUrl(v: unknown): string | null {
+  if (typeof v !== 'string' || v.trim() === '') return null;
+  try {
+    const u = new URL(v.trim());
+    return u.protocol === 'https:' || u.protocol === 'http:' ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Marketplace links: `MARKET_URLS` (JSON object, keys `magicEden` / `tensor` /
+ * `opensea`, case and `_` insensitive) overridden by `MARKET_URL_MAGICEDEN`,
+ * `MARKET_URL_TENSOR` and `MARKET_URL_OPENSEA`. Invalid entries are dropped.
+ */
+export function parseMarketUrls(env: NodeJS.ProcessEnv): MarketUrls {
+  const out: MarketUrls = {};
+  const raw = env.MARKET_URLS?.trim();
+  if (raw) {
+    let parsed: unknown = null;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      parsed = null;
+    }
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+        const key = MARKET_KEYS[k.toLowerCase().replace(/[^a-z]/g, '')];
+        const url = httpUrl(v);
+        if (key && url) out[key] = url;
+      }
+    }
+  }
+  for (const [suffix, key] of Object.entries({ MAGICEDEN: 'magicEden', TENSOR: 'tensor', OPENSEA: 'opensea' } as const)) {
+    const url = httpUrl(env[`MARKET_URL_${suffix}`]);
+    if (url) out[key] = url;
+  }
+  return out;
+}
 
 const bool = (v: string | undefined, d: boolean): boolean => (v === undefined ? d : ['1', 'true', 'yes', 'on'].includes(v.toLowerCase()));
 
@@ -114,6 +163,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     authSecret: secret,
     nodeEnv: env.NODE_ENV?.trim() || null,
     devFakeChain: bool(env.DEV_FAKE_CHAIN, false),
+    markets: parseMarketUrls(env),
     chain: {
       cluster: env.SOLANA_CLUSTER ?? 'localnet',
       rpcUrl: env.SOLANA_RPC_URL ?? null,
@@ -132,4 +182,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       tokenSymbol: env.TOKEN_SYMBOL?.trim() || TOKEN_SYMBOL_DEFAULT,
     },
   };
+}
+
+/** The chain status sent to browsers (`welcome`, `/api/config`): the gateway's view plus the marketplace links. */
+export function publicChainStatus(status: ChainStatus, cfg: Pick<ServerConfig, 'markets'>): ChainStatus {
+  return Object.keys(cfg.markets).length > 0 ? { ...status, markets: { ...cfg.markets } } : status;
 }

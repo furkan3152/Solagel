@@ -393,22 +393,6 @@ export const BASIC_SKINS: readonly SkinDef[] = SKINS.slice(0, 8);
 
 export const isBasicSkin = (id: number): boolean => Number.isInteger(id) && id >= 0 && id < BASIC_SKINS.length;
 
-export interface SkinOwnership {
-  xp: number;
-  /** Bit i set ⇔ premium skin (16 + i) is owned. Mirrors the v1 PlayerProfile.premium_skins. */
-  premiumMask: number;
-}
-
-/**
- * @deprecated Level and premium skins are gone in v2, so only the basic skins
- * are ever "unlocked" and the ownership argument is ignored. Use `isBasicSkin`;
- * this alias lives until its last caller (gateway skin check, skin picker) is
- * rewritten.
- */
-export function isSkinUnlocked(skinId: number, _own?: SkinOwnership | null): boolean {
-  return isBasicSkin(skinId);
-}
-
 /** Hue-shifted color for rainbow skins. */
 export function rainbowColor(timeMs: number, offset = 0, lightness = 72): string {
   const hue = ((timeMs / 18 + offset) % 360 + 360) % 360;

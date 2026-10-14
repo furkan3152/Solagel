@@ -82,6 +82,17 @@ describe('DEV_FAKE_CHAIN', () => {
     createdAt: Date.now(),
   });
 
+  it('serves a sample season with a finalized previous season for the leaderboard', async () => {
+    const chain = new DevFakeChain(new Journal(null), () => {});
+    const season = await chain.season();
+    expect(season?.finalized).toBe(false);
+    expect(season?.entries.length).toBeGreaterThanOrEqual(10);
+    const points = season!.entries.map((e) => e.points);
+    expect([...points].sort((a, b) => b - a)).toEqual(points);
+    expect(season?.previous?.entries.length).toBeGreaterThanOrEqual(10);
+    expect(season?.previous?.prizePool).toBeGreaterThan(0);
+  });
+
   it('never touches journal items it did not issue (real money stays owed)', async () => {
     const journal = new Journal(null);
     const chain = new DevFakeChain(journal, () => {}, 10);

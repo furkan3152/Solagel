@@ -457,7 +457,7 @@ export class SolanaChain implements ChainGateway {
       if (lamports < LOW_BALANCE_LAMPORTS) {
         this.warn(
           'balance',
-          `chain: ⚠ server wallet ${this.keypair.publicKey.toBase58()} holds only ${sol(lamports)} — fund it, it pays every settlement fee`,
+          `chain: WARNING server wallet ${this.keypair.publicKey.toBase58()} holds only ${sol(lamports)} — fund it, it pays every settlement fee`,
           30 * 60_000,
         );
       }

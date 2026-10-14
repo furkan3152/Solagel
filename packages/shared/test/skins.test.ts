@@ -5,7 +5,6 @@ import {
   SKINS,
   getSkin,
   isBasicSkin,
-  isSkinUnlocked,
   sanitizeChat,
   sanitizeName,
   truncateUtf8,
@@ -34,17 +33,6 @@ describe('skin catalog', () => {
   it('isBasicSkin accepts exactly ids 0..7', () => {
     for (let id = 0; id < 8; id++) expect(isBasicSkin(id)).toBe(true);
     for (const id of [8, 9, 15, 16, 23, 24, 999, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) expect(isBasicSkin(id), String(id)).toBe(false);
-  });
-
-  it('deprecated isSkinUnlocked is isBasicSkin, whatever the ownership', () => {
-    expect(isSkinUnlocked(0, null)).toBe(true);
-    expect(isSkinUnlocked(7, null)).toBe(true);
-    expect(isSkinUnlocked(8, null)).toBe(false);
-    // level and premium skins no longer unlock: Slana Pass NFTs replace them
-    expect(isSkinUnlocked(10, { xp: 1e9, premiumMask: 0 })).toBe(false);
-    expect(isSkinUnlocked(17, { xp: 1e9, premiumMask: 0xffffffff })).toBe(false);
-    expect(isSkinUnlocked(24, { xp: 1e9, premiumMask: 0xffffffff })).toBe(false);
-    expect(isSkinUnlocked(3)).toBe(true);
   });
 
   it('falls back to skin 0 for unknown ids', () => {

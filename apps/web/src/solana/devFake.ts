@@ -1,5 +1,6 @@
-import { TOKEN_PROGRAM_ID, type ConfigView, type ProfileView, type SessionView } from '@slana/sdk';
-import type { ChainStatus } from '@slana/shared';
+import { TOKEN_PROGRAM_ID, type ConfigView, type OwnedPass, type ProfileView, type SessionView } from '@slana/sdk';
+import type { ChainStatus, PassStatus } from '@slana/shared';
+import type { SeasonInfo } from './chain';
 import { DEV_FAKE_PROGRAM_ID } from './devFakeLoader';
 import type { TicketStep } from './ticket';
 
@@ -26,6 +27,14 @@ export interface FakeWallet {
   delayMs: number;
   /** Next "transaction" fails with this SDK error name (e.g. `PassInUse`), then clears. */
   failNext: string | null;
+  /** Passes in the wallet; null = the server's dev-fake answer (one revealed Pass per wallet). */
+  passes: OwnedPass[] | null;
+  /** Passes this wallet minted (its `MintCounter`). */
+  minted: number;
+  /** Overrides of the collection state (sealed / mint not started / sold out screenshots). */
+  pass: Partial<PassStatus> | null;
+  /** Prize ranks of the previous season this wallet claimed here. */
+  claimed: number[];
 }
 
 export const fakeWallet: FakeWallet = {
@@ -36,9 +45,30 @@ export const fakeWallet: FakeWallet = {
   ataExists: true,
   delayMs: 900,
   failNext: null,
+  passes: null,
+  minted: 0,
+  pass: null,
+  claimed: [],
 };
 
-export function fakeConfig(chain: ChainStatus): ConfigView {
+/** Mints made here (they raise the collection's minted count). */
+let extraMinted = 0;
+
+/** The server's dev-fake collection state with this page's overrides and mints applied. */
+export function fakePassStatus(chain: ChainStatus): PassStatus | null {
+  if (!chain.pass) return null;
+  const s = { ...chain.pass, ...fakeWallet.pass };
+  return { ...s, minted: Math.min(s.supply, s.minted + extraMinted), seed: s.revealed ? s.seed : null };
+}
+
+/** The season with the claims made here marked in the previous season's mask. */
+export function fakeSeason(season: SeasonInfo | null, _owner: string | null): SeasonInfo | null {
+  if (!season?.previous || fakeWallet.claimed.length === 0) return season;
+  const mask = fakeWallet.claimed.reduce((m, r) => m | (1 << r), season.previous.claimedMask);
+  return { ...season, previous: { ...season.previous, claimedMask: mask } };
+}
+
+export function fakeConfig(chain: ChainStatus, pass: PassStatus | null = chain.pass): ConfigView {
   return {
     admin: DEV_FAKE_PROGRAM_ID,
     serverAuthority: DEV_FAKE_PROGRAM_ID,
@@ -53,17 +83,17 @@ export function fakeConfig(chain: ChainStatus): ConfigView {
     settleFeeLamports: 20_000,
     currentSeason: chain.currentSeason ?? 1,
     paused: false,
-    passCollection: chain.pass?.collection ?? null,
-    passBaseUri: '',
-    passSupply: chain.pass?.supply ?? 0,
-    passMinted: chain.pass?.minted ?? 0,
-    passPerWallet: chain.pass?.perWallet ?? 1,
+    passCollection: pass?.collection ?? null,
+    passBaseUri: 'http://localhost:8787/pass/',
+    passSupply: pass?.supply ?? 0,
+    passMinted: pass?.minted ?? 0,
+    passPerWallet: pass?.perWallet ?? 1,
     passMinTokens: 0n,
-    passMintOpen: chain.pass?.mintOpen ?? false,
-    passMintStartTs: 0,
+    passMintOpen: pass?.mintOpen ?? false,
+    passMintStartTs: pass?.mintStartTs ?? 0,
     passSeedHash: null,
-    passSeed: chain.pass?.seed ?? null,
-    passRevealed: chain.pass?.revealed ?? false,
+    passSeed: pass?.seed ?? null,
+    passRevealed: pass?.revealed ?? false,
     totals: { players: 0, games: 0, sessions: 0, staked: 0n, paidOut: 0n },
   };
 }
@@ -135,4 +165,29 @@ export async function fakeSimpleTx(onPhase: (p: 'signing' | 'confirming') => voi
   await sleep(fakeWallet.delayMs);
   apply();
   return true;
+}
+
+/** "Mints" a Pass: the next number goes into this wallet (sealed until the collection is revealed). */
+export async function fakeMintPass(
+  chain: ChainStatus,
+  current: OwnedPass[],
+  onPhase: (p: 'signing' | 'confirming', sig?: string) => void,
+): Promise<{ ok: true; signature: string; pass: OwnedPass } | { ok: false; name: string }> {
+  onPhase('signing');
+  await sleep(fakeWallet.delayMs);
+  if (fakeWallet.failNext) {
+    const name = fakeWallet.failNext;
+    fakeWallet.failNext = null;
+    return { ok: false, name };
+  }
+  const signature = `DevFakeSig${Date.now().toString(36)}`;
+  onPhase('confirming', signature);
+  await sleep(fakeWallet.delayMs);
+  const status = fakePassStatus(chain);
+  const number = (status?.minted ?? 0) + 1;
+  extraMinted++;
+  fakeWallet.minted++;
+  const pass: OwnedPass = { asset: `DevMintedPass${number}`, number };
+  fakeWallet.passes = [...(fakeWallet.passes ?? current), pass];
+  return { ok: true, signature, pass };
 }

@@ -1260,3 +1260,75 @@
     transform: none;
   }
 }
+
+/* how to play (Task 15: the legacy modal, reprinted) */
+.g-howto__list {
+  display: flex;
+  flex-direction: column;
+}
+.g-howto__list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 11px 0;
+  border-bottom: 1px dotted var(--line);
+  line-height: 1.4;
+}
+.g-howto__n {
+  flex: none;
+  padding-top: 3px;
+  font-size: var(--t-label);
+  color: var(--pink-text);
+}
+.g-howto__icon {
+  flex: none;
+  color: var(--teal-ink);
+}
+.g-howto__keys {
+  padding-top: 14px;
+  font-size: var(--t-label);
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+/* settings page (profile + sheet) */
+.st-page {
+  display: flex;
+  flex-direction: column;
+}
+.st-h {
+  margin: 14px 0 0;
+  font-size: var(--t-label);
+  font-weight: 500;
+  color: var(--ink-2);
+}
+.st-h:first-child {
+  margin-top: 0;
+}
+.st-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.st-note {
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--ink-2);
+}
+.st-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 6px;
+  border-top: 2px solid var(--ink);
+}
+.st-version {
+  font-size: var(--t-label);
+  color: var(--ink-2);
+}
+.g-range:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
