@@ -175,7 +175,10 @@ pub struct LeaderEntry {
 
 /// A season with its top-20 leaderboard. PDA `["season", id.to_le_bytes()]`.
 ///
-/// Prize tokens live in the global season vault; `pool` is this season's share of it.
+/// Prize tokens live in the global season vault (`["season_vault"]`); `pool` is this
+/// season's share of it. While the season runs, settle fee shares, sweeps and rollovers add
+/// to `pool`; `end_season` freezes it into `prize_pool`; each claim takes its prize out of
+/// `pool`, and `rollover_season` moves what is left into the then-current season.
 #[account]
 #[derive(InitSpace, Debug)]
 pub struct Season {
@@ -185,7 +188,7 @@ pub struct Season {
     pub finalized: bool,
     /// Prize pool frozen by `end_season`.
     pub prize_pool: u64,
-    /// Game tokens credited to this season in the season vault (fee shares and sweeps).
+    /// Game tokens of the season vault that belong to this season and are not paid out yet.
     pub pool: u64,
     /// Bit `rank` set ⇔ the prize of that rank was claimed.
     pub claimed_mask: u16,
@@ -194,4 +197,12 @@ pub struct Season {
     pub bump: u8,
     /// Sorted by `points`, descending; only `entries[..count]` are meaningful.
     pub entries: [LeaderEntry; LEADERBOARD_LEN],
+}
+
+/// Number of Passes a wallet minted. PDA `["pass_minted", minter]`.
+#[account]
+#[derive(InitSpace, Debug)]
+pub struct MintCounter {
+    pub count: u8,
+    pub bump: u8,
 }
