@@ -17,7 +17,7 @@ import {
 import { WebSocketServer, type RawData, type WebSocket } from 'ws';
 import { isValidPubkey, type Auth } from '../auth';
 import type { ChainGateway, ChainProfile, SettledEvent } from '../chain/types';
-import type { ServerConfig } from '../config';
+import { publicChainStatus, type ServerConfig } from '../config';
 import type { RoomManager } from '../rooms/manager';
 import { MAX_STAKE_SESSION_AGE_S } from '../rooms/room';
 import type { Journal } from '../stake/journal';
@@ -183,7 +183,7 @@ export class Gateway {
           v: PROTOCOL_VERSION,
           serverTime: Date.now(),
           rooms: this.rooms.list(),
-          chain: this.chain.status(),
+          chain: publicChainStatus(this.chain.status(), this.cfg),
           online: this.rooms.online(),
         });
         return;

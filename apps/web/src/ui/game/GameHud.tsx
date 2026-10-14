@@ -5,7 +5,7 @@ import { Counter, Icon, Stamp, Tape, springs, useReducedMotion } from '../../des
 import { engine } from '../../game/instance';
 import { useT } from '../../i18n';
 import { openModal, useUi } from '../../store';
-import { useTicker } from '../common';
+import { useTicker } from '../ticker';
 import { CashoutButton } from './CashoutButton';
 import { EmoteBar } from './EmoteBar';
 import { Feed } from './Feed';

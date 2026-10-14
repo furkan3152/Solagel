@@ -119,9 +119,9 @@ export function Passport({
 }
 
 /** Foil crest: a crowned coin in two misregistered passes. */
-function Crest() {
+export function Crest({ className = 'kb-passport__crest' }: { className?: string }) {
   return (
-    <svg className="kb-passport__crest" viewBox="0 0 64 64" aria-hidden="true">
+    <svg className={className} viewBox="0 0 64 64" aria-hidden="true">
       <g fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="32" cy="36" r="17" />
         <circle cx="32" cy="36" r="11.5" strokeDasharray="0.1 4.2" />
@@ -132,9 +132,10 @@ function Crest() {
   );
 }
 
-function WaxSeal() {
+/** The pink wax seal with a pressed "S" (sealed passports, envelopes, the reveal). */
+export function WaxSeal({ className = 'kb-passport__wax' }: { className?: string }) {
   return (
-    <svg className="kb-passport__wax" viewBox="0 0 80 80" aria-hidden="true">
+    <svg className={className} viewBox="0 0 80 80" aria-hidden="true">
       <path
         d="M40 4c5 0 6 4 10 5s8-2 11 1 0 7 2 11 7 5 7 10-4 6-4 10 4 7 2 11-7 2-10 5-1 8-6 9-7-3-12-3-7 4-12 3-4-7-7-9-8 0-10-4 2-7 1-11-6-5-6-10 5-6 6-10-2-8 1-11 7 0 11-2 5-5 10-5z"
         style={{ fill: 'var(--pink)' }}

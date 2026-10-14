@@ -347,11 +347,6 @@ if (want('sheets')) {
   await page.locator('.kl-tabs button', { hasText: 'Profil' }).click();
   await page.waitForTimeout(500);
   await shot(page, 'tab-profile');
-  await page.locator('.kl-profile .kb-btn').click();
-  await page.waitForTimeout(800);
-  await shot(page, 'profile-sheet');
-  await page.keyboard.press('Escape');
-  await page.waitForTimeout(500);
   await page.locator('.kl-tabs button', { hasText: 'Pass' }).click();
   await page.waitForTimeout(500);
   await shot(page, 'tab-pass');

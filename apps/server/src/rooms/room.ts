@@ -320,7 +320,7 @@ export class Room {
     const from = conn.player?.name ?? conn.lastName;
     if (!from) return;
     if (now - conn.lastChatAt < 1200) {
-      conn.send({ t: 'error', code: 'rate_limited', message: 'Slow down 🐢' });
+      conn.send({ t: 'error', code: 'rate_limited', message: 'Slow down.' });
       return;
     }
     let text = sanitizeChat(raw);
@@ -570,7 +570,7 @@ export class Room {
     for (const a of ev.airdrops) this.broadcast({ t: 'event', kind: 'airdrop', state: 'start', x: a.x, y: a.y, powerUp: a.type });
     if (ev.coinRain) {
       this.broadcast({ t: 'event', kind: 'coinrain', state: ev.coinRain, ms: ev.coinRain === 'start' ? world.coinRainUntil - world.now : 0 });
-      if (ev.coinRain === 'start') this.pushChat({ pid: 0, from: 'Slana', skin: 1, text: '🌧️ COIN RAIN!', system: true });
+      if (ev.coinRain === 'start') this.pushChat({ pid: 0, from: 'Slana', skin: 1, text: 'COIN RAIN!', system: true });
     }
 
     if (this.bots) {

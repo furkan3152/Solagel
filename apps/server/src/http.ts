@@ -5,7 +5,7 @@ import { PROTOCOL_VERSION } from '@slana/shared';
 import { serializePassJson } from '@slana/art';
 import { isValidPubkey, type Auth } from './auth';
 import type { ChainGateway } from './chain/types';
-import type { ServerConfig } from './config';
+import { publicChainStatus, type ServerConfig } from './config';
 import type { Leaderboards } from './leaderboards';
 import { clientIp } from './net/gateway';
 import { PassImages } from './pass/images';
@@ -182,7 +182,7 @@ export function createHttpServer(cfg: ServerConfig, ctx: Ctx): Server {
           case '/api/season':
             return json(res, 200, (await ctx.chain.season()) ?? { enabled: false });
           case '/api/config':
-            return json(res, 200, { protocol: PROTOCOL_VERSION, chain: ctx.chain.status() });
+            return json(res, 200, { protocol: PROTOCOL_VERSION, chain: publicChainStatus(ctx.chain.status(), cfg) });
           case '/api/auth/nonce': {
             if (!nonceLimiter.allow(ip)) return json(res, 429, { error: 'rate_limited' });
             const pubkey = url.searchParams.get('pubkey');
@@ -210,7 +210,7 @@ export function createHttpServer(cfg: ServerConfig, ctx: Ctx): Server {
       if (cfg.webDist && (req.method === 'GET' || req.method === 'HEAD') && serveStatic(cfg.webDist, req, res, url.pathname)) return;
       if (url.pathname === '/') {
         res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-        res.end('Slana game server 🪙 — connect via /ws');
+        res.end('Slana game server: connect via /ws');
         return;
       }
       json(res, 404, { error: 'not found' });

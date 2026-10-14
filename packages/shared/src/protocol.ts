@@ -141,6 +141,13 @@ export interface PassStatus {
   seed: string | null;
 }
 
+/** Marketplace pages of the Slana Pass collection (server `MARKET_URLS`); a missing key hides that link. */
+export interface MarketUrls {
+  magicEden?: string;
+  tensor?: string;
+  opensea?: string;
+}
+
 export interface ChainStatus {
   enabled: boolean;
   cluster: string;
@@ -152,6 +159,8 @@ export interface ChainStatus {
   /** The game token; `symbol` is display only. */
   token: { mint: string; symbol: string; decimals: number } | null;
   pass: PassStatus | null;
+  /** Collection pages on the marketplaces (added by the server from its config; absent = none). */
+  markets?: MarketUrls;
 }
 
 export interface ProfileSummary {

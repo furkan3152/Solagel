@@ -1,0 +1,178 @@
+/* ─────────────────────── Kâğıt Bilet · profile ───────────────────────
+ * Task 15. The member card, name and coin, record and settings.
+ * ------------------------------------------------------------------------- */
+
+.pf-page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.pf-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0 clamp(24px, 3vw, 44px);
+  align-items: start;
+}
+@media (max-width: 899px) {
+  .pf-cols {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 28px;
+  }
+}
+.pf-col {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  min-width: 0;
+}
+.pf-box {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.pf-box > .kl-h3 {
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--ink);
+}
+
+/* member card */
+.pf-card {
+  position: relative;
+  border: 2px solid var(--ink);
+  border-radius: var(--r-card);
+  background-color: var(--card);
+  background-image: repeating-radial-gradient(circle at -10% 120%, transparent 0 12px, var(--line-soft) 12px 13px);
+  box-shadow: 5px 5px 0 var(--pink);
+}
+.pf-card__band {
+  display: block;
+  padding: 7px 16px;
+  border-radius: 12px 12px 0 0;
+  background: var(--ink);
+  color: var(--on-ink);
+  font-size: var(--t-label);
+  letter-spacing: 0.22em;
+}
+.pf-card__grid {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 18px;
+}
+.pf-card__photo {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 124px;
+  height: 124px;
+  border-radius: 10px;
+  background: #f1eadb;
+  box-shadow:
+    inset 0 0 0 2px var(--ink-fixed),
+    3px 3px 0 var(--teal);
+}
+.pf-card__id {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  min-width: 0;
+  flex: 1;
+}
+.pf-card__name {
+  max-width: 100%;
+  font-size: 34px;
+  font-weight: 800;
+  font-stretch: 84%;
+  line-height: 0.95;
+  letter-spacing: -0.03em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pf-card__lvl,
+.pf-card__meta {
+  font-size: var(--t-label);
+  color: var(--ink-2);
+}
+.pf-card__xp {
+  width: 100%;
+  height: 8px;
+  border-radius: 4px;
+}
+.pf-card__pass {
+  position: absolute;
+  right: 14px;
+  top: 40px;
+}
+@media (max-width: 459px) {
+  .pf-card__grid {
+    gap: 14px;
+    padding: 14px;
+  }
+  .pf-card__photo {
+    width: 84px;
+    height: 84px;
+  }
+  .pf-card__photo canvas {
+    width: 80px !important;
+    height: 80px !important;
+  }
+  .pf-card__name {
+    font-size: 27px;
+  }
+  .pf-card__meta {
+    line-height: 1.5;
+  }
+}
+
+/* save bar */
+.pf-save {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+  transition: background-color var(--dur-micro) linear;
+}
+.pf-save.is-dirty {
+  background: color-mix(in srgb, var(--pink) 13%, transparent);
+}
+.pf-save__state {
+  flex: 1 1 220px;
+  font-size: var(--t-label);
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+/* record */
+.pf-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px 18px;
+}
+@media (max-width: 459px) {
+  .pf-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.pf-stats > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-top: 8px;
+  border-top: 1.5px dotted var(--line);
+}
+.pf-stats dt {
+  font-size: var(--t-label);
+  color: var(--ink-2);
+}
+.pf-stats dd {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}

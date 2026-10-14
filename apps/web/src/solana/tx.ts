@@ -1,5 +1,5 @@
 import type { WalletContextState } from '@solana/wallet-adapter-react';
-import type { Connection, TransactionInstruction } from '@solana/web3.js';
+import type { Connection, Signer, TransactionInstruction } from '@solana/web3.js';
 import { confirmSignature, describeError, type DescribeContext, type DescribedError, type SlanaClient } from '@slana/sdk';
 import { t } from '../i18n';
 import { toast, useUi } from '../store';
@@ -20,7 +20,13 @@ export async function sendTx(
   connection: Connection,
   wallet: WalletContextState,
   ixs: TransactionInstruction[],
-  opts: { onPhase?: (phase: TxPhase, signature?: string) => void; describe?: DescribeContext; computeUnits?: number } = {},
+  opts: {
+    onPhase?: (phase: TxPhase, signature?: string) => void;
+    describe?: DescribeContext;
+    computeUnits?: number;
+    /** Extra keypairs that co-sign (the fresh asset of a Pass mint); the wallet signs last and pays. */
+    signers?: Signer[];
+  } = {},
 ): Promise<TxResult> {
   if (!wallet.publicKey || !wallet.sendTransaction) {
     return { ok: false, error: { code: null, name: 'NoWallet', message: t('tf.err.NoWallet') } };
@@ -31,7 +37,11 @@ export async function sendTx(
       computeUnits: opts.computeUnits,
     });
     opts.onPhase?.('signing');
-    const signature = await wallet.sendTransaction(tx, connection, { preflightCommitment: 'confirmed', maxRetries: 4 });
+    const signature = await wallet.sendTransaction(tx, connection, {
+      preflightCommitment: 'confirmed',
+      maxRetries: 4,
+      ...(opts.signers?.length ? { signers: opts.signers } : {}),
+    });
     opts.onPhase?.('confirming', signature);
     await confirmSignature(connection, signature, lastValidBlockHeight);
     return { ok: true, signature };

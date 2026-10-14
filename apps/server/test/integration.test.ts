@@ -166,7 +166,15 @@ let chain: FakeChain;
 
 beforeAll(async () => {
   const dir = mkdtempSync(join(tmpdir(), 'slana-int-'));
-  const cfg = loadConfig({ PORT: '0', HOST: '127.0.0.1', DATA_DIR: dir, BOT_TARGET: '6', BOT_MIN: '2', BOT_MAX: '6' });
+  const cfg = loadConfig({
+    PORT: '0',
+    HOST: '127.0.0.1',
+    DATA_DIR: dir,
+    BOT_TARGET: '6',
+    BOT_MIN: '2',
+    BOT_MAX: '6',
+    MARKET_URL_TENSOR: 'https://www.tensor.trade/trade/slana_pass',
+  });
   chain = new FakeChain();
   app = await createApp(cfg, { chain, log: () => {}, persist: true });
   port = await app.listen();
@@ -184,6 +192,8 @@ describe('server over websocket', () => {
     expect(welcome.rooms.some((r) => r.id === 'practice-rookie-1')).toBe(true);
     expect(welcome.rooms.some((r) => r.mode === 'arena' && r.arenaId === 1)).toBe(true);
     expect(welcome.chain.enabled).toBe(true);
+    // marketplace links from the server config ride along with the chain status
+    expect(welcome.chain.markets).toEqual({ tensor: 'https://www.tensor.trade/trade/slana_pass' });
     c.close();
   });
 
@@ -386,6 +396,8 @@ describe('server over websocket', () => {
     expect(Array.isArray(lb.daily)).toBe(true);
     const bad = await fetch(`http://127.0.0.1:${port}/api/auth/nonce?pubkey=nope`);
     expect(bad.status).toBe(400);
+    const config = (await (await fetch(`http://127.0.0.1:${port}/api/config`)).json()) as { chain: { markets?: Record<string, string> } };
+    expect(config.chain.markets).toEqual({ tensor: 'https://www.tensor.trade/trade/slana_pass' });
   });
 
   it('arena join requires session and applies hasPass power', async () => {

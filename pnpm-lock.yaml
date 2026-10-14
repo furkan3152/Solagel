@@ -65,9 +65,6 @@ importers:
       '@fontsource/dm-mono':
         specifier: ^5.3.0
         version: 5.3.0
-      '@fontsource/fredoka':
-        specifier: ^5.3.0
-        version: 5.3.0
       '@slana/art':
         specifier: workspace:*
         version: link:../../packages/art
@@ -665,9 +662,6 @@ packages:
 
   '@fontsource/dm-mono@5.3.0':
     resolution: {integrity: sha512-OINjI8C1S/wpchhQxl7njZdMn4+hnDCpQ4YtvvOpKNARo+0J8O1x1IcrChxNjHOhfVv1by8C/FQoy3hXK+C1Ug==}
-
-  '@fontsource/fredoka@5.3.0':
-    resolution: {integrity: sha512-s2IhjQ50wDnKkkaKmjhtL0rxQg6ITsVusiipM3m7zUwVZZbbCKsscNDkngwp28xVzfIt7neWrkgU1qKqyTycQg==}
 
   '@isaacs/ttlcache@1.4.1':
     resolution: {integrity: sha512-RQgQ4uQ+pLbqXfOmieB91ejmLwvSgv9nLx6sT6sD83s7umBypgg+OIBOBbEUiJXrfpnp9j0mRhYYdzp9uqq3lA==}
@@ -3674,7 +3668,6 @@ snapshots:
 
   '@fontsource/dm-mono@5.3.0': {}
 
-  '@fontsource/fredoka@5.3.0': {}
 
   '@isaacs/ttlcache@1.4.1': {}
 

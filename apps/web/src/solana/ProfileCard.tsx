@@ -2,13 +2,13 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { InkButton } from '../design';
 import { levelProgress } from '../game/engine';
 import { useT } from '../i18n';
-import { openModal, useUi } from '../store';
+import { useUi } from '../store';
 import { CoinPortrait } from '../ui/game/CoinPortrait';
 import { useTokenText } from '../ui/lobby/useLobby';
 import { useChainData } from './chain';
 
 /** Name, level and the on-chain record, printed like a membership card. */
-export function ProfileCard() {
+export function ProfileCard({ onEdit }: { onEdit?: () => void }) {
   const t = useT();
   const wallet = useWallet();
   const settings = useUi((s) => s.settings);
@@ -68,9 +68,11 @@ export function ProfileCard() {
           </div>
         </dl>
       )}
-      <InkButton variant="paper" size="sm" lead="user" onClick={() => openModal('profile')}>
-        {t('pf.edit')}
-      </InkButton>
+      {onEdit && (
+        <InkButton variant="paper" size="sm" lead="user" onClick={onEdit}>
+          {t('pf.edit')}
+        </InkButton>
+      )}
     </section>
   );
 }

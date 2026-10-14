@@ -126,7 +126,8 @@ export interface TicketGroupProps extends Omit<HTMLAttributes<HTMLDivElement>, '
  */
 export function TicketGroup({ label, value, onChange, children, onKeyDown, ...rest }: TicketGroupProps) {
   const root = useRef<HTMLDivElement>(null);
-  const [firstEnabled, setFirstEnabled] = useState<string | null>(null);
+  /** Values of the enabled tickets in DOM order (React state, so the tab stop follows them). */
+  const [enabledValues, setEnabledValues] = useState<string[]>([]);
 
   const radios = () =>
     [...(root.current?.querySelectorAll<HTMLButtonElement>('[role="radio"]') ?? [])].filter(
@@ -134,13 +135,15 @@ export function TicketGroup({ label, value, onChange, children, onKeyDown, ...re
     );
   const enabled = () => radios().filter((r) => !r.disabled);
 
-  // Track the first enabled ticket in DOM order, as React state.
+  // Track the enabled tickets in DOM order, as React state.
   useLayoutEffect(() => {
-    const first = enabled()[0]?.dataset.kbValue ?? null;
-    if (first !== firstEnabled) setFirstEnabled(first);
+    const vals = enabled().map((r) => r.dataset.kbValue ?? '');
+    if (vals.join('\u0000') !== enabledValues.join('\u0000')) setEnabledValues(vals);
   });
 
-  const tabStop = value ?? firstEnabled;
+  // The selected ticket is the tab stop only while it is an enabled ticket of this group;
+  // a disabled or unknown value falls back to the first enabled one (never zero tab stops).
+  const tabStop = value !== null && enabledValues.includes(value) ? value : (enabledValues[0] ?? null);
 
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     onKeyDown?.(e);

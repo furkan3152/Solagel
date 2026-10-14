@@ -195,6 +195,14 @@ describe('TicketGroup', () => {
     expect(document.activeElement).toBe(outside);
   });
 
+  it('never has zero tab stops when the value is disabled or unknown', () => {
+    const { unmount } = render(<GroupHarness initial="penny" disabled={['penny']} />);
+    expect(tabStops().map((r) => r.getAttribute('aria-label'))).toEqual(['practice']);
+    unmount();
+    render(<GroupHarness initial="nope" ids={['a', 'b']} disabled={['a']} />);
+    expect(tabStops().map((r) => r.getAttribute('aria-label'))).toEqual(['b']);
+  });
+
   it('a standalone ticket is a toggle button', () => {
     render(<Ticket title="Solo" stub="1" selected aria-label="Solo" />);
     const b = screen.getByRole('button', { name: 'Solo' });
