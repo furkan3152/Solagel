@@ -28,6 +28,13 @@ export interface ServerConfig {
   /** Slana Pass power (`PASS_START_MASS_MUL`, `PASS_CASHOUT_MS`). */
   pass: { startMassMul: number; cashoutMs: number };
   authSecret: Buffer;
+  /** `NODE_ENV` is `production`. */
+  production: boolean;
+  /**
+   * `DEV_FAKE_CHAIN=1`: an in-memory chain with auto-issued arena tickets and
+   * simulated settlements, for local UI work and Playwright. Refused in production.
+   */
+  devFakeChain: boolean;
   chain: {
     cluster: string;
     /** RPC used by the server (may contain a private API key). */
@@ -104,6 +111,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       cashoutMs: Math.max(0, int(env.PASS_CASHOUT_MS, RULES.passCashoutMs)),
     },
     authSecret: secret,
+    production: env.NODE_ENV === 'production',
+    devFakeChain: bool(env.DEV_FAKE_CHAIN, false),
     chain: {
       cluster: env.SOLANA_CLUSTER ?? 'localnet',
       rpcUrl: env.SOLANA_RPC_URL ?? null,

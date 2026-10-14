@@ -58,3 +58,28 @@ describe('drawPassCard', () => {
     });
   }
 });
+
+describe('flag effects keep the caller alpha', () => {
+  it('never raises globalAlpha above the coin alpha (cash-out ring, magnet, zzz)', () => {
+    const c = createCanvas(256, 256);
+    const ctx = ctx2d(c);
+    ctx.translate(128, 128);
+    // record every globalAlpha write while forwarding to the real accessor
+    let proto: object | null = Object.getPrototypeOf(ctx);
+    let desc: PropertyDescriptor | undefined;
+    while (proto && !(desc = Object.getOwnPropertyDescriptor(proto, 'globalAlpha'))) proto = Object.getPrototypeOf(proto);
+    const writes: number[] = [];
+    Object.defineProperty(ctx, 'globalAlpha', {
+      configurable: true,
+      get: () => desc!.get!.call(ctx),
+      set: (v: number) => {
+        writes.push(v);
+        desc!.set!.call(ctx, v);
+      },
+    });
+    // CashingOut | Magnet | Afk
+    drawRisoCoin(ctx, lookForBasicSkin(2), 80, { time: 450, lookX: 0, lookY: 0, expression: 'happy', alpha: 0.5, flags: 2 | 4 | 16 });
+    expect(writes.length).toBeGreaterThan(3);
+    for (const a of writes) expect(a).toBeLessThanOrEqual(0.5 + 1e-9);
+  });
+});

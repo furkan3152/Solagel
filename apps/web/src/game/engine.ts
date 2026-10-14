@@ -1,7 +1,9 @@
+import { RISO } from '@slana/art';
 import {
   PowerUpType,
   RULES,
   clamp,
+  formatToken,
   encodeEject,
   encodeSplit,
   encodeTarget,
@@ -23,6 +25,7 @@ import { sound } from './sound';
 import { ClientWorld } from './state';
 
 const TOKEN_KEY = 'slana.auth.v1';
+const REDUCED_QUERY = '(prefers-reduced-motion: reduce)';
 let killId = 1;
 let chatId = 1;
 
@@ -46,8 +49,11 @@ export class GameEngine {
   private fpsAt = performance.now();
   private snapNext = true;
   private rngState = 7;
-  private wasStakeRoom: string | null = null;
-  private unsub: () => void;
+  /** Arena id of the stake room we were in (reclaimed after a reconnect). */
+  private wasArena: number | null = null;
+  private reduced = false;
+  private readonly unsub: () => void;
+  private readonly reducedQuery: MediaQueryList | null;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     this.renderer = new Renderer(canvas);
@@ -94,14 +100,24 @@ export class GameEngine {
     this.unsub = useUi.subscribe((s, prev) => {
       if (s.settings !== prev.settings) applySettings();
     });
+    this.reducedQuery = typeof window.matchMedia === 'function' ? window.matchMedia(REDUCED_QUERY) : null;
+    this.reducedQuery?.addEventListener?.('change', this.onReducedChange);
+    this.onReducedChange();
+    if (import.meta.env.DEV) (window as unknown as { __slana?: unknown }).__slana = { engine: this, useUi };
     this.resize();
     window.addEventListener('resize', this.resize);
     this.net.connect();
     this.raf = requestAnimationFrame(this.frame);
   }
 
+  private onReducedChange = (): void => {
+    this.reduced = this.reducedQuery?.matches ?? false;
+    this.particles.reduced = this.reduced;
+  };
+
   destroy(): void {
     cancelAnimationFrame(this.raf);
+    this.reducedQuery?.removeEventListener?.('change', this.onReducedChange);
     window.removeEventListener('resize', this.resize);
     this.input.destroy();
     this.net.close();
@@ -148,7 +164,17 @@ export class GameEngine {
     const s = useUi.getState();
     if (s.screen === 'playing') this.net.send({ t: 'leave' });
     this.world.myPid = null;
-    useUi.setState({ screen: 'lobby', death: null, cashoutResult: null, chatOpen: false, powerups: [], cashout: { state: 'idle', until: 0 } });
+    this.world.value = null;
+    useUi.setState({
+      screen: 'lobby',
+      death: null,
+      cashoutResult: null,
+      chatOpen: false,
+      powerups: [],
+      cashout: { state: 'idle', until: 0, total: 0 },
+      ticket: null,
+      valueDelta: null,
+    });
     this.net.send({ t: 'spectate' });
   }
 
@@ -162,7 +188,7 @@ export class GameEngine {
     this.sendTarget(true);
     this.net.sendBinary(encodeSplit());
     sound.split();
-    for (const c of this.world.myCells()) this.particles.puff(c.x, c.y, c.r * 0.5);
+    for (const c of this.world.myCells()) this.particles.dots(c.x, c.y, c.r * 0.6, '#1E1B2E', 5);
   }
 
   eject(): void {
@@ -181,6 +207,12 @@ export class GameEngine {
     const s = useUi.getState();
     if (s.screen !== 'playing' || s.room?.mode !== 'arena' || s.cashout.state !== 'idle') return;
     this.net.send({ t: 'cashout' });
+    sound.click();
+  }
+
+  /** Cash-out channel length for the current ticket (Pass tickets print faster). */
+  cashoutMs(): number {
+    return useUi.getState().ticket?.hasPass ? RULES.passCashoutMs : RULES.cashoutMs;
   }
 
   chat(text: string): void {
@@ -233,9 +265,9 @@ export class GameEngine {
         if (auth) this.authToken(auth.token);
         this.resize();
         const screen = useUi.getState().screen;
-        if (this.wasStakeRoom && (screen === 'playing' || screen === 'lobby')) {
+        if (this.wasArena !== null && (screen === 'playing' || screen === 'lobby')) {
           // reconnect: our stake cells are still in the arena (AFK) — reclaim them
-          this.play(`arena:${this.wasStakeRoom.slice(6)}`);
+          this.play(`arena:${this.wasArena}`);
         } else {
           if (screen === 'playing') useUi.setState({ screen: 'lobby' });
           this.net.send({ t: 'spectate' });
@@ -264,7 +296,8 @@ export class GameEngine {
         this.world.myPid = m.playerId;
         this.world.width = m.room.width;
         this.world.height = m.room.height;
-        this.wasStakeRoom = m.room.mode === 'arena' ? m.room.id : null;
+        this.wasArena = m.room.mode === 'arena' ? (m.room.arenaId ?? null) : null;
+        this.world.value = m.value ?? null;
         useUi.setState({
           screen: 'playing',
           room: m.room,
@@ -272,8 +305,13 @@ export class GameEngine {
           death: null,
           cashoutResult: null,
           powerups: [],
-          cashout: { state: 'idle', until: 0 },
+          cashout: { state: 'idle', until: 0, total: 0 },
           hud: { ...useUi.getState().hud, value: m.value ?? null },
+          valueDelta: null,
+          ticket:
+            m.room.mode === 'arena'
+              ? { entryFee: m.entryFee ?? m.room.entryFee ?? 0, hasPass: m.hasPass === true, arenaId: m.room.arenaId ?? null }
+              : null,
         });
         return;
       }
@@ -292,7 +330,7 @@ export class GameEngine {
         useUi.setState({
           lb: m.top,
           leaders: m.leaders,
-          hud: { ...s.hud, rank: m.me?.rank ?? 0, value: m.me?.value ?? (s.room?.mode === 'arena' ? s.hud.value : null), players: m.players },
+          hud: { ...s.hud, rank: m.me?.rank ?? 0, value: s.room?.mode === 'arena' ? (m.me?.value ?? s.hud.value) : null, players: m.players },
         });
         return;
       }
@@ -312,33 +350,61 @@ export class GameEngine {
       }
       case 'death': {
         const me = this.world.myStats();
-        if (me) this.particles.confetti(me.x, me.y, Math.max(60, me.maxR), 40);
+        if (me) {
+          this.particles.scraps(me.x, me.y, Math.max(60, me.maxR), 34);
+          // a bot ate a staker: the tokens spill onto the map
+          if (m.stats.byBot && (m.stats.lootSpilled ?? 0) > 0) this.particles.coinBurst(me.x, me.y, Math.max(60, me.maxR), 22);
+        }
         sound.death();
         this.world.myPid = null;
-        this.wasStakeRoom = null;
-        useUi.setState({ screen: 'dead', death: { stats: m.stats, killer: m.killer, killerSkin: m.killerSkin }, powerups: [], cashout: { state: 'idle', until: 0 }, chatOpen: false });
+        this.wasArena = null;
+        useUi.setState({
+          screen: 'dead',
+          death: { stats: m.stats, killer: m.killer, killerSkin: m.killerSkin },
+          powerups: [],
+          cashout: { state: 'idle', until: 0, total: 0 },
+          chatOpen: false,
+        });
         return;
       }
       case 'cashout': {
         if (m.state === 'started') {
-          useUi.setState({ cashout: { state: 'channel', until: now + (m.ms ?? RULES.cashoutMs) } });
+          const total = m.ms ?? this.cashoutMs();
+          useUi.setState({ cashout: { state: 'channel', until: now + total, total } });
+          sound.print(total);
           return;
         }
         if (m.state === 'canceled') {
-          useUi.setState({ cashout: { state: 'idle', until: 0 } });
-          toast('warn', '💥 Cash-out interrupted!');
+          useUi.setState({ cashout: { state: 'idle', until: 0, total: 0 } });
+          sound.stopPrint();
+          toast('warn', t('hud.cashoutCanceled'));
           return;
         }
         sound.cashout();
         const me = this.world.myStats();
-        if (me) this.particles.coinBurst(me.x, me.y, Math.max(60, me.maxR), ['#FFD54A', '#FFE873', '#FFC93C'], 40);
+        if (me) this.particles.coinBurst(me.x, me.y, Math.max(60, me.maxR), 36);
         this.world.myPid = null;
-        this.wasStakeRoom = null;
-        useUi.setState({ screen: 'cashedout', cashoutResult: { value: m.value ?? 0, stats: m.stats ?? null }, cashout: { state: 'idle', until: 0 }, chatOpen: false });
+        this.wasArena = null;
+        useUi.setState({
+          screen: 'cashedout',
+          cashoutResult: { value: m.value ?? 0, stats: m.stats ?? null },
+          cashout: { state: 'idle', until: 0, total: 0 },
+          chatOpen: false,
+        });
+        return;
+      }
+      case 'value': {
+        this.world.applyValue(m, now);
+        useUi.setState((s) => ({
+          hud: { ...s.hud, value: m.value },
+          valueDelta: m.delta !== 0 ? { id: (s.valueDelta?.id ?? 0) + 1, delta: m.delta, reason: m.reason } : s.valueDelta,
+        }));
+        if (m.delta > 0) sound.coin();
         return;
       }
       case 'settled':
-        useUi.setState({ lastSettlement: { kind: m.kind, signature: m.signature, payout: m.payout, at: Date.now() } });
+        // `fee` is taken from the profit; `net` is what reached the wallet
+        useUi.setState({ lastSettlement: { signature: m.signature, payout: m.payout, fee: m.fee, net: m.net, at: Date.now() } });
         return;
       case 'event': {
         if (m.kind === 'coinrain') {
@@ -356,8 +422,8 @@ export class GameEngine {
         sound.powerup();
         useUi.setState((s) => ({ powerups: [...s.powerups.filter((p) => p.type !== m.type), { type: m.type, until: Date.now() + m.ms }] }));
         const me = this.world.myStats();
-        if (me) this.particles.text(me.x, me.y - me.maxR, `${t(`pu.${m.type}` as 'pu.1')}!`, '#FFE873', 26);
-        if (m.type === PowerUpType.Bag && me) this.particles.coinBurst(me.x, me.y, me.maxR, ['#FFD54A', '#FFE873'], 18);
+        if (me) this.particles.text(me.x, me.y - me.maxR, `${t(`pu.${m.type}` as 'pu.1')}!`, undefined, 24, RISO.mustard);
+        if (m.type === PowerUpType.Bag && me) this.particles.coinBurst(me.x, me.y, me.maxR, 18);
         return;
       }
       case 'error': {
@@ -399,45 +465,64 @@ export class GameEngine {
   }
 
   private handleEats(): void {
+    const arena = useUi.getState().room?.mode === 'arena';
     for (const ev of this.world.drainEats()) {
       switch (ev.type) {
         case 'food':
           if (ev.mine) {
             sound.blip(ev.variant === 7);
-            const color = ev.variant < 6 ? FOOD_COLORS[ev.variant][0] : ev.variant === 7 ? '#FFD54A' : '#8DF2FF';
-            this.particles.sparkle(ev.x, ev.y, color, ev.variant === 7 ? 6 : 2, ev.variant === 7 ? 9 : 5);
-            if (ev.variant === 7) this.particles.text(ev.x, ev.y, '+8', '#FFD54A', 18);
+            const ink = ev.variant < 6 ? FOOD_COLORS[ev.variant][0] : ev.variant === 7 ? RISO.mustard : RISO.aqua;
+            this.particles.splat(ev.x, ev.y, ink, ev.variant === 7 ? 15 : ev.variant === 6 ? 10 : 7);
+            if (ev.variant === 7) this.particles.text(ev.x, ev.y, '+8', undefined, 18, RISO.mustard);
           }
           break;
         case 'eject':
           if (ev.mine) sound.blip();
           break;
+        case 'loot':
+          // the value message that follows floats the amount; here the pickup itself
+          if (ev.mine) this.particles.splat(ev.x, ev.y, RISO.mustard, 12 + ev.variant * 4);
+          break;
         case 'cell': {
           const victim = this.world.players.get(ev.victimPid);
-          const skin = getSkin(victim?.skin ?? 0);
+          const look = this.renderer.lookFor(victim?.skin ?? 0, victim?.pass ?? 0, useUi.getState().chain?.pass ?? null);
           if (ev.mine) {
             sound.chomp();
-            this.particles.coinBurst(ev.x, ev.y, ev.r, [skin.colors.base, skin.colors.light, '#FFD54A']);
-            this.particles.text(ev.x, ev.y, `+${Math.floor((ev.r * ev.r) / 100)}`, '#FFFFFF', 24);
+            this.particles.scraps(ev.x, ev.y, ev.r, 16, [look.body, look.overprint, '#FFFCF4']);
+            if (!arena) this.particles.text(ev.x, ev.y, `+${Math.floor((ev.r * ev.r) / 100)}`, undefined, 24);
           } else if (ev.me) {
             sound.ouch();
-            this.particles.puff(ev.x, ev.y, ev.r, 'rgba(255,143,184,0.6)');
           } else if (!this.particles.lowQuality) {
-            this.particles.coinBurst(ev.x, ev.y, ev.r, [skin.colors.base, skin.colors.light], 6);
+            this.particles.scraps(ev.x, ev.y, ev.r, 6, [look.body, look.overprint]);
           }
+          // a bot ate a staker: the victim's tokens spill as loot
+          if (arena && this.world.isBot(ev.eaterPid) && !this.world.isBot(ev.victimPid)) this.particles.coinBurst(ev.x, ev.y, ev.r, 16);
           break;
         }
         case 'virus':
-          this.particles.confetti(ev.x, ev.y, 70, ev.mine ? 30 : 12);
+          this.particles.scraps(ev.x, ev.y, 70, ev.mine ? 26 : 10, [RISO.green, RISO.teal, '#FFFCF4', RISO.fluoPink]);
           if (ev.mine) {
             sound.boing();
-            this.particles.text(ev.x, ev.y, 'RUGGED! 🌵', '#4FE0A8', 26);
+            this.particles.text(ev.x, ev.y, t('fx.rugged'), RISO.green, 26, RISO.fluoPink);
           }
           break;
         case 'powerup':
-          this.particles.ring(ev.x, ev.y, 50, '#FFFFFF');
+          this.particles.ring(ev.x, ev.y, 50, RISO.fluoPink);
           break;
       }
+    }
+  }
+
+  /** Floating "+X $SLANA" ink numbers from `value` messages. */
+  private handleFloats(): void {
+    const floats = this.world.drainFloats();
+    if (floats.length === 0) return;
+    const ui = useUi.getState();
+    const decimals = ui.chain?.token?.decimals ?? 6;
+    for (const f of floats) {
+      const amount = formatToken(Math.abs(f.delta), decimals, ui.settings.lang, { compact: true, maxFrac: 1 });
+      const gain = f.delta > 0;
+      this.particles.text(f.x, f.y, `${gain ? '+' : '−'}${amount}`, gain ? undefined : RISO.red, gain ? 26 : 22, gain ? RISO.mustard : RISO.fluoPink);
     }
   }
 
@@ -454,6 +539,7 @@ export class GameEngine {
       world.computeExpressions(now);
     }
     this.handleEats();
+    this.handleFloats();
     this.particles.update(dt);
 
     // camera
@@ -481,15 +567,17 @@ export class GameEngine {
       camera: this.camera,
       particles: this.particles,
       settings: ui.settings,
+      pass: ui.chain?.pass ?? null,
+      reduced: this.reduced,
       aim: ui.screen === 'playing' ? this.aimPoint() : null,
-      cashout: ui.cashout.state === 'channel' ? { until: ui.cashout.until, total: RULES.cashoutMs } : null,
+      cashout: ui.cashout.state === 'channel' ? { until: ui.cashout.until, total: ui.cashout.total || this.cashoutMs() } : null,
       coinRain: !!ui.banner && ui.banner.kind === 'coinrain' && ui.banner.until > Date.now(),
       rand: this.rand,
     });
 
     if (this.minimap && ui.settings.showMinimap && now - this.lastMinimap > 66) {
       this.lastMinimap = now;
-      this.renderer.drawMinimap(this.minimap, { world, camera: this.camera, leaders: ui.leaders, dark: ui.settings.theme === 'dark', now });
+      this.renderer.drawMinimap(this.minimap, { world, camera: this.camera, leaders: ui.leaders, dark: ui.settings.theme === 'dark', now, reduced: this.reduced });
     }
 
     this.frames++;

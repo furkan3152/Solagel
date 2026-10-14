@@ -110,7 +110,9 @@ export function formatToken(
 
   const sep = SEPARATORS[lang];
   const whole = r.whole.toString().replace(/\B(?=(\d{3})+(?!\d))/g, sep.group);
-  return `${value < 0n ? '-' : ''}${whole}${r.frac ? sep.decimal + r.frac : ''}${tiers[tier].suffix}`;
+  // no sign when the amount rounds to zero (`formatToken(-1, 6)` is "0", not "-0")
+  const negative = value < 0n && (r.whole > 0n || r.frac !== '');
+  return `${negative ? '-' : ''}${whole}${r.frac ? sep.decimal + r.frac : ''}${tiers[tier].suffix}`;
 }
 
 /** Digits of a whole part that is plain or has well-formed thousands groups (`1.234` in tr, `1,234` in en). */
