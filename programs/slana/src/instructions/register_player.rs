@@ -27,8 +27,7 @@ pub struct RegisterPlayer<'info> {
 
 pub fn handle_register_player(ctx: Context<RegisterPlayer>, name: String, skin: u8) -> Result<()> {
     let (name_bytes, name_len) = logic::validate_name(&name)?;
-    // A fresh profile has no XP and no premium skins: only free skins pass.
-    logic::check_skin(skin, 0, 0)?;
+    logic::check_skin(skin)?;
     let now = Clock::get()?.unix_timestamp;
 
     let config = &mut ctx.accounts.config;

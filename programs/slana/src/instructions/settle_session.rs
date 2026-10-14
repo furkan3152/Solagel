@@ -61,11 +61,10 @@ pub struct SettleSession<'info> {
         bump = season.bump
     )]
     pub season: Box<Account<'info, Season>>,
-    /// CHECK: must equal `config.treasury`; only receives lamports. `dup`: may be the player.
-    #[account(mut, dup, address = config.treasury @ SlanaError::Unauthorized)]
-    pub treasury: UncheckedAccount<'info>,
 }
 
+// TODO(Task 4): interim lamport version; Task 4 pays out of the arena token vault, splits
+// the fee into treasury / season / burn, and passes `season_points = session.has_pass`.
 pub fn handle_settle_session(ctx: Context<SettleSession>, args: SettleArgs) -> Result<()> {
     let accounts = &mut *ctx.accounts;
     require_eq!(
@@ -79,31 +78,19 @@ pub fn handle_settle_session(ctx: Context<SettleSession>, args: SettleArgs) -> R
     let pot = shared::available_lamports(&arena_info)?;
     require_gte!(pot, args.payout, SlanaError::InsufficientPot);
 
-    let split = logic::compute_settlement(
+    let split = logic::split_payout(
         args.payout,
-        accounts.session.buy_in,
+        accounts.session.entry_fee,
         accounts.config.fee_bps,
-        accounts.config.season_share_bps,
+        accounts.config.treasury_bps,
+        accounts.config.burn_bps,
     )?;
 
-    // Liveness guard: a treasury account that does not exist yet cannot receive less than
-    // the rent-exempt minimum, which would make every settlement fail. In that case the
-    // treasury cut goes to the season prize pool instead, so players always get paid.
-    let treasury_info = accounts.treasury.to_account_info();
-    let (season_cut, treasury_cut) = if split.treasury_cut > 0
-        && treasury_info.lamports().saturating_add(split.treasury_cut)
-            < shared::rent_exempt_minimum(&treasury_info)?
-    {
-        (split.fee, 0)
-    } else {
-        (split.season_cut, split.treasury_cut)
-    };
-
-    // Sequential, non-overlapping lamport borrows (safe when treasury == player).
+    // Interim: lamports cannot be burned and the treasury is a token vault now, so the
+    // whole fee goes to the season account until Task 4 moves settlement to tokens.
     shared::debit_program_account(&arena_info, args.payout)?;
-    shared::credit_account(&accounts.player.to_account_info(), split.player_amount)?;
-    shared::credit_account(&treasury_info, treasury_cut)?;
-    shared::credit_account(&accounts.season.to_account_info(), season_cut)?;
+    shared::credit_account(&accounts.player.to_account_info(), split.player)?;
+    shared::credit_account(&accounts.season.to_account_info(), split.fee)?;
 
     let arena = &mut accounts.arena;
     arena.open_sessions = arena.open_sessions.saturating_sub(1);
@@ -126,7 +113,7 @@ pub fn handle_settle_session(ctx: Context<SettleSession>, args: SettleArgs) -> R
     let profile = &mut accounts.profile;
     profile.total_won = profile
         .total_won
-        .checked_add(split.player_amount)
+        .checked_add(split.player)
         .ok_or(SlanaError::MathOverflow)?;
     let result = shared::record_result(
         profile,
@@ -136,6 +123,7 @@ pub fn handle_settle_session(ctx: Context<SettleSession>, args: SettleArgs) -> R
         args.kills,
         args.xp,
         now,
+        true,
     );
 
     emit!(SessionSettled {

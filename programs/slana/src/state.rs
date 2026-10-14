@@ -1,28 +1,72 @@
 use anchor_lang::prelude::*;
 
-use crate::constants::{LEADERBOARD_LEN, NAME_BYTES};
+use crate::constants::{BASE_URI_BYTES, LEADERBOARD_LEN, NAME_BYTES};
 
 /// Global configuration. PDA `["config"]`.
 #[account]
 #[derive(InitSpace, Debug)]
 pub struct Config {
-    /// May change the configuration, create arenas and manage seasons.
+    /// May change the configuration, create arenas, manage seasons and withdraw the treasury.
     pub admin: Pubkey,
-    /// Game server key that signs `settle_session` and `record_game`.
+    /// Game server key that signs `settle_session`.
     pub server_authority: Pubkey,
-    /// Receives skin purchases, the treasury part of fees and swept arena leftovers.
-    pub treasury: Pubkey,
+
+    // ----- token (fixed at `initialize`) -----------------------------------------------
+    /// The game token ($SLANA). Written once and never changed.
+    pub token_mint: Pubkey,
+    /// Token program owning `token_mint` (SPL Token or Token-2022).
+    pub token_program: Pubkey,
+    pub token_decimals: u8,
+
+    // ----- fees ------------------------------------------------------------------------
     /// Fee charged on stake profit, in basis points (≤ `MAX_FEE_BPS`).
     pub fee_bps: u16,
-    /// Part of the fee that goes to the current season prize pool, in basis points.
-    pub season_share_bps: u16,
-    /// Price of a premium skin in lamports.
-    pub skin_price: u64,
+    /// Fee charged on stake profit of a Pass session (≤ `fee_bps`).
+    pub pass_fee_bps: u16,
+    /// Shares of each fee: treasury vault, season vault, burned. They sum to `BPS`.
+    pub treasury_bps: u16,
+    pub season_bps: u16,
+    pub burn_bps: u16,
+    /// Lamports a player deposits per session to pay the server's settle transaction
+    /// (≤ `MAX_SETTLE_FEE_LAMPORTS`).
+    pub settle_fee_lamports: u64,
+
+    // ----- general -----------------------------------------------------------------------
     /// Id of the season that is currently running.
     pub current_season: u32,
     /// Blocks new arena joins (settlements and refunds keep working).
     pub paused: bool,
+
+    // ----- Slana Pass collection and mint --------------------------------------------------
+    /// Metaplex Core collection of the Pass (`Pubkey::default()` = not set yet).
+    pub pass_collection: Pubkey,
+    /// Base URI of Pass metadata (`pass_base_uri[..pass_base_uri_len]`, zero padded).
+    pub pass_base_uri: [u8; BASE_URI_BYTES],
+    pub pass_base_uri_len: u8,
+    /// Maximum number of Passes (≤ `MAX_PASS_SUPPLY`, ≥ `pass_minted`).
+    pub pass_supply: u32,
+    /// Passes minted so far.
+    pub pass_minted: u32,
+    /// Free mints per wallet (≤ `MAX_PASS_PER_WALLET`).
+    pub pass_per_wallet: u8,
+    /// Minimum game-token balance needed to mint (0 = no requirement).
+    pub pass_min_tokens: u64,
+    pub pass_mint_open: bool,
+    pub pass_mint_start_ts: i64,
+
+    // ----- Pass trait reveal (commit / reveal) ---------------------------------------------
+    /// `sha256(pass_seed)` committed before the first mint.
+    pub pass_seed_hash: [u8; 32],
+    /// The revealed seed (zero until `pass_revealed`).
+    pub pass_seed: [u8; 32],
+    pub pass_revealed: bool,
+
+    // ----- bumps -------------------------------------------------------------------------
     pub bump: u8,
+    pub treasury_vault_bump: u8,
+    pub season_vault_bump: u8,
+
+    // ----- totals ------------------------------------------------------------------------
     pub total_players: u64,
     pub total_games: u64,
     pub total_sessions: u64,
@@ -38,10 +82,8 @@ pub struct PlayerProfile {
     /// UTF-8 name bytes, zero padded; only `name[..name_len]` is meaningful.
     pub name: [u8; NAME_BYTES],
     pub name_len: u8,
-    /// Equipped skin id.
+    /// Equipped skin id (`< BASIC_SKINS`).
     pub skin: u8,
-    /// Owned premium skins: bit `i` set ⇔ skin `PREMIUM_SKIN_START + i` owned.
-    pub premium_skins: u32,
     pub xp: u64,
     pub games_played: u32,
     pub kills: u32,
@@ -60,16 +102,22 @@ pub struct PlayerProfile {
 
 /// A stake arena tier. PDA `["arena", id.to_le_bytes()]`.
 ///
-/// The arena account itself is the vault: every lamport above its rent-exempt
-/// minimum belongs to the pot.
+/// Entry fees are held in the arena's token vault `["vault", arena]` (authority = this PDA).
 #[account]
 #[derive(InitSpace, Debug)]
 pub struct Arena {
     pub id: u16,
-    pub buy_in: u64,
-    pub max_players: u16,
-    pub enabled: bool,
+    /// Entry fee in base units of the game token.
+    pub entry_fee: u64,
+    /// Only Slana Pass holders may join.
+    pub requires_pass: bool,
+    /// Maximum number of simultaneously open sessions.
+    pub max_sessions: u16,
     pub open_sessions: u16,
+    pub enabled: bool,
+    /// The arena's token vault.
+    pub vault: Pubkey,
+    pub vault_bump: u8,
     pub total_deposited: u64,
     pub total_paid_out: u64,
     pub bump: u8,
@@ -82,7 +130,7 @@ pub struct Session {
     pub player: Pubkey,
     pub arena: Pubkey,
     pub arena_id: u16,
-    pub buy_in: u64,
+    pub entry_fee: u64,
     pub opened_at: i64,
     pub id: u64,
     pub bump: u8,

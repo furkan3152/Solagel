@@ -9,7 +9,7 @@ use crate::{
 };
 
 /// Last resort when the server never settled a session: after `SESSION_REFUND_TIMEOUT_SECS`
-/// the player gets `min(buy_in, pot)` back.
+/// the player gets `min(entry_fee, pot)` back.
 #[derive(Accounts)]
 pub struct RefundSession<'info> {
     #[account(mut)]
@@ -31,6 +31,7 @@ pub struct RefundSession<'info> {
     pub session: Account<'info, Session>,
 }
 
+// TODO(Task 4): interim lamport version; Task 4 refunds from the arena token vault.
 pub fn handle_refund_session(ctx: Context<RefundSession>) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
     let session = &ctx.accounts.session;
@@ -41,7 +42,9 @@ pub fn handle_refund_session(ctx: Context<RefundSession>) -> Result<()> {
     require_gte!(now, refundable_at, SlanaError::RefundTooEarly);
 
     let arena_info = ctx.accounts.arena.to_account_info();
-    let refund = session.buy_in.min(shared::available_lamports(&arena_info)?);
+    let refund = session
+        .entry_fee
+        .min(shared::available_lamports(&arena_info)?);
     shared::transfer_from_program_account(
         &arena_info,
         &ctx.accounts.player.to_account_info(),

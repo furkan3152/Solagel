@@ -13,18 +13,11 @@ pub struct ProfileUpdated {
 }
 
 #[event]
-pub struct SkinPurchased {
-    pub owner: Pubkey,
-    pub skin: u8,
-    pub price: u64,
-}
-
-#[event]
 pub struct ArenaJoined {
     pub player: Pubkey,
     pub arena_id: u16,
     pub session_id: u64,
-    pub buy_in: u64,
+    pub entry_fee: u64,
 }
 
 #[event]
@@ -39,24 +32,9 @@ pub struct SessionSettled {
 }
 
 #[event]
-pub struct GameRecorded {
-    pub player: Pubkey,
-    pub score: u32,
-    pub kills: u16,
-    pub xp: u32,
-}
-
-#[event]
 pub struct SessionRefunded {
     pub player: Pubkey,
     pub arena_id: u16,
-    pub amount: u64,
-}
-
-#[event]
-pub struct SeasonFunded {
-    pub season_id: u32,
-    pub funder: Pubkey,
     pub amount: u64,
 }
 
@@ -84,5 +62,19 @@ pub struct SeasonRolledOver {
 #[event]
 pub struct ArenaSwept {
     pub arena_id: u16,
+    pub amount: u64,
+}
+
+#[event]
+pub struct ArenaCreated {
+    pub arena_id: u16,
+    pub entry_fee: u64,
+    pub max_sessions: u16,
+    pub requires_pass: bool,
+}
+
+#[event]
+pub struct TreasuryWithdrawn {
+    pub destination: Pubkey,
     pub amount: u64,
 }

@@ -38,19 +38,21 @@ pub struct JoinArena<'info> {
     pub system_program: Program<'info, System>,
 }
 
+// TODO(Task 4): interim lamport version kept only so the crate builds; Task 4 rewrites it to
+// `transfer_checked` the entry fee into the arena's token vault and adds Pass gating.
 pub fn handle_join_arena(ctx: Context<JoinArena>) -> Result<()> {
     require!(!ctx.accounts.config.paused, SlanaError::Paused);
     require!(ctx.accounts.arena.enabled, SlanaError::ArenaDisabled);
     require!(
-        ctx.accounts.arena.open_sessions < ctx.accounts.arena.max_players,
+        ctx.accounts.arena.open_sessions < ctx.accounts.arena.max_sessions,
         SlanaError::ArenaFull
     );
 
-    let buy_in = ctx.accounts.arena.buy_in;
+    let entry_fee = ctx.accounts.arena.entry_fee;
     shared::transfer_from_wallet(
         &ctx.accounts.player.to_account_info(),
         &ctx.accounts.arena.to_account_info(),
-        buy_in,
+        entry_fee,
     )?;
 
     let now = Clock::get()?.unix_timestamp;
@@ -62,14 +64,14 @@ pub fn handle_join_arena(ctx: Context<JoinArena>) -> Result<()> {
     config.total_sessions = session_id.checked_add(1).ok_or(SlanaError::MathOverflow)?;
     config.total_staked = config
         .total_staked
-        .checked_add(buy_in)
+        .checked_add(entry_fee)
         .ok_or(SlanaError::MathOverflow)?;
 
     let profile = &mut ctx.accounts.profile;
     profile.stake_games = profile.stake_games.saturating_add(1);
     profile.total_staked = profile
         .total_staked
-        .checked_add(buy_in)
+        .checked_add(entry_fee)
         .ok_or(SlanaError::MathOverflow)?;
 
     let arena = &mut ctx.accounts.arena;
@@ -79,7 +81,7 @@ pub fn handle_join_arena(ctx: Context<JoinArena>) -> Result<()> {
         .ok_or(SlanaError::MathOverflow)?;
     arena.total_deposited = arena
         .total_deposited
-        .checked_add(buy_in)
+        .checked_add(entry_fee)
         .ok_or(SlanaError::MathOverflow)?;
     let arena_id = arena.id;
 
@@ -87,7 +89,7 @@ pub fn handle_join_arena(ctx: Context<JoinArena>) -> Result<()> {
     session.player = player;
     session.arena = arena_key;
     session.arena_id = arena_id;
-    session.buy_in = buy_in;
+    session.entry_fee = entry_fee;
     session.opened_at = now;
     session.id = session_id;
     session.bump = ctx.bumps.session;
@@ -96,7 +98,7 @@ pub fn handle_join_arena(ctx: Context<JoinArena>) -> Result<()> {
         player,
         arena_id,
         session_id,
-        buy_in,
+        entry_fee,
     });
     Ok(())
 }
