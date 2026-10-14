@@ -4,7 +4,7 @@ import type { Expression } from '@slana/art';
 import { JellyBody } from './render/jelly';
 import { SpriteCache, drawSprite } from './render/sprites';
 
-/** Design sheet: every skin, expression and world item (open with ?gallery). */
+/** Design sheet: every skin, expression and world item (open with ?coins). */
 export function startGallery(root: HTMLElement): void {
   document.body.style.margin = '0';
   document.body.style.background = '#FFF6E9';
