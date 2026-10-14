@@ -112,7 +112,7 @@
   font-stretch: 80%;
   font-size: 3.2em;
   line-height: 0.8;
-  color: var(--pink-ink);
+  color: var(--pink-text);
 }
 
 /* page */
@@ -163,7 +163,7 @@
 }
 .g-sec__n {
   font-size: var(--t-label);
-  color: var(--pink-ink);
+  color: var(--pink-text);
   background: var(--card);
   padding: 2px 5px;
   border-radius: 3px;
@@ -290,7 +290,7 @@
   transition: color 120ms linear, background-color 120ms linear;
 }
 .g-icon:hover {
-  color: var(--pink-ink);
+  color: var(--pink-text);
   background: color-mix(in srgb, var(--card) 70%, transparent);
 }
 .g-icon .g-cap {

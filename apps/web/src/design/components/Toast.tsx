@@ -1,5 +1,7 @@
 import { AnimatePresence, motion } from 'motion/react';
 import type { ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import { useKbTheme, type KbTheme } from '../Kb';
 import { Icon, type IconName } from '../icons';
 import { usePreset, useReducedMotion } from '../motion';
 import { Tape } from './Tape';
@@ -52,23 +54,31 @@ export interface ToastItem extends Omit<ToastProps, 'onClose'> {
   id: string | number;
 }
 
-/** Fixed stack (top-right; top-center on phones) with spring in / tear-off out. */
+/**
+ * Fixed stack (top-right; full width on phones) with spring in / tear-off out.
+ * Portalled to <body> in its own `.kb` root, themed from the surrounding <Kb>.
+ */
 export function ToastViewport({
   toasts,
   onDismiss,
   closeLabel,
   label,
+  theme: themeProp,
 }: {
   toasts: ToastItem[];
   onDismiss: (id: ToastItem['id']) => void;
   closeLabel: string;
   /** Accessible name of the region. */
   label: string;
+  /** Override the stock; defaults to the `<Kb>` theme. */
+  theme?: KbTheme;
 }) {
+  const ctxTheme = useKbTheme();
+  const theme = themeProp ?? ctxTheme;
   const reduced = useReducedMotion();
   const spring = usePreset('sheet', { fade: true });
-  return (
-    <section className="kb-toasts" aria-label={label}>
+  return createPortal(
+    <section className="kb kb-toasts" data-theme={theme} aria-label={label}>
       <AnimatePresence initial={false}>
         {toasts.map((t, i) => (
           <motion.div
@@ -83,6 +93,7 @@ export function ToastViewport({
           </motion.div>
         ))}
       </AnimatePresence>
-    </section>
+    </section>,
+    document.body,
   );
 }

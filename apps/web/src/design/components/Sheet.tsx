@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../icons';
+import { useKbTheme, type KbTheme } from '../Kb';
 import { usePreset, useReducedMotion } from '../motion';
 import { Tape } from './Tape';
 
@@ -16,8 +17,8 @@ export interface SheetProps {
   children?: ReactNode;
   /** Sticky action row at the bottom. */
   footer?: ReactNode;
-  /** Theme to print the sheet in (it is portalled out of the themed tree). */
-  theme?: 'paper' | 'night';
+  /** Override the stock. Defaults to the surrounding `<Kb>` theme (the sheet is portalled). */
+  theme?: KbTheme;
 }
 
 const FOCUSABLE =
@@ -39,7 +40,9 @@ function useIsNarrow(): boolean {
  * Modal on desktop, bottom sheet on phones. Paper texture, taped corners.
  * Traps focus, closes on Esc and on the scrim, restores focus to the opener.
  */
-export function Sheet({ open, onClose, title, closeLabel, kicker, children, footer, theme = 'paper' }: SheetProps) {
+export function Sheet({ open, onClose, title, closeLabel, kicker, children, footer, theme: themeProp }: SheetProps) {
+  const ctxTheme = useKbTheme();
+  const theme = themeProp ?? ctxTheme;
   const narrow = useIsNarrow();
   const reduced = useReducedMotion();
   const spring = usePreset('sheet', { fade: true });
@@ -67,7 +70,7 @@ export function Sheet({ open, onClose, title, closeLabel, kicker, children, foot
         return;
       }
       if (e.key !== 'Tab' || !panel.current) return;
-      const items = [...panel.current.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((n) => n.offsetParent !== null);
+      const items = [...panel.current.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((n) => n.getClientRects().length > 0);
       if (items.length === 0) {
         e.preventDefault();
         return;
