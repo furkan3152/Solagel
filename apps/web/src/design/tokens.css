@@ -1,0 +1,118 @@
+/* ─────────────────────────── Kâğıt Bilet · tokens ───────────────────────────
+ * Spec §7.1. Tokens are scoped to `.kb` (the design-system root) instead of
+ * `:root`, because the legacy stylesheet (styles.css) still owns `:root`
+ * variables with the same names (--ink, --pink, --card) until Task 15 removes
+ * it. Custom properties resolve from the nearest ancestor, so any subtree
+ * wrapped in `.kb` gets the Kâğıt Bilet values and legacy markup is untouched.
+ *
+ * Contrast notes (WCAG, measured):
+ *   --ink-2 on --paper 5.66, on --card 6.62 | night: 8.0 / 7.1
+ *   --pink-ink on --card 4.79 but on --paper 4.10 -> small pink text belongs on
+ *   --card; on --paper use it only for large/bold text (>= 19px bold, 3:1).
+ *   --mustard-ink on --card 5.20, on --paper 4.45 (same rule).
+ *   --teal-ink on --paper 4.87. Light text on a teal panel needs --teal-ink
+ *   (5.69); plain --teal with --card text is 3.28 (large text only).
+ * ------------------------------------------------------------------------- */
+
+.kb {
+  /* paper & ink */
+  --paper: #f1eadb;
+  --card: #fffcf4;
+  --ink: #1e1b2e;
+  --ink-2: #5d5870;
+
+  /* riso accents (fills) and their text-safe "ink" pairs */
+  --pink: #ff4f87;
+  --pink-ink: #d6245f;
+  --teal: #0e9c9a;
+  --teal-ink: #08716f;
+  --mustard: #f2b705;
+  --mustard-ink: #8a6500;
+  --blue: #3b5bdb;
+  --green: #1f9d61;
+  --red: #e5402b;
+  /* text-safe pairs for the riso blue/green/red (not in the spec palette;
+   * the fills fail 4.5:1 as small text on paper) */
+  --blue-ink: #3b5bdb;
+  --green-ink: #157347;
+  --red-ink: #b42318;
+  /* fixed passport cover stock (same in both themes) */
+  --cover: #08716f;
+  --on-cover: #fffcf4;
+
+  /* derived */
+  --on-ink: #fffcf4; /* text on an --ink fill */
+  --on-ink-2: #c9c4d9; /* secondary text on an --ink fill (9.9:1) */
+  --line: rgba(30, 27, 46, 0.35); /* perforation / hairlines */
+  --line-soft: rgba(30, 27, 46, 0.14);
+  --grain-a: rgba(30, 27, 46, 0.07);
+  --grain-b: rgba(30, 27, 46, 0.045);
+  --halftone-dot: rgba(30, 27, 46, 0.22);
+  --scrim: rgba(30, 27, 46, 0.42);
+  --tape: rgba(242, 183, 5, 0.42);
+  --stamp-blend: multiply;
+  --focus: var(--pink-ink);
+
+  /* type */
+  --font-display: 'Bricolage Grotesque Variable', 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'DM Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  --display-stretch: 85%;
+
+  /* type scale (display / mono). Ratios follow artboard B. */
+  --t-hero: clamp(46px, 7vw, 92px);
+  --t-h1: 46px;
+  --t-h2: 32px;
+  --t-h3: 21px;
+  --t-body: 16px;
+  --t-small: 14px;
+  --t-label: 11.5px; /* mono labels; never smaller than 11px */
+
+  /* shape */
+  --r-ticket: 10px;
+  --r-card: 14px;
+  --r-chip: 5px;
+  --notch: 9px;
+  --stub-w: 104px;
+
+  /* print offsets (misregistration) */
+  --off: 5px;
+  --off-press: 1px;
+
+  /* motion (CSS side; springs live in motion.ts) */
+  --dur-micro: 150ms;
+  --dur-screen: 320ms;
+  --ease-print: cubic-bezier(0.2, 0.9, 0.25, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  color-scheme: light;
+}
+
+/* Gece baskısı: same accents, inverted stock. Text-safe accent inks are
+ * lightened so they keep >= 4.5:1 on the dark paper and card. */
+.kb[data-theme='night'],
+[data-theme='night'] .kb {
+  --paper: #1b1924;
+  --card: #262331;
+  --ink: #f1eadb;
+  --ink-2: #b3adc2;
+
+  --pink-ink: #ff7fa6;
+  --teal-ink: #3cc9c6;
+  --mustard-ink: #f2b705;
+  --blue-ink: #8fa6ff;
+  --green-ink: #5bd69a;
+  --red-ink: #ff8a75;
+
+  --on-ink: #1b1924;
+  --on-ink-2: #4a4558;
+  --line: rgba(241, 234, 219, 0.32);
+  --line-soft: rgba(241, 234, 219, 0.12);
+  --grain-a: rgba(241, 234, 219, 0.055);
+  --grain-b: rgba(241, 234, 219, 0.035);
+  --halftone-dot: rgba(0, 0, 0, 0.55);
+  --scrim: rgba(8, 7, 12, 0.62);
+  --tape: rgba(242, 183, 5, 0.3);
+  --stamp-blend: screen;
+
+  color-scheme: dark;
+}

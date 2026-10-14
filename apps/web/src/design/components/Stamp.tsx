@@ -1,0 +1,93 @@
+import { motion } from 'motion/react';
+import type { CSSProperties } from 'react';
+import { stampKeyframes, useReducedMotion } from '../motion';
+
+export type StampTone = 'pink' | 'teal' | 'mustard' | 'ink' | 'red';
+
+export interface StampProps {
+  text: string;
+  tone?: StampTone;
+  /** Degrees. Rubber stamps never land straight; default -8. */
+  rotate?: number;
+  /** Play the 420 ms stamp-in on mount (remount with a `key` to replay). */
+  animateIn?: boolean;
+  /** `sm` sits on tickets, `md` is the default, `lg` is a verdict ("YENİLDİN"). */
+  size?: 'sm' | 'md' | 'lg';
+  /** Round seal instead of the rectangular frame. */
+  round?: boolean;
+  /** Small second line under the text (lg / round only). */
+  sub?: string;
+  delay?: number;
+  className?: string;
+  style?: CSSProperties;
+}
+
+/**
+ * A rubber stamp: framed mono caps in a riso ink, worn by a noise mask and
+ * multiplied into the paper. Stamp-in = 1.4 → 1 with a squash on impact, a
+ * 3° settle and an ink bloom ring.
+ */
+export function Stamp({
+  text,
+  tone = 'pink',
+  rotate = -8,
+  animateIn = false,
+  size = 'md',
+  round = false,
+  sub,
+  delay = 0,
+  className,
+  style,
+}: StampProps) {
+  const reduced = useReducedMotion();
+  const cls = `kb-stamp kb-stamp--${size} kb-tone-${tone}${round ? ' kb-stamp--round' : ''}${className ? ` ${className}` : ''}`;
+  const content = (
+    <>
+      <span className="kb-stamp__text">{text}</span>
+      {sub && <span className="kb-stamp__sub">{sub}</span>}
+    </>
+  );
+  if (!animateIn) {
+    return (
+      <span className={cls} style={{ ...style, transform: `rotate(${rotate}deg)` }}>
+        {content}
+      </span>
+    );
+  }
+  if (reduced) {
+    return (
+      <motion.span
+        className={cls}
+        style={{ ...style, rotate }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.12, delay }}
+      >
+        {content}
+      </motion.span>
+    );
+  }
+  return (
+    <motion.span
+      className={cls}
+      style={style}
+      initial={{ opacity: 0, scale: 1.4, rotate: rotate + 3, filter: 'blur(1.2px)' }}
+      animate={{
+        opacity: [0, 1, 1],
+        scale: [1.4, 0.97, 1],
+        rotate: [rotate + 3, rotate - 0.6, rotate],
+        filter: ['blur(1.2px)', 'blur(0px)', 'blur(0px)'],
+      }}
+      transition={{ ...stampKeyframes, delay }}
+    >
+      {content}
+      <motion.span
+        className="kb-stamp__bloom"
+        aria-hidden="true"
+        initial={{ opacity: 0, scale: 0.92 }}
+        animate={{ opacity: [0, 0.45, 0], scale: [0.92, 1, 1.22] }}
+        transition={{ duration: 0.36, delay: delay + 0.28, times: [0, 0.15, 1], ease: 'easeOut' }}
+      />
+    </motion.span>
+  );
+}
