@@ -84,4 +84,6 @@ pub enum SlanaError {
     InvalidMaxSessions,
     #[msg("Entry fee must be greater than zero")]
     EntryFeeZero,
+    #[msg("Pass seed hash can only change before the first mint")]
+    SeedLocked,
 }

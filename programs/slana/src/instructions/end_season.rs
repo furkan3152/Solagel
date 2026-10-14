@@ -4,11 +4,11 @@ use crate::{
     constants::*,
     error::SlanaError,
     events::SeasonEnded,
-    instructions::shared,
     state::{Config, Season},
 };
 
-/// Freezes the current season (its prize pool becomes claimable) and opens the next one.
+/// Freezes the current season (its token pool becomes the claimable prize pool) and opens
+/// the next one.
 #[derive(Accounts)]
 pub struct EndSeason<'info> {
     #[account(mut)]
@@ -38,19 +38,16 @@ pub struct EndSeason<'info> {
     pub system_program: Program<'info, System>,
 }
 
-// TODO(Task 5): still lamport-based; Task 5 moves season prizes to the season token vault
-// (`Season::pool`).
 pub fn handle_end_season(ctx: Context<EndSeason>) -> Result<()> {
     let accounts = &mut *ctx.accounts;
     require!(!accounts.season.finalized, SlanaError::SeasonFinalized);
     let now = Clock::get()?.unix_timestamp;
 
-    let prize_pool = shared::available_lamports(&accounts.season.to_account_info())?;
     let season = &mut accounts.season;
     season.finalized = true;
     season.ended_at = now;
-    season.prize_pool = prize_pool;
-    let ended_id = season.id;
+    season.prize_pool = season.pool;
+    let (ended_id, prize_pool) = (season.id, season.prize_pool);
 
     let config = &mut accounts.config;
     let next_id = config

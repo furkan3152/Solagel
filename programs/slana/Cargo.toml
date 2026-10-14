@@ -23,6 +23,9 @@ custom-panic = []
 [dependencies]
 anchor-lang = { version = "1.2.1", features = ["init-if-needed"] }
 anchor-spl = { version = "1.2.1", features = ["token", "token_2022", "associated_token"] }
+# SHA-256 for the Pass commit–reveal (`sol_sha256` syscall on-chain; `sha2` only on the host).
+# Anchor 1.2.1's `solana_program` re-export has no `hash` module.
+solana-sha256-hasher = { version = "3.1", features = ["sha2"] }
 
 [dev-dependencies]
 litesvm = "0.17.0"

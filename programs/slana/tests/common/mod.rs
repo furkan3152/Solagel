@@ -15,7 +15,7 @@ use {
         prelude::{Clock, Pubkey},
         solana_program::{
             bpf_loader_upgradeable::{self, UpgradeableLoaderState},
-            instruction::{error::InstructionError, Instruction},
+            instruction::{error::InstructionError, AccountMeta, Instruction},
             system_instruction, system_program,
         },
         AccountDeserialize, InstructionData, Space, ToAccountMetas,
@@ -42,7 +42,7 @@ use {
     slana::{
         constants::*,
         error::SlanaError,
-        state::{Arena, Config, PassLock, PlayerProfile, Season, Session},
+        state::{Arena, Config, MintCounter, PassLock, PlayerProfile, Season, Session},
         InitializeArgs, SettleArgs, UpdateConfigArgs,
     },
     solana_account::Account as SolanaAccount,
@@ -117,6 +117,16 @@ pub fn season_pda(id: u32) -> Pubkey {
 /// Lock of a Pass asset while it backs an open session: `["pass_lock", asset]`.
 pub fn pass_lock_pda(asset: &Pubkey) -> Pubkey {
     Pubkey::find_program_address(&[PASS_LOCK_SEED, asset.as_ref()], &slana::ID).0
+}
+
+/// Signer PDA that is the update authority of the Pass collection: `["pass_authority"]`.
+pub fn pass_authority_pda() -> Pubkey {
+    Pubkey::find_program_address(&[PASS_AUTHORITY_SEED], &slana::ID).0
+}
+
+/// Per-wallet Pass mint counter: `["pass_minted", minter]`.
+pub fn mint_counter_pda(minter: &Pubkey) -> Pubkey {
+    Pubkey::find_program_address(&[PASS_MINTED_SEED, minter.as_ref()], &slana::ID).0
 }
 
 pub fn ata(owner: &Pubkey, mint: &Pubkey, token_program: &Pubkey) -> Pubkey {
@@ -411,6 +421,118 @@ pub mod ix {
                 token_program: *token_program,
             },
         )
+    }
+
+    pub fn claim_season_reward(
+        claimer: &Pubkey,
+        season_id: u32,
+        claimer_token: &Pubkey,
+        mint: &Pubkey,
+        token_program: &Pubkey,
+    ) -> Instruction {
+        build(
+            slana::instruction::ClaimSeasonReward { season_id }.data(),
+            slana::accounts::ClaimSeasonReward {
+                claimer: *claimer,
+                config: config_pda(),
+                season: season_pda(season_id),
+                season_vault: season_vault_pda(),
+                claimer_token: *claimer_token,
+                token_mint: *mint,
+                token_program: *token_program,
+            },
+        )
+    }
+
+    pub fn rollover_season(admin: &Pubkey, season_id: u32, current_season: u32) -> Instruction {
+        build(
+            slana::instruction::RolloverSeason { season_id }.data(),
+            slana::accounts::RolloverSeason {
+                admin: *admin,
+                config: config_pda(),
+                old_season: season_pda(season_id),
+                current_season: season_pda(current_season),
+            },
+        )
+    }
+
+    pub fn set_pass_collection(admin: &Pubkey, collection: &Pubkey) -> Instruction {
+        build(
+            slana::instruction::SetPassCollection {}.data(),
+            slana::accounts::SetPassCollection {
+                admin: *admin,
+                config: config_pda(),
+                collection: *collection,
+                pass_authority: pass_authority_pda(),
+            },
+        )
+    }
+
+    pub fn set_pass_seed_hash(admin: &Pubkey, hash: [u8; 32]) -> Instruction {
+        build(
+            slana::instruction::SetPassSeedHash { hash }.data(),
+            slana::accounts::SetPassSeedHash {
+                admin: *admin,
+                config: config_pda(),
+            },
+        )
+    }
+
+    pub fn mint_pass(
+        minter: &Pubkey,
+        asset: &Pubkey,
+        collection: &Pubkey,
+        minter_token: Option<Pubkey>,
+    ) -> Instruction {
+        build(
+            slana::instruction::MintPass {}.data(),
+            slana::accounts::MintPass {
+                minter: *minter,
+                asset: *asset,
+                config: config_pda(),
+                collection: *collection,
+                pass_authority: pass_authority_pda(),
+                mint_counter: mint_counter_pda(minter),
+                minter_token,
+                mpl_core_program: MPL_CORE_ID,
+                system_program: system_program::ID,
+            },
+        )
+    }
+
+    pub fn reveal_pass(admin: &Pubkey, seed: [u8; 32]) -> Instruction {
+        build(
+            slana::instruction::RevealPass { seed }.data(),
+            slana::accounts::RevealPass {
+                admin: *admin,
+                config: config_pda(),
+            },
+        )
+    }
+
+    /// Metaplex Core `CreateCollectionV2` (discriminator 21) with no plugins: accounts
+    /// collection (w, s), update_authority, payer (w, s), system_program.
+    pub fn core_create_collection(
+        collection: &Pubkey,
+        update_authority: &Pubkey,
+        payer: &Pubkey,
+        name: &str,
+        uri: &str,
+    ) -> Instruction {
+        let mut data = vec![21u8];
+        borsh_string(&mut data, name);
+        borsh_string(&mut data, uri);
+        data.extend_from_slice(&[0, 0]); // plugins None, external_plugin_adapters None
+        Instruction {
+            program_id: MPL_CORE_ID,
+            accounts: vec![
+                AccountMeta::new(*collection, true),
+                AccountMeta::new_readonly(*update_authority, false),
+                AccountMeta::new(*payer, true),
+                AccountMeta::new_readonly(system_program::ID, false),
+            ],
+            data,
+        }
     }
 
     pub fn end_season(admin: &Pubkey, current_season: u32) -> Instruction {
@@ -948,6 +1070,106 @@ impl TestEnv {
         (collection, asset)
     }
 
+    // ----- seasons -------------------------------------------------------------------------
+
+    /// `claim_season_reward` by `claimer` into their game-token ATA.
+    pub fn claim(&mut self, claimer: &Keypair, season_id: u32) -> TxResult {
+        let (mint, program) = (self.mint, self.token_program);
+        let to = self.player_ata(&claimer.pubkey());
+        self.send(
+            &[ix::claim_season_reward(
+                &claimer.pubkey(),
+                season_id,
+                &to,
+                &mint,
+                &program,
+            )],
+            &[claimer],
+        )
+    }
+
+    pub fn rollover_as(&mut self, signer: &Keypair, season_id: u32) -> TxResult {
+        let current = self.config().current_season;
+        self.send(
+            &[ix::rollover_season(&signer.pubkey(), season_id, current)],
+            &[signer],
+        )
+    }
+
+    pub fn rollover(&mut self, season_id: u32) -> TxResult {
+        let admin = self.admin.insecure_clone();
+        self.rollover_as(&admin, season_id)
+    }
+
+    // ----- Slana Pass (real Metaplex Core) -------------------------------------------------
+
+    /// Creates a real Core collection whose update authority is `update_authority`.
+    pub fn create_core_collection(&mut self, update_authority: &Pubkey) -> Pubkey {
+        let collection = Keypair::new();
+        let payer = self.payer.pubkey();
+        assert_ok(self.send(
+            &[ix::core_create_collection(
+                &collection.pubkey(),
+                update_authority,
+                &payer,
+                "Slana Pass",
+                "https://slana.example/pass/collection.json",
+            )],
+            &[&collection],
+        ));
+        collection.pubkey()
+    }
+
+    pub fn set_collection_as(&mut self, signer: &Keypair, collection: &Pubkey) -> TxResult {
+        self.send(
+            &[ix::set_pass_collection(&signer.pubkey(), collection)],
+            &[signer],
+        )
+    }
+
+    pub fn set_seed_hash_as(&mut self, signer: &Keypair, hash: [u8; 32]) -> TxResult {
+        self.send(&[ix::set_pass_seed_hash(&signer.pubkey(), hash)], &[signer])
+    }
+
+    pub fn reveal_as(&mut self, signer: &Keypair, seed: [u8; 32]) -> TxResult {
+        self.send(&[ix::reveal_pass(&signer.pubkey(), seed)], &[signer])
+    }
+
+    /// `mint_pass` of a fresh asset keypair into the configured collection; returns the
+    /// result and the asset address.
+    pub fn mint_pass_with(
+        &mut self,
+        minter: &Keypair,
+        minter_token: Option<Pubkey>,
+    ) -> (TxResult, Pubkey) {
+        let asset = Keypair::new();
+        // Before a collection is set, any writable account stands in for it.
+        let collection = Some(self.config().pass_collection)
+            .filter(|c| *c != Pubkey::default())
+            .unwrap_or_else(Pubkey::new_unique);
+        let res = self.send(
+            &[ix::mint_pass(
+                &minter.pubkey(),
+                &asset.pubkey(),
+                &collection,
+                minter_token,
+            )],
+            &[minter, &asset],
+        );
+        (res, asset.pubkey())
+    }
+
+    /// `mint_pass` passing the minter's game-token ATA when it exists.
+    pub fn mint_pass(&mut self, minter: &Keypair) -> (TxResult, Pubkey) {
+        let ata = self.player_ata(&minter.pubkey());
+        let token = self.svm.get_account(&ata).map(|_| ata);
+        self.mint_pass_with(minter, token)
+    }
+
+    pub fn mint_counter(&self, minter: &Pubkey) -> Option<MintCounter> {
+        self.try_fetch(&mint_counter_pda(minter))
+    }
+
     // ----- tokens ------------------------------------------------------------------------
 
     /// Creates a mint of `kind` with `DECIMALS` decimals, `mint_authority` as mint authority
@@ -1205,11 +1427,23 @@ pub fn upgrade_authority(svm: &LiteSVM) -> Option<Pubkey> {
 }
 
 // ---------------------------------------------------------------------------------------
+// Metaplex Core
+// ---------------------------------------------------------------------------------------
+
+/// Loads the real Metaplex Core program (dumped from mainnet by `scripts/fetch-programs.sh`).
+pub fn load_mpl_core(svm: &mut LiteSVM) {
+    let path = concat!(env!("CARGO_TARGET_TMPDIR"), "/../programs/mpl_core.so");
+    let bytes = std::fs::read(path)
+        .unwrap_or_else(|e| panic!("{path} is missing ({e}): run scripts/fetch-programs.sh first"));
+    svm.add_program(MPL_CORE_ID, &bytes).expect("load mpl_core");
+}
+
+// ---------------------------------------------------------------------------------------
 // Fake Metaplex Core accounts
 // ---------------------------------------------------------------------------------------
 
 /// Borsh `String`: u32 little-endian length + bytes.
-fn borsh_string(out: &mut Vec<u8>, value: &str) {
+pub fn borsh_string(out: &mut Vec<u8>, value: &str) {
     out.extend_from_slice(&(value.len() as u32).to_le_bytes());
     out.extend_from_slice(value.as_bytes());
 }

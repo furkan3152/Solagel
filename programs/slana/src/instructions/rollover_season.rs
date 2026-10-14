@@ -4,12 +4,13 @@ use crate::{
     constants::*,
     error::SlanaError,
     events::SeasonRolledOver,
-    instructions::shared,
     state::{Config, Season},
 };
 
-/// After the claim window of a finalized season, moves its unclaimed prizes into the
-/// current season's pool.
+/// After the claim window of a finalized season, moves its unclaimed prizes (whatever is
+/// left of its `pool`, rounding dust and unfilled ranks included) into the current season's
+/// `pool` and closes all of its ranks. The tokens stay in the global season vault; only the
+/// per-season accounting changes.
 #[derive(Accounts)]
 #[instruction(season_id: u32)]
 pub struct RolloverSeason<'info> {
@@ -38,29 +39,32 @@ pub struct RolloverSeason<'info> {
     pub current_season: Box<Account<'info, Season>>,
 }
 
-// TODO(Task 5): still lamport-based; Task 5 moves season prizes to the season token vault
-// (`Season::pool`).
+/// `claimed_mask` with every prize rank set.
+const ALL_RANKS_CLAIMED: u16 = ((1u32 << PRIZE_RANKS) - 1) as u16;
+
 pub fn handle_rollover_season(ctx: Context<RolloverSeason>, season_id: u32) -> Result<()> {
-    let old = &ctx.accounts.old_season;
-    require!(old.finalized, SlanaError::SeasonNotFinalized);
+    let a = &mut *ctx.accounts;
+    require!(a.old_season.finalized, SlanaError::SeasonNotFinalized);
     let now = Clock::get()?.unix_timestamp;
-    let closes_at = old
+    let closes_at = a
+        .old_season
         .ended_at
         .checked_add(CLAIM_WINDOW_SECS)
         .ok_or(SlanaError::MathOverflow)?;
     require_gt!(now, closes_at, SlanaError::ClaimWindowOpen);
 
-    let old_info = ctx.accounts.old_season.to_account_info();
-    let amount = shared::available_lamports(&old_info)?;
-    shared::transfer_from_program_account(
-        &old_info,
-        &ctx.accounts.current_season.to_account_info(),
-        amount,
-    )?;
+    let amount = a.old_season.pool;
+    a.old_season.pool = 0;
+    a.old_season.claimed_mask = ALL_RANKS_CLAIMED;
+    a.current_season.pool = a
+        .current_season
+        .pool
+        .checked_add(amount)
+        .ok_or(SlanaError::MathOverflow)?;
 
     emit!(SeasonRolledOver {
         from: season_id,
-        to: ctx.accounts.current_season.id,
+        to: a.current_season.id,
         amount,
     });
     Ok(())
