@@ -5,7 +5,8 @@ import { SERVER } from '../config';
 import { useT } from '../i18n';
 import { useUi } from '../store';
 import { BoardRows } from '../ui/Leaderboards';
-import { refreshChain, useSlanaClient } from './chain';
+import { createAtaIdempotentIx } from '@slana/sdk';
+import { refreshChain, useChainData, useSlanaClient } from './chain';
 import { sendWalletTx } from './tx';
 
 interface SeasonEntry {
@@ -77,10 +78,15 @@ export function SeasonBoard() {
   const myPrize = canClaim ? Math.floor((prev!.prizePool * PRIZE_SHARES_BPS[myPrevRank]) / 10_000) : 0;
 
   const claim = async () => {
-    if (!client || !wallet.publicKey || !prev) return;
+    const config = useChainData.getState().config;
+    if (!client || !wallet.publicKey || !prev || !config) return;
     setBusy(true);
-    const ix = await client.ix.claimSeasonReward(wallet.publicKey, prev.id);
-    await sendWalletTx(client, connection, wallet, [ix], { success: '🏆 Prize claimed!' });
+    // TODO(Task 15): token amounts in the claim UI; v2 pays the prize to the game-token ATA.
+    const ixs = [
+      createAtaIdempotentIx(wallet.publicKey, wallet.publicKey, config.tokenMint, config.tokenProgram),
+      await client.ix.claimSeasonReward(wallet.publicKey, { seasonId: prev.id, tokenMint: config.tokenMint, tokenProgram: config.tokenProgram }),
+    ];
+    await sendWalletTx(client, connection, wallet, ixs, { success: '🏆 Prize claimed!' });
     setBusy(false);
     refreshChain();
   };

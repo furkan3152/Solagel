@@ -10,6 +10,12 @@ export const SEEDS = {
   arena: utf8.encode('arena'),
   session: utf8.encode('session'),
   season: utf8.encode('season'),
+  vault: utf8.encode('vault'),
+  treasuryVault: utf8.encode('treasury_vault'),
+  seasonVault: utf8.encode('season_vault'),
+  passAuthority: utf8.encode('pass_authority'),
+  passLock: utf8.encode('pass_lock'),
+  passMinted: utf8.encode('pass_minted'),
 } as const;
 
 /** Little-endian u16 (arena ids). */
@@ -67,6 +73,39 @@ export const pdas = {
   season(id: number, programId: Address = PROGRAM_ID): PublicKey {
     const pid = toPublicKey(programId);
     return derive(`${pid.toBase58()}:season:${id}`, [SEEDS.season, u32le(id)], pid);
+  },
+  /** `["vault", arena PDA]`: the arena's token vault (authority = the arena). */
+  vault(arena: Address, programId: Address = PROGRAM_ID): PublicKey {
+    const pid = toPublicKey(programId);
+    const a = toPublicKey(arena);
+    return derive(`${pid.toBase58()}:vault:${a.toBase58()}`, [SEEDS.vault, a.toBytes()], pid);
+  },
+  /** `["treasury_vault"]`: treasury token vault (authority = config). */
+  treasuryVault(programId: Address = PROGRAM_ID): PublicKey {
+    const pid = toPublicKey(programId);
+    return derive(`${pid.toBase58()}:treasury_vault`, [SEEDS.treasuryVault], pid);
+  },
+  /** `["season_vault"]`: global season prize token vault (authority = config). */
+  seasonVault(programId: Address = PROGRAM_ID): PublicKey {
+    const pid = toPublicKey(programId);
+    return derive(`${pid.toBase58()}:season_vault`, [SEEDS.seasonVault], pid);
+  },
+  /** `["pass_authority"]`: update authority of the Pass collection. */
+  passAuthority(programId: Address = PROGRAM_ID): PublicKey {
+    const pid = toPublicKey(programId);
+    return derive(`${pid.toBase58()}:pass_authority`, [SEEDS.passAuthority], pid);
+  },
+  /** `["pass_lock", asset]`: exists while the Pass backs an open session. */
+  passLock(asset: Address, programId: Address = PROGRAM_ID): PublicKey {
+    const pid = toPublicKey(programId);
+    const a = toPublicKey(asset);
+    return derive(`${pid.toBase58()}:pass_lock:${a.toBase58()}`, [SEEDS.passLock, a.toBytes()], pid);
+  },
+  /** `["pass_minted", wallet]`: per-wallet Pass mint counter. */
+  passMinted(wallet: Address, programId: Address = PROGRAM_ID): PublicKey {
+    const pid = toPublicKey(programId);
+    const w = toPublicKey(wallet);
+    return derive(`${pid.toBase58()}:pass_minted:${w.toBase58()}`, [SEEDS.passMinted, w.toBytes()], pid);
   },
   /** The program's ProgramData account (upgradeable loader PDA `[programId]`), needed by `initialize`. */
   programData(programId: Address = PROGRAM_ID): PublicKey {

@@ -27,16 +27,20 @@ import {
   type ProfileView,
   type RawArena,
   type RawConfig,
+  type RawMintCounter,
+  type RawPassLock,
   type RawProfile,
   type RawSeason,
   type RawSession,
   type SeasonView,
   type SessionView,
 } from './accounts';
-import { FIRST_SEASON } from './constants';
+import { FIRST_SEASON, MAX_BASE_URI_LEN } from './constants';
+import { MPL_CORE_ID } from './core';
 import type { IntLike } from './math';
 import { pdas } from './pda';
 import { IDL, PROGRAM_ID, toPublicKey, type Address, type Slana } from './program';
+import { ata, tokenAccountAmount } from './token';
 
 /** Arena ids probed when `getProgramAccounts` is unavailable (some public RPCs disable it). */
 export const FALLBACK_ARENA_IDS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
@@ -62,48 +66,121 @@ export interface BuiltTransaction {
   lastValidBlockHeight: number;
 }
 
-export interface SettleSessionParams {
+/** The game token accounts (`Config.tokenMint` / `Config.tokenProgram`; a `ConfigView` fits). */
+export interface TokenAccounts {
+  tokenMint: Address;
+  tokenProgram: Address;
+}
+
+export interface InitializeParams extends TokenAccounts {
+  serverAuthority: Address;
+  feeBps: number;
+  passFeeBps: number;
+  /** `[treasuryBps, seasonBps, burnBps]`, sums to 10 000. */
+  split: readonly [number, number, number];
+  settleFeeLamports: IntLike;
+}
+
+/** Every field is optional; omitted fields keep their stored value. */
+export interface UpdateConfigParams {
+  admin?: Address;
+  serverAuthority?: Address;
+  feeBps?: number;
+  passFeeBps?: number;
+  /** `[treasuryBps, seasonBps, burnBps]`, sums to 10 000. */
+  split?: readonly [number, number, number];
+  settleFeeLamports?: IntLike;
+  paused?: boolean;
+  /** At most 96 bytes and must end with `/` (the program appends `<n>.json`). */
+  passBaseUri?: string;
+  passSupply?: number;
+  passPerWallet?: number;
+  /** Token base units. */
+  passMinTokens?: IntLike;
+  passMintOpen?: boolean;
+  /** Unix seconds. */
+  passMintStartTs?: IntLike;
+}
+
+export interface CreateArenaParams extends TokenAccounts {
+  id: number;
+  /** Token base units. */
+  entryFee: IntLike;
+  maxSessions: number;
+  requiresPass: boolean;
+}
+
+export interface UpdateArenaParams {
+  enabled?: boolean;
+  maxSessions?: number;
+  /** Token base units (only while no session is open). */
+  entryFee?: IntLike;
+  requiresPass?: boolean;
+}
+
+export interface JoinArenaParams extends TokenAccounts {
+  arenaId: number;
+  /** Player's game-token account (default: their ATA). */
+  playerToken?: Address;
+}
+
+export interface JoinArenaWithPassParams extends JoinArenaParams {
+  /** Core asset of the Slana Pass (locked at `passLock(asset)` until settle/refund). */
+  passAsset: Address;
+}
+
+export interface SettleSessionParams extends TokenAccounts {
   player: Address;
   arenaId: number;
   /** On-chain `Session.id` being settled. */
   sessionId: IntLike;
-  /** Lamports paid out of the arena pot (fee on profit is deducted on-chain). */
+  /** Token base units paid out of the arena vault (the fee on profit is deducted on-chain). */
   payout: IntLike;
   score: number;
   kills: number;
   xp: number;
   /** `Config.currentSeason` (selects the season PDA). */
   currentSeason: number;
-  /** `Config.treasury`. */
-  treasury: Address;
+  /** `Session.hasPass`: the Pass lock is passed (and closed) only for Pass sessions. */
+  hasPass: boolean;
+  /** `Session.passAsset`; required when `hasPass`. */
+  passAsset?: Address | null;
+  /** Player's game-token account (default: their ATA). */
+  playerToken?: Address;
 }
 
-export interface RecordGameParams {
-  player: Address;
+export interface RefundSessionParams extends TokenAccounts {
+  arenaId: number;
+  /** `Session.passAsset` of a Pass session (its lock is closed too). */
+  passAsset?: Address | null;
+  playerToken?: Address;
+}
+
+export interface MintPassParams {
+  /** Fresh keypair address for the new Core asset; it must co-sign. */
+  asset: Address;
+  /** `Config.passCollection`. */
+  collection: Address;
+  /** Minter's game-token account; needed only when `Config.passMinTokens > 0`. */
+  minterToken?: Address | null;
+}
+
+export interface SweepArenaParams extends TokenAccounts {
+  id: number;
   currentSeason: number;
-  score: number;
-  kills: number;
-  xp: number;
 }
 
-export interface InitializeParams {
-  serverAuthority: Address;
-  treasury: Address;
-  feeBps: number;
-  seasonShareBps: number;
-  /** Lamports. */
-  skinPrice: IntLike;
+export interface WithdrawTreasuryParams extends TokenAccounts {
+  /** Token base units. */
+  amount: IntLike;
+  /** Destination token account of the game mint. */
+  destination: Address;
 }
 
-export interface UpdateConfigParams {
-  admin?: Address;
-  serverAuthority?: Address;
-  treasury?: Address;
-  feeBps?: number;
-  seasonShareBps?: number;
-  /** Lamports. */
-  skinPrice?: IntLike;
-  paused?: boolean;
+export interface ClaimSeasonRewardParams extends TokenAccounts {
+  seasonId: number;
+  /** Claimer's game-token account (default: their ATA; create it idempotently first). */
+  claimerToken?: Address;
 }
 
 /** Error thrown by `sendAndConfirm` when a transaction landed but failed. */
@@ -121,6 +198,14 @@ export class TransactionFailedError extends Error {
 const toBN = (v: IntLike): BN => {
   if (BN.isBN(v)) return v as BN;
   if (typeof v === 'number' && (!Number.isSafeInteger(v) || v < 0)) throw new RangeError(`expected a non-negative integer, got ${v}`);
+  if (typeof v === 'bigint' && (v < 0n || v >= 1n << 64n)) throw new RangeError(`expected a u64, got ${v}`);
+  return new BN(v.toString());
+};
+
+/** i64 (may be negative). */
+const toI64 = (v: IntLike): BN => {
+  if (BN.isBN(v)) return v as BN;
+  if (typeof v === 'number' && !Number.isSafeInteger(v)) throw new RangeError(`expected an integer, got ${v}`);
   return new BN(v.toString());
 };
 
@@ -142,16 +227,136 @@ function readOnlyWallet(): ProviderWallet {
 
 export type SlanaInstructions = ReturnType<typeof createInstructionBuilders>;
 
+function bytes32(value: Uint8Array | readonly number[], what: string): number[] {
+  if (value.length !== 32) throw new RangeError(`${what} must be 32 bytes, got ${value.length}`);
+  return Array.from(value);
+}
+
+/** `RangeError` unless `uri` is a valid Pass base URI (≤ 96 bytes, ends with `/`, no control characters). */
+export function checkBaseUri(uri: string): void {
+  const len = new TextEncoder().encode(uri).length;
+  if (len > MAX_BASE_URI_LEN) throw new RangeError(`pass base URI is ${len} bytes, max ${MAX_BASE_URI_LEN}`);
+  if (!uri.endsWith('/')) throw new RangeError('pass base URI must end with "/"');
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f]/.test(uri)) throw new RangeError('pass base URI contains control characters');
+}
+
 /** Instruction builders; every account is passed explicitly so no RPC call is needed. */
 function createInstructionBuilders(program: Program<Slana>, programId: PublicKey) {
   const config = () => pdas.config(programId);
   const profile = (owner: Address) => pdas.profile(owner, programId);
   const arena = (id: number) => pdas.arena(id, programId);
+  const vault = (arenaId: number) => pdas.vault(arena(arenaId), programId);
   const session = (arenaId: number, player: Address) => pdas.session(arena(arenaId), player, programId);
   const season = (id: number) => pdas.season(id, programId);
+  const passLock = (asset: Address | null | undefined) => (asset ? pdas.passLock(asset, programId) : null);
   const systemProgram = SystemProgram.programId;
+  const tokens = (t: TokenAccounts) => ({ tokenMint: toPublicKey(t.tokenMint), tokenProgram: toPublicKey(t.tokenProgram) });
+  const tokenAccount = (explicit: Address | undefined, owner: Address, t: TokenAccounts) =>
+    explicit ? toPublicKey(explicit) : ata(owner, t.tokenMint, t.tokenProgram);
 
   return {
+    /** `admin` must be the program's upgrade authority. */
+    initialize(admin: Address, p: InitializeParams): Promise<TransactionInstruction> {
+      const [treasuryBps, seasonBps, burnBps] = p.split;
+      return program.methods
+        .initialize({
+          serverAuthority: toPublicKey(p.serverAuthority),
+          feeBps: p.feeBps,
+          passFeeBps: p.passFeeBps,
+          treasuryBps,
+          seasonBps,
+          burnBps,
+          settleFeeLamports: toBN(p.settleFeeLamports),
+        })
+        .accountsPartial({
+          admin: toPublicKey(admin),
+          config: config(),
+          season: season(FIRST_SEASON),
+          ...tokens(p),
+          treasuryVault: pdas.treasuryVault(programId),
+          seasonVault: pdas.seasonVault(programId),
+          program: programId,
+          programData: pdas.programData(programId),
+          systemProgram,
+        })
+        .instruction();
+    },
+
+    updateConfig(admin: Address, p: UpdateConfigParams): Promise<TransactionInstruction> {
+      if (p.passBaseUri !== undefined) checkBaseUri(p.passBaseUri);
+      return program.methods
+        .updateConfig({
+          admin: opt(p.admin, toPublicKey),
+          serverAuthority: opt(p.serverAuthority, toPublicKey),
+          feeBps: p.feeBps ?? null,
+          passFeeBps: p.passFeeBps ?? null,
+          split: opt(p.split, (s) => [s[0], s[1], s[2]]),
+          settleFeeLamports: opt(p.settleFeeLamports, toBN),
+          paused: p.paused ?? null,
+          passBaseUri: p.passBaseUri ?? null,
+          passSupply: p.passSupply ?? null,
+          passPerWallet: p.passPerWallet ?? null,
+          passMinTokens: opt(p.passMinTokens, toBN),
+          passMintOpen: p.passMintOpen ?? null,
+          passMintStartTs: opt(p.passMintStartTs, toI64),
+        })
+        .accountsPartial({ admin: toPublicKey(admin), config: config() })
+        .instruction();
+    },
+
+    /** `collection` must be a Core collection whose update authority is `pdas.passAuthority()`. */
+    setPassCollection(admin: Address, collection: Address): Promise<TransactionInstruction> {
+      return program.methods
+        .setPassCollection()
+        .accountsPartial({ admin: toPublicKey(admin), config: config(), collection: toPublicKey(collection), passAuthority: pdas.passAuthority(programId) })
+        .instruction();
+    },
+
+    /** Commits `sha256(seed)` (allowed until the first mint). */
+    setPassSeedHash(admin: Address, hash: Uint8Array | readonly number[]): Promise<TransactionInstruction> {
+      const h = bytes32(hash, 'seed hash');
+      return program.methods.setPassSeedHash(h).accountsPartial({ admin: toPublicKey(admin), config: config() }).instruction();
+    },
+
+    /** Reveals the seed (only after the mint closed or sold out). */
+    revealPass(admin: Address, seed: Uint8Array | readonly number[]): Promise<TransactionInstruction> {
+      const s = bytes32(seed, 'seed');
+      return program.methods.revealPass(s).accountsPartial({ admin: toPublicKey(admin), config: config() }).instruction();
+    },
+
+    /** Free Pass mint; the `asset` keypair must sign the transaction as well as the minter. */
+    mintPass(minter: Address, p: MintPassParams): Promise<TransactionInstruction> {
+      return program.methods
+        .mintPass()
+        .accountsPartial({
+          minter: toPublicKey(minter),
+          asset: toPublicKey(p.asset),
+          config: config(),
+          collection: toPublicKey(p.collection),
+          passAuthority: pdas.passAuthority(programId),
+          mintCounter: pdas.passMinted(minter, programId),
+          minterToken: p.minterToken ? toPublicKey(p.minterToken) : null,
+          mplCoreProgram: MPL_CORE_ID,
+          systemProgram,
+        })
+        .instruction();
+    },
+
+    createArena(admin: Address, p: CreateArenaParams): Promise<TransactionInstruction> {
+      return program.methods
+        .createArena(p.id, toBN(p.entryFee), p.maxSessions, p.requiresPass)
+        .accountsPartial({ admin: toPublicKey(admin), config: config(), arena: arena(p.id), vault: vault(p.id), ...tokens(p), systemProgram })
+        .instruction();
+    },
+
+    updateArena(admin: Address, id: number, changes: UpdateArenaParams): Promise<TransactionInstruction> {
+      return program.methods
+        .updateArena(changes.enabled ?? null, changes.maxSessions ?? null, opt(changes.entryFee, toBN), changes.requiresPass ?? null)
+        .accountsPartial({ admin: toPublicKey(admin), config: config(), arena: arena(id) })
+        .instruction();
+    },
+
     registerPlayer(owner: Address, name: string, skin: number): Promise<TransactionInstruction> {
       return program.methods
         .registerPlayer(name, skin)
@@ -166,125 +371,109 @@ function createInstructionBuilders(program: Program<Slana>, programId: PublicKey
         .instruction();
     },
 
-    buySkin(owner: Address, skin: number, treasury: Address): Promise<TransactionInstruction> {
-      return program.methods
-        .buySkin(skin)
-        .accountsPartial({
-          owner: toPublicKey(owner),
-          config: config(),
-          profile: profile(owner),
-          treasury: toPublicKey(treasury),
-          systemProgram,
-        })
-        .instruction();
-    },
-
-    joinArena(player: Address, arenaId: number): Promise<TransactionInstruction> {
+    /** Pays `entryFee` tokens into the arena vault (and the settle deposit in lamports). */
+    joinArena(player: Address, p: JoinArenaParams): Promise<TransactionInstruction> {
       return program.methods
         .joinArena()
         .accountsPartial({
           player: toPublicKey(player),
           config: config(),
           profile: profile(player),
-          arena: arena(arenaId),
-          session: session(arenaId, player),
+          arena: arena(p.arenaId),
+          vault: vault(p.arenaId),
+          session: session(p.arenaId, player),
+          playerToken: tokenAccount(p.playerToken, player, p),
+          ...tokens(p),
           systemProgram,
         })
         .instruction();
     },
 
-    refundSession(player: Address, arenaId: number): Promise<TransactionInstruction> {
+    /** Like `joinArena`, backed by a Slana Pass (lower fee, season points); locks `passLock(asset)`. */
+    joinArenaWithPass(player: Address, p: JoinArenaWithPassParams): Promise<TransactionInstruction> {
       return program.methods
-        .refundSession()
-        .accountsPartial({ player: toPublicKey(player), arena: arena(arenaId), session: session(arenaId, player) })
-        .instruction();
-    },
-
-    claimSeasonReward(claimer: Address, seasonId: number): Promise<TransactionInstruction> {
-      return program.methods
-        .claimSeasonReward(seasonId)
-        .accountsPartial({ claimer: toPublicKey(claimer), season: season(seasonId) })
-        .instruction();
-    },
-
-    /** `seasonId` must be the current season (`Config.currentSeason`). */
-    fundSeason(funder: Address, seasonId: number, lamports: IntLike): Promise<TransactionInstruction> {
-      return program.methods
-        .fundSeason(toBN(lamports))
-        .accountsPartial({ funder: toPublicKey(funder), config: config(), season: season(seasonId), systemProgram })
+        .joinArenaWithPass()
+        .accountsPartial({
+          player: toPublicKey(player),
+          config: config(),
+          profile: profile(player),
+          arena: arena(p.arenaId),
+          vault: vault(p.arenaId),
+          session: session(p.arenaId, player),
+          playerToken: tokenAccount(p.playerToken, player, p),
+          ...tokens(p),
+          passAsset: toPublicKey(p.passAsset),
+          passLock: pdas.passLock(p.passAsset, programId),
+          systemProgram,
+        })
         .instruction();
     },
 
     settleSession(server: Address, p: SettleSessionParams): Promise<TransactionInstruction> {
+      if (p.hasPass && !p.passAsset) throw new Error('settleSession: hasPass needs the session passAsset');
       return program.methods
         .settleSession({ sessionId: toBN(p.sessionId), payout: toBN(p.payout), score: p.score, kills: p.kills, xp: p.xp })
         .accountsPartial({
           server: toPublicKey(server),
           config: config(),
           arena: arena(p.arenaId),
+          vault: vault(p.arenaId),
           session: session(p.arenaId, p.player),
           player: toPublicKey(p.player),
+          playerToken: tokenAccount(p.playerToken, p.player, p),
           profile: profile(p.player),
           season: season(p.currentSeason),
-          treasury: toPublicKey(p.treasury),
+          treasuryVault: pdas.treasuryVault(programId),
+          seasonVault: pdas.seasonVault(programId),
+          ...tokens(p),
+          passLock: p.hasPass ? passLock(p.passAsset) : null,
         })
         .instruction();
     },
 
-    recordGame(server: Address, p: RecordGameParams): Promise<TransactionInstruction> {
+    /** The player's own refund, 24 h after joining. */
+    refundSession(player: Address, p: RefundSessionParams): Promise<TransactionInstruction> {
       return program.methods
-        .recordGame({ score: p.score, kills: p.kills, xp: p.xp })
-        .accountsPartial({ server: toPublicKey(server), config: config(), profile: profile(p.player), season: season(p.currentSeason) })
+        .refundSession()
+        .accountsPartial({
+          player: toPublicKey(player),
+          config: config(),
+          arena: arena(p.arenaId),
+          vault: vault(p.arenaId),
+          session: session(p.arenaId, player),
+          playerToken: tokenAccount(p.playerToken, player, p),
+          ...tokens(p),
+          passLock: passLock(p.passAsset),
+        })
         .instruction();
     },
 
-    /** `admin` must be the program's upgrade authority. */
-    initialize(admin: Address, p: InitializeParams): Promise<TransactionInstruction> {
+    /** Moves a disabled, idle arena's vault into the current season's pool. */
+    sweepArena(admin: Address, p: SweepArenaParams): Promise<TransactionInstruction> {
       return program.methods
-        .initialize({
-          serverAuthority: toPublicKey(p.serverAuthority),
-          treasury: toPublicKey(p.treasury),
-          feeBps: p.feeBps,
-          seasonShareBps: p.seasonShareBps,
-          skinPrice: toBN(p.skinPrice),
-        })
+        .sweepArena()
         .accountsPartial({
           admin: toPublicKey(admin),
           config: config(),
-          season: season(FIRST_SEASON),
-          program: programId,
-          programData: pdas.programData(programId),
-          systemProgram,
+          arena: arena(p.id),
+          vault: vault(p.id),
+          season: season(p.currentSeason),
+          seasonVault: pdas.seasonVault(programId),
+          ...tokens(p),
         })
         .instruction();
     },
 
-    updateConfig(admin: Address, p: UpdateConfigParams): Promise<TransactionInstruction> {
+    withdrawTreasury(admin: Address, p: WithdrawTreasuryParams): Promise<TransactionInstruction> {
       return program.methods
-        .updateConfig({
-          admin: opt(p.admin, toPublicKey),
-          serverAuthority: opt(p.serverAuthority, toPublicKey),
-          treasury: opt(p.treasury, toPublicKey),
-          feeBps: p.feeBps ?? null,
-          seasonShareBps: p.seasonShareBps ?? null,
-          skinPrice: opt(p.skinPrice, toBN),
-          paused: p.paused ?? null,
+        .withdrawTreasury(toBN(p.amount))
+        .accountsPartial({
+          admin: toPublicKey(admin),
+          config: config(),
+          treasuryVault: pdas.treasuryVault(programId),
+          destination: toPublicKey(p.destination),
+          ...tokens(p),
         })
-        .accountsPartial({ admin: toPublicKey(admin), config: config() })
-        .instruction();
-    },
-
-    createArena(admin: Address, id: number, buyIn: IntLike, maxPlayers: number): Promise<TransactionInstruction> {
-      return program.methods
-        .createArena(id, toBN(buyIn), maxPlayers)
-        .accountsPartial({ admin: toPublicKey(admin), config: config(), arena: arena(id), systemProgram })
-        .instruction();
-    },
-
-    updateArena(admin: Address, id: number, changes: { enabled?: boolean; maxPlayers?: number }): Promise<TransactionInstruction> {
-      return program.methods
-        .updateArena(changes.enabled ?? null, changes.maxPlayers ?? null)
-        .accountsPartial({ admin: toPublicKey(admin), config: config(), arena: arena(id) })
         .instruction();
     },
 
@@ -302,6 +491,20 @@ function createInstructionBuilders(program: Program<Slana>, programId: PublicKey
         .instruction();
     },
 
+    claimSeasonReward(claimer: Address, p: ClaimSeasonRewardParams): Promise<TransactionInstruction> {
+      return program.methods
+        .claimSeasonReward(p.seasonId)
+        .accountsPartial({
+          claimer: toPublicKey(claimer),
+          config: config(),
+          season: season(p.seasonId),
+          seasonVault: pdas.seasonVault(programId),
+          claimerToken: tokenAccount(p.claimerToken, claimer, p),
+          ...tokens(p),
+        })
+        .instruction();
+    },
+
     /** Moves the unclaimed prizes of finalized `seasonId` into `currentSeason`. */
     rolloverSeason(admin: Address, seasonId: number, currentSeason: number): Promise<TransactionInstruction> {
       return program.methods
@@ -312,13 +515,6 @@ function createInstructionBuilders(program: Program<Slana>, programId: PublicKey
           oldSeason: season(seasonId),
           currentSeason: season(currentSeason),
         })
-        .instruction();
-    },
-
-    sweepArena(admin: Address, id: number, treasury: Address): Promise<TransactionInstruction> {
-      return program.methods
-        .sweepArena()
-        .accountsPartial({ admin: toPublicKey(admin), config: config(), arena: arena(id), treasury: toPublicKey(treasury) })
         .instruction();
     },
   };
@@ -415,18 +611,19 @@ export class SlanaClient {
     });
   }
 
-  private async arenaView(address: PublicKey, info: AccountInfo<Buffer> | null): Promise<ArenaView | null> {
-    const raw = this.decode<RawArena>(ACCOUNT_NAMES.arena, info);
-    if (!raw || !info) return null;
-    return toArenaView(address, raw, info.lamports, await this.rentExemptMinimum(info.data.length));
+  /** Token balance of a token account (0 when missing or not a token account). */
+  private static amountOf(info: AccountInfo<Buffer> | null): bigint {
+    return info && info.data.length >= 72 ? tokenAccountAmount(info.data) : 0n;
   }
 
   async fetchArena(id: number): Promise<ArenaView | null> {
     const address = pdas.arena(id, this.programId);
-    return this.arenaView(address, await this.connection.getAccountInfo(address, COMMITMENT));
+    const [info, vaultInfo] = await this.getMultiple([address, pdas.vault(address, this.programId)]);
+    const raw = this.decode<RawArena>(ACCOUNT_NAMES.arena, info);
+    return raw ? toArenaView(address, raw, SlanaClient.amountOf(vaultInfo)) : null;
   }
 
-  /** Every arena, sorted by id. Falls back to probing ids 1–8 when getProgramAccounts fails. */
+  /** Every arena with its vault balance, sorted by id. Falls back to probing ids 1–8 when getProgramAccounts fails. */
   async fetchArenas(): Promise<ArenaView[]> {
     let found: { pubkey: PublicKey; account: AccountInfo<Buffer> | null }[];
     try {
@@ -436,12 +633,13 @@ export class SlanaClient {
       const infos = await this.getMultiple(keys);
       found = keys.map((pubkey, i) => ({ pubkey, account: infos[i] }));
     }
-    const views: ArenaView[] = [];
+    const arenas: { pubkey: PublicKey; raw: RawArena }[] = [];
     for (const { pubkey, account } of found) {
-      const view = await this.arenaView(pubkey, account);
-      if (view) views.push(view);
+      const raw = this.decode<RawArena>(ACCOUNT_NAMES.arena, account);
+      if (raw) arenas.push({ pubkey, raw });
     }
-    return views.sort((a, b) => a.id - b.id);
+    const vaults = await this.getMultiple(arenas.map((a) => a.raw.vault));
+    return arenas.map((a, i) => toArenaView(a.pubkey, a.raw, SlanaClient.amountOf(vaults[i]))).sort((a, b) => a.id - b.id);
   }
 
   async fetchSession(arenaId: number, player: Address): Promise<SessionView | null> {
@@ -461,12 +659,29 @@ export class SlanaClient {
     return views.sort((a, b) => a.openedAt - b.openedAt || a.id - b.id);
   }
 
+  /** The lock of a Pass asset while it backs an open session (null = free). */
+  async fetchPassLock(asset: Address): Promise<{ address: string; session: string; player: string } | null> {
+    const address = pdas.passLock(asset, this.programId);
+    const raw = this.decode<RawPassLock>(ACCOUNT_NAMES.passLock, await this.connection.getAccountInfo(address, COMMITMENT));
+    return raw ? { address: address.toBase58(), session: raw.session.toBase58(), player: raw.player.toBase58() } : null;
+  }
+
+  /** Passes minted by `wallet` so far (its `MintCounter`, 0 when none). */
+  async fetchMintedCount(wallet: Address): Promise<number> {
+    const raw = this.decode<RawMintCounter>(ACCOUNT_NAMES.mintCounter, await this.connection.getAccountInfo(pdas.passMinted(wallet, this.programId), COMMITMENT));
+    return raw ? raw.count : 0;
+  }
+
+  /** Token balance of the treasury and season vaults (base units). */
+  async fetchVaultBalances(): Promise<{ treasury: bigint; season: bigint }> {
+    const [treasury, season] = await this.getMultiple([pdas.treasuryVault(this.programId), pdas.seasonVault(this.programId)]);
+    return { treasury: SlanaClient.amountOf(treasury), season: SlanaClient.amountOf(season) };
+  }
+
   async fetchSeason(id: number): Promise<SeasonView | null> {
     const address = pdas.season(id, this.programId);
-    const info = await this.connection.getAccountInfo(address, COMMITMENT);
-    const raw = this.decode<RawSeason>(ACCOUNT_NAMES.season, info);
-    if (!raw || !info) return null;
-    return toSeasonView(address, raw, info.lamports, await this.rentExemptMinimum(info.data.length));
+    const raw = this.decode<RawSeason>(ACCOUNT_NAMES.season, await this.connection.getAccountInfo(address, COMMITMENT));
+    return raw ? toSeasonView(address, raw) : null;
   }
 
   /* ------------------------------------------------------------------ */

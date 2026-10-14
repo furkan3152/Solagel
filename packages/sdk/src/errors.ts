@@ -3,6 +3,8 @@
  * throws, and turn it into a short message players can understand.
  */
 
+import { toBase58, type Address } from './program';
+
 export interface ErrorInfo {
   code: number;
   name: string;
@@ -17,28 +19,50 @@ export const SlanaErrorCode = {
   InvalidFee: 6002,
   InvalidName: 6003,
   InvalidSkin: 6004,
-  SkinLocked: 6005,
-  SkinAlreadyOwned: 6006,
-  BuyInTooLow: 6007,
-  InvalidMaxPlayers: 6008,
-  ArenaDisabled: 6009,
-  ArenaFull: 6010,
-  InsufficientPot: 6011,
-  RefundTooEarly: 6012,
-  SeasonFinalized: 6013,
-  SeasonNotFinalized: 6014,
-  NotEligible: 6015,
-  AlreadyClaimed: 6016,
-  ClaimWindowClosed: 6017,
-  ClaimWindowOpen: 6018,
-  InvalidSeason: 6019,
-  ArenaHasOpenSessions: 6020,
-  InvalidAmount: 6021,
-  MathOverflow: 6022,
-  SessionMismatch: 6023,
+  ArenaDisabled: 6005,
+  ArenaFull: 6006,
+  InsufficientPot: 6007,
+  RefundTooEarly: 6008,
+  SeasonFinalized: 6009,
+  SeasonNotFinalized: 6010,
+  NotEligible: 6011,
+  AlreadyClaimed: 6012,
+  ClaimWindowClosed: 6013,
+  ClaimWindowOpen: 6014,
+  InvalidSeason: 6015,
+  ArenaHasOpenSessions: 6016,
+  InvalidAmount: 6017,
+  MathOverflow: 6018,
+  SessionMismatch: 6019,
+  MintNotAllowed: 6020,
+  FreezeAuthorityPresent: 6021,
+  PassRequired: 6022,
+  PassNotOwned: 6023,
+  PassWrongCollection: 6024,
+  PassInUse: 6025,
+  MintClosed: 6026,
+  MintSoldOut: 6027,
+  MintLimit: 6028,
+  MintMinTokens: 6029,
+  SeedMismatch: 6030,
+  SeedNotSet: 6031,
+  AlreadyRevealed: 6032,
+  CollectionAlreadySet: 6033,
+  CollectionNotSet: 6034,
+  BadCollection: 6035,
+  BadSplit: 6036,
+  ArenaBusy: 6037,
+  BadBaseUri: 6038,
+  InvalidMaxSessions: 6039,
+  EntryFeeZero: 6040,
+  SeedLocked: 6041,
+  MintStillOpen: 6042,
 } as const;
 
 export type SlanaErrorName = keyof typeof SlanaErrorCode;
+
+/** Player-facing message for an "already in use" failure on a Pass lock. */
+export const PASS_IN_USE_MESSAGE = 'Bu Pass şu an başka bir oturumda';
 
 const FRIENDLY: Record<SlanaErrorName, string> = {
   Unauthorized: 'You are not allowed to do that (wrong wallet or account).',
@@ -46,10 +70,6 @@ const FRIENDLY: Record<SlanaErrorName, string> = {
   InvalidFee: 'Invalid fee configuration.',
   InvalidName: 'Names must be 1–16 bytes long and cannot contain control characters.',
   InvalidSkin: 'That skin does not exist.',
-  SkinLocked: 'That skin is still locked — level up or buy it first.',
-  SkinAlreadyOwned: 'You already own that skin.',
-  BuyInTooLow: 'The buy-in is below the 0.001 SOL minimum.',
-  InvalidMaxPlayers: 'Max players must be between 2 and 100.',
   ArenaDisabled: 'This arena is closed right now.',
   ArenaFull: 'This arena is full — try again in a moment.',
   InsufficientPot: 'The arena pot cannot cover this payout right now.',
@@ -65,9 +85,32 @@ const FRIENDLY: Record<SlanaErrorName, string> = {
   InvalidAmount: 'Invalid amount.',
   MathOverflow: 'That amount is too large.',
   SessionMismatch: 'This settlement belongs to an older arena session.',
+  MintNotAllowed: 'This token mint is not supported.',
+  FreezeAuthorityPresent: 'The token mint must not have a freeze authority.',
+  PassRequired: 'This arena is for Slana Pass holders only.',
+  PassNotOwned: 'That Slana Pass is not in your wallet.',
+  PassWrongCollection: 'That NFT is not a Slana Pass.',
+  PassInUse: PASS_IN_USE_MESSAGE,
+  MintClosed: 'The Slana Pass mint is closed right now.',
+  MintSoldOut: 'All Slana Passes have been minted.',
+  MintLimit: 'You already minted the maximum number of Passes for one wallet.',
+  MintMinTokens: 'You need more tokens in your wallet to mint a Pass.',
+  SeedMismatch: 'The seed does not match the committed hash.',
+  SeedNotSet: 'The Pass seed hash is not set yet.',
+  AlreadyRevealed: 'Pass traits are already revealed.',
+  CollectionAlreadySet: 'The Pass collection is already set.',
+  CollectionNotSet: 'The Pass collection is not set yet.',
+  BadCollection: 'Invalid Pass collection.',
+  BadSplit: 'The fee split must add up to 100 %.',
+  ArenaBusy: 'The arena has open sessions — try again when they are settled.',
+  BadBaseUri: "The Pass base URI is invalid (max 96 bytes, must end with '/', frozen after the first mint).",
+  InvalidMaxSessions: 'Max sessions must be between 2 and 2000.',
+  EntryFeeZero: 'The entry fee must be greater than zero.',
+  SeedLocked: 'The Pass seed hash cannot change after the first mint.',
+  MintStillOpen: 'Close the Pass mint (or sell out) before revealing.',
 };
 
-/** Program errors by code (6000–6023). */
+/** Program errors by code (6000–6042). */
 export const SLANA_ERRORS: Readonly<Record<number, ErrorInfo>> = Object.fromEntries(
   (Object.keys(SlanaErrorCode) as SlanaErrorName[]).map((name) => [
     SlanaErrorCode[name],
@@ -87,6 +130,8 @@ export const ANCHOR_ERRORS: Readonly<Record<number, ErrorInfo>> = Object.fromEnt
       [2003, 'ConstraintRaw', 'An account constraint was violated.'],
       [2006, 'ConstraintSeeds', 'Account address mismatch — the data was stale, please try again.'],
       [2012, 'ConstraintAddress', 'Unexpected account address — please refresh and try again.'],
+      [2014, 'ConstraintTokenMint', 'That token account holds a different token.'],
+      [2015, 'ConstraintTokenOwner', 'That token account belongs to someone else.'],
       [3001, 'AccountDiscriminatorNotFound', 'An account has no data (not created yet).'],
       [3002, 'AccountDiscriminatorMismatch', 'An account has the wrong type.'],
       [3003, 'AccountDidNotDeserialize', 'An account could not be read (version mismatch?).'],
@@ -287,14 +332,25 @@ function plainMessage(err: unknown): string {
   return 'Something went wrong.';
 }
 
+export interface DescribeContext {
+  /** `pass_lock` PDA of the transaction: "already in use" on it means the Pass is busy. */
+  passLock?: Address | null;
+}
+
 /** Maps any error to `{ code, name, message }` with a friendly message. */
-export function describeError(err: unknown): DescribedError {
+export function describeError(err: unknown, ctx: DescribeContext = {}): DescribedError {
   const code = programErrorCode(err);
   if (code !== null && SLANA_ERRORS[code]) {
     const e = SLANA_ERRORS[code];
     return { code, name: e.name, message: e.message };
   }
   const text = collectText(err).join('\n');
+  if (/already in use/i.test(text)) {
+    const lock = ctx.passLock ? toBase58(ctx.passLock) : null;
+    if (/\bpass_lock\b/.test(text) || (lock !== null && text.includes(lock))) {
+      return { code: SlanaErrorCode.PassInUse, name: 'PassInUse', message: PASS_IN_USE_MESSAGE };
+    }
+  }
   if (walletCode(err) === 4001) return { code: null, name: 'UserRejected', message: 'You cancelled the request in your wallet.' };
   for (const [re, name, message] of KNOWN_TEXT) {
     if (re.test(text)) return { code: name === 'UserRejected' ? null : code, name, message };
