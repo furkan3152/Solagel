@@ -60,10 +60,10 @@ pub fn handle_mint_pass(ctx: Context<MintPass>) -> Result<()> {
     );
     // 2. Trait seed committed.
     require!(config.pass_seed_hash != [0u8; 32], SlanaError::SeedNotSet);
-    // 3. Mint open.
+    // 3. Mint open (and never again after the trait seed is revealed).
     let now = Clock::get()?.unix_timestamp;
     require!(
-        config.pass_mint_open && now >= config.pass_mint_start_ts,
+        config.pass_mint_open && now >= config.pass_mint_start_ts && !config.pass_revealed,
         SlanaError::MintClosed
     );
     // 4. Supply left.
@@ -89,6 +89,7 @@ pub fn handle_mint_pass(ctx: Context<MintPass>) -> Result<()> {
         .pass_minted
         .checked_add(1)
         .ok_or(SlanaError::MathOverflow)?;
+    require!(config.pass_base_uri_len > 0, SlanaError::BadBaseUri);
     let name = format!("Slana Pass #{number}");
     let base_uri = &config.pass_base_uri[..usize::from(config.pass_base_uri_len)];
     let mut uri = Vec::with_capacity(base_uri.len() + 15);
@@ -120,7 +121,10 @@ pub fn handle_mint_pass(ctx: Context<MintPass>) -> Result<()> {
 
     a.config.pass_minted = number;
     let counter = &mut a.mint_counter;
-    counter.count = counter.count.saturating_add(1);
+    counter.count = counter
+        .count
+        .checked_add(1)
+        .ok_or(SlanaError::MathOverflow)?;
     counter.bump = ctx.bumps.mint_counter;
 
     emit!(PassMinted {

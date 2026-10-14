@@ -276,3 +276,72 @@ fn reveal_checks_hash_once() {
         SlanaError::AlreadyRevealed,
     );
 }
+
+#[test]
+fn reveal_only_after_mint_ends_and_closes_it_for_good() {
+    let (mut env, _) = mint_env();
+    let admin = env.admin.insecure_clone();
+    let a = env.funded_keypair(10 * SOL);
+    assert_ok(env.mint_pass(&a).0);
+
+    // Mint open and not sold out: the seed stays secret.
+    assert_error(env.reveal_as(&admin, SEED), SlanaError::MintStillOpen);
+    assert!(!env.config().pass_revealed);
+
+    // Sold out (still flagged open): reveal is allowed.
+    assert_ok(env.update_config(UpdateConfigArgs {
+        pass_supply: Some(1),
+        ..Default::default()
+    }));
+    assert_ok(env.reveal_as(&admin, SEED));
+
+    // Even with supply left and the flag still open, minting after the reveal fails.
+    assert_ok(env.update_config(UpdateConfigArgs {
+        pass_supply: Some(10),
+        ..Default::default()
+    }));
+    assert!(env.config().pass_mint_open);
+    let b = env.funded_keypair(10 * SOL);
+    assert_error(env.mint_pass(&b).0, SlanaError::MintClosed);
+
+    // The mint cannot be reopened after the reveal (closing it is fine).
+    assert_ok(env.update_config(UpdateConfigArgs {
+        pass_mint_open: Some(false),
+        ..Default::default()
+    }));
+    assert_error(
+        env.update_config(UpdateConfigArgs {
+            pass_mint_open: Some(true),
+            ..Default::default()
+        }),
+        SlanaError::AlreadyRevealed,
+    );
+    assert_error(env.mint_pass(&b).0, SlanaError::MintClosed);
+}
+
+#[test]
+fn reveal_after_mint_closed() {
+    let (mut env, _) = mint_env();
+    let admin = env.admin.insecure_clone();
+    assert_ok(env.update_config(UpdateConfigArgs {
+        pass_mint_open: Some(false),
+        ..Default::default()
+    }));
+    assert_ok(env.reveal_as(&admin, SEED));
+}
+
+#[test]
+fn mint_needs_a_base_uri() {
+    let mut env = core_env();
+    let admin = env.admin.insecure_clone();
+    let collection = env.create_core_collection(&pass_authority_pda());
+    assert_ok(env.set_collection_as(&admin, &collection));
+    assert_ok(env.set_seed_hash_as(&admin, hash(&SEED).to_bytes()));
+    assert_ok(env.update_config(UpdateConfigArgs {
+        pass_mint_open: Some(true),
+        ..Default::default()
+    }));
+    let a = env.funded_keypair(10 * SOL);
+    assert_error(env.mint_pass(&a).0, SlanaError::BadBaseUri);
+    assert_eq!(env.config().pass_minted, 0);
+}
