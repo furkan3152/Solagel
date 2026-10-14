@@ -27,7 +27,7 @@ pub fn handle_update_profile(
         profile.name_len = name_len;
     }
     if let Some(skin) = skin {
-        logic::check_skin(skin, profile.xp, profile.premium_skins)?;
+        logic::check_skin(skin)?;
         profile.skin = skin;
     }
 

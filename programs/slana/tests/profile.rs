@@ -1,11 +1,11 @@
-//! `register_player`, `update_profile`, `buy_skin` (+ skin locks via `record_game` XP).
+//! `register_player` and `update_profile` (basic skins only).
 
 mod common;
 
 use {
     anchor_lang::error::ErrorCode as AnchorErrorCode,
     common::*,
-    slana::{constants::*, error::SlanaError, UpdateConfigArgs},
+    slana::{constants::*, error::SlanaError},
     solana_signer::Signer,
 };
 
@@ -31,11 +31,7 @@ fn register_player_validates_name_and_skin() {
         env.register(&alice, "line\nbreak", 0),
         SlanaError::InvalidName,
     );
-    // Only free skins at registration.
-    assert_error(env.register(&alice, "rich", 16), SlanaError::SkinLocked);
-    assert_error(env.register(&alice, "rich", 23), SlanaError::SkinLocked);
-    assert_error(env.register(&alice, "grinder", 8), SlanaError::SkinLocked);
-    assert_error(env.register(&alice, "bogus", 24), SlanaError::InvalidSkin);
+    assert_error(env.register(&alice, "bogus", 255), SlanaError::InvalidSkin);
     assert_eq!(env.config().total_players, 0);
 
     let name = "Çağrı🚀";
@@ -45,7 +41,6 @@ fn register_player_validates_name_and_skin() {
     assert_eq!(name_of(&profile.name, profile.name_len), name);
     assert_eq!(usize::from(profile.name_len), name.len());
     assert_eq!(profile.skin, 7);
-    assert_eq!(profile.premium_skins, 0);
     assert_eq!(profile.xp, 0);
     assert_eq!(profile.season, 1);
     assert_eq!(profile.created_at, START_TS);
@@ -62,54 +57,44 @@ fn register_player_validates_name_and_skin() {
 }
 
 #[test]
-fn level_skins_unlock_with_xp() {
+fn profiles_accept_basic_skins_only() {
+    let mut env = TestEnv::initialized();
+
+    // Registration: skins 0..BASIC_SKINS only.
+    let carol = env.funded_keypair(10 * SOL);
+    assert_error(
+        env.register(&carol, "carol", BASIC_SKINS),
+        SlanaError::InvalidSkin,
+    );
+    assert_ok(env.register(&carol, "carol", BASIC_SKINS - 1));
+    assert_eq!(env.profile(&carol.pubkey()).skin, 7);
+
+    // Update: every basic skin works, anything above is rejected.
+    let alice = env.new_player("alice");
+    for skin in 0..BASIC_SKINS {
+        assert_ok(env.update_profile(&alice, None, Some(skin)));
+        assert_eq!(env.profile(&alice.pubkey()).skin, skin);
+    }
+    for skin in [8, 16, 23, 24, 255] {
+        assert_error(
+            env.update_profile(&alice, None, Some(skin)),
+            SlanaError::InvalidSkin,
+        );
+    }
+    assert_eq!(env.profile(&alice.pubkey()).skin, 7);
+}
+
+#[test]
+fn update_profile_renames_and_is_owner_only() {
     let mut env = TestEnv::initialized();
     let alice = env.new_player("alice");
 
-    // Skin 10 needs level 5, i.e. 800 XP.
-    assert_error(
-        env.update_profile(&alice, None, Some(10)),
-        SlanaError::SkinLocked,
-    );
-    assert_ok(env.record(&alice.pubkey(), 100, 1, 500));
-    assert_eq!(env.profile(&alice.pubkey()).xp, 500); // level 4
-    assert_error(
-        env.update_profile(&alice, None, Some(10)),
-        SlanaError::SkinLocked,
-    );
-    assert_ok(env.record(&alice.pubkey(), 100, 1, 500));
-    assert_eq!(env.profile(&alice.pubkey()).xp, 1_000); // level 5
-    assert_ok(env.update_profile(&alice, None, Some(10)));
-    assert_eq!(env.profile(&alice.pubkey()).skin, 10);
-
-    // Skin 11 needs level 7 (1 800 XP).
-    assert_error(
-        env.update_profile(&alice, None, Some(11)),
-        SlanaError::SkinLocked,
-    );
-    // XP per game is clamped to MAX_XP_PER_GAME.
-    assert_ok(env.record(&alice.pubkey(), 0, 0, 50_000));
-    assert_eq!(
-        env.profile(&alice.pubkey()).xp,
-        1_000 + u64::from(MAX_XP_PER_GAME)
-    );
-    assert_ok(env.update_profile(&alice, None, Some(11)));
-
-    // Premium skins are not unlocked by XP; invalid ids are rejected.
-    assert_error(
-        env.update_profile(&alice, None, Some(16)),
-        SlanaError::SkinLocked,
-    );
-    assert_error(
-        env.update_profile(&alice, None, Some(24)),
-        SlanaError::InvalidSkin,
-    );
-
     // Rename (skin unchanged) and name validation.
+    assert_ok(env.update_profile(&alice, None, Some(3)));
     assert_ok(env.update_profile(&alice, Some("Alice 2"), None));
     let profile = env.profile(&alice.pubkey());
     assert_eq!(name_of(&profile.name, profile.name_len), "Alice 2");
-    assert_eq!(profile.skin, 11);
+    assert_eq!(profile.skin, 3);
     assert_error(
         env.update_profile(&alice, Some(""), None),
         SlanaError::InvalidName,
@@ -133,49 +118,4 @@ fn level_skins_unlock_with_xp() {
     );
     let profile = env.profile(&alice.pubkey());
     assert_eq!(name_of(&profile.name, profile.name_len), "Alice 2");
-}
-
-#[test]
-fn buy_skin_pays_treasury() {
-    let mut env = TestEnv::initialized();
-    let alice = env.new_player("alice");
-    let treasury = env.treasury.pubkey();
-
-    let treasury_before = env.balance(&treasury);
-    let alice_before = env.balance(&alice.pubkey());
-    assert_ok(env.buy_skin(&alice, 17));
-    assert_eq!(env.balance(&treasury) - treasury_before, SKIN_PRICE);
-    assert_eq!(alice_before - env.balance(&alice.pubkey()), SKIN_PRICE);
-    let profile = env.profile(&alice.pubkey());
-    assert_eq!(profile.premium_skins, 1 << 1);
-    assert_eq!(profile.skin, 17);
-
-    // Same skin again, non-premium and invalid ids fail.
-    assert_error(env.buy_skin(&alice, 17), SlanaError::SkinAlreadyOwned);
-    assert_error(env.buy_skin(&alice, 5), SlanaError::InvalidSkin);
-    assert_error(env.buy_skin(&alice, 10), SlanaError::InvalidSkin);
-    assert_error(env.buy_skin(&alice, 24), SlanaError::InvalidSkin);
-    assert_eq!(env.balance(&treasury) - treasury_before, SKIN_PRICE);
-
-    // An owned premium skin can be re-equipped.
-    assert_ok(env.update_profile(&alice, None, Some(0)));
-    assert_ok(env.update_profile(&alice, None, Some(17)));
-    assert_eq!(env.profile(&alice.pubkey()).skin, 17);
-
-    // The treasury account must be the configured one.
-    let fake_treasury = env.funded_keypair(SOL).pubkey();
-    let bad = ix::buy_skin(&alice.pubkey(), &fake_treasury, 18);
-    assert_error(env.send(&[bad], &[&alice]), SlanaError::Unauthorized);
-
-    // The treasury may be the buyer itself (`dup`).
-    assert_ok(env.update_config(UpdateConfigArgs {
-        treasury: Some(alice.pubkey()),
-        ..Default::default()
-    }));
-    let alice_before = env.balance(&alice.pubkey());
-    assert_ok(env.buy_skin(&alice, PREMIUM_SKIN_START + 7));
-    assert_eq!(env.balance(&alice.pubkey()), alice_before);
-    let profile = env.profile(&alice.pubkey());
-    assert_eq!(profile.premium_skins, (1 << 1) | (1 << 7));
-    assert_eq!(profile.skin, 23);
 }

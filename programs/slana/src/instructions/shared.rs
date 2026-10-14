@@ -6,10 +6,57 @@ use anchor_lang::{
 };
 
 use crate::{
+    constants::*,
     error::SlanaError,
     logic::{self, GameResult},
     state::{PlayerProfile, Season},
 };
+
+// ---------------------------------------------------------------------------------------
+// Parameter validation
+// ---------------------------------------------------------------------------------------
+
+/// `fee_bps ≤ MAX_FEE_BPS` and `pass_fee_bps ≤ fee_bps`, else `InvalidFee`.
+pub(crate) fn check_fees(fee_bps: u16, pass_fee_bps: u16) -> Result<()> {
+    require!(fee_bps <= MAX_FEE_BPS, SlanaError::InvalidFee);
+    require!(pass_fee_bps <= fee_bps, SlanaError::InvalidFee);
+    Ok(())
+}
+
+/// The three fee shares must sum to exactly `BPS`, else `BadSplit`.
+pub(crate) fn check_split(treasury_bps: u16, season_bps: u16, burn_bps: u16) -> Result<()> {
+    let sum = u32::from(treasury_bps) + u32::from(season_bps) + u32::from(burn_bps);
+    require!(sum == u32::from(BPS), SlanaError::BadSplit);
+    Ok(())
+}
+
+/// `settle_fee_lamports ≤ MAX_SETTLE_FEE_LAMPORTS`, else `InvalidFee`.
+pub(crate) fn check_settle_fee(settle_fee_lamports: u64) -> Result<()> {
+    require!(
+        settle_fee_lamports <= MAX_SETTLE_FEE_LAMPORTS,
+        SlanaError::InvalidFee
+    );
+    Ok(())
+}
+
+/// `entry_fee > 0`, else `EntryFeeZero`.
+pub(crate) fn check_entry_fee(entry_fee: u64) -> Result<()> {
+    require!(entry_fee > 0, SlanaError::EntryFeeZero);
+    Ok(())
+}
+
+/// `MIN_ARENA_SESSIONS ≤ max_sessions ≤ MAX_ARENA_SESSIONS`, else `InvalidMaxSessions`.
+pub(crate) fn check_max_sessions(max_sessions: u16) -> Result<()> {
+    require!(
+        (MIN_ARENA_SESSIONS..=MAX_ARENA_SESSIONS).contains(&max_sessions),
+        SlanaError::InvalidMaxSessions
+    );
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------------------
+// Lamports (legacy arena / season flows, replaced by token vaults in Tasks 4 and 5)
+// ---------------------------------------------------------------------------------------
 
 /// Rent-exempt minimum of an account with the data length of `info`.
 pub(crate) fn rent_exempt_minimum(info: &AccountInfo) -> Result<u64> {
@@ -82,8 +129,13 @@ pub(crate) fn transfer_from_wallet<'info>(
     )
 }
 
-/// Applies a finished game to `profile` and upserts the player into the leaderboard of the
-/// current `season`.
+// ---------------------------------------------------------------------------------------
+// Games
+// ---------------------------------------------------------------------------------------
+
+/// Applies a finished game to `profile`. With `season_points` the score also counts for the
+/// current `season` and the player is upserted into its leaderboard.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn record_result(
     profile: &mut PlayerProfile,
     season: &mut Season,
@@ -92,9 +144,20 @@ pub(crate) fn record_result(
     kills: u16,
     xp: u32,
     now: i64,
+    season_points: bool,
 ) -> GameResult {
-    let result = logic::apply_game(profile, current_season, score, kills, xp, now);
-    let candidate = logic::leader_entry(profile, result.score);
-    logic::upsert_leaderboard(&mut season.entries, &mut season.count, candidate);
+    let result = logic::apply_game(
+        profile,
+        current_season,
+        score,
+        kills,
+        xp,
+        now,
+        season_points,
+    );
+    if season_points {
+        let candidate = logic::leader_entry(profile, result.score);
+        logic::upsert_leaderboard(&mut season.entries, &mut season.count, candidate);
+    }
     result
 }
