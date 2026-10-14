@@ -1,5 +1,7 @@
 # Solagel — Solana üzerinde on-chain Agar.io (Tasarım Dokümanı)
 
+> **Not (2026-10-14):** Bu dokümanın yerini [`2026-10-14-slana-design.md`](2026-10-14-slana-design.md) aldı (oyun adı Slana; token odaları, Slana Pass NFT, yeni arayüz).
+
 Tarih: 2026-10-09 · Durum: Uygulamaya alındı (kullanıcı tasarım kararlarını bize bıraktı: "tasarımları sen yap … tam kur sistemi")
 
 ## 1. Talep ve anlayış
