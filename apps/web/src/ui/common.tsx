@@ -1,4 +1,4 @@
-import { getSkin } from '@solagel/shared';
+import { getSkin } from '@slana/shared';
 import { useEffect, useRef, type ReactNode } from 'react';
 import { drawCoin } from '../render/coin';
 import type { Expression } from '../render/faces';
@@ -113,15 +113,12 @@ export function SkinCanvas({
 const LOGO_COLORS = ['#FF8FB8', '#FFC93C', '#7CC8FF', '#4FE0A8', '#C9B6FF', '#FFB38A'];
 
 export function Logo({ big = false }: { big?: boolean }) {
-  const letters = 'lagel'.split('');
+  const letters = 'Slana'.split('');
   return (
-    <div className="logo" aria-label="Solagel">
-      <span className="l" style={{ color: LOGO_COLORS[0] }}>
-        S
-      </span>
+    <div className="logo" aria-label="Slana">
       <SkinCanvas skin={0} size={big ? 62 : 46} className="logo-coin" seed={4} />
       {letters.map((ch, i) => (
-        <span key={i} className="l" style={{ color: LOGO_COLORS[(i + 1) % LOGO_COLORS.length] }}>
+        <span key={i} className="l" style={{ color: LOGO_COLORS[i % LOGO_COLORS.length] }}>
           {ch}
         </span>
       ))}

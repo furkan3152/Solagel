@@ -100,7 +100,7 @@ const live = (session: string, value: number): LiveStake => ({
 
 describe('settlement journal', () => {
   it('journal recovery settles live players at their last value', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'solagel-journal-'));
+    const dir = mkdtempSync(join(tmpdir(), 'slana-journal-'));
     const path = join(dir, 'journal.json');
     const j1 = new Journal(path);
     j1.commit({ enqueue: [item('s-cashed', 150)], roomId: 'stake-1', live: [live('s-a', 70), live('s-b', 80)] });
@@ -133,7 +133,7 @@ describe('settlement journal', () => {
   });
 
   it('a corrupted file is moved aside instead of crashing', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'solagel-journal-'));
+    const dir = mkdtempSync(join(tmpdir(), 'slana-journal-'));
     const path = join(dir, 'journal.json');
     writeFileSync(path, '{"version":1,"pending":[{"key"'); // truncated write
     const logs: string[] = [];
@@ -154,7 +154,7 @@ describe('settlement journal', () => {
   });
 
   it('writes atomically (file is valid JSON after every commit)', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'solagel-journal-'));
+    const dir = mkdtempSync(join(tmpdir(), 'slana-journal-'));
     const path = join(dir, 'journal.json');
     const j = new Journal(path);
     for (let i = 0; i < 50; i++) {

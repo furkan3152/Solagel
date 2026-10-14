@@ -1,4 +1,4 @@
-import { CellFlag, PowerUpType, SKINS, getSkin } from '@solagel/shared';
+import { CellFlag, PowerUpType, SKINS, getSkin } from '@slana/shared';
 import { drawCoin } from './render/coin';
 import type { Expression } from './render/faces';
 import { JellyBody } from './render/jelly';
@@ -37,7 +37,7 @@ export function startGallery(root: HTMLElement): void {
     ctx.fillStyle = '#3D2C5E';
     ctx.font = '700 28px Fredoka, system-ui, sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText('Solagel · skin sheet', 24, 40);
+    ctx.fillText('Slana · skin sheet', 24, 40);
 
     const cols = 8;
     const cell = Math.min(160, (w - 40) / cols);

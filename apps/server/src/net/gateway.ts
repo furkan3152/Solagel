@@ -12,7 +12,7 @@ import {
   sanitizeName,
   type ErrorCode,
   type ProfileSummary,
-} from '@solagel/shared';
+} from '@slana/shared';
 import { WebSocketServer, type RawData, type WebSocket } from 'ws';
 import type { Auth } from '../auth';
 import type { ChainGateway, ChainProfile } from '../chain/types';
@@ -156,7 +156,7 @@ export class Gateway {
     switch (msg.t) {
       case 'hello': {
         if (msg.v !== PROTOCOL_VERSION) {
-          this.error(conn, 'version_mismatch', 'A new version of Solagel is available — please refresh.');
+          this.error(conn, 'version_mismatch', 'A new version of Slana is available — please refresh.');
           return;
         }
         conn.helloed = true;

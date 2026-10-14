@@ -3,7 +3,7 @@
  *
  *   scripts/localnet.sh                                   # validator + program + config + arenas
  *   cd apps/server && env $(cat ../../.localnet/server.env | xargs) npx tsx src/index.ts
- *   pnpm -F @solagel/server e2e [ws://127.0.0.1:8787/ws]
+ *   pnpm -F @slana/server e2e [ws://127.0.0.1:8787/ws]
  *
  * A fresh wallet registers a profile, buys into an arena on-chain, logs into the game server
  * (signed message), joins the arena, cashes out and waits for the server's settle_session:
@@ -12,8 +12,8 @@
  * Env: SOLANA_RPC_URL (default http://127.0.0.1:8899), PROGRAM_ID (default: SDK IDL address),
  *      ARENA_ID (default 1).
  */
-import { SolagelClient, computeSettlement, confirmSignature, describeError, explorerTxUrl, lamportsToSol } from '@solagel/sdk';
-import { PROTOCOL_VERSION, type ServerMessage } from '@solagel/shared';
+import { SlanaClient, computeSettlement, confirmSignature, describeError, explorerTxUrl, lamportsToSol } from '@slana/sdk';
+import { PROTOCOL_VERSION, type ServerMessage } from '@slana/shared';
 import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
 import bs58 from 'bs58';
 import nacl from 'tweetnacl';
@@ -110,9 +110,9 @@ class GameSocket {
 }
 
 async function main(): Promise<void> {
-  console.log(`Solagel e2e · rpc ${rpcUrl} · game ${wsUrl} · arena #${arenaId}\n`);
+  console.log(`Slana e2e · rpc ${rpcUrl} · game ${wsUrl} · arena #${arenaId}\n`);
   const connection = new Connection(rpcUrl, 'confirmed');
-  const client = new SolagelClient(connection, process.env.PROGRAM_ID || undefined);
+  const client = new SlanaClient(connection, process.env.PROGRAM_ID || undefined);
 
   step(`checking program ${client.programId.toBase58()}`);
   assert(await client.isDeployed(), `program is not deployed on ${rpcUrl} — run scripts/localnet.sh`);

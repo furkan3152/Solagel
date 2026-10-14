@@ -13,10 +13,10 @@ importers:
       '@anchor-lang/core':
         specifier: 1.2.1
         version: 1.2.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
-      '@solagel/sdk':
+      '@slana/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
-      '@solagel/shared':
+      '@slana/shared':
         specifier: workspace:*
         version: link:../../packages/shared
       '@solana/web3.js':
@@ -56,10 +56,10 @@ importers:
       '@fontsource/fredoka':
         specifier: ^5.3.0
         version: 5.3.0
-      '@solagel/sdk':
+      '@slana/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
-      '@solagel/shared':
+      '@slana/shared':
         specifier: workspace:*
         version: link:../../packages/shared
       '@solana/wallet-adapter-base':
@@ -114,7 +114,7 @@ importers:
       '@anchor-lang/core':
         specifier: 1.2.1
         version: 1.2.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
-      '@solagel/shared':
+      '@slana/shared':
         specifier: workspace:*
         version: link:../shared
       '@solana/web3.js':

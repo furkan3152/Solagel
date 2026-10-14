@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
-# Solagel: one container = game server + static web client on the same origin.
-#   docker build -t solagel .
-#   docker run -p 8787:8787 -v solagel-data:/data --env-file apps/server/.env solagel
+# Slana: one container = game server + static web client on the same origin.
+#   docker build -t slana .
+#   docker run -p 8787:8787 -v slana-data:/data --env-file apps/server/.env slana
 
 FROM node:22-bookworm-slim AS build
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 CI=1
@@ -24,9 +24,9 @@ ARG VITE_SERVER_URL=""
 ARG VITE_RPC_URL=""
 ENV VITE_SERVER_URL=$VITE_SERVER_URL VITE_RPC_URL=$VITE_RPC_URL
 
-RUN pnpm -F @solagel/web build \
- && pnpm -F @solagel/server build \
- && pnpm --filter @solagel/server deploy --legacy --prod /out
+RUN pnpm -F @slana/web build \
+ && pnpm -F @slana/server build \
+ && pnpm --filter @slana/server deploy --legacy --prod /out
 
 FROM node:22-bookworm-slim AS runtime
 ENV NODE_ENV=production \

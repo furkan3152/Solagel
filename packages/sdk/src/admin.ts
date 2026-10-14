@@ -1,20 +1,20 @@
 /**
- * Solagel admin CLI (Node only — not exported from the SDK entry point).
+ * Slana admin CLI (Node only, not exported from the SDK entry point).
  *
- *   pnpm -F @solagel/sdk admin <command> [options]      (or `pnpm admin <command>` at the repo root)
+ *   pnpm -F @slana/sdk admin <command> [options]      (or `pnpm admin <command>` at the repo root)
  *
- * Run `pnpm -F @solagel/sdk admin help` for the command list.
+ * Run `pnpm -F @slana/sdk admin help` for the command list.
  */
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
-import { DEFAULT_ARENAS, arenaMeta } from '@solagel/shared';
+import { DEFAULT_ARENAS, arenaMeta } from '@slana/shared';
 import { Connection, Keypair, PublicKey, type TransactionInstruction } from '@solana/web3.js';
 import {
   BPF_LOADER_UPGRADEABLE_ID,
   MAX_FEE_BPS,
   PROGRAM_ID,
-  SolagelClient,
+  SlanaClient,
   describeError,
   explorerAddressUrl,
   explorerTxUrl,
@@ -25,9 +25,9 @@ import {
   type UpdateConfigParams,
 } from './index';
 
-const USAGE = `Solagel admin CLI
+const USAGE = `Slana admin CLI
 
-Usage: pnpm -F @solagel/sdk admin <command> [options]
+Usage: pnpm -F @slana/sdk admin <command> [options]
 
 Commands:
   status                                   config, arenas (with pots), current season top 10 + pool
@@ -168,7 +168,7 @@ const fmtTime = (unix: number): string => (unix > 0 ? new Date(unix * 1000).toIS
 interface Ctx {
   url: string;
   cluster: string;
-  client: SolagelClient;
+  client: SlanaClient;
   signer: () => Keypair;
 }
 
@@ -210,7 +210,7 @@ async function upgradeAuthority(ctx: Ctx): Promise<PublicKey | null> {
 async function cmdStatus(ctx: Ctx): Promise<void> {
   const { client } = ctx;
   const deployed = await client.isDeployed();
-  console.log(`Solagel on ${ctx.url} (${ctx.cluster})`);
+  console.log(`Slana on ${ctx.url} (${ctx.cluster})`);
   console.log(`program   ${client.programId.toBase58()}  ${deployed ? '✓ deployed' : '✗ not deployed'}`);
   if (!deployed) return;
   const config = await client.fetchConfig();
@@ -415,7 +415,7 @@ async function main(argv: string[]): Promise<number> {
     ctx = {
       url,
       cluster: str(opts, 'cluster') ?? process.env.SOLANA_CLUSTER ?? inferCluster(url),
-      client: new SolagelClient(new Connection(url, 'confirmed'), programId),
+      client: new SlanaClient(new Connection(url, 'confirmed'), programId),
       signer: () => (keypair ??= loadKeypair(keypairPath)),
     };
 

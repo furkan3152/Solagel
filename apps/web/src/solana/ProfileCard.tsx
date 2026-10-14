@@ -1,5 +1,5 @@
 import { useWallet } from '@solana/wallet-adapter-react';
-import { formatSol } from '@solagel/shared';
+import { formatSol } from '@slana/shared';
 import { useState } from 'react';
 import { levelProgress } from '../game/engine';
 import { useT } from '../i18n';

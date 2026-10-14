@@ -2,13 +2,13 @@
 /**
  * Copies the Anchor build output into the SDK:
  *
- *   target/idl/solagel.json  →  packages/sdk/src/idl/solagel.json   (runtime IDL, snake_case)
- *   target/types/solagel.ts  →  packages/sdk/src/idl/solagel.ts     (`export type Solagel`, camelCase)
+ *   target/idl/slana.json  →  packages/sdk/src/idl/slana.json   (runtime IDL, snake_case)
+ *   target/types/slana.ts  →  packages/sdk/src/idl/slana.ts     (`export type Slana`, camelCase)
  *
- * Run it after every `anchor build` (pnpm -F @solagel/sdk sync-idl).
+ * Run it after every `anchor build` (pnpm -F @slana/sdk sync-idl).
  *
- * Program address: the IDL carries the address from `declare_id!` in programs/solagel/src/lib.rs.
- * `anchor keys sync` rewrites `declare_id!` and Anchor.toml to match target/deploy/solagel-keypair.json,
+ * Program address: the IDL carries the address from `declare_id!` in programs/slana/src/lib.rs.
+ * `anchor keys sync` rewrites `declare_id!` and Anchor.toml to match target/deploy/slana-keypair.json,
  * which CHANGES the program address; after it you must `anchor build` again and re-run this script,
  * otherwise the SDK (PROGRAM_ID, PDAs) points at the old program. This script warns when the IDL
  * address and the deploy keypair disagree.
@@ -19,8 +19,8 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const pairs = [
-  ['target/idl/solagel.json', 'packages/sdk/src/idl/solagel.json'],
-  ['target/types/solagel.ts', 'packages/sdk/src/idl/solagel.ts'],
+  ['target/idl/slana.json', 'packages/sdk/src/idl/slana.json'],
+  ['target/types/slana.ts', 'packages/sdk/src/idl/slana.ts'],
 ];
 
 const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
@@ -67,7 +67,7 @@ for (const [from, to] of pairs) {
 
 const idl = JSON.parse(readFileSync(join(root, pairs[0][0]), 'utf8'));
 console.log(`  program address in IDL: ${idl.address}`);
-const keypairPath = join(root, 'target/deploy/solagel-keypair.json');
+const keypairPath = join(root, 'target/deploy/slana-keypair.json');
 if (existsSync(keypairPath)) {
   try {
     const secret = JSON.parse(readFileSync(keypairPath, 'utf8'));
@@ -75,7 +75,7 @@ if (existsSync(keypairPath)) {
     const pubkey = base58(Uint8Array.from(secret.slice(32, 64)));
     if (pubkey !== idl.address) {
       console.warn(
-        `⚠ target/deploy/solagel-keypair.json is ${pubkey} but the IDL says ${idl.address}.\n` +
+        `⚠ target/deploy/slana-keypair.json is ${pubkey} but the IDL says ${idl.address}.\n` +
           '  Run `anchor keys sync && anchor build` and then this script again (this changes the program address).',
       );
     }

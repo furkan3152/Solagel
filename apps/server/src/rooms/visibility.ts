@@ -1,4 +1,4 @@
-import { EntityKind, type EntityRecord, type PlayerInfo, type Removal, type SnapshotData } from '@solagel/shared';
+import { EntityKind, type EntityRecord, type PlayerInfo, type Removal, type SnapshotData } from '@slana/shared';
 import type { DynamicEntity, StaticEntity } from '../game/entities';
 import type { World } from '../game/world';
 

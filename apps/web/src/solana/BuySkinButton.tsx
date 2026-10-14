@@ -1,9 +1,9 @@
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
-import { formatSol } from '@solagel/shared';
+import { formatSol } from '@slana/shared';
 import { useState } from 'react';
 import { useT } from '../i18n';
 import { openModal, updateSettings } from '../store';
-import { refreshChain, useChainData, useSolagelClient } from './chain';
+import { refreshChain, useChainData, useSlanaClient } from './chain';
 import { signInWithWallet } from './siws';
 import { sendWalletTx } from './tx';
 
@@ -12,7 +12,7 @@ export function BuySkinButton({ skin }: { skin: number }) {
   const t = useT();
   const wallet = useWallet();
   const { connection } = useConnection();
-  const client = useSolagelClient();
+  const client = useSlanaClient();
   const config = useChainData((s) => s.config);
   const profile = useChainData((s) => s.profile);
   const [busy, setBusy] = useState(false);

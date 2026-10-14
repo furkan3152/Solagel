@@ -1,4 +1,4 @@
-import type { ChainStatus } from '@solagel/shared';
+import type { ChainStatus } from '@slana/shared';
 
 export interface ChainProfile {
   owner: string;

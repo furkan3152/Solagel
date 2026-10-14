@@ -23,13 +23,13 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Shared
-        run: pnpm -F @solagel/shared typecheck && pnpm -F @solagel/shared test
+        run: pnpm -F @slana/shared typecheck && pnpm -F @slana/shared test
       - name: SDK
-        run: pnpm -F @solagel/sdk typecheck && pnpm -F @solagel/sdk test
+        run: pnpm -F @slana/sdk typecheck && pnpm -F @slana/sdk test
       - name: Server
-        run: pnpm -F @solagel/server typecheck && pnpm -F @solagel/server test && pnpm -F @solagel/server build
+        run: pnpm -F @slana/server typecheck && pnpm -F @slana/server test && pnpm -F @slana/server build
       - name: Web
-        run: pnpm -F @solagel/web build
+        run: pnpm -F @slana/web build
 
   program:
     name: Anchor program (build + LiteSVM tests)
@@ -58,4 +58,4 @@ jobs:
       - name: Build
         run: anchor build --ignore-keys
       - name: Test
-        run: cargo test -p solagel
+        run: cargo test -p slana

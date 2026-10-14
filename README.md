@@ -1,4 +1,4 @@
-# 🪙 Solagel
+# 🪙 Slana
 
 **Solana üzerinde sevimli, coin temalı, on-chain bir Agar.io.** Jöle gibi sallanan coin'ler lamport toplar, birbirini yer,
 SOL'lü arenalarda rakiplerinin değerini kapar. Sezon sıralaması ve ödüller zincirde tutulur.
@@ -40,7 +40,7 @@ jöle fiziği, aksesuarlar (taç, şapka, roket…), pastel "lamport" yemler, m�
 - **On-chain sezon sıralaması** (ilk 20) + **ödül havuzu**: sezon sonunda ilk 10, havuzdan
   %30 / %20 / %14 / %10 / %8 / %6 / %4.5 / %3 / %2.5 / %2 pay alır (talep süresi 30 gün).
 
-**On-chain (Anchor programı `solagel`)**
+**On-chain (Anchor programı `slana`)**
 - **Profil:** isim, kuşanılan skin, XP/seviye, oyun sayısı, en iyi skor — hepsi zincirde.
 - **Skin'ler:** 8 ücretsiz, 8 seviye kilitli (seviye 2–20), 8 premium (SOL ile satın alınır, zincirde sahiplik).
 - **SOL arenaları:** ◎0.01 / ◎0.05 / ◎0.1 giriş. Birini yediğinde onun değerinin payını alırsın; istediğin an
@@ -59,18 +59,18 @@ oyun döngüsü yetkili bir oyun sunucusunda, **para, kimlik, istatistik, sezon 
 Web istemci (Vite + React + Canvas)  ⇄  WebSocket (ikili delta snapshot)  ⇄  Oyun sunucusu (Node 22)
         │ cüzdanla imzalı tx: profil, skin, arenaya giriş                     │ sunucu imzalı tx:
         ▼                                                                   ▼ settle_session, record_game
-                         Solana programı `solagel` (Anchor 1.2.1)
+                         Solana programı `slana` (Anchor 1.2.1)
           Config · PlayerProfile · Arena (kasa) · Session · Season (sıralama + ödül havuzu)
 ```
 
 | Klasör | İçerik |
 |---|---|
-| `programs/solagel` | Anchor programı (16 instruction) + LiteSVM testleri |
+| `programs/slana` | Anchor programı (16 instruction) + LiteSVM testleri |
 | `packages/shared` | Oyun kuralları, formüller, ikili protokol, skin kataloğu, emote/arena verisi |
 | `packages/sdk` | TypeScript istemci (PDA'lar, instruction builder'lar, hesap okuyucular, hata çözümleme) + **admin CLI** |
 | `apps/server` | Oyun sunucusu: simülasyon, odalar, botlar, cüzdan girişi, settlement kuyruğu, REST |
 | `apps/web` | Oyun istemcisi: coin renderer, lobi, HUD, cüzdan entegrasyonu, i18n |
-| `docs/` | [Tasarım dokümanı](docs/superpowers/specs/2026-10-09-solagel-design.md), [dağıtım rehberi](docs/DEPLOY.md) |
+| `docs/` | [Tasarım dokümanı](docs/superpowers/specs/2026-10-14-slana-design.md), [dağıtım rehberi](docs/DEPLOY.md) |
 
 ## 🚀 Hızlı başlangıç (zincirsiz)
 
@@ -108,14 +108,14 @@ cd apps/server && env $(cat ../../.localnet/server.env | xargs) npx tsx src/inde
 pnpm dev:web
 
 # uçtan uca test: profil → arenaya giriş → oyun → cash-out → on-chain ödeme → sezon sıralaması
-pnpm -F @solagel/server e2e ws://127.0.0.1:8787/ws
+pnpm -F @slana/server e2e ws://127.0.0.1:8787/ws
 scripts/localnet.sh --stop
 ```
 
 Tarayıcıda denemek için cüzdanınızı özel RPC `http://127.0.0.1:8899` adresine yönlendirin ve
 `solana airdrop 5 <adres> --url http://127.0.0.1:8899` ile SOL yükleyin.
 
-> Kendi program anahtarınızla (`anchor keys sync`) derlerseniz IDL'i SDK'ya kopyalayın: `pnpm -F @solagel/sdk sync-idl`.
+> Kendi program anahtarınızla (`anchor keys sync`) derlerseniz IDL'i SDK'ya kopyalayın: `pnpm -F @slana/sdk sync-idl`.
 
 ## 🌐 Devnet / Mainnet
 
@@ -123,7 +123,7 @@ Adım adım rehber: **[docs/DEPLOY.md](docs/DEPLOY.md)** — program anahtarı, 
 (≈ ◎3 kalıcı kira), `pnpm admin` komutları (init, arena, sezon, acil durdurma), multisig yetkileri, Docker ile barındırma.
 
 ```bash
-docker build -t solagel . && docker run -p 8787:8787 -v solagel-data:/data solagel   # → http://localhost:8787 (ücretsiz mod)
+docker build -t slana . && docker run -p 8787:8787 -v slana-data:/data slana   # → http://localhost:8787 (ücretsiz mod)
 ```
 
 ## 🧪 Testler
@@ -131,8 +131,8 @@ docker build -t solagel . && docker run -p 8787:8787 -v solagel-data:/data solag
 ```bash
 pnpm test                         # shared + sdk + server (Vitest)
 pnpm typecheck
-pnpm -F @solagel/web build
-anchor build && cargo test -p solagel   # program (LiteSVM)
+pnpm -F @slana/web build
+anchor build && cargo test -p slana   # program (LiteSVM)
 ```
 
 | Paket | Kapsam |
@@ -142,7 +142,7 @@ anchor build && cargo test -p solagel   # program (LiteSVM)
 | server | 62 test: simülasyon kuralları, botlar, stake muhasebesi, çökme kurtarma, zincir işçisi, WebSocket entegrasyonu |
 | shared | 21 test: ikili codec, formüller, metin temizleme |
 
-Ek araçlar: `pnpm -F @solagel/server sim` (bot dengesi simülasyonu), `pnpm -F @solagel/web shot <url> <png>` (ekran görüntüsü).
+Ek araçlar: `pnpm -F @slana/server sim` (bot dengesi simülasyonu), `pnpm -F @slana/web shot <url> <png>` (ekran görüntüsü).
 
 ## ⚖️ Güven modeli ve uyarılar
 
@@ -157,7 +157,7 @@ Ek araçlar: `pnpm -F @solagel/server sim` (bot dengesi simülasyonu), `pnpm -F 
 
 ## 🇬🇧 English summary
 
-**Solagel** is a cute, coin-themed Agar.io with a Solana on-chain layer.
+**Slana** is a cute, coin-themed Agar.io with a Solana on-chain layer.
 
 - **Gameplay:** split, eject, merge, "Rug Cactus" viruses, power-ups (Magnet, Pump, HODL Shield, Mega Bag), coin rain,
   spectating, emotes, filtered chat, private rooms with 5-character codes.

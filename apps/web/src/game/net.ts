@@ -1,4 +1,4 @@
-import { PROTOCOL_VERSION, decodeSnapshot, type ClientMessage, type ServerMessage, type SnapshotData } from '@solagel/shared';
+import { PROTOCOL_VERSION, decodeSnapshot, type ClientMessage, type ServerMessage, type SnapshotData } from '@slana/shared';
 
 export interface NetHandlers {
   onOpen(): void;

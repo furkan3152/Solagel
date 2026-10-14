@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import {
-  SolagelClient,
-  SolagelErrorCode,
+  SlanaClient,
+  SlanaErrorCode,
   clusterDefaultRpc,
   describeError,
   lamportsToSol,
@@ -14,8 +14,8 @@ import {
   type ProfileView,
   type SeasonView as SdkSeasonView,
   type SessionView,
-} from '@solagel/sdk';
-import type { ChainStatus } from '@solagel/shared';
+} from '@slana/sdk';
+import type { ChainStatus } from '@slana/shared';
 import { Connection, Keypair, PublicKey, type TransactionInstruction } from '@solana/web3.js';
 import type { ServerConfig } from '../config';
 import type { Journal, SettlementItem } from '../stake/journal';
@@ -45,9 +45,9 @@ const MAX_RECORD_ATTEMPTS = 8;
 const STOP_GRACE_MS = 5_000;
 
 const ERR = {
-  unauthorized: SolagelErrorCode.Unauthorized,
-  sessionMismatch: SolagelErrorCode.SessionMismatch,
-  insufficientPot: SolagelErrorCode.InsufficientPot,
+  unauthorized: SlanaErrorCode.Unauthorized,
+  sessionMismatch: SlanaErrorCode.SessionMismatch,
+  insufficientPot: SlanaErrorCode.InsufficientPot,
   /** Anchor: account does not exist (session already closed / profile missing). */
   accountNotInitialized: 3012,
   /** Anchor: account owned by another program (a closed PDA that received lamports). */
@@ -61,7 +61,7 @@ const ERR = {
 /* Dependency seam                                                     */
 /* ------------------------------------------------------------------ */
 
-/** What the gateway needs from `SolagelClient` (tests inject a fake). */
+/** What the gateway needs from `SlanaClient` (tests inject a fake). */
 export interface ChainClient {
   readonly programId: PublicKey;
   isDeployed(): Promise<boolean>;
@@ -71,7 +71,7 @@ export interface ChainClient {
   fetchSession(arenaId: number, player: string): Promise<SessionView | null>;
   fetchSessions(): Promise<SessionView[]>;
   fetchSeason(id: number): Promise<SdkSeasonView | null>;
-  readonly ix: Pick<SolagelClient['ix'], 'settleSession' | 'recordGame'>;
+  readonly ix: Pick<SlanaClient['ix'], 'settleSession' | 'recordGame'>;
 }
 
 export interface SolanaChainDeps {
@@ -183,7 +183,7 @@ export class SolanaChain implements ChainGateway {
   stakeEnabled = false;
 
   private client: ChainClient | null = null;
-  private sdk: SolagelClient | null = null;
+  private sdk: SlanaClient | null = null;
   private connection: Connection | null = null;
   private keypair: Keypair | null = null;
   private config: ConfigView | null = null;
@@ -240,7 +240,7 @@ export class SolanaChain implements ChainGateway {
           wsEndpoint: wsUrl ?? undefined,
           fetch: fetchWithTimeout(RPC_TIMEOUT_MS),
         });
-        this.sdk = new SolagelClient(this.connection, programId ?? undefined);
+        this.sdk = new SlanaClient(this.connection, programId ?? undefined);
         this.client = this.sdk;
       }
     } catch (err) {

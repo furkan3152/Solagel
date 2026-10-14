@@ -10,7 +10,7 @@ async function main(): Promise<void> {
   const port = await app.listen();
   const status = app.chain.status();
   log(
-    `🪙 Solagel server on http://${cfg.host}:${port} (ws: /ws) — chain: ${status.enabled ? `${status.cluster} · ${status.programId}` : 'off (free play only)'}`,
+    `🪙 Slana server on http://${cfg.host}:${port} (ws: /ws) — chain: ${status.enabled ? `${status.cluster} · ${status.programId}` : 'off (free play only)'}`,
   );
 
   let stopping = false;
