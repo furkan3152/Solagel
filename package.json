@@ -2,7 +2,7 @@
   "name": "slana",
   "private": true,
   "version": "0.1.0",
-  "description": "Slana \u2014 cute coin-themed on-chain Agar.io for Solana",
+  "description": "Slana — cute coin-themed on-chain Agar.io for Solana",
   "license": "MIT",
   "packageManager": "pnpm@10.28.0",
   "engines": {

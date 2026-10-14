@@ -1,14 +1,13 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { collectionMetadataJson, passCollection, revealedPassMetadata, type PassTraits } from '../index';
+import { collectionJson, passCollection, passJson, serializePassJson, type PassTraits, type PassUrlOptions } from '../index';
 import { CliError, createCanvas, DEFAULT_SEED_FILE, drawPassCard, int, main, parseArgs, readSeedHex, renderCard, str, userPath } from './common';
 
 const USAGE = `pnpm pass:generate [--seed-file ${DEFAULT_SEED_FILE}] [--supply 3333] [--out out/pass]
-                   [--base-url https://host/pass/] [--from 1] [--to <supply>]`;
+                   [--site-url https://host] [--base-url https://ipfs/dir/] [--from 1] [--to <supply>]`;
 
 const title = (s: string): string => s[0].toUpperCase() + s.slice(1);
-const json = (v: unknown): string => JSON.stringify(v, null, 2) + '\n';
 
 function tally(rows: string[]): string {
   const counts = new Map<string, number>();
@@ -20,7 +19,7 @@ function tally(rows: string[]): string {
 export function rarityReport(col: PassTraits[]): string {
   const sections: [string, (t: PassTraits) => string][] = [
     ['Rarity', (t) => title(t.rarity)],
-    ['Special', (t) => t.special ?? 'none'],
+    ['Special', (t) => (t.special?.startsWith('oneOfOne:') ? '1/1' : (t.special ?? 'none'))],
     ['Ink', (t) => t.ink],
     ['Overprint', (t) => t.overprint],
     ['Symbol', (t) => t.symbol],
@@ -57,8 +56,10 @@ export async function runGenerate(argv: string[]): Promise<void> {
   const to = int(opts, 'to', supply);
   if (supply < 1) throw new CliError('--supply must be at least 1');
   if (from < 1 || to > supply || from > to) throw new CliError(`--from/--to must satisfy 1 <= from <= to <= ${supply}`);
-  const base = str(opts, 'base-url') ?? '';
-  if (base !== '' && !base.endsWith('/')) throw new CliError('--base-url must end with "/"');
+  const baseUrl = str(opts, 'base-url');
+  if (baseUrl !== undefined && !baseUrl.endsWith('/')) throw new CliError('--base-url must end with "/"');
+  const siteUrl = str(opts, 'site-url')?.replace(/\/+$/, '');
+  const urls: PassUrlOptions = { baseUrl, siteUrl };
   const out = userPath(str(opts, 'out') ?? 'out/pass');
   mkdirSync(out, { recursive: true });
 
@@ -66,11 +67,11 @@ export async function runGenerate(argv: string[]): Promise<void> {
   for (let n = from; n <= to; n++) {
     const t = col[n - 1];
     writeFileSync(join(out, `${n}.png`), await renderCard(t, n, 1024));
-    writeFileSync(join(out, `${n}.json`), json(revealedPassMetadata(t, n, `${base}${n}.png`, base)));
+    writeFileSync(join(out, `${n}.json`), serializePassJson(passJson(n, seedHex, supply, urls)));
     if (n % 100 === 0 || n === to) console.log(`  ${n - from + 1}/${to - from + 1}`);
   }
   writeFileSync(join(out, 'collection.png'), await renderCard(null, 0, 1024));
-  writeFileSync(join(out, 'collection.json'), json(collectionMetadataJson(supply, `${base}collection.png`, base)));
+  writeFileSync(join(out, 'collection.json'), serializePassJson(collectionJson(supply, urls)));
   writeFileSync(join(out, 'banner.png'), await banner(col));
   writeFileSync(join(out, 'rarity-report.md'), rarityReport(col));
   console.log(`wrote Passes ${from}-${to} of ${supply} to ${out}`);
