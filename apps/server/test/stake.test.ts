@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { mulberry32 } from '../src/game/rng';
 import { Journal, type LiveStake, type SettlementItem } from '../src/stake/journal';
-import { StakeLedger } from '../src/stake/ledger';
+import { ArenaLedger } from '../src/stake/ledger';
 
 const entry = (pid: number, value: number) => ({
   pid,
@@ -12,16 +12,16 @@ const entry = (pid: number, value: number) => ({
   session: `session${pid}`,
   sessionId: pid,
   arenaId: 1,
-  buyIn: value,
+  entryFee: value,
   value,
   openedAt: 0,
-  kills: 0,
+  hasPass: false,
 });
 
 describe('stake ledger', () => {
   it('random partial and total eats conserve total value', () => {
     const rng = mulberry32(7);
-    const ledger = new StakeLedger();
+    const ledger = new ArenaLedger();
     const masses = new Map<number, number>();
     for (let pid = 1; pid <= 12; pid++) {
       ledger.join(entry(pid, 10_000_000 + Math.floor(rng() * 1_000_000)));
@@ -52,7 +52,7 @@ describe('stake ledger', () => {
   });
 
   it('last cell transfers everything; proportional otherwise', () => {
-    const ledger = new StakeLedger();
+    const ledger = new ArenaLedger();
     ledger.join(entry(1, 100_000_000));
     ledger.join(entry(2, 100_000_000));
     expect(ledger.transfer(1, 2, 25, 100, false)).toBe(25_000_000);
@@ -63,7 +63,7 @@ describe('stake ledger', () => {
   });
 
   it('ignores unknown players and self transfers', () => {
-    const ledger = new StakeLedger();
+    const ledger = new ArenaLedger();
     ledger.join(entry(1, 5));
     expect(ledger.transfer(1, 99, 1, 1, true)).toBe(0);
     expect(ledger.transfer(1, 1, 1, 1, true)).toBe(0);
@@ -96,6 +96,7 @@ const live = (session: string, value: number): LiveStake => ({
   value,
   score: 100,
   kills: 2,
+  hasPass: false,
 });
 
 describe('settlement journal', () => {

@@ -1,4 +1,4 @@
-import { EntityKind, type EntityRecord, type PlayerInfo, type Removal, type SnapshotData } from '@slana/shared';
+import { EntityKind, lootTier, type EntityRecord, type PlayerInfo, type Removal, type SnapshotData } from '@slana/shared';
 import type { DynamicEntity, StaticEntity } from '../game/entities';
 import type { World } from '../game/world';
 
@@ -28,8 +28,16 @@ export class ViewState {
     this.knownPlayers.delete(pid);
   }
 
-  /** Builds the delta for a view rectangle. Returns null when nothing changed. */
-  build(world: World, rect: { x0: number; y0: number; x1: number; y1: number }, view: SnapshotData['view']): SnapshotData | null {
+  /**
+   * Builds the delta for a view rectangle. Returns null when nothing changed.
+   * `entryFee` (arena rooms) sizes loot pieces (`lootTier`).
+   */
+  build(
+    world: World,
+    rect: { x0: number; y0: number; x1: number; y1: number },
+    view: SnapshotData['view'],
+    entryFee = 0,
+  ): SnapshotData | null {
     const gen = ++this.gen;
     const upserts: EntityRecord[] = [];
     const players: PlayerInfo[] = [];
@@ -38,12 +46,12 @@ export class ViewState {
       const k = this.known.get(e.id);
       if (!k) {
         this.known.set(e.id, { v: e.version, g: gen });
-        upserts.push(toRecord(e));
+        upserts.push(toRecord(e, entryFee));
       } else {
         k.g = gen;
         if (k.v !== e.version) {
           k.v = e.version;
-          upserts.push(toRecord(e));
+          upserts.push(toRecord(e, entryFee));
         }
       }
       if (e.kind === EntityKind.Cell) {
@@ -68,7 +76,7 @@ export class ViewState {
   }
 }
 
-function toRecord(e: StaticEntity | DynamicEntity): EntityRecord {
+function toRecord(e: StaticEntity | DynamicEntity, entryFee: number): EntityRecord {
   switch (e.kind) {
     case EntityKind.Cell:
       return { id: e.id, kind: e.kind, x: e.x, y: e.y, r: e.r, playerId: e.player.id, flags: e.flags };
@@ -80,5 +88,7 @@ function toRecord(e: StaticEntity | DynamicEntity): EntityRecord {
       return { id: e.id, kind: e.kind, x: e.x, y: e.y, r: e.r };
     case EntityKind.PowerUp:
       return { id: e.id, kind: e.kind, x: e.x, y: e.y, r: e.r, variant: e.type };
+    case EntityKind.Loot:
+      return { id: e.id, kind: e.kind, x: e.x, y: e.y, r: e.r, variant: lootTier(e.value, entryFee) };
   }
 }
