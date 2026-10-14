@@ -2405,6 +2405,7 @@ dependencies = [
  "anchor-spl",
  "bincode",
  "litesvm",
+ "solana-account",
  "solana-keypair",
  "solana-message",
  "solana-signer",

@@ -7,6 +7,7 @@
 //! prize pool for the top 10.
 
 pub mod constants;
+pub mod core_asset;
 pub mod error;
 pub mod events;
 pub mod instructions;
@@ -90,8 +91,14 @@ pub mod slana {
 
     // ----- stake arenas -------------------------------------------------------------------
 
+    /// Pays the entry fee into the arena vault and opens a session (no Pass).
     pub fn join_arena(ctx: Context<JoinArena>) -> Result<()> {
         instructions::join_arena::handle_join_arena(ctx)
+    }
+
+    /// Like `join_arena`, backed by a Slana Pass that is locked until the session closes.
+    pub fn join_arena_with_pass(ctx: Context<JoinArenaWithPass>) -> Result<()> {
+        instructions::join_arena::handle_join_arena_with_pass(ctx)
     }
 
     /// Server-signed cash-out of a stake session.

@@ -18,6 +18,7 @@ pub struct ArenaJoined {
     pub arena_id: u16,
     pub session_id: u64,
     pub entry_fee: u64,
+    pub has_pass: bool,
 }
 
 #[event]
@@ -27,6 +28,9 @@ pub struct SessionSettled {
     pub session_id: u64,
     pub payout: u64,
     pub fee: u64,
+    /// Part of `fee` that was burned.
+    pub burned: u64,
+    pub has_pass: bool,
     pub score: u32,
     pub kills: u16,
 }
@@ -62,6 +66,7 @@ pub struct SeasonRolledOver {
 #[event]
 pub struct ArenaSwept {
     pub arena_id: u16,
+    pub season_id: u32,
     pub amount: u64,
 }
 
