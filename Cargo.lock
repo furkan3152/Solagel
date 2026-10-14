@@ -2289,13 +2289,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "smallvec"
-version = "1.16.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9395f0f0eee849a9b707b2f06bb92a6a422090e2123bb2ef8e87a0e61892a8e"
-
-[[package]]
-name = "solagel"
+name = "slana"
 version = "0.1.0"
 dependencies = [
  "anchor-lang",
@@ -2307,6 +2301,12 @@ dependencies = [
  "solana-transaction",
  "solana-transaction-error",
 ]
+
+[[package]]
+name = "smallvec"
+version = "1.16.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f9395f0f0eee849a9b707b2f06bb92a6a422090e2123bb2ef8e87a0e61892a8e"
 
 [[package]]
 name = "solana-account"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Local Solana cluster for Solagel: solana-test-validator with the program preloaded
+# Local Solana cluster for Slana: solana-test-validator with the program preloaded
 # (upgrade authority = your local admin key), Config initialized, default arenas created.
 #
 #   scripts/localnet.sh          (re)start from a fresh ledger and print the game-server env
@@ -16,8 +16,8 @@ LEDGER="$STATE/test-ledger"
 PID_FILE="$STATE/validator.pid"
 RPC_PORT="${RPC_PORT:-8899}"
 RPC_URL="http://127.0.0.1:$RPC_PORT"
-PROGRAM_SO="$ROOT/target/deploy/solagel.so"
-PROGRAM_KEYPAIR="$ROOT/target/deploy/solagel-keypair.json"
+PROGRAM_SO="$ROOT/target/deploy/slana.so"
+PROGRAM_KEYPAIR="$ROOT/target/deploy/slana-keypair.json"
 ADMIN_KEYPAIR="${ADMIN_KEYPAIR:-$HOME/.config/solana/id.json}"
 SERVER_KEYPAIR="$STATE/server.json"
 TREASURY_KEYPAIR="$STATE/treasury.json"
@@ -71,9 +71,9 @@ done
 [[ -f "$PROGRAM_KEYPAIR" ]] || die "$PROGRAM_KEYPAIR is missing — run \`anchor build\` first"
 
 PROGRAM_ID="$(solana-keygen pubkey "$PROGRAM_KEYPAIR")"
-IDL_ID="$(sed -n 's/^ *"address": *"\([1-9A-HJ-NP-Za-km-z]*\)".*/\1/p' "$ROOT/packages/sdk/src/idl/solagel.json" | head -n 1)"
+IDL_ID="$(sed -n 's/^ *"address": *"\([1-9A-HJ-NP-Za-km-z]*\)".*/\1/p' "$ROOT/packages/sdk/src/idl/slana.json" | head -n 1)"
 if [[ -n "$IDL_ID" && "$IDL_ID" != "$PROGRAM_ID" ]]; then
-  die "program keypair is $PROGRAM_ID but the SDK IDL is for $IDL_ID — run \`anchor keys sync && anchor build && pnpm -F @solagel/sdk sync-idl\`"
+  die "program keypair is $PROGRAM_ID but the SDK IDL is for $IDL_ID — run \`anchor keys sync && anchor build && pnpm -F @slana/sdk sync-idl\`"
 fi
 
 mkdir -p "$STATE"
@@ -128,7 +128,7 @@ airdrop 10 "$SERVER"
 airdrop 1 "$TREASURY"
 
 admin() {
-  (cd "$ROOT" && pnpm --silent -F @solagel/sdk admin --url "$RPC_URL" --keypair "$ADMIN_KEYPAIR" --program "$PROGRAM_ID" --cluster localnet "$@")
+  (cd "$ROOT" && pnpm --silent -F @slana/sdk admin --url "$RPC_URL" --keypair "$ADMIN_KEYPAIR" --program "$PROGRAM_ID" --cluster localnet "$@")
 }
 say "initializing the program"
 admin init --server "$SERVER" --treasury "$TREASURY"

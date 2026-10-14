@@ -1,8 +1,8 @@
 /**
  * Headless balance check: runs a free room with bots only and prints stats.
- *   pnpm -F @solagel/server sim [minutes=5] [seed=1]
+ *   pnpm -F @slana/server sim [minutes=5] [seed=1]
  */
-import { TICK_MS, WORLD_PRESETS } from '@solagel/shared';
+import { TICK_MS, WORLD_PRESETS } from '@slana/shared';
 import { BotManager } from '../src/bots/manager';
 import { mulberry32 } from '../src/game/rng';
 import { World } from '../src/game/world';

@@ -1,4 +1,4 @@
-import { formatSol } from '@solagel/shared';
+import { formatSol } from '@slana/shared';
 import { useEffect, useState } from 'react';
 import { SERVER } from '../config';
 import { useT } from '../i18n';

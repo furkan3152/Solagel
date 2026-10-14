@@ -6,7 +6,7 @@ import {
   ACCOUNT_NAMES,
   IDL,
   LEADERBOARD_SIZE,
-  SolagelClient,
+  SlanaClient,
   computeSettlement,
   decodeName,
   levelFromXp,
@@ -18,7 +18,7 @@ import {
 } from '../src';
 
 // No RPC is touched: only the coder is used.
-const client = new SolagelClient(new Connection('http://127.0.0.1:1'));
+const client = new SlanaClient(new Connection('http://127.0.0.1:1'));
 const coder = client.program.coder.accounts as BorshAccountsCoder;
 
 /**

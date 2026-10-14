@@ -1,7 +1,7 @@
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { extname, join, normalize, resolve, sep } from 'node:path';
-import { PROTOCOL_VERSION } from '@solagel/shared';
+import { PROTOCOL_VERSION } from '@slana/shared';
 import { isValidPubkey, type Auth } from './auth';
 import type { ChainGateway } from './chain/types';
 import type { ServerConfig } from './config';
@@ -133,7 +133,7 @@ export function createHttpServer(cfg: ServerConfig, ctx: Ctx): Server {
       if (cfg.webDist && (req.method === 'GET' || req.method === 'HEAD') && serveStatic(cfg.webDist, req, res, url.pathname)) return;
       if (url.pathname === '/') {
         res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-        res.end('Solagel game server 🪙 — connect via /ws');
+        res.end('Slana game server 🪙 — connect via /ws');
         return;
       }
       json(res, 404, { error: 'not found' });

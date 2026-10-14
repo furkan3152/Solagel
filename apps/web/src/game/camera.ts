@@ -1,4 +1,4 @@
-import { VIEW, clamp, viewSize } from '@solagel/shared';
+import { VIEW, clamp, viewSize } from '@slana/shared';
 
 export class Camera {
   x = 2800;

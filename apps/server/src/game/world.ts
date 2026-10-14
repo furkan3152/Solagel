@@ -13,7 +13,7 @@ import {
   massToRadius,
   mergeDelayMs,
   speedForRadius,
-} from '@solagel/shared';
+} from '@slana/shared';
 import { Cell, Eject, Food, Player, PowerUp, Virus, type DynamicEntity, type StaticEntity } from './entities';
 import { Grid } from './grid';
 import { mulberry32, randRange, type Rng } from './rng';

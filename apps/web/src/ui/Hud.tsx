@@ -1,4 +1,4 @@
-import { EMOTES, PowerUpType, RULES, formatSol, getSkin } from '@solagel/shared';
+import { EMOTES, PowerUpType, RULES, formatSol, getSkin } from '@slana/shared';
 import { useEffect, useRef, useState } from 'react';
 import { engine } from '../game/instance';
 import { useT } from '../i18n';

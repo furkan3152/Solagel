@@ -1,4 +1,4 @@
-import { SKINS, formatSol, isSkinUnlocked } from '@solagel/shared';
+import { SKINS, formatSol, isSkinUnlocked } from '@slana/shared';
 import { useEffect, useState } from 'react';
 import { engine } from '../game/instance';
 import { sound } from '../game/sound';

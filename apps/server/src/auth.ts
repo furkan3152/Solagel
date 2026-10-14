@@ -6,7 +6,7 @@ const NONCE_TTL_MS = 5 * 60_000;
 const TOKEN_TTL_MS = 24 * 60 * 60_000;
 
 /** Builds the exact text a wallet signs to log in (Sign-In-With-Solana style). */
-export function loginMessage(pubkey: string, nonce: string, issuedAt: string, domain = 'Solagel'): string {
+export function loginMessage(pubkey: string, nonce: string, issuedAt: string, domain = 'Slana'): string {
   return [
     `${domain} wants you to sign in with your Solana account:`,
     pubkey,

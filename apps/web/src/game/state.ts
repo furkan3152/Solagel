@@ -1,4 +1,4 @@
-import { EntityKind, PlayerFlag, type PlayerInfo, type SnapshotData } from '@solagel/shared';
+import { EntityKind, PlayerFlag, type PlayerInfo, type SnapshotData } from '@slana/shared';
 import type { Expression } from '../render/faces';
 import { JellyBody } from '../render/jelly';
 

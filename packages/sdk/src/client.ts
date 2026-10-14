@@ -36,7 +36,7 @@ import {
 import { FIRST_SEASON } from './constants';
 import type { IntLike } from './math';
 import { pdas } from './pda';
-import { IDL, PROGRAM_ID, toPublicKey, type Address, type Solagel } from './program';
+import { IDL, PROGRAM_ID, toPublicKey, type Address, type Slana } from './program';
 
 /** Arena ids probed when `getProgramAccounts` is unavailable (some public RPCs disable it). */
 export const FALLBACK_ARENA_IDS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
@@ -131,7 +131,7 @@ type ProviderWallet = ConstructorParameters<typeof AnchorProvider>[1];
 /** A wallet that cannot sign: the client only reads and builds instructions. */
 function readOnlyWallet(): ProviderWallet {
   const refuse = async (): Promise<never> => {
-    throw new Error('SolagelClient is read-only: sign transactions with your wallet');
+    throw new Error('SlanaClient is read-only: sign transactions with your wallet');
   };
   return {
     publicKey: PublicKey.default,
@@ -140,10 +140,10 @@ function readOnlyWallet(): ProviderWallet {
   };
 }
 
-export type SolagelInstructions = ReturnType<typeof createInstructionBuilders>;
+export type SlanaInstructions = ReturnType<typeof createInstructionBuilders>;
 
 /** Instruction builders; every account is passed explicitly so no RPC call is needed. */
-function createInstructionBuilders(program: Program<Solagel>, programId: PublicKey) {
+function createInstructionBuilders(program: Program<Slana>, programId: PublicKey) {
   const config = () => pdas.config(programId);
   const profile = (owner: Address) => pdas.profile(owner, programId);
   const arena = (id: number) => pdas.arena(id, programId);
@@ -325,13 +325,13 @@ function createInstructionBuilders(program: Program<Solagel>, programId: PublicK
 }
 
 /**
- * Read-only client for the Solagel program: account readers (plain JS views) and instruction
+ * Read-only client for the Slana program: account readers (plain JS views) and instruction
  * builders. Works in browsers and Node; signing is up to the caller (wallet adapter / Keypair).
  */
-export class SolagelClient {
+export class SlanaClient {
   readonly programId: PublicKey;
-  readonly program: Program<Solagel>;
-  readonly ix: SolagelInstructions;
+  readonly program: Program<Slana>;
+  readonly ix: SlanaInstructions;
   private readonly rentCache = new Map<number, number>();
 
   constructor(
@@ -340,7 +340,7 @@ export class SolagelClient {
   ) {
     this.programId = programId ? toPublicKey(programId) : PROGRAM_ID;
     const provider = new AnchorProvider(connection, readOnlyWallet(), { commitment: COMMITMENT, preflightCommitment: COMMITMENT });
-    this.program = new Program<Solagel>({ ...IDL, address: this.programId.toBase58() } as Solagel, provider);
+    this.program = new Program<Slana>({ ...IDL, address: this.programId.toBase58() } as Slana, provider);
     this.ix = createInstructionBuilders(this.program, this.programId);
   }
 

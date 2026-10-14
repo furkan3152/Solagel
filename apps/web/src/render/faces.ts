@@ -1,4 +1,4 @@
-import type { SkinDef } from '@solagel/shared';
+import type { SkinDef } from '@slana/shared';
 import { heartPath } from './symbols';
 
 const TAU = Math.PI * 2;

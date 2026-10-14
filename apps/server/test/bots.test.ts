@@ -1,4 +1,4 @@
-import { TICK_MS, WORLD_PRESETS } from '@solagel/shared';
+import { TICK_MS, WORLD_PRESETS } from '@slana/shared';
 import { describe, expect, it } from 'vitest';
 import { BotBrain } from '../src/bots/brain';
 import { BotManager } from '../src/bots/manager';

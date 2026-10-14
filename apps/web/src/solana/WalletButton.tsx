@@ -1,5 +1,5 @@
 import { useWallet } from '@solana/wallet-adapter-react';
-import { formatSol, shortAddress } from '@solagel/shared';
+import { formatSol, shortAddress } from '@slana/shared';
 import { useT } from '../i18n';
 import { openModal, useUi } from '../store';
 import { useChainData } from './chain';

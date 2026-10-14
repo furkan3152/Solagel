@@ -1,4 +1,4 @@
-import { SKINS, isSkinUnlocked } from '@solagel/shared';
+import { SKINS, isSkinUnlocked } from '@slana/shared';
 import { sound } from '../game/sound';
 import { useT } from '../i18n';
 import { openModal, updateSettings, useUi } from '../store';

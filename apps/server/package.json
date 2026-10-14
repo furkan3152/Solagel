@@ -1,9 +1,9 @@
 {
-  "name": "@solagel/server",
+  "name": "@slana/server",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Authoritative Solagel game server: simulation, rooms, smart bots, Solana settlement",
+  "description": "Authoritative Slana game server: simulation, rooms, smart bots, Solana settlement",
   "main": "./dist/index.js",
   "scripts": {
     "dev": "tsx watch --clear-screen=false src/index.ts",
@@ -15,8 +15,8 @@
     "e2e": "tsx scripts/e2e.ts"
   },
   "dependencies": {
-    "@solagel/sdk": "workspace:*",
-    "@solagel/shared": "workspace:*",
+    "@slana/sdk": "workspace:*",
+    "@slana/shared": "workspace:*",
     "@anchor-lang/core": "1.2.1",
     "@solana/web3.js": "^1.98.4",
     "bs58": "^6.0.0",

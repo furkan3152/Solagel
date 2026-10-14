@@ -7,19 +7,19 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-solagel = "5skf5Twyqr8M84dJ8RLGfz1NU6fR3zPDRLUvGd5y7472"
+slana = "5skf5Twyqr8M84dJ8RLGfz1NU6fR3zPDRLUvGd5y7472"
 
 [programs.devnet]
-solagel = "5skf5Twyqr8M84dJ8RLGfz1NU6fR3zPDRLUvGd5y7472"
+slana = "5skf5Twyqr8M84dJ8RLGfz1NU6fR3zPDRLUvGd5y7472"
 
 [programs.mainnet]
-solagel = "5skf5Twyqr8M84dJ8RLGfz1NU6fR3zPDRLUvGd5y7472"
+slana = "5skf5Twyqr8M84dJ8RLGfz1NU6fR3zPDRLUvGd5y7472"
 
 [provider]
 cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
-test = "cargo test -p solagel"
+test = "cargo test -p slana"
 
 [hooks]

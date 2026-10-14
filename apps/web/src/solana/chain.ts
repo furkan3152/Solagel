@@ -1,5 +1,5 @@
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
-import { SolagelClient, type ArenaView, type ConfigView, type ProfileView, type SessionView } from '@solagel/sdk';
+import { SlanaClient, type ArenaView, type ConfigView, type ProfileView, type SessionView } from '@slana/sdk';
 import { useCallback, useEffect, useMemo } from 'react';
 import { create } from 'zustand';
 import { useUi } from '../store';
@@ -27,16 +27,16 @@ export const useChainData = create<ChainData>(() => ({
   loading: false,
 }));
 
-let clientCache: { key: string; client: SolagelClient } | null = null;
+let clientCache: { key: string; client: SlanaClient } | null = null;
 
-/** SolagelClient bound to the current RPC + program id (from the game server). */
-export function useSolagelClient(): SolagelClient | null {
+/** SlanaClient bound to the current RPC + program id (from the game server). */
+export function useSlanaClient(): SlanaClient | null {
   const { connection } = useConnection();
   const chain = useUi((s) => s.chain);
   return useMemo(() => {
     if (!chain?.enabled || !chain.programId) return null;
     const key = `${connection.rpcEndpoint}|${chain.programId}`;
-    if (clientCache?.key !== key) clientCache = { key, client: new SolagelClient(connection, chain.programId) };
+    if (clientCache?.key !== key) clientCache = { key, client: new SlanaClient(connection, chain.programId) };
     return clientCache.client;
   }, [connection, chain?.enabled, chain?.programId]);
 }
@@ -45,7 +45,7 @@ let refreshTimer: number | null = null;
 
 /** Keeps config / profile / arenas / my sessions / balance fresh. Mount once (App). */
 export function useChainSync(): void {
-  const client = useSolagelClient();
+  const client = useSlanaClient();
   const { publicKey } = useWallet();
   const { connection } = useConnection();
   const owner = publicKey?.toBase58() ?? null;

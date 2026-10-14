@@ -143,7 +143,7 @@ export const en = {
   'death.menu': 'Menu',
   'death.share': 'Share',
   'death.lost': 'Your stake went to {name}.',
-  'death.shareText': 'I reached {mass} mass in Solagel 🪙 — can you beat me?',
+  'death.shareText': 'I reached {mass} mass in Slana 🪙 — can you beat me?',
 
   'cash.title': 'Cashed out!',
   'cash.value': 'You took home',

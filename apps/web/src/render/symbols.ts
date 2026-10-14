@@ -1,4 +1,4 @@
-import type { SymbolStyle } from '@solagel/shared';
+import type { SymbolStyle } from '@slana/shared';
 
 const TAU = Math.PI * 2;
 

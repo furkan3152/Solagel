@@ -9,7 +9,7 @@ import {
   type ChainStatus,
   type ServerMessage,
   type SnapshotData,
-} from '@solagel/shared';
+} from '@slana/shared';
 import bs58 from 'bs58';
 import nacl from 'tweetnacl';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -112,7 +112,7 @@ let port: number;
 let chain: FakeChain;
 
 beforeAll(async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'solagel-int-'));
+  const dir = mkdtempSync(join(tmpdir(), 'slana-int-'));
   const cfg = loadConfig({ PORT: '0', HOST: '127.0.0.1', DATA_DIR: dir, BOT_TARGET: '6', BOT_MIN: '2', BOT_MAX: '6' });
   chain = new FakeChain();
   app = await createApp(cfg, { chain, log: () => {}, persist: true });

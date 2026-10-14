@@ -1,10 +1,10 @@
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
-import { SKINS, isSkinUnlocked, sanitizeName, truncateUtf8, utf8Length } from '@solagel/shared';
+import { SKINS, isSkinUnlocked, sanitizeName, truncateUtf8, utf8Length } from '@slana/shared';
 import { useState } from 'react';
 import { useT } from '../i18n';
 import { closeModal, updateSettings, useUi } from '../store';
 import { Modal, SkinCanvas } from '../ui/common';
-import { refreshChain, useChainData, useSolagelClient } from './chain';
+import { refreshChain, useChainData, useSlanaClient } from './chain';
 import { signInWithWallet } from './siws';
 import { sendWalletTx } from './tx';
 
@@ -13,7 +13,7 @@ export function ProfileModal() {
   const t = useT();
   const wallet = useWallet();
   const { connection } = useConnection();
-  const client = useSolagelClient();
+  const client = useSlanaClient();
   const profile = useChainData((s) => s.profile);
   const settings = useUi((s) => s.settings);
   const lang = settings.lang;

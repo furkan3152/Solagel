@@ -1,4 +1,4 @@
-# Solagel — Kurulum ve Dağıtım Rehberi (Devnet → Mainnet)
+# Slana — Kurulum ve Dağıtım Rehberi (Devnet → Mainnet)
 
 Bu rehber; Solana programını dağıtmayı, yapılandırmayı, oyun sunucusunu ve web istemcisini yayına almayı adım adım anlatır.
 **Önce devnet'te deneyin, sonra mainnet'e geçin.**
@@ -27,11 +27,11 @@ pnpm install
 Repodaki `declare_id!` geliştirme sırasında üretilmiş bir adrese aittir; **kendi program anahtarınızı üretin**:
 
 ```bash
-solana-keygen new -o target/deploy/solagel-keypair.json   # bu dosyayı GÜVENLE yedekleyin
-anchor keys sync                                          # declare_id! + Anchor.toml güncellenir
-anchor build                                              # target/deploy/solagel.so + IDL
-pnpm -F @solagel/sdk sync-idl                             # IDL'i SDK'ya kopyalar (istemci/sunucu bunu kullanır)
-cargo test -p solagel                                     # LiteSVM testleri
+solana-keygen new -o target/deploy/slana-keypair.json   # bu dosyayı GÜVENLE yedekleyin
+anchor keys sync                                        # declare_id! + Anchor.toml güncellenir
+anchor build                                            # target/deploy/slana.so + IDL
+pnpm -F @slana/sdk sync-idl                             # IDL'i SDK'ya kopyalar (istemci/sunucu bunu kullanır)
+cargo test -p slana                                     # LiteSVM testleri
 ```
 
 ## 2. Devnet
@@ -103,11 +103,11 @@ pnpm dev            # sunucu :8787 + web :5173 (Vite /ws ve /api'yi sunucuya yö
 Sunucu, derlenmiş web istemcisini aynı porttan servis eder:
 
 ```bash
-docker build -t solagel .
-docker run -d --name solagel -p 8787:8787 \
-  -v solagel-data:/data --env-file apps/server/.env \
+docker build -t slana .
+docker run -d --name slana -p 8787:8787 \
+  -v slana-data:/data --env-file apps/server/.env \
   -v $(pwd)/keys/server.json:/keys/server.json:ro -e SERVER_KEYPAIR=/keys/server.json \
-  solagel
+  slana
 ```
 
 - Önüne TLS sonlandıran bir ters vekil (Caddy/Nginx/Cloudflare) koyun; WebSocket yolu `/ws`.
@@ -116,8 +116,8 @@ docker run -d --name solagel -p 8787:8787 \
 - Fly.io / Render / Railway / bir VPS — WebSocket ve kalıcı disk destekleyen herhangi bir platform.
 
 ### Ayrık barındırma
-- İstemci: `VITE_SERVER_URL=https://game.example.com pnpm -F @solagel/web build` → `apps/web/dist` (Vercel/Netlify/Cloudflare Pages).
-- Sunucu: `pnpm -F @solagel/server build && node apps/server/dist/index.js` (veya Docker), `CORS_ORIGIN=https://example.com`.
+- İstemci: `VITE_SERVER_URL=https://game.example.com pnpm -F @slana/web build` → `apps/web/dist` (Vercel/Netlify/Cloudflare Pages).
+- Sunucu: `pnpm -F @slana/server build && node apps/server/dist/index.js` (veya Docker), `CORS_ORIGIN=https://example.com`.
 
 ## 5. Operasyon
 

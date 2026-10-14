@@ -1,9 +1,9 @@
 {
-  "name": "@solagel/sdk",
+  "name": "@slana/sdk",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "TypeScript client + admin CLI for the Solagel Anchor program",
+  "description": "TypeScript client + admin CLI for the Slana Anchor program",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -17,7 +17,7 @@
   },
   "dependencies": {
     "@anchor-lang/core": "1.2.1",
-    "@solagel/shared": "workspace:*",
+    "@slana/shared": "workspace:*",
     "@solana/web3.js": "^1.98.4",
     "bn.js": "^5.2.1",
     "buffer": "^6.0.3"

@@ -1,4 +1,4 @@
-import { EntityKind, PowerUpType, massToRadius } from '@solagel/shared';
+import { EntityKind, PowerUpType, massToRadius } from '@slana/shared';
 import type { Gridded } from './grid';
 
 export abstract class Entity implements Gridded {

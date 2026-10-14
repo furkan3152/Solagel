@@ -2,11 +2,11 @@ import { readFileSync } from 'node:fs';
 import { ComputeBudgetProgram, Connection, Keypair, SystemProgram, type PublicKey, type TransactionInstruction } from '@solana/web3.js';
 import { describe, expect, it } from 'vitest';
 import * as constants from '../src/constants';
-import { PROGRAM_ID, SolagelClient, pdas } from '../src';
+import { PROGRAM_ID, SlanaClient, pdas } from '../src';
 
 // Port 1 refuses connections: these tests prove the builders never touch the RPC.
 const connection = new Connection('http://127.0.0.1:1', 'confirmed');
-const client = new SolagelClient(connection);
+const client = new SlanaClient(connection);
 const keys = (ix: TransactionInstruction) => ix.keys.map((k) => k.pubkey.toBase58());
 const meta = (ix: TransactionInstruction, key: PublicKey) => ix.keys.find((k) => k.pubkey.equals(key));
 
@@ -80,14 +80,14 @@ describe('instruction builders (no RPC)', () => {
 
   it('honours a custom program id', async () => {
     const other = Keypair.generate().publicKey;
-    const c = new SolagelClient(connection, other.toBase58());
+    const c = new SlanaClient(connection, other.toBase58());
     const ix = await c.ix.joinArena(player, 1);
     expect(ix.programId.equals(other)).toBe(true);
     expect(keys(ix)[3]).toBe(pdas.arena(1, other).toBase58());
   });
 
   it('buildTransaction prepends ComputeBudget instructions', async () => {
-    const c = new SolagelClient(connection);
+    const c = new SlanaClient(connection);
     (c.connection as unknown as { getLatestBlockhash: () => Promise<unknown> }).getLatestBlockhash = async () => ({
       blockhash: '11111111111111111111111111111111',
       lastValidBlockHeight: 99,
@@ -108,7 +108,7 @@ describe('instruction builders (no RPC)', () => {
 
 describe('constants', () => {
   it('match the IDL constants', () => {
-    const idl = JSON.parse(readFileSync(new URL('../src/idl/solagel.json', import.meta.url), 'utf8')) as {
+    const idl = JSON.parse(readFileSync(new URL('../src/idl/slana.json', import.meta.url), 'utf8')) as {
       constants: { name: string; value: string }[];
     };
     const value = (name: string) => JSON.parse(idl.constants.find((c) => c.name === name)!.value) as unknown;
