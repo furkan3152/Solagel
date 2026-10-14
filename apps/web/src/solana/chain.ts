@@ -1,10 +1,12 @@
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { SlanaClient, ata, fetchTokenBalance, pdas, type ArenaView, type ConfigView, type OwnedPass, type ProfileView, type SessionView } from '@slana/sdk';
+import type { PassStatus } from '@slana/shared';
 import { useCallback, useEffect, useMemo } from 'react';
 import { create } from 'zustand';
 import { SERVER } from '../config';
 import { useUi } from '../store';
 import { isDevFake, loadDevFake } from './devFakeLoader';
+import { passStatusOf } from './pass';
 import type { PendingPayout } from './ticket';
 
 export interface SeasonEntryInfo {
@@ -24,6 +26,19 @@ export interface SeasonInfo {
   /** Running pool (raw token units). */
   prizePool: number;
   entries: SeasonEntryInfo[];
+  /** The previous season once finalized: its winners claim from here. */
+  previous: PreviousSeasonInfo | null;
+}
+
+export interface PreviousSeasonInfo {
+  id: number;
+  /** Frozen prize pool, raw token units. */
+  prizePool: number;
+  /** Unix seconds. */
+  endedAt: number;
+  entries: SeasonEntryInfo[];
+  /** Bit `rank` set ⇔ that prize was claimed. */
+  claimedMask: number;
 }
 
 interface ChainData {
@@ -48,6 +63,10 @@ interface ChainData {
   lockedPasses: string[];
   /** Payouts the server still owes this wallet (`/api/pending`). */
   pending: PendingPayout[];
+  /** Passes this wallet minted (its on-chain `MintCounter`); null = unknown. */
+  mintedByMe: number | null;
+  /** Slana Pass collection state: the chain config when loaded, else the server's status. */
+  passStatus: PassStatus | null;
   season: SeasonInfo | null;
   loading: boolean;
 }
@@ -66,9 +85,18 @@ export const useChainData = create<ChainData>(() => ({
   passes: [],
   lockedPasses: [],
   pending: [],
+  mintedByMe: null,
+  passStatus: null,
   season: null,
   loading: false,
 }));
+
+/** The Pass collection state every screen should use (chain config first, server status as the fallback). */
+export function usePassStatus(): PassStatus | null {
+  const fromChain = useChainData((s) => s.passStatus);
+  const fromServer = useUi((s) => s.chain?.pass ?? null);
+  return fromChain ?? fromServer;
+}
 
 let clientCache: { key: string; client: SlanaClient } | null = null;
 
@@ -94,12 +122,29 @@ async function getJson<T>(path: string): Promise<T | null> {
   }
 }
 
+/** Passes minted from this page: shown at once, before the server's owned-Pass cache (30 s) catches up. */
+const recentMints: { owner: string; pass: OwnedPass; at: number }[] = [];
+const RECENT_MINT_MS = 3 * 60_000;
+
+/** Remember a Pass this wallet just minted and show it right away. */
+export function rememberMint(owner: string, pass: OwnedPass): void {
+  recentMints.push({ owner, pass, at: Date.now() });
+  const d = useChainData.getState();
+  if (!d.passes.some((p) => p.asset === pass.asset)) useChainData.setState({ passes: [...d.passes, pass].sort((a, b) => a.number - b.number) });
+}
+
+function withRecentMints(owner: string, passes: OwnedPass[]): OwnedPass[] {
+  const now = Date.now();
+  const extra = recentMints.filter((m) => m.owner === owner && now - m.at < RECENT_MINT_MS && !passes.some((p) => p.asset === m.pass.asset)).map((m) => m.pass);
+  return extra.length ? [...passes, ...extra].sort((a, b) => a.number - b.number) : passes;
+}
+
 async function serverWalletData(owner: string): Promise<{ passes: OwnedPass[]; pending: PendingPayout[] }> {
   const [owned, pend] = await Promise.all([
     getJson<{ passes: OwnedPass[] }>(`/api/pass/owned?wallet=${owner}`),
     getJson<{ pending: PendingPayout[] }>(`/api/pending?wallet=${owner}`),
   ]);
-  return { passes: owned?.passes ?? [], pending: pend?.pending ?? [] };
+  return { passes: withRecentMints(owner, owned?.passes ?? []), pending: pend?.pending ?? [] };
 }
 
 async function loadSeason(): Promise<SeasonInfo | null> {
@@ -136,12 +181,16 @@ export function useChainSync(): void {
     if (fake && chain) {
       const dev = await loadDevFake();
       if (!dev) return;
-      const { fakeConfig, fakeWallet } = dev;
+      const { fakeConfig, fakeWallet, fakePassStatus, fakeSeason } = dev;
       const wallet = owner ? await serverWalletData(owner) : { passes: [], pending: [] };
+      if (owner && fakeWallet.passes) wallet.passes = [...fakeWallet.passes];
+      const passStatus = fakePassStatus(chain);
       set({
         deployed: true,
         fake: true,
-        config: fakeConfig(chain),
+        config: fakeConfig(chain, passStatus),
+        passStatus,
+        mintedByMe: owner ? fakeWallet.minted : null,
         arenas: [],
         profile: owner ? fakeWallet.profile : null,
         profileLoaded: true,
@@ -151,7 +200,7 @@ export function useChainSync(): void {
         ataExists: owner ? fakeWallet.ataExists : null,
         lockedPasses: [],
         ...wallet,
-        season,
+        season: fakeSeason(season, owner),
         loading: false,
       });
       return;
@@ -165,6 +214,8 @@ export function useChainSync(): void {
         arenas: [],
         sessions: {},
         profileLoaded: true,
+        passStatus: null,
+        mintedByMe: null,
         season,
       });
       return;
@@ -184,6 +235,7 @@ export function useChainSync(): void {
       let ataExists: boolean | null = null;
       let wallet: { passes: OwnedPass[]; pending: PendingPayout[] } = { passes: [], pending: [] };
       let lockedPasses: string[] = [];
+      let mintedByMe: number | null = null;
       if (owner && publicKey) {
         const tokenInfo = config
           ? connection.getAccountInfo(ata(owner, config.tokenMint, config.tokenProgram), 'confirmed').then(
@@ -191,13 +243,15 @@ export function useChainSync(): void {
               () => ({ exists: null }),
             )
           : Promise.resolve({ exists: null });
-        const [p, lamports, tokens, account, w] = await Promise.all([
+        const [p, lamports, tokens, account, w, minted] = await Promise.all([
           client.fetchProfile(owner).catch(() => null),
           connection.getBalance(publicKey).catch(() => null),
           config ? fetchTokenBalance(connection, owner, config.tokenMint, config.tokenProgram).catch(() => null) : Promise.resolve(null),
           tokenInfo,
           serverWalletData(owner),
+          config?.passCollection ? client.fetchMintedCount(owner).catch(() => null) : Promise.resolve(0),
         ]);
+        mintedByMe = minted;
         profile = p;
         balance = lamports;
         tokenBalance = tokens;
@@ -224,6 +278,8 @@ export function useChainSync(): void {
         tokenBalance,
         ataExists,
         lockedPasses,
+        mintedByMe,
+        passStatus: passStatusOf(config, useUi.getState().chain?.pass ?? null),
         ...wallet,
         season,
         loading: false,
@@ -247,6 +303,7 @@ export function useChainSync(): void {
       passes: [],
       lockedPasses: [],
       pending: [],
+      mintedByMe: null,
     });
     void refresh();
     const id = window.setInterval(() => void refresh(), 20_000);

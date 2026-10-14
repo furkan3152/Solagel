@@ -4,7 +4,7 @@ import { Icon, usePreset } from '../../design';
 import { engine } from '../../game/instance';
 import { useT } from '../../i18n';
 import { useUi } from '../../store';
-import { useTicker } from '../common';
+import { useTicker } from '../ticker';
 import { EmoteBar } from './EmoteBar';
 
 const TOUCH_QUERY = '(hover: none) and (pointer: coarse)';

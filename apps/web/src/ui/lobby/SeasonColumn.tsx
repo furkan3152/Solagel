@@ -11,7 +11,7 @@ import { useTokenText } from './useLobby';
  * Season standings as a newspaper results table: rank, name, points and the
  * prize share of the running pool (Task 15 brings the full leaderboard page).
  */
-export function SeasonColumn({ limit = 10 }: { limit?: number }) {
+export function SeasonColumn({ limit = 10, onMore }: { limit?: number; onMore?: () => void }) {
   const t = useT();
   const lang = useUi((s) => s.settings.lang);
   const season = useChainData((s) => s.season);
@@ -53,6 +53,12 @@ export function SeasonColumn({ limit = 10 }: { limit?: number }) {
             ))}
           </tbody>
         </table>
+      )}
+      {onMore && season && (
+        <button type="button" className="kl-link mono kl-season__more" onClick={onMore}>
+          {t('nw.more')}
+          <Icon name="arrow" size={16} />
+        </button>
       )}
     </section>
   );

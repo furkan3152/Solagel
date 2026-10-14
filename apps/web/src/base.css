@@ -1,0 +1,54 @@
+/* ─────────────────────────── Kâğıt Bilet · page base ───────────────────────────
+ * The app shell: a fixed full-screen stage for the game canvas, paper behind
+ * it, and no page scroll (each screen scrolls inside its own Kb root).
+ * Tokens live in design/tokens.css (on :root and on every `.kb`).
+ * ------------------------------------------------------------------------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-display);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: none;
+}
+
+input,
+textarea,
+code {
+  user-select: text;
+}
+
+.app {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+.game-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  cursor: crosshair;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .game-canvas {
+    cursor: default;
+  }
+}

@@ -7,10 +7,9 @@ import { useWalletAuth } from './solana/useWalletAuth';
 import { useUi } from './store';
 import { Kb, themeFromSettings } from './design';
 import { Lobby } from './ui/lobby/Lobby';
-import { Modals, Toasts } from './ui/Modals';
-import { ProfileModal } from './solana/ProfileModal';
+import { Toasts } from './ui/Toasts';
 import { WalletModal } from './solana/WalletModal';
-import { CashoutSheet, DeathSheet, GameHud, SettingsSheet } from './ui/game';
+import { CashoutSheet, DeathSheet, GameHud, HowToSheet, SettingsSheet } from './ui/game';
 
 function GameCanvas() {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -51,8 +50,8 @@ function Screens() {
         <DeathSheet />
         <CashoutSheet />
         <SettingsSheet />
+        <HowToSheet />
         <WalletModal />
-        <ProfileModal />
         <Toasts />
       </Kb>
     </>
@@ -68,7 +67,7 @@ export function App() {
   }, [lang]);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#1A1330' : '#FFF6E9');
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#1B1924' : '#F1EADB');
   }, [theme]);
   return (
     <SolanaProvider>
@@ -76,7 +75,6 @@ export function App() {
         <GameCanvas />
         <ChainSync />
         <Screens />
-        <Modals />
       </div>
     </SolanaProvider>
   );

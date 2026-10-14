@@ -1,11 +1,5 @@
 import './polyfills';
-// Legacy UI font: still used by the current lobby/HUD (removed in Task 15).
-import '@fontsource/fredoka/400.css';
-import '@fontsource/fredoka/500.css';
-import '@fontsource/fredoka/600.css';
-import '@fontsource/fredoka/700.css';
-// Kâğıt Bilet design system: fonts + tokens + paper. Scoped under `.kb`, so it
-// loads alongside the legacy styles.css without restyling legacy markup.
+// Kâğıt Bilet design system: fonts, tokens (on :root and every `.kb`) and paper.
 import '@fontsource-variable/bricolage-grotesque/standard.css';
 import '@fontsource/dm-mono/400.css';
 import '@fontsource/dm-mono/500.css';

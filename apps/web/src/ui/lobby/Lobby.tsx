@@ -1,6 +1,7 @@
 import { useWallet } from '@solana/wallet-adapter-react';
-import { useEffect, useState } from 'react';
-import { Chip, Dateline, Icon, Kb, Rule, Sheet, Tabs, themeFromSettings, type TabItem } from '../../design';
+import { AnimatePresence, motion } from 'motion/react';
+import { useEffect, useRef, useState } from 'react';
+import { Chip, Dateline, Icon, Kb, Rule, Tabs, springs, themeFromSettings, useReducedMotion, type IconName, type TabItem } from '../../design';
 import { engine } from '../../game/instance';
 import { sound } from '../../game/sound';
 import { useT } from '../../i18n';
@@ -10,17 +11,18 @@ import { signInWithWallet } from '../../solana/siws';
 import { TicketFlow, type FlowMode } from '../../solana/TicketFlow';
 import { payoutsNeedingAta, type TicketKey } from '../../solana/ticket';
 import { WalletButton } from '../../solana/WalletButton';
-import { openModal, updateSettings, useUi } from '../../store';
+import { goPage, openModal, updateSettings, useUi, type LobbyPage } from '../../store';
+import { Leaderboards } from '../news/Leaderboards';
+import { PassPage } from '../pass/PassPage';
+import { ProfilePage } from '../profile/ProfilePage';
 import { LiveFrame } from './LiveFrame';
 import './lobby.css';
-import { PassCard, PassDesk } from './PassCard';
+import { PassCard } from './PassCard';
 import { PendingBanner } from './PendingBanner';
 import { QuickPlay } from './QuickPlay';
 import { SeasonColumn } from './SeasonColumn';
 import { TicketList } from './TicketList';
 import { useLobbyModel, useMedia, useTokenText } from './useLobby';
-
-type Tab = 'play' | 'ranks' | 'pass' | 'profile';
 
 /**
  * The lobby. Phones follow artboard B (masthead, wallet slip, dateline, Pass
@@ -39,9 +41,15 @@ export function Lobby() {
   const mid = useMedia('(min-width: 760px)');
 
   const [picked, setPicked] = useState<TicketKey | null>(null);
-  const [tab, setTab] = useState<Tab>('play');
+  const tab = useUi((s) => s.page);
+  const setTab = goPage;
   const [flow, setFlow] = useState<{ mode: FlowMode; key: TicketKey; open: boolean } | null>(null);
-  const [passSheet, setPassSheet] = useState(false);
+  const reduced = useReducedMotion();
+  const root = useRef<HTMLDivElement>(null);
+  // a new page starts at its top
+  useEffect(() => {
+    root.current?.scrollTo({ top: 0 });
+  }, [tab]);
 
   const has = (k: TicketKey | null | undefined): k is TicketKey => !!k && model.tickets.some((x) => x.key === k);
   const selectedKey: TicketKey = has(picked) ? picked : model.quick;
@@ -93,8 +101,7 @@ export function Lobby() {
         setFlow({ mode: 'refund', key: ticket.key, open: true });
         return;
       case 'needPass':
-        if (mid) setPassSheet(true);
-        else setTab('pass');
+        setTab('pass');
         return;
       case 'buy':
         setFlow({ mode: 'buy', key: ticket.key, open: true });
@@ -143,20 +150,40 @@ export function Lobby() {
   const side = (
     <aside className="kl-col kl-col--side">
       <div id="kl-pass-slot">
-        <PassCard onApply={() => setPassSheet(true)} />
+        <PassCard onOpen={() => setTab('pass')} />
       </div>
-      <SeasonColumn limit={wide ? 6 : 10} />
-      <ProfileCard />
+      <SeasonColumn limit={wide ? 6 : 10} onMore={() => setTab('ranks')} />
+      <ProfileCard onEdit={() => setTab('profile')} />
     </aside>
   );
 
   return (
-    <Kb theme={themeFromSettings(theme)} className={`kl-root${wide ? ' is-wide has-hole' : mid ? ' is-mid' : ' is-phone'}`}>
+    <Kb ref={root} theme={themeFromSettings(theme)} className={`kl-root${wide ? ` is-wide${tab === 'play' ? ' has-hole' : ''}` : mid ? ' is-mid' : ' is-phone'}`}>
       <div className="kl-sheet-page">
         <Masthead full={mid} wide={wide} />
+        {mid && <SectionNav page={tab} onChange={setTab} />}
 
-        {mid ? (
-          <main className={`kl-front${wide ? ' has-photo' : ''}`}>
+        <AnimatePresence mode="wait" initial={false}>
+        {mid && tab !== 'play' ? (
+          <motion.main
+            key={tab}
+            className="kl-section"
+            initial={reduced ? { opacity: 0 } : { opacity: 0, y: 14 }}
+            animate={reduced ? { opacity: 1 } : { opacity: 1, y: 0 }}
+            exit={reduced ? { opacity: 0 } : { opacity: 0, y: -8 }}
+            transition={reduced ? { duration: 0.12 } : { ...springs.sheet, opacity: { duration: 0.16 } }}
+          >
+            <SectionPage page={tab} />
+          </motion.main>
+        ) : mid ? (
+          <motion.main
+            key="play"
+            className={`kl-front${wide ? ' has-photo' : ''}`}
+            initial={reduced ? { opacity: 0 } : { opacity: 0, y: 14 }}
+            animate={reduced ? { opacity: 1 } : { opacity: 1, y: 0 }}
+            exit={reduced ? { opacity: 0 } : { opacity: 0, y: -8 }}
+            transition={reduced ? { duration: 0.12 } : { ...springs.sheet, opacity: { duration: 0.16 } }}
+          >
             {tickets}
             {wide && (
               <>
@@ -169,21 +196,28 @@ export function Lobby() {
             )}
             <Rule className="kl-vrule" aria-hidden="true" />
             {side}
-          </main>
+          </motion.main>
         ) : (
-          <main className="kl-phone-main">
-            {tab === 'play' && (
+          <motion.main
+            key={tab}
+            className="kl-phone-main"
+            initial={reduced ? { opacity: 0 } : { opacity: 0, x: 18 }}
+            animate={reduced ? { opacity: 1 } : { opacity: 1, x: 0 }}
+            exit={reduced ? { opacity: 0 } : { opacity: 0, x: -12 }}
+            transition={reduced ? { duration: 0.12 } : { ...springs.sheet, opacity: { duration: 0.14 } }}
+          >
+            {tab === 'play' ? (
               <>
                 <PendingBanner onCreateAta={createAta} />
-                <PassCard onApply={() => setTab('pass')} />
+                <PassCard onOpen={() => setTab('pass')} />
                 {tickets}
               </>
+            ) : (
+              <SectionPage page={tab} />
             )}
-            {tab === 'ranks' && <SeasonColumn />}
-            {tab === 'pass' && <PassDesk />}
-            {tab === 'profile' && <ProfileCard />}
-          </main>
+          </motion.main>
         )}
+        </AnimatePresence>
       </div>
 
       {!mid && (
@@ -197,24 +231,51 @@ export function Lobby() {
         </footer>
       )}
 
-      <Sheet
-        open={passSheet && mid}
-        onClose={() => setPassSheet(false)}
-        closeLabel={t('lo.close')}
-        kicker={t('lo.tab.pass')}
-        title={t('lo.pass.perks')}
-        className="kl-sheet"
-      >
-        <PassDesk />
-      </Sheet>
       <TicketFlow open={!!flow?.open} mode={flow?.mode ?? 'buy'} ticket={flowTicket} onClose={() => setFlow((f) => (f ? { ...f, open: false } : f))} />
     </Kb>
   );
 }
 
-function PhoneTabs({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
+function SectionPage({ page }: { page: LobbyPage }) {
+  if (page === 'ranks') return <Leaderboards />;
+  if (page === 'pass') return <PassPage />;
+  if (page === 'profile') return <ProfilePage />;
+  return null;
+}
+
+const SECTIONS: { id: LobbyPage; key: 'lo.tickets' | 'lo.tab.ranks' | 'lo.tab.pass' | 'lo.tab.profile'; icon: IconName }[] = [
+  { id: 'play', key: 'lo.tickets', icon: 'ticket' },
+  { id: 'ranks', key: 'lo.tab.ranks', icon: 'trophy' },
+  { id: 'pass', key: 'lo.tab.pass', icon: 'passport' },
+  { id: 'profile', key: 'lo.tab.profile', icon: 'user' },
+];
+
+/** Desktop section index under the dateline: the newspaper's pages, A to D. */
+function SectionNav({ page, onChange }: { page: LobbyPage; onChange: (p: LobbyPage) => void }) {
   const t = useT();
-  const items: TabItem<Tab>[] = [
+  const spring = springs.dial;
+  return (
+    <nav className="kl-sections" aria-label={t('nav.sections')}>
+      {SECTIONS.map((s, i) => {
+        const on = s.id === page;
+        return (
+          <button key={s.id} type="button" className={`kl-sections__item${on ? ' is-on' : ''}`} aria-current={on ? 'page' : undefined} onClick={() => onChange(s.id)}>
+            <span className="kl-sections__letter mono" aria-hidden="true">
+              {String.fromCharCode(65 + i)}
+            </span>
+            <Icon name={s.icon} size={18} />
+            <span className="kl-sections__label">{t(s.key)}</span>
+            {on && <motion.span layoutId="kl-sections-ink" className="kl-sections__ink" transition={spring} />}
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
+function PhoneTabs({ tab, setTab }: { tab: LobbyPage; setTab: (t: LobbyPage) => void }) {
+  const t = useT();
+  const items: TabItem<LobbyPage>[] = [
     { id: 'play', label: t('lo.tab.play'), icon: 'ticket' },
     { id: 'ranks', label: t('lo.tab.ranks'), icon: 'trophy' },
     { id: 'pass', label: t('lo.tab.pass'), icon: 'passport' },

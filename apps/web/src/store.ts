@@ -60,7 +60,11 @@ export interface Toast {
   at: number;
 }
 
-export type Modal = 'settings' | 'howto' | 'shop' | 'profile' | 'wallet' | 'leaderboard' | 'stakes' | null;
+export type Modal = 'settings' | 'howto' | 'wallet' | null;
+
+/** Lobby pages: the ticket front page, the newspaper leaderboard, the Pass office, the profile. */
+export type LobbyPage = 'play' | 'ranks' | 'pass' | 'profile';
+const PAGES: readonly LobbyPage[] = ['play', 'ranks', 'pass', 'profile'];
 
 export interface AuthState {
   pubkey: string;
@@ -100,6 +104,8 @@ export interface UiState {
   spectateTarget: number | null;
   toasts: Toast[];
   modal: Modal;
+  /** Lobby page (mirrored in the URL hash: `#pass`, `#ranks`, `#profile`). */
+  page: LobbyPage;
   /** Death / receipt "Yeni bilet": the lobby selects this ticket and opens its confirm sheet. */
   lobbyIntent: { ticket: 'practice' | `arena:${number}`; open: boolean; at: number } | null;
   auth: AuthState | null;
@@ -170,6 +176,7 @@ export const useUi = create<UiState>(() => ({
   spectateTarget: null,
   toasts: [],
   modal: null,
+  page: pageFromHash(),
   lobbyIntent: null,
   auth: null,
   settings: loadSettings(),
@@ -193,6 +200,33 @@ export function toast(kind: Toast['kind'], text: string, link?: Toast['link'], t
 }
 
 export const openModal = (modal: Modal) => useUi.setState({ modal });
+
+function pageFromHash(): LobbyPage {
+  try {
+    const h = location.hash.replace(/^#/, '') as LobbyPage;
+    return PAGES.includes(h) ? h : 'play';
+  } catch {
+    return 'play';
+  }
+}
+
+/** Opens a lobby page (and keeps the URL hash in step, so a page can be linked: `/#pass`). */
+export function goPage(page: LobbyPage): void {
+  useUi.setState({ page });
+  try {
+    const hash = page === 'play' ? '' : `#${page}`;
+    if (location.hash !== hash) history.replaceState(null, '', `${location.pathname}${location.search}${hash}`);
+  } catch {
+    /* no history (tests) */
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('hashchange', () => {
+    const page = pageFromHash();
+    if (page !== useUi.getState().page) useUi.setState({ page });
+  });
+}
 
 /** "Yeni bilet": back to the lobby with this ticket selected (and its confirm sheet open for arenas). */
 export function requestTicket(arenaId: number | null): void {

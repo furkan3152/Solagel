@@ -1,9 +1,9 @@
 /* ─────────────────────────── Kâğıt Bilet · tokens ───────────────────────────
- * Spec §7.1. Tokens are scoped to `.kb` (the design-system root) instead of
- * `:root`, because the legacy stylesheet (styles.css) still owns `:root`
- * variables with the same names (--ink, --pink, --card) until Task 15 removes
- * it. Custom properties resolve from the nearest ancestor, so any subtree
- * wrapped in `.kb` gets the Kâğıt Bilet values and legacy markup is untouched.
+ * Spec §7.1. The tokens sit on `:root` (the page itself, body background,
+ * the canvas stage) and again on every `.kb` root, so a `<Kb theme>` subtree
+ * keeps its own paper / night print whatever the page around it uses.
+ * `:root[data-theme='dark']` (the app's night setting) prints the page itself
+ * at night.
  *
  * Contrast notes (WCAG, measured):
  *   --ink-2 on --paper 5.66, on --card 6.62 | night: 8.0 / 7.1
@@ -16,6 +16,7 @@
  *   (5.69); plain --teal with --card text is 3.28 (large text only).
  * ------------------------------------------------------------------------- */
 
+:root,
 .kb {
   /* paper & ink */
   --paper: #f1eadb;
@@ -96,6 +97,7 @@
 
 /* Gece baskısı: same accents, inverted stock. Text-safe accent inks are
  * lightened so they keep >= 4.5:1 on the dark paper and card. */
+:root[data-theme='dark'],
 .kb[data-theme='night'],
 [data-theme='night'] .kb {
   --paper: #1b1924;

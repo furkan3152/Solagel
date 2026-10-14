@@ -1,12 +1,12 @@
-import type { Expression } from '@slana/art';
+import type { CoinLook, Expression } from '@slana/art';
 import { useEffect, useRef } from 'react';
 import { useReducedMotion } from '../../design';
 import { drawCoinLook } from '../../render/coin';
 import { JellyBody } from '../../render/jelly';
 import { LookCache } from '../../render/looks';
 import { canvasDpr } from '../../render/renderer';
-import { useUi } from '../../store';
-import { useTicker } from '../common';
+import { usePassStatus } from '../../solana/chain';
+import { useTicker } from '../ticker';
 
 // one look cache for every portrait (Pass looks come from the revealed collection)
 const looks = new LookCache();
@@ -23,6 +23,7 @@ export function CoinPortrait({
   seed = 1,
   className,
   still = false,
+  look,
 }: {
   skin: number;
   pass?: number;
@@ -32,10 +33,12 @@ export function CoinPortrait({
   className?: string;
   /** Draw once, no animation loop (grids of many portraits). */
   still?: boolean;
+  /** An explicit look (Pass preview, sealed or revealed passport), instead of `skin` / `pass`. */
+  look?: CoinLook;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const jelly = useRef(new JellyBody());
-  const status = useUi((s) => s.chain?.pass ?? null);
+  const status = usePassStatus();
   const reduced = useReducedMotion();
 
   const draw = (now: number, dt: number) => {
@@ -55,7 +58,7 @@ export function CoinPortrait({
     const lx = reduced ? 0 : Math.cos(now / 1400 + seed) * 0.4;
     const ly = reduced ? 0.2 : Math.sin(now / 1700 + seed) * 0.25;
     if (!reduced) jelly.current.update(dt, r, r, lx * 0.5, ly * 0.5, [], rand);
-    drawCoinLook(ctx, size / 2, size / 2 + size * 0.05, r, looks.lookFor(skin, pass, status), {
+    drawCoinLook(ctx, size / 2, size / 2 + size * 0.05, r, look ?? looks.lookFor(skin, pass, status), {
       time: reduced ? 0 : now,
       lookX: lx,
       lookY: ly,
@@ -71,7 +74,7 @@ export function CoinPortrait({
   useEffect(() => {
     if (!loop) draw(0, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [skin, pass, size, expression, loop, status]);
+  }, [skin, pass, size, expression, loop, status, look]);
 
   return <canvas ref={ref} className={className} style={{ width: size, height: size }} aria-hidden="true" />;
 }
