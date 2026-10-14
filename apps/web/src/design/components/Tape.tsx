@@ -1,6 +1,6 @@
-import type { CSSProperties, ReactNode } from 'react';
+import type { CSSProperties, HTMLAttributes, ReactNode } from 'react';
 
-export interface TapeProps {
+export interface TapeProps extends Omit<HTMLAttributes<HTMLSpanElement>, 'children' | 'style'> {
   /** Degrees, default -4. */
   rotate?: number;
   tone?: 'mustard' | 'pink' | 'teal' | 'paper';
@@ -16,9 +16,10 @@ export interface TapeProps {
 }
 
 /** A strip of translucent masking tape with torn ends. Decorative. */
-export function Tape({ rotate = -4, tone = 'mustard', width = 88, children, className, style, inline = false }: TapeProps) {
+export function Tape({ rotate = -4, tone = 'mustard', width = 88, children, className, style, inline = false, ...rest }: TapeProps) {
   return (
     <span
+      {...rest}
       className={`kb-tape kb-tape--${tone}${inline ? ' is-inline' : ''}${className ? ` ${className}` : ''}`}
       style={{ ...style, width, transform: `rotate(${rotate}deg)` }}
       aria-hidden={children ? undefined : true}
