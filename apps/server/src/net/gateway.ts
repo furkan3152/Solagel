@@ -324,9 +324,9 @@ export class Gateway {
         this.error(conn, 'no_session', 'This arena ticket expired and will be refunded.');
         return;
       }
-      // the instance may have filled up during the awaits above: pick again (arena data is cached)
-      if (room.isFull) room = await this.rooms.arenaRoom(target.arenaId);
-      if (!room || room.isFull) {
+      // the instance may have filled up or been closed during the awaits above: pick again (arena data is cached)
+      room = await this.rooms.confirmArenaRoom(target.arenaId, room);
+      if (!room) {
         this.error(conn, 'room_full', 'Arena is full — try again in a moment.');
         return;
       }

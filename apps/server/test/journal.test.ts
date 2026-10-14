@@ -108,6 +108,9 @@ describe('journal v2', () => {
     const j3 = new Journal(path);
     expect(j3.lootTotal()).toBe(145);
     expect(j3.recoverLoot(1).map((l) => l.roomId)).toEqual(['arena-1-1', 'arena-1-1']);
+    // adoption is one-shot per arena: a second construction cannot restore the same loot twice
+    expect(j2.adoptLoot(1, 'arena-1-1')).toEqual([]);
+    expect(j2.lootTotal()).toBe(145);
     // the merged instance's next write keeps everything it restored
     j3.commit({ loot: { roomId: 'arena-1-1', arenaId: 1, items: adopted } });
     expect(new Journal(path).lootTotal()).toBe(145);

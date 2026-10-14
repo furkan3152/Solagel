@@ -84,6 +84,8 @@ export class Journal {
   private pendingItems: SettlementItem[] = [];
   private liveByRoom = new Map<string, LiveStake[]>();
   private lootByRoom = new Map<string, LootRecord[]>();
+  /** Arenas whose loot was already adopted in this process (restored once only). */
+  private readonly adopted = new Set<number>();
 
   constructor(
     private readonly path: string | null,
@@ -137,9 +139,12 @@ export class Journal {
   /**
    * Moves every loot record of `arenaId` (from all instances) under `roomId`
    * in one atomic write and returns them. The adopting room restores them, so
-   * its later commits keep the whole amount.
+   * its later commits keep the whole amount. One-shot per arena and process:
+   * a second call returns nothing, so the same loot is never restored twice.
    */
   adoptLoot(arenaId: number, roomId: string): LootRecord[] {
+    if (this.adopted.has(arenaId)) return [];
+    this.adopted.add(arenaId);
     const all = this.recoverLoot(arenaId).map((l) => ({ ...l, roomId }));
     let moved = false;
     for (const [rid, list] of [...this.lootByRoom]) {
