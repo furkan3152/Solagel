@@ -37,13 +37,18 @@ export interface LiveStake {
   hasPass: boolean;
 }
 
-/** A loot piece lying on an arena's floor (value in raw token units). */
+/** A loot piece lying on an arena instance's floor (value in raw token units). */
 export interface LootRecord {
+  /** The arena instance (room id) whose floor holds the piece. */
+  roomId: string;
   arenaId: number;
   x: number;
   y: number;
   value: number;
 }
+
+/** Room id of an arena's first instance (where recovered loot is merged). */
+export const firstArenaInstance = (arenaId: number): string => `arena-${arenaId}-1`;
 
 interface JournalFile {
   version: 2;
@@ -70,11 +75,15 @@ interface JournalFileV1 {
  * writes live values and loot together.
  *
  * File format v2 adds `loot` and `LiveStake.hasPass`; v1 files are migrated on load.
+ * Loot is keyed by arena instance (room id), so instances of one arena never
+ * overwrite each other's records; on restart an arena's first instance adopts
+ * every instance's loot (`adoptLoot`). Records written before instances
+ * existed (no `roomId`) belong to the first instance.
  */
 export class Journal {
   private pendingItems: SettlementItem[] = [];
   private liveByRoom = new Map<string, LiveStake[]>();
-  private lootByArena = new Map<number, LootRecord[]>();
+  private lootByRoom = new Map<string, LootRecord[]>();
 
   constructor(
     private readonly path: string | null,
@@ -95,9 +104,9 @@ export class Journal {
         this.liveByRoom.set(l.roomId, list);
       }
       for (const l of data.loot) {
-        const list = this.lootByArena.get(l.arenaId) ?? [];
+        const list = this.lootByRoom.get(l.roomId) ?? [];
         list.push(l);
-        this.lootByArena.set(l.arenaId, list);
+        this.lootByRoom.set(l.roomId, list);
       }
     } catch (err) {
       const backup = `${this.path}.corrupt-${Date.now()}`;
@@ -118,15 +127,39 @@ export class Journal {
     return [...this.liveByRoom.values()].flat();
   }
 
-  /** Loot that was on an arena's floor at the last write (empty when none). */
+  /** Loot that was on any instance of an arena at the last write (empty when none). Non-destructive. */
   recoverLoot(arenaId: number): LootRecord[] {
-    return (this.lootByArena.get(arenaId) ?? []).map((l) => ({ ...l }));
+    const out: LootRecord[] = [];
+    for (const list of this.lootByRoom.values()) for (const l of list) if (l.arenaId === arenaId) out.push({ ...l });
+    return out;
+  }
+
+  /**
+   * Moves every loot record of `arenaId` (from all instances) under `roomId`
+   * in one atomic write and returns them. The adopting room restores them, so
+   * its later commits keep the whole amount.
+   */
+  adoptLoot(arenaId: number, roomId: string): LootRecord[] {
+    const all = this.recoverLoot(arenaId).map((l) => ({ ...l, roomId }));
+    let moved = false;
+    for (const [rid, list] of [...this.lootByRoom]) {
+      if (rid === roomId || !list.some((l) => l.arenaId === arenaId)) continue;
+      moved = true;
+      const rest = list.filter((l) => l.arenaId !== arenaId);
+      if (rest.length > 0) this.lootByRoom.set(rid, rest);
+      else this.lootByRoom.delete(rid);
+    }
+    const own = (this.lootByRoom.get(roomId) ?? []).filter((l) => l.arenaId !== arenaId);
+    if (all.length > 0 || own.length > 0) this.lootByRoom.set(roomId, [...own, ...all]);
+    else this.lootByRoom.delete(roomId);
+    if (moved) this.persist();
+    return all.map((l) => ({ ...l }));
   }
 
   /** Σ loot value over every arena. */
   lootTotal(): number {
     let sum = 0;
-    for (const list of this.lootByArena.values()) for (const l of list) sum += l.value;
+    for (const list of this.lootByRoom.values()) for (const l of list) sum += l.value;
     return sum;
   }
 
@@ -163,13 +196,13 @@ export class Journal {
 
   /**
    * Atomically enqueue settlements, replace a room's live snapshot and
-   * replace an arena's loot records.
+   * replace an arena instance's loot records.
    */
   commit(opts: {
     enqueue?: SettlementItem[];
     roomId?: string;
     live?: LiveStake[];
-    loot?: { arenaId: number; items: { x: number; y: number; value: number }[] };
+    loot?: { roomId: string; arenaId: number; items: { x: number; y: number; value: number }[] };
   }): void {
     if (opts.enqueue) {
       for (const item of opts.enqueue) {
@@ -181,9 +214,9 @@ export class Journal {
       else this.liveByRoom.delete(opts.roomId);
     }
     if (opts.loot) {
-      const { arenaId, items } = opts.loot;
-      if (items.length > 0) this.lootByArena.set(arenaId, items.map((i) => ({ arenaId, x: i.x, y: i.y, value: i.value })));
-      else this.lootByArena.delete(arenaId);
+      const { roomId, arenaId, items } = opts.loot;
+      if (items.length > 0) this.lootByRoom.set(roomId, items.map((i) => ({ roomId, arenaId, x: i.x, y: i.y, value: i.value })));
+      else this.lootByRoom.delete(roomId);
     }
     this.persist();
   }
@@ -215,7 +248,7 @@ export class Journal {
       version: 2,
       pending: this.pendingItems,
       live: this.live(),
-      loot: [...this.lootByArena.values()].flat(),
+      loot: [...this.lootByRoom.values()].flat(),
       updatedAt: Date.now(),
     };
     mkdirSync(dirname(this.path), { recursive: true });
@@ -240,6 +273,10 @@ function migrate(data: JournalFile | JournalFileV1): JournalFile {
   if (data.version !== 2 || !Array.isArray(data.loot)) throw new Error('bad journal shape');
   for (const l of data.loot) {
     if (!Number.isSafeInteger(l.value) || l.value <= 0 || !Number.isFinite(l.x) || !Number.isFinite(l.y)) throw new Error('bad loot record');
+    if (!Number.isInteger(l.arenaId) || l.arenaId < 0) throw new Error('bad loot record');
+    // written before arena instances existed: the arena's single room is its first instance
+    if (l.roomId === undefined) l.roomId = firstArenaInstance(l.arenaId);
+    else if (typeof l.roomId !== 'string' || l.roomId.length === 0) throw new Error('bad loot record');
   }
   return data;
 }

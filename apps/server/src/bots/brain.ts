@@ -13,6 +13,9 @@ export interface BotDecision {
 
 /** Approximate flight distance of a freshly split half (boost + own speed). */
 const SPLIT_REACH = RULES.splitSpeed / -Math.log(RULES.splitDecayPerSec);
+/** Seconds of a threat's closing speed added to its reach (a split-capable threat gets more). */
+const THREAT_LEAD_S = 0.3;
+const THREAT_LEAD_SPLIT_S = 0.6;
 /** Bots politely steer around humans who joined less than this long ago (and never split-attack them). */
 export const NEWBIE_GRACE_MS = 25_000;
 
@@ -108,6 +111,9 @@ export class BotBrain {
         case EntityKind.PowerUp:
           powerUps.push(e);
           return;
+        case EntityKind.Loot:
+          // loot is never food for bots: they carry no value and cannot pick it up
+          return;
       }
     });
 
@@ -129,7 +135,12 @@ export class BotBrain {
           const splitKill = t.mass / 2 >= c.mass * RULES.eatRatio && t.player.cells.length < RULES.maxCells;
           const d = Math.hypot(c.x - tx, c.y - ty);
           const reach = t.r + (splitKill ? SPLIT_REACH + t.r * 0.2 : 0) + 25;
-          const edge = d - reach - c.r * 0.2;
+          // prediction: a threat closing in (and more so one that can split-kill) is closer than it looks
+          const ux = (c.x - t.x) / Math.max(1, Math.hypot(c.x - t.x, c.y - t.y));
+          const uy = (c.y - t.y) / Math.max(1, Math.hypot(c.x - t.x, c.y - t.y));
+          const closing = Math.max(0, tv.x * ux + tv.y * uy);
+          const lead = closing * (splitKill ? THREAT_LEAD_SPLIT_S : THREAT_LEAD_S);
+          const edge = d - reach - c.r * 0.2 - lead;
           const zone = 330 * P.caution + c.r;
           if (edge > zone) continue;
           const proximity = clamp(1 - edge / zone, 0, 1.6);

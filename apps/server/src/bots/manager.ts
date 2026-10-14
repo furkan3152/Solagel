@@ -1,9 +1,9 @@
-import { BOT_NAMES, PlayerFlag, clamp } from '@slana/shared';
+import { BASIC_SKINS, BOT_NAMES, PlayerFlag, clamp } from '@slana/shared';
 import type { Player } from '../game/entities';
 import { randRange, type Rng } from '../game/rng';
 import type { World } from '../game/world';
 import { BotBrain } from './brain';
-import { rollPersonality } from './personality';
+import { rollPersonality, type BotMix } from './personality';
 
 export interface BotManagerOptions {
   /** Desired total population (humans + bots). */
@@ -11,6 +11,8 @@ export interface BotManagerOptions {
   /** Bots kept even when many humans are online. */
   min: number;
   max: number;
+  /** Difficulty mix (default `standard`). */
+  mix?: BotMix;
 }
 
 export interface Bot {
@@ -60,8 +62,9 @@ export class BotManager {
     return `${BOT_NAMES[Math.floor(this.rng() * BOT_NAMES.length)]}_${Math.floor(this.rng() * 90 + 10)}`;
   }
 
+  /** Bots wear the basic skins only (Pass looks and premium skins belong to people). */
   private pickSkin(): number {
-    return this.rng() < 0.15 ? 16 + Math.floor(this.rng() * 8) : Math.floor(this.rng() * 16);
+    return Math.floor(this.rng() * BASIC_SKINS.length);
   }
 
   spawnBot(mass?: number): Bot {
@@ -74,7 +77,7 @@ export class BotManager {
     });
     const bot: Bot = {
       player,
-      brain: new BotBrain(rollPersonality(this.rng), this.rng),
+      brain: new BotBrain(rollPersonality(this.rng, this.opts.mix ?? 'standard'), this.rng),
       retireAt: this.world.now + randRange(this.rng, 4 * 60_000, 12 * 60_000),
     };
     this.bots.set(player.id, bot);

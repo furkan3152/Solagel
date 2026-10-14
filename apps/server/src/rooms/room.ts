@@ -14,6 +14,7 @@ import {
   type ClientInput,
   type DeathStats,
   type LbEntry,
+  type League,
   type RoomInfo,
   type RoomMode,
   type ServerMessage,
@@ -45,6 +46,23 @@ export interface RoomDeps {
   canRecord: (wallet: string) => boolean;
   recordMinScore: number;
   log: (msg: string) => void;
+  /** Slana Pass power (defaults to `RULES.passStartMassMul` / `RULES.passCashoutMs`). */
+  pass?: { startMassMul: number; cashoutMs: number };
+  /** A human's game ended (death, leave or cash-out). */
+  onGameOver?: (e: { room: Room; conn: Conn | null; player: Player; stats: DeathStats }) => void;
+}
+
+/** What a joining player brings besides name and skin. */
+export interface JoinOptions {
+  name: string;
+  skin: number;
+  flags: number;
+  /** Arena ticket; `stake.hasPass` turns on Pass power in arenas. */
+  stake?: Omit<ArenaEntry, 'pid'>;
+  /** Verified Slana Pass number the player wears (0 / absent = none). Outside arenas it also turns on Pass power. */
+  pass?: number;
+  /** Outside arenas: a verified Pass is equipped (Pass power) even when its number is unknown. */
+  hasPass?: boolean;
 }
 
 export interface RoomOptions {
@@ -53,8 +71,12 @@ export interface RoomOptions {
   name: string;
   maxPlayers: number;
   code?: string;
+  /** Practice rooms: the league this room serves. */
+  league?: League;
+  /** Arena rooms: instance (shard) number within the arena, from 1. */
+  instance?: number;
   bots: BotManagerOptions | null;
-  stake?: { arenaId: number; buyIn: number };
+  stake?: { arenaId: number; buyIn: number; requiresPass?: boolean };
   seed?: number;
 }
 
@@ -96,8 +118,8 @@ export class Room {
     this.world = new World({ ...preset, powerUps: true, coinRain: opts.mode !== 'arena', seed });
     this.bots = opts.bots ? new BotManager(this.world, opts.bots, mulberry32(seed ^ 0xb07)) : null;
     this.ledger = opts.mode === 'arena' ? new ArenaLedger() : null;
-    // loot left on this arena's floor when the server last stopped
-    if (this.ledger && opts.stake) this.world.restoreLoot(deps.journal.recoverLoot(opts.stake.arenaId));
+    // loot left on any of this arena's instances when the server last stopped: the first instance adopts it all
+    if (this.ledger && opts.stake && (opts.instance ?? 1) === 1) this.world.restoreLoot(deps.journal.adoptLoot(opts.stake.arenaId, this.id));
   }
 
   get id(): string {
@@ -114,10 +136,25 @@ export class Room {
       players: this.humans.size,
       bots: this.bots?.bots.size ?? 0,
       maxPlayers: this.opts.maxPlayers,
+      league: this.opts.league,
       arenaId: this.opts.stake?.arenaId,
       entryFee: this.opts.stake?.buyIn,
+      requiresPass: this.opts.stake ? (this.opts.stake.requiresPass ?? false) : undefined,
+      instance: this.opts.stake ? (this.opts.instance ?? 1) : undefined,
+      loot: this.ledger ? this.lootValue() : undefined,
       code: this.opts.code,
     };
+  }
+
+  /** Σ value of the loot lying on this room's floor. */
+  lootValue(): number {
+    let sum = 0;
+    for (const l of this.world.loot()) sum += l.value;
+    return sum;
+  }
+
+  private get passPower(): { startMassMul: number; cashoutMs: number } {
+    return this.deps.pass ?? { startMassMul: RULES.passStartMassMul, cashoutMs: RULES.passCashoutMs };
   }
 
   get isFull(): boolean {
@@ -159,9 +196,16 @@ export class Room {
   /* Joining / leaving                                                */
   /* ---------------------------------------------------------------- */
 
-  join(conn: Conn, opts: { name: string; skin: number; flags: number; stake?: Omit<ArenaEntry, 'pid'> }): Player {
+  join(conn: Conn, opts: JoinOptions): Player {
     this.attach(conn);
-    const player = this.world.addPlayer({ name: opts.name, skin: opts.skin, flags: opts.flags });
+    const pass = Number.isInteger(opts.pass) && (opts.pass ?? 0) > 0 && (opts.pass ?? 0) <= 0xffff ? opts.pass! : 0;
+    // Pass power: arenas take it from the ticket, other rooms from a verified Pass
+    const hasPass = this.ledger ? (opts.stake?.hasPass ?? false) : pass > 0 || opts.hasPass === true;
+    const flags = hasPass || pass > 0 ? opts.flags | PlayerFlag.Pass : opts.flags & ~PlayerFlag.Pass;
+    const mass = hasPass ? RULES.startMass * this.passPower.startMassMul : RULES.startMass;
+    const player = this.world.addPlayer({ name: opts.name, skin: opts.skin, flags, mass });
+    player.pass = pass;
+    player.hasPass = hasPass;
     this.humans.set(player.id, conn);
     conn.player = player;
     conn.spectating = false;
@@ -180,6 +224,8 @@ export class Room {
       name: player.name,
       skin: player.skin,
       value: this.ledger?.value(player.id),
+      entryFee: this.ledger ? this.entryFee : undefined,
+      hasPass: hasPass || undefined,
     });
     conn.send({ t: 'history', chat: this.chatLog });
     return player;
@@ -197,7 +243,16 @@ export class Room {
     conn.spectating = false;
     conn.lastName = p.name;
     conn.lastSkin = p.skin;
-    conn.send({ t: 'joined', room: this.info(), playerId: p.id, name: p.name, skin: p.skin, value: this.ledger?.value(pid) });
+    conn.send({
+      t: 'joined',
+      room: this.info(),
+      playerId: p.id,
+      name: p.name,
+      skin: p.skin,
+      value: this.ledger?.value(pid),
+      entryFee: this.ledger ? this.entryFee : undefined,
+      hasPass: p.hasPass || undefined,
+    });
     conn.send({ t: 'history', chat: this.chatLog });
     return true;
   }
@@ -295,8 +350,9 @@ export class Room {
   cashout(conn: Conn): void {
     const p = conn.player;
     if (!this.ledger || !p || !p.alive || p.cashoutUntil > 0) return;
-    p.cashoutUntil = this.world.now + RULES.cashoutMs;
-    conn.send({ t: 'cashout', state: 'started', ms: RULES.cashoutMs });
+    const ms = p.hasPass ? this.passPower.cashoutMs : RULES.cashoutMs;
+    p.cashoutUntil = this.world.now + ms;
+    conn.send({ t: 'cashout', state: 'started', ms });
   }
 
   private cancelCashout(p: Player): void {
@@ -357,7 +413,7 @@ export class Room {
       return;
     }
     const loot = this.opts.stake
-      ? { arenaId: this.opts.stake.arenaId, items: this.world.loot().map((l) => ({ x: l.x, y: l.y, value: l.value })) }
+      ? { roomId: this.id, arenaId: this.opts.stake.arenaId, items: this.world.loot().map((l) => ({ x: l.x, y: l.y, value: l.value })) }
       : undefined;
     this.deps.journal.commit({ enqueue, roomId: this.id, live: this.liveStakes(), loot });
     this.journalDirty = false;
@@ -462,6 +518,11 @@ export class Room {
     }
 
     const c = conn ?? this.humans.get(p.id) ?? null;
+    try {
+      this.deps.onGameOver?.({ room: this, conn: c, player: p, stats });
+    } catch (err) {
+      this.deps.log(`room ${this.id}: game-over hook failed: ${(err as Error).message}`);
+    }
     this.world.removePlayer(p.id);
     this.humans.delete(p.id);
     this.afkSince.delete(p.id);

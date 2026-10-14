@@ -128,7 +128,7 @@ describe('server over websocket', () => {
     const c = await Client.connect(port);
     c.send({ t: 'hello', v: PROTOCOL_VERSION, lang: 'tr' });
     const welcome = await c.wait('welcome');
-    expect(welcome.rooms.some((r) => r.id === 'free-1')).toBe(true);
+    expect(welcome.rooms.some((r) => r.id === 'practice-rookie-1')).toBe(true);
     expect(welcome.rooms.some((r) => r.mode === 'arena' && r.arenaId === 1)).toBe(true);
     expect(welcome.chain.enabled).toBe(true);
     c.close();
@@ -295,7 +295,7 @@ describe('server over websocket', () => {
     const j1 = await a.wait('joined');
     a.close();
     await sleep(200);
-    const room = app.rooms.rooms.get('stake-1')!;
+    const room = app.rooms.rooms.get('arena-1-1')!;
     expect(room.world.players.get(j1.playerId)?.afk).toBe(true);
 
     const b = await Client.connect(port);
@@ -317,7 +317,7 @@ describe('server over websocket', () => {
     await c.wait('welcome');
     c.send({ t: 'spectate' });
     const s = await c.wait('spectating');
-    expect(s.room.id).toMatch(/^free-/);
+    expect(s.room.id).toMatch(/^practice-/);
     await sleep(300);
     expect(c.snaps.length).toBeGreaterThan(3);
     expect(c.snaps.some((sn) => sn.upserts.some((u) => u.kind === EntityKind.Cell))).toBe(true);

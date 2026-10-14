@@ -1,40 +1,71 @@
-import { TICK_MS, arenaMeta, type RoomInfo } from '@slana/shared';
+import { TICK_MS, arenaMeta, type League, type RoomInfo } from '@slana/shared';
 import type { ChainGateway } from '../chain/types';
 import type { ServerConfig } from '../config';
 import type { Conn } from '../net/conn';
+import type { ArenaEntry } from '../stake/ledger';
 import { Room, type RoomDeps } from './room';
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+/** On-chain arena list is re-read at most this often. */
+const ARENA_CACHE_MS = 30_000;
+/** Practice players with this profile level or more always play in the pro league. */
+export const PRO_LEVEL = 5;
+/** A rookie game with max mass above this promotes the player's IP to pro… */
+export const PROMOTE_MAX_MASS = 3000;
+/** …and so does one with at least this many player kills. */
+export const PROMOTE_KILLS = 8;
+/** How long a promotion lasts. */
+export const PROMOTION_MS = 24 * 3600_000;
+
+interface ArenaData {
+  buyIn: number;
+  maxPlayers: number;
+  enabled: boolean;
+  requiresPass: boolean;
+}
 
 export class RoomManager {
   readonly rooms = new Map<string, Room>();
   readonly conns = new Set<Conn>();
-  private freeCounter = 0;
   private timer: NodeJS.Timeout | null = null;
   private lastCleanup = Date.now();
-  private arenaCache: { at: number; ids: Map<number, { buyIn: number; maxPlayers: number; enabled: boolean }> } | null = null;
+  private arenaCache: { at: number; ids: Map<number, ArenaData> } | null = null;
+  /** IP → time of the promotion to the pro league. */
+  private readonly promotions = new Map<string, number>();
+  private readonly deps: RoomDeps;
 
   constructor(
     private readonly cfg: ServerConfig,
-    private readonly deps: RoomDeps,
+    deps: RoomDeps,
     private readonly chain: ChainGateway,
   ) {
-    this.createFree();
+    this.deps = {
+      ...deps,
+      pass: deps.pass ?? cfg.pass,
+      onGameOver: (e) => {
+        this.onGameOver(e);
+        deps.onGameOver?.(e);
+      },
+    };
+    this.createPractice('rookie');
+    this.createPractice('pro');
   }
 
   /* ---------------------------------------------------------------- */
-  /* Rooms                                                            */
+  /* Practice leagues                                                 */
   /* ---------------------------------------------------------------- */
 
-  private createFree(): Room {
-    const n = ++this.freeCounter;
+  private createPractice(league: League): Room {
+    let n = 1;
+    while (this.rooms.has(`practice-${league}-${n}`)) n++;
     const room = new Room(
       {
-        id: `free-${n}`,
+        id: `practice-${league}-${n}`,
         mode: 'practice',
-        name: `Coin Pond #${n}`,
-        maxPlayers: this.cfg.freeRoomCapacity,
-        bots: { target: this.cfg.bots.target, min: this.cfg.bots.min, max: this.cfg.bots.max },
+        league,
+        name: `${league === 'rookie' ? 'Rookie' : 'Pro'} Pond #${n}`,
+        maxPlayers: this.cfg.practiceCapacity,
+        bots: league === 'rookie' ? this.cfg.bots.practiceRookie : this.cfg.bots.practicePro,
       },
       this.deps,
     );
@@ -42,22 +73,42 @@ export class RoomManager {
     return room;
   }
 
-  /** Busiest free room that still has space (so players meet each other). */
-  freeRoom(prefer?: Room | null): Room {
-    if (prefer && prefer.opts.mode === 'practice' && !prefer.isFull) return prefer;
+  /**
+   * Busiest non-full practice room of a league (so players meet each other),
+   * else a new one. `prefer` (the room the connection is already in) wins when
+   * it serves that league and has space.
+   */
+  practiceRoom(league: League, prefer?: Room | null): Room {
+    if (prefer && prefer.opts.mode === 'practice' && prefer.opts.league === league && !prefer.isFull) return prefer;
     let best: Room | null = null;
     for (const r of this.rooms.values()) {
-      if (r.opts.mode !== 'practice' || r.isFull) continue;
+      if (r.opts.mode !== 'practice' || r.opts.league !== league || r.isFull) continue;
       if (!best || r.humans.size > best.humans.size) best = r;
     }
-    return best ?? this.createFree();
+    return best ?? this.createPractice(league);
+  }
+
+  /** `pro` for level ≥ 5 profiles and for IPs promoted in the last 24 h, else `rookie`. */
+  leagueFor(conn: Conn, now = Date.now()): League {
+    if ((conn.profile?.level ?? 0) >= PRO_LEVEL) return 'pro';
+    const at = this.promotions.get(conn.ip);
+    return at !== undefined && now - at < PROMOTION_MS ? 'pro' : 'rookie';
+  }
+
+  private onGameOver(e: Parameters<NonNullable<RoomDeps['onGameOver']>>[0]): void {
+    if (e.room.opts.mode !== 'practice' || e.room.opts.league !== 'rookie' || !e.conn) return;
+    if (e.stats.maxMass > PROMOTE_MAX_MASS || e.stats.playersEaten >= PROMOTE_KILLS) {
+      const first = !this.promotions.has(e.conn.ip);
+      this.promotions.set(e.conn.ip, Date.now());
+      if (first) this.deps.log(`league: ${e.conn.ip} promoted to pro`);
+    }
   }
 
   /** Default room for lobby spectators. */
   lobbyRoom(): Room {
     let best: Room | null = null;
     for (const r of this.rooms.values()) if (r.opts.mode === 'practice' && (!best || r.humans.size > best.humans.size)) best = r;
-    return best ?? this.createFree();
+    return best ?? this.createPractice('rookie');
   }
 
   privateRoom(code: string | null): Room | null {
@@ -73,7 +124,7 @@ export class RoomManager {
         name: `Private · ${c}`,
         code: c,
         maxPlayers: this.cfg.privateRoomCapacity,
-        bots: { target: this.cfg.bots.privateTarget, min: 2, max: this.cfg.bots.privateTarget },
+        bots: this.cfg.bots.private,
       },
       this.deps,
     );
@@ -81,31 +132,41 @@ export class RoomManager {
     return room;
   }
 
-  private async arenas(): Promise<Map<number, { buyIn: number; maxPlayers: number; enabled: boolean }>> {
-    if (this.arenaCache && Date.now() - this.arenaCache.at < 30_000) return this.arenaCache.ids;
+  /* ---------------------------------------------------------------- */
+  /* Arenas (sharded into instances)                                  */
+  /* ---------------------------------------------------------------- */
+
+  private async arenas(): Promise<Map<number, ArenaData>> {
+    if (this.arenaCache && Date.now() - this.arenaCache.at < ARENA_CACHE_MS) return this.arenaCache.ids;
     const list = await this.chain.listArenas();
-    const ids = new Map(list.map((a) => [a.id, { buyIn: a.buyIn, maxPlayers: a.maxPlayers, enabled: a.enabled }]));
+    const ids = new Map(
+      list.map((a) => [a.id, { buyIn: a.buyIn, maxPlayers: a.maxPlayers, enabled: a.enabled, requiresPass: a.requiresPass ?? false }]),
+    );
     this.arenaCache = { at: Date.now(), ids };
     return ids;
   }
 
-  /** Stake room for an on-chain arena (created lazily). */
-  async stakeRoom(arenaId: number): Promise<Room | null> {
-    if (!this.chain.stakeEnabled) return null;
-    if (this.cfg.chain.arenaIds.length > 0 && !this.cfg.chain.arenaIds.includes(arenaId)) return null;
-    const existing = this.rooms.get(`stake-${arenaId}`);
-    if (existing) return existing;
-    const arena = (await this.arenas()).get(arenaId);
-    if (!arena || !arena.enabled) return null;
+  /** Every open instance of an arena, by instance number. */
+  arenaInstances(arenaId: number): Room[] {
+    return [...this.rooms.values()]
+      .filter((r) => r.opts.mode === 'arena' && r.opts.stake?.arenaId === arenaId)
+      .sort((a, b) => (a.opts.instance ?? 1) - (b.opts.instance ?? 1));
+  }
+
+  private createArenaInstance(arenaId: number, arena: ArenaData): Room {
+    const taken = new Set(this.arenaInstances(arenaId).map((r) => r.opts.instance ?? 1));
+    let n = 1;
+    while (taken.has(n)) n++;
     const meta = arenaMeta(arenaId);
     const room = new Room(
       {
-        id: `stake-${arenaId}`,
+        id: `arena-${arenaId}-${n}`,
         mode: 'arena',
-        name: meta.name.en,
-        maxPlayers: arena.maxPlayers,
-        bots: null,
-        stake: { arenaId, buyIn: arena.buyIn },
+        name: n === 1 ? meta.name.en : `${meta.name.en} #${n}`,
+        instance: n,
+        maxPlayers: this.cfg.arenaInstanceCap,
+        bots: this.cfg.bots.arena,
+        stake: { arenaId, buyIn: arena.buyIn, requiresPass: arena.requiresPass },
       },
       this.deps,
     );
@@ -113,11 +174,47 @@ export class RoomManager {
     return room;
   }
 
-  /** Make sure stake rooms exist for every enabled arena (shown in the lobby). */
-  async ensureStakeRooms(): Promise<void> {
+  private arenaAllowed(arenaId: number): boolean {
+    return this.chain.stakeEnabled && (this.cfg.chain.arenaIds.length === 0 || this.cfg.chain.arenaIds.includes(arenaId));
+  }
+
+  /**
+   * Room for a new arena player: the busiest instance `arena-<id>-<n>` with
+   * fewer humans than the instance cap, else a new instance. Null when the
+   * arena does not exist or is disabled.
+   */
+  async arenaRoom(arenaId: number): Promise<Room | null> {
+    if (!this.arenaAllowed(arenaId)) return null;
+    const arena = (await this.arenas()).get(arenaId);
+    if (!arena || !arena.enabled) return null;
+    let best: Room | null = null;
+    for (const r of this.arenaInstances(arenaId)) {
+      if (r.humans.size >= this.cfg.arenaInstanceCap) continue;
+      if (!best || r.humans.size > best.humans.size) best = r;
+    }
+    return best ?? this.createArenaInstance(arenaId, arena);
+  }
+
+  /** The instance of `arenaId` in which `wallet` holds a live ticket, if any. */
+  findArenaStake(arenaId: number, wallet: string): { room: Room; entry: ArenaEntry } | null {
+    for (const room of this.arenaInstances(arenaId)) {
+      const entry = room.findStakeByWallet(wallet);
+      if (entry) return { room, entry };
+    }
+    return null;
+  }
+
+  /**
+   * Makes sure every enabled arena has its first instance (shown in the lobby;
+   * it also adopts loot journaled by any instance before a restart).
+   */
+  async ensureArenaRooms(): Promise<void> {
     if (!this.chain.stakeEnabled) return;
     try {
-      for (const [id, a] of await this.arenas()) if (a.enabled) await this.stakeRoom(id);
+      for (const [id, a] of await this.arenas()) {
+        if (!a.enabled || !this.arenaAllowed(id)) continue;
+        if (!this.rooms.has(`arena-${id}-1`)) this.createArenaInstance(id, a);
+      }
     } catch (err) {
       this.deps.log(`arena discovery failed: ${(err as Error).message}`);
     }
@@ -186,8 +283,19 @@ export class RoomManager {
       const idle = room.conns.size === 0 && room.humans.size === 0;
       if (!idle) continue;
       if (room.opts.mode === 'private' && now - room.lastActivity > 120_000) this.rooms.delete(room.id);
-      if (room.opts.mode === 'practice' && room.id !== 'free-1' && now - room.lastActivity > 300_000) this.rooms.delete(room.id);
+      // every league keeps its first room
+      if (room.opts.mode === 'practice' && !room.id.endsWith('-1') && now - room.lastActivity > 300_000) this.rooms.delete(room.id);
+      // extra arena instances close once empty, with no ticket and no loot left on their floor
+      if (
+        room.opts.mode === 'arena' &&
+        (room.opts.instance ?? 1) > 1 &&
+        room.liveSessions().length === 0 &&
+        room.world.loot().length === 0 &&
+        now - room.lastActivity > 300_000
+      )
+        this.rooms.delete(room.id);
     }
+    for (const [ip, at] of this.promotions) if (now - at >= PROMOTION_MS) this.promotions.delete(ip);
   }
 
   shutdown(): void {

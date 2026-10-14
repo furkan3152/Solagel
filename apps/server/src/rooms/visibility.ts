@@ -56,10 +56,10 @@ export class ViewState {
       }
       if (e.kind === EntityKind.Cell) {
         const p = e.player;
-        const sig = `${p.skin}|${p.flags}|${p.name}`;
+        const sig = `${p.skin}|${p.flags}|${p.pass}|${p.name}`;
         if (this.knownPlayers.get(p.id) !== sig) {
           this.knownPlayers.set(p.id, sig);
-          players.push({ id: p.id, skin: p.skin, flags: p.flags, pass: 0, name: p.name });
+          players.push({ id: p.id, skin: p.skin, flags: p.flags, pass: p.pass, name: p.name });
         }
       }
     });

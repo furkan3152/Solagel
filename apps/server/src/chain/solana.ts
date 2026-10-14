@@ -454,6 +454,7 @@ export class SolanaChain implements ChainGateway {
         enabled: a.enabled,
         openSessions: a.openSessions,
         pot: toSafeAmount(a.pot),
+        requiresPass: a.requiresPass,
       }));
       this.arenaCache = { at: this.now(), value };
       return value;
