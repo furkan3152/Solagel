@@ -1,0 +1,1590 @@
+/* ─────────────────────── Kâğıt Bilet · lobby & ticket flow ───────────────────────
+ * Task 14. Phones follow artboard B (docs/design/kagit-bilet-lobby.html);
+ * desktop is a newspaper front page whose photo is a window cut into the
+ * paper (a CSS mask) onto the live game canvas. Everything lives under the
+ * `.kl-root` Kb root or in portalled `.kb-sheet` panels (tf-, wl-, pf-).
+ * ------------------------------------------------------------------------- */
+
+.kl-root {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
+}
+/* the front-page photo: everything but the frame's window is paper */
+.kl-root.has-hole {
+  -webkit-mask-image: linear-gradient(#000 0 0), linear-gradient(#000 0 0);
+  -webkit-mask-size:
+    100% 100%,
+    var(--hole-w, 0) var(--hole-h, 0);
+  -webkit-mask-position:
+    0 0,
+    var(--hole-x, 0) var(--hole-y, 0);
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-composite: xor;
+  mask-image: linear-gradient(#000 0 0), linear-gradient(#000 0 0);
+  mask-size:
+    100% 100%,
+    var(--hole-w, 0) var(--hole-h, 0);
+  mask-position:
+    0 0,
+    var(--hole-x, 0) var(--hole-y, 0);
+  mask-repeat: no-repeat;
+  mask-composite: exclude;
+}
+
+.kl-sheet-page {
+  flex: 1 0 auto;
+  width: 100%;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 0 18px;
+}
+.kl-root.is-wide .kl-sheet-page,
+.kl-root.is-mid .kl-sheet-page {
+  padding: 0 clamp(20px, 3vw, 44px) 32px;
+}
+
+/* ── type helpers ─────────────────────────────────────────────────────── */
+.kl-h2 {
+  font-size: var(--t-h2);
+  font-weight: 800;
+  font-stretch: var(--display-stretch);
+  line-height: 0.95;
+  letter-spacing: -0.035em;
+}
+.kl-h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 22px;
+  font-weight: 800;
+  font-stretch: 88%;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+.kl-sub {
+  font-size: var(--t-label);
+  color: var(--ink-2);
+}
+.kl-note {
+  font-size: var(--t-small);
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+.kl-unit {
+  font-size: var(--t-label);
+  font-weight: 500;
+}
+.kl-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--pink-text);
+  font-size: var(--t-label);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1.5px;
+  cursor: pointer;
+}
+.kl-link:hover {
+  color: var(--ink);
+}
+.kl-link:disabled {
+  color: var(--ink-2);
+  cursor: default;
+}
+
+/* ── masthead ─────────────────────────────────────────────────────────── */
+.kl-mast {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 22px 0 10px;
+}
+.kl-mast__brand {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+.kl-mast__kicker {
+  font-size: var(--t-label);
+  color: var(--ink-2);
+}
+.kl-wordmark {
+  position: relative;
+  display: inline-flex;
+  align-items: flex-start;
+  font-weight: 800;
+  font-stretch: 85%;
+  font-size: 46px;
+  line-height: 0.86;
+  letter-spacing: -0.045em;
+}
+.kl-root.is-wide .kl-wordmark,
+.kl-root.is-mid .kl-wordmark {
+  font-size: clamp(58px, 6.4vw, 92px);
+}
+.kl-wordmark__ink {
+  position: relative;
+  z-index: 1;
+}
+.kl-wordmark__pink {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 0;
+  color: var(--pink);
+  transform: translate(0.035em, 0.03em);
+  mix-blend-mode: var(--stamp-blend);
+}
+.kb[data-theme='night'] .kl-wordmark__pink {
+  z-index: 2;
+  opacity: 0.55;
+}
+.kl-wordmark__coin {
+  width: 0.5em;
+  height: 0.5em;
+  margin: -0.28em 0 0 0.02em;
+  animation: kl-float 3.4s ease-in-out infinite;
+}
+@keyframes kl-float {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(-3deg);
+  }
+  50% {
+    transform: translate(0, -3px) rotate(3deg);
+  }
+}
+.kl-mast__right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.kl-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-right: 6px;
+}
+.kl-seg {
+  display: flex;
+  gap: 6px;
+  margin-right: 6px;
+}
+.kl-root.is-phone .kl-mast .kb-iconbtn {
+  width: 44px;
+  height: 44px;
+  border-width: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+/* wallet slip */
+.kl-wallet {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  min-height: 48px;
+  padding: 6px 10px;
+  border: 1.5px dashed var(--ink);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  transition:
+    transform var(--dur-micro) var(--ease-spring),
+    box-shadow var(--dur-micro) var(--ease-spring),
+    background-color var(--dur-micro) linear;
+}
+.kl-wallet:hover {
+  background: var(--card);
+  box-shadow: 3px 3px 0 var(--pink);
+  transform: translate(-1px, -1px);
+}
+.kl-wallet:active {
+  transform: translate(1px, 1px);
+  box-shadow: 0 0 0 var(--pink);
+}
+.kl-wallet__top {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--t-label);
+  color: var(--ink-2);
+}
+.kl-wallet__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--pink);
+  box-shadow: 0 0 0 1.5px var(--card);
+}
+.kl-wallet__main {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.kl-wallet__sym {
+  font-size: var(--t-label);
+  font-weight: 500;
+}
+.kl-wallet.is-off .kl-wallet__main {
+  align-items: center;
+  gap: 7px;
+  font-size: 16px;
+}
+
+.kl-dateline {
+  margin-bottom: 2px;
+}
+
+/* ── layout ───────────────────────────────────────────────────────────── */
+.kl-front {
+  display: grid;
+  grid-template-columns: minmax(360px, 1fr) 1px minmax(300px, 380px);
+  gap: 0 clamp(20px, 2.4vw, 36px);
+  padding-top: 22px;
+}
+.kl-front.has-photo {
+  grid-template-columns: minmax(360px, 420px) 1px minmax(380px, 1fr) 1px minmax(290px, 340px);
+}
+.kl-vrule.kb-rule {
+  border-top: 0;
+  width: 1px;
+  height: auto;
+  margin: 6px 0 0;
+  border: 0;
+  background: var(--ink);
+  align-self: stretch;
+}
+.kl-col {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+.kl-col--side {
+  gap: 22px;
+}
+.kl-section-head {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.kl-cta-slot {
+  margin-top: 6px;
+}
+
+.kl-phone-main {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 14px 0 24px;
+}
+
+/* the phone dock: Quick Play over the bottom tabs */
+.kl-dock {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  padding: 18px 18px max(4px, env(safe-area-inset-bottom));
+  /* the same grain as the page, fading in at the top edge */
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 18px);
+  mask-image: linear-gradient(to bottom, transparent, #000 18px);
+}
+.kl-dock__cta {
+  padding: 0 0 12px;
+}
+
+/* ── tickets ──────────────────────────────────────────────────────────── */
+.kl-tickets {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.kl-ticket .kb-ticket__face {
+  min-height: 76px;
+}
+/* the arena's riso ink, printed as a stripe at the torn-off edge */
+.kl-ticket .kb-ticket__body {
+  position: relative;
+  gap: 5px;
+  padding: 12px 14px 12px 18px;
+}
+.kl-ticket .kb-ticket__body::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 5px;
+  border-radius: 0 3px 3px 0;
+  background: var(--kl-ink);
+  opacity: 0.9;
+}
+.kl-ticket__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+}
+.kl-ticket__head .kb-ticket__title {
+  overflow: visible;
+}
+.kl-ticket__flag {
+  flex: none;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--ink);
+  color: var(--on-ink);
+  font-size: var(--t-label);
+  line-height: 1.3;
+}
+.kl-ticket__flag.is-open {
+  background: var(--pink);
+  color: var(--ink-fixed);
+}
+.kl-ticket .kb-ticket__meta {
+  display: block;
+  line-height: 1.45;
+}
+.kl-ticket .kl-live-dot {
+  display: inline-block;
+  margin-right: 6px;
+  vertical-align: 1px;
+}
+.kl-ticket__perk {
+  /* verbatim sentence case ("Pass: +%15 başlangıç · …"), not a caps label */
+  text-transform: none;
+  letter-spacing: 0.01em;
+  font-size: 12px;
+  color: var(--teal-ink);
+  line-height: 1.3;
+}
+.kl-live-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--green) 60%, transparent);
+  animation: kl-pulse 2.2s ease-out infinite;
+}
+@keyframes kl-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--green) 55%, transparent);
+  }
+  70%,
+  100% {
+    box-shadow: 0 0 0 7px color-mix(in srgb, var(--green) 0%, transparent);
+  }
+}
+
+/* ── Quick Play CTA ───────────────────────────────────────────────────── */
+.kl-cta .kb-btn__sub {
+  /* room for Turkish capital diacritics (Ö, Ü, İ) above the cap height */
+  line-height: 1.4;
+  margin-bottom: -3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Pass card (teal cover stock) ─────────────────────────────────────── */
+.kl-pass {
+  position: relative;
+  display: flex;
+  gap: 14px;
+  padding: 12px;
+  border: 2px solid var(--ink);
+  border-radius: var(--r-card);
+  background: var(--cover);
+  color: var(--on-cover);
+  box-shadow: 4px 4px 0 var(--ink);
+}
+.kl-pass::after {
+  /* foil guilloche over the cover */
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: repeating-radial-gradient(circle at 110% -10%, transparent 0 9px, rgba(255, 252, 244, 0.07) 9px 10px);
+  pointer-events: none;
+}
+.kl-pass__photo {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 82px;
+  height: 96px;
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: inset 0 0 0 2px var(--ink-fixed);
+}
+.kb[data-theme='night'] .kl-pass__photo {
+  background: #fffcf4;
+}
+.kl-pass__text {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.kl-pass__title {
+  font-size: 25px;
+  font-weight: 800;
+  font-stretch: 88%;
+  line-height: 0.95;
+  letter-spacing: -0.02em;
+}
+.kl-pass__no {
+  font-size: var(--t-label);
+  color: #ddf6f4;
+}
+.kl-pass__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 2px;
+}
+.kl-pass__chips .kb-chip {
+  min-height: 24px;
+  padding: 2px 6px;
+  font-size: var(--t-label);
+}
+.kl-pass__seal {
+  position: absolute;
+  right: -12px;
+  top: -16px;
+  z-index: 1;
+  animation: kl-seal 3.6s ease-in-out infinite;
+}
+.kl-pass__seal .kb-stamp--round {
+  width: 62px;
+  height: 62px;
+  color: var(--mustard-text);
+  background: var(--card);
+  mix-blend-mode: normal;
+}
+@keyframes kl-seal {
+  0%,
+  86%,
+  100% {
+    transform: scale(1);
+  }
+  90% {
+    transform: scale(1.1);
+  }
+}
+.kl-pass.is-large {
+  padding: 16px;
+}
+.kl-pass.is-large .kl-pass__photo {
+  width: 110px;
+  height: 128px;
+}
+.kl-pass.is-large .kl-pass__title {
+  font-size: 30px;
+}
+
+/* "Pass başvurusu" */
+.kl-apply {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 14px;
+  border: 2px dashed var(--ink);
+  border-radius: var(--r-card);
+  background: var(--card);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform var(--dur-micro) var(--ease-spring),
+    box-shadow var(--dur-micro) var(--ease-spring);
+}
+.kl-apply.is-static {
+  cursor: default;
+  border-style: solid;
+}
+.kl-apply:not(.is-static):hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 var(--teal);
+}
+.kl-apply:not(.is-static):active {
+  transform: translate(1px, 1px);
+  box-shadow: none;
+}
+.kl-apply__icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 60px;
+  border-radius: 6px;
+  background: var(--cover);
+  color: var(--on-cover);
+  transform: rotate(-4deg);
+}
+.kl-apply__text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+.kl-apply__title {
+  font-size: 21px;
+  font-weight: 800;
+  font-stretch: 88%;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+.kl-apply__body {
+  font-size: var(--t-small);
+  line-height: 1.35;
+  color: var(--ink-2);
+}
+.kl-apply__supply {
+  font-size: var(--t-label);
+  color: var(--teal-ink);
+}
+.kl-apply__go {
+  flex: none;
+  color: var(--pink-text);
+}
+
+/* Pass desk (phone tab) */
+.kl-desk {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.kl-perks {
+  display: flex;
+  flex-direction: column;
+  border-top: 2px solid var(--ink);
+}
+.kl-perks li {
+  display: flex;
+  gap: 12px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--t-body);
+  line-height: 1.35;
+}
+.kl-perks__n {
+  flex: none;
+  padding-top: 3px;
+  font-size: var(--t-label);
+  color: var(--pink-text);
+}
+
+/* ── R10: payout waiting slip ─────────────────────────────────────────── */
+.kl-owed {
+  position: relative;
+  filter: drop-shadow(3px 4px 0 var(--line));
+}
+.kl-owed__slip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 14px 16px 22px;
+  background: var(--card);
+  /* torn receipt bottom */
+  -webkit-mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 14px 100%;
+  mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 14px 100%;
+}
+.kl-owed.is-action .kl-owed__slip {
+  border-top: 5px solid var(--pink);
+}
+.kl-owed__top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+.kl-owed__kicker {
+  font-size: var(--t-label);
+  color: var(--pink-text);
+}
+.kl-owed__amount {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.kl-owed__amount .mono {
+  font-size: var(--t-label);
+  font-weight: 500;
+}
+.kl-owed__title {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.kl-owed__note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--t-small);
+  color: var(--ink-2);
+  line-height: 1.4;
+}
+.kl-owed__note.mono {
+  font-size: var(--t-label);
+}
+
+/* three printer dots */
+.kl-dots {
+  --d-off: color-mix(in srgb, currentColor 22%, transparent);
+  flex: none;
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 18px;
+  border-radius: 50%;
+  color: var(--pink-text);
+  background: currentColor;
+  box-shadow:
+    9px 0 0 var(--d-off),
+    18px 0 0 var(--d-off);
+  animation: kl-dots 1.05s steps(1, end) infinite;
+}
+@keyframes kl-dots {
+  0% {
+    background: currentColor;
+    box-shadow:
+      9px 0 0 var(--d-off),
+      18px 0 0 var(--d-off);
+  }
+  33% {
+    background: var(--d-off);
+    box-shadow:
+      9px 0 0 currentColor,
+      18px 0 0 var(--d-off);
+  }
+  66% {
+    background: var(--d-off);
+    box-shadow:
+      9px 0 0 var(--d-off),
+      18px 0 0 currentColor;
+  }
+}
+
+/* ── season standings ─────────────────────────────────────────────────── */
+.kl-season {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.kl-season__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--ink);
+}
+.kl-season__pool {
+  font-size: var(--t-label);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.kl-standings {
+  width: 100%;
+  border-collapse: collapse;
+}
+.kl-standings td {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line-soft);
+  vertical-align: baseline;
+}
+.kl-standings__rank {
+  width: 34px;
+  padding-right: 8px !important;
+  font-size: var(--t-label);
+  color: var(--ink-2);
+}
+.kl-standings tr:nth-child(-n + 3) .kl-standings__rank {
+  color: var(--pink-text);
+}
+.kl-standings__name {
+  font-weight: 700;
+  max-width: 0;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-right: 8px !important;
+}
+.kl-standings__pts,
+.kl-standings__share {
+  font-size: var(--t-label);
+  white-space: nowrap;
+  text-align: right;
+}
+.kl-standings__share {
+  width: 52px;
+  padding-left: 10px !important;
+  color: var(--teal-ink);
+}
+.kl-standings tr.is-me td {
+  background: color-mix(in srgb, var(--pink) 14%, transparent);
+}
+
+/* ── profile card ─────────────────────────────────────────────────────── */
+.kl-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
+  border-radius: var(--r-card);
+  background: var(--card);
+  box-shadow: 0 1.5px 0 var(--line);
+}
+.kl-profile__top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+.kl-profile__coin {
+  flex: none;
+}
+.kl-profile__id {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: 1;
+  min-width: 0;
+}
+.kl-profile__name {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kl-profile__lvl {
+  font-size: var(--t-label);
+  color: var(--ink-2);
+}
+.kl-xp {
+  position: relative;
+  display: block;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--line-soft);
+  overflow: hidden;
+}
+.kl-xp > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--pink);
+}
+.kl-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 14px;
+  width: 100%;
+  padding-top: 10px;
+  border-top: 1.5px dashed var(--line);
+}
+.kl-stats dt {
+  font-size: var(--t-label);
+  color: var(--ink-2);
+}
+.kl-stats dd {
+  font-size: 19px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── live frame (front-page photo) ────────────────────────────────────── */
+.kl-live {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+}
+.kl-live__frame {
+  position: relative;
+  padding: 10px;
+  border: 2px solid var(--ink);
+  background: var(--card);
+  box-shadow: 6px 6px 0 var(--ink);
+}
+.kl-live__window {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 4 / 3;
+  max-height: 52vh;
+  width: 100%;
+  outline: 1.5px solid var(--ink);
+}
+.kl-live__wait {
+  font-size: var(--t-label);
+  color: var(--ink-2);
+}
+.kl-live__badge {
+  position: absolute;
+  left: 22px;
+  top: 22px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--ink);
+  color: var(--on-ink);
+  font-size: var(--t-label);
+}
+/* the badge sits on the photo: keep it outside the mask hole's paint by
+   drawing it on the frame (it overlaps the window edge, not the middle) */
+.kl-live__rec {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--red);
+  animation: kl-rec 1.4s steps(2, jump-none) infinite;
+}
+@keyframes kl-rec {
+  50% {
+    opacity: 0.25;
+  }
+}
+.kl-live__cap {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  padding: 6px 2px 8px;
+  border-bottom: 1px solid var(--ink);
+}
+.kl-live__room {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.kl-live__meta {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  font-size: var(--t-label);
+  color: var(--ink-2);
+}
+
+.kl-deck {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 62ch;
+}
+.kl-deck__title {
+  font-size: 30px;
+  font-weight: 800;
+  font-stretch: 85%;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+.kl-deck__body {
+  font-size: var(--t-body);
+  line-height: 1.5;
+  columns: 2 220px;
+  column-gap: 24px;
+  column-rule: 1px solid var(--line);
+}
+.kl-deck__body::first-letter {
+  float: left;
+  margin: 2px 6px 0 0;
+  font-size: 3.1em;
+  font-weight: 800;
+  line-height: 0.82;
+  color: var(--pink-text);
+}
+
+/* the hole is cut from the root, so the badge must not be inside it */
+.kl-root.has-hole .kl-live__badge {
+  top: -12px;
+  left: 18px;
+}
+
+/* ════════════════════════ sheets ════════════════════════ */
+
+/* ── ticket flow ──────────────────────────────────────────────────────── */
+.tf-sheet.kb-sheet {
+  width: min(540px, 100%);
+}
+.tf-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.tf-lede {
+  font-size: var(--t-body);
+  line-height: 1.45;
+}
+
+/* the ticket being cut */
+.tf-ticket {
+  --tf-stub: 116px;
+  --tf-notch: 10px;
+  position: relative;
+  display: flex;
+  min-height: 132px;
+  margin: 4px 4px 6px 0;
+}
+/* each half carries its own printed shadow, so the falling stub fades as one piece */
+.tf-ticket__half {
+  display: flex;
+  filter: drop-shadow(0 1.5px 0 var(--line)) drop-shadow(4px 4px 0 var(--ink));
+}
+.tf-ticket__half.is-main {
+  flex: 1;
+  min-width: 0;
+}
+.tf-ticket__half.is-stub {
+  flex: none;
+  transform-origin: 20% 80%;
+}
+.tf-ticket__main,
+.tf-ticket__stub {
+  position: relative;
+  background: var(--card);
+}
+.tf-ticket__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  padding: 16px 18px 16px 22px;
+  border-radius: 12px 0 0 12px;
+  -webkit-mask:
+    radial-gradient(circle at 100% 0, #0000 var(--tf-notch), #000 calc(var(--tf-notch) + 0.5px)) top / 100% 51% no-repeat,
+    radial-gradient(circle at 100% 100%, #0000 var(--tf-notch), #000 calc(var(--tf-notch) + 0.5px)) bottom / 100% 51% no-repeat;
+  mask:
+    radial-gradient(circle at 100% 0, #0000 var(--tf-notch), #000 calc(var(--tf-notch) + 0.5px)) top / 100% 51% no-repeat,
+    radial-gradient(circle at 100% 100%, #0000 var(--tf-notch), #000 calc(var(--tf-notch) + 0.5px)) bottom / 100% 51% no-repeat;
+}
+.tf-ticket__main::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  background: var(--kl-ink);
+}
+.tf-ticket__stub {
+  flex: none;
+  width: var(--tf-stub);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 12px 8px;
+  border-radius: 0 12px 12px 0;
+  background-image: linear-gradient(to bottom, var(--line) 55%, transparent 0);
+  background-size: 2px 8px;
+  background-repeat: repeat-y;
+  background-position: 0 4px;
+  background-color: var(--card);
+  -webkit-mask:
+    radial-gradient(circle at 0 0, #0000 var(--tf-notch), #000 calc(var(--tf-notch) + 0.5px)) top / 100% 51% no-repeat,
+    radial-gradient(circle at 0 100%, #0000 var(--tf-notch), #000 calc(var(--tf-notch) + 0.5px)) bottom / 100% 51% no-repeat;
+  mask:
+    radial-gradient(circle at 0 0, #0000 var(--tf-notch), #000 calc(var(--tf-notch) + 0.5px)) top / 100% 51% no-repeat,
+    radial-gradient(circle at 0 100%, #0000 var(--tf-notch), #000 calc(var(--tf-notch) + 0.5px)) bottom / 100% 51% no-repeat;
+}
+/* once torn, both edges are ragged paper instead of a perforation */
+.tf-ticket.is-torn .tf-ticket__main {
+  clip-path: polygon(
+    0 0,
+    100% 0,
+    calc(100% - 3px) 8%,
+    100% 16%,
+    calc(100% - 4px) 25%,
+    100% 33%,
+    calc(100% - 2px) 42%,
+    100% 50%,
+    calc(100% - 4px) 58%,
+    100% 67%,
+    calc(100% - 3px) 75%,
+    100% 84%,
+    calc(100% - 4px) 92%,
+    100% 100%,
+    0 100%
+  );
+}
+.tf-ticket.is-torn .tf-ticket__stub {
+  clip-path: polygon(3px 0, 100% 0, 100% 100%, 0 100%, 4px 92%, 0 84%, 3px 75%, 0 67%, 4px 58%, 0 50%, 2px 42%, 0 33%, 4px 25%, 0 16%, 3px 8%);
+  background-image: none;
+}
+.tf-ticket__kicker {
+  font-size: var(--t-label);
+  color: var(--ink-2);
+}
+.tf-ticket__room {
+  font-size: 30px;
+  font-weight: 800;
+  font-stretch: 86%;
+  line-height: 0.95;
+  letter-spacing: -0.03em;
+}
+.tf-ticket__serial {
+  font-size: var(--t-label);
+  color: var(--ink-2);
+}
+.tf-ticket__pass {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  align-self: flex-start;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: var(--cover);
+  color: var(--on-cover);
+  font-size: var(--t-label);
+}
+.tf-ticket__stamp {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  translate: 0 -50%;
+  pointer-events: none;
+}
+.tf-ticket__stamp .kb-stamp--lg {
+  font-size: 34px;
+}
+.tf-ticket__fee {
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.tf-ticket__sym {
+  font-size: var(--t-label);
+  color: var(--ink-2);
+}
+.tf-ticket__passmark {
+  margin-top: 4px;
+}
+
+/* the lines of what is signed */
+.tf-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.tf-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 0;
+}
+.tf-line dt {
+  flex: none;
+  font-size: var(--t-label);
+  color: var(--ink-2);
+}
+.tf-line::after {
+  content: '';
+  order: 1;
+  flex: 1;
+  min-width: 12px;
+  border-bottom: 1.5px dotted var(--line);
+  transform: translateY(-3px);
+}
+.tf-line dd {
+  order: 2;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.tf-line.is-strong dd {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.tf-note {
+  font-size: var(--t-small);
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+
+/* Pass choice */
+.tf-pass {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  transition:
+    border-color var(--dur-micro) linear,
+    background-color var(--dur-micro) linear;
+}
+.tf-pass.is-on {
+  border-color: var(--teal-ink);
+  background: color-mix(in srgb, var(--teal) 8%, transparent);
+}
+.tf-pass__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--teal-ink);
+}
+.tf-pass__title {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--ink);
+}
+.tf-pass__note {
+  font-size: var(--t-small);
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+.tf-switch {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+}
+.tf-switch:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.tf-switch__track {
+  position: relative;
+  flex: none;
+  width: 48px;
+  height: 28px;
+  border: 2px solid var(--ink);
+  border-radius: 14px;
+  background: var(--card);
+  transition: background-color var(--dur-micro) linear;
+}
+.tf-switch__knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--ink);
+  transition:
+    transform 220ms var(--ease-spring),
+    background-color var(--dur-micro) linear;
+}
+.tf-switch[aria-checked='true'] .tf-switch__track {
+  background: var(--teal);
+}
+.tf-switch[aria-checked='true'] .tf-switch__knob {
+  transform: translateX(20px);
+  background: var(--ink-fixed);
+  box-shadow: inset 0 0 0 4px #fffcf4;
+}
+.tf-switch:focus-visible {
+  outline: none;
+}
+.tf-switch:focus-visible .tf-switch__track {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.tf-pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.tf-pick legend {
+  margin-bottom: 6px;
+  font-size: var(--t-label);
+  color: var(--ink-2);
+}
+.tf-pick__item {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 4px 12px 4px 6px;
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  cursor: pointer;
+  font-size: var(--t-label);
+}
+.tf-pick__item input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  margin: 0;
+  cursor: inherit;
+}
+.tf-pick__item.is-on {
+  border-color: var(--ink);
+  box-shadow: 3px 3px 0 var(--teal);
+}
+.tf-pick__item:has(input:focus-visible) {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.tf-pick__item.is-busy {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.tf-pick__busy {
+  color: var(--pink-text);
+}
+
+/* the transaction, step by step */
+.tf-steps {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+}
+.tf-steps__h {
+  margin-bottom: 8px;
+  font-size: var(--t-label);
+  font-weight: 500;
+  color: var(--ink-2);
+}
+.tf-steps ol {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.tf-steps li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: var(--t-small);
+  line-height: 1.35;
+}
+.tf-steps__n {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1.5px solid var(--ink);
+  border-radius: 50%;
+  font-size: var(--t-label);
+  line-height: 1;
+  transform: translateY(3px);
+}
+.tf-warn {
+  padding: 10px 12px;
+  border-left: 4px solid var(--mustard);
+  background: color-mix(in srgb, var(--mustard) 14%, transparent);
+  font-size: var(--t-small);
+  line-height: 1.4;
+}
+.tf-error {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 2px solid var(--red-ink);
+  border-radius: 10px;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--red) 8%, transparent);
+  font-size: var(--t-small);
+  line-height: 1.45;
+}
+.tf-error > svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--red-ink);
+}
+.tf-status {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  min-height: 64px;
+  justify-content: center;
+}
+.tf-status__line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.tf-status__note,
+.tf-status__tx {
+  font-size: var(--t-label);
+  color: var(--ink-2);
+}
+.tf-status__tx {
+  color: var(--pink-text);
+  align-self: flex-start;
+}
+
+/* ── wallet sheet ─────────────────────────────────────────────────────── */
+.wl-body,
+.pf-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.wl-cap,
+.pf-cap {
+  font-size: var(--t-label);
+  color: var(--ink-2);
+}
+.wl-addr {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.wl-addr__full {
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  word-break: break-all;
+  padding: 10px 12px;
+  border: 1.5px dashed var(--ink);
+  border-radius: 8px;
+}
+.wl-addr__actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.wl-bal {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 18px;
+  padding: 12px 0;
+  border-top: 2px solid var(--ink);
+  border-bottom: 1px solid var(--ink);
+}
+.wl-bal > div:first-child {
+  grid-column: 1 / -1;
+}
+.wl-bal dd {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
+.wl-bal__big {
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+.wl-bal__mid {
+  font-size: 20px;
+  font-weight: 800;
+}
+.wl-ok {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--green-ink);
+  font-size: var(--t-label);
+}
+.wl-verify {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+.wl-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.wl-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 60px;
+  padding: 10px 14px;
+  border: 2px solid var(--ink);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 3px 3px 0 var(--ink);
+  transition:
+    transform var(--dur-micro) var(--ease-spring),
+    box-shadow var(--dur-micro) var(--ease-spring);
+}
+.wl-item:hover {
+  box-shadow: 4px 4px 0 var(--pink);
+  transform: translate(-1px, -1px);
+}
+.wl-item:active {
+  transform: translate(2px, 2px);
+  box-shadow: 0 0 0 var(--ink);
+}
+.wl-item img {
+  border-radius: 8px;
+}
+.wl-item__name {
+  flex: 1;
+  text-align: left;
+}
+.wl-item__tag {
+  font-size: var(--t-label);
+  font-weight: 500;
+  color: var(--green-ink);
+}
+.wl-install {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  text-decoration: none;
+}
+.wl-install .kb-btn {
+  text-decoration: none;
+}
+
+/* ── profile sheet ────────────────────────────────────────────────────── */
+.pf-hero {
+  display: grid;
+  place-items: center;
+  padding: 6px 0 0;
+}
+.pf-looks {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.pf-looks legend {
+  margin-bottom: 8px;
+}
+.pf-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
+  gap: 8px;
+}
+.pf-look {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-height: 92px;
+  padding: 6px 4px 8px;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background: var(--card);
+  box-shadow: 0 1.5px 0 var(--line);
+  cursor: pointer;
+  transition: transform var(--dur-micro) var(--ease-spring);
+}
+.pf-look:hover {
+  transform: translateY(-2px);
+}
+.pf-look input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: inherit;
+}
+.pf-look:has(input:focus-visible) {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.pf-look.is-on {
+  border-color: var(--ink);
+  box-shadow: 3px 3px 0 var(--pink);
+}
+.pf-look.is-pass.is-on {
+  box-shadow: 3px 3px 0 var(--teal);
+}
+.pf-look__name {
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.15;
+}
+.pf-look__name.mono {
+  font-size: var(--t-label);
+  font-weight: 500;
+}
+
+/* ── responsive ───────────────────────────────────────────────────────── */
+@media (max-width: 759px) {
+  .kl-dateline {
+    gap: 4px 10px;
+  }
+  .kl-ticket .kb-ticket__title {
+    font-size: 20px;
+  }
+}
+@media (max-width: 380px) {
+  .kl-wordmark {
+    font-size: 40px;
+  }
+  .kl-ticket .kb-ticket__meta,
+  .kl-ticket__perk {
+    letter-spacing: 0.02em;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kl-wordmark__coin,
+  .kl-pass__seal,
+  .kl-live-dot,
+  .kl-live__rec,
+  .kl-dots {
+    animation: none !important;
+  }
+}
+
+.kb-sheet.is-bottom .tf-cancel {
+  display: none;
+}

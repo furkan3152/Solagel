@@ -1,146 +1,76 @@
 import { useWallet } from '@solana/wallet-adapter-react';
-import { formatSol } from '@slana/shared';
-import { useState } from 'react';
+import { InkButton } from '../design';
 import { levelProgress } from '../game/engine';
 import { useT } from '../i18n';
 import { openModal, useUi } from '../store';
-import { SkinCanvas, compact } from '../ui/common';
+import { CoinPortrait } from '../ui/game/CoinPortrait';
+import { useTokenText } from '../ui/lobby/useLobby';
 import { useChainData } from './chain';
-import { signInWithWallet } from './siws';
 
+/** Name, level and the on-chain record, printed like a membership card. */
 export function ProfileCard() {
   const t = useT();
   const wallet = useWallet();
-  const chain = useUi((s) => s.chain);
+  const settings = useUi((s) => s.settings);
   const auth = useUi((s) => s.auth);
-  const skin = useUi((s) => s.settings.skin);
-  const data = useChainData();
-  const [busy, setBusy] = useState(false);
-  const pubkey = wallet.publicKey?.toBase58();
-  const verified = !!pubkey && auth?.pubkey === pubkey;
-
-  // guest
-  if (!wallet.connected || !pubkey) {
-    return (
-      <div className="card side-card">
-        <div className="side-title">
-          <span>🪪 {t('profile.title')}</span>
-          <span className="badge lav">{t('profile.guest')}</span>
-        </div>
-        <div className="row">
-          <SkinCanvas skin={skin} size={64} seed={9} />
-          <div className="muted small">{t('lobby.guestNote')}</div>
-        </div>
-        <button className="btn btn-purple" onClick={() => openModal('wallet')}>
-          👛 {t('wallet.connect')}
-        </button>
-        <FeatureList />
-      </div>
-    );
-  }
-
-  const offline = !chain?.enabled || data.deployed === false;
-  const profile = data.profile;
+  const profile = useChainData((s) => s.profile);
+  const passes = useChainData((s) => s.passes);
+  const tok = useTokenText();
+  const nf = new Intl.NumberFormat(settings.lang === 'tr' ? 'tr-TR' : 'en-US');
+  const passNumber = passes.find((p) => p.asset === settings.passSkin)?.number ?? 0;
+  const connected = wallet.connected && !!wallet.publicKey;
+  const name = profile?.name ?? auth?.profile?.name ?? (settings.name || t('pf.guest'));
   const xp = profile?.xp ?? auth?.profile?.xp ?? 0;
   const prog = levelProgress(xp);
 
   return (
-    <div className="card side-card">
-      <div className="side-title">
-        <span>🪪 {t('profile.title')}</span>
-        {verified ? <span className="badge mint">✓ {t('wallet.verified')}</span> : <span className="badge">!</span>}
+    <section className="kl-card kl-profile" aria-labelledby="kl-profile-h">
+      <div className="kl-profile__top">
+        <CoinPortrait skin={settings.skin} pass={passNumber} size={64} expression="happy" seed={9} className="kl-profile__coin" />
+        <div className="kl-profile__id">
+          <h3 id="kl-profile-h" className="kl-profile__name">
+            {name}
+          </h3>
+          {connected ? (
+            <>
+              <span className="mono kl-profile__lvl">
+                {t('pf.level', { n: prog.level })} · {t('pf.xp', { xp: nf.format(xp), next: nf.format(prog.next) })}
+              </span>
+              <span className="kl-xp" aria-hidden="true">
+                <span style={{ width: `${Math.round(prog.pct * 100)}%` }} />
+              </span>
+            </>
+          ) : (
+            <span className="mono kl-profile__lvl">{t('pf.guest')}</span>
+          )}
+        </div>
       </div>
-      {offline && <div className="notice">⛓️‍💥 {t('chain.offline')}</div>}
-      {!verified && (
-        <button
-          className="btn btn-mint"
-          disabled={busy}
-          onClick={async () => {
-            setBusy(true);
-            await signInWithWallet(wallet, true);
-            setBusy(false);
-          }}
-        >
-          {busy ? <span className="spin" /> : '✍️'} {t('wallet.verify')}
-        </button>
-      )}
-      {!offline && !data.profileLoaded && (
-        <div className="row muted">
-          <span className="spin" /> {t('common.loading')}
-        </div>
-      )}
-      {!offline && data.profileLoaded && !profile && (
-        <>
-          <div className="row">
-            <SkinCanvas skin={skin} size={64} seed={9} />
-            <div className="muted small">{t('profile.createDesc')}</div>
-          </div>
-          <button className="btn btn-gold" onClick={() => openModal('profile')}>
-            ✨ {t('profile.create')}
-          </button>
-        </>
-      )}
+      {!connected && <p className="kl-note">{t('pf.guestNote')}</p>}
       {profile && (
-        <>
-          <div className="row">
-            <SkinCanvas skin={profile.skin} size={64} seed={9} expression="proud" />
-            <div className="col grow" style={{ gap: 4 }}>
-              <div style={{ fontWeight: 700, fontSize: 20 }}>{profile.name}</div>
-              <div className="row small" style={{ fontWeight: 600 }}>
-                <span className="badge sky">{t('profile.level', { n: prog.level })}</span>
-                <span className="muted">{t('profile.xpTo', { xp: compact(xp), next: compact(prog.next) })}</span>
-              </div>
-              <div className="xp-bar">
-                <div style={{ width: `${Math.round(prog.pct * 100)}%` }} />
-              </div>
-            </div>
+        <dl className="kl-stats">
+          <div>
+            <dt className="mono">{t('pf.games')}</dt>
+            <dd>{nf.format(profile.gamesPlayed)}</dd>
           </div>
-          <div className="stat-grid">
-            <div className="stat">
-              <b>{compact(profile.gamesPlayed)}</b>
-              <span>{t('profile.games')}</span>
-            </div>
-            <div className="stat">
-              <b>{compact(profile.kills)}</b>
-              <span>{t('profile.kills')}</span>
-            </div>
-            <div className="stat">
-              <b>{compact(profile.bestScore)}</b>
-              <span>{t('profile.best')}</span>
-            </div>
-            <div className="stat">
-              <b>{profile.season === chain?.currentSeason ? compact(profile.seasonPoints) : 0}</b>
-              <span>{t('profile.season')}</span>
-            </div>
-            <div className="stat" style={{ gridColumn: 'span 2' }}>
-              <b>{formatSol(profile.totalWon, 4)}</b>
-              <span>{t('profile.won')}</span>
-            </div>
+          <div>
+            <dt className="mono">{t('pf.kills')}</dt>
+            <dd>{nf.format(profile.kills)}</dd>
           </div>
-          <div className="row">
-            <button className="btn btn-ghost grow" onClick={() => openModal('profile')}>
-              ✏️ {t('profile.edit')}
-            </button>
-            <button className="btn btn-pink grow" onClick={() => openModal('shop')}>
-              🎨 {t('skins.shop')}
-            </button>
+          <div>
+            <dt className="mono">{t('pf.best')}</dt>
+            <dd>{nf.format(profile.bestScore)}</dd>
           </div>
-        </>
+          <div>
+            <dt className="mono">{t('pf.won')}</dt>
+            <dd>
+              {tok.fee(profile.totalWon)} <span className="mono kl-unit">{tok.symbol}</span>
+            </dd>
+          </div>
+        </dl>
       )}
-    </div>
-  );
-}
-
-function FeatureList() {
-  const t = useT();
-  const items = [`⛓️ ${t('howto.season')}`, `◎ ${t('howto.stakes')}`];
-  return (
-    <div className="col" style={{ gap: 6 }}>
-      {items.map((x) => (
-        <div key={x} className="notice" style={{ borderStyle: 'solid' }}>
-          {x}
-        </div>
-      ))}
-    </div>
+      <InkButton variant="paper" size="sm" lead="user" onClick={() => openModal('profile')}>
+        {t('pf.edit')}
+      </InkButton>
+    </section>
   );
 }

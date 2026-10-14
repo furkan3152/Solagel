@@ -3,8 +3,7 @@ import { useEffect, useState } from 'react';
 import { sound } from '../game/sound';
 import { useT } from '../i18n';
 import { BuySkinButton } from '../solana/BuySkinButton';
-import { WalletModal } from '../solana/WalletModal';
-import { ProfileModal } from '../solana/ProfileModal';
+import { ToastViewport, type ToastItem } from '../design';
 import { closeModal, updateSettings, useUi } from '../store';
 import { Modal, SkinCanvas } from './common';
 // Death, cash-out and settings moved to ./game (Kâğıt Bilet sheets, Task 13).
@@ -110,21 +109,27 @@ export function SkinShopModal() {
   );
 }
 
+/** Store toasts as Kâğıt Bilet slips (render inside a `<Kb>` root for the theme). */
 export function Toasts() {
+  const t = useT();
   const toasts = useUi((s) => s.toasts);
+  const items: ToastItem[] = toasts.map((x) => ({
+    id: x.id,
+    tone: x.kind === 'success' ? 'success' : x.kind === 'error' ? 'error' : 'info',
+    title: x.text,
+    message: x.link ? (
+      <a href={x.link.href} target="_blank" rel="noreferrer">
+        {x.link.label}
+      </a>
+    ) : undefined,
+  }));
   return (
-    <div className="toasts">
-      {toasts.map((x) => (
-        <div key={x.id} className={`card toast ${x.kind}`}>
-          <span>{x.text}</span>
-          {x.link && (
-            <a href={x.link.href} target="_blank" rel="noreferrer">
-              {x.link.label} ↗
-            </a>
-          )}
-        </div>
-      ))}
-    </div>
+    <ToastViewport
+      toasts={items}
+      onDismiss={(id) => useUi.setState((s) => ({ toasts: s.toasts.filter((x) => x.id !== id) }))}
+      closeLabel={t('lo.close')}
+      label={t('lo.toasts')}
+    />
   );
 }
 
@@ -135,10 +140,6 @@ export function Modals() {
       return <HowToModal />;
     case 'shop':
       return <SkinShopModal />;
-    case 'wallet':
-      return <WalletModal />;
-    case 'profile':
-      return <ProfileModal />;
     default:
       return null;
   }

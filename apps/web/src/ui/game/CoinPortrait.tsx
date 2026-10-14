@@ -22,6 +22,7 @@ export function CoinPortrait({
   expression = 'happy',
   seed = 1,
   className,
+  still = false,
 }: {
   skin: number;
   pass?: number;
@@ -29,6 +30,8 @@ export function CoinPortrait({
   expression?: Expression;
   seed?: number;
   className?: string;
+  /** Draw once, no animation loop (grids of many portraits). */
+  still?: boolean;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const jelly = useRef(new JellyBody());
@@ -63,11 +66,12 @@ export function CoinPortrait({
     });
   };
 
-  useTicker(draw, !reduced);
+  const loop = !reduced && !still;
+  useTicker(draw, loop);
   useEffect(() => {
-    if (reduced) draw(0, 0);
+    if (!loop) draw(0, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [skin, pass, size, expression, reduced, status]);
+  }, [skin, pass, size, expression, loop, status]);
 
   return <canvas ref={ref} className={className} style={{ width: size, height: size }} aria-hidden="true" />;
 }
