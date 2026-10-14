@@ -14,7 +14,7 @@ import {
   mergeDelayMs,
   speedForRadius,
 } from '@slana/shared';
-import { Cell, Eject, Food, Player, PowerUp, Virus, type DynamicEntity, type StaticEntity } from './entities';
+import { Cell, Eject, Food, Loot, Player, PowerUp, Virus, type DynamicEntity, type StaticEntity } from './entities';
 import { Grid } from './grid';
 import { mulberry32, randRange, type Rng } from './rng';
 
@@ -48,6 +48,9 @@ export interface CellEatenEvent {
   victimTotalBefore: number;
   /** True when this was the victim's last cell. */
   last: boolean;
+  /** Where the eaten cell was. */
+  x: number;
+  y: number;
 }
 
 export interface TickEvents {
@@ -57,6 +60,8 @@ export interface TickEvents {
   pickups: { player: Player; type: PowerUpType; until: number }[];
   airdrops: { x: number; y: number; type: PowerUpType }[];
   coinRain: 'start' | 'end' | null;
+  /** Loot picked up by human players this tick. */
+  lootPicked: { pid: number; lootId: number; value: number }[];
 }
 
 const FOOD_RADIUS = [10, 10, 10, 10, 10, 10, 12, 16];
@@ -66,7 +71,7 @@ const POWERUP_LIFETIME_MS = 45_000;
 const COIN_RAIN_MS = 25_000;
 const COIN_RAIN_EVERY_MS = 240_000;
 
-const emptyEvents = (): TickEvents => ({ kills: [], cellsEaten: [], pops: [], pickups: [], airdrops: [], coinRain: null });
+const emptyEvents = (): TickEvents => ({ kills: [], cellsEaten: [], pops: [], pickups: [], airdrops: [], coinRain: null, lootPicked: [] });
 
 export interface AddPlayerOptions {
   name: string;
@@ -95,6 +100,7 @@ export class World {
   readonly ejects: Eject[] = [];
   readonly viruses: Virus[] = [];
   readonly powerUps: PowerUp[] = [];
+  private readonly lootList: Loot[] = [];
   foodCount = 0;
 
   /** Food, viruses and power-ups (rarely move). */
@@ -333,6 +339,67 @@ export class World {
     return pu;
   }
 
+  /**
+   * Spills `total` token units as `pieces` loot pieces bursting out of (x, y)
+   * at `RULES.lootSpeed` in random directions. Piece values sum exactly to
+   * `total` (the division remainder goes on the first piece); there are
+   * never more pieces than units.
+   */
+  spawnLoot(x: number, y: number, total: number, pieces: number): void {
+    if (!Number.isSafeInteger(total) || total <= 0) return;
+    const n = Math.max(1, Math.min(total, Math.floor(Number.isFinite(pieces) ? pieces : 1)));
+    const each = Math.floor(total / n);
+    const first = total - each * (n - 1);
+    for (let i = 0; i < n; i++) {
+      const a = this.rng() * Math.PI * 2;
+      this.addLoot(x, y, i === 0 ? first : each, Math.cos(a) * RULES.lootSpeed, Math.sin(a) * RULES.lootSpeed);
+    }
+  }
+
+  /** Puts loot back at rest (crash recovery). */
+  restoreLoot(items: { x: number; y: number; value: number }[]): void {
+    for (const it of items) {
+      if (!Number.isSafeInteger(it.value) || it.value <= 0) continue;
+      this.addLoot(Number.isFinite(it.x) ? it.x : this.cfg.width / 2, Number.isFinite(it.y) ? it.y : this.cfg.height / 2, it.value, 0, 0);
+    }
+  }
+
+  /** Loot currently on the floor. */
+  loot(): { id: number; x: number; y: number; value: number }[] {
+    return this.lootList.map((l) => ({ id: l.id, x: l.x, y: l.y, value: l.value }));
+  }
+
+  private addLoot(x: number, y: number, value: number, vx: number, vy: number): Loot {
+    const r = RULES.lootRadius;
+    const l = new Loot(this.newEntityId(), clamp(x, r, this.cfg.width - r), clamp(y, r, this.cfg.height - r), value, vx, vy, this.tickCount);
+    this.lootList.push(l);
+    this.staticGrid.insert(l);
+    this.entities.set(l.id, l);
+    return l;
+  }
+
+  private moveLoot(dt: number): void {
+    if (this.lootList.length === 0) return;
+    const keep = Math.pow(RULES.lootFrictionPerSec, dt);
+    for (const l of this.lootList) {
+      if (l.vx === 0 && l.vy === 0) continue;
+      l.x += l.vx * dt;
+      l.y += l.vy * dt;
+      l.vx *= keep;
+      l.vy *= keep;
+      if (l.vx * l.vx + l.vy * l.vy < 25) {
+        l.vx = 0;
+        l.vy = 0;
+      }
+      if (l.x < l.r || l.x > this.cfg.width - l.r) l.vx = -l.vx;
+      if (l.y < l.r || l.y > this.cfg.height - l.r) l.vy = -l.vy;
+      l.x = clamp(l.x, l.r, this.cfg.width - l.r);
+      l.y = clamp(l.y, l.r, this.cfg.height - l.r);
+      this.staticGrid.update(l);
+      l.version = this.tickCount;
+    }
+  }
+
   /* ---------------------------------------------------------------- */
   /* Tick                                                             */
   /* ---------------------------------------------------------------- */
@@ -348,6 +415,7 @@ export class World {
     this.processInputs();
     this.moveCells(dt, dtMs);
     this.moveEjectsAndViruses(dt, dtMs);
+    this.moveLoot(dt);
     this.rebuildDynamicGrid();
     this.resolveOwnCells(dt);
     this.applyMagnets(dt);
@@ -642,6 +710,15 @@ export class World {
               this.removeStatic(e, c.id);
             }
             break;
+          case EntityKind.Loot:
+            // only humans pick loot (bots carry no value)
+            if (!c.player.isBot && d2 < c.r * c.r) {
+              this.removeStatic(e, c.id);
+              const li = this.lootList.indexOf(e);
+              if (li >= 0) this.lootList.splice(li, 1);
+              this.events.lootPicked.push({ pid: c.player.id, lootId: e.id, value: e.value });
+            }
+            break;
           case EntityKind.PowerUp: {
             const reachPu = c.r + e.r * 0.5;
             if (d2 < reachPu * reachPu) this.collectPowerUp(c, e);
@@ -747,11 +824,13 @@ export class World {
         if (!canEat(a.mass, b.mass) || !coversVictim(a.r, b.r, d)) return;
         const victimTotalBefore = bp.totalMass();
         const last = bp.cells.length === 1;
+        const bx = b.x;
+        const by = b.y;
         a.setMass(a.mass + b.mass);
         a.version = this.tickCount;
         ap.stats.cellsEaten++;
         this.removeCell(b, a.id);
-        this.events.cellsEaten.push({ eater: ap, victim: bp, mass: b.mass, victimTotalBefore, last });
+        this.events.cellsEaten.push({ eater: ap, victim: bp, mass: b.mass, victimTotalBefore, last, x: bx, y: by });
         if (last) {
           ap.stats.playersEaten++;
           bp.alive = false;

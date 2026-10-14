@@ -4,6 +4,7 @@ import {
   EMOTES,
   PlayerFlag,
   RULES,
+  clamp,
   VIEW,
   WORLD_PRESETS,
   sanitizeChat,
@@ -23,15 +24,16 @@ import type { ChainGateway } from '../chain/types';
 import { looksLikeScam, maskProfanity } from '../chat-filter';
 import type { Player } from '../game/entities';
 import { mulberry32 } from '../game/rng';
-import { World } from '../game/world';
+import { World, type CellEatenEvent } from '../game/world';
 import type { Leaderboards } from '../leaderboards';
 import type { Conn } from '../net/conn';
 import type { Journal, LiveStake, SettleReason, SettlementItem } from '../stake/journal';
-import { StakeLedger, type StakeEntry } from '../stake/ledger';
+import { ArenaLedger, type ArenaEntry } from '../stake/ledger';
 
 /** Stake players are force-cashed-out long before the on-chain 24 h refund window opens. */
 export const MAX_STAKE_SESSION_AGE_S = 6 * 3600;
-const JOURNAL_SNAPSHOT_MS = 2000;
+/** While live values or loot changed, the journal is rewritten at most this often. */
+const JOURNAL_SNAPSHOT_MS = 1000;
 const SLEEP_AFTER_MS = 60_000;
 const CHAT_HISTORY = 20;
 
@@ -69,7 +71,7 @@ type FinishCause = 'death' | 'left' | 'cashout' | 'afk' | 'maxage' | 'kicked';
 export class Room {
   readonly world: World;
   readonly bots: BotManager | null;
-  readonly ledger: StakeLedger | null;
+  readonly ledger: ArenaLedger | null;
   readonly conns = new Set<Conn>();
   /** Living human players → their connection (null while AFK in a stake room). */
   readonly humans = new Map<number, Conn | null>();
@@ -79,6 +81,8 @@ export class Room {
   private readonly writer = new BinaryWriter(32 * 1024);
   private lastLbAt = 0;
   private lastJournalAt = 0;
+  /** Arena rooms: live values or loot changed since the last journal write. */
+  private journalDirty = false;
   private lastAgeCheckAt = 0;
   private recordSeq = 0;
   lastActivity = Date.now();
@@ -91,7 +95,9 @@ export class Room {
     const seed = opts.seed ?? (Math.random() * 2 ** 32) >>> 0;
     this.world = new World({ ...preset, powerUps: true, coinRain: opts.mode !== 'arena', seed });
     this.bots = opts.bots ? new BotManager(this.world, opts.bots, mulberry32(seed ^ 0xb07)) : null;
-    this.ledger = opts.mode === 'arena' ? new StakeLedger() : null;
+    this.ledger = opts.mode === 'arena' ? new ArenaLedger() : null;
+    // loot left on this arena's floor when the server last stopped
+    if (this.ledger && opts.stake) this.world.restoreLoot(deps.journal.recoverLoot(opts.stake.arenaId));
   }
 
   get id(): string {
@@ -123,7 +129,7 @@ export class Room {
     return this.ledger ? this.ledger.all().map((e) => e.session) : [];
   }
 
-  findStakeByWallet(wallet: string): StakeEntry | undefined {
+  findStakeByWallet(wallet: string): ArenaEntry | undefined {
     return this.ledger?.all().find((e) => e.player === wallet);
   }
 
@@ -153,7 +159,7 @@ export class Room {
   /* Joining / leaving                                                */
   /* ---------------------------------------------------------------- */
 
-  join(conn: Conn, opts: { name: string; skin: number; flags: number; stake?: Omit<StakeEntry, 'pid' | 'kills'> }): Player {
+  join(conn: Conn, opts: { name: string; skin: number; flags: number; stake?: Omit<ArenaEntry, 'pid'> }): Player {
     this.attach(conn);
     const player = this.world.addPlayer({ name: opts.name, skin: opts.skin, flags: opts.flags });
     this.humans.set(player.id, conn);
@@ -164,8 +170,8 @@ export class Room {
     conn.lastSkin = opts.skin;
     if (conn.wallet) this.walletOf.set(player.id, conn.wallet);
     if (this.ledger && opts.stake) {
-      this.ledger.join({ ...opts.stake, pid: player.id, kills: 0 });
-      this.deps.journal.commit({ roomId: this.id, live: this.liveStakes() });
+      this.ledger.join({ ...opts.stake, pid: player.id });
+      this.commitJournal();
     }
     conn.send({
       t: 'joined',
@@ -330,8 +336,73 @@ export class Room {
         value: e.value,
         score: Math.floor(p?.stats.maxMass ?? 0),
         kills: p?.stats.playersEaten ?? 0,
+        hasPass: e.hasPass,
       };
     });
+  }
+
+  /** Arena entry fee in raw token units (0 outside arenas). */
+  get entryFee(): number {
+    return this.opts.stake?.buyIn ?? 0;
+  }
+
+  /**
+   * Arena rooms: writes live values and loot (plus any settlements) in one
+   * atomic journal write, so Σ live + Σ loot + Σ pending never changes on disk
+   * except by settlements being confirmed.
+   */
+  private commitJournal(enqueue?: SettlementItem[]): void {
+    if (!this.ledger) {
+      if (enqueue && enqueue.length > 0) this.deps.journal.commit({ enqueue });
+      return;
+    }
+    const loot = this.opts.stake
+      ? { arenaId: this.opts.stake.arenaId, items: this.world.loot().map((l) => ({ x: l.x, y: l.y, value: l.value })) }
+      : undefined;
+    this.deps.journal.commit({ enqueue, roomId: this.id, live: this.liveStakes(), loot });
+    this.journalDirty = false;
+    this.lastJournalAt = Date.now();
+  }
+
+  private sendValue(pid: number, delta: number, reason: 'eat' | 'loot' | 'eaten' | 'spill'): void {
+    if (delta === 0 || !this.ledger) return;
+    this.humans.get(pid)?.send({ t: 'value', value: this.ledger.value(pid), delta, reason });
+  }
+
+  /**
+   * Arena value rules for one eaten cell:
+   * - staker eats staker → proportional transfer;
+   * - a bot (or anyone without value) eats a staker → the same share spills as loot;
+   * - the victim is a bot → nothing (bots carry no value).
+   */
+  private onCellEaten(ce: CellEatenEvent): void {
+    const ledger = this.ledger;
+    if (!ledger || !ledger.has(ce.victim.id)) return;
+    this.journalDirty = true;
+    if (ledger.has(ce.eater.id)) {
+      const t = ledger.transfer(ce.victim.id, ce.eater.id, ce.mass, ce.victimTotalBefore, ce.last);
+      this.sendValue(ce.eater.id, t, 'eat');
+      this.sendValue(ce.victim.id, -t, 'eaten');
+      return;
+    }
+    const t = ledger.spill(ce.victim.id, ce.mass, ce.victimTotalBefore, ce.last);
+    if (t <= 0) return;
+    const pieces = clamp(Math.ceil(t / (this.entryFee * RULES.lootPieceEntryFraction)), RULES.lootPiecesMin, RULES.lootPiecesMax);
+    this.world.spawnLoot(ce.x, ce.y, t, pieces);
+    this.sendValue(ce.victim.id, -t, 'spill');
+  }
+
+  /** Arena rooms: credits picked-up loot (put back on the floor if nobody can hold it). */
+  private onLootPicked(pid: number, value: number): void {
+    if (!this.ledger) return;
+    this.journalDirty = true;
+    if (this.ledger.credit(pid, value)) {
+      this.sendValue(pid, value, 'loot');
+      return;
+    }
+    const p = this.world.players.get(pid);
+    const c = p?.center() ?? { x: this.world.cfg.width / 2, y: this.world.cfg.height / 2 };
+    this.world.restoreLoot([{ x: c.x, y: c.y, value }]);
   }
 
   private finishHuman(p: Player, conn: Conn | null, cause: FinishCause, killer: Player | null = null): void {
@@ -386,7 +457,7 @@ export class Room {
       });
     }
     if (enqueue.length > 0 || this.ledger) {
-      this.deps.journal.commit({ enqueue, roomId: this.ledger ? this.id : undefined, live: this.ledger ? this.liveStakes() : undefined });
+      this.commitJournal(enqueue);
       if (enqueue.length > 0) this.deps.chain.kick();
     }
 
@@ -420,9 +491,11 @@ export class Room {
     const world = this.world;
     const ev = world.tick(dtMs);
 
+    // loot is picked before any cell is eaten in a tick (the world eats static entities first)
+    for (const lp of ev.lootPicked) this.onLootPicked(lp.pid, lp.value);
     // value moves with every eaten stake cell; getting hit cancels a cash-out
     for (const ce of ev.cellsEaten) {
-      this.ledger?.transfer(ce.victim.id, ce.eater.id, ce.mass, ce.victimTotalBefore, ce.last);
+      this.onCellEaten(ce);
       if (!ce.last && ce.victim.cashoutUntil > 0) this.cancelCashout(ce.victim);
     }
 
@@ -494,10 +567,7 @@ export class Room {
         if (p?.alive) this.finishHuman(p, this.humans.get(e.pid) ?? null, 'maxage');
       }
     }
-    if (now - this.lastJournalAt >= JOURNAL_SNAPSHOT_MS) {
-      this.lastJournalAt = now;
-      this.deps.journal.commit({ roomId: this.id, live: this.liveStakes() });
-    }
+    if (this.journalDirty && now - this.lastJournalAt >= JOURNAL_SNAPSHOT_MS) this.commitJournal();
   }
 
   private viewFor(conn: Conn): { rect: { x0: number; y0: number; x1: number; y1: number }; view: { x: number; y: number; h: number } } {
@@ -550,7 +620,7 @@ export class Room {
       if (!conn.open) continue;
       if (conn.buffered > 768 * 1024) continue; // slow client: skip a frame
       const { rect, view } = this.viewFor(conn);
-      const snap = conn.view.build(this.world, rect, view);
+      const snap = conn.view.build(this.world, rect, view, this.entryFee);
       if (!snap) continue;
       this.writer.reset();
       writeSnapshot(this.writer, snap);

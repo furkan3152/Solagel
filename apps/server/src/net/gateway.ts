@@ -342,9 +342,11 @@ export class Gateway {
           session: session.address,
           sessionId: session.id,
           arenaId: target.arenaId,
-          buyIn: session.buyIn,
+          entryFee: session.buyIn,
           value: session.buyIn,
           openedAt: session.openedAt,
+          // the chain gateway reports Pass sessions from Task 10 on
+          hasPass: false,
         },
       });
     } finally {
