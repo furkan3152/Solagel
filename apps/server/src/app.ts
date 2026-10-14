@@ -51,7 +51,10 @@ export async function createApp(
   await chain.start();
   await rooms.ensureArenaRooms();
 
-  const server = createHttpServer(cfg, { rooms, leaderboards, chain, auth, startedAt: Date.now() });
+  if (chain.passStatus() && !cfg.publicUrl) {
+    log('pass: PUBLIC_URL is not set — Pass metadata image links come from the request host (set PUBLIC_URL in production)');
+  }
+  const server = createHttpServer(cfg, { rooms, leaderboards, chain, auth, journal, startedAt: Date.now() });
   const gateway = new Gateway(cfg, rooms, auth, chain, journal, log);
   gateway.attach(server);
   const flushTimer = setInterval(() => leaderboards.flush(), 30_000);

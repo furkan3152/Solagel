@@ -17,7 +17,7 @@ import {
 import { Connection, Keypair, PublicKey, TransactionInstruction } from '@solana/web3.js';
 import { describe, expect, it } from 'vitest';
 import { createChain } from '../src/chain';
-import { SolanaChain, STALE_SESSION_AFTER_S, type ChainClient } from '../src/chain/solana';
+import { NO_ATA_RETRY_MS, SolanaChain, STALE_SESSION_AFTER_S, type ChainClient } from '../src/chain/solana';
 import type { SettledEvent } from '../src/chain/types';
 import { loadConfig, type ServerConfig } from '../src/config';
 import { Journal, type SettlementItem } from '../src/stake/journal';
@@ -472,23 +472,46 @@ describe('settlement worker', () => {
     expect(h.settled.map((e) => e.fee)).toEqual([117_283, 46_913]);
   });
 
-  it('creates player ATA when missing', async () => {
+  it('missing player ATA keeps the settle queued without server-paid rent', async () => {
     const h = await harness();
     const s = h.client.addSession(wallet());
-    const mint = h.client.config!.tokenMint;
-    const tp = h.client.config!.tokenProgram;
-    const playerAta = ata(s.player, mint, tp);
+    const playerAta = ata(s.player, h.client.config!.tokenMint, h.client.config!.tokenProgram);
     h.client.missing.add(playerAta.toBase58());
-    const other = h.client.addSession(wallet(), { arenaId: 2 });
-    h.journal.commit({ enqueue: [settleItem(s), settleItem(other, { createdAt: T0 + 1 })] });
+    h.journal.enqueue(settleItem(s));
+    await h.chain.processPending();
+    expect(h.sent).toBe(0); // nothing sent: no settle, no server-paid ATA creation
+    expect(h.journal.pending).toHaveLength(1);
+    const item = h.journal.pending[0];
+    expect(item.needsTokenAccount).toBe(true);
+    expect(item.nextAttemptAt).toBe(T0 + NO_ATA_RETRY_MS);
+    // one log line per item, not per retry
+    for (let i = 0; i < 3; i++) {
+      h.clock.now += NO_ATA_RETRY_MS;
+      await h.chain.processPending();
+    }
+    expect(h.sent).toBe(0);
+    expect(h.journal.pending).toHaveLength(1);
+    expect(h.logs.filter((l) => /has no token account/.test(l))).toHaveLength(1);
+    expect(h.sentIxs.flat().some((ix) => ix.programId.equals(ASSOCIATED_TOKEN_PROGRAM_ID))).toBe(false);
+  });
+
+  it('settles once the player ATA exists', async () => {
+    const h = await harness();
+    const s = h.client.addSession(wallet());
+    const playerAta = ata(s.player, h.client.config!.tokenMint, h.client.config!.tokenProgram).toBase58();
+    h.client.missing.add(playerAta);
+    h.journal.enqueue(settleItem(s));
+    await h.chain.processPending();
+    expect(h.journal.pending[0].needsTokenAccount).toBe(true);
+    h.client.missing.delete(playerAta); // the player created it
+    await h.chain.processPending();
+    expect(h.sent).toBe(0); // not due before the 5-minute re-check
+    h.clock.now += NO_ATA_RETRY_MS;
     await h.chain.processPending();
     expect(h.journal.pending).toHaveLength(0);
-    expect(h.sentIxs.map((ixs) => ixs.length)).toEqual([2, 1]);
-    const create = h.sentIxs[0][0];
-    expect(create.programId.equals(ASSOCIATED_TOKEN_PROGRAM_ID)).toBe(true);
-    expect(create.keys[0].pubkey.equals(h.server.publicKey)).toBe(true); // the server pays the rent
-    expect(create.keys[1].pubkey.equals(playerAta)).toBe(true);
-    expect(create.keys[2].pubkey.toBase58()).toBe(s.player);
+    expect(h.sentIxs).toHaveLength(1);
+    expect(h.sentIxs[0]).toHaveLength(1); // the settle instruction only
+    expect(h.settled.map((e) => e.key)).toEqual([s.address]);
   });
 
   it('drops items whose session is gone or belongs to a newer join', async () => {
@@ -615,6 +638,7 @@ describe('settlement worker', () => {
           legacy(1),
           { kind: 'settle', key: s.address, player: s.player, arenaId: 1, session: s.address, sessionId: 4, payout: 5, score: 1, kills: 0, xp: 0, attempts: 0, nextAttemptAt: T0, createdAt: T0 },
           legacy(2),
+          { kind: 'mystery', key: 'm1', player: owner, score: 0, kills: 0, xp: 0, attempts: 0, nextAttemptAt: T0, createdAt: T0 },
         ],
         live: [],
         updatedAt: T0,
@@ -622,12 +646,16 @@ describe('settlement worker', () => {
     );
     const logs: string[] = [];
     const journal = new Journal(path, (m) => logs.push(m));
-    expect(journal.pending.map((p) => [p.kind, p.key])).toEqual([['settle', s.address]]);
+    // only records are dropped: an unknown kind still reaches the worker's loud path
+    expect(journal.pending.map((p) => [p.kind, p.key])).toEqual([
+      ['settle', s.address],
+      ['mystery', 'm1'],
+    ]);
     expect(logs.join('\n')).toMatch(/dropped 2 legacy free-play record item\(s\)/);
     // the cleaned journal is written back
     const onDisk = JSON.parse(readFileSync(path, 'utf8')) as { version: number; pending: { kind: string }[] };
     expect(onDisk.version).toBe(2);
-    expect(onDisk.pending.map((p) => p.kind)).toEqual(['settle']);
+    expect(onDisk.pending.map((p) => p.kind)).toEqual(['settle', 'mystery']);
   });
 
   it('refuses arenas when supply unsafe', async () => {

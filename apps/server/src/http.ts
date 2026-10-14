@@ -10,6 +10,7 @@ import { clientIp } from './net/gateway';
 import { PassImages } from './pass/images';
 import { collectionMetadata, passMetadata } from './pass/metadata';
 import type { RoomManager } from './rooms/manager';
+import type { Journal } from './stake/journal';
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -34,6 +35,8 @@ interface Ctx {
   chain: ChainGateway;
   auth: Auth;
   startedAt: number;
+  /** Settlements owed (for `/api/pending`). */
+  journal?: Journal;
   /** Pass image renderer/cache (default: `DATA_DIR/pass`). */
   passImages?: PassImages;
 }
@@ -41,7 +44,7 @@ interface Ctx {
 /** Requests per minute and IP on `/pass/*` and `/api/pass/*`. */
 export const PASS_RATE_PER_MIN = 60;
 const HOST_RE = /^[A-Za-z0-9.-]+(:\d{1,5})?$|^\[[0-9A-Fa-f:.]+\](:\d{1,5})?$/;
-const PASS_PATH = /^\/pass\/(\d{1,6})\.(json|png)$/;
+const PASS_PATH = /^\/pass\/([1-9]\d{0,5})\.(json|png)$/;
 
 /**
  * Base URL for links in Pass metadata: `PUBLIC_URL` when set, else the request's
@@ -119,7 +122,8 @@ export function createHttpServer(cfg: ServerConfig, ctx: Ctx): Server {
     if (!pass) return json(res, 404, { error: 'pass collection not configured' });
     const base = publicBaseUrl(cfg, req, trustProxy);
     const sealed = !(pass.revealed && pass.seed);
-    const cache = sealed ? 'public, max-age=60' : 'public, max-age=3600';
+    // a Host-derived base URL must not be cached by shared caches under another host
+    const cache = !cfg.publicUrl ? 'no-store' : sealed ? 'public, max-age=60' : 'public, max-age=3600';
     const sendJson = (body: unknown) => {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': cache });
       res.end(req.method === 'HEAD' ? undefined : JSON.stringify(body));
@@ -183,6 +187,15 @@ export function createHttpServer(cfg: ServerConfig, ctx: Ctx): Server {
             const pubkey = url.searchParams.get('pubkey');
             if (!isValidPubkey(pubkey)) return json(res, 400, { error: 'invalid pubkey' });
             return json(res, 200, ctx.auth.issueNonce(pubkey));
+          }
+          case '/api/pending': {
+            // settlements owed to a wallet; `needsTokenAccount`: the player must create their token account
+            const wallet = url.searchParams.get('wallet');
+            if (!isValidPubkey(wallet)) return json(res, 400, { error: 'invalid wallet' });
+            const pending = (ctx.journal?.pending ?? [])
+              .filter((p) => p.player === wallet)
+              .map((p) => ({ key: p.key, arenaId: p.arenaId ?? null, payout: p.payout ?? 0, needsTokenAccount: p.needsTokenAccount === true }));
+            return json(res, 200, { pending });
           }
           case '/api/pass/owned': {
             const wallet = url.searchParams.get('wallet');
