@@ -16,6 +16,7 @@ import { SERVER } from '../config';
 import { t } from '../i18n';
 import { Renderer } from '../render/renderer';
 import { FOOD_COLORS } from '../render/sprites';
+import { useChainData } from '../solana/chain';
 import { toast, useUi, type Screen } from '../store';
 import { Camera } from './camera';
 import { Input } from './input';
@@ -145,10 +146,27 @@ export class GameEngine {
   /* Actions                                                          */
   /* ---------------------------------------------------------------- */
 
-  play(room: string): void {
+  /**
+   * Joins a room. `pass`: the Slana Pass asset to wear (defaults to the equipped
+   * one; in an arena the ticket's own Pass wins on the server). `awaitTicket`:
+   * the ticket was bought a moment ago, so a `no_session` answer (the server's
+   * RPC may lag the confirmation) is retried quietly a few times.
+   */
+  play(room: string, opts: { pass?: string | null; awaitTicket?: boolean } = {}): void {
     sound.unlock();
     const { settings } = useUi.getState();
-    this.net.send({ t: 'join', room, name: settings.name || 'Coinie', skin: settings.skin });
+    // the equipped Pass look only while the connected wallet still holds it (else the server says pass_invalid)
+    const equipped = settings.passSkin && useChainData.getState().passes.some((p) => p.asset === settings.passSkin) ? settings.passSkin : null;
+    const pass = opts.pass === undefined ? equipped : opts.pass;
+    this.ticketRetry = opts.awaitTicket ? { room, pass, left: 4 } : null;
+    this.sendJoin(room, pass);
+  }
+
+  private ticketRetry: { room: string; pass: string | null; left: number } | null = null;
+
+  private sendJoin(room: string, pass: string | null): void {
+    const { settings } = useUi.getState();
+    this.net.send({ t: 'join', room, name: settings.name || 'Coinie', skin: settings.skin, ...(pass ? { pass } : {}) });
   }
 
   spectate(room?: string): void {
@@ -296,6 +314,7 @@ export class GameEngine {
         this.world.myPid = m.playerId;
         this.world.width = m.room.width;
         this.world.height = m.room.height;
+        this.ticketRetry = null;
         this.wasArena = m.room.mode === 'arena' ? (m.room.arenaId ?? null) : null;
         this.world.value = m.value ?? null;
         useUi.setState({
@@ -437,6 +456,15 @@ export class GameEngine {
         return;
       }
       case 'error': {
+        const retry = this.ticketRetry;
+        if (m.code === 'no_session' && retry && retry.left > 0) {
+          retry.left--;
+          setTimeout(() => {
+            if (this.ticketRetry === retry && useUi.getState().screen !== 'playing') this.sendJoin(retry.room, retry.pass);
+          }, 1500);
+          return;
+        }
+        this.ticketRetry = null;
         const key = `err.${m.code}` as const;
         toast(m.code === 'rate_limited' ? 'warn' : 'error', t(key as 'err.bad_request') || m.message, undefined, m.code === 'version_mismatch' ? 600_000 : 5000);
         if (m.code === 'skin_locked') useUi.setState((s) => ({ settings: { ...s.settings, skin: 0 } }));
@@ -566,7 +594,8 @@ export class GameEngine {
       this.snapNext = false;
     } else {
       const v = world.serverView;
-      const short = ui.screen === 'lobby' ? 1500 : ui.screen === 'spectating' ? this.camera.visibleShortFor(0, true) * 0.85 : this.camera.visibleShortFor(400);
+      // lobby: the room is the front-page photo (a window in the paper), so show it wide like a spectator
+      const short = ui.screen === 'lobby' || ui.screen === 'spectating' ? this.camera.visibleShortFor(0, true) * 0.85 : this.camera.visibleShortFor(400);
       if (v.at > 0) this.camera.follow(v.x, v.y, short, dt * (ui.screen === 'lobby' ? 0.35 : 1));
     }
 

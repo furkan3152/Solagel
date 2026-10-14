@@ -6,8 +6,10 @@ import { SolanaProvider } from './solana/provider';
 import { useWalletAuth } from './solana/useWalletAuth';
 import { useUi } from './store';
 import { Kb, themeFromSettings } from './design';
-import { Lobby } from './ui/Lobby';
+import { Lobby } from './ui/lobby/Lobby';
 import { Modals, Toasts } from './ui/Modals';
+import { ProfileModal } from './solana/ProfileModal';
+import { WalletModal } from './solana/WalletModal';
 import { CashoutSheet, DeathSheet, GameHud, SettingsSheet } from './ui/game';
 
 function GameCanvas() {
@@ -43,12 +45,15 @@ function Screens() {
   return (
     <>
       {screen === 'lobby' && <Lobby />}
-      {/* Kâğıt Bilet game view (the legacy lobby keeps its own styles until Task 14) */}
+      {/* Kâğıt Bilet game view, sheets and toasts (portalled; themed from this root) */}
       <Kb theme={themeFromSettings(theme)} paper={false} className="g-root">
         {screen !== 'lobby' && <GameHud />}
         <DeathSheet />
         <CashoutSheet />
         <SettingsSheet />
+        <WalletModal />
+        <ProfileModal />
+        <Toasts />
       </Kb>
     </>
   );
@@ -72,7 +77,6 @@ export function App() {
         <ChainSync />
         <Screens />
         <Modals />
-        <Toasts />
       </div>
     </SolanaProvider>
   );
