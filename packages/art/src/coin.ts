@@ -33,6 +33,13 @@ export interface CoinState {
   pxPerUnit?: number;
   /** Cash-out progress 0..1 for the dotted ring; animated from `time` when omitted. */
   cashout?: number;
+  /**
+   * Optional cache for the halftone shade (the costliest layer: hundreds of
+   * dots). Called with the radius and dot spacing; return an image of
+   * `drawHalftoneDots(ctx, r, spacing)` rendered into a 2r × 2r box (origin at
+   * its centre), or null to draw the dots directly.
+   */
+  halftone?: (r: number, spacing: number) => CanvasImageSource | null;
 }
 
 function bodyPath(ctx: CanvasRenderingContext2D, r: number, jelly: JellyLike | null | undefined, detail: number): void {
@@ -99,15 +106,22 @@ export function drawRisoCoin(ctx: CanvasRenderingContext2D, look: CoinLook, r: n
   ctx.fill();
   ctx.restore();
 
-  // 2. body ink, over a paper base so it reads the same on any background
+  // 2. body ink, over a paper base so it reads the same on any background.
+  // Opaque: the paper base hides what is under it, so ink × paper is a single
+  // flat colour (one fill instead of a fill plus a multiply blend).
   bodyPath(ctx, r, state.jelly, detail);
-  ctx.fillStyle = CARD_PAPER;
-  ctx.fill();
-  ctx.save();
-  ctx.globalCompositeOperation = 'multiply';
-  ctx.fillStyle = look.body;
-  ctx.fill();
-  ctx.restore();
+  if (ctx.globalAlpha >= 0.999) {
+    ctx.fillStyle = inkOnPaper(look.body);
+    ctx.fill();
+  } else {
+    ctx.fillStyle = CARD_PAPER;
+    ctx.fill();
+    ctx.save();
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.fillStyle = look.body;
+    ctx.fill();
+    ctx.restore();
+  }
 
   // 3. ink rim (+ the coin's inner groove)
   const gold = look.special === 'gold' || (look.special?.startsWith('oneOfOne') ?? false);
@@ -133,7 +147,14 @@ export function drawRisoCoin(ctx: CanvasRenderingContext2D, look: CoinLook, r: n
     ctx.save();
     bodyPath(ctx, r - rimW * 0.5, state.jelly, detail);
     ctx.clip();
-    drawHalftone(ctx, r, Math.max(r * 0.075, 3 * minPx));
+    const spacing = Math.max(r * 0.075, 3 * minPx);
+    const cached = state.halftone?.(r, spacing) ?? null;
+    // Dark ink dots at 30 % read the same multiplied or laid over; a cached image
+    // is laid over (source-over), which GPUs blend without reading the target back.
+    ctx.globalCompositeOperation = cached ? 'source-over' : 'multiply';
+    ctx.globalAlpha *= 0.3;
+    if (cached) ctx.drawImage(cached, -r, -r, r * 2, r * 2);
+    else drawHalftoneDots(ctx, r, spacing);
     ctx.restore();
   }
 
@@ -193,17 +214,39 @@ export function drawRisoCoin(ctx: CanvasRenderingContext2D, look: CoinLook, r: n
   ctx.restore();
 }
 
-/** Rotated (45°) halftone grid whose dots grow towards the lower right. */
-function drawHalftone(ctx: CanvasRenderingContext2D, r: number, sp: number): void {
+const paperInk = new Map<string, string>();
+
+/** `ink` multiplied onto card paper, as a hex colour (cached). */
+function inkOnPaper(ink: string): string {
+  let c = paperInk.get(ink);
+  if (!c) {
+    const a = parseHex(ink);
+    const p = parseHex(CARD_PAPER);
+    c = a && p ? `#${[0, 1, 2].map((i) => Math.round((a[i] * p[i]) / 255).toString(16).padStart(2, '0')).join('')}` : ink;
+    paperInk.set(ink, c);
+  }
+  return c;
+}
+
+function parseHex(hex: string): [number, number, number] | null {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+/**
+ * Rotated (45°) halftone grid whose dots grow towards the lower right, in
+ * plain INK at the current alpha (the coin multiplies it in at 30 %). Exported
+ * so renderers can cache it per size (see `CoinState.halftone`).
+ */
+export function drawHalftoneDots(ctx: CanvasRenderingContext2D, r: number, sp: number): void {
   const cx = -r * 0.24;
   const cy = -r * 0.28;
   const inner = r * 0.86;
   const band = r * 0.42;
   const c = Math.SQRT1_2;
   const n = Math.ceil((r * 1.5) / sp);
-  ctx.save();
-  ctx.globalCompositeOperation = 'multiply';
-  ctx.globalAlpha *= 0.3;
   ctx.fillStyle = INK;
   // one path per dot: a single path with thousands of arcs is pathologically slow in Skia
   for (let i = -n; i <= n; i++) {
@@ -221,7 +264,6 @@ function drawHalftone(ctx: CanvasRenderingContext2D, r: number, sp: number): voi
       ctx.fill();
     }
   }
-  ctx.restore();
 }
 
 /** Iridescent diagonal bands (holo foil). */
@@ -282,6 +324,8 @@ function drawCashout(ctx: CanvasRenderingContext2D, r: number, progress: number,
   const R = r * 1.32;
   const filled = Math.round(Math.min(1, Math.max(0, progress)) * n);
   ctx.save();
+  // multiply into the caller's alpha (a fading or AFK cell), never overwrite it
+  const base = ctx.globalAlpha;
   for (let i = 0; i < n; i++) {
     const a = -Math.PI / 2 + (i / n) * TAU;
     ctx.beginPath();
@@ -294,9 +338,9 @@ function drawCashout(ctx: CanvasRenderingContext2D, r: number, progress: number,
       ctx.stroke();
     } else {
       ctx.fillStyle = INK;
-      ctx.globalAlpha = 0.45;
+      ctx.globalAlpha = base * 0.45;
       ctx.fill();
-      ctx.globalAlpha = 1;
+      ctx.globalAlpha = base;
     }
   }
   ctx.restore();
@@ -307,9 +351,10 @@ function drawMagnet(ctx: CanvasRenderingContext2D, r: number, time: number, line
   ctx.strokeStyle = RISO.fluoPink;
   ctx.lineWidth = lineW * 0.7;
   ctx.setLineDash([r * 0.05, r * 0.07]);
+  const base = ctx.globalAlpha;
   for (let i = 0; i < 2; i++) {
     const p = (((time / 900 + i / 2) % 1) + 1) % 1;
-    ctx.globalAlpha = 1 - p;
+    ctx.globalAlpha = base * (1 - p);
     ctx.beginPath();
     ctx.arc(0, 0, r * (1.55 - p * 0.45), 0, TAU);
     ctx.stroke();
@@ -348,12 +393,13 @@ export function drawZzz(ctx: CanvasRenderingContext2D, r: number, time: number, 
   ctx.lineWidth = lineW * 0.9;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
+  const base = ctx.globalAlpha;
   for (let i = 0; i < 3; i++) {
     const p = time > 0 ? (((time / 1500 + i / 3) % 1) + 1) % 1 : i / 3;
     const h = r * (0.09 + i * 0.03);
     const x = r * (0.62 + p * 0.35);
     const y = -r * (0.72 + p * 0.6);
-    ctx.globalAlpha = time > 0 ? 1 - p : 1;
+    ctx.globalAlpha = base * (time > 0 ? 1 - p : 1);
     ctx.beginPath();
     ctx.moveTo(x - h * 0.7, y - h);
     ctx.lineTo(x + h * 0.7, y - h);

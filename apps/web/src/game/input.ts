@@ -82,6 +82,27 @@ export class Input {
     if (e.code === 'KeyW') this.stopEject();
   }
 
+  /**
+   * Virtual joystick from a thumb offset (px) inside a base of radius `max`:
+   * clamped to the rim, with a small dead zone so a resting thumb does not drift.
+   * Returns the clamped knob offset for the UI.
+   */
+  setStick(dx: number, dy: number, max: number): { x: number; y: number } {
+    const d = Math.hypot(dx, dy);
+    if (d > max) {
+      dx = (dx / d) * max;
+      dy = (dy / d) * max;
+    }
+    const dead = max * 0.12;
+    const k = d < dead ? 0 : Math.min(1, (Math.min(d, max) - dead) / (max - dead)) / Math.max(1e-6, Math.min(d, max));
+    this.stick = { x: dx * k, y: dy * k, active: true };
+    return { x: dx, y: dy };
+  }
+
+  releaseStick(): void {
+    this.stick = { x: 0, y: 0, active: false };
+  }
+
   startEject(): void {
     this.actions.eject();
     if (this.ejectTimer !== null) return;

@@ -1,10 +1,23 @@
-import { EntityKind, PlayerFlag, type PlayerInfo, type SnapshotData } from '@slana/shared';
+import { EntityKind, PlayerFlag, type PlayerInfo, type ServerMessage, type SnapshotData } from '@slana/shared';
 import type { Expression } from '@slana/art';
 import { JellyBody } from '../render/jelly';
 
 /** Movement between two snapshots is eased over this window (classic agar feel). */
 const LERP_MS = 120;
 const DIE_MS = 160;
+/** Loot is sucked into the eater a little slower, so the pickup reads. */
+const LOOT_DIE_MS = 240;
+
+export type ValueMessage = Extract<ServerMessage, { t: 'value' }>;
+
+/** A floating "+X" ink number queued by a `value` message (world coordinates). */
+export interface ValueFloat {
+  x: number;
+  y: number;
+  delta: number;
+  reason: ValueMessage['reason'];
+  at: number;
+}
 
 export interface CEntity {
   id: number;
@@ -46,7 +59,8 @@ export type EatEvent =
   | { type: 'eject'; eaterId: number; x: number; y: number; mine: boolean }
   | { type: 'cell'; eaterId: number; x: number; y: number; r: number; victimPid: number; eaterPid: number; mine: boolean; me: boolean }
   | { type: 'virus'; eaterId: number; x: number; y: number; mine: boolean }
-  | { type: 'powerup'; eaterId: number; x: number; y: number; mine: boolean };
+  | { type: 'powerup'; eaterId: number; x: number; y: number; mine: boolean }
+  | { type: 'loot'; eaterId: number; x: number; y: number; variant: number; mine: boolean };
 
 /** Client-side mirror of the visible world with interpolation. */
 export class ClientWorld {
@@ -57,13 +71,38 @@ export class ClientWorld {
   width = 5600;
   height = 5600;
   lastSnapshotAt = 0;
+  /** Arena rooms: my in-game value (raw token units), null outside arenas. */
+  value: number | null = null;
   private eatQueue: EatEvent[] = [];
+  private floatQueue: ValueFloat[] = [];
 
   reset(): void {
     this.entities.clear();
     this.players.clear();
     this.myPid = null;
+    this.value = null;
     this.eatQueue = [];
+    this.floatQueue = [];
+  }
+
+  /**
+   * Arena `value` message: keeps the value and queues a floating number that
+   * rises from the top of my biggest cell (nothing to float without a cell or
+   * without a change).
+   */
+  applyValue(m: ValueMessage, now: number): void {
+    this.value = m.value;
+    if (m.delta === 0) return;
+    let best: CEntity | null = null;
+    for (const c of this.myCells()) if (!best || c.r > best.r) best = c;
+    if (!best) return;
+    this.floatQueue.push({ x: best.x, y: best.y - best.r * 0.9, delta: m.delta, reason: m.reason, at: now });
+  }
+
+  drainFloats(): ValueFloat[] {
+    const q = this.floatQueue;
+    this.floatQueue = [];
+    return q;
   }
 
   apply(s: SnapshotData, now: number): void {
@@ -145,6 +184,9 @@ export class ClientWorld {
       case EntityKind.PowerUp:
         this.eatQueue.push({ type: 'powerup', eaterId, x: e.x, y: e.y, mine });
         break;
+      case EntityKind.Loot:
+        this.eatQueue.push({ type: 'loot', eaterId, x: e.x, y: e.y, variant: e.variant, mine });
+        break;
       case EntityKind.Cell:
         if (eater && eater.playerId !== e.playerId) {
           this.eatQueue.push({
@@ -173,11 +215,13 @@ export class ClientWorld {
   update(now: number, dt: number): void {
     for (const e of this.entities.values()) {
       if (e.dying) {
-        const p = Math.min(1, (now - e.dying) / DIE_MS);
+        const p = Math.min(1, (now - e.dying) / (e.kind === EntityKind.Loot ? LOOT_DIE_MS : DIE_MS));
         const eater = e.eater ? this.entities.get(e.eater) : undefined;
         if (eater && !eater.dying) {
-          e.x = e.dieX + (eater.x - e.dieX) * p;
-          e.y = e.dieY + (eater.y - e.dieY) * p;
+          // ease-in: the piece hesitates, then gets gulped
+          const k = e.kind === EntityKind.Loot ? p * p : p;
+          e.x = e.dieX + (eater.x - e.dieX) * k;
+          e.y = e.dieY + (eater.y - e.dieY) * k;
         }
         e.r = e.dieR * (1 - p);
         if (p >= 1) this.entities.delete(e.id);

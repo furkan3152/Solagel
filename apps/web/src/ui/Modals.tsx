@@ -1,200 +1,14 @@
 import { SKINS, formatSol, isSkinUnlocked } from '@slana/shared';
 import { useEffect, useState } from 'react';
-import { engine } from '../game/instance';
 import { sound } from '../game/sound';
 import { useT } from '../i18n';
-import { explorerTx } from '../solana/links';
 import { BuySkinButton } from '../solana/BuySkinButton';
 import { WalletModal } from '../solana/WalletModal';
 import { ProfileModal } from '../solana/ProfileModal';
 import { closeModal, updateSettings, useUi } from '../store';
-import { Modal, SkinCanvas, Switch, compact, formatDuration } from './common';
+import { Modal, SkinCanvas } from './common';
+// Death, cash-out and settings moved to ./game (Kâğıt Bilet sheets, Task 13).
 import { useOwnership } from './SkinPicker';
-
-function Stat({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="stat">
-      <b>{value}</b>
-      <span>{label}</span>
-    </div>
-  );
-}
-
-export function DeathModal() {
-  const t = useT();
-  const death = useUi((s) => s.death);
-  const me = useUi((s) => s.me);
-  const room = useUi((s) => s.room);
-  const auth = useUi((s) => s.auth);
-  if (!death) return null;
-  const s = death.stats;
-  const shareText = encodeURIComponent(t('death.shareText', { mass: compact(s.maxMass) }));
-  const again = () => {
-    sound.click();
-    engine()?.play(room?.mode === 'private' && room.code ? `private:${room.code}` : 'practice');
-  };
-  return (
-    <Modal>
-      <div className="death-hero">
-        <SkinCanvas skin={me?.skin ?? 0} size={120} expression="dead" />
-        <h2>{t('death.title')} 😵</h2>
-        <div className="row" style={{ justifyContent: 'center', fontWeight: 600 }}>
-          {death.killer ? (
-            <>
-              <SkinCanvas skin={death.killerSkin ?? 0} size={30} animate={false} expression="hungry" />
-              {t('death.by', { name: death.killer })}
-            </>
-          ) : (
-            t('death.byNobody')
-          )}
-        </div>
-        {room?.mode === 'arena' && death.killer && <div className="notice">{t('death.lost', { name: death.killer })}</div>}
-      </div>
-      <div className="result-grid">
-        <Stat label={t('death.alive')} value={formatDuration(s.aliveMs)} />
-        <Stat label={t('death.maxMass')} value={compact(s.maxMass)} />
-        <Stat label={t('death.food')} value={s.foodEaten} />
-        <Stat label={t('death.players')} value={s.playersEaten} />
-        <Stat label={t('death.rank')} value={s.bestRank ? `#${s.bestRank}` : '–'} />
-        <Stat label={t('death.xp')} value={auth ? `+${s.xp ?? 0}` : '—'} />
-      </div>
-      {!auth && <div className="notice">{t('lobby.guestNote')}</div>}
-      <div className="row" style={{ marginTop: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
-        {room?.mode !== 'arena' && (
-          <button className="btn btn-gold btn-xl" onClick={again} autoFocus>
-            ▶ {t('death.again')}
-          </button>
-        )}
-        <button className="btn btn-ghost" onClick={() => engine()?.watch()}>
-          👀 {t('death.spectate')}
-        </button>
-        <button className="btn btn-ghost" onClick={() => engine()?.backToLobby()}>
-          🏠 {t('death.menu')}
-        </button>
-        <a className="btn btn-sky" href={`https://twitter.com/intent/tweet?text=${shareText}`} target="_blank" rel="noreferrer">
-          🐦 {t('death.share')}
-        </a>
-      </div>
-    </Modal>
-  );
-}
-
-export function CashoutModal() {
-  const t = useT();
-  const res = useUi((s) => s.cashoutResult);
-  const me = useUi((s) => s.me);
-  const room = useUi((s) => s.room);
-  const chain = useUi((s) => s.chain);
-  const settled = useUi((s) => s.lastSettlement);
-  const [since] = useState(() => Date.now());
-  if (!res) return null;
-  const paid = settled && settled.at >= since - 2000;
-  const profit = room?.entryFee ? res.value - room.entryFee : null;
-  return (
-    <Modal>
-      <div className="death-hero">
-        <SkinCanvas skin={me?.skin ?? 0} size={120} expression="love" />
-        <h2>{t('cash.title')} 🎉</h2>
-        <div className="muted" style={{ fontWeight: 600 }}>
-          {t('cash.value')}
-        </div>
-        <div className="big-sol">{formatSol(res.value, 4)}</div>
-        {profit !== null && (
-          <div className="badge" style={{ background: profit >= 0 ? '#7EE8C4' : '#FF8FB8' }}>
-            {t('cash.profit')}: {profit >= 0 ? '+' : '−'}
-            {formatSol(Math.abs(profit), 4)}
-          </div>
-        )}
-        <div className="row" style={{ marginTop: 10 }}>
-          {paid ? (
-            <>
-              ✅ {t('cash.done')}{' '}
-              <a href={explorerTx(settled!.signature, chain?.cluster ?? 'devnet')} target="_blank" rel="noreferrer">
-                {t('cash.viewTx')} ↗
-              </a>
-            </>
-          ) : (
-            <>
-              <span className="spin" /> {t('cash.pending')}
-            </>
-          )}
-        </div>
-      </div>
-      {res.stats && (
-        <div className="result-grid">
-          <Stat label={t('death.alive')} value={formatDuration(res.stats.aliveMs)} />
-          <Stat label={t('death.maxMass')} value={compact(res.stats.maxMass)} />
-          <Stat label={t('death.players')} value={res.stats.playersEaten} />
-        </div>
-      )}
-      <div className="row" style={{ justifyContent: 'center' }}>
-        <button className="btn btn-gold" onClick={() => engine()?.backToLobby()}>
-          🏠 {t('death.menu')}
-        </button>
-      </div>
-    </Modal>
-  );
-}
-
-export function SettingsModal() {
-  const t = useT();
-  const s = useUi((st) => st.settings);
-  const rows: [string, keyof typeof s][] = [
-    [t('settings.sound'), 'sound'],
-    [t('settings.names'), 'showNames'],
-    [t('settings.mass'), 'showMass'],
-    [t('settings.minimap'), 'showMinimap'],
-    [t('settings.chat'), 'showChat'],
-    [t('settings.fps'), 'showFps'],
-  ];
-  return (
-    <Modal onClose={closeModal} title={`⚙️ ${t('settings.title')}`}>
-      <div className="setting-row">
-        <span>{t('settings.lang')}</span>
-        <div className="seg">
-          <button className={`btn ${s.lang === 'tr' ? 'on' : ''}`} onClick={() => updateSettings({ lang: 'tr' })}>
-            🇹🇷 Türkçe
-          </button>
-          <button className={`btn ${s.lang === 'en' ? 'on' : ''}`} onClick={() => updateSettings({ lang: 'en' })}>
-            🇬🇧 English
-          </button>
-        </div>
-      </div>
-      <div className="setting-row">
-        <span>{t('settings.theme')}</span>
-        <div className="seg">
-          <button className={`btn ${s.theme === 'light' ? 'on' : ''}`} onClick={() => updateSettings({ theme: 'light' })}>
-            🍬 {t('settings.light')}
-          </button>
-          <button className={`btn ${s.theme === 'dark' ? 'on' : ''}`} onClick={() => updateSettings({ theme: 'dark' })}>
-            🌙 {t('settings.dark')}
-          </button>
-        </div>
-      </div>
-      <div className="setting-row">
-        <span>{t('settings.quality')}</span>
-        <div className="seg">
-          <button className={`btn ${s.quality === 'high' ? 'on' : ''}`} onClick={() => updateSettings({ quality: 'high' })}>
-            🍮 {t('settings.high')}
-          </button>
-          <button className={`btn ${s.quality === 'low' ? 'on' : ''}`} onClick={() => updateSettings({ quality: 'low' })}>
-            ⚡ {t('settings.low')}
-          </button>
-        </div>
-      </div>
-      <div className="setting-row">
-        <span>{t('settings.volume')}</span>
-        <input type="range" min={0} max={1} step={0.05} value={s.volume} onChange={(e) => updateSettings({ volume: Number(e.target.value) })} />
-      </div>
-      {rows.map(([label, key]) => (
-        <div className="setting-row" key={key}>
-          <span>{label}</span>
-          <Switch on={!!s[key]} onChange={(v) => updateSettings({ [key]: v })} label={label} />
-        </div>
-      ))}
-    </Modal>
-  );
-}
 
 export function HowToModal() {
   const t = useT();
@@ -317,8 +131,6 @@ export function Toasts() {
 export function Modals() {
   const modal = useUi((s) => s.modal);
   switch (modal) {
-    case 'settings':
-      return <SettingsModal />;
     case 'howto':
       return <HowToModal />;
     case 'shop':

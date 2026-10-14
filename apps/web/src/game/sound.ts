@@ -56,9 +56,9 @@ export class Sound {
     osc.stop(t + dur + 0.02);
   }
 
-  private noise(dur: number, from: number, to: number, gain = 0.15, delay = 0): void {
+  private noise(dur: number, from: number, to: number, gain = 0.15, delay = 0): AudioBufferSourceNode | null {
     const ctx = this.ready();
-    if (!ctx || !this.noiseBuf) return;
+    if (!ctx || !this.noiseBuf) return null;
     const t = ctx.currentTime + delay;
     const src = ctx.createBufferSource();
     src.buffer = this.noiseBuf;
@@ -73,6 +73,42 @@ export class Sound {
     src.connect(filter).connect(g).connect(this.master!);
     src.start(t);
     src.stop(t + dur);
+    return src;
+  }
+
+  private printing: AudioBufferSourceNode[] = [];
+
+  /** Receipt printer chatter for `ms` (the cash-out channel): line feeds at ~70 ms. */
+  print(ms: number): void {
+    this.stopPrint();
+    const lines = Math.max(1, Math.floor(ms / 72));
+    for (let i = 0; i < lines; i++) {
+      const src = this.noise(0.035, 5200 + (i % 3) * 400, 2600, 0.035, i * 0.072);
+      if (src) this.printing.push(src);
+    }
+  }
+
+  stopPrint(): void {
+    for (const src of this.printing) {
+      try {
+        src.stop();
+      } catch {
+        /* already stopped */
+      }
+    }
+    this.printing = [];
+  }
+
+  /** A token gain: a small bright coin clink. */
+  coin(): void {
+    this.tone(1760, 0.08, { type: 'triangle', gain: 0.05 });
+    this.tone(2637, 0.12, { type: 'sine', gain: 0.04, delay: 0.05 });
+  }
+
+  /** A rubber stamp landing: a soft thud with a paper slap. */
+  stamp(): void {
+    this.tone(110, 0.14, { type: 'sine', slideTo: 60, gain: 0.16 });
+    this.noise(0.08, 900, 300, 0.12);
   }
 
   /** Food pellet: soft high blip (rate limited, random pitch). */

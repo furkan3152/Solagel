@@ -76,6 +76,10 @@ export interface UiState {
   room: RoomInfo | null;
   me: { pid: number; name: string; skin: number } | null;
   hud: { mass: number; cells: number; value: number | null; rank: number; players: number };
+  /** Last arena value change, for the KASA slip's "+X" chip (id changes per message). */
+  valueDelta: { id: number; delta: number; reason: 'eat' | 'loot' | 'eaten' | 'spill' } | null;
+  /** The arena ticket being played: its own price and whether it carries a Slana Pass. */
+  ticket: { entryFee: number; hasPass: boolean; arenaId: number | null } | null;
   lb: LbEntry[];
   leaders: { x: number; y: number }[];
   killfeed: KillItem[];
@@ -83,10 +87,11 @@ export interface UiState {
   chatOpen: boolean;
   powerups: { type: PowerUpType; until: number }[];
   banner: { kind: 'coinrain' | 'airdrop'; until: number; text?: string } | null;
-  cashout: { state: 'idle' | 'channel'; until: number };
+  /** Cash-out channel: `until` is a performance.now() time, `total` the channel length in ms. */
+  cashout: { state: 'idle' | 'channel'; until: number; total: number };
   death: { stats: DeathStats; killer: string | null; killerSkin: number | null } | null;
   cashoutResult: { value: number; stats: DeathStats | null } | null;
-  lastSettlement: { kind: string; signature: string; payout?: number; at: number } | null;
+  lastSettlement: { signature: string; payout: number; fee?: number; net?: number; at: number } | null;
   spectateTarget: number | null;
   toasts: Toast[];
   modal: Modal;
@@ -140,6 +145,8 @@ export const useUi = create<UiState>(() => ({
   room: null,
   me: null,
   hud: { mass: 0, cells: 0, value: null, rank: 0, players: 0 },
+  valueDelta: null,
+  ticket: null,
   lb: [],
   leaders: [],
   killfeed: [],
@@ -147,7 +154,7 @@ export const useUi = create<UiState>(() => ({
   chatOpen: false,
   powerups: [],
   banner: null,
-  cashout: { state: 'idle', until: 0 },
+  cashout: { state: 'idle', until: 0, total: 0 },
   death: null,
   cashoutResult: null,
   lastSettlement: null,
