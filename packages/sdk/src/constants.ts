@@ -13,12 +13,22 @@ export const PRIZE_RANKS = 10;
 export const PRIZE_SHARES_BPS: readonly number[] = [3000, 2000, 1400, 1000, 800, 600, 450, 300, 250, 200];
 /** Basis-point denominator. */
 export const BPS = 10_000;
-/** Upper bound for `Config.feeBps` (10 %). */
+/** Upper bound for `Config.feeBps` (10 %); `passFeeBps` must not exceed `feeBps`. */
 export const MAX_FEE_BPS = 1_000;
-/** Minimum arena buy-in (0.001 SOL). */
-export const MIN_BUY_IN_LAMPORTS = 1_000_000;
-export const MIN_ARENA_PLAYERS = 2;
-export const MAX_ARENA_PLAYERS = 100;
+/** Upper bound for `Config.settleFeeLamports` (the per-session settle deposit). */
+export const MAX_SETTLE_FEE_LAMPORTS = 1_000_000;
+/** Bounds of `Arena.maxSessions`. */
+export const MIN_ARENA_SESSIONS = 2;
+export const MAX_ARENA_SESSIONS = 2_000;
+/** Maximum length of `Config.passBaseUri` in bytes (it must end with `/`). */
+export const MAX_BASE_URI_LEN = 96;
+/** Upper bound for `Config.passSupply`. */
+export const MAX_PASS_SUPPLY = 10_000;
+/** Upper bound for `Config.passPerWallet`. */
+export const MAX_PASS_PER_WALLET = 10;
+/** `Config.passSupply` / `passPerWallet` set by `initialize`. */
+export const DEFAULT_PASS_SUPPLY = 3_333;
+export const DEFAULT_PASS_PER_WALLET = 1;
 /** A session can be refunded by its player this many seconds after `openedAt` (24 h). */
 export const SESSION_REFUND_TIMEOUT_SECS = 86_400;
 /** Season prizes can be claimed for this many seconds after `endedAt` (30 days). */
@@ -27,9 +37,9 @@ export const MAX_XP_PER_GAME = 2_000;
 export const MAX_SCORE_PER_GAME = 1_000_000;
 /** Season created by `initialize`. */
 export const FIRST_SEASON = 1;
-/** Number of skins and tiers (ids 0..7 free, 8..15 level-gated, 16..23 premium). */
-export const SKIN_COUNT = 24;
-export const FREE_SKINS = 8;
-export const PREMIUM_SKIN_START = 16;
+/** Basic skins (ids `0..BASIC_SKINS`); every player may use all of them. */
+export const BASIC_SKINS = 8;
 /** `level = 1 + isqrt(xp / XP_LEVEL_DIVISOR)`. */
 export const XP_LEVEL_DIVISOR = 50;
+/** Name of Pass number `n` (`mint_pass` names assets `Slana Pass #<n>`). */
+export const PASS_NAME_PREFIX = 'Slana Pass #';

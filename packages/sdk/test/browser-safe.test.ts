@@ -28,6 +28,7 @@ describe('browser safety', () => {
   it('index.ts does not reach the admin CLI', () => {
     expect(files.some((f) => f.endsWith('admin.ts'))).toBe(false);
     expect(files.length).toBeGreaterThan(5);
+    for (const name of ['token.ts', 'core.ts', 'passes.ts']) expect(files.some((f) => f.endsWith(name)), name).toBe(true);
   });
 
   it('no Node built-ins or Node globals in browser modules', () => {
@@ -39,8 +40,8 @@ describe('browser safety', () => {
       }
       const body = code.replace(/\/\/.*$|\/\*[\s\S]*?\*\//gm, '');
       expect(/\bprocess\.|\b__dirname\b|\brequire\(/.test(body), `${file} uses a Node global`).toBe(false);
-      // `Buffer` may only be used as a type imported from the `buffer` package
-      if (/\bBuffer\b/.test(body)) expect(/import type \{ Buffer \} from 'buffer'/.test(code), `${file} uses global Buffer`).toBe(true);
+      // `Buffer` may only come from the `buffer` package (never the Node global)
+      if (/\bBuffer\b/.test(body)) expect(/import (type )?\{ Buffer \} from 'buffer'/.test(code), `${file} uses global Buffer`).toBe(true);
     }
   });
 });

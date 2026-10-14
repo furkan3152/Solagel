@@ -28,17 +28,29 @@ function configView(server: Keypair, overrides: Partial<ConfigView> = {}): Confi
   return {
     admin: wallet(),
     serverAuthority: server.publicKey.toBase58(),
-    treasury: wallet(),
+    tokenMint: wallet(),
+    tokenProgram: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
+    tokenDecimals: 6,
     feeBps: 500,
-    seasonShareBps: 5000,
-    skinPrice: 50_000_000,
+    passFeeBps: 200,
+    treasuryBps: 5000,
+    seasonBps: 3000,
+    burnBps: 2000,
+    settleFeeLamports: 20_000,
     currentSeason: 3,
     paused: false,
-    totalPlayers: 0,
-    totalGames: 0,
-    totalSessions: 0,
-    totalStaked: 0,
-    totalPaidOut: 0,
+    passCollection: null,
+    passBaseUri: '',
+    passSupply: 3333,
+    passMinted: 0,
+    passPerWallet: 1,
+    passMinTokens: 0n,
+    passMintOpen: false,
+    passMintStartTs: 0,
+    passSeedHash: null,
+    passSeed: null,
+    passRevealed: false,
+    totals: { players: 0, games: 0, sessions: 0, staked: 0n, paidOut: 0n },
     ...overrides,
   };
 }
@@ -49,7 +61,6 @@ function profileView(owner: string): ProfileView {
     owner,
     name: 'gm_gummy',
     skin: 4,
-    premiumSkins: 0,
     xp: 800,
     level: 5,
     gamesPlayed: 1,
@@ -59,8 +70,8 @@ function profileView(owner: string): ProfileView {
     season: 3,
     seasonPoints: 10,
     stakeGames: 0,
-    totalStaked: 0,
-    totalWon: 0,
+    totalStaked: 0n,
+    totalWon: 0n,
     createdAt: 1,
     lastPlayed: 1,
   };
@@ -120,9 +131,12 @@ class FakeClient implements ChainClient {
       player,
       arena: wallet(),
       arenaId: 1,
-      buyIn: 10_000_000,
+      entryFee: 10_000_000n,
       openedAt: Math.floor(T0 / 1000) - 60,
       id: 7,
+      hasPass: false,
+      passAsset: null,
+      settleFee: 20_000,
       ...opts,
     };
     this.sessions.set(`${s.arenaId}:${player}`, s);
@@ -305,9 +319,9 @@ describe('SolanaChain status & reads', () => {
           startedAt: 100,
           endedAt: 0,
           finalized: false,
-          prizePool: 0,
+          prizePool: 0n,
           claimedMask: 0,
-          pool: 777,
+          pool: 777n,
           entries: [{ player: p, name: 'alice', points: 50, bestScore: 40, skin: 2 }],
         });
         c.seasons.set(2, {
@@ -316,9 +330,9 @@ describe('SolanaChain status & reads', () => {
           startedAt: 1,
           endedAt: 99,
           finalized: true,
-          prizePool: 5_000,
+          prizePool: 5_000n,
           claimedMask: 0b1,
-          pool: 3_500,
+          pool: 3_500n,
           entries: [{ player: p, name: 'alice', points: 9, bestScore: 9, skin: 1 }],
         });
       },
@@ -351,14 +365,17 @@ describe('settlement worker', () => {
       kills: 2,
       xp: 50,
       currentSeason: 3,
-      treasury: h.client.config!.treasury,
+      tokenMint: h.client.config!.tokenMint,
+      tokenProgram: h.client.config!.tokenProgram,
+      hasPass: false,
+      passAsset: null,
     });
     expect(h.settled).toEqual([{ key: s.address, player: s.player, signature: 'sig1', kind: 'settle', payout: 12_345_678 }]);
   });
 
   it('drops items whose session is gone or belongs to a newer join', async () => {
     const h = await harness();
-    const gone = settleItem({ address: wallet(), player: wallet(), arena: wallet(), arenaId: 1, buyIn: 1, openedAt: 1, id: 3 });
+    const gone = settleItem({ address: wallet(), player: wallet(), arena: wallet(), arenaId: 1, entryFee: 1n, openedAt: 1, id: 3, hasPass: false, passAsset: null, settleFee: 0 });
     const s = h.client.addSession(wallet(), { id: 9 });
     const old = settleItem(s, { sessionId: 8 });
     h.journal.commit({ enqueue: [gone, old] });
@@ -404,7 +421,7 @@ describe('settlement worker', () => {
     const b = h.client.addSession(wallet(), { arenaId: 2 });
     h.journal.commit({ enqueue: [settleItem(a), settleItem(b, { createdAt: T0 + 1 })] });
     h.failures.push(
-      { logs: ['Program log: AnchorError occurred. Error Code: SessionMismatch. Error Number: 6023. Error Message: x.'] },
+      { logs: ['Program log: AnchorError occurred. Error Code: SessionMismatch. Error Number: 6019. Error Message: x.'] },
       new Error('failed ({"err":{"InstructionError":[1,{"Custom":3012}]}})'),
     );
     await h.chain.processPending();
@@ -438,17 +455,11 @@ describe('settlement worker', () => {
     expect(await h.chain.sweepStale()).toBe(0);
   });
 
-  it('a rejected settlement re-reads the config: changed treasury → retry, rotated key → keep', async () => {
+  // v2: the treasury is a program vault, so only the rotated-key case remains (TODO(Task 10)).
+  it('a rejected settlement re-reads the config: rotated key → keep', async () => {
     const h = await harness();
     const s = h.client.addSession(wallet());
     h.journal.enqueue(settleItem(s));
-    h.client.config = { ...h.client.config!, treasury: wallet() };
-    h.failures.push({ logs: ['Program log: AnchorError caused by account: treasury. Error Code: Unauthorized. Error Number: 6000. Error Message: x.'] });
-    await h.chain.processPending();
-    expect(h.journal.pending).toHaveLength(1);
-    expect(h.journal.pending[0].lastError).toMatch(/treasury changed/);
-
-    h.clock.now += 4_000;
     h.client.config = { ...h.client.config!, serverAuthority: wallet() };
     h.failures.push({ logs: ['Program log: AnchorError occurred. Error Code: Unauthorized. Error Number: 6000. Error Message: x.'] });
     await h.chain.processPending();
@@ -475,7 +486,7 @@ describe('settlement worker', () => {
   it('drops stale refunds whose session became live', async () => {
     const h = await harness();
     const s = h.client.addSession(wallet());
-    h.journal.enqueue(settleItem(s, { reason: 'stale', payout: s.buyIn, score: 0, kills: 0, xp: 0 }));
+    h.journal.enqueue(settleItem(s, { reason: 'stale', payout: Number(s.entryFee), score: 0, kills: 0, xp: 0 }));
     h.live.add(s.address);
     await h.chain.processPending();
     expect(h.sent).toBe(0);
@@ -483,7 +494,8 @@ describe('settlement worker', () => {
     expect(h.logs.join('\n')).toMatch(/stale refund .* cancelled/);
   });
 
-  it('records free games for players with a profile and drops the rest', async () => {
+  // TODO(Task 10): v2 has no record_game, so free-play records are dropped without a transaction.
+  it('drops free-play records (no on-chain record in v2)', async () => {
     const withProfile = wallet();
     const without = wallet();
     const h = await harness({ setup: (c) => c.profiles.set(withProfile, profileView(withProfile)) });
@@ -501,8 +513,10 @@ describe('settlement worker', () => {
     h.journal.commit({ enqueue: [record(withProfile, 1), record(without, 2)] });
     await h.chain.processPending();
     expect(h.journal.pending).toHaveLength(0);
-    expect(h.client.records).toEqual([{ player: withProfile, currentSeason: 3, score: 1234, kills: 3, xp: 99 }]);
-    expect(h.settled).toEqual([{ key: `${withProfile}:1`, player: withProfile, signature: 'sig1', kind: 'record' }]);
+    expect(h.sent).toBe(0);
+    expect(h.client.records).toEqual([]);
+    expect(h.settled).toEqual([]);
+    expect(h.logs.join('\n')).toMatch(/not written on-chain in v2/);
   });
 
   it('keeps at most 4 sends in flight, oldest first', async () => {
@@ -538,7 +552,7 @@ describe('stale-session sweeper', () => {
   it('queues a buy-in refund for unplayed sessions older than 15 minutes', async () => {
     const h = await harness();
     const nowS = Math.floor(T0 / 1000);
-    const stale = h.client.addSession(wallet(), { openedAt: nowS - STALE_SESSION_AFTER_S - 1, buyIn: 50_000_000, id: 11, arenaId: 2 });
+    const stale = h.client.addSession(wallet(), { openedAt: nowS - STALE_SESSION_AFTER_S - 1, entryFee: 50_000_000n, id: 11, arenaId: 2 });
     h.client.addSession(wallet(), { openedAt: nowS - 60 }); // too young
     const live = h.client.addSession(wallet(), { openedAt: nowS - 3_600 });
     h.live.add(live.address);

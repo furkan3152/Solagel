@@ -9,10 +9,21 @@
  * (signed message), joins the arena, cashes out and waits for the server's settle_session:
  * session closed, payout received, season leaderboard updated.
  *
+ * TODO(Task 17): fund the fresh wallet with game tokens (localnet v2 mint) before join_arena.
+ *
  * Env: SOLANA_RPC_URL (default http://127.0.0.1:8899), PROGRAM_ID (default: SDK IDL address),
  *      ARENA_ID (default 1).
  */
-import { SlanaClient, computeSettlement, confirmSignature, describeError, explorerTxUrl, lamportsToSol } from '@slana/sdk';
+import {
+  SlanaClient,
+  confirmSignature,
+  createAtaIdempotentIx,
+  describeError,
+  explorerTxUrl,
+  fetchTokenBalance,
+  lamportsToSol,
+  splitPayout,
+} from '@slana/sdk';
 import { PROTOCOL_VERSION, type ServerMessage } from '@slana/shared';
 import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
 import bs58 from 'bs58';
@@ -120,7 +131,7 @@ async function main(): Promise<void> {
   assert(config, 'program is not initialized — run scripts/localnet.sh');
   const arena = await client.fetchArena(arenaId);
   assert(arena && arena.enabled, `arena #${arenaId} does not exist or is disabled`);
-  ok(`season ${config.currentSeason} · arena #${arenaId} buy-in ${sol(arena.buyIn)} · pot ${sol(arena.pot)}`);
+  ok(`season ${config.currentSeason} · arena #${arenaId} entry ${arena.entryFee} · pot ${arena.pot} (token base units)`);
 
   const health = await fetch(`${httpUrl}/api/config`).then((r) => r.json() as Promise<{ chain: { enabled: boolean; arenasEnabled: boolean } }>);
   assert(health.chain.enabled && health.chain.arenasEnabled, `game server at ${httpUrl} has the chain/arenas disabled: ${JSON.stringify(health.chain)}`);
@@ -142,14 +153,18 @@ async function main(): Promise<void> {
 
   // 2. buy into the arena on-chain
   step(`join_arena #${arenaId}`);
-  const joinSig = await client.sendAndConfirm([await client.ix.joinArena(player.publicKey, arenaId)], [player]);
+  const token = { tokenMint: config.tokenMint, tokenProgram: config.tokenProgram };
+  const joinSig = await client.sendAndConfirm(
+    [createAtaIdempotentIx(player.publicKey, player.publicKey, config.tokenMint, config.tokenProgram), await client.ix.joinArena(player.publicKey, { arenaId, ...token })],
+    [player],
+  );
   const session = await client.fetchSession(arenaId, player.publicKey);
   assert(session, 'session account was not created');
   const sessionInfo = await connection.getAccountInfo(new PublicKey(session.address), 'confirmed');
   assert(sessionInfo, 'session account missing');
   const sessionRent = sessionInfo.lamports;
-  const balanceAfterJoin = await connection.getBalance(player.publicKey, 'confirmed');
-  ok(`session ${session.address} #${session.id} · buy-in ${sol(session.buyIn)} · rent ${sol(sessionRent)} · ${explorerTxUrl(joinSig, 'localnet', rpcUrl)}`);
+  const tokensAfterJoin = await fetchTokenBalance(connection, player.publicKey, config.tokenMint, config.tokenProgram);
+  ok(`session ${session.address} #${session.id} · entry ${session.entryFee} · rent ${sol(sessionRent)} · ${explorerTxUrl(joinSig, 'localnet', rpcUrl)}`);
 
   // 3. sign in to the game server
   step('wallet login (nonce → signed message)');
@@ -171,8 +186,8 @@ async function main(): Promise<void> {
     step(`WS join arena:${arenaId}`);
     ws.send({ t: 'join', room: `arena:${arenaId}`, name, skin: 3 });
     const joined = await ws.wait('joined', 15_000);
-    assert(joined.value === session.buyIn, `joined with value ${joined.value}, expected the buy-in ${session.buyIn}`);
-    ok(`joined ${joined.room.name} as pid ${joined.playerId} with ${sol(joined.value ?? 0)}`);
+    assert(joined.value === Number(session.entryFee), `joined with value ${joined.value}, expected the entry fee ${session.entryFee}`);
+    ok(`joined ${joined.room.name} as pid ${joined.playerId} with ${joined.value ?? 0}`);
 
     await sleep(1_500);
     step('cash out');
@@ -180,7 +195,7 @@ async function main(): Promise<void> {
     await ws.wait('cashout', 5_000, (m) => m.state === 'started');
     const done = await ws.wait('cashout', 15_000, (m) => m.state === 'done');
     const payout = done.value ?? 0;
-    ok(`cash-out done in game: ${sol(payout)}`);
+    ok(`cash-out done in game: ${payout}`);
 
     // 5. the server settles on-chain
     step('waiting for settle_session');
@@ -192,27 +207,27 @@ async function main(): Promise<void> {
     });
     ok('session account closed');
 
-    const { fee, playerAmount } = computeSettlement(payout, session.buyIn, config.feeBps, config.seasonShareBps);
-    const expected = playerAmount + sessionRent; // the server pays the transaction fee
-    const balanceAfter = await waitUntil('the payout', 30_000, async () => {
-      const b = await connection.getBalance(player.publicKey, 'confirmed');
-      return b - balanceAfterJoin >= expected - 5_000 ? b : null;
+    const split = splitPayout(payout, session.entryFee, session.hasPass, config);
+    const tokensAfter = await waitUntil('the payout', 30_000, async () => {
+      const b = await fetchTokenBalance(connection, player.publicKey, config.tokenMint, config.tokenProgram);
+      return b - tokensAfterJoin >= split.player ? b : null;
     });
-    const delta = balanceAfter - balanceAfterJoin;
-    ok(`balance +${sol(delta)} (payout ${sol(payout)} − fee ${sol(fee)} + session rent ${sol(sessionRent)} = ${sol(expected)})`);
+    const delta = tokensAfter - tokensAfterJoin;
+    assert(delta === split.player, `token balance +${delta} ≠ ${split.player}`);
+    ok(`tokens +${delta} (payout ${payout} − fee ${split.fee})`);
 
     const after = await client.fetchProfile(player.publicKey);
     assert(after && after.stakeGames === 1 && after.gamesPlayed === 1, `profile stats not updated: ${JSON.stringify(after)}`);
-    assert(after.totalWon === playerAmount, `profile.totalWon ${after.totalWon} ≠ ${playerAmount}`);
+    assert(after.totalWon === split.player, `profile.totalWon ${after.totalWon} ≠ ${split.player}`);
     const season = await client.fetchSeason(config.currentSeason);
     const rank = season?.entries.findIndex((e) => e.player === wallet) ?? -1;
     assert(season && rank >= 0, `player missing from the season ${config.currentSeason} leaderboard`);
     const entry = season.entries[rank];
-    ok(`season ${season.id} leaderboard: #${rank + 1} ${entry.name} · ${entry.points} pts · best ${entry.bestScore} · pool ${sol(season.pool)}`);
+    ok(`season ${season.id} leaderboard: #${rank + 1} ${entry.name} · ${entry.points} pts · best ${entry.bestScore} · pool ${season.pool}`);
 
     console.log(
       `\n✅ e2e passed in ${elapsed().trim()}: register → join_arena → login → join → cash-out → settle_session ` +
-        `(session #${session.id}, +${sol(delta)}, xp ${after.xp}, level ${after.level}, season rank #${rank + 1})`,
+        `(session #${session.id}, +${delta} tokens, xp ${after.xp}, level ${after.level}, season rank #${rank + 1})`,
     );
   } finally {
     ws.close();

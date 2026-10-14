@@ -74,7 +74,7 @@ export function useChainSync(): void {
       useChainData.setState({
         deployed: true,
         config,
-        arenas: arenas.sort((a, b) => a.buyIn - b.buyIn),
+        arenas: arenas.sort((a, b) => (a.entryFee < b.entryFee ? -1 : a.entryFee > b.entryFee ? 1 : a.id - b.id)),
         profile,
         profileLoaded: true,
         sessions,

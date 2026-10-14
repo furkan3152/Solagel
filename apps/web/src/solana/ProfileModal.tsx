@@ -18,7 +18,7 @@ export function ProfileModal() {
   const settings = useUi((s) => s.settings);
   const lang = settings.lang;
   const creating = !profile;
-  const own = profile ? { xp: profile.xp, premiumMask: profile.premiumSkins } : null;
+  const own = profile ? { xp: profile.xp, premiumMask: 0 } : null; // TODO(Task 15): v2 has no premium skins
   const [name, setName] = useState(profile?.name ?? (settings.name || ''));
   const [skin, setSkin] = useState(() => {
     const s = profile?.skin ?? settings.skin;

@@ -1,5 +1,6 @@
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
-import { arenaMeta, formatSol } from '@slana/shared';
+import { createAtaIdempotentIx } from '@slana/sdk';
+import { arenaMeta, formatToken } from '@slana/shared';
 import { useState } from 'react';
 import { useT } from '../i18n';
 import { openModal, useUi } from '../store';
@@ -57,9 +58,15 @@ export function StakePanel({ onPlay }: { onPlay: (room: string) => void }) {
       onPlay(`arena:${arenaId}`);
       return;
     }
+    const config = data.config;
+    if (!config) return;
     setBusy(arenaId);
-    const ix = await client.ix.joinArena(wallet.publicKey, arenaId);
-    const sig = await sendWalletTx(client, connection, wallet, [ix], { success: '🎟️ Ticket bought — good luck!' });
+    // TODO(Task 14): Pass arenas (joinArenaWithPass) and the v2 ticket flow.
+    const ixs = [
+      createAtaIdempotentIx(wallet.publicKey, wallet.publicKey, config.tokenMint, config.tokenProgram),
+      await client.ix.joinArena(wallet.publicKey, { arenaId, tokenMint: config.tokenMint, tokenProgram: config.tokenProgram }),
+    ];
+    const sig = await sendWalletTx(client, connection, wallet, ixs, { success: '🎟️ Ticket bought — good luck!' });
     setBusy(null);
     if (!sig) return;
     refreshChain();
@@ -67,15 +74,23 @@ export function StakePanel({ onPlay }: { onPlay: (room: string) => void }) {
   };
 
   const refund = async (arenaId: number) => {
-    if (!client || !wallet.publicKey) return;
+    const config = data.config;
+    if (!client || !wallet.publicKey || !config) return;
     setBusy(arenaId);
-    const ix = await client.ix.refundSession(wallet.publicKey, arenaId);
+    const ix = await client.ix.refundSession(wallet.publicKey, {
+      arenaId,
+      passAsset: data.sessions[arenaId]?.passAsset ?? null,
+      tokenMint: config.tokenMint,
+      tokenProgram: config.tokenProgram,
+    });
     await sendWalletTx(client, connection, wallet, [ix], { success: '↩️ Refunded' });
     setBusy(null);
     refreshChain();
   };
 
   const now = Date.now() / 1000;
+  // TODO(Task 14): token symbol and the v2 lobby; amounts are game-token base units.
+  const tok = (raw: bigint) => formatToken(raw, data.config?.tokenDecimals ?? 0, lang);
   return (
     <div className="mode-panel">
       {header}
@@ -103,7 +118,7 @@ export function StakePanel({ onPlay }: { onPlay: (room: string) => void }) {
               <div>
                 <div className="arena-name">{meta.name[lang]}</div>
                 <div className="arena-meta">
-                  {t('stakes.buyIn')} {formatSol(a.buyIn)} · {t('stakes.pot')} {formatSol(a.pot)} · 👥 {room?.players ?? a.openSessions}/{a.maxPlayers}
+                  {t('stakes.buyIn')} {tok(a.entryFee)} · {t('stakes.pot')} {tok(a.pot)} · 👥 {room?.players ?? a.openSessions}/{a.maxSessions}
                 </div>
                 {session && <div className="arena-meta" style={{ color: 'var(--purple)' }}>🎟️ {refundable ? t('stakes.refundable') : t('stakes.ticketOpen')}</div>}
               </div>
@@ -113,7 +128,7 @@ export function StakePanel({ onPlay }: { onPlay: (room: string) => void }) {
                 </button>
               ) : (
                 <button className="btn btn-sm btn-gold" disabled={!!gate || busy !== null} onClick={() => join(a.id)}>
-                  {busy === a.id ? <span className="spin" /> : session ? '▶' : '◎'} {session ? t('stakes.resume') : t('stakes.join', { sol: formatSol(a.buyIn) })}
+                  {busy === a.id ? <span className="spin" /> : session ? '▶' : '◎'} {session ? t('stakes.resume') : t('stakes.join', { sol: tok(a.entryFee) })}
                 </button>
               )}
             </div>
