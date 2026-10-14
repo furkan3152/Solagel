@@ -1,15 +1,15 @@
 import { PublicKey } from '@solana/web3.js';
-import idlJson from './idl/solagel.json';
-import type { Solagel } from './idl/solagel';
+import idlJson from './idl/slana.json';
+import type { Slana } from './idl/slana';
 
-export type { Solagel };
+export type { Slana };
 
 /**
  * The program IDL exactly as emitted by `anchor build` (snake_case). Typed with the camelCase
- * `Solagel` helper type like Anchor expects: `new Program<Solagel>(IDL, provider)`.
- * Re-sync with `pnpm -F @solagel/sdk sync-idl` after rebuilding the program.
+ * `Slana` helper type like Anchor expects: `new Program<Slana>(IDL, provider)`.
+ * Re-sync with `pnpm -F @slana/sdk sync-idl` after rebuilding the program.
  */
-export const IDL = idlJson as unknown as Solagel;
+export const IDL = idlJson as unknown as Slana;
 
 /** Address the program was built for (`declare_id!`). Override per cluster with `PROGRAM_ID` env/config. */
 export const PROGRAM_ID = new PublicKey(idlJson.address);

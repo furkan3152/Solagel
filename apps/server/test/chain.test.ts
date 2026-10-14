@@ -1,4 +1,4 @@
-import type { ConfigView, ProfileView, SeasonView as SdkSeasonView, SessionView } from '@solagel/sdk';
+import type { ConfigView, ProfileView, SeasonView as SdkSeasonView, SessionView } from '@slana/sdk';
 import { Keypair, PublicKey, TransactionInstruction } from '@solana/web3.js';
 import { describe, expect, it } from 'vitest';
 import { createChain } from '../src/chain';

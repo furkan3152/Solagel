@@ -1,6 +1,6 @@
 import type { WalletContextState } from '@solana/wallet-adapter-react';
 import type { Connection, TransactionInstruction } from '@solana/web3.js';
-import { confirmSignature, describeError, type SolagelClient } from '@solagel/sdk';
+import { confirmSignature, describeError, type SlanaClient } from '@slana/sdk';
 import { t } from '../i18n';
 import { toast, useUi } from '../store';
 import { explorerTx } from './links';
@@ -11,7 +11,7 @@ import { explorerTx } from './links';
  * signature or null.
  */
 export async function sendWalletTx(
-  client: SolagelClient,
+  client: SlanaClient,
   connection: Connection,
   wallet: WalletContextState,
   ixs: TransactionInstruction[],

@@ -145,7 +145,7 @@ export const tr: Dict = {
   'death.menu': 'Menü',
   'death.share': 'Paylaş',
   'death.lost': 'Bahsin {name} oyuncusuna geçti.',
-  'death.shareText': "Solagel'de {mass} kütleye ulaştım 🪙 — beni geçebilir misin?",
+  'death.shareText': "Slana'da {mass} kütleye ulaştım 🪙 — beni geçebilir misin?",
 
   'cash.title': 'Kasa senin!',
   'cash.value': 'Kazandığın',

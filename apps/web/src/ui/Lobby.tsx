@@ -1,4 +1,4 @@
-import { isSkinUnlocked, sanitizeName } from '@solagel/shared';
+import { isSkinUnlocked, sanitizeName } from '@slana/shared';
 import { useState } from 'react';
 import { engine } from '../game/instance';
 import { sound } from '../game/sound';

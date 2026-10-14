@@ -1,4 +1,4 @@
-import { CellFlag, rainbowColor, type SkinColors, type SkinDef } from '@solagel/shared';
+import { CellFlag, rainbowColor, type SkinColors, type SkinDef } from '@slana/shared';
 import { drawAccessoryBack, drawAccessoryFront } from './accessories';
 import { drawFace, type Expression } from './faces';
 import type { JellyBody } from './jelly';

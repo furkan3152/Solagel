@@ -1,9 +1,9 @@
 {
-  "name": "@solagel/shared",
+  "name": "@slana/shared",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Shared game rules, binary protocol and skin catalog for Solagel",
+  "description": "Shared game rules, binary protocol and skin catalog for Slana",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {

@@ -10,8 +10,8 @@ export interface ErrorInfo {
   message: string;
 }
 
-/** `SolagelError` codes (6000 + enum index in `error.rs`). */
-export const SolagelErrorCode = {
+/** `SlanaError` codes (6000 + enum index in `error.rs`). */
+export const SlanaErrorCode = {
   Unauthorized: 6000,
   Paused: 6001,
   InvalidFee: 6002,
@@ -38,11 +38,11 @@ export const SolagelErrorCode = {
   SessionMismatch: 6023,
 } as const;
 
-export type SolagelErrorName = keyof typeof SolagelErrorCode;
+export type SlanaErrorName = keyof typeof SlanaErrorCode;
 
-const FRIENDLY: Record<SolagelErrorName, string> = {
+const FRIENDLY: Record<SlanaErrorName, string> = {
   Unauthorized: 'You are not allowed to do that (wrong wallet or account).',
-  Paused: 'Solagel is paused for maintenance — arena joins are disabled for now.',
+  Paused: 'Slana is paused for maintenance — arena joins are disabled for now.',
   InvalidFee: 'Invalid fee configuration.',
   InvalidName: 'Names must be 1–16 bytes long and cannot contain control characters.',
   InvalidSkin: 'That skin does not exist.',
@@ -68,10 +68,10 @@ const FRIENDLY: Record<SolagelErrorName, string> = {
 };
 
 /** Program errors by code (6000–6023). */
-export const SOLAGEL_ERRORS: Readonly<Record<number, ErrorInfo>> = Object.fromEntries(
-  (Object.keys(SolagelErrorCode) as SolagelErrorName[]).map((name) => [
-    SolagelErrorCode[name],
-    { code: SolagelErrorCode[name], name, message: FRIENDLY[name] },
+export const SLANA_ERRORS: Readonly<Record<number, ErrorInfo>> = Object.fromEntries(
+  (Object.keys(SlanaErrorCode) as SlanaErrorName[]).map((name) => [
+    SlanaErrorCode[name],
+    { code: SlanaErrorCode[name], name, message: FRIENDLY[name] },
   ]),
 );
 
@@ -290,8 +290,8 @@ function plainMessage(err: unknown): string {
 /** Maps any error to `{ code, name, message }` with a friendly message. */
 export function describeError(err: unknown): DescribedError {
   const code = programErrorCode(err);
-  if (code !== null && SOLAGEL_ERRORS[code]) {
-    const e = SOLAGEL_ERRORS[code];
+  if (code !== null && SLANA_ERRORS[code]) {
+    const e = SLANA_ERRORS[code];
     return { code, name: e.name, message: e.message };
   }
   const text = collectText(err).join('\n');

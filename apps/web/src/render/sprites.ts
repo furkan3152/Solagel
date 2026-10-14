@@ -1,4 +1,4 @@
-import { PowerUpType, getSkin } from '@solagel/shared';
+import { PowerUpType, getSkin } from '@slana/shared';
 import { INK } from './faces';
 import { heartPath, starPath } from './symbols';
 

@@ -12,7 +12,7 @@ export const ARENA_META: Record<number, ArenaMeta> = {
   4: { name: { en: 'Whale Bay', tr: 'Balina Koyu' }, emoji: '🐋', color: '#3D8BFF' },
 };
 
-/** Default tiers created by `solagel-admin create-arena --defaults`. */
+/** Default tiers created by `slana-admin create-arena --defaults`. */
 export const DEFAULT_ARENAS = [
   { id: 1, buyInSol: 0.01, maxPlayers: 20 },
   { id: 2, buyInSol: 0.05, maxPlayers: 20 },

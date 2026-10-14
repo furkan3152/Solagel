@@ -1,15 +1,15 @@
 import type { IdlAccounts } from '@anchor-lang/core';
 import type { PublicKey } from '@solana/web3.js';
-import type { Solagel } from './idl/solagel';
+import type { Slana } from './idl/slana';
 import { levelFromXp, toNumber } from './math';
 import { toBase58, type Address } from './program';
 
 /** Raw decoded accounts as returned by the Anchor coder (BN for u64/i64, number[] for byte arrays). */
-export type RawConfig = IdlAccounts<Solagel>['config'];
-export type RawProfile = IdlAccounts<Solagel>['playerProfile'];
-export type RawArena = IdlAccounts<Solagel>['arena'];
-export type RawSession = IdlAccounts<Solagel>['session'];
-export type RawSeason = IdlAccounts<Solagel>['season'];
+export type RawConfig = IdlAccounts<Slana>['config'];
+export type RawProfile = IdlAccounts<Slana>['playerProfile'];
+export type RawArena = IdlAccounts<Slana>['arena'];
+export type RawSession = IdlAccounts<Slana>['session'];
+export type RawSeason = IdlAccounts<Slana>['season'];
 export type RawLeaderEntry = RawSeason['entries'][number];
 
 /** Account names in the (camelCased) IDL, as used by `program.coder.accounts`. */

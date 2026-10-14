@@ -5,7 +5,7 @@ import type {
   PowerUpType,
   ProfileSummary,
   RoomInfo,
-} from '@solagel/shared';
+} from '@slana/shared';
 import { create } from 'zustand';
 
 export type Screen = 'lobby' | 'playing' | 'dead' | 'spectating' | 'cashedout';
@@ -94,7 +94,7 @@ export interface UiState {
   settings: Settings;
 }
 
-const SETTINGS_KEY = 'solagel.settings.v1';
+const SETTINGS_KEY = 'slana.settings.v1';
 
 function defaultLang(): Lang {
   try {

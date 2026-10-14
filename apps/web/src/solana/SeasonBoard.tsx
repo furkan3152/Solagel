@@ -1,11 +1,11 @@
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
-import { PRIZE_SHARES_BPS, formatSol } from '@solagel/shared';
+import { PRIZE_SHARES_BPS, formatSol } from '@slana/shared';
 import { useEffect, useState } from 'react';
 import { SERVER } from '../config';
 import { useT } from '../i18n';
 import { useUi } from '../store';
 import { BoardRows } from '../ui/Leaderboards';
-import { refreshChain, useSolagelClient } from './chain';
+import { refreshChain, useSlanaClient } from './chain';
 import { sendWalletTx } from './tx';
 
 interface SeasonEntry {
@@ -33,7 +33,7 @@ export function SeasonBoard() {
   const t = useT();
   const wallet = useWallet();
   const { connection } = useConnection();
-  const client = useSolagelClient();
+  const client = useSlanaClient();
   const [season, setSeason] = useState<SeasonResponse | null>(null);
   const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState(false);

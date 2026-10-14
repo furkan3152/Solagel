@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { SendTransactionError } from '@solana/web3.js';
 import { describe, expect, it } from 'vitest';
-import { SOLAGEL_ERRORS, SolagelErrorCode, TransactionFailedError, describeError, programErrorCode } from '../src';
+import { SLANA_ERRORS, SlanaErrorCode, TransactionFailedError, describeError, programErrorCode } from '../src';
 
 const PROGRAM = '5skf5Twyqr8M84dJ8RLGfz1NU6fR3zPDRLUvGd5y7472';
 
@@ -12,14 +12,14 @@ describe('programErrorCode / describeError', () => {
       logs: [`Program ${PROGRAM} invoke [1]`, `Program ${PROGRAM} failed: InstructionError(1, Custom(6011))`],
     };
     expect(programErrorCode(err)).toBe(6011);
-    expect(describeError(err)).toEqual({ code: 6011, name: 'InsufficientPot', message: SOLAGEL_ERRORS[6011].message });
+    expect(describeError(err)).toEqual({ code: 6011, name: 'InsufficientPot', message: SLANA_ERRORS[6011].message });
   });
 
   it('reads Anchor log lines, hex custom codes and JSON confirmation errors', () => {
     const anchorLog = {
       logs: [
         `Program ${PROGRAM} invoke [1]`,
-        'Program log: AnchorError thrown in programs/solagel/src/instructions/settle_session.rs:72. Error Code: SessionMismatch. Error Number: 6023. Error Message: Settlement is for a different session.',
+        'Program log: AnchorError thrown in programs/slana/src/instructions/settle_session.rs:72. Error Code: SessionMismatch. Error Number: 6023. Error Message: Settlement is for a different session.',
         `Program ${PROGRAM} failed: custom program error: 0x1787`,
       ],
     };
@@ -68,11 +68,11 @@ describe('programErrorCode / describeError', () => {
   });
 
   it('error table matches the IDL', () => {
-    const idl = JSON.parse(readFileSync(new URL('../src/idl/solagel.json', import.meta.url), 'utf8')) as {
+    const idl = JSON.parse(readFileSync(new URL('../src/idl/slana.json', import.meta.url), 'utf8')) as {
       errors: { code: number; name: string }[];
     };
-    expect(idl.errors.map((e) => [e.code, e.name])).toEqual(Object.entries(SolagelErrorCode).map(([name, code]) => [code, name]));
-    expect(SolagelErrorCode.SessionMismatch).toBe(6023);
-    for (const e of idl.errors) expect(SOLAGEL_ERRORS[e.code].name).toBe(e.name);
+    expect(idl.errors.map((e) => [e.code, e.name])).toEqual(Object.entries(SlanaErrorCode).map(([name, code]) => [code, name]));
+    expect(SlanaErrorCode.SessionMismatch).toBe(6023);
+    for (const e of idl.errors) expect(SLANA_ERRORS[e.code].name).toBe(e.name);
   });
 });

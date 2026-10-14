@@ -1,4 +1,4 @@
-import { TICK_MS, arenaMeta, type RoomInfo } from '@solagel/shared';
+import { TICK_MS, arenaMeta, type RoomInfo } from '@slana/shared';
 import type { ChainGateway } from '../chain/types';
 import type { ServerConfig } from '../config';
 import type { Conn } from '../net/conn';

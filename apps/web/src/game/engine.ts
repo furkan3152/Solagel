@@ -9,7 +9,7 @@ import {
   levelFromXp,
   type ServerMessage,
   type SnapshotData,
-} from '@solagel/shared';
+} from '@slana/shared';
 import { SERVER } from '../config';
 import { t } from '../i18n';
 import { Renderer } from '../render/renderer';
@@ -22,7 +22,7 @@ import { Particles } from './particles';
 import { sound } from './sound';
 import { ClientWorld } from './state';
 
-const TOKEN_KEY = 'solagel.auth.v1';
+const TOKEN_KEY = 'slana.auth.v1';
 let killId = 1;
 let chatId = 1;
 

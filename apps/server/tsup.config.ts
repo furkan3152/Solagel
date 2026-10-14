@@ -9,6 +9,6 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   // workspace packages ship TypeScript sources → bundle them; npm deps stay external
-  noExternal: [/^@solagel\//],
+  noExternal: [/^@slana\//],
   splitting: false,
 });

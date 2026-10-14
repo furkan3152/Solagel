@@ -1,9 +1,9 @@
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
-import { arenaMeta, formatSol } from '@solagel/shared';
+import { arenaMeta, formatSol } from '@slana/shared';
 import { useState } from 'react';
 import { useT } from '../i18n';
 import { openModal, useUi } from '../store';
-import { refreshChain, useChainData, useSolagelClient } from './chain';
+import { refreshChain, useChainData, useSlanaClient } from './chain';
 import { signInWithWallet } from './siws';
 import { sendWalletTx } from './tx';
 
@@ -14,7 +14,7 @@ export function StakePanel({ onPlay }: { onPlay: (room: string) => void }) {
   const t = useT();
   const wallet = useWallet();
   const { connection } = useConnection();
-  const client = useSolagelClient();
+  const client = useSlanaClient();
   const chain = useUi((s) => s.chain);
   const lang = useUi((s) => s.settings.lang);
   const rooms = useUi((s) => s.rooms);

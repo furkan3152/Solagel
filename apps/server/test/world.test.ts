@@ -1,4 +1,4 @@
-import { EntityKind, PowerUpType, RULES, TICK_MS, massToRadius, mergeDelayMs } from '@solagel/shared';
+import { EntityKind, PowerUpType, RULES, TICK_MS, massToRadius, mergeDelayMs } from '@slana/shared';
 import { describe, expect, it } from 'vitest';
 import { World, type WorldConfig } from '../src/game/world';
 

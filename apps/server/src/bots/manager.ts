@@ -1,4 +1,4 @@
-import { BOT_NAMES, PlayerFlag, clamp } from '@solagel/shared';
+import { BOT_NAMES, PlayerFlag, clamp } from '@slana/shared';
 import type { Player } from '../game/entities';
 import { randRange, type Rng } from '../game/rng';
 import type { World } from '../game/world';
@@ -20,7 +20,7 @@ export interface Bot {
   retireAt: number;
 }
 
-/** Emote ids (see @solagel/shared EMOTES). */
+/** Emote ids (see @slana/shared EMOTES). */
 const EMOTE_GM = 0;
 const EMOTE_WAGMI = 1;
 const EMOTE_ROCKET = 2;

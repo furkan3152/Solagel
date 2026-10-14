@@ -1,4 +1,4 @@
-import type { Accessory, SkinColors } from '@solagel/shared';
+import type { Accessory, SkinColors } from '@slana/shared';
 import { INK } from './faces';
 import { starPath } from './symbols';
 

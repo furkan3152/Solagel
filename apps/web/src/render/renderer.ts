@@ -1,4 +1,4 @@
-import { CellFlag, EMOTES, EntityKind, PlayerFlag, getSkin } from '@solagel/shared';
+import { CellFlag, EMOTES, EntityKind, PlayerFlag, getSkin } from '@slana/shared';
 import type { Camera } from '../game/camera';
 import type { Particles } from '../game/particles';
 import type { CEntity, ClientWorld } from '../game/state';
