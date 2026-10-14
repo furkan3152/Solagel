@@ -443,6 +443,7 @@ export const en = {
   'gd.maxMass': 'Max mass',
   'gd.rank': 'Best rank',
   'gd.eaten': 'Players eaten',
+  'gd.xp': 'XP gained',
   'gd.newTicket': 'New ticket',
   'gd.practice': 'Practice',
   'gd.watch': 'Watch the room',

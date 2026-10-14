@@ -79,7 +79,7 @@ export interface UiState {
   /** Last arena value change, for the KASA slip's "+X" chip (id changes per message). */
   valueDelta: { id: number; delta: number; reason: 'eat' | 'loot' | 'eaten' | 'spill' } | null;
   /** The arena ticket being played: its own price and whether it carries a Slana Pass. */
-  ticket: { entryFee: number; hasPass: boolean; arenaId: number | null } | null;
+  ticket: { entryFee: number; hasPass: boolean; arenaId: number | null; session: string | null } | null;
   lb: LbEntry[];
   leaders: { x: number; y: number }[];
   killfeed: KillItem[];
@@ -91,7 +91,8 @@ export interface UiState {
   cashout: { state: 'idle' | 'channel'; until: number; total: number };
   death: { stats: DeathStats; killer: string | null; killerSkin: number | null } | null;
   cashoutResult: { value: number; stats: DeathStats | null } | null;
-  lastSettlement: { signature: string; payout: number; fee?: number; net?: number; at: number } | null;
+  /** Last `settled` message; `session` matches it to a ticket (ruling R16). */
+  lastSettlement: { session: string | null; arenaId: number | null; signature: string; payout: number; fee?: number; net?: number; at: number } | null;
   spectateTarget: number | null;
   toasts: Toast[];
   modal: Modal;

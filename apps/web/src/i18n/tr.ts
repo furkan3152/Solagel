@@ -445,6 +445,7 @@ export const tr: Dict = {
   'gd.maxMass': 'En yüksek kütle',
   'gd.rank': 'En iyi sıra',
   'gd.eaten': 'Yenen oyuncu',
+  'gd.xp': 'Kazanılan XP',
   'gd.newTicket': 'Yeni bilet',
   'gd.practice': 'Antrenman',
   'gd.watch': 'Odayı izle',

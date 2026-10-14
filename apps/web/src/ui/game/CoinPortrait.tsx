@@ -4,6 +4,7 @@ import { useReducedMotion } from '../../design';
 import { drawCoinLook } from '../../render/coin';
 import { JellyBody } from '../../render/jelly';
 import { LookCache } from '../../render/looks';
+import { canvasDpr } from '../../render/renderer';
 import { useUi } from '../../store';
 import { useTicker } from '../common';
 
@@ -37,7 +38,7 @@ export function CoinPortrait({
   const draw = (now: number, dt: number) => {
     const c = ref.current;
     if (!c) return;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = canvasDpr();
     const px = Math.round(size * dpr);
     if (c.width !== px || c.height !== px) {
       c.width = px;

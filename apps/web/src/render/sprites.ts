@@ -470,6 +470,10 @@ export function drawGlint(ctx: CanvasRenderingContext2D, x: number, y: number, s
 const ROTATIONS = 6;
 /** Halftone shades cached per on-screen radius bucket (≈ 12 % steps). */
 const HALFTONE_STEP = 1.12;
+/** Largest cached halftone radius, device px (≈ 256). */
+const HALFTONE_MAX_PX = 256;
+const HALFTONE_MAX_BUCKET = Math.floor(Math.log(HALFTONE_MAX_PX) / Math.log(HALFTONE_STEP));
+const HALFTONE_MAX_BYTES = 16 * 1024 * 1024;
 
 /** Lazily created, cached sprites. Must only be used in the browser. */
 export class SpriteCache {
@@ -480,6 +484,7 @@ export class SpriteCache {
   private powerUps = new Map<number, Sprite>();
   private ejects = new Map<number, Sprite>();
   private halftones = new Map<number, HTMLCanvasElement>();
+  private halftoneBytes = 0;
 
   /** Food sprite for a variant; `seed` (0..1) picks one of the pre-rendered rotations. */
   foodSprite(variant: number, seed = 0): Sprite {
@@ -521,12 +526,15 @@ export class SpriteCache {
 
   /**
    * `CoinState.halftone` provider: the coin's halftone shade rendered once per
-   * on-screen size bucket. `ppu` is screen pixels per world unit.
+   * on-screen size bucket. `ppu` is device pixels per world unit. Images are
+   * capped at HALFTONE_MAX_PX radius: bigger coins reuse the capped image
+   * scaled up (above ~20 px the dot spacing is a fixed share of r, so the
+   * pattern is the same, only softer). The cache is cleared past HALFTONE_MAX_BYTES.
    */
   halftone(r: number, spacing: number, ppu: number): HTMLCanvasElement | null {
     const px = r * ppu;
-    if (px < 10 || px > 900) return null;
-    const bucket = Math.round(Math.log(px) / Math.log(HALFTONE_STEP));
+    if (px < 10) return null;
+    const bucket = Math.min(Math.round(Math.log(px) / Math.log(HALFTONE_STEP)), HALFTONE_MAX_BUCKET);
     let c = this.halftones.get(bucket);
     if (!c) {
       const R = Math.ceil(HALFTONE_STEP ** bucket);
@@ -536,8 +544,13 @@ export class SpriteCache {
       ctx.translate(R, R);
       // same spacing rule as the art (r × 0.075, at least 3 screen px)
       drawHalftoneDots(ctx, R, Math.max(R * 0.075, (spacing / r) * R));
-      if (this.halftones.size > 64) this.halftones.clear();
+      const bytes = c.width * c.height * 4;
+      if (this.halftones.size >= 64 || this.halftoneBytes + bytes > HALFTONE_MAX_BYTES) {
+        this.halftones.clear();
+        this.halftoneBytes = 0;
+      }
       this.halftones.set(bucket, c);
+      this.halftoneBytes += bytes;
     }
     return c;
   }

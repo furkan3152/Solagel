@@ -7,11 +7,11 @@ import type { Settings } from '../store';
 import { stickerImage } from '../ui/game/stickers';
 import { drawCoinLook } from './coin';
 import type { Neighbour } from './jelly';
+import { LabelCache } from './labels';
 import { LookCache } from './looks';
 import { SpriteCache, drawGlint, drawSprite } from './sprites';
 
 const TAU = Math.PI * 2;
-const DISPLAY_FONT = '"Bricolage Grotesque Variable", "Bricolage Grotesque", system-ui, sans-serif';
 const MONO_FONT = '"DM Mono", ui-monospace, monospace';
 
 /** World print stock per theme (Kâğıt Bilet tokens; "Gece baskısı" for night). */
@@ -58,6 +58,15 @@ export const WORLD_THEMES: Record<'light' | 'dark', WorldTheme> = {
   },
 };
 
+/**
+ * Canvas pixel ratio: capped at 2, and at 1.5 on coarse pointers (phones),
+ * where fill rate is the limit and 1.5× still looks sharp at arm's length.
+ */
+export function canvasDpr(): number {
+  const coarse = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
+  return Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : 2);
+}
+
 /** Loot is drawn bigger by size tier (0 crumb … 3 jackpot). */
 const LOOT_SCALE = [0.8, 1, 1.3, 1.75];
 
@@ -98,13 +107,14 @@ export class Renderer {
   private hatch: CanvasPattern | null = null;
   private hatchNight: boolean | null = null;
   private readonly looks = new LookCache();
+  private readonly labels = new LabelCache();
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext('2d', { alpha: false })!;
   }
 
   resize(w: number, h: number): void {
-    this.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    this.dpr = canvasDpr();
     this.canvas.width = Math.round(w * this.dpr);
     this.canvas.height = Math.round(h * this.dpr);
     this.canvas.style.width = `${w}px`;
@@ -455,59 +465,25 @@ export class Renderer {
       seed: e.seed * 10 + e.playerId,
       cashout: mine && cashP !== undefined && e.flags & CellFlag.CashingOut ? cashP : undefined,
       halftone,
+      // live renderer speed-ups (Pass images never use them): one flat body fill,
+      // and no multiply overprint / halftone on coins under ~25 px radius
+      fastBody: true,
+      minPrintPx: 25,
     });
 
-    // labels: ink on a card halo (name in the display face, mass in mono)
+    // labels: ink on a card halo (name in the display face, mass in mono), cached as sprites
     if (!player || screenR < 20) return;
     const showName = f.settings.showNames;
     const showMass = f.settings.showMass && (mine || screenR > 34);
     if (!showName && !showMass) return;
     const fs = Math.max(r * 0.22, 12 / z);
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.lineJoin = 'round';
+    const devicePx = z * this.dpr;
     let y = e.y + r * 0.58;
     if (showName) {
-      ctx.font = `800 ${fs}px ${DISPLAY_FONT}`;
-      ctx.lineWidth = fs * 0.26;
-      ctx.strokeStyle = CARD_PAPER;
-      const name = player.name;
-      ctx.strokeText(name, e.x, y);
-      ctx.fillStyle = INK;
-      ctx.fillText(name, e.x, y);
-      if (player.flags & PlayerFlag.Verified) {
-        const w = ctx.measureText(name).width;
-        const bx = e.x + w / 2 + fs * 0.5;
-        ctx.fillStyle = RISO.teal;
-        ctx.strokeStyle = INK;
-        ctx.lineWidth = fs * 0.08;
-        ctx.beginPath();
-        ctx.arc(bx, y, fs * 0.33, 0, TAU);
-        ctx.fill();
-        ctx.stroke();
-        ctx.strokeStyle = CARD_PAPER;
-        ctx.lineWidth = fs * 0.1;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.moveTo(bx - fs * 0.14, y);
-        ctx.lineTo(bx - fs * 0.03, y + fs * 0.11);
-        ctx.lineTo(bx + fs * 0.16, y - fs * 0.12);
-        ctx.stroke();
-      }
+      this.labels.draw(ctx, 'name', player.name, (player.flags & PlayerFlag.Verified) !== 0, e.x, y, fs, devicePx);
       y += fs * 0.98;
     }
-    if (showMass) {
-      const mfs = fs * 0.7;
-      ctx.font = `500 ${mfs}px ${MONO_FONT}`;
-      ctx.lineWidth = mfs * 0.28;
-      ctx.strokeStyle = CARD_PAPER;
-      const label = String(Math.floor((e.nr * e.nr) / 100));
-      ctx.strokeText(label, e.x, y);
-      ctx.fillStyle = INK;
-      ctx.globalAlpha = 0.85;
-      ctx.fillText(label, e.x, y);
-      ctx.globalAlpha = 1;
-    }
+    if (showMass) this.labels.draw(ctx, 'mass', String(Math.floor((e.nr * e.nr) / 100)), false, e.x, y, fs * 0.7, devicePx);
   }
 
   /** Emote stickers: pop in with an overshoot, tilt, bob, then peel away. */
@@ -598,7 +574,7 @@ export class Renderer {
   ): void {
     const ctx = mm.getContext('2d');
     if (!ctx) return;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = canvasDpr();
     const size = mm.clientWidth || 150;
     if (mm.width !== Math.round(size * dpr) || mm.height !== Math.round(size * dpr)) {
       mm.width = Math.round(size * dpr);
