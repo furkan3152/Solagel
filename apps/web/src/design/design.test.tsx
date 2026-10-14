@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it } from 'vitest';
+import { setReducedMotion } from '../test/media';
 import { Kb, Sheet, Tabs, Ticket, TicketGroup, TicketStub } from './index';
 
 function SheetHarness() {
@@ -18,33 +19,43 @@ function SheetHarness() {
   );
 }
 
+async function exerciseSheet() {
+  render(<SheetHarness />);
+  const opener = screen.getByRole('button', { name: 'open' });
+  opener.focus();
+  fireEvent.click(opener);
+
+  const dialog = await screen.findByRole('dialog', { name: 'Cut the ticket?' });
+  await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
+
+  // Tab from the last focusable wraps to the first; Shift+Tab from the first wraps to the last.
+  const last = screen.getByRole('button', { name: 'last action' });
+  const close = screen.getByRole('button', { name: 'Close' });
+  last.focus();
+  fireEvent.keyDown(last, { key: 'Tab' });
+  expect(document.activeElement).toBe(close);
+  fireEvent.keyDown(close, { key: 'Tab', shiftKey: true });
+  expect(document.activeElement).toBe(last);
+
+  // Focus that escaped the dialog is pulled back in.
+  opener.focus();
+  fireEvent.keyDown(opener, { key: 'Tab' });
+  expect(dialog.contains(document.activeElement)).toBe(true);
+
+  fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull(), { timeout: 4000 });
+  expect(document.activeElement).toBe(opener);
+}
+
 describe('Sheet', () => {
-  it('traps focus, closes on Esc and restores focus to the opener', async () => {
-    render(<SheetHarness />);
-    const opener = screen.getByRole('button', { name: 'open' });
-    opener.focus();
-    fireEvent.click(opener);
+  it('traps focus, closes on Esc and restores focus (reduced motion on)', async () => {
+    setReducedMotion(true);
+    await exerciseSheet();
+  });
 
-    const dialog = await screen.findByRole('dialog', { name: 'Cut the ticket?' });
-    await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
-
-    // Tab from the last focusable wraps to the first; Shift+Tab from the first wraps to the last.
-    const last = screen.getByRole('button', { name: 'last action' });
-    const close = screen.getByRole('button', { name: 'Close' });
-    last.focus();
-    fireEvent.keyDown(last, { key: 'Tab' });
-    expect(document.activeElement).toBe(close);
-    fireEvent.keyDown(close, { key: 'Tab', shiftKey: true });
-    expect(document.activeElement).toBe(last);
-
-    // Focus that escaped the dialog is pulled back in.
-    opener.focus();
-    fireEvent.keyDown(opener, { key: 'Tab' });
-    expect(dialog.contains(document.activeElement)).toBe(true);
-
-    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    expect(document.activeElement).toBe(opener);
+  it('traps focus, closes on Esc and restores focus (full motion, the default)', async () => {
+    expect(window.matchMedia('(prefers-reduced-motion: reduce)').matches).toBe(false);
+    await exerciseSheet();
   });
 });
 
@@ -109,16 +120,19 @@ describe('Tabs', () => {
   });
 });
 
-function GroupHarness({ initial = 'penny' as string | null }) {
+function GroupHarness({ initial = 'penny' as string | null, disabled = [] as string[], ids = ['practice', 'penny', 'gold'] }) {
   const [v, setV] = useState<string | null>(initial);
   return (
     <TicketGroup label="Rooms" value={v} onChange={setV}>
-      {['practice', 'penny', 'gold'].map((id) => (
-        <Ticket key={id} value={id} title={id} stub={<TicketStub value="1" />} aria-label={id} />
+      {ids.map((id) => (
+        <Ticket key={id} value={id} title={id} stub={<TicketStub value="1" />} aria-label={id} disabled={disabled.includes(id)} />
       ))}
+      <button type="button">outside</button>
     </TicketGroup>
   );
 }
+
+const tabStops = () => screen.getAllByRole('radio').filter((r) => r.tabIndex === 0);
 
 describe('TicketGroup', () => {
   it('is one tab stop and arrows move the selection', () => {
@@ -149,6 +163,36 @@ describe('TicketGroup', () => {
     render(<GroupHarness initial={null} />);
     await act(async () => {});
     expect(screen.getAllByRole('radio').map((r) => r.tabIndex)).toEqual([0, -1, -1]);
+  });
+
+  it('keeps exactly one tab stop as the selection changes', () => {
+    render(<GroupHarness initial={null} />);
+    expect(tabStops().map((r) => r.getAttribute('aria-label'))).toEqual(['practice']);
+    fireEvent.click(screen.getByRole('radio', { name: 'penny' }));
+    expect(screen.getByRole('radio', { name: 'penny' }).getAttribute('aria-checked')).toBe('true');
+    expect(tabStops().map((r) => r.getAttribute('aria-label'))).toEqual(['penny']);
+    fireEvent.keyDown(screen.getByRole('radio', { name: 'penny' }), { key: 'ArrowDown' });
+    expect(tabStops().map((r) => r.getAttribute('aria-label'))).toEqual(['gold']);
+  });
+
+  it('skips disabled tickets and ignores keys from non-tickets', () => {
+    render(<GroupHarness initial={null} ids={['a', 'b', 'c', 'd']} disabled={['a', 'c']} />);
+    // first ENABLED ticket is the tab stop
+    expect(tabStops().map((r) => r.getAttribute('aria-label'))).toEqual(['b']);
+    const b = screen.getByRole('radio', { name: 'b' });
+    b.focus();
+    fireEvent.keyDown(b, { key: 'ArrowDown' });
+    expect(screen.getByRole('radio', { name: 'd' }).getAttribute('aria-checked')).toBe('true');
+    fireEvent.keyDown(document.activeElement!, { key: 'Home' });
+    expect(b.getAttribute('aria-checked')).toBe('true');
+    fireEvent.keyDown(b, { key: 'End' });
+    expect(screen.getByRole('radio', { name: 'd' }).getAttribute('aria-checked')).toBe('true');
+
+    const outside = screen.getByRole('button', { name: 'outside' });
+    outside.focus();
+    fireEvent.keyDown(outside, { key: 'Home' });
+    expect(screen.getByRole('radio', { name: 'd' }).getAttribute('aria-checked')).toBe('true');
+    expect(document.activeElement).toBe(outside);
   });
 
   it('a standalone ticket is a toggle button', () => {

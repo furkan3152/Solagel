@@ -7,6 +7,10 @@ import { usePreset, useReducedMotion } from '../motion';
 import { Tape } from './Tape';
 
 export interface SheetProps {
+  /** Passed to the dialog panel. */
+  id?: string;
+  className?: string;
+  'aria-describedby'?: string;
   open: boolean;
   onClose: () => void;
   title: ReactNode;
@@ -40,7 +44,19 @@ function useIsNarrow(): boolean {
  * Modal on desktop, bottom sheet on phones. Paper texture, taped corners.
  * Traps focus, closes on Esc and on the scrim, restores focus to the opener.
  */
-export function Sheet({ open, onClose, title, closeLabel, kicker, children, footer, theme: themeProp }: SheetProps) {
+export function Sheet({
+  id,
+  className,
+  'aria-describedby': describedBy,
+  open,
+  onClose,
+  title,
+  closeLabel,
+  kicker,
+  children,
+  footer,
+  theme: themeProp,
+}: SheetProps) {
   const ctxTheme = useKbTheme();
   const theme = themeProp ?? ctxTheme;
   const narrow = useIsNarrow();
@@ -112,7 +128,9 @@ export function Sheet({ open, onClose, title, closeLabel, kicker, children, foot
           />
           <motion.div
             ref={panel}
-            className={`kb-sheet paper${narrow ? ' is-bottom' : ''}`}
+            id={id}
+            className={`kb-sheet paper${narrow ? ' is-bottom' : ''}${className ? ` ${className}` : ''}`}
+            aria-describedby={describedBy}
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}

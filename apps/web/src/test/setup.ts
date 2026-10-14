@@ -1,24 +1,16 @@
 import { cleanup } from '@testing-library/react';
 import { afterEach } from 'vitest';
+import { installMatchMedia, setReducedMotion } from './media';
 
-// jsdom has no layout or media queries. Pretend the user prefers reduced
-// motion so every motion transition is instant/fade, and give elements a
-// client rect so "is it rendered?" checks (Sheet focus trap) see them.
-if (!window.matchMedia) {
-  window.matchMedia = (query: string) =>
-    ({
-      matches: query.includes('prefers-reduced-motion'),
-      media: query,
-      onchange: null,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      addListener: () => {},
-      removeListener: () => {},
-      dispatchEvent: () => false,
-    }) as MediaQueryList;
-}
+// jsdom has no media queries or layout. matchMedia is a configurable stub
+// (reduced motion off by default; see ./media.ts), and elements get a client
+// rect so "is it rendered?" checks (Sheet focus trap) see them.
+installMatchMedia();
 Element.prototype.getClientRects = function getClientRects() {
   return [{ width: 1, height: 1 }] as unknown as DOMRectList;
 };
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  setReducedMotion(false);
+});
