@@ -317,7 +317,17 @@ fn update_config_validates() {
         &config.pass_base_uri[..usize::from(config.pass_base_uri_len)],
         uri.as_bytes()
     );
-    let max_uri = "y".repeat(usize::from(MAX_BASE_URI_LEN));
+    // `mint_pass` appends `<n>.json`: the base URI must end with '/' (so it is not empty).
+    for bad in ["https://slana.example/pass", ""] {
+        assert_error(
+            env.update_config(UpdateConfigArgs {
+                pass_base_uri: Some(bad.to_string()),
+                ..Default::default()
+            }),
+            SlanaError::BadBaseUri,
+        );
+    }
+    let max_uri = format!("{}/", "y".repeat(usize::from(MAX_BASE_URI_LEN) - 1));
     assert_ok(env.update_config(UpdateConfigArgs {
         pass_base_uri: Some(max_uri.clone()),
         ..Default::default()
