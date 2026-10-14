@@ -1,4 +1,4 @@
-import { EntityKind, PowerUpType, massToRadius } from '@slana/shared';
+import { EntityKind, PowerUpType, RULES, massToRadius } from '@slana/shared';
 import type { Gridded } from './grid';
 
 export abstract class Entity implements Gridded {
@@ -126,7 +126,27 @@ export class PowerUp extends Entity {
   }
 }
 
-export type StaticEntity = Food | Virus | PowerUp;
+/**
+ * Arena tokens spilled when a bot eats a staker. Only humans can pick it up;
+ * it bursts out, slows down by friction and then lies on the floor forever.
+ */
+export class Loot extends Entity {
+  readonly kind = EntityKind.Loot;
+  constructor(
+    id: number,
+    x: number,
+    y: number,
+    /** Raw token units (a positive safe integer). */
+    readonly value: number,
+    public vx: number,
+    public vy: number,
+    tick: number,
+  ) {
+    super(id, x, y, 0, RULES.lootRadius, tick);
+  }
+}
+
+export type StaticEntity = Food | Virus | PowerUp | Loot;
 export type DynamicEntity = Cell | Eject;
 export type AnyEntity = StaticEntity | DynamicEntity;
 
