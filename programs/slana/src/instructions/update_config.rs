@@ -15,7 +15,7 @@ pub struct UpdateConfigArgs {
     pub split: Option<[u16; 3]>,
     pub settle_fee_lamports: Option<u64>,
     pub paused: Option<bool>,
-    /// At most `MAX_BASE_URI_LEN` bytes; frozen once the first Pass is minted.
+    /// At most `MAX_BASE_URI_LEN` bytes, ends with `/`; frozen once the first Pass is minted.
     pub pass_base_uri: Option<String>,
     /// `pass_minted..=MAX_PASS_SUPPLY`.
     pub pass_supply: Option<u32>,
@@ -74,6 +74,8 @@ pub fn handle_update_config(ctx: Context<UpdateConfig>, args: UpdateConfigArgs) 
         let bytes = uri.as_bytes();
         require!(bytes.len() <= BASE_URI_BYTES, SlanaError::BadBaseUri);
         require!(!uri.chars().any(char::is_control), SlanaError::BadBaseUri);
+        // `mint_pass` appends `<n>.json`.
+        require!(uri.ends_with('/'), SlanaError::BadBaseUri);
         let mut stored = [0u8; BASE_URI_BYTES];
         stored[..bytes.len()].copy_from_slice(bytes);
         config.pass_base_uri = stored;
@@ -98,6 +100,11 @@ pub fn handle_update_config(ctx: Context<UpdateConfig>, args: UpdateConfigArgs) 
         config.pass_min_tokens = pass_min_tokens;
     }
     if let Some(pass_mint_open) = args.pass_mint_open {
+        // The trait seed is public after the reveal, so the mint must stay closed.
+        require!(
+            !(pass_mint_open && config.pass_revealed),
+            SlanaError::AlreadyRevealed
+        );
         config.pass_mint_open = pass_mint_open;
     }
     if let Some(pass_mint_start_ts) = args.pass_mint_start_ts {

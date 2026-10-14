@@ -86,4 +86,6 @@ pub enum SlanaError {
     EntryFeeZero,
     #[msg("Pass seed hash can only change before the first mint")]
     SeedLocked,
+    #[msg("Pass mint is still open")]
+    MintStillOpen,
 }

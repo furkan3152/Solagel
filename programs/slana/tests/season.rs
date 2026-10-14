@@ -4,7 +4,7 @@
 mod common;
 
 use {
-    anchor_lang::prelude::Pubkey,
+    anchor_lang::{error::ErrorCode as AnchorErrorCode, prelude::Pubkey},
     common::*,
     slana::{constants::*, error::SlanaError},
     solana_keypair::Keypair,
@@ -119,7 +119,7 @@ fn season_rewards_are_paid_in_tokens() {
         )],
         &[winner],
     );
-    assert!(res.is_err());
+    assert_anchor_error(res, AnchorErrorCode::ConstraintTokenOwner);
     assert_ok(env.claim(winner, 1));
     assert_eq!(env.tokens(&env.player_ata(&winner.pubkey())), prize(3));
 }
