@@ -1,25 +1,36 @@
 use anchor_lang::prelude::*;
+use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 
 use crate::{
     constants::*,
     error::SlanaError,
     events::SessionRefunded,
     instructions::shared,
-    state::{Arena, Session},
+    state::{Arena, Config, PassLock, Session},
+    token,
 };
 
 /// Last resort when the server never settled a session: after `SESSION_REFUND_TIMEOUT_SECS`
-/// the player gets `min(entry_fee, pot)` back.
+/// the player gets `min(entry_fee, vault balance)` back, plus the session rent and its settle
+/// deposit (and the Pass lock rent). Works while paused.
 #[derive(Accounts)]
 pub struct RefundSession<'info> {
     #[account(mut)]
     pub player: Signer<'info>,
+    #[account(seeds = [CONFIG_SEED], bump = config.bump)]
+    pub config: Box<Account<'info, Config>>,
     #[account(
         mut,
         seeds = [ARENA_SEED, arena.id.to_le_bytes().as_ref()],
         bump = arena.bump
     )]
-    pub arena: Account<'info, Arena>,
+    pub arena: Box<Account<'info, Arena>>,
+    #[account(
+        mut,
+        seeds = [VAULT_SEED, arena.key().as_ref()],
+        bump = arena.vault_bump
+    )]
+    pub vault: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(
         mut,
         close = player,
@@ -28,30 +39,49 @@ pub struct RefundSession<'info> {
         has_one = player @ SlanaError::Unauthorized,
         has_one = arena @ SlanaError::Unauthorized
     )]
-    pub session: Account<'info, Session>,
+    pub session: Box<Account<'info, Session>>,
+    #[account(
+        mut,
+        token::mint = token_mint,
+        token::authority = player,
+        token::token_program = token_program
+    )]
+    pub player_token: Box<InterfaceAccount<'info, TokenAccount>>,
+    #[account(address = config.token_mint)]
+    pub token_mint: Box<InterfaceAccount<'info, Mint>>,
+    #[account(address = config.token_program)]
+    pub token_program: Interface<'info, TokenInterface>,
+    /// Required iff the session has a Pass: its lock, closed back to the player.
+    #[account(mut, close = player)]
+    pub pass_lock: Option<Box<Account<'info, PassLock>>>,
 }
 
-// TODO(Task 4): interim lamport version; Task 4 refunds from the arena token vault.
 pub fn handle_refund_session(ctx: Context<RefundSession>) -> Result<()> {
+    let a = &mut *ctx.accounts;
     let now = Clock::get()?.unix_timestamp;
-    let session = &ctx.accounts.session;
-    let refundable_at = session
+    let refundable_at = a
+        .session
         .opened_at
         .checked_add(SESSION_REFUND_TIMEOUT_SECS)
         .ok_or(SlanaError::MathOverflow)?;
     require_gte!(now, refundable_at, SlanaError::RefundTooEarly);
+    shared::check_pass_lock(&a.session, a.pass_lock.as_deref())?;
 
-    let arena_info = ctx.accounts.arena.to_account_info();
-    let refund = session
-        .entry_fee
-        .min(shared::available_lamports(&arena_info)?);
-    shared::transfer_from_program_account(
-        &arena_info,
-        &ctx.accounts.player.to_account_info(),
+    let refund = a.session.entry_fee.min(a.vault.amount);
+    let arena_id_bytes = a.arena.id.to_le_bytes();
+    let arena_seeds: &[&[u8]] = &[ARENA_SEED, &arena_id_bytes, &[a.arena.bump]];
+    token::transfer_from_pda(
+        &a.token_program.to_account_info(),
+        &a.vault.to_account_info(),
+        &a.token_mint.to_account_info(),
+        &a.player_token.to_account_info(),
+        &a.arena.to_account_info(),
+        &[arena_seeds],
         refund,
+        a.config.token_decimals,
     )?;
 
-    let arena = &mut ctx.accounts.arena;
+    let arena = &mut a.arena;
     arena.open_sessions = arena.open_sessions.saturating_sub(1);
     arena.total_paid_out = arena
         .total_paid_out
@@ -59,7 +89,7 @@ pub fn handle_refund_session(ctx: Context<RefundSession>) -> Result<()> {
         .ok_or(SlanaError::MathOverflow)?;
 
     emit!(SessionRefunded {
-        player: ctx.accounts.player.key(),
+        player: a.player.key(),
         arena_id: arena.id,
         amount: refund,
     });

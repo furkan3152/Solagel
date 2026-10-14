@@ -9,7 +9,7 @@ use crate::{
     constants::*,
     error::SlanaError,
     logic::{self, GameResult},
-    state::{PlayerProfile, Season},
+    state::{PassLock, PlayerProfile, Season, Session},
 };
 
 // ---------------------------------------------------------------------------------------
@@ -55,7 +55,35 @@ pub(crate) fn check_max_sessions(max_sessions: u16) -> Result<()> {
 }
 
 // ---------------------------------------------------------------------------------------
-// Lamports (legacy arena / season flows, replaced by token vaults in Tasks 4 and 5)
+// Pass locks
+// ---------------------------------------------------------------------------------------
+
+/// A Pass session must come with exactly its own lock (`["pass_lock", session.pass_asset]`,
+/// recorded for this session); a session without a Pass must come with none. Else `PassInUse`.
+pub(crate) fn check_pass_lock(
+    session: &Account<Session>,
+    lock: Option<&Account<PassLock>>,
+) -> Result<()> {
+    match (session.has_pass, lock) {
+        (false, None) => Ok(()),
+        (true, Some(lock)) => {
+            let expected = Pubkey::create_program_address(
+                &[PASS_LOCK_SEED, session.pass_asset.as_ref(), &[lock.bump]],
+                &crate::ID,
+            )
+            .map_err(|_| error!(SlanaError::PassInUse))?;
+            require_keys_eq!(lock.key(), expected, SlanaError::PassInUse);
+            require_keys_eq!(lock.session, session.key(), SlanaError::PassInUse);
+            require_keys_eq!(lock.player, session.player, SlanaError::PassInUse);
+            Ok(())
+        }
+        _ => err!(SlanaError::PassInUse),
+    }
+}
+
+// ---------------------------------------------------------------------------------------
+// Lamports: the join settle deposit (System transfer) and the legacy season flows
+// (`end_season` / `claim_season_reward` / `rollover_season`, moved to tokens in Task 5)
 // ---------------------------------------------------------------------------------------
 
 /// Rent-exempt minimum of an account with the data length of `info`.

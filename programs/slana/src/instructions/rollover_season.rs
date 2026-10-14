@@ -38,6 +38,8 @@ pub struct RolloverSeason<'info> {
     pub current_season: Box<Account<'info, Season>>,
 }
 
+// TODO(Task 5): still lamport-based; Task 5 moves season prizes to the season token vault
+// (`Season::pool`).
 pub fn handle_rollover_season(ctx: Context<RolloverSeason>, season_id: u32) -> Result<()> {
     let old = &ctx.accounts.old_season;
     require!(old.finalized, SlanaError::SeasonNotFinalized);

@@ -18,7 +18,7 @@ use {
             instruction::{error::InstructionError, Instruction},
             system_instruction, system_program,
         },
-        AccountDeserialize, InstructionData, ToAccountMetas,
+        AccountDeserialize, InstructionData, Space, ToAccountMetas,
     },
     anchor_spl::{
         associated_token::{
@@ -42,9 +42,10 @@ use {
     slana::{
         constants::*,
         error::SlanaError,
-        state::{Arena, Config, PlayerProfile, Season, Session},
-        InitializeArgs, UpdateConfigArgs,
+        state::{Arena, Config, PassLock, PlayerProfile, Season, Session},
+        InitializeArgs, SettleArgs, UpdateConfigArgs,
     },
+    solana_account::Account as SolanaAccount,
     solana_keypair::Keypair,
     solana_message::{Message, VersionedMessage},
     solana_signer::Signer,
@@ -111,6 +112,11 @@ pub fn session_pda(arena: &Pubkey, player: &Pubkey) -> Pubkey {
 
 pub fn season_pda(id: u32) -> Pubkey {
     Pubkey::find_program_address(&[SEASON_SEED, &id.to_le_bytes()], &slana::ID).0
+}
+
+/// Lock of a Pass asset while it backs an open session: `["pass_lock", asset]`.
+pub fn pass_lock_pda(asset: &Pubkey) -> Pubkey {
+    Pubkey::find_program_address(&[PASS_LOCK_SEED, asset.as_ref()], &slana::ID).0
 }
 
 pub fn ata(owner: &Pubkey, mint: &Pubkey, token_program: &Pubkey) -> Pubkey {
@@ -276,6 +282,137 @@ pub mod ix {
         )
     }
 
+    pub fn join_arena(
+        player: &Pubkey,
+        arena_id: u16,
+        mint: &Pubkey,
+        token_program: &Pubkey,
+    ) -> Instruction {
+        let arena = arena_pda(arena_id);
+        build(
+            slana::instruction::JoinArena {}.data(),
+            slana::accounts::JoinArena {
+                player: *player,
+                config: config_pda(),
+                profile: profile_pda(player),
+                arena,
+                vault: vault_pda(&arena),
+                session: session_pda(&arena, player),
+                player_token: ata(player, mint, token_program),
+                token_mint: *mint,
+                token_program: *token_program,
+                system_program: system_program::ID,
+            },
+        )
+    }
+
+    pub fn join_arena_with_pass(
+        player: &Pubkey,
+        arena_id: u16,
+        pass_asset: &Pubkey,
+        mint: &Pubkey,
+        token_program: &Pubkey,
+    ) -> Instruction {
+        let arena = arena_pda(arena_id);
+        build(
+            slana::instruction::JoinArenaWithPass {}.data(),
+            slana::accounts::JoinArenaWithPass {
+                player: *player,
+                config: config_pda(),
+                profile: profile_pda(player),
+                arena,
+                vault: vault_pda(&arena),
+                session: session_pda(&arena, player),
+                player_token: ata(player, mint, token_program),
+                token_mint: *mint,
+                token_program: *token_program,
+                pass_asset: *pass_asset,
+                pass_lock: pass_lock_pda(pass_asset),
+                system_program: system_program::ID,
+            },
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn settle_session(
+        server: &Pubkey,
+        player: &Pubkey,
+        arena_id: u16,
+        season: u32,
+        args: SettleArgs,
+        pass_lock: Option<Pubkey>,
+        mint: &Pubkey,
+        token_program: &Pubkey,
+    ) -> Instruction {
+        let arena = arena_pda(arena_id);
+        build(
+            slana::instruction::SettleSession { args }.data(),
+            slana::accounts::SettleSession {
+                server: *server,
+                config: config_pda(),
+                arena,
+                vault: vault_pda(&arena),
+                session: session_pda(&arena, player),
+                player: *player,
+                player_token: ata(player, mint, token_program),
+                profile: profile_pda(player),
+                season: season_pda(season),
+                treasury_vault: treasury_vault_pda(),
+                season_vault: season_vault_pda(),
+                token_mint: *mint,
+                token_program: *token_program,
+                pass_lock,
+            },
+        )
+    }
+
+    pub fn refund_session(
+        player: &Pubkey,
+        arena_id: u16,
+        pass_lock: Option<Pubkey>,
+        mint: &Pubkey,
+        token_program: &Pubkey,
+    ) -> Instruction {
+        let arena = arena_pda(arena_id);
+        build(
+            slana::instruction::RefundSession {}.data(),
+            slana::accounts::RefundSession {
+                player: *player,
+                config: config_pda(),
+                arena,
+                vault: vault_pda(&arena),
+                session: session_pda(&arena, player),
+                player_token: ata(player, mint, token_program),
+                token_mint: *mint,
+                token_program: *token_program,
+                pass_lock,
+            },
+        )
+    }
+
+    pub fn sweep_arena(
+        admin: &Pubkey,
+        arena_id: u16,
+        season: u32,
+        mint: &Pubkey,
+        token_program: &Pubkey,
+    ) -> Instruction {
+        let arena = arena_pda(arena_id);
+        build(
+            slana::instruction::SweepArena {}.data(),
+            slana::accounts::SweepArena {
+                admin: *admin,
+                config: config_pda(),
+                arena,
+                vault: vault_pda(&arena),
+                season: season_pda(season),
+                season_vault: season_vault_pda(),
+                token_mint: *mint,
+                token_program: *token_program,
+            },
+        )
+    }
+
     pub fn end_season(admin: &Pubkey, current_season: u32) -> Instruction {
         build(
             slana::instruction::EndSeason {}.data(),
@@ -365,13 +502,17 @@ pub enum MintKind {
     Token2022,
     /// Token-2022 mint with a TransferFeeConfig extension (denied).
     Token2022TransferFee,
+    /// Token-2022 mint with a MintCloseAuthority extension (denied).
+    Token2022CloseAuthority,
 }
 
 impl MintKind {
     pub fn program(self) -> Pubkey {
         match self {
             MintKind::Spl => spl_token::ID,
-            MintKind::Token2022 | MintKind::Token2022TransferFee => spl_token_2022::ID,
+            MintKind::Token2022
+            | MintKind::Token2022TransferFee
+            | MintKind::Token2022CloseAuthority => spl_token_2022::ID,
         }
     }
 }
@@ -624,6 +765,189 @@ impl TestEnv {
         self.send(&[ix::end_season(&admin.pubkey(), season)], &[&admin])
     }
 
+    // ----- arenas & sessions ---------------------------------------------------------------
+
+    /// A registered player (10 SOL) with a game-token ATA holding `tokens` base units.
+    pub fn token_player(&mut self, name: &str, tokens: u64) -> Keypair {
+        let kp = self.new_player(name);
+        let account = self.create_ata(&kp.pubkey());
+        if tokens > 0 {
+            self.mint_to(&account, tokens);
+        }
+        kp
+    }
+
+    /// The player's game-token ATA.
+    pub fn player_ata(&self, player: &Pubkey) -> Pubkey {
+        ata(player, &self.mint, &self.token_program)
+    }
+
+    /// Game-token balance of a token account.
+    pub fn tokens(&self, address: &Pubkey) -> u64 {
+        self.token_account(address).amount
+    }
+
+    pub fn mint_supply(&self) -> u64 {
+        self.mint_state(&self.mint).0.supply
+    }
+
+    pub fn join(&mut self, player: &Keypair, arena_id: u16) -> TxResult {
+        let (mint, program) = (self.mint, self.token_program);
+        self.send(
+            &[ix::join_arena(&player.pubkey(), arena_id, &mint, &program)],
+            &[player],
+        )
+    }
+
+    pub fn join_with_pass(&mut self, player: &Keypair, arena_id: u16, asset: &Pubkey) -> TxResult {
+        let (mint, program) = (self.mint, self.token_program);
+        self.send(
+            &[ix::join_arena_with_pass(
+                &player.pubkey(),
+                arena_id,
+                asset,
+                &mint,
+                &program,
+            )],
+            &[player],
+        )
+    }
+
+    /// `settle_session` signed by `signer` with explicit arguments and lock account.
+    pub fn settle_as(
+        &mut self,
+        signer: &Keypair,
+        player: &Pubkey,
+        arena_id: u16,
+        args: SettleArgs,
+        pass_lock: Option<Pubkey>,
+    ) -> TxResult {
+        let (mint, program) = (self.mint, self.token_program);
+        let season = self.config().current_season;
+        self.send(
+            &[ix::settle_session(
+                &signer.pubkey(),
+                player,
+                arena_id,
+                season,
+                args,
+                pass_lock,
+                &mint,
+                &program,
+            )],
+            &[signer],
+        )
+    }
+
+    /// Server settlement of the player's open session (its id and Pass lock read from chain).
+    pub fn settle(
+        &mut self,
+        player: &Pubkey,
+        arena_id: u16,
+        payout: u64,
+        score: u32,
+        kills: u16,
+        xp: u32,
+    ) -> TxResult {
+        let session = self
+            .session(arena_id, player)
+            .expect("open session to settle");
+        let lock = session.has_pass.then(|| pass_lock_pda(&session.pass_asset));
+        let server = self.server.insecure_clone();
+        self.settle_as(
+            &server,
+            player,
+            arena_id,
+            SettleArgs {
+                session_id: session.id,
+                payout,
+                score,
+                kills,
+                xp,
+            },
+            lock,
+        )
+    }
+
+    pub fn refund_with(
+        &mut self,
+        player: &Keypair,
+        arena_id: u16,
+        pass_lock: Option<Pubkey>,
+    ) -> TxResult {
+        let (mint, program) = (self.mint, self.token_program);
+        self.send(
+            &[ix::refund_session(
+                &player.pubkey(),
+                arena_id,
+                pass_lock,
+                &mint,
+                &program,
+            )],
+            &[player],
+        )
+    }
+
+    /// Refund of the player's open session (with its Pass lock when it has one).
+    pub fn refund(&mut self, player: &Keypair, arena_id: u16) -> TxResult {
+        let lock = self
+            .session(arena_id, &player.pubkey())
+            .filter(|s| s.has_pass)
+            .map(|s| pass_lock_pda(&s.pass_asset));
+        self.refund_with(player, arena_id, lock)
+    }
+
+    pub fn sweep_as(&mut self, signer: &Keypair, arena_id: u16) -> TxResult {
+        let (mint, program) = (self.mint, self.token_program);
+        let season = self.config().current_season;
+        self.send(
+            &[ix::sweep_arena(
+                &signer.pubkey(),
+                arena_id,
+                season,
+                &mint,
+                &program,
+            )],
+            &[signer],
+        )
+    }
+
+    pub fn sweep(&mut self, arena_id: u16) -> TxResult {
+        let admin = self.admin.insecure_clone();
+        self.sweep_as(&admin, arena_id)
+    }
+
+    pub fn pass_lock(&self, asset: &Pubkey) -> Option<PassLock> {
+        self.try_fetch(&pass_lock_pda(asset))
+    }
+
+    /// Rent of a `Session` account.
+    pub fn session_rent(&self) -> u64 {
+        self.rent(8 + Session::INIT_SPACE)
+    }
+
+    /// Rent of a `PassLock` account.
+    pub fn pass_lock_rent(&self) -> u64 {
+        self.rent(8 + PassLock::INIT_SPACE)
+    }
+
+    // ----- Slana Pass (fake Metaplex Core accounts) ----------------------------------------
+
+    /// Test-only config write: sets `config.pass_collection`.
+    pub fn set_pass_collection(&mut self, collection: &Pubkey) {
+        let mut config = self.config();
+        config.pass_collection = *collection;
+        self.write_account(&config_pda(), &config);
+    }
+
+    /// A fresh Pass collection (set in the config) and a Pass asset of it owned by `owner`.
+    pub fn give_pass(&mut self, owner: &Pubkey) -> (Pubkey, Pubkey) {
+        let collection = Pubkey::new_unique();
+        self.set_pass_collection(&collection);
+        let asset = fake_core_asset(&mut self.svm, owner, &collection);
+        (collection, asset)
+    }
+
     // ----- tokens ------------------------------------------------------------------------
 
     /// Creates a mint of `kind` with `DECIMALS` decimals, `mint_authority` as mint authority
@@ -638,6 +962,7 @@ impl TestEnv {
             MintKind::Spl => &[],
             MintKind::Token2022 => &[ExtensionType::MetadataPointer],
             MintKind::Token2022TransferFee => &[ExtensionType::TransferFeeConfig],
+            MintKind::Token2022CloseAuthority => &[ExtensionType::MintCloseAuthority],
         };
         let space =
             ExtensionType::try_calculate_account_len::<MintState>(extensions).expect("mint length");
@@ -671,6 +996,14 @@ impl TestEnv {
                     u64::MAX,
                 )
                 .expect("transfer fee ix"),
+            ),
+            MintKind::Token2022CloseAuthority => ixs.push(
+                spl_token_2022::instruction::initialize_mint_close_authority(
+                    &program,
+                    &mint.pubkey(),
+                    Some(&authority),
+                )
+                .expect("mint close authority ix"),
             ),
         }
         ixs.push(
@@ -869,6 +1202,65 @@ pub fn upgrade_authority(svm: &LiteSVM) -> Option<Pubkey> {
         } => upgrade_authority_address,
         _ => None,
     }
+}
+
+// ---------------------------------------------------------------------------------------
+// Fake Metaplex Core accounts
+// ---------------------------------------------------------------------------------------
+
+/// Borsh `String`: u32 little-endian length + bytes.
+fn borsh_string(out: &mut Vec<u8>, value: &str) {
+    out.extend_from_slice(&(value.len() as u32).to_le_bytes());
+    out.extend_from_slice(value.as_bytes());
+}
+
+/// `BaseAssetV1` bytes: key 1 | owner | UpdateAuthority::Collection(collection) | name | uri |
+/// seq None.
+pub fn core_asset_data(owner: &Pubkey, collection: &Pubkey) -> Vec<u8> {
+    let mut data = vec![1u8];
+    data.extend_from_slice(owner.as_ref());
+    data.push(2);
+    data.extend_from_slice(collection.as_ref());
+    borsh_string(&mut data, "Slana Pass #7");
+    borsh_string(&mut data, "https://slana.example/pass/7.json");
+    data.push(0);
+    data
+}
+
+/// Writes an account owned by `MPL_CORE_ID` that looks like a Core asset of `collection`
+/// owned by `owner`, and returns its address.
+pub fn fake_core_asset(svm: &mut LiteSVM, owner: &Pubkey, collection: &Pubkey) -> Pubkey {
+    let address = Pubkey::new_unique();
+    write_core_account(svm, &address, core_asset_data(owner, collection));
+    address
+}
+
+/// Rewrites the owner of a fake Core asset (simulates a transfer of the Pass).
+pub fn set_core_asset_owner(svm: &mut LiteSVM, asset: &Pubkey, owner: &Pubkey) {
+    let mut account = svm.get_account(asset).expect("core asset");
+    account.data[1..33].copy_from_slice(owner.as_ref());
+    svm.set_account(*asset, account).expect("set core asset");
+}
+
+/// Writes `data` into `address` as an `MPL_CORE_ID`-owned, rent-exempt account.
+pub fn write_core_account(svm: &mut LiteSVM, address: &Pubkey, data: Vec<u8>) {
+    write_raw_account(svm, address, MPL_CORE_ID, data);
+}
+
+/// Writes `data` into `address` as a rent-exempt account owned by `owner`.
+pub fn write_raw_account(svm: &mut LiteSVM, address: &Pubkey, owner: Pubkey, data: Vec<u8>) {
+    let lamports = svm.minimum_balance_for_rent_exemption(data.len());
+    svm.set_account(
+        *address,
+        SolanaAccount {
+            lamports,
+            data,
+            owner,
+            executable: false,
+            rent_epoch: 0,
+        },
+    )
+    .expect("set account");
 }
 
 /// UTF-8 name stored in a profile / leaderboard entry.

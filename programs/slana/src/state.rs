@@ -124,15 +124,38 @@ pub struct Arena {
 }
 
 /// An open stake session (one per player per arena). PDA `["session", arena, player]`.
+///
+/// Its lamport balance is its rent plus `settle_fee`, both paid by the player at join: the
+/// deposit goes to the server at settlement (it pays the settle transaction), the rent back to
+/// the player. A refund returns both to the player.
 #[account]
 #[derive(InitSpace, Debug)]
 pub struct Session {
+    /// `Config::total_sessions` at join (PDAs are reused, ids are not).
+    pub id: u64,
     pub player: Pubkey,
     pub arena: Pubkey,
     pub arena_id: u16,
+    /// Entry fee paid into the arena vault, in base units of the game token.
     pub entry_fee: u64,
     pub opened_at: i64,
-    pub id: u64,
+    /// Joined with a Slana Pass: lower fee, season points, and `pass_asset` is locked.
+    pub has_pass: bool,
+    /// The Pass asset backing the session (`Pubkey::default()` without a Pass).
+    pub pass_asset: Pubkey,
+    /// Settle deposit in lamports (`Config::settle_fee_lamports` at join).
+    pub settle_fee: u64,
+    pub bump: u8,
+}
+
+/// Lock of a Pass asset while it backs an open session, so one Pass backs at most one
+/// session at a time (even across transfers). PDA `["pass_lock", asset]`.
+/// Paid by the player at join and closed back to them at settlement or refund.
+#[account]
+#[derive(InitSpace, Debug)]
+pub struct PassLock {
+    pub session: Pubkey,
+    pub player: Pubkey,
     pub bump: u8,
 }
 
@@ -152,7 +175,7 @@ pub struct LeaderEntry {
 
 /// A season with its top-20 leaderboard. PDA `["season", id.to_le_bytes()]`.
 ///
-/// Every lamport above the rent-exempt minimum is prize money.
+/// Prize tokens live in the global season vault; `pool` is this season's share of it.
 #[account]
 #[derive(InitSpace, Debug)]
 pub struct Season {
@@ -162,6 +185,8 @@ pub struct Season {
     pub finalized: bool,
     /// Prize pool frozen by `end_season`.
     pub prize_pool: u64,
+    /// Game tokens credited to this season in the season vault (fee shares and sweeps).
+    pub pool: u64,
     /// Bit `rank` set ⇔ the prize of that rank was claimed.
     pub claimed_mask: u16,
     /// Number of used leaderboard entries.

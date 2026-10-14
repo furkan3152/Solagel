@@ -26,6 +26,7 @@ anchor-spl = { version = "1.2.1", features = ["token", "token_2022", "associated
 
 [dev-dependencies]
 litesvm = "0.17.0"
+solana-account = "4"
 solana-message = "4"
 solana-transaction = "4"
 solana-signer = "3"
