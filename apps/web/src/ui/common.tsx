@@ -1,7 +1,7 @@
 import { getSkin } from '@slana/shared';
 import { useEffect, useRef, type ReactNode } from 'react';
 import { drawCoin } from '../render/coin';
-import type { Expression } from '../render/faces';
+import type { Expression } from '@slana/art';
 import { JellyBody } from '../render/jelly';
 
 /* ───────── shared animation ticker (one RAF for every little canvas) ───────── */

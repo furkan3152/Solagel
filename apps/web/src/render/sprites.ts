@@ -1,6 +1,5 @@
+import { INK, heartPath, starPath } from '@slana/art';
 import { PowerUpType, getSkin } from '@slana/shared';
-import { INK } from './faces';
-import { heartPath, starPath } from './symbols';
 
 const TAU = Math.PI * 2;
 

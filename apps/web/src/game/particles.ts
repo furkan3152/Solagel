@@ -1,4 +1,4 @@
-import { starPath } from '../render/symbols';
+import { starPath } from '@slana/art';
 
 type Kind = 'spark' | 'coin' | 'confetti' | 'puff' | 'text' | 'ring';
 

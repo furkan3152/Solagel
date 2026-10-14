@@ -1,5 +1,5 @@
 import { EntityKind, PlayerFlag, type PlayerInfo, type SnapshotData } from '@slana/shared';
-import type { Expression } from '../render/faces';
+import type { Expression } from '@slana/art';
 import { JellyBody } from '../render/jelly';
 
 /** Movement between two snapshots is eased over this window (classic agar feel). */
