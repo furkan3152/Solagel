@@ -1588,3 +1588,84 @@
 .kb-sheet.is-bottom .tf-cancel {
   display: none;
 }
+
+/* ── landed ticket, scroll cue, compact preview ───────────────────────── */
+.tf-ok {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 2px solid var(--green-ink);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--green) 9%, transparent);
+  font-size: var(--t-small);
+  line-height: 1.45;
+}
+.tf-ok > svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--green-ink);
+}
+.tf-end {
+  display: block;
+  height: 1px;
+  margin-top: -16px;
+}
+/* sits on the bottom edge of the scrolling body while there is more to read */
+.tf-more {
+  position: sticky;
+  bottom: -18px;
+  z-index: 2;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  height: 56px;
+  margin: -56px -22px -18px;
+  padding-bottom: 10px;
+  background: linear-gradient(to bottom, transparent, var(--paper) 70%);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 160ms linear;
+}
+.tf-more.is-on {
+  opacity: 1;
+}
+.tf-more__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--on-ink);
+  font-size: var(--t-label);
+}
+.tf-more__pill svg {
+  transform: rotate(90deg);
+}
+@media (max-width: 639px), (max-height: 760px) {
+  .tf-ticket {
+    min-height: 0;
+  }
+  .tf-ticket__main {
+    gap: 4px;
+    padding: 11px 14px 11px 20px;
+  }
+  .tf-ticket__room {
+    font-size: 25px;
+  }
+  .tf-ticket__stub {
+    width: 96px;
+  }
+  .tf-ticket__fee {
+    font-size: 21px;
+  }
+  .tf-body {
+    gap: 12px;
+  }
+  .tf-line {
+    padding: 3px 0;
+  }
+  .tf-line.is-strong dd {
+    font-size: 20px;
+  }
+}

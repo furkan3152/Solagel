@@ -1,10 +1,10 @@
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
-import { SlanaClient, ata, fetchTokenBalance, type ArenaView, type ConfigView, type OwnedPass, type ProfileView, type SessionView } from '@slana/sdk';
+import { SlanaClient, ata, fetchTokenBalance, pdas, type ArenaView, type ConfigView, type OwnedPass, type ProfileView, type SessionView } from '@slana/sdk';
 import { useCallback, useEffect, useMemo } from 'react';
 import { create } from 'zustand';
 import { SERVER } from '../config';
 import { useUi } from '../store';
-import { fakeConfig, fakeWallet, isDevFake } from './devFake';
+import { isDevFake, loadDevFake } from './devFakeLoader';
 import type { PendingPayout } from './ticket';
 
 export interface SeasonEntryInfo {
@@ -108,6 +108,14 @@ async function loadSeason(): Promise<SeasonInfo | null> {
 }
 
 let refreshTimer: number | null = null;
+/**
+ * Bumped whenever the wallet changes. A refresh captures it when it starts and
+ * drops its result if it changed meanwhile, so a slow read for wallet A can
+ * never overwrite wallet B's balances, Passes or tickets.
+ */
+let generation = 0;
+/** The wallet the store currently describes. */
+let currentOwner: string | null = null;
 
 /** Keeps config / profile / arenas / my sessions / balances / Passes / payouts fresh. Mount once (App). */
 export function useChainSync(): void {
@@ -119,10 +127,18 @@ export function useChainSync(): void {
   const fake = isDevFake(chain);
 
   const refresh = useCallback(async () => {
+    const gen = generation;
+    const stale = () => gen !== generation || currentOwner !== owner;
+    const set = (patch: Partial<ChainData>) => {
+      if (!stale()) useChainData.setState(patch);
+    };
     const season = await loadSeason();
     if (fake && chain) {
+      const dev = await loadDevFake();
+      if (!dev) return;
+      const { fakeConfig, fakeWallet } = dev;
       const wallet = owner ? await serverWalletData(owner) : { passes: [], pending: [] };
-      useChainData.setState({
+      set({
         deployed: true,
         fake: true,
         config: fakeConfig(chain),
@@ -132,7 +148,7 @@ export function useChainSync(): void {
         sessions: owner ? { ...fakeWallet.sessions } : {},
         balance: owner ? fakeWallet.lamports : null,
         tokenBalance: owner ? fakeWallet.tokenBalance : null,
-        ataExists: owner ? true : null,
+        ataExists: owner ? fakeWallet.ataExists : null,
         lockedPasses: [],
         ...wallet,
         season,
@@ -141,7 +157,7 @@ export function useChainSync(): void {
       return;
     }
     if (!client) {
-      useChainData.setState({
+      set({
         deployed: useUi.getState().chain ? false : null,
         fake: false,
         config: null,
@@ -153,11 +169,11 @@ export function useChainSync(): void {
       });
       return;
     }
-    useChainData.setState({ loading: true, fake: false });
+    set({ loading: true, fake: false });
     try {
       const deployed = await client.isDeployed();
       if (!deployed) {
-        useChainData.setState({ deployed: false, loading: false, profileLoaded: true, season });
+        set({ deployed: false, loading: false, profileLoaded: true, season });
         return;
       }
       const [config, arenas] = await Promise.all([client.fetchConfig(), client.fetchArenas().catch(() => [] as ArenaView[])]);
@@ -190,10 +206,14 @@ export function useChainSync(): void {
         const list = await Promise.all(arenas.map((a) => client.fetchSession(a.id, owner).catch(() => null)));
         arenas.forEach((a, i) => (sessions[a.id] = list[i]));
         // a Pass with a lock is busy in a session (ours or, after a transfer, the old owner's)
-        const locks = await Promise.all(wallet.passes.map((p) => client.fetchPassLock(p.asset).catch(() => null)));
-        lockedPasses = wallet.passes.filter((_, i) => locks[i] !== null).map((p) => p.asset);
+        if (wallet.passes.length > 0) {
+          const keys = wallet.passes.map((p) => pdas.passLock(p.asset, client.programId));
+          const locks = await connection.getMultipleAccountsInfo(keys, 'confirmed').catch(() => null);
+          // unknown (RPC failure): assume free; the chain still refuses a busy Pass (PassInUse is explained)
+          lockedPasses = locks ? wallet.passes.filter((_, i) => locks[i] !== null).map((p) => p.asset) : [];
+        }
       }
-      useChainData.setState({
+      set({
         deployed: true,
         config,
         arenas: arenas.sort((a, b) => (a.entryFee < b.entryFee ? -1 : a.entryFee > b.entryFee ? 1 : a.id - b.id)),
@@ -210,11 +230,13 @@ export function useChainSync(): void {
       });
     } catch (err) {
       console.warn('chain refresh failed', err);
-      useChainData.setState({ loading: false, profileLoaded: true, season });
+      set({ loading: false, profileLoaded: true, season });
     }
   }, [client, owner, connection, publicKey, fake, chain]);
 
   useEffect(() => {
+    generation++;
+    currentOwner = owner;
     useChainData.setState({
       profile: null,
       profileLoaded: !owner,
@@ -232,7 +254,11 @@ export function useChainSync(): void {
       if (refreshTimer) clearTimeout(refreshTimer);
       refreshTimer = window.setTimeout(() => void refresh(), 400);
     };
-    return () => clearInterval(id);
+    return () => {
+      clearInterval(id);
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimer = null;
+    };
   }, [refresh, owner]);
 
   // fake mode: a settled game closes the local stand-in ticket and pays the net out
@@ -241,9 +267,13 @@ export function useChainSync(): void {
     return useUi.subscribe((s, prev) => {
       const st = s.lastSettlement;
       if (!st || st === prev.lastSettlement || st.arenaId === null) return;
-      fakeWallet.sessions[st.arenaId] = null;
-      fakeWallet.tokenBalance += BigInt(Math.max(0, Math.round(st.net ?? st.payout - (st.fee ?? 0))));
-      refreshNow();
+      const arenaId = st.arenaId;
+      void loadDevFake().then((dev) => {
+        if (!dev) return;
+        dev.fakeWallet.sessions[arenaId] = null;
+        dev.fakeWallet.tokenBalance += BigInt(Math.max(0, Math.round(st.net ?? st.payout - (st.fee ?? 0))));
+        refreshNow();
+      });
     });
   }, [fake]);
 }
@@ -258,6 +288,8 @@ export function freePasses(d: Pick<ChainData, 'passes' | 'lockedPasses'>): Owned
 }
 
 if (import.meta.env.DEV && typeof window !== 'undefined') {
-  const w = window as unknown as { __slanaChain?: unknown };
-  w.__slanaChain = { useChainData, fakeWallet, refresh: () => refreshNow() };
+  void loadDevFake().then((dev) => {
+    const w = window as unknown as { __slanaChain?: unknown };
+    w.__slanaChain = { useChainData, fakeWallet: dev?.fakeWallet, refresh: () => refreshNow() };
+  });
 }

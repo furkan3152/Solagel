@@ -1,6 +1,7 @@
 import { InkButton } from '../../design';
 import { useT } from '../../i18n';
 import { useChainData } from '../../solana/chain';
+import { payoutsNeedingAta } from '../../solana/ticket';
 import { useTokenText } from './useLobby';
 
 /**
@@ -12,10 +13,12 @@ import { useTokenText } from './useLobby';
 export function PendingBanner({ onCreateAta }: { onCreateAta: () => void }) {
   const t = useT();
   const pending = useChainData((s) => s.pending);
+  const ataExists = useChainData((s) => s.ataExists);
   const tok = useTokenText();
   if (pending.length === 0) return null;
   const total = pending.reduce((s, p) => s + p.payout, 0);
-  const needsAta = pending.some((p) => p.needsTokenAccount);
+  // once the account exists, a queued payout is simply on its way
+  const needsAta = payoutsNeedingAta(pending, ataExists).length > 0;
   return (
     <section className={`kl-owed${needsAta ? ' is-action' : ''}`} role={needsAta ? 'alert' : 'status'} aria-labelledby="kl-owed-k">
       <div className="kl-owed__slip">

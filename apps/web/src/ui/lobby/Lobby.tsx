@@ -8,7 +8,7 @@ import { useChainData } from '../../solana/chain';
 import { ProfileCard } from '../../solana/ProfileCard';
 import { signInWithWallet } from '../../solana/siws';
 import { TicketFlow, type FlowMode } from '../../solana/TicketFlow';
-import type { TicketKey } from '../../solana/ticket';
+import { payoutsNeedingAta, type TicketKey } from '../../solana/ticket';
 import { WalletButton } from '../../solana/WalletButton';
 import { openModal, updateSettings, useUi } from '../../store';
 import { LiveFrame } from './LiveFrame';
@@ -105,7 +105,8 @@ export function Lobby() {
   };
 
   const createAta = () => {
-    const pending = useChainData.getState().pending.find((p) => p.needsTokenAccount);
+    const { pending: all, ataExists } = useChainData.getState();
+    const pending = payoutsNeedingAta(all, ataExists)[0];
     const key = (pending?.arenaId != null ? `arena:${pending.arenaId}` : model.tickets.find((x) => x.arenaId !== null)?.key) as TicketKey | undefined;
     if (key) setFlow({ mode: 'ata', key, open: true });
   };
