@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Slana · Kâğıt Bilet lobisi</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&amp;family=DM+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#D6245F}a:hover{color:#1E1B2E}
+.paper{background-color:#F1EADB;background-image:radial-gradient(rgba(30,27,46,.07) 1px,transparent 1.4px),radial-gradient(rgba(30,27,46,.045) 1px,transparent 1.4px);background-size:7px 7px,11px 11px;background-position:0 0,3px 5px}
+.mono{font-family:'DM Mono',monospace;letter-spacing:.6px;text-transform:uppercase}
+.float{animation:float 3.4s ease-in-out infinite}
+@keyframes float{0%,100%{transform:translate(0,0) rotate(-3deg)}50%{transform:translate(0,-3px) rotate(3deg)}}
+.stamp-in{animation:stamp 3.6s ease-in-out infinite}
+@keyframes stamp{0%,86%,100%{transform:rotate(-11deg) scale(1)}90%{transform:rotate(-11deg) scale(1.12)}}
+.ticket::before,.ticket::after{content:"";position:absolute;left:calc(100% - 111px);width:18px;height:18px;border-radius:50%;background:#F1EADB}
+.ticket::before{top:-9px}
+.ticket::after{bottom:-9px}
+.ticket.sel{transform:translate(-2px,-2px);box-shadow:0 0 0 2.5px #1E1B2E,6px 6px 0 #FF4F87}
+.stub{width:100px;flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border-left:2px dashed rgba(30,27,46,.35)}
+.passmark{position:absolute;right:118px;top:9px;transform:rotate(-11deg);border:2px solid #E3336E;border-radius:5px;padding:2px 6px;color:#E3336E;font:500 11px 'DM Mono',monospace;letter-spacing:2px}
+.cta:active{transform:translate(4px,4px);box-shadow:1px 1px 0 #FF4F87}
+.tab.on{color:#1E1B2E;border-bottom-color:#FF4F87}
+</style>
+</helmet>
+<div class="paper" style="width: 390px; height: 844px; box-sizing: border-box; position: relative; overflow: hidden; display: flex; flex-direction: column; color: #1E1B2E; font-family: 'Bricolage Grotesque', sans-serif">
+
+<header style="display: flex; align-items: flex-end; justify-content: space-between; padding: 22px 18px 10px">
+<div style="display: flex; align-items: center; gap: 2px">
+<span style="font-size: 46px; font-weight: 800; line-height: 0.9; letter-spacing: -2px; font-stretch: 85%">slana</span>
+<svg class="float" width="26" height="26" viewBox="0 0 40 40" aria-hidden="true" style="margin-top: -18px">
+<circle cx="22" cy="22" r="15" fill="#0E9C9A"></circle>
+<circle cx="19" cy="19" r="15" fill="#FF4F87" style="mix-blend-mode: multiply"></circle>
+<circle cx="19" cy="19" r="10" fill="none" stroke="#1E1B2E" stroke-width="1.6" opacity="0.5"></circle>
+</svg>
+</div>
+<button style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px; border: 1.5px dashed #1E1B2E; border-radius: 8px; padding: 6px 9px; background: transparent; color: #1E1B2E; cursor: pointer" aria-label="Cüzdan: 12.450 SLANA">
+<span class="mono" style="font-size: 10px; color: #5D5870">7xKp…3fQa</span>
+<span style="font-size: 17px; font-weight: 800; line-height: 1">12.450 <span class="mono" style="font-size: 10px; font-weight: 500">$SLANA</span></span>
+</button>
+</header>
+
+<div class="mono" style="margin: 0 18px; padding: 7px 0; border-top: 2px solid #1E1B2E; border-bottom: 1px solid #1E1B2E; display: flex; justify-content: space-between; font-size: 10.5px">
+<span>Sezon 01</span>
+<span>12 gün kaldı</span>
+<span>Havuz 84.200 $SLANA</span>
+</div>
+
+<section style="margin: 14px 18px 0; position: relative; display: flex; gap: 14px; padding: 12px; border: 2px solid #1E1B2E; border-radius: 14px; background: #0E9C9A; color: #FFFCF4; box-shadow: 4px 4px 0 #1E1B2E">
+<div style="width: 78px; height: 92px; flex: none; display: flex; align-items: center; justify-content: center; border-radius: 8px; background: #FFFCF4; box-shadow: inset 0 0 0 2px #1E1B2E">
+<svg class="float" width="62" height="62" viewBox="0 0 100 100" aria-hidden="true">
+<circle cx="54" cy="55" r="36" fill="#0E9C9A"></circle>
+<circle cx="50" cy="51" r="36" fill="#FF4F87" style="mix-blend-mode: multiply"></circle>
+<circle cx="50" cy="51" r="27" fill="none" stroke="#1E1B2E" stroke-width="2.5" opacity="0.45"></circle>
+<path d="M30 18 L36 6 L44 15 L50 2 L56 15 L64 6 L70 18 Z" fill="#F2B705" stroke="#1E1B2E" stroke-width="2.5" stroke-linejoin="round"></path>
+<ellipse cx="40" cy="52" rx="4.5" ry="6.5" fill="#1E1B2E"></ellipse>
+<ellipse cx="60" cy="52" rx="4.5" ry="6.5" fill="#1E1B2E"></ellipse>
+<circle cx="31" cy="62" r="4.5" fill="#F2B705" opacity="0.9"></circle>
+<circle cx="69" cy="62" r="4.5" fill="#F2B705" opacity="0.9"></circle>
+<path d="M44 63 Q50 69 56 63" fill="none" stroke="#1E1B2E" stroke-width="3" stroke-linecap="round"></path>
+</svg>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; min-width: 0">
+<span style="font-size: 25px; font-weight: 800; line-height: 0.95; letter-spacing: -0.5px; font-stretch: 88%">Slana Pass</span>
+<span class="mono" style="font-size: 10.5px; color: #DDF6F4">No. 0412 · aktif</span>
+<div style="display: flex; flex-wrap: wrap; gap: 5px; margin-top: 2px">
+<span class="mono" style="font-size: 9.5px; padding: 3px 6px; border: 1.5px solid #FFFCF4; border-radius: 4px">Özel oda</span>
+<span class="mono" style="font-size: 9.5px; padding: 3px 6px; border: 1.5px solid #FFFCF4; border-radius: 4px">%2 kesinti</span>
+<span class="mono" style="font-size: 9.5px; padding: 3px 6px; border: 1.5px solid #FFFCF4; border-radius: 4px">Sezon ödülü</span>
+<span class="mono" style="font-size: 9.5px; padding: 3px 6px; border: 1.5px solid #FFFCF4; border-radius: 4px">+%15 kütle</span>
+</div>
+</div>
+<span class="stamp-in mono" aria-hidden="true" style="position: absolute; right: 10px; bottom: 10px; width: 46px; height: 46px; display: flex; align-items: center; justify-content: center; border: 2px solid #F2B705; border-radius: 50%; color: #F2B705; font-size: 9px; text-align: center; line-height: 1.1">Geçerli</span>
+</section>
+
+<div style="margin: 18px 18px 12px; display: flex; flex-direction: column; gap: 2px">
+<h2 style="margin: 0; font-size: 32px; font-weight: 800; line-height: 0.95; letter-spacing: -1px; font-stretch: 85%">Biletler</h2>
+<span class="mono" style="font-size: 10.5px; color: #5D5870">7/24 açık · yediğin oyuncunun tokenleri senin</span>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 0 18px">
+<sc-for list="{{rooms}}" as="room" hint-placeholder-count="4">
+<button class="ticket {{room.selClass}}" onClick="{{room.pick}}">
+<div style="flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 4px; padding: 10px 14px; min-width: 0">
+<span style="font-size: 21px; font-weight: 700; line-height: 1; letter-spacing: -0.4px">{{room.name}}</span>
+<span class="mono" style="font-size: 10px; color: #5D5870">{{room.online}}</span>
+</div>
+<sc-if value="{{room.pass}}" hint-placeholder-val="{{ false }}">
+<span class="passmark">PASS</span>
+</sc-if>
+<div class="stub">
+<span style="font-size: 20px; font-weight: 800; line-height: 1">{{room.fee}}</span>
+<span class="mono" style="font-size: 9.5px; color: #5D5870">{{room.unit}}</span>
+</div>
+</button>
+</sc-for>
+</div>
+
+<div style="margin-top: auto; padding: 14px 18px 12px">
+<button class="cta">
+<span style="display: flex; flex-direction: column; align-items: flex-start; gap: 3px">
+<span style="font-size: 22px; font-weight: 800; line-height: 1; letter-spacing: -0.4px">Bileti al, oyna</span>
+<span class="mono" style="font-size: 10px; color: #C9C4D9">{{ctaSub}}</span>
+</span>
+<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#FF4F87" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6"></path></svg>
+</button>
+</div>
+
+<nav aria-label="Ana menü" style="display: flex; justify-content: space-around; margin: 0 18px; padding: 2px 0 14px; border-top: 2px solid #1E1B2E">
+<button class="tab on" aria-current="page">
+<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16v3a2 2 0 0 0 0 4v3H4v-3a2 2 0 0 0 0-4z"></path><path d="M14 7v10" stroke-dasharray="2 2.5"></path></svg>
+<span class="mono" style="font-size: 10px">Oyna</span>
+</button>
+<button class="tab">
+<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4zM7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"></path></svg>
+<span class="mono" style="font-size: 10px">Sıralama</span>
+</button>
+<button class="tab">
+<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"></rect><circle cx="12" cy="10" r="3"></circle><path d="M8.5 17h7"></path></svg>
+<span class="mono" style="font-size: 10px">Pass</span>
+</button>
+<button class="tab">
+<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"></circle><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"></path></svg>
+<span class="mono" style="font-size: 10px">Profil</span>
+</button>
+</nav>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const sel = (this.state && this.state.sel) || 'kurus';
+    const base = [
+      { id: 'pratik', name: 'Antrenman', online: 'Botlarla · ödülsüz', fee: 'Ücretsiz', unit: 'token yok', pass: false },
+      { id: 'kurus', name: 'Kuruş Gölü', online: '23 oyuncu · herkese açık', fee: '1.000', unit: '$SLANA', pass: false },
+      { id: 'altin', name: 'Altın Göl', online: '9 oyuncu', fee: '25.000', unit: '$SLANA', pass: true },
+      { id: 'balina', name: 'Balina Koyu', online: '4 oyuncu', fee: '100.000', unit: '$SLANA', pass: true }
+    ];
+    const rooms = base.map((r) => Object.assign({}, r, {
+      selClass: r.id === sel ? 'sel' : '',
+      pick: () => this.setState({ sel: r.id })
+    }));
+    const cur = base.find((r) => r.id === sel) || base[1];
+    const ctaSub = cur.id === 'pratik' ? 'Antrenman · ücretsiz' : cur.name + ' · ' + cur.fee + ' $SLANA';
+    return { rooms: rooms, ctaSub: ctaSub };
+  }
+}
+</script>
+</body>
+</html>
