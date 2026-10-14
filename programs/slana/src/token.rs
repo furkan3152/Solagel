@@ -16,8 +16,9 @@ use anchor_spl::{
 use crate::error::SlanaError;
 
 /// Token-2022 mint extensions that would let somebody tax, block, seize, freeze or hide
-/// vault funds. Metadata extensions (MetadataPointer, TokenMetadata, …) stay allowed.
-pub const DENIED_MINT_EXTENSIONS: [ExtensionType; 8] = [
+/// vault funds, or close the mint under the vaults (MintCloseAuthority). Metadata extensions
+/// (MetadataPointer, TokenMetadata, …) stay allowed.
+pub const DENIED_MINT_EXTENSIONS: [ExtensionType; 10] = [
     ExtensionType::TransferFeeConfig,
     ExtensionType::TransferHook,
     ExtensionType::PermanentDelegate,
@@ -26,6 +27,8 @@ pub const DENIED_MINT_EXTENSIONS: [ExtensionType; 8] = [
     ExtensionType::ConfidentialTransferMint,
     ExtensionType::ConfidentialTransferFeeConfig,
     ExtensionType::Pausable,
+    ExtensionType::MintCloseAuthority,
+    ExtensionType::ConfidentialMintBurn,
 ];
 
 /// Validates the game mint and returns its decimals.
@@ -124,4 +127,23 @@ pub fn burn_from_pda<'info>(
         ),
         amount,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deny_list_covers_close_and_confidential_mint_burn() {
+        for ext in [
+            ExtensionType::MintCloseAuthority,
+            ExtensionType::ConfidentialMintBurn,
+            ExtensionType::TransferFeeConfig,
+            ExtensionType::PermanentDelegate,
+        ] {
+            assert!(DENIED_MINT_EXTENSIONS.contains(&ext), "{ext:?}");
+        }
+        assert!(!DENIED_MINT_EXTENSIONS.contains(&ExtensionType::MetadataPointer));
+        assert!(!DENIED_MINT_EXTENSIONS.contains(&ExtensionType::TokenMetadata));
+    }
 }

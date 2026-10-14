@@ -3,7 +3,7 @@
 mod common;
 
 use {
-    anchor_lang::Space,
+    anchor_lang::{error::ErrorCode as AnchorErrorCode, Space},
     anchor_spl::token_2022::spl_token_2022::extension::ExtensionType,
     common::*,
     slana::{constants::*, error::SlanaError, state::Config, UpdateConfigArgs},
@@ -101,6 +101,24 @@ fn initialize_rejects_transfer_fee_mint() {
     assert_eq!(
         env.mint_state(&mint).1,
         vec![ExtensionType::TransferFeeConfig]
+    );
+    let admin = env.admin.insecure_clone();
+    let args = env.default_init_args();
+    assert_error(
+        env.initialize_as(&admin, &mint, &kind.program(), args),
+        SlanaError::MintNotAllowed,
+    );
+    assert!(env.try_fetch::<Config>(&config_pda()).is_none());
+}
+
+#[test]
+fn initialize_rejects_mint_close_authority() {
+    let mut env = TestEnv::deployed();
+    let kind = MintKind::Token2022CloseAuthority;
+    let mint = env.create_mint(kind, None);
+    assert_eq!(
+        env.mint_state(&mint).1,
+        vec![ExtensionType::MintCloseAuthority]
     );
     let admin = env.admin.insecure_clone();
     let args = env.default_init_args();
@@ -439,7 +457,10 @@ fn withdraw_treasury_admin_only() {
             )],
             &[],
         ));
-        assert!(env.withdraw_treasury_as(&admin, &other_ata, TOKEN).is_err());
+        assert_anchor_error(
+            env.withdraw_treasury_as(&admin, &other_ata, TOKEN),
+            AnchorErrorCode::ConstraintTokenMint,
+        );
 
         // The admin withdraws to any account of the game mint (here its own ATA, then
         // mallory's).

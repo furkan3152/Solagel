@@ -1,14 +1,16 @@
 use anchor_lang::prelude::*;
+use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 
 use crate::{
     constants::*,
     error::SlanaError,
     events::ArenaSwept,
-    instructions::shared,
     state::{Arena, Config, Season},
+    token,
 };
 
-/// Sends whatever is left in an arena pot to the current season once no session is open.
+/// Moves whatever is left in a disabled arena's vault into the season vault (credited to the
+/// current season's pool) once no session is open.
 #[derive(Accounts)]
 pub struct SweepArena<'info> {
     pub admin: Signer<'info>,
@@ -19,36 +21,61 @@ pub struct SweepArena<'info> {
     )]
     pub config: Box<Account<'info, Config>>,
     #[account(
-        mut,
         seeds = [ARENA_SEED, arena.id.to_le_bytes().as_ref()],
         bump = arena.bump
     )]
-    pub arena: Account<'info, Arena>,
+    pub arena: Box<Account<'info, Arena>>,
+    #[account(
+        mut,
+        seeds = [VAULT_SEED, arena.key().as_ref()],
+        bump = arena.vault_bump
+    )]
+    pub vault: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(
         mut,
         seeds = [SEASON_SEED, config.current_season.to_le_bytes().as_ref()],
         bump = season.bump
     )]
     pub season: Box<Account<'info, Season>>,
+    #[account(
+        mut,
+        seeds = [SEASON_VAULT_SEED],
+        bump = config.season_vault_bump
+    )]
+    pub season_vault: Box<InterfaceAccount<'info, TokenAccount>>,
+    #[account(address = config.token_mint)]
+    pub token_mint: Box<InterfaceAccount<'info, Mint>>,
+    #[account(address = config.token_program)]
+    pub token_program: Interface<'info, TokenInterface>,
 }
 
-// TODO(Task 4): interim lamport version; Task 4 sweeps the token vault into the season vault.
 pub fn handle_sweep_arena(ctx: Context<SweepArena>) -> Result<()> {
-    require!(
-        ctx.accounts.arena.open_sessions == 0,
-        SlanaError::ArenaHasOpenSessions
-    );
+    let a = &mut *ctx.accounts;
+    require!(!a.arena.enabled, SlanaError::ArenaBusy);
+    require!(a.arena.open_sessions == 0, SlanaError::ArenaHasOpenSessions);
 
-    let arena_info = ctx.accounts.arena.to_account_info();
-    let amount = shared::available_lamports(&arena_info)?;
-    shared::transfer_from_program_account(
-        &arena_info,
-        &ctx.accounts.season.to_account_info(),
+    let amount = a.vault.amount;
+    let arena_id_bytes = a.arena.id.to_le_bytes();
+    let arena_seeds: &[&[u8]] = &[ARENA_SEED, &arena_id_bytes, &[a.arena.bump]];
+    token::transfer_from_pda(
+        &a.token_program.to_account_info(),
+        &a.vault.to_account_info(),
+        &a.token_mint.to_account_info(),
+        &a.season_vault.to_account_info(),
+        &a.arena.to_account_info(),
+        &[arena_seeds],
         amount,
+        a.config.token_decimals,
     )?;
+    a.season.pool = a
+        .season
+        .pool
+        .checked_add(amount)
+        .ok_or(SlanaError::MathOverflow)?;
 
     emit!(ArenaSwept {
-        arena_id: ctx.accounts.arena.id,
+        arena_id: a.arena.id,
+        season_id: a.season.id,
         amount,
     });
     Ok(())

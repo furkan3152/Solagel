@@ -38,6 +38,8 @@ pub struct EndSeason<'info> {
     pub system_program: Program<'info, System>,
 }
 
+// TODO(Task 5): still lamport-based; Task 5 moves season prizes to the season token vault
+// (`Season::pool`).
 pub fn handle_end_season(ctx: Context<EndSeason>) -> Result<()> {
     let accounts = &mut *ctx.accounts;
     require!(!accounts.season.finalized, SlanaError::SeasonFinalized);

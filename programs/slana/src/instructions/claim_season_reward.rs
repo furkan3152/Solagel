@@ -19,6 +19,8 @@ pub struct ClaimSeasonReward<'info> {
     pub season: Box<Account<'info, Season>>,
 }
 
+// TODO(Task 5): still lamport-based; Task 5 moves season prizes to the season token vault
+// (`Season::pool`).
 pub fn handle_claim_season_reward(ctx: Context<ClaimSeasonReward>, season_id: u32) -> Result<()> {
     let season = &ctx.accounts.season;
     require!(season.finalized, SlanaError::SeasonNotFinalized);
