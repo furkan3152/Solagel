@@ -18,34 +18,9 @@ pub fn level_from_xp(xp: u64) -> u32 {
     u32::try_from(level).unwrap_or(u32::MAX)
 }
 
-/// Bit of `PlayerProfile::premium_skins` that marks ownership of `skin`, `None` for non-premium ids.
-pub fn premium_skin_bit(skin: u8) -> Option<u32> {
-    if (PREMIUM_SKIN_START..SKIN_COUNT).contains(&skin) {
-        Some(1u32 << (skin - PREMIUM_SKIN_START))
-    } else {
-        None
-    }
-}
-
-/// Whether a player with `xp` and `premium_skins` may equip `skin` (false for invalid ids).
-pub fn is_skin_unlocked(skin: u8, xp: u64, premium_skins: u32) -> bool {
-    if skin < FREE_SKINS {
-        true
-    } else if skin < PREMIUM_SKIN_START {
-        let required = LEVEL_SKIN_REQUIREMENTS[usize::from(skin - LEVEL_SKIN_START)];
-        level_from_xp(xp) >= required
-    } else {
-        premium_skin_bit(skin).is_some_and(|bit| premium_skins & bit != 0)
-    }
-}
-
-/// `InvalidSkin` for ids ≥ `SKIN_COUNT`, `SkinLocked` when the skin is not unlocked.
-pub fn check_skin(skin: u8, xp: u64, premium_skins: u32) -> Result<()> {
-    require!(skin < SKIN_COUNT, SlanaError::InvalidSkin);
-    require!(
-        is_skin_unlocked(skin, xp, premium_skins),
-        SlanaError::SkinLocked
-    );
+/// `InvalidSkin` unless `skin` is one of the basic skins (`0..BASIC_SKINS`).
+pub fn check_skin(skin: u8) -> Result<()> {
+    require!(skin < BASIC_SKINS, SlanaError::InvalidSkin);
     Ok(())
 }
 
@@ -81,42 +56,49 @@ pub fn mul_bps(amount: u64, bps: u16) -> Result<u64> {
     u64::try_from(value).map_err(|_| error!(SlanaError::MathOverflow))
 }
 
-/// How a stake payout is split.
+/// How a stake payout is split (all amounts in base units of the game token).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct Settlement {
-    /// Total fee (only charged on profit).
+pub struct FeeSplit {
+    /// Total fee (only charged on profit): `treasury + season + burn`.
     pub fee: u64,
-    /// Part of the fee that goes to the season prize pool.
-    pub season_cut: u64,
-    /// Part of the fee that goes to the treasury.
-    pub treasury_cut: u64,
+    /// Part of the fee that goes to the treasury vault.
+    pub treasury: u64,
+    /// Part of the fee that goes to the season vault (gets the rounding remainder).
+    pub season: u64,
+    /// Part of the fee that is burned.
+    pub burn: u64,
     /// What the player receives (`payout - fee`).
-    pub player_amount: u64,
+    pub player: u64,
 }
 
-/// Splits `payout` for a session that was opened with `buy_in`.
+/// Splits `payout` for a session that was opened with `entry_fee`.
 ///
-/// `fee = (payout - buy_in)⁺ * fee_bps / 10_000`,
-/// `season_cut = fee * season_share_bps / 10_000`, `treasury_cut = fee - season_cut`,
-/// `player_amount = payout - fee`.
-pub fn compute_settlement(
+/// `fee = (payout - entry_fee)⁺ * fee_bps / 10_000`,
+/// `treasury = fee * treasury_bps / 10_000`, `burn = fee * burn_bps / 10_000`,
+/// `season = fee - treasury - burn` (the rounding remainder), `player = payout - fee`.
+/// Every step is checked; shares above 100 % fail with `MathOverflow`.
+pub fn split_payout(
     payout: u64,
-    buy_in: u64,
+    entry_fee: u64,
     fee_bps: u16,
-    season_share_bps: u16,
-) -> Result<Settlement> {
-    let profit = payout.saturating_sub(buy_in);
+    treasury_bps: u16,
+    burn_bps: u16,
+) -> Result<FeeSplit> {
+    let profit = payout.saturating_sub(entry_fee);
     let fee = mul_bps(profit, fee_bps)?;
-    let season_cut = mul_bps(fee, season_share_bps)?;
-    let treasury_cut = fee
-        .checked_sub(season_cut)
+    let treasury = mul_bps(fee, treasury_bps)?;
+    let burn = mul_bps(fee, burn_bps)?;
+    let season = fee
+        .checked_sub(treasury)
+        .and_then(|rest| rest.checked_sub(burn))
         .ok_or(SlanaError::MathOverflow)?;
-    let player_amount = payout.checked_sub(fee).ok_or(SlanaError::MathOverflow)?;
-    Ok(Settlement {
+    let player = payout.checked_sub(fee).ok_or(SlanaError::MathOverflow)?;
+    Ok(FeeSplit {
         fee,
-        season_cut,
-        treasury_cut,
-        player_amount,
+        treasury,
+        season,
+        burn,
+        player,
     })
 }
 
@@ -149,8 +131,9 @@ pub struct GameResult {
 /// Applies one finished game to a profile (stats, XP, season points).
 ///
 /// Score is clamped to `MAX_SCORE_PER_GAME` and XP to `MAX_XP_PER_GAME`. Season points
-/// are reset when the profile still carries points from an older season. All counters
-/// saturate so a settlement can never fail because of statistics.
+/// are reset when the profile still carries points from an older season, and the score is
+/// added to them only when `season_points` is set (Pass sessions). All counters saturate so
+/// a settlement can never fail because of statistics.
 pub fn apply_game(
     profile: &mut PlayerProfile,
     current_season: u32,
@@ -158,6 +141,7 @@ pub fn apply_game(
     kills: u16,
     xp: u32,
     now: i64,
+    season_points: bool,
 ) -> GameResult {
     let score = score.min(MAX_SCORE_PER_GAME);
     let xp = xp.min(MAX_XP_PER_GAME);
@@ -171,7 +155,9 @@ pub fn apply_game(
         profile.season = current_season;
         profile.season_points = 0;
     }
-    profile.season_points = profile.season_points.saturating_add(u64::from(score));
+    if season_points {
+        profile.season_points = profile.season_points.saturating_add(u64::from(score));
+    }
     profile.last_played = now;
 
     GameResult { score, kills, xp }
@@ -298,48 +284,16 @@ mod tests {
     }
 
     #[test]
-    fn skins_unlock_by_tier() {
-        // Free skins are always unlocked.
-        for skin in 0..FREE_SKINS {
-            assert!(is_skin_unlocked(skin, 0, 0));
-            assert!(check_skin(skin, 0, 0).is_ok());
+    fn only_basic_skins_are_valid() {
+        for skin in 0..BASIC_SKINS {
+            assert!(check_skin(skin).is_ok());
         }
-        // Level skins: skin 8 needs level 2 (50 xp) ... skin 15 needs level 20 (18 050 xp).
-        assert!(!is_skin_unlocked(8, 49, 0));
-        assert!(is_skin_unlocked(8, 50, 0));
-        assert!(!is_skin_unlocked(10, 799, 0));
-        assert!(is_skin_unlocked(10, 800, 0));
-        assert!(!is_skin_unlocked(11, 800, 0));
-        assert!(!is_skin_unlocked(15, 18_049, 0));
-        assert!(is_skin_unlocked(15, 18_050, 0));
-        assert_eq!(
-            code(check_skin(10, 0, 0).unwrap_err()),
-            err_code(SlanaError::SkinLocked)
-        );
-        // Premium skins need their bit; xp does not help.
-        assert!(!is_skin_unlocked(16, u64::MAX, 0));
-        assert!(is_skin_unlocked(16, 0, 1));
-        assert!(is_skin_unlocked(17, 0, 1 << 1));
-        assert!(!is_skin_unlocked(17, 0, 1));
-        assert!(is_skin_unlocked(23, 0, 1 << 7));
-        assert_eq!(
-            code(check_skin(20, 0, 0).unwrap_err()),
-            err_code(SlanaError::SkinLocked)
-        );
-        // Invalid ids.
-        assert!(!is_skin_unlocked(24, u64::MAX, u32::MAX));
-        assert_eq!(
-            code(check_skin(24, u64::MAX, u32::MAX).unwrap_err()),
-            err_code(SlanaError::InvalidSkin)
-        );
-        assert_eq!(
-            code(check_skin(255, 0, 0).unwrap_err()),
-            err_code(SlanaError::InvalidSkin)
-        );
-        assert_eq!(premium_skin_bit(15), None);
-        assert_eq!(premium_skin_bit(16), Some(1));
-        assert_eq!(premium_skin_bit(23), Some(1 << 7));
-        assert_eq!(premium_skin_bit(24), None);
+        for skin in [BASIC_SKINS, 16, 23, 24, u8::MAX] {
+            assert_eq!(
+                code(check_skin(skin).unwrap_err()),
+                err_code(SlanaError::InvalidSkin)
+            );
+        }
     }
 
     #[test]
@@ -368,48 +322,89 @@ mod tests {
     }
 
     #[test]
-    fn settlement_split() {
-        // Spec example: 0.1 SOL buy-in, 0.15 SOL payout, 5 % fee, half of it to the season.
-        let s = compute_settlement(150_000_000, 100_000_000, 500, 5_000).unwrap();
+    fn split_payout_on_profit_only() {
+        // No profit, no fee.
         assert_eq!(
-            s,
-            Settlement {
-                fee: 2_500_000,
-                season_cut: 1_250_000,
-                treasury_cut: 1_250_000,
-                player_amount: 147_500_000,
+            split_payout(100, 100, 500, 5_000, 2_000).unwrap(),
+            FeeSplit {
+                player: 100,
+                ..Default::default()
             }
         );
-        // No profit, no fee.
-        let s = compute_settlement(50_000_000, 100_000_000, 500, 5_000).unwrap();
-        assert_eq!(s.fee, 0);
-        assert_eq!(s.player_amount, 50_000_000);
-        let s = compute_settlement(100_000_000, 100_000_000, 1_000, 5_000).unwrap();
-        assert_eq!(s.fee, 0);
         assert_eq!(
-            compute_settlement(0, 100, 500, 5_000).unwrap(),
-            Settlement::default()
+            split_payout(50, 100, 500, 5_000, 2_000).unwrap(),
+            FeeSplit {
+                player: 50,
+                ..Default::default()
+            }
         );
-        // Rounding is always down, and nothing is lost.
-        let s = compute_settlement(1_199, 1_000, 500, 5_000).unwrap();
-        assert_eq!((s.fee, s.season_cut, s.treasury_cut), (9, 4, 5));
-        assert_eq!(s.player_amount, 1_190);
-        // Season share extremes.
-        let s = compute_settlement(2_000, 1_000, 1_000, 10_000).unwrap();
-        assert_eq!((s.fee, s.season_cut, s.treasury_cut), (100, 100, 0));
-        let s = compute_settlement(2_000, 1_000, 1_000, 0).unwrap();
-        assert_eq!((s.fee, s.season_cut, s.treasury_cut), (100, 0, 100));
+        assert_eq!(
+            split_payout(0, 100, 1_000, 5_000, 2_000).unwrap(),
+            FeeSplit::default()
+        );
+        // Profit 900 at 5 %: fee 45 = treasury 22 + burn 9 + season 14.
+        assert_eq!(
+            split_payout(1_000, 100, 500, 5_000, 2_000).unwrap(),
+            FeeSplit {
+                fee: 45,
+                treasury: 22,
+                season: 14,
+                burn: 9,
+                player: 955,
+            }
+        );
+        // Plan example from the spec: entry 1000, payout 2000, 5 % and 2 % (Pass).
+        let s = split_payout(2_000, 1_000, 500, 5_000, 2_000).unwrap();
+        assert_eq!(
+            (s.fee, s.treasury, s.season, s.burn, s.player),
+            (50, 25, 15, 10, 1_950)
+        );
+        assert_eq!(
+            split_payout(2_000, 1_000, 200, 5_000, 2_000).unwrap().fee,
+            20
+        );
         // Large values do not overflow.
-        let s = compute_settlement(u64::MAX, 0, MAX_FEE_BPS, BPS).unwrap();
-        assert_eq!(s.fee, u64::MAX / 10);
+        let s = split_payout(u64::MAX, 0, MAX_FEE_BPS, BPS, 0).unwrap();
+        assert_eq!((s.fee, s.treasury), (u64::MAX / 10, u64::MAX / 10));
+        assert_eq!(s.player, u64::MAX - u64::MAX / 10);
+    }
+
+    #[test]
+    fn split_payout_remainder_goes_to_season() {
+        // fee 9: treasury floor(4.5) = 4, burn floor(1.8) = 1, season gets the rest (4).
+        let s = split_payout(1_199, 1_000, 500, 5_000, 2_000).unwrap();
+        assert_eq!(
+            (s.fee, s.treasury, s.burn, s.season, s.player),
+            (9, 4, 1, 4, 1_190)
+        );
+        // fee 1: both floors are 0, the whole fee goes to the season.
+        let s = split_payout(120, 100, 500, 5_000, 2_000).unwrap();
+        assert_eq!((s.fee, s.treasury, s.burn, s.season), (1, 0, 0, 1));
+        // Extreme splits.
+        let s = split_payout(2_000, 1_000, 1_000, 10_000, 0).unwrap();
+        assert_eq!((s.treasury, s.burn, s.season), (100, 0, 0));
+        let s = split_payout(2_000, 1_000, 1_000, 0, 10_000).unwrap();
+        assert_eq!((s.treasury, s.burn, s.season), (0, 100, 0));
+        // A split above 100 % cannot underflow silently.
+        assert_eq!(
+            code(split_payout(2_000, 1_000, 1_000, 10_000, 10_000).unwrap_err()),
+            err_code(SlanaError::MathOverflow)
+        );
         // Conservation over a range of inputs.
         for payout in (0..5_000_000u64).step_by(7_919) {
-            for buy_in in [0u64, 1, 999_999, 1_000_000, 2_500_000] {
-                for (fee_bps, share) in [(0, 0), (500, 5_000), (1_000, 3_333), (137, 10_000)] {
-                    let s = compute_settlement(payout, buy_in, fee_bps, share).unwrap();
-                    assert_eq!(s.player_amount + s.season_cut + s.treasury_cut, payout);
-                    assert_eq!(s.season_cut + s.treasury_cut, s.fee);
-                    assert!(s.fee <= payout.saturating_sub(buy_in));
+            for entry_fee in [1u64, 999, 1_000_000, 2_500_000] {
+                for (fee_bps, t, b) in [
+                    (0, 5_000, 2_000),
+                    (500, 5_000, 2_000),
+                    (1_000, 3_333, 3_333),
+                    (137, 10_000, 0),
+                    (200, 0, 0),
+                ] {
+                    let s = split_payout(payout, entry_fee, fee_bps, t, b).unwrap();
+                    assert_eq!(s.player + s.fee, payout);
+                    assert_eq!(s.treasury + s.season + s.burn, s.fee);
+                    assert!(s.fee <= payout.saturating_sub(entry_fee));
+                    assert!(s.season >= mul_bps(s.fee, BPS - t - b).unwrap());
                 }
             }
         }
@@ -448,7 +443,7 @@ mod tests {
             season: 1,
             ..Default::default()
         };
-        let r = apply_game(&mut profile, 1, 5_000, 3, 120, 42);
+        let r = apply_game(&mut profile, 1, 5_000, 3, 120, 42, true);
         assert_eq!(
             r,
             GameResult {
@@ -466,7 +461,7 @@ mod tests {
         assert_eq!(profile.last_played, 42);
 
         // Clamping.
-        let r = apply_game(&mut profile, 1, u32::MAX, u16::MAX, u32::MAX, 43);
+        let r = apply_game(&mut profile, 1, u32::MAX, u16::MAX, u32::MAX, 43, true);
         assert_eq!(r.score, MAX_SCORE_PER_GAME);
         assert_eq!(r.xp, MAX_XP_PER_GAME);
         assert_eq!(profile.best_score, MAX_SCORE_PER_GAME);
@@ -475,12 +470,12 @@ mod tests {
         assert_eq!(profile.season_points, 5_000 + u64::from(MAX_SCORE_PER_GAME));
 
         // A lower score keeps the best score.
-        apply_game(&mut profile, 1, 10, 0, 0, 44);
+        apply_game(&mut profile, 1, 10, 0, 0, 44, true);
         assert_eq!(profile.best_score, MAX_SCORE_PER_GAME);
 
         // New season resets season points only.
         let total_before = profile.total_score;
-        apply_game(&mut profile, 2, 700, 0, 0, 45);
+        apply_game(&mut profile, 2, 700, 0, 0, 45, true);
         assert_eq!(profile.season, 2);
         assert_eq!(profile.season_points, 700);
         assert_eq!(profile.total_score, total_before + 700);
@@ -489,9 +484,37 @@ mod tests {
         // Saturation instead of overflow.
         profile.xp = u64::MAX - 1;
         profile.games_played = u32::MAX;
-        apply_game(&mut profile, 2, 0, 0, 10, 46);
+        apply_game(&mut profile, 2, 0, 0, 10, 46, true);
         assert_eq!(profile.xp, u64::MAX);
         assert_eq!(profile.games_played, u32::MAX);
+    }
+
+    #[test]
+    fn apply_game_adds_season_points_only_when_asked() {
+        let mut profile = PlayerProfile {
+            owner: pk(1),
+            season: 1,
+            season_points: 300,
+            ..Default::default()
+        };
+        // Without season points: stats and XP still count.
+        let r = apply_game(&mut profile, 1, 5_000, 2, 100, 10, false);
+        assert_eq!(r.score, 5_000);
+        assert_eq!(profile.season_points, 300);
+        assert_eq!(profile.games_played, 1);
+        assert_eq!(profile.total_score, 5_000);
+        assert_eq!(profile.best_score, 5_000);
+        assert_eq!(profile.xp, 100);
+        assert_eq!(profile.kills, 2);
+        assert_eq!(profile.last_played, 10);
+
+        // With season points.
+        apply_game(&mut profile, 1, 700, 0, 0, 11, true);
+        assert_eq!(profile.season_points, 1_000);
+
+        // A new season still resets stale points even when no points are added.
+        apply_game(&mut profile, 2, 900, 0, 0, 12, false);
+        assert_eq!((profile.season, profile.season_points), (2, 0));
     }
 
     #[test]
@@ -620,7 +643,7 @@ mod tests {
             ..Default::default()
         };
         profile.name[..3].copy_from_slice(b"bob");
-        let result = apply_game(&mut profile, 3, 250, 1, 10, 7);
+        let result = apply_game(&mut profile, 3, 250, 1, 10, 7, true);
         let e = leader_entry(&profile, result.score);
         assert_eq!(e.player, pk(9));
         assert_eq!(e.points, 1_250);
