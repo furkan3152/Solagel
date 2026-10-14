@@ -49,7 +49,9 @@ describe('MARKET_URLS', () => {
     });
   });
 
-  it('drops anything that is not an absolute http(s) URL, and bad JSON', () => {
+  it('drops anything that is not an absolute https URL, and bad JSON', () => {
+    // plain http is refused too: a marketplace link must not be downgradable
+    expect(parseMarketUrls({ MARKET_URL_OPENSEA: 'http://opensea.io/collection/slana-pass', MARKET_URLS: '{"tensor":"http://www.tensor.trade/trade/slana_pass"}' })).toEqual({});
     expect(parseMarketUrls({ MARKET_URLS: 'not json', MARKET_URL_OPENSEA: 'javascript:alert(1)', MARKET_URL_TENSOR: '/relative' })).toEqual({});
     expect(parseMarketUrls({ MARKET_URLS: '["https://opensea.io"]' })).toEqual({});
     expect(parseMarketUrls({ MARKET_URLS: '{"opensea": 42, "tensor": "ftp://x.example"}' })).toEqual({});

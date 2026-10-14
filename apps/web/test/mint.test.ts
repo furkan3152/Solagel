@@ -112,9 +112,15 @@ describe('mintGate', () => {
   const base: MintGateInput = { status: status(), walletConnected: true, mintedByMe: 0, minTokens: 0n, tokenBalance: null, nowS: 1_000 };
   it('follows the program checks in order', () => {
     expect(mintGate({ ...base, status: null }).kind).toBe('unavailable');
+    // SeedNotSet comes right after the collection check
+    expect(mintGate({ ...base, seedCommitted: false }).kind).toBe('unavailable');
+    expect(mintGate({ ...base, seedCommitted: false, status: status({ mintOpen: false }) }).kind).toBe('unavailable');
     expect(mintGate({ ...base, status: status({ revealed: true, seed: SEED }) }).kind).toBe('closed');
     expect(mintGate({ ...base, status: status({ minted: 3333 }) }).kind).toBe('soldOut');
     expect(mintGate({ ...base, status: status({ mintOpen: false }) }).kind).toBe('closed');
+    // MintClosed before MintSoldOut, as the program checks them
+    expect(mintGate({ ...base, status: status({ mintOpen: false, minted: 3333 }) }).kind).toBe('closed');
+    expect(mintGate({ ...base, status: status({ minted: 3333, mintStartTs: 5_000 }) }).kind).toBe('notStarted');
     expect(mintGate({ ...base, status: status({ mintStartTs: 5_000 }) })).toEqual({ kind: 'notStarted', startsAt: 5_000 });
     expect(mintGate({ ...base, walletConnected: false }).kind).toBe('connect');
     expect(mintGate({ ...base, mintedByMe: null }).kind).toBe('loading');

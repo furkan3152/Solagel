@@ -39,7 +39,7 @@ export interface ServerConfig {
   /**
    * Slana Pass collection pages on the marketplaces, shown on the Pass page
    * (`MARKET_URLS` JSON and/or `MARKET_URL_MAGICEDEN` / `_TENSOR` / `_OPENSEA`).
-   * Only http(s) URLs are kept; an empty object hides every link.
+   * Only https URLs are kept; an empty object hides every link.
    */
   markets: MarketUrls;
   chain: {
@@ -73,12 +73,12 @@ const num = (v: string | undefined, d: number): number => {
 
 const MARKET_KEYS: Record<string, keyof MarketUrls> = { magiceden: 'magicEden', tensor: 'tensor', opensea: 'opensea' };
 
-/** An absolute http(s) URL, else null (never a `javascript:` or relative link on the page). */
-function httpUrl(v: unknown): string | null {
+/** An absolute https URL, else null (never `http:`, `javascript:` or a relative link on the page). */
+function httpsUrl(v: unknown): string | null {
   if (typeof v !== 'string' || v.trim() === '') return null;
   try {
     const u = new URL(v.trim());
-    return u.protocol === 'https:' || u.protocol === 'http:' ? u.toString() : null;
+    return u.protocol === 'https:' ? u.toString() : null;
   } catch {
     return null;
   }
@@ -87,7 +87,7 @@ function httpUrl(v: unknown): string | null {
 /**
  * Marketplace links: `MARKET_URLS` (JSON object, keys `magicEden` / `tensor` /
  * `opensea`, case and `_` insensitive) overridden by `MARKET_URL_MAGICEDEN`,
- * `MARKET_URL_TENSOR` and `MARKET_URL_OPENSEA`. Invalid entries are dropped.
+ * `MARKET_URL_TENSOR` and `MARKET_URL_OPENSEA`. Anything but an https URL is dropped.
  */
 export function parseMarketUrls(env: NodeJS.ProcessEnv): MarketUrls {
   const out: MarketUrls = {};
@@ -102,13 +102,13 @@ export function parseMarketUrls(env: NodeJS.ProcessEnv): MarketUrls {
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
       for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
         const key = MARKET_KEYS[k.toLowerCase().replace(/[^a-z]/g, '')];
-        const url = httpUrl(v);
+        const url = httpsUrl(v);
         if (key && url) out[key] = url;
       }
     }
   }
   for (const [suffix, key] of Object.entries({ MAGICEDEN: 'magicEden', TENSOR: 'tensor', OPENSEA: 'opensea' } as const)) {
-    const url = httpUrl(env[`MARKET_URL_${suffix}`]);
+    const url = httpsUrl(env[`MARKET_URL_${suffix}`]);
     if (url) out[key] = url;
   }
   return out;

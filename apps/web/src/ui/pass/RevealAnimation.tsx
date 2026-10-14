@@ -44,7 +44,7 @@ function Envelope({ number, play, to, onDone, className }: RevealAnimationProps)
   const reduced = useReducedMotion();
   useAfter(play, reduced ? 0.3 : ENV.done, onDone);
   useAfter(play && !reduced, ENV.stamp + 0.28, () => sound.stamp());
-  const date = new Date().toLocaleDateString(document.documentElement.lang === 'tr' ? 'tr-TR' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const date = new Date().toLocaleDateString(document.documentElement.lang === 'tr' ? 'tr-TR' : 'en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' });
 
   const fade = { duration: 0.2, ease: 'linear' } as const;
   return (
@@ -99,11 +99,8 @@ function Envelope({ number, play, to, onDone, className }: RevealAnimationProps)
           animate={play ? (reduced ? { opacity: 0 } : { y: 70, opacity: 0 }) : { y: 0, opacity: 1 }}
           transition={reduced ? fade : { delay: ENV.drop, duration: 0.38, ease: [0.5, 0, 0.75, 0] }}
         >
-          <span className="rv-env__post mono">
-            <span className="rv-env__priority">{t('rv.priority')}</span>
-            {t('rv.post')}
-          </span>
           <span className="rv-env__addr">
+            <span className="rv-env__priority mono">{t('rv.priority')}</span>
             <span className="mono">{t('rv.to')}</span>
             <span className="rv-env__addr-line">Slana Pass No. {number}</span>
             {to && <span className="rv-env__addr-line mono">{to}</span>}
