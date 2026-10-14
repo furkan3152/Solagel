@@ -7,6 +7,7 @@ import {
   decodeSnapshot,
   encodeTarget,
   type ChainStatus,
+  type PassStatus,
   type ServerMessage,
   type SnapshotData,
 } from '@slana/shared';
@@ -15,7 +16,7 @@ import nacl from 'tweetnacl';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { createApp, type App } from '../src/app';
-import type { ChainArena, ChainGateway, ChainProfile, ChainSession, SeasonView } from '../src/chain/types';
+import type { ChainArena, ChainGateway, ChainPass, ChainProfile, ChainSession, OwnedPassInfo, SeasonView } from '../src/chain/types';
 import { loadConfig } from '../src/config';
 
 class FakeChain implements ChainGateway {
@@ -23,6 +24,7 @@ class FakeChain implements ChainGateway {
   readonly stakeEnabled = true;
   sessions = new Map<string, ChainSession>();
   profiles = new Map<string, ChainProfile>();
+  passes = new Map<string, ChainPass>();
   kicked = 0;
   status(): ChainStatus {
     return { enabled: true, cluster: 'test', programId: 'Fake111', rpcUrl: null, arenasEnabled: true, currentSeason: 1, token: null, pass: null };
@@ -34,9 +36,21 @@ class FakeChain implements ChainGateway {
     return this.sessions.get(`${arenaId}:${player}`) ?? null;
   }
   async listArenas(): Promise<ChainArena[]> {
-    return [{ id: 1, address: 'Arena1', buyIn: 10_000_000, maxPlayers: 10, enabled: true, openSessions: 0, pot: 0 }];
+    return [
+      { id: 1, address: 'Arena1', entryFee: 10_000_000, requiresPass: false, maxSessions: 10, enabled: true, openSessions: 0, pot: 0 },
+      { id: 2, address: 'Arena2', entryFee: 50_000_000, requiresPass: true, maxSessions: 10, enabled: true, openSessions: 0, pot: 0 },
+    ];
   }
   async season(): Promise<SeasonView | null> {
+    return null;
+  }
+  async getPass(asset: string): Promise<ChainPass | null> {
+    return this.passes.get(asset) ?? null;
+  }
+  async ownedPasses(wallet: string): Promise<OwnedPassInfo[]> {
+    return [...this.passes].filter(([, p]) => p.owner === wallet).map(([asset, p]) => ({ asset, number: p.number }));
+  }
+  passStatus(): PassStatus | null {
     return null;
   }
   kick() {
@@ -106,6 +120,45 @@ class Client {
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+let sessionSeq = 100;
+function session(player: string, opts: Partial<ChainSession> = {}): ChainSession {
+  const id = ++sessionSeq;
+  return {
+    address: `Sess${id}-${player}`,
+    id,
+    player,
+    arenaId: 1,
+    entryFee: 10_000_000,
+    openedAt: Math.floor(Date.now() / 1000),
+    hasPass: false,
+    passAsset: null,
+    ...opts,
+  };
+}
+
+const newWallet = () => bs58.encode(nacl.sign.keyPair().publicKey);
+
+/** Connected, greeted and (with a wallet) signed-in client. */
+async function signedIn(wallet: string | null): Promise<Client> {
+  const c = await Client.connect(port);
+  c.send({ t: 'hello', v: PROTOCOL_VERSION });
+  await c.wait('welcome');
+  if (wallet) {
+    c.send({ t: 'auth', token: app.auth.issueToken(wallet) });
+    await c.wait('authed');
+  }
+  return c;
+}
+
+/** The latest PlayerInfo of `pid` from the client's snapshots. */
+function playerInfo(c: Client, pid: number) {
+  for (let i = c.snaps.length - 1; i >= 0; i--) {
+    const p = c.snaps[i].players.find((x) => x.id === pid);
+    if (p) return p;
+  }
+  return undefined;
+}
 
 let app: App;
 let port: number;
@@ -251,7 +304,7 @@ describe('server over websocket', () => {
   it('stake arena: join with an on-chain ticket, cash out, queue settlement', async () => {
     const kp = nacl.sign.keyPair();
     const pubkey = bs58.encode(kp.publicKey);
-    chain.sessions.set(`1:${pubkey}`, { address: `Session-${pubkey}`, id: 1, player: pubkey, arenaId: 1, buyIn: 10_000_000, openedAt: Math.floor(Date.now() / 1000) });
+    chain.sessions.set(`1:${pubkey}`, session(pubkey, { address: `Session-${pubkey}`, id: 1 }));
     const c = await Client.connect(port);
     c.send({ t: 'hello', v: PROTOCOL_VERSION });
     await c.wait('welcome');
@@ -284,7 +337,7 @@ describe('server over websocket', () => {
   it('stake players who disconnect stay AFK and can reconnect', async () => {
     const kp = nacl.sign.keyPair();
     const pubkey = bs58.encode(kp.publicKey);
-    chain.sessions.set(`1:${pubkey}`, { address: `S2-${pubkey}`, id: 2, player: pubkey, arenaId: 1, buyIn: 20_000_000, openedAt: Math.floor(Date.now() / 1000) });
+    chain.sessions.set(`1:${pubkey}`, session(pubkey, { address: `S2-${pubkey}`, id: 2, entryFee: 20_000_000 }));
     const token = app.auth.issueToken(pubkey);
     const a = await Client.connect(port);
     a.send({ t: 'hello', v: PROTOCOL_VERSION });
@@ -333,5 +386,134 @@ describe('server over websocket', () => {
     expect(Array.isArray(lb.daily)).toBe(true);
     const bad = await fetch(`http://127.0.0.1:${port}/api/auth/nonce?pubkey=nope`);
     expect(bad.status).toBe(400);
+  });
+
+  it('arena join requires session and applies hasPass power', async () => {
+    const pubkey = newWallet();
+    const c = await signedIn(pubkey);
+    c.send({ t: 'join', room: 'arena:1', name: 'Nopass', skin: 0 });
+    expect((await c.wait('error', 2000, (m) => m.code === 'no_session')).code).toBe('no_session');
+
+    const asset = newWallet();
+    chain.passes.set(asset, { owner: pubkey, number: 77 });
+    chain.sessions.set(`1:${pubkey}`, session(pubkey, { hasPass: true, passAsset: asset }));
+    c.send({ t: 'join', room: 'arena:1', name: 'Passer', skin: 2 });
+    const joined = await c.wait('joined');
+    expect(joined.hasPass).toBe(true);
+    expect(joined.value).toBe(10_000_000);
+    const room = app.rooms.rooms.get(joined.room.id)!;
+    const p = room.world.players.get(joined.playerId)!;
+    expect(p.hasPass).toBe(true);
+    expect(p.pass).toBe(77); // the ticket's locked Pass is worn
+    expect(app.journal.live().find((l) => l.player === pubkey)?.hasPass).toBe(true);
+
+    // a plain ticket plays without Pass power
+    const other = newWallet();
+    const d = await signedIn(other);
+    chain.sessions.set(`1:${other}`, session(other));
+    d.send({ t: 'join', room: 'arena:1', name: 'Plain', skin: 1 });
+    const j2 = await d.wait('joined');
+    expect(j2.hasPass).toBeFalsy();
+    expect(app.rooms.rooms.get(j2.room.id)!.world.players.get(j2.playerId)!.hasPass).toBe(false);
+    c.close();
+    d.close();
+  });
+
+  it('pass arena rejects session without pass', async () => {
+    const pubkey = newWallet();
+    const c = await signedIn(pubkey);
+    chain.sessions.set(`2:${pubkey}`, session(pubkey, { arenaId: 2, entryFee: 50_000_000 }));
+    c.send({ t: 'join', room: 'arena:2', name: 'Nopass', skin: 0 });
+    expect((await c.wait('error', 2000, (m) => m.code === 'pass_required')).code).toBe('pass_required');
+    expect(c.msgs.some((m) => m.t === 'joined')).toBe(false);
+
+    const asset = newWallet();
+    chain.passes.set(asset, { owner: pubkey, number: 5 });
+    chain.sessions.set(`2:${pubkey}`, session(pubkey, { arenaId: 2, entryFee: 50_000_000, hasPass: true, passAsset: asset }));
+    c.send({ t: 'join', room: 'arena:2', name: 'Passer', skin: 0 });
+    const joined = await c.wait('joined');
+    expect(joined.room.arenaId).toBe(2);
+    expect(joined.hasPass).toBe(true);
+    c.close();
+  });
+
+  it('equip with foreign pass falls back to basic skin with pass_invalid', async () => {
+    const pubkey = newWallet();
+    const mine = newWallet();
+    const foreign = newWallet();
+    chain.passes.set(mine, { owner: pubkey, number: 12 });
+    chain.passes.set(foreign, { owner: newWallet(), number: 13 });
+
+    const c = await signedIn(pubkey);
+    c.send({ t: 'join', room: 'practice', name: 'Thief', skin: 3, pass: foreign });
+    expect((await c.wait('error', 2000, (m) => m.code === 'pass_invalid')).code).toBe('pass_invalid');
+    const joined = await c.wait('joined');
+    expect(joined.skin).toBe(3);
+    const room = app.rooms.rooms.get(joined.room.id)!;
+    const p = room.world.players.get(joined.playerId)!;
+    expect(p.pass).toBe(0);
+    expect(p.hasPass).toBe(false);
+    await sleep(200);
+    expect(playerInfo(c, joined.playerId)?.pass).toBe(0);
+    c.close();
+
+    // the owner's own Pass is verified and worn (practice Pass power)
+    const d = await signedIn(pubkey);
+    d.send({ t: 'join', room: 'practice', name: 'Owner', skin: 3, pass: mine });
+    const j2 = await d.wait('joined');
+    const p2 = app.rooms.rooms.get(j2.room.id)!.world.players.get(j2.playerId)!;
+    expect(p2.pass).toBe(12);
+    expect(p2.hasPass).toBe(true);
+    await sleep(200);
+    expect(playerInfo(d, j2.playerId)?.pass).toBe(12);
+    expect(d.msgs.some((m) => m.t === 'error' && m.code === 'pass_invalid')).toBe(false);
+    d.close();
+
+    // without a wallet a Pass cannot be verified
+    const e = await signedIn(null);
+    e.send({ t: 'join', room: 'practice', name: 'Anon', skin: 1, pass: mine });
+    expect((await e.wait('error', 2000, (m) => m.code === 'pass_invalid')).code).toBe('pass_invalid');
+    const j3 = await e.wait('joined');
+    expect(app.rooms.rooms.get(j3.room.id)!.world.players.get(j3.playerId)!.pass).toBe(0);
+    e.close();
+  });
+
+  it('resume existing non-live session without new charge', async () => {
+    const pubkey = newWallet();
+    // the ticket was bought earlier (e.g. the tab crashed before joining): it is open on-chain but in no room
+    const s = session(pubkey, { openedAt: Math.floor(Date.now() / 1000) - 120, entryFee: 30_000_000 });
+    chain.sessions.set(`1:${pubkey}`, s);
+    expect(app.rooms.liveSessions().has(s.address)).toBe(false);
+    const kicked = chain.kicked;
+    const pendingBefore = app.journal.pending.length;
+    const c = await signedIn(pubkey);
+    c.send({ t: 'join', room: 'arena:1', name: 'Back', skin: 0 });
+    const joined = await c.wait('joined');
+    expect(joined.value).toBe(30_000_000);
+    expect(joined.entryFee).toBe(30_000_000);
+    expect(app.rooms.liveSessions().has(s.address)).toBe(true);
+    // nothing was settled or charged: the same on-chain ticket simply resumes
+    expect(app.journal.pending.length).toBe(pendingBefore);
+    expect(chain.kicked).toBe(kicked);
+    expect(chain.sessions.get(`1:${pubkey}`)).toBe(s);
+    c.close();
+  });
+
+  it('practice join routes by league', async () => {
+    const pro = newWallet();
+    chain.profiles.set(pro, { owner: pro, name: 'veteran', skin: 1, xp: 99_999, level: 9, premiumSkins: 0, gamesPlayed: 50, bestScore: 9000 });
+    const a = await signedIn(pro);
+    a.send({ t: 'join', room: 'practice', name: 'x', skin: 1 });
+    const ja = await a.wait('joined');
+    expect(ja.room.league).toBe('pro');
+    expect(ja.room.id).toMatch(/^practice-pro-\d+$/);
+
+    const b = await signedIn(null);
+    b.send({ t: 'join', room: 'practice', name: 'newbie', skin: 1 });
+    const jb = await b.wait('joined');
+    expect(jb.room.league).toBe('rookie');
+    expect(jb.room.id).toMatch(/^practice-rookie-\d+$/);
+    a.close();
+    b.close();
   });
 });

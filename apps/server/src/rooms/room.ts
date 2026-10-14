@@ -42,9 +42,6 @@ export interface RoomDeps {
   chain: ChainGateway;
   journal: Journal;
   leaderboards: Leaderboards;
-  /** Global per-wallet throttle for free-play on-chain records. */
-  canRecord: (wallet: string) => boolean;
-  recordMinScore: number;
   log: (msg: string) => void;
   /** Slana Pass power (defaults to `RULES.passStartMassMul` / `RULES.passCashoutMs`). */
   pass?: { startMassMul: number; cashoutMs: number };
@@ -106,7 +103,6 @@ export class Room {
   /** Arena rooms: live values or loot changed since the last journal write. */
   private journalDirty = false;
   private lastAgeCheckAt = 0;
-  private recordSeq = 0;
   lastActivity = Date.now();
 
   constructor(
@@ -227,7 +223,8 @@ export class Room {
       name: player.name,
       skin: player.skin,
       value: this.ledger?.value(player.id),
-      entryFee: this.ledger ? this.entryFee : undefined,
+      // the ticket's own price (the arena's may have changed since it was bought)
+      entryFee: this.ledger ? (this.ledger.get(player.id)?.entryFee ?? this.entryFee) : undefined,
       hasPass: hasPass || undefined,
     });
     conn.send({ t: 'history', chat: this.chatLog });
@@ -253,7 +250,7 @@ export class Room {
       name: p.name,
       skin: p.skin,
       value: this.ledger?.value(pid),
-      entryFee: this.ledger ? this.entryFee : undefined,
+      entryFee: this.ledger ? (this.ledger.get(pid)?.entryFee ?? this.entryFee) : undefined,
       hasPass: p.hasPass || undefined,
     });
     conn.send({ t: 'history', chat: this.chatLog });
@@ -490,26 +487,6 @@ export class Room {
         kills: stats.playersEaten,
         xp: stats.xp ?? 0,
         reason,
-        attempts: 0,
-        nextAttemptAt: now,
-        createdAt: now,
-      });
-    } else if (
-      wallet &&
-      this.deps.chain.enabled &&
-      // only players with an on-chain profile can be recorded (refreshed on sign-in and on every join)
-      (conn ?? this.humans.get(p.id))?.profile &&
-      score >= this.deps.recordMinScore &&
-      stats.aliveMs >= 20_000 &&
-      this.deps.canRecord(wallet)
-    ) {
-      enqueue.push({
-        kind: 'record',
-        key: `${wallet}:${now}:${this.recordSeq++}`,
-        player: wallet,
-        score,
-        kills: stats.playersEaten,
-        xp: stats.xp ?? 0,
         attempts: 0,
         nextAttemptAt: now,
         createdAt: now,

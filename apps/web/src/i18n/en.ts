@@ -190,6 +190,9 @@ export const en = {
   'err.rate_limited': 'Slow down a little 🐢',
   'err.bad_request': 'Something went wrong.',
   'err.server_full': 'Server is full — try again soon.',
+  'err.pass_required': 'This room needs a Slana Pass ticket.',
+  'err.pass_invalid': 'That Pass is not in your wallet — playing with your basic skin.',
+  'err.pass_in_use': 'This Pass is in another session right now.',
 
   'chain.offline': 'On-chain features offline',
   'chain.cluster': 'Network',

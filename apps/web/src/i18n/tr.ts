@@ -192,6 +192,9 @@ export const tr: Dict = {
   'err.rate_limited': 'Biraz yavaşla 🐢',
   'err.bad_request': 'Bir şeyler ters gitti.',
   'err.server_full': 'Sunucu dolu — birazdan tekrar dene.',
+  'err.pass_required': 'Bu oda Slana Pass’li bilet ister.',
+  'err.pass_invalid': 'Bu Pass cüzdanında değil — temel skinle oynuyorsun.',
+  'err.pass_in_use': 'Bu Pass şu an başka bir oturumda.',
 
   'chain.offline': 'Zincir üstü özellikler kapalı',
   'chain.cluster': 'Ağ',

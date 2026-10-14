@@ -37,21 +37,13 @@ export async function createApp(
   const chain = opts.chain ?? (await createChain(cfg, journal, log));
   const auth = new Auth(cfg.authSecret);
 
-  const lastRecord = new Map<string, number>();
   const rooms = new RoomManager(
     cfg,
     {
       chain,
       journal,
       leaderboards,
-      recordMinScore: cfg.chain.recordMinScore,
       log,
-      canRecord: (wallet) => {
-        const now = Date.now();
-        if (now - (lastRecord.get(wallet) ?? 0) < 30_000) return false;
-        lastRecord.set(wallet, now);
-        return true;
-      },
     },
     chain,
   );

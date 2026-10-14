@@ -42,8 +42,6 @@ describe('arena money conservation', () => {
         chain: new NullChain(),
         journal,
         leaderboards: new Leaderboards(null),
-        canRecord: () => false,
-        recordMinScore: Infinity,
         log: () => {},
       },
     );
