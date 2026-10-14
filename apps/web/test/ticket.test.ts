@@ -4,7 +4,19 @@ import { ASSOCIATED_TOKEN_PROGRAM_ID, IDL, PROGRAM_ID, SlanaClient, TOKEN_PROGRA
 import type { RoomInfo } from '@slana/shared';
 import { Connection, Keypair, type TransactionInstruction } from '@solana/web3.js';
 import { describe, expect, it } from 'vitest';
-import { buildAtaTx, buildTicketTx, buildTickets, quickPlayTarget, ticketGate, ticketSteps, type GateInput, type TicketModel } from '../src/solana/ticket';
+import {
+  ACCOUNT_BYTES,
+  buildAtaTx,
+  buildTicketTx,
+  buildTickets,
+  payoutsNeedingAta,
+  quickPlayTarget,
+  ticketGate,
+  ticketSolCost,
+  ticketSteps,
+  type GateInput,
+  type TicketModel,
+} from '../src/solana/ticket';
 
 // instruction builders never touch the network; the connection only has to exist
 const client = new SlanaClient(new Connection('http://127.0.0.1:1'), PROGRAM_ID);
@@ -149,5 +161,25 @@ describe('ticketGate', () => {
     const session = { address: 'S', openedAt: 1_000_000 - 60, hasPass: false, passAsset: null };
     expect(ticketGate(g({ session, pending: [{ key: 'S', arenaId: 1, payout: 2150, needsTokenAccount: false }] }))).toEqual({ kind: 'settling', payout: 2150 });
     expect(ticketGate(g({ session, pending: [{ key: 'S', arenaId: 1, payout: 2150, needsTokenAccount: true }] }))).toEqual({ kind: 'needAta', payout: 2150 });
+  });
+
+  it('R10: once the token account exists, a queued payout is shown as settling (no create-account CTA)', () => {
+    const session = { address: 'S', openedAt: 1_000_000 - 60, hasPass: false, passAsset: null };
+    const pending = [{ key: 'S', arenaId: 1, payout: 2150, needsTokenAccount: true }];
+    expect(ticketGate(g({ session, pending, ataExists: true }))).toEqual({ kind: 'settling', payout: 2150 });
+    expect(payoutsNeedingAta(pending, true)).toEqual([]);
+    expect(payoutsNeedingAta([...pending, { key: 'T', arenaId: 2, payout: 5, needsTokenAccount: false }], false)).toHaveLength(1);
+  });
+});
+
+describe('ticketSolCost', () => {
+  const rent = (b: number) => b * 1000;
+  it('counts session (+ Pass lock) rent as refundable, profile and ATA rent as kept, plus deposit and bounded fees', () => {
+    const fees = 5_000 + 6_000; // base + 300k CU × 20 000 µL
+    const plain = ticketSolCost(['join'], { settleFeeLamports: 20_000, token2022: false, rent });
+    expect(plain).toEqual({ refundable: ACCOUNT_BYTES.session * 1000, total: ACCOUNT_BYTES.session * 1000 + 20_000 + fees });
+    const full = ticketSolCost(['ata', 'register', 'joinWithPass'], { settleFeeLamports: 20_000, token2022: true, rent });
+    expect(full.refundable).toBe((ACCOUNT_BYTES.session + ACCOUNT_BYTES.passLock) * 1000);
+    expect(full.total).toBe((ACCOUNT_BYTES.session + ACCOUNT_BYTES.passLock + ACCOUNT_BYTES.profile + ACCOUNT_BYTES.ata2022) * 1000 + 20_000 + fees);
   });
 });

@@ -83,6 +83,7 @@ export function useLobbyModel(): LobbyModel {
         session: t.arenaId !== null ? (sessions[t.arenaId] ?? null) : null,
         pending: data.pending,
         freePasses: free,
+        ataExists: data.ataExists,
         nowS,
       });
     }

@@ -4,6 +4,7 @@ import { confirmSignature, describeError, type DescribeContext, type DescribedEr
 import { t } from '../i18n';
 import { toast, useUi } from '../store';
 import { explorerTx } from './links';
+import { PRIORITY_MICRO_LAMPORTS } from './ticket';
 
 export type TxPhase = 'signing' | 'confirming';
 
@@ -19,13 +20,16 @@ export async function sendTx(
   connection: Connection,
   wallet: WalletContextState,
   ixs: TransactionInstruction[],
-  opts: { onPhase?: (phase: TxPhase, signature?: string) => void; describe?: DescribeContext } = {},
+  opts: { onPhase?: (phase: TxPhase, signature?: string) => void; describe?: DescribeContext; computeUnits?: number } = {},
 ): Promise<TxResult> {
   if (!wallet.publicKey || !wallet.sendTransaction) {
     return { ok: false, error: { code: null, name: 'NoWallet', message: t('tf.err.NoWallet') } };
   }
   try {
-    const { tx, lastValidBlockHeight } = await client.buildTransaction(ixs, wallet.publicKey, { priorityMicroLamports: 20_000 });
+    const { tx, lastValidBlockHeight } = await client.buildTransaction(ixs, wallet.publicKey, {
+      priorityMicroLamports: PRIORITY_MICRO_LAMPORTS,
+      computeUnits: opts.computeUnits,
+    });
     opts.onPhase?.('signing');
     const signature = await wallet.sendTransaction(tx, connection, { preflightCommitment: 'confirmed', maxRetries: 4 });
     opts.onPhase?.('confirming', signature);

@@ -159,7 +159,11 @@ async function newPage({ viewport, mobile = false, lang = 'tr', theme = 'light',
     await page.evaluate(([p, m, s]) => window.__slana.engine.authSignature(p, m, s), [address, message, sig]);
     await page.waitForFunction(() => !!window.__slana.useUi.getState().auth, null, { timeout: 10000 });
   }
-  if (wallet) await page.waitForFunction(() => window.__slanaChain.useChainData.getState().tokenBalance !== null, null, { timeout: 10000 });
+  if (wallet)
+    await page.waitForFunction(() => !!window.__slanaChain?.fakeWallet && window.__slanaChain.useChainData.getState().tokenBalance !== null, null, {
+      timeout: 10000,
+    });
+  await page.waitForFunction(() => !!window.__slanaChain?.fakeWallet, null, { timeout: 10000 });
   await page.evaluate(() => window.__slanaChain.refresh());
   await page.waitForTimeout(1600);
   return { ctx, page, address };
@@ -315,6 +319,12 @@ if (want('pending')) {
     ['mobile', P, true],
   ]) {
     const { ctx, page } = await newPage({ viewport, mobile, pending });
+    // the payout waits for a token account this wallet does not have yet
+    await page.evaluate(() => {
+      window.__slanaChain.fakeWallet.ataExists = false;
+      window.__slanaChain.refresh();
+    });
+    await page.waitForTimeout(1200);
     await shot(page, `pending-${k}`);
     if (k === 'mobile') {
       await page.locator('.kl-owed .kb-btn').click();
