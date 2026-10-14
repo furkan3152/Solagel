@@ -1,5 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
+import { CAPACITY, RULES } from '@slana/shared';
+import type { BotManagerOptions } from './bots/manager';
 
 export interface ServerConfig {
   port: number;
@@ -11,9 +13,15 @@ export interface ServerConfig {
   webDist: string | null;
   maxConnectionsPerIp: number;
   maxConnections: number;
-  freeRoomCapacity: number;
+  /** Humans per practice room (`PRACTICE_CAPACITY`). */
+  practiceCapacity: number;
   privateRoomCapacity: number;
-  bots: { target: number; min: number; max: number; privateTarget: number };
+  /** Humans per arena instance before another instance opens (`ARENA_INSTANCE_CAP`). */
+  arenaInstanceCap: number;
+  /** Bot population per room kind. */
+  bots: { practiceRookie: BotManagerOptions; practicePro: BotManagerOptions; arena: BotManagerOptions; private: BotManagerOptions };
+  /** Slana Pass power (`PASS_START_MASS_MUL`, `PASS_CASHOUT_MS`). */
+  pass: { startMassMul: number; cashoutMs: number };
   authSecret: Buffer;
   chain: {
     cluster: string;
@@ -39,6 +47,11 @@ const int = (v: string | undefined, d: number): number => {
   return Number.isFinite(n) ? Math.floor(n) : d;
 };
 
+const num = (v: string | undefined, d: number): number => {
+  const n = Number(v);
+  return v !== undefined && v.trim() !== '' && Number.isFinite(n) ? n : d;
+};
+
 const bool = (v: string | undefined, d: boolean): boolean => (v === undefined ? d : ['1', 'true', 'yes', 'on'].includes(v.toLowerCase()));
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
@@ -51,13 +64,38 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     webDist: env.WEB_DIST ? resolve(env.WEB_DIST) : null,
     maxConnectionsPerIp: int(env.MAX_CONNECTIONS_PER_IP, 8),
     maxConnections: int(env.MAX_CONNECTIONS, 600),
-    freeRoomCapacity: int(env.FREE_ROOM_CAPACITY, 40),
-    privateRoomCapacity: int(env.PRIVATE_ROOM_CAPACITY, 20),
+    practiceCapacity: Math.max(1, int(env.PRACTICE_CAPACITY ?? env.FREE_ROOM_CAPACITY, CAPACITY.practice)),
+    privateRoomCapacity: int(env.PRIVATE_ROOM_CAPACITY, CAPACITY.private),
+    arenaInstanceCap: Math.max(1, int(env.ARENA_INSTANCE_CAP, CAPACITY.arena)),
     bots: {
-      target: int(env.BOT_TARGET, 18),
-      min: int(env.BOT_MIN, 3),
-      max: int(env.BOT_MAX, 18),
-      privateTarget: int(env.PRIVATE_BOT_TARGET, 8),
+      practiceRookie: {
+        target: int(env.BOT_TARGET, 20),
+        min: int(env.BOT_MIN, 4),
+        max: int(env.BOT_MAX, 20),
+        mix: 'rookie',
+      },
+      practicePro: {
+        target: int(env.BOT_TARGET, 20),
+        min: int(env.BOT_MIN, 4),
+        max: int(env.BOT_MAX, 20),
+        mix: 'standard',
+      },
+      arena: {
+        target: int(env.ARENA_BOT_TARGET, 24),
+        min: int(env.ARENA_BOT_MIN, 2),
+        max: int(env.ARENA_BOT_MAX, 16),
+        mix: 'standard',
+      },
+      private: {
+        target: int(env.PRIVATE_BOT_TARGET, 8),
+        min: Math.min(2, int(env.PRIVATE_BOT_TARGET, 8)),
+        max: int(env.PRIVATE_BOT_TARGET, 8),
+        mix: 'standard',
+      },
+    },
+    pass: {
+      startMassMul: Math.max(1, num(env.PASS_START_MASS_MUL, RULES.passStartMassMul)),
+      cashoutMs: Math.max(0, int(env.PASS_CASHOUT_MS, RULES.passCashoutMs)),
     },
     authSecret: secret,
     chain: {

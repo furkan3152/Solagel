@@ -26,21 +26,21 @@ describe('journal v2', () => {
       { x: 10.5, y: 20, value: 1000 },
       { x: 30, y: 40.25, value: 7 },
     ];
-    j1.commit({ roomId: 'stake-1', live: [live('s-a', 70)], loot: { arenaId: 1, items } });
-    j1.commit({ loot: { arenaId: 2, items: [{ x: 1, y: 2, value: 3 }] } });
+    j1.commit({ roomId: 'stake-1', live: [live('s-a', 70)], loot: { roomId: 'arena-1-1', arenaId: 1, items } });
+    j1.commit({ loot: { roomId: 'arena-2-1', arenaId: 2, items: [{ x: 1, y: 2, value: 3 }] } });
     expect(JSON.parse(readFileSync(path, 'utf8')).version).toBe(2);
 
     const j2 = new Journal(path);
-    expect(j2.recoverLoot(1)).toEqual(items.map((i) => ({ arenaId: 1, ...i })));
-    expect(j2.recoverLoot(2)).toEqual([{ arenaId: 2, x: 1, y: 2, value: 3 }]);
+    expect(j2.recoverLoot(1)).toEqual(items.map((i) => ({ roomId: 'arena-1-1', arenaId: 1, ...i })));
+    expect(j2.recoverLoot(2)).toEqual([{ roomId: 'arena-2-1', arenaId: 2, x: 1, y: 2, value: 3 }]);
     expect(j2.recoverLoot(3)).toEqual([]);
     expect(j2.live()).toEqual([live('s-a', 70)]);
     // crash recovery of live players leaves the loot on the floor
     j2.recoverLive(1);
     expect(new Journal(path).recoverLoot(1)).toHaveLength(2);
 
-    // a commit replaces that arena's loot only; an empty list clears it
-    j2.commit({ loot: { arenaId: 1, items: [] } });
+    // a commit replaces that instance's loot only; an empty list clears it
+    j2.commit({ loot: { roomId: 'arena-1-1', arenaId: 1, items: [] } });
     const j3 = new Journal(path);
     expect(j3.recoverLoot(1)).toEqual([]);
     expect(j3.recoverLoot(2)).toHaveLength(1);
@@ -86,5 +86,37 @@ describe('journal v2', () => {
     expect(onDisk.loot).toEqual([]);
     expect(onDisk.pending).toHaveLength(1);
     expect(onDisk.live).toHaveLength(1);
+  });
+
+  it('loot is keyed per instance and merged into instance 1 on recovery', () => {
+    const path = tmpPath();
+    const j1 = new Journal(path);
+    j1.commit({ loot: { roomId: 'arena-1-1', arenaId: 1, items: [{ x: 1, y: 1, value: 100 }] } });
+    j1.commit({ loot: { roomId: 'arena-1-2', arenaId: 1, items: [{ x: 2, y: 2, value: 40 }, { x: 3, y: 3, value: 2 }] } });
+    j1.commit({ loot: { roomId: 'arena-2-1', arenaId: 2, items: [{ x: 9, y: 9, value: 5 }] } });
+    // instance 2 picking its loot up clears only its own records
+    j1.commit({ loot: { roomId: 'arena-1-2', arenaId: 1, items: [{ x: 2, y: 2, value: 40 }] } });
+    expect(j1.lootTotal()).toBe(145);
+
+    const j2 = new Journal(path);
+    expect(j2.recoverLoot(1).map((l) => l.value).sort()).toEqual([100, 40]);
+    const adopted = j2.adoptLoot(1, 'arena-1-1');
+    expect(adopted.map((l) => l.value).sort()).toEqual([100, 40]);
+    expect(j2.recoverLoot(1).every((l) => l.roomId === 'arena-1-1')).toBe(true);
+    expect(j2.recoverLoot(2)).toEqual([{ roomId: 'arena-2-1', arenaId: 2, x: 9, y: 9, value: 5 }]);
+    // the merge is on disk in one write
+    const j3 = new Journal(path);
+    expect(j3.lootTotal()).toBe(145);
+    expect(j3.recoverLoot(1).map((l) => l.roomId)).toEqual(['arena-1-1', 'arena-1-1']);
+    // the merged instance's next write keeps everything it restored
+    j3.commit({ loot: { roomId: 'arena-1-1', arenaId: 1, items: adopted } });
+    expect(new Journal(path).lootTotal()).toBe(145);
+  });
+
+  it('v2 loot without an instance id belongs to instance 1', () => {
+    const path = tmpPath();
+    writeFileSync(path, JSON.stringify({ version: 2, pending: [], live: [], loot: [{ arenaId: 3, x: 1, y: 2, value: 9 }], updatedAt: 1 }));
+    const j = new Journal(path);
+    expect(j.recoverLoot(3)).toEqual([{ roomId: 'arena-3-1', arenaId: 3, x: 1, y: 2, value: 9 }]);
   });
 });

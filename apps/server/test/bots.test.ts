@@ -2,7 +2,8 @@ import { TICK_MS, WORLD_PRESETS } from '@slana/shared';
 import { describe, expect, it } from 'vitest';
 import { BotBrain } from '../src/bots/brain';
 import { BotManager } from '../src/bots/manager';
-import type { Personality } from '../src/bots/personality';
+import { rollPersonality, type Personality } from '../src/bots/personality';
+import { loadConfig } from '../src/config';
 import type { Player } from '../src/game/entities';
 import { mulberry32 } from '../src/game/rng';
 import { World, type WorldConfig } from '../src/game/world';
@@ -162,5 +163,76 @@ describe('bots', () => {
     }
     expect(manager.bots.size).toBeLessThanOrEqual(5);
     expect(manager.desired(30)).toBe(3);
+  });
+
+  it('rookie mix has ≥ 60% easy bots over 200 rolls', () => {
+    const rng = mulberry32(77);
+    const rookie = Array.from({ length: 200 }, () => rollPersonality(rng, 'rookie'));
+    const easy = rookie.filter((p) => p.skill === 0).length;
+    expect(easy / 200).toBeGreaterThanOrEqual(0.6);
+    expect(rookie.some((p) => p.skill === 2)).toBe(false);
+    // the standard mix still has hard bots
+    const standard = Array.from({ length: 200 }, () => rollPersonality(rng, 'standard'));
+    expect(standard.some((p) => p.skill === 2)).toBe(true);
+    expect(standard.filter((p) => p.skill === 0).length / 200).toBeLessThan(0.6);
+  });
+
+  it('bots ignore loot', () => {
+    const world = new World(emptyCfg());
+    const bot = world.addPlayer({ spawnShield: false, name: 'bot', skin: 0, x: 1500, y: 1500, mass: 60, isBot: true });
+    // a rich pile of loot to the east, a few plain coins to the west
+    const loot = [];
+    for (let i = 0; i < 12; i++) loot.push({ x: 1650 + (i % 4) * 30, y: 1460 + Math.floor(i / 4) * 40, value: 1_000_000 });
+    world.restoreLoot(loot);
+    for (let i = 0; i < 6; i++) world.spawnFood(1300 - i * 25, 1500, 0);
+    const brain = new BotBrain({ ...hard, aimNoise: 0 }, mulberry32(3));
+    for (let i = 0; i < 20; i++) {
+      const d = brain.think(world, bot, world.now + i * 200)!;
+      const c = bot.center();
+      // never aims at the loot side
+      expect(d.target.x).toBeLessThan(c.x);
+    }
+    expect(world.loot().length).toBe(12);
+  });
+
+  it('bot count drops as humans join', () => {
+    const cfg = loadConfig({});
+    expect(cfg.bots.arena).toEqual({ target: 24, min: 2, max: 16, mix: 'standard' });
+    expect(cfg.bots.practiceRookie).toEqual({ target: 20, min: 4, max: 20, mix: 'rookie' });
+    expect(cfg.bots.practicePro).toEqual({ target: 20, min: 4, max: 20, mix: 'standard' });
+    expect(cfg.bots.private).toEqual({ target: 8, min: 2, max: 8, mix: 'standard' });
+
+    const world = new World({ ...WORLD_PRESETS.arena, powerUps: false, coinRain: false, seed: 8 });
+    const manager = new BotManager(world, cfg.bots.arena, mulberry32(8));
+    expect([0, 8, 10, 20, 22, 30, 50].map((h) => manager.desired(h))).toEqual([16, 16, 14, 4, 2, 2, 2]);
+    manager.update(0, 0);
+    expect(manager.bots.size).toBe(16);
+    for (let t = 0; t < 120_000; t += 1000) {
+      world.tick(TICK_MS);
+      manager.update(world.now + t, 20);
+    }
+    expect(manager.bots.size).toBeLessThanOrEqual(5);
+  });
+
+  it('bots wear basic skins only', () => {
+    const world = new World(emptyCfg());
+    const manager = new BotManager(world, { target: 0, min: 0, max: 0, mix: 'standard' }, mulberry32(21));
+    for (let i = 0; i < 300; i++) expect(manager.spawnBot(30).player.skin).toBeLessThan(8);
+  });
+
+  it('anticipates a charging threat from beyond its static danger zone', () => {
+    const world = new World(emptyCfg({ width: 6000, height: 3000 }));
+    const bot = world.addPlayer({ spawnShield: false, name: 'bot', skin: 0, x: 3000, y: 1500, mass: 40 });
+    world.setTarget(bot.id, 3000, 1500);
+    // a big splitter far to the west, charging straight at the bot
+    const whale = world.addPlayer({ spawnShield: false, name: 'whale', skin: 1, x: 1850, y: 1500, mass: 400 });
+    world.setTarget(whale.id, 6000, 1500);
+    const brain = new BotBrain({ ...hard, caution: 1 }, mulberry32(4));
+    brain.think(world, bot, world.now); // first look: no velocity known yet
+    expect(brain.lastDanger).toBe(0);
+    for (let i = 0; i < 3; i++) world.tick(TICK_MS);
+    world.setTarget(bot.id, 3000, 1500);
+    brain.think(world, bot, world.now);
+    expect(brain.lastDanger).toBeGreaterThan(0);
   });
 });

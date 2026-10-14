@@ -9,7 +9,7 @@ import { World } from '../src/game/world';
 
 const trials = Number(process.argv[2] ?? 30);
 const world = new World({ ...WORLD_PRESETS.practice, powerUps: true, coinRain: true, seed: 5 });
-const bots = new BotManager(world, { target: 18, min: 3, max: 18 }, mulberry32(6));
+const bots = new BotManager(world, { target: 18, min: 3, max: 18, mix: 'standard' }, mulberry32(6));
 
 const step = () => {
   const ev = world.tick(TICK_MS);

@@ -31,6 +31,8 @@ export interface ChainArena {
   openSessions: number;
   /** Lamports above rent held by the arena vault. */
   pot: number;
+  /** A Slana Pass is needed to buy a ticket. */
+  requiresPass?: boolean;
 }
 
 export interface SeasonEntry {

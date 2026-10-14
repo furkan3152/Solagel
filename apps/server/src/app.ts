@@ -57,7 +57,7 @@ export async function createApp(
   );
   chain.setLiveSessionProvider(() => rooms.liveSessions());
   await chain.start();
-  await rooms.ensureStakeRooms();
+  await rooms.ensureArenaRooms();
 
   const server = createHttpServer(cfg, { rooms, leaderboards, chain, auth, startedAt: Date.now() });
   const gateway = new Gateway(cfg, rooms, auth, chain, journal, log);
@@ -65,7 +65,7 @@ export async function createApp(
   const flushTimer = setInterval(() => leaderboards.flush(), 30_000);
   flushTimer.unref();
   // arenas created (or a chain that came online) after startup show up in the lobby without a restart
-  const arenaTimer = setInterval(() => void rooms.ensureStakeRooms(), 30_000);
+  const arenaTimer = setInterval(() => void rooms.ensureArenaRooms(), 30_000);
   arenaTimer.unref();
 
   let closed = false;

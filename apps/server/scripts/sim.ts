@@ -10,7 +10,7 @@ import { World } from '../src/game/world';
 const minutes = Number(process.argv[2] ?? 5);
 const seed = Number(process.argv[3] ?? 1);
 const world = new World({ ...WORLD_PRESETS.practice, powerUps: true, coinRain: true, seed });
-const bots = new BotManager(world, { target: 18, min: 3, max: 18 }, mulberry32(seed + 1));
+const bots = new BotManager(world, { target: 18, min: 3, max: 18, mix: 'standard' }, mulberry32(seed + 1));
 
 let kills = 0;
 let virusKills = 0;
