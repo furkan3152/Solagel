@@ -1,5 +1,5 @@
 import { motion } from 'motion/react';
-import type { ReactNode } from 'react';
+import type { HTMLAttributes, ReactNode } from 'react';
 import { printerEase, useReducedMotion } from '../motion';
 
 export interface ReceiptLine {
@@ -11,7 +11,7 @@ export interface ReceiptLine {
   muted?: boolean;
 }
 
-export interface ReceiptProps {
+export interface ReceiptProps extends Omit<HTMLAttributes<HTMLDivElement>, 'title' | 'children'> {
   lines: ReceiptLine[];
   /** Heading printed at the top, e.g. "CASH-OUT". */
   title?: ReactNode;
@@ -25,11 +25,10 @@ export interface ReceiptProps {
   printing?: boolean;
   /** Called once the slip has fully printed. */
   onPrinted?: () => void;
-  className?: string;
 }
 
 /** A thermal-printer slip: zigzag tear on both ends, dotted leaders, halftone shade. */
-export function Receipt({ lines, title, meta, footer, code, printing = false, onPrinted, className }: ReceiptProps) {
+export function Receipt({ lines, title, meta, footer, code, printing = false, onPrinted, className, ...rest }: ReceiptProps) {
   const reduced = useReducedMotion();
   const steps = lines.length + 4;
   const slip = (
@@ -57,7 +56,7 @@ export function Receipt({ lines, title, meta, footer, code, printing = false, on
   );
 
   return (
-    <div className={`kb-receipt-wrap${printing ? ' is-printer' : ''}${className ? ` ${className}` : ''}`}>
+    <div {...rest} className={`kb-receipt-wrap${printing ? ' kb-is-printer' : ''}${className ? ` ${className}` : ''}`}>
       {printing && <div className="kb-receipt__slot" aria-hidden="true" />}
       <div className="kb-receipt__feed">
         {printing ? (

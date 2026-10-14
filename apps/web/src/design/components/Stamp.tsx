@@ -1,10 +1,15 @@
 import { motion } from 'motion/react';
-import type { CSSProperties } from 'react';
-import { stampKeyframes, useReducedMotion } from '../motion';
+import type { HTMLAttributes } from 'react';
+import { springs, stampKeyframes, useReducedMotion } from '../motion';
 
 export type StampTone = 'pink' | 'teal' | 'mustard' | 'ink' | 'red';
 
-export interface StampProps {
+type SpanAttrs = Omit<
+  HTMLAttributes<HTMLSpanElement>,
+  'children' | 'onAnimationStart' | 'onAnimationEnd' | 'onAnimationIteration' | 'onDrag' | 'onDragStart' | 'onDragEnd'
+>;
+
+export interface StampProps extends SpanAttrs {
   text: string;
   tone?: StampTone;
   /** Degrees. Rubber stamps never land straight; default -8. */
@@ -18,14 +23,13 @@ export interface StampProps {
   /** Small second line under the text (lg / round only). */
   sub?: string;
   delay?: number;
-  className?: string;
-  style?: CSSProperties;
 }
 
 /**
  * A rubber stamp: framed mono caps in a riso ink, worn by a noise mask and
- * multiplied into the paper. Stamp-in = 1.4 → 1 with a squash on impact, a
- * 3° settle and an ink bloom ring.
+ * multiplied into the paper. Stamp-in = 1.4 → 1 with a squash on impact
+ * (420 ms keyframes), a 3° turn that settles on the `stamp` spring, and an
+ * ink bloom ring.
  */
 export function Stamp({
   text,
@@ -38,6 +42,7 @@ export function Stamp({
   delay = 0,
   className,
   style,
+  ...rest
 }: StampProps) {
   const reduced = useReducedMotion();
   const cls = `kb-stamp kb-stamp--${size} kb-tone-${tone}${round ? ' kb-stamp--round' : ''}${className ? ` ${className}` : ''}`;
@@ -49,7 +54,7 @@ export function Stamp({
   );
   if (!animateIn) {
     return (
-      <span className={cls} style={{ ...style, transform: `rotate(${rotate}deg)` }}>
+      <span {...rest} className={cls} style={{ ...style, transform: `rotate(${rotate}deg)` }}>
         {content}
       </span>
     );
@@ -57,6 +62,7 @@ export function Stamp({
   if (reduced) {
     return (
       <motion.span
+        {...rest}
         className={cls}
         style={{ ...style, rotate }}
         initial={{ opacity: 0 }}
@@ -69,16 +75,17 @@ export function Stamp({
   }
   return (
     <motion.span
+      {...rest}
       className={cls}
       style={style}
       initial={{ opacity: 0, scale: 1.4, rotate: rotate + 3, filter: 'blur(1.2px)' }}
       animate={{
         opacity: [0, 1, 1],
         scale: [1.4, 0.97, 1],
-        rotate: [rotate + 3, rotate - 0.6, rotate],
+        rotate,
         filter: ['blur(1.2px)', 'blur(0px)', 'blur(0px)'],
       }}
-      transition={{ ...stampKeyframes, delay }}
+      transition={{ ...stampKeyframes, delay, rotate: { ...springs.stamp, delay: delay + 0.2 } }}
     >
       {content}
       <motion.span
