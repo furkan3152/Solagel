@@ -66,6 +66,7 @@ export function PassPage() {
   const mintedByMe = useChainData((s) => s.mintedByMe);
   const tokenBalance = useChainData((s) => s.tokenBalance);
   const minTokens = useChainData((s) => s.config?.passMinTokens ?? 0n);
+  const seedCommitted = useChainData((s) => (s.config ? s.config.passSeedHash !== null : undefined));
   const wallet = useWallet();
   const owner = wallet.publicKey?.toBase58() ?? null;
   const [mintOpen, setMintOpen] = useState(false);
@@ -73,7 +74,7 @@ export function PassPage() {
   const nowS = useNow(waiting || mintOpen);
   const nf = new Intl.NumberFormat(lang === 'tr' ? 'tr-TR' : 'en-US');
 
-  const gate = mintGate({ status, walletConnected: !!owner, mintedByMe, minTokens, tokenBalance, nowS });
+  const gate = mintGate({ status, walletConnected: !!owner, mintedByMe, minTokens, tokenBalance, nowS, seedCommitted });
   const holding = passes.length > 0;
 
   return (

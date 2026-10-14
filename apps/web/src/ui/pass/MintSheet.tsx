@@ -63,6 +63,11 @@ export function MintSheet({ open, onClose }: { open: boolean; onClose: () => voi
   const [opened, setOpened] = useState(false);
   const [rents, setRents] = useState<{ asset: number; counter: number } | null>(null);
   const inFlight = useRef(false);
+  /**
+   * The asset key of this sheet session. A retry after an unknown outcome reuses it, so a
+   * transaction that did land makes the retry fail (the account exists) instead of minting twice.
+   */
+  const assetKey = useRef<Keypair | null>(null);
   /** This wallet's mint count when the sheet opened: a higher count later means a mint landed. */
   const openedAt = useRef<number | null>(null);
 
@@ -74,6 +79,7 @@ export function MintSheet({ open, onClose }: { open: boolean; onClose: () => voi
   useEffect(() => {
     if (!open) return;
     inFlight.current = false;
+    assetKey.current = null;
     openedAt.current = data.mintedByMe;
     setPhase('review');
     setError(null);
@@ -122,6 +128,7 @@ export function MintSheet({ open, onClose }: { open: boolean; onClose: () => voi
     minTokens,
     tokenBalance: data.tokenBalance,
     nowS: Math.floor(Date.now() / 1000),
+    seedCommitted: config ? config.passSeedHash !== null : undefined,
   });
   const busy = phase === 'preparing' || phase === 'signing' || phase === 'confirming';
   const sol = (lamports: number) => formatToken(lamports, SOL_DECIMALS, lang, { maxFrac: 6 });
@@ -159,16 +166,16 @@ export function MintSheet({ open, onClose }: { open: boolean; onClose: () => voi
     const review = live;
     setFrozen(review);
 
-    if (data.fake) {
-      const dev = await loadDevFake();
-      if (!dev || !chain) return fail(t('tf.err.NetworkError'));
-      const res = await dev.fakeMintPass(chain, data.passes, onPhase);
-      if (!res.ok) return fail(txErrorText({ code: null, name: res.name, message: res.name }));
-      setSignature(res.signature);
-      return deliver(res.pass, res.signature);
-    }
-    if (!client) return fail(t('tf.err.NetworkError'));
     try {
+      if (data.fake) {
+        const dev = await loadDevFake();
+        if (!dev || !chain) return fail(t('tf.err.NetworkError'));
+        const res = await dev.fakeMintPass(chain, data.passes, onPhase);
+        if (!res.ok) return fail(txErrorText({ code: null, name: res.name, message: res.name }));
+        setSignature(res.signature);
+        return deliver(res.pass, res.signature);
+      }
+      if (!client) return fail(t('tf.err.NetworkError'));
       // re-read the collection and this wallet's counter: what is signed must be what was shown
       const [fresh, count] = await Promise.all([client.fetchConfig(), client.fetchMintedCount(owner)]);
       if (count > review.mintedByMe) {
@@ -182,6 +189,7 @@ export function MintSheet({ open, onClose }: { open: boolean; onClose: () => voi
       if (
         !fresh ||
         fresh.passCollection !== review.collection ||
+        fresh.passSeedHash === null ||
         !fresh.passMintOpen ||
         fresh.passRevealed ||
         fresh.passMintStartTs > now ||
@@ -191,8 +199,9 @@ export function MintSheet({ open, onClose }: { open: boolean; onClose: () => voi
       ) {
         return fail(t('mt.err.Changed'));
       }
-      // a fresh key for the new Core asset; it signs this one transaction and is never stored
-      const asset = Keypair.generate();
+      // the new Core asset's key: made in this browser for this sheet session, never stored
+      assetKey.current ??= Keypair.generate();
+      const asset = assetKey.current;
       const { ixs } = await buildMintTx(client.ix, { minter: owner, asset: asset.publicKey, config: fresh });
       const res = await sendTx(client, connection, wallet, ixs, { onPhase, computeUnits: MINT_COMPUTE_UNITS, signers: [asset] });
       if (!res.ok) return fail(txErrorText(res.error));
@@ -200,6 +209,7 @@ export function MintSheet({ open, onClose }: { open: boolean; onClose: () => voi
       const info = await connection.getAccountInfo(asset.publicKey, 'confirmed').catch(() => null);
       const parsed = info ? parseCoreAsset(info.data) : null;
       const number = (parsed && passNumberFromName(parsed.name)) ?? fresh.passMinted + 1;
+      assetKey.current = null;
       deliver({ asset: asset.publicKey.toBase58(), number }, res.signature);
     } catch (err) {
       fail((err as Error).message);
@@ -212,7 +222,9 @@ export function MintSheet({ open, onClose }: { open: boolean; onClose: () => voi
     requestAnimationFrame(() => document.querySelector('.pp-passports')?.scrollIntoView({ block: 'start', behavior: reduced ? 'auto' : 'smooth' }));
   };
 
-  const canConfirm = gate.kind === 'ready' && !busy && !landed && !!live;
+  // the price and rules signed come from the chain config: no config, no mint button
+  const offline = !config && !data.fake;
+  const canConfirm = gate.kind === 'ready' && !!config && !busy && !landed && !!live;
   const delivered = phase === 'delivered' && minted !== null;
 
   const footer = delivered ? (
@@ -304,6 +316,7 @@ export function MintSheet({ open, onClose }: { open: boolean; onClose: () => voi
             )}
             <p className="tf-note">{t('mt.note')}</p>
             {lowSol && !busy && data.balance !== null && <p className="tf-warn">{t('mt.lowSol', { sol: sol(data.balance) })}</p>}
+            {offline && !busy && <p className="tf-warn" role="status">{t('mt.offline')}</p>}
             {gate.kind === 'needTokens' && <p className="tf-warn">{t('ap.g.needTokens', { n: tok.fee(gate.min), sym: tok.symbol })}</p>}
             {v && (
               <section className="tf-steps" aria-label={t('mt.signs')}>

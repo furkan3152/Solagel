@@ -91,7 +91,8 @@ export function fakeConfig(chain: ChainStatus, pass: PassStatus | null = chain.p
     passMinTokens: 0n,
     passMintOpen: pass?.mintOpen ?? false,
     passMintStartTs: pass?.mintStartTs ?? 0,
-    passSeedHash: null,
+    // a committed seed (its hash), as on a live collection
+    passSeedHash: 'c0'.repeat(32),
     passSeed: pass?.seed ?? null,
     passRevealed: pass?.revealed ?? false,
     totals: { players: 0, games: 0, sessions: 0, staked: 0n, paidOut: 0n },
