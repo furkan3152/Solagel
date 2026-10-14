@@ -1,6 +1,6 @@
 import { CellFlag, PowerUpType, SKINS, getSkin } from '@slana/shared';
 import { drawCoin } from './render/coin';
-import type { Expression } from './render/faces';
+import type { Expression } from '@slana/art';
 import { JellyBody } from './render/jelly';
 import { SpriteCache, drawSprite } from './render/sprites';
 
