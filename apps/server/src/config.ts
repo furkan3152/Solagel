@@ -28,11 +28,12 @@ export interface ServerConfig {
   /** Slana Pass power (`PASS_START_MASS_MUL`, `PASS_CASHOUT_MS`). */
   pass: { startMassMul: number; cashoutMs: number };
   authSecret: Buffer;
-  /** `NODE_ENV` is `production`. */
-  production: boolean;
+  /** `NODE_ENV` as given (null when unset). */
+  nodeEnv: string | null;
   /**
    * `DEV_FAKE_CHAIN=1`: an in-memory chain with auto-issued arena tickets and
-   * simulated settlements, for local UI work and Playwright. Refused in production.
+   * simulated settlements, for local UI work and Playwright. Only allowed with
+   * `NODE_ENV=development` and no real chain configured (see `createChain`).
    */
   devFakeChain: boolean;
   chain: {
@@ -111,7 +112,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       cashoutMs: Math.max(0, int(env.PASS_CASHOUT_MS, RULES.passCashoutMs)),
     },
     authSecret: secret,
-    production: env.NODE_ENV === 'production',
+    nodeEnv: env.NODE_ENV?.trim() || null,
     devFakeChain: bool(env.DEV_FAKE_CHAIN, false),
     chain: {
       cluster: env.SOLANA_CLUSTER ?? 'localnet',

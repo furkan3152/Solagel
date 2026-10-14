@@ -226,6 +226,7 @@ export class Room {
       // the ticket's own price (the arena's may have changed since it was bought)
       entryFee: this.ledger ? (this.ledger.get(player.id)?.entryFee ?? this.entryFee) : undefined,
       hasPass: hasPass || undefined,
+      session: this.ledger?.get(player.id)?.session,
     });
     conn.send({ t: 'history', chat: this.chatLog });
     return player;
@@ -252,6 +253,7 @@ export class Room {
       value: this.ledger?.value(pid),
       entryFee: this.ledger ? (this.ledger.get(pid)?.entryFee ?? this.entryFee) : undefined,
       hasPass: p.hasPass || undefined,
+      session: this.ledger?.get(pid)?.session,
     });
     conn.send({ t: 'history', chat: this.chatLog });
     return true;

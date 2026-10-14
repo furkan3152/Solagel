@@ -58,6 +58,8 @@ export interface SettledEvent {
   /** Journal key (session PDA). */
   key: string;
   player: string;
+  /** Arena of the settled session (absent on journal items written before it existed). */
+  arenaId?: number;
   signature: string;
   /** Raw token units paid out of the vault (before the fee). */
   payout: number;

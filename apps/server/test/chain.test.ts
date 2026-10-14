@@ -440,7 +440,7 @@ describe('settlement worker', () => {
       passAsset: null,
     });
     // fee on profit only: (12 345 678 − 10 000 000) × 5 %
-    expect(h.settled).toEqual([{ key: s.address, player: s.player, signature: 'sig1', payout: 12_345_678, fee: 117_283 }]);
+    expect(h.settled).toEqual([{ key: s.address, player: s.player, arenaId: 1, signature: 'sig1', payout: 12_345_678, fee: 117_283 }]);
   });
 
   it('settle builds v2 accounts with pass lock only for pass sessions', async () => {
@@ -610,7 +610,7 @@ describe('settlement worker', () => {
     h.clock.now += 4_000;
     await h.chain.processPending();
     expect(h.journal.pending).toHaveLength(0);
-    expect(h.settled).toEqual([{ key: s.address, player: s.player, signature: 'sig1', payout: 12_345_678 }]);
+    expect(h.settled).toEqual([{ key: s.address, player: s.player, arenaId: 1, signature: 'sig1', payout: 12_345_678 }]);
   });
 
   it('drops stale refunds whose session became live', async () => {

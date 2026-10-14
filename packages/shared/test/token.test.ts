@@ -107,14 +107,17 @@ describe('formatToken', () => {
       expect(formatToken(1_000_000_000n, 6, 'en', { compact: true })).toBe('1K');
       expect(formatToken(250_000_000_000, 6, 'en', { compact: true })).toBe('250K');
       expect(formatToken(1_500_000_000_000, 6, 'en', { compact: true })).toBe('1.5M');
+      expect(formatToken(1_000_000_000_000_000, 6, 'en', { compact: true })).toBe('1B');
       expect(formatToken(12_345_000_000, 6, 'en', { compact: true })).toBe('12.35K');
     });
 
-    it('tr uses B (bin) and Mn (milyon) after a space', () => {
-      expect(formatToken(12_400_000_000, 6, 'tr', { compact: true })).toBe('12,4 B');
-      expect(formatToken(250_000_000_000, 6, 'tr', { compact: true })).toBe('250 B');
-      expect(formatToken(1_500_000_000_000, 6, 'tr', { compact: true })).toBe('1,5 Mn');
-      expect(formatToken(3_000_000_000_000n, 6, 'tr', { compact: true })).toBe('3 Mn');
+    it('tr uses the same K / M / B with its decimal comma (R15)', () => {
+      expect(formatToken(12_400_000_000, 6, 'tr', { compact: true })).toBe('12,4K');
+      expect(formatToken(1_500_000_000, 6, 'tr', { compact: true })).toBe('1,5K');
+      expect(formatToken(250_000_000_000, 6, 'tr', { compact: true })).toBe('250K');
+      expect(formatToken(1_500_000_000_000, 6, 'tr', { compact: true })).toBe('1,5M');
+      expect(formatToken(3_000_000_000_000n, 6, 'tr', { compact: true })).toBe('3M');
+      expect(formatToken(2_500_000_000_000_000n, 6, 'tr', { compact: true })).toBe('2,5B');
     });
 
     it('leaves amounts below one thousand tokens uncompacted', () => {
@@ -125,13 +128,14 @@ describe('formatToken', () => {
 
     it('moves up a tier when rounding reaches 1000', () => {
       expect(formatToken(999_999_000_000, 6, 'en', { compact: true })).toBe('1M');
-      expect(formatToken(999_999_000_000, 6, 'tr', { compact: true })).toBe('1 Mn');
+      expect(formatToken(999_999_000_000, 6, 'tr', { compact: true })).toBe('1M');
+      expect(formatToken(999_999_000_000_000, 6, 'en', { compact: true })).toBe('1B');
       expect(formatToken(999_999_500, 6, 'en', { compact: true })).toBe('1K');
     });
 
     it('stays in the largest tier for huge amounts and keeps the sign', () => {
-      expect(formatToken(1_000_000_000_000_000, 6, 'en', { compact: true })).toBe('1,000M');
-      expect(formatToken(1_000_000_000_000_000, 6, 'tr', { compact: true })).toBe('1.000 Mn');
+      expect(formatToken(1_000_000_000_000_000_000n, 6, 'en', { compact: true })).toBe('1,000B');
+      expect(formatToken(1_000_000_000_000_000_000n, 6, 'tr', { compact: true })).toBe('1.000B');
       expect(formatToken(-12_400_000_000, 6, 'en', { compact: true })).toBe('-12.4K');
     });
 

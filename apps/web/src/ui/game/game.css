@@ -629,7 +629,7 @@
 .g-chat__input {
   flex: 1;
   min-width: 0;
-  min-height: 40px;
+  min-height: 44px;
   padding: 6px 2px;
   border: 0;
   border-bottom: 2px solid var(--ink);
@@ -990,8 +990,10 @@
   color: var(--ink-2);
 }
 .g-stats {
+  /* one row of 4 or 5 stats (XP only for signed-in players) */
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   gap: 0;
 }
 .g-stats > div {
@@ -1033,8 +1035,13 @@
 }
 @media (max-width: 639px) {
   .g-stats {
+    grid-auto-flow: row;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     row-gap: 12px;
+  }
+  .g-stats > div:nth-child(5) {
+    padding-left: 0;
+    border-left: 0;
   }
   .g-stats > div:nth-child(3) {
     padding-left: 0;

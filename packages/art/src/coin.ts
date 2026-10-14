@@ -40,6 +40,16 @@ export interface CoinState {
    * its centre), or null to draw the dots directly.
    */
   halftone?: (r: number, spacing: number) => CanvasImageSource | null;
+  /**
+   * Fast opaque body (one flat fill instead of paper + multiply). Visually the
+   * same; opt-in for the live renderer only. Off for Pass images (byte-stable).
+   */
+  fastBody?: boolean;
+  /**
+   * Below this many screen px of radius the overprint pass and the halftone are
+   * skipped (they are invisible that small). 0 / unset: always drawn.
+   */
+  minPrintPx?: number;
 }
 
 function bodyPath(ctx: CanvasRenderingContext2D, r: number, jelly: JellyLike | null | undefined, detail: number): void {
@@ -93,24 +103,36 @@ export function drawRisoCoin(ctx: CanvasRenderingContext2D, look: CoinLook, r: n
   // 1. overprint: the second ink, misregistered, peeking out from under the body
   const ox = (look.offset.dx * r) / 40;
   const oy = (look.offset.dy * r) / 40;
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(-r * 3, -r * 3, r * 6, r * 6);
-  if (state.jelly && detail > 16) state.jelly.trace(ctx, r * 0.96);
-  else ctx.arc(0, 0, r * 0.96, 0, TAU);
-  ctx.clip('evenodd');
-  ctx.translate(ox, oy);
-  ctx.globalCompositeOperation = 'multiply';
-  bodyPath(ctx, r, state.jelly, detail);
-  ctx.fillStyle = look.overprint;
-  ctx.fill();
-  ctx.restore();
+  const small = detail < (state.minPrintPx ?? 0);
+  if (small) {
+    // tiny on screen: a plain offset fill under the body reads the same (no clip, no blend)
+    ctx.save();
+    ctx.translate(ox, oy);
+    bodyPath(ctx, r, state.jelly, detail);
+    ctx.fillStyle = look.overprint;
+    ctx.fill();
+    ctx.restore();
+  } else {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(-r * 3, -r * 3, r * 6, r * 6);
+    if (state.jelly && detail > 16) state.jelly.trace(ctx, r * 0.96);
+    else ctx.arc(0, 0, r * 0.96, 0, TAU);
+    ctx.clip('evenodd');
+    ctx.translate(ox, oy);
+    ctx.globalCompositeOperation = 'multiply';
+    bodyPath(ctx, r, state.jelly, detail);
+    ctx.fillStyle = look.overprint;
+    ctx.fill();
+    ctx.restore();
+  }
 
   // 2. body ink, over a paper base so it reads the same on any background.
-  // Opaque: the paper base hides what is under it, so ink × paper is a single
-  // flat colour (one fill instead of a fill plus a multiply blend).
+  // `fastBody` (web renderer only): an opaque body is one flat fill of ink × paper
+  // instead of a paper fill plus a multiply blend. Pass images keep the exact
+  // two-step print so their bytes never change.
   bodyPath(ctx, r, state.jelly, detail);
-  if (ctx.globalAlpha >= 0.999) {
+  if (state.fastBody && ctx.globalAlpha >= 0.999) {
     ctx.fillStyle = inkOnPaper(look.body);
     ctx.fill();
   } else {
@@ -143,7 +165,7 @@ export function drawRisoCoin(ctx: CanvasRenderingContext2D, look: CoinLook, r: n
   ctx.stroke();
 
   // 4. halftone shade on the lower-right crescent
-  if (detail > 18) {
+  if (detail > 18 && !small) {
     ctx.save();
     bodyPath(ctx, r - rimW * 0.5, state.jelly, detail);
     ctx.clip();

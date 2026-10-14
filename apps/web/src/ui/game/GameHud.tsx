@@ -29,10 +29,12 @@ function TillSlip() {
 
   // the "+X" stamp next to the counter lives ~1.6 s per value message
   useEffect(() => {
-    if (!delta) return;
+    // a change that rounds to "0" gets no stamp
+    if (!delta || tf.signed(delta.delta, { compact: true, maxFrac: 1 }) === '0') return;
     setShown(delta);
     const id = setTimeout(() => setShown((d) => (d?.id === delta.id ? null : d)), 1700);
     return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [delta]);
 
   const frac = arena ? counterFrac(hud.value!, tf.decimals) : 0;

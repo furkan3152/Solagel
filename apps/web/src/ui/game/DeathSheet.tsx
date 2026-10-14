@@ -19,6 +19,7 @@ export function DeathSheet() {
   const room = useUi((s) => s.room);
   const me = useUi((s) => s.me);
   const lang = useUi((s) => s.settings.lang);
+  const signedIn = useUi((s) => s.auth !== null);
   const open = useUi((s) => s.screen === 'dead' && s.death !== null);
 
   useEffect(() => {
@@ -118,6 +119,13 @@ export function DeathSheet() {
               <dt className="mono">{t('gd.eaten')}</dt>
               <dd>{s.playersEaten}</dd>
             </div>
+            {/* XP is still part of DeathStats in v2; it only counts for signed-in players */}
+            {signedIn && s.xp !== undefined && (
+              <div>
+                <dt className="mono">{t('gd.xp')}</dt>
+                <dd>+{s.xp}</dd>
+              </div>
+            )}
           </dl>
 
           <button type="button" className="g-link mono" onClick={() => engine()?.watch()}>

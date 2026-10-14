@@ -16,6 +16,9 @@ export interface CoinOpts {
   cashout?: number;
   /** Cached halftone shade provider (see `SpriteCache.halftone`). */
   halftone?: (r: number, spacing: number) => CanvasImageSource | null;
+  /** Live-renderer speed-ups (see `CoinState` in @slana/art). */
+  fastBody?: boolean;
+  minPrintPx?: number;
 }
 
 /** Draws a coin character with an explicit look centred at (x, y) with world radius r. */
