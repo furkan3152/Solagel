@@ -3,11 +3,13 @@
 //! The game loop runs on an authoritative server; this program holds everything that
 //! involves value or identity: player profiles, stake arenas paid in the $SLANA token (each
 //! arena has a token vault), session settlement with a fee on profit split between the
-//! treasury vault, the season vault and a burn, and seasons with a top-20 leaderboard and a
-//! prize pool for the top 10.
+//! treasury vault, the season vault and a burn, seasons with a top-20 leaderboard and a token
+//! prize pool for the top 10, and the Slana Pass (a free-mint Metaplex Core collection with a
+//! commit–reveal trait seed).
 
 pub mod constants;
 pub mod core_asset;
+pub mod core_cpi;
 pub mod error;
 pub mod events;
 pub mod instructions;
@@ -112,6 +114,29 @@ pub mod slana {
 
     pub fn sweep_arena(ctx: Context<SweepArena>) -> Result<()> {
         instructions::sweep_arena::handle_sweep_arena(ctx)
+    }
+
+    // ----- Slana Pass ----------------------------------------------------------------------
+
+    /// Sets the Pass collection once (a Core collection whose update authority is the
+    /// `pass_authority` PDA).
+    pub fn set_pass_collection(ctx: Context<SetPassCollection>) -> Result<()> {
+        instructions::set_pass_collection::handle_set_pass_collection(ctx)
+    }
+
+    /// Commits `sha256(seed)` of the Pass trait seed (before the first mint).
+    pub fn set_pass_seed_hash(ctx: Context<SetPassSeedHash>, hash: [u8; 32]) -> Result<()> {
+        instructions::set_pass_seed_hash::handle_set_pass_seed_hash(ctx, hash)
+    }
+
+    /// Free mint of one Slana Pass (Core asset in the Pass collection) to the signer.
+    pub fn mint_pass(ctx: Context<MintPass>) -> Result<()> {
+        instructions::mint_pass::handle_mint_pass(ctx)
+    }
+
+    /// Publishes the Pass trait seed (checked against the committed hash), once.
+    pub fn reveal_pass(ctx: Context<RevealPass>, seed: [u8; 32]) -> Result<()> {
+        instructions::reveal_pass::handle_reveal_pass(ctx, seed)
     }
 
     // ----- seasons ----------------------------------------------------------------------

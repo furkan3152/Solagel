@@ -82,59 +82,8 @@ pub(crate) fn check_pass_lock(
 }
 
 // ---------------------------------------------------------------------------------------
-// Lamports: the join settle deposit (System transfer) and the legacy season flows
-// (`end_season` / `claim_season_reward` / `rollover_season`, moved to tokens in Task 5)
+// Lamports: the join settle deposit
 // ---------------------------------------------------------------------------------------
-
-/// Rent-exempt minimum of an account with the data length of `info`.
-pub(crate) fn rent_exempt_minimum(info: &AccountInfo) -> Result<u64> {
-    Ok(Rent::get()?.minimum_balance(info.data_len()))
-}
-
-/// Lamports held above the rent-exempt minimum (an arena pot or a season prize pool).
-pub(crate) fn available_lamports(info: &AccountInfo) -> Result<u64> {
-    Ok(info.lamports().saturating_sub(rent_exempt_minimum(info)?))
-}
-
-/// Removes `amount` lamports from an account owned by this program, never letting it
-/// drop below its rent-exempt minimum.
-pub(crate) fn debit_program_account(from: &AccountInfo, amount: u64) -> Result<()> {
-    if amount == 0 {
-        return Ok(());
-    }
-    let minimum = rent_exempt_minimum(from)?;
-    let remaining = from
-        .lamports()
-        .checked_sub(amount)
-        .ok_or(SlanaError::InsufficientPot)?;
-    require_gte!(remaining, minimum, SlanaError::InsufficientPot);
-    **from.try_borrow_mut_lamports()? = remaining;
-    Ok(())
-}
-
-/// Adds `amount` lamports to any writable account. The lamports borrow is released before
-/// returning, so aliased accounts (e.g. treasury == player) can be credited one after another.
-pub(crate) fn credit_account(to: &AccountInfo, amount: u64) -> Result<()> {
-    if amount == 0 {
-        return Ok(());
-    }
-    let total = to
-        .lamports()
-        .checked_add(amount)
-        .ok_or(SlanaError::MathOverflow)?;
-    **to.try_borrow_mut_lamports()? = total;
-    Ok(())
-}
-
-/// Moves lamports out of a program-owned account (direct lamport arithmetic).
-pub(crate) fn transfer_from_program_account(
-    from: &AccountInfo,
-    to: &AccountInfo,
-    amount: u64,
-) -> Result<()> {
-    debit_program_account(from, amount)?;
-    credit_account(to, amount)
-}
 
 /// Moves lamports out of a user wallet with a System Program CPI.
 pub(crate) fn transfer_from_wallet<'info>(

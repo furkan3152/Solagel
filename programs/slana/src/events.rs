@@ -83,3 +83,21 @@ pub struct TreasuryWithdrawn {
     pub destination: Pubkey,
     pub amount: u64,
 }
+
+#[event]
+pub struct PassCollectionSet {
+    pub collection: Pubkey,
+}
+
+#[event]
+pub struct PassMinted {
+    pub minter: Pubkey,
+    pub asset: Pubkey,
+    /// 1-based Pass number (`Slana Pass #<number>`).
+    pub number: u32,
+}
+
+#[event]
+pub struct PassRevealed {
+    pub seed: [u8; 32],
+}
