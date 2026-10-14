@@ -57,9 +57,12 @@ export class Gateway {
     private readonly trustProxy = process.env.TRUST_PROXY === '1',
   ) {
     chain.onSettled((e) => {
-      for (const conn of this.rooms.connsByWallet(e.player)) {
-        const kind = e.kind === 'record' ? 'record' : (e.payout ?? 0) > 0 ? 'cashout' : 'death';
-        conn.send({ t: 'settled', kind, signature: e.signature, payout: e.payout });
+      // on-chain free-play records are not announced to clients, they only refresh the profile (XP)
+      if (e.kind === 'settle') {
+        for (const conn of this.rooms.connsByWallet(e.player)) {
+          const kind = (e.payout ?? 0) > 0 ? 'cashout' : 'death';
+          conn.send({ t: 'settled', kind, signature: e.signature, payout: e.payout ?? 0 });
+        }
       }
       void this.refreshProfile(e.player);
     });
@@ -259,8 +262,8 @@ export class Gateway {
         flags |= PlayerFlag.Verified;
       }
 
-      if (target.mode === 'free') {
-        if (conn.player?.alive && conn.room?.opts.mode === 'free') return; // already playing
+      if (target.mode === 'practice') {
+        if (conn.player?.alive && conn.room?.opts.mode === 'practice') return; // already playing
         const room = this.rooms.freeRoom(conn.room);
         if (conn.player?.alive) conn.room?.leave(conn, 'switch');
         room.join(conn, { name, skin, flags });
@@ -285,7 +288,7 @@ export class Gateway {
 
       // stake arena
       if (!this.chain.stakeEnabled) {
-        this.error(conn, 'stake_disabled', 'High-stakes arenas are offline.');
+        this.error(conn, 'arenas_disabled', 'High-stakes arenas are offline.');
         return;
       }
       if (!conn.wallet) {

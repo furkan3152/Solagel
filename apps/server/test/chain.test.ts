@@ -220,7 +220,7 @@ describe('createChain', () => {
     const chain = await createChain(loadConfig({} as NodeJS.ProcessEnv), new Journal(null), (m) => logs.push(m));
     expect(chain.enabled).toBe(false);
     expect(chain.stakeEnabled).toBe(false);
-    expect(chain.status()).toMatchObject({ enabled: false, programId: null, stakeEnabled: false });
+    expect(chain.status()).toMatchObject({ enabled: false, programId: null, arenasEnabled: false, token: null, pass: null });
     expect(await chain.getProfile(wallet())).toBeNull();
     expect(await chain.season()).toBeNull();
     expect(logs.join('\n')).toMatch(/disabled/);
@@ -262,11 +262,13 @@ describe('SolanaChain status & reads', () => {
       cluster: 'localnet',
       programId: PROGRAM.toBase58(),
       rpcUrl: 'http://127.0.0.1:8899',
-      stakeEnabled: true,
+      arenasEnabled: true,
       currentSeason: 3,
+      token: null,
+      pass: null,
     });
     const h2 = await harness({ cfg: { publicRpcUrl: 'https://rpc.example', stakeEnabled: false } });
-    expect(h2.chain.status()).toMatchObject({ rpcUrl: 'https://rpc.example', stakeEnabled: false });
+    expect(h2.chain.status()).toMatchObject({ rpcUrl: 'https://rpc.example', arenasEnabled: false });
   });
 
   it('caches profiles for 60 s, refreshes on demand and never throws', async () => {

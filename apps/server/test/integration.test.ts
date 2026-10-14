@@ -25,7 +25,7 @@ class FakeChain implements ChainGateway {
   profiles = new Map<string, ChainProfile>();
   kicked = 0;
   status(): ChainStatus {
-    return { enabled: true, cluster: 'test', programId: 'Fake111', rpcUrl: null, stakeEnabled: true, currentSeason: 1 };
+    return { enabled: true, cluster: 'test', programId: 'Fake111', rpcUrl: null, arenasEnabled: true, currentSeason: 1, token: null, pass: null };
   }
   async getProfile(owner: string) {
     return this.profiles.get(owner) ?? null;
@@ -129,7 +129,7 @@ describe('server over websocket', () => {
     c.send({ t: 'hello', v: PROTOCOL_VERSION, lang: 'tr' });
     const welcome = await c.wait('welcome');
     expect(welcome.rooms.some((r) => r.id === 'free-1')).toBe(true);
-    expect(welcome.rooms.some((r) => r.mode === 'stake' && r.arenaId === 1)).toBe(true);
+    expect(welcome.rooms.some((r) => r.mode === 'arena' && r.arenaId === 1)).toBe(true);
     expect(welcome.chain.enabled).toBe(true);
     c.close();
   });
@@ -142,14 +142,14 @@ describe('server over websocket', () => {
     c.close();
   });
 
-  it('joins a free room, receives snapshots with own cell and moves toward the target', async () => {
+  it('joins a practice room, receives snapshots with own cell and moves toward the target', async () => {
     const c = await Client.connect(port);
     c.send({ t: 'hello', v: PROTOCOL_VERSION });
     await c.wait('welcome');
     c.send({ t: 'viewport', w: 1600, h: 900 });
-    c.send({ t: 'join', room: 'free', name: 'Tester', skin: 3 });
+    c.send({ t: 'join', room: 'practice', name: 'Tester', skin: 3 });
     const joined = await c.wait('joined');
-    expect(joined.room.mode).toBe('free');
+    expect(joined.room.mode).toBe('practice');
     expect(joined.name).toBe('Tester');
     await sleep(500);
     expect(c.snaps.length).toBeGreaterThan(8);
@@ -190,8 +190,8 @@ describe('server over websocket', () => {
       c.send({ t: 'hello', v: PROTOCOL_VERSION });
       await c.wait('welcome');
     }
-    a.send({ t: 'join', room: 'free', name: 'Alice', skin: 0 });
-    b.send({ t: 'join', room: 'free', name: 'Bob', skin: 1 });
+    a.send({ t: 'join', room: 'practice', name: 'Alice', skin: 0 });
+    b.send({ t: 'join', room: 'practice', name: 'Bob', skin: 1 });
     await a.wait('joined');
     await b.wait('joined');
     a.send({ t: 'chat', text: 'gm frens' });
@@ -255,14 +255,14 @@ describe('server over websocket', () => {
     const c = await Client.connect(port);
     c.send({ t: 'hello', v: PROTOCOL_VERSION });
     await c.wait('welcome');
-    c.send({ t: 'join', room: 'stake:1', name: 'Whale', skin: 0 });
+    c.send({ t: 'join', room: 'arena:1', name: 'Whale', skin: 0 });
     expect((await c.wait('error')).code).toBe('auth_required');
 
     c.send({ t: 'auth', token: app.auth.issueToken(pubkey) });
     await c.wait('authed');
-    c.send({ t: 'join', room: 'stake:1', name: 'Whale', skin: 0 });
+    c.send({ t: 'join', room: 'arena:1', name: 'Whale', skin: 0 });
     const joined = await c.wait('joined');
-    expect(joined.room.mode).toBe('stake');
+    expect(joined.room.mode).toBe('arena');
     expect(joined.value).toBe(10_000_000);
     expect(app.journal.live().map((l) => l.session)).toContain(`Session-${pubkey}`);
 
@@ -276,7 +276,7 @@ describe('server over websocket', () => {
     expect(app.journal.live().map((l) => l.session)).not.toContain(`Session-${pubkey}`);
 
     // the same ticket cannot be reused while its settlement is pending
-    c.send({ t: 'join', room: 'stake:1', name: 'Whale', skin: 0 });
+    c.send({ t: 'join', room: 'arena:1', name: 'Whale', skin: 0 });
     expect((await c.wait('error', 2000, (m) => m.code === 'no_session')).code).toBe('no_session');
     c.close();
   }, 15_000);
@@ -291,7 +291,7 @@ describe('server over websocket', () => {
     await a.wait('welcome');
     a.send({ t: 'auth', token });
     await a.wait('authed');
-    a.send({ t: 'join', room: 'stake:1', name: 'Afk', skin: 0 });
+    a.send({ t: 'join', room: 'arena:1', name: 'Afk', skin: 0 });
     const j1 = await a.wait('joined');
     a.close();
     await sleep(200);
@@ -303,7 +303,7 @@ describe('server over websocket', () => {
     await b.wait('welcome');
     b.send({ t: 'auth', token });
     await b.wait('authed');
-    b.send({ t: 'join', room: 'stake:1', name: 'Afk', skin: 0 });
+    b.send({ t: 'join', room: 'arena:1', name: 'Afk', skin: 0 });
     const j2 = await b.wait('joined');
     expect(j2.playerId).toBe(j1.playerId);
     expect(j2.value).toBe(20_000_000);

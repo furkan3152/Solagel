@@ -89,9 +89,9 @@ export class Room {
   ) {
     const preset = WORLD_PRESETS[opts.mode];
     const seed = opts.seed ?? (Math.random() * 2 ** 32) >>> 0;
-    this.world = new World({ ...preset, powerUps: true, coinRain: opts.mode !== 'stake', seed });
+    this.world = new World({ ...preset, powerUps: true, coinRain: opts.mode !== 'arena', seed });
     this.bots = opts.bots ? new BotManager(this.world, opts.bots, mulberry32(seed ^ 0xb07)) : null;
-    this.ledger = opts.mode === 'stake' ? new StakeLedger() : null;
+    this.ledger = opts.mode === 'arena' ? new StakeLedger() : null;
   }
 
   get id(): string {
@@ -109,7 +109,7 @@ export class Room {
       bots: this.bots?.bots.size ?? 0,
       maxPlayers: this.opts.maxPlayers,
       arenaId: this.opts.stake?.arenaId,
-      buyIn: this.opts.stake?.buyIn,
+      entryFee: this.opts.stake?.buyIn,
       code: this.opts.code,
     };
   }

@@ -74,7 +74,16 @@ export class NullChain implements ChainGateway {
   readonly stakeEnabled = false;
   constructor(private readonly cluster = 'disabled') {}
   status(): ChainStatus {
-    return { enabled: false, cluster: this.cluster, programId: null, rpcUrl: null, stakeEnabled: false, currentSeason: null };
+    return {
+      enabled: false,
+      cluster: this.cluster,
+      programId: null,
+      rpcUrl: null,
+      arenasEnabled: false,
+      currentSeason: null,
+      token: null,
+      pass: null,
+    };
   }
   async getProfile(): Promise<ChainProfile | null> {
     return null;

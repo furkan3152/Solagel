@@ -34,7 +34,7 @@ export function StakePanel({ onPlay }: { onPlay: (room: string) => void }) {
     </>
   );
 
-  if (!chain?.stakeEnabled || data.deployed === false) {
+  if (!chain?.arenasEnabled || data.deployed === false) {
     return (
       <div className="mode-panel">
         {header}
@@ -54,7 +54,7 @@ export function StakePanel({ onPlay }: { onPlay: (room: string) => void }) {
     if (!client || !wallet.publicKey) return;
     const session = data.sessions[arenaId];
     if (session) {
-      onPlay(`stake:${arenaId}`);
+      onPlay(`arena:${arenaId}`);
       return;
     }
     setBusy(arenaId);
@@ -63,7 +63,7 @@ export function StakePanel({ onPlay }: { onPlay: (room: string) => void }) {
     setBusy(null);
     if (!sig) return;
     refreshChain();
-    onPlay(`stake:${arenaId}`);
+    onPlay(`arena:${arenaId}`);
   };
 
   const refund = async (arenaId: number) => {
@@ -97,7 +97,9 @@ export function StakePanel({ onPlay }: { onPlay: (room: string) => void }) {
           const refundable = !!session && now - session.openedAt > REFUND_AFTER_S;
           return (
             <div key={a.id} className="arena">
-              <div className="arena-emoji">{meta.emoji}</div>
+              <div className="arena-emoji" style={{ color: meta.ink }}>
+                ◎
+              </div>
               <div>
                 <div className="arena-name">{meta.name[lang]}</div>
                 <div className="arena-meta">

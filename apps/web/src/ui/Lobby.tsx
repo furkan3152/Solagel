@@ -51,10 +51,10 @@ function FreePanel({ onPlay }: { onPlay: (room: string) => void }) {
   const t = useT();
   const rooms = useUi((s) => s.rooms);
   const connected = useUi((s) => s.connected);
-  const free = rooms.filter((r) => r.mode === 'free').sort((a, b) => b.players - a.players)[0];
+  const free = rooms.filter((r) => r.mode === 'practice').sort((a, b) => b.players - a.players)[0];
   return (
     <div className="mode-panel">
-      <button className="btn btn-gold btn-xl" disabled={!connected} onClick={() => onPlay('free')}>
+      <button className="btn btn-gold btn-xl" disabled={!connected} onClick={() => onPlay('practice')}>
         ▶ {t('lobby.play')}
       </button>
       {free && (
@@ -135,7 +135,7 @@ export function Lobby() {
               maxLength={16}
               placeholder={t('lobby.name')}
               onChange={(e) => updateSettings({ name: e.target.value })}
-              onKeyDown={(e) => e.key === 'Enter' && mode === 'free' && play('free')}
+              onKeyDown={(e) => e.key === 'Enter' && mode === 'free' && play('practice')}
               style={{ textAlign: 'center' }}
             />
             <SkinPicker />

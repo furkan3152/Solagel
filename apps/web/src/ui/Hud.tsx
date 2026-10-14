@@ -33,7 +33,7 @@ function ScoreCard() {
       <div className="small muted" style={{ fontWeight: 600 }}>
         {t('hud.rank')} #{hud.rank || '–'} / {hud.players}
       </div>
-      {room?.mode === 'stake' && hud.value !== null && <div className="value-chip">{formatSol(hud.value)}</div>}
+      {room?.mode === 'arena' && hud.value !== null && <div className="value-chip">{formatSol(hud.value)}</div>}
       {room?.mode === 'private' && room.code && (
         <button className="btn btn-sm btn-ghost" style={{ marginTop: 6 }} onClick={() => navigator.clipboard?.writeText(room.code!)}>
           🔑 {room.code}
@@ -66,7 +66,7 @@ function LiveLeaderboard() {
             {e.verified ? ' ✓' : ''}
             {e.bot ? <span style={{ opacity: 0.55, fontSize: 11 }}> 🤖</span> : null}
           </span>
-          <span className="lb-score">{room?.mode === 'stake' && e.value !== undefined ? formatSol(e.value) : compact(e.score)}</span>
+          <span className="lb-score">{room?.mode === 'arena' && e.value !== undefined ? formatSol(e.value) : compact(e.score)}</span>
         </div>
       ))}
       {screen === 'playing' && !inTop && hud.rank > 0 && (
@@ -209,7 +209,7 @@ function CashoutButton() {
   const screen = useUi((s) => s.screen);
   const [, force] = useState(0);
   useTicker(() => force((x) => (x + 1) % 1000), cashout.state === 'channel');
-  if (room?.mode !== 'stake' || screen !== 'playing') return null;
+  if (room?.mode !== 'arena' || screen !== 'playing') return null;
   const left = Math.max(0, cashout.until - performance.now());
   const pct = cashout.state === 'channel' ? 1 - left / RULES.cashoutMs : 0;
   return (
@@ -248,7 +248,7 @@ function SpectateBar() {
       <button className="btn btn-sm btn-ghost" onClick={() => engine()?.spectateNext()} title="Q">
         ⏭ {t('hud.next')}
       </button>
-      <button className="btn btn-sm btn-gold" onClick={() => engine()?.play('free')}>
+      <button className="btn btn-sm btn-gold" onClick={() => engine()?.play('practice')}>
         ▶ {t('lobby.play')}
       </button>
       <button className="btn btn-sm btn-ghost" onClick={() => engine()?.backToLobby()}>
@@ -317,7 +317,7 @@ function MobileControls() {
         <button className="btn btn-ghost touch-btn" onClick={() => setEmotes((v) => !v)}>
           😊
         </button>
-        {room?.mode === 'stake' ? (
+        {room?.mode === 'arena' ? (
           <button className="btn btn-mint touch-btn" onClick={() => engine()?.cashout()}>
             💸
           </button>

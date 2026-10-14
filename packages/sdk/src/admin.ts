@@ -8,7 +8,7 @@
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
-import { DEFAULT_ARENAS, arenaMeta } from '@slana/shared';
+import { arenaMeta } from '@slana/shared';
 import { Connection, Keypair, PublicKey, type TransactionInstruction } from '@solana/web3.js';
 import {
   BPF_LOADER_UPGRADEABLE_ID,
@@ -240,7 +240,7 @@ async function cmdStatus(ctx: Ctx): Promise<void> {
   for (const a of arenas) {
     const meta = arenaMeta(a.id);
     console.log(
-      `  #${a.id} ${meta.emoji} ${meta.name.en.padEnd(14)} buy-in ${fmtSol(a.buyIn).padEnd(8)} max ${String(a.maxPlayers).padStart(3)} · ` +
+      `  #${a.id} ${meta.name.en.padEnd(14)} buy-in ${fmtSol(a.buyIn).padEnd(8)} max ${String(a.maxPlayers).padStart(3)} · ` +
         `open ${a.openSessions} · pot ${fmtSol(a.pot)} · ${a.enabled ? 'enabled' : 'DISABLED'}  ${a.address}`,
     );
   }
@@ -308,6 +308,13 @@ async function cmdUpdateConfig(ctx: Ctx, opts: Opts): Promise<void> {
   await send(ctx, `updated config (${given.map(([k]) => k).join(', ')})`, [ix]);
 }
 
+/** SOL tiers for the v1 program this CLI still drives; SDK v2 switches to `DEFAULT_ARENAS` (token tiers) from `@slana/shared`. */
+const V1_DEFAULT_ARENAS = [
+  { id: 1, buyInSol: 0.01, maxPlayers: 20 },
+  { id: 2, buyInSol: 0.05, maxPlayers: 20 },
+  { id: 3, buyInSol: 0.1, maxPlayers: 16 },
+] as const;
+
 async function createArena(ctx: Ctx, id: number, buyIn: number, maxPlayers: number): Promise<void> {
   const ix = await ctx.client.ix.createArena(ctx.signer().publicKey, id, buyIn, maxPlayers);
   await send(ctx, `created arena #${id} (${arenaMeta(id).name.en}) · buy-in ${fmtSol(buyIn)} · max ${maxPlayers}`, [ix]);
@@ -317,7 +324,7 @@ async function createArena(ctx: Ctx, id: number, buyIn: number, maxPlayers: numb
 async function cmdCreateArena(ctx: Ctx, opts: Opts): Promise<void> {
   await requireConfig(ctx);
   if (opts.get('defaults') === true) {
-    for (const tier of DEFAULT_ARENAS) {
+    for (const tier of V1_DEFAULT_ARENAS) {
       const existing = await ctx.client.fetchArena(tier.id);
       if (existing) {
         console.log(`• arena #${tier.id} exists (buy-in ${fmtSol(existing.buyIn)}, max ${existing.maxPlayers}) — skipped`);

@@ -120,7 +120,7 @@ describe('bots', () => {
   });
 
   it('headless 2-minute room: stable population, finite state, bots grow', () => {
-    const world = new World({ ...WORLD_PRESETS.free, powerUps: true, coinRain: true, seed: 11 });
+    const world = new World({ ...WORLD_PRESETS.practice, powerUps: true, coinRain: true, seed: 11 });
     const rng = mulberry32(12);
     const manager = new BotManager(world, { target: 18, min: 3, max: 18 }, rng);
     let maxSeen = 0;
@@ -152,7 +152,7 @@ describe('bots', () => {
   }, 60_000);
 
   it('bots make room for humans', () => {
-    const world = new World({ ...WORLD_PRESETS.free, powerUps: false, coinRain: false, seed: 4 });
+    const world = new World({ ...WORLD_PRESETS.practice, powerUps: false, coinRain: false, seed: 4 });
     const manager = new BotManager(world, { target: 18, min: 3, max: 18 }, mulberry32(4));
     manager.update(0, 0);
     expect(manager.bots.size).toBe(18);
