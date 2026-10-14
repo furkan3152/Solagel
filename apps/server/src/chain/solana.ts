@@ -2,24 +2,46 @@ import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import {
+  MPL_CORE_ID,
   SlanaClient,
   SlanaErrorCode,
+  assertSafeSupply,
+  ata,
   clusterDefaultRpc,
+  createAtaIdempotentIx,
   describeError,
   lamportsToSol,
+  listOwnedPasses,
+  parseCoreAsset,
+  passNumberFromName,
   programErrorCode,
+  splitPayout,
   type ArenaView,
   type ConfigView,
+  type CoreAsset,
   type LeaderEntryView,
+  type OwnedPass,
   type ProfileView,
   type SeasonView as SdkSeasonView,
   type SessionView,
 } from '@slana/sdk';
-import { CAPACITY, toSafeAmount, type ChainStatus } from '@slana/shared';
+import { TOKEN_SYMBOL_DEFAULT, formatToken, toSafeAmount, type ChainStatus, type PassStatus } from '@slana/shared';
 import { Connection, Keypair, PublicKey, type TransactionInstruction } from '@solana/web3.js';
 import type { ServerConfig } from '../config';
 import type { Journal, SettlementItem } from '../stake/journal';
-import type { ChainArena, ChainGateway, ChainProfile, ChainSession, SeasonEntry, SeasonView } from './types';
+import type {
+  ChainArena,
+  ChainGateway,
+  ChainPass,
+  ChainProfile,
+  ChainSession,
+  OwnedPassInfo,
+  SeasonEntry,
+  SeasonView,
+  SettledEvent,
+} from './types';
+
+export type { SettledEvent } from './types';
 
 /* ------------------------------------------------------------------ */
 /* Tunables                                                            */
@@ -31,6 +53,9 @@ const SWEEP_INTERVAL_MS = 5 * 60_000;
 /** Sessions nobody plays for this long are refunded (payout = buy-in). */
 export const STALE_SESSION_AFTER_S = 15 * 60;
 const PROFILE_TTL_MS = 60_000;
+const PASS_TTL_MS = 60_000;
+const OWNED_TTL_MS = 30_000;
+const MAX_PASS_CACHE = 10_000;
 const ARENA_TTL_MS = 30_000;
 const SEASON_TTL_MS = 30_000;
 const CONFIG_TTL_MS = 30_000;
@@ -40,8 +65,6 @@ const SEND_TIMEOUT_MS = 120_000;
 const RPC_TIMEOUT_MS = 20_000;
 const LOW_BALANCE_LAMPORTS = 50_000_000; // 0.05 SOL
 const MAX_PROFILE_CACHE = 5_000;
-/** Free-play records are best effort: give up after this many failed attempts. */
-const MAX_RECORD_ATTEMPTS = 8;
 const STOP_GRACE_MS = 5_000;
 
 const ERR = {
@@ -71,7 +94,37 @@ export interface ChainClient {
   fetchSession(arenaId: number, player: string): Promise<SessionView | null>;
   fetchSessions(): Promise<SessionView[]>;
   fetchSeason(id: number): Promise<SdkSeasonView | null>;
+  /** Raw supply of the game-token mint (base units). */
+  fetchMintSupply(mint: string): Promise<bigint>;
+  /** Whether an account exists (used for the player's token account). */
+  accountExists(address: string): Promise<boolean>;
+  /** A Metaplex Core asset, null when the account is missing or not an `AssetV1`. */
+  fetchCoreAsset(asset: string): Promise<CoreAsset | null>;
+  /** Core assets of `collection` owned by `owner` (SDK `listOwnedPasses`). */
+  listOwnedPasses(owner: string, collection: string): Promise<OwnedPass[]>;
   readonly ix: Pick<SlanaClient['ix'], 'settleSession'>;
+}
+
+/** `ChainClient` over a real `SlanaClient` + its connection. */
+export function sdkChainClient(sdk: SlanaClient, connection: Connection): ChainClient {
+  return {
+    programId: sdk.programId,
+    ix: sdk.ix,
+    isDeployed: () => sdk.isDeployed(),
+    fetchConfig: () => sdk.fetchConfig(),
+    fetchProfile: (owner) => sdk.fetchProfile(owner),
+    fetchArenas: () => sdk.fetchArenas(),
+    fetchSession: (arenaId, player) => sdk.fetchSession(arenaId, player),
+    fetchSessions: () => sdk.fetchSessions(),
+    fetchSeason: (id) => sdk.fetchSeason(id),
+    fetchMintSupply: async (mint) => BigInt((await connection.getTokenSupply(new PublicKey(mint), 'confirmed')).value.amount),
+    accountExists: async (address) => (await connection.getAccountInfo(new PublicKey(address), 'confirmed')) !== null,
+    fetchCoreAsset: async (asset) => {
+      const info = await connection.getAccountInfo(new PublicKey(asset), 'confirmed');
+      return info && info.owner.equals(MPL_CORE_ID) ? parseCoreAsset(info.data) : null;
+    },
+    listOwnedPasses: (owner, collection) => listOwnedPasses(connection, owner, collection),
+  };
 }
 
 export interface SolanaChainDeps {
@@ -91,8 +144,6 @@ export interface SolanaChainDeps {
   /** Start the background loops in `start()` (default true; tests drive them by hand). */
   loops?: boolean;
 }
-
-export type SettledEvent = { key: string; player: string; signature: string; kind: 'settle' | 'record'; payout?: number };
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
@@ -138,8 +189,6 @@ const clampInt = (v: unknown, max: number): number => {
 
 const short = (s: string): string => (s.length > 12 ? `${s.slice(0, 4)}…${s.slice(-4)}` : s);
 const sol = (lamports: number): string => `◎${lamportsToSol(lamports).toFixed(4).replace(/\.?0+$/, '')}`;
-// TODO(Task 10): format with the mint's decimals and symbol.
-const units = (raw: number): string => `${raw} token units`;
 const firstLine = (err: unknown): string => String((err as Error)?.message ?? err).split('\n')[0].slice(0, 240);
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms).unref());
 
@@ -164,7 +213,7 @@ const toChainProfile = (p: ProfileView): ChainProfile => ({
   skin: p.skin,
   xp: p.xp,
   level: p.level,
-  premiumSkins: 0, // TODO(Task 10): premium skins are gone in v2 (Pass skins replace them)
+  premiumSkins: 0, // v2 has no premium skins (Pass looks replace them)
   gamesPlayed: p.gamesPlayed,
   bestScore: p.bestScore,
 });
@@ -176,9 +225,9 @@ const toEntry = (e: LeaderEntryView): SeasonEntry => ({ player: e.player, name: 
 /* ------------------------------------------------------------------ */
 
 /**
- * Solana-backed `ChainGateway`: cached reads for the rooms, plus the settlement worker that
- * turns journal items into `settle_session` / `record_game` transactions signed by the server
- * authority, and a sweeper that refunds sessions nobody ever played.
+ * Solana-backed `ChainGateway`: cached reads for the rooms (profiles, arenas, sessions, seasons,
+ * Slana Passes), plus the settlement worker that turns journal items into `settle_session`
+ * transactions signed by the server authority, and a sweeper that refunds sessions nobody played.
  */
 export class SolanaChain implements ChainGateway {
   enabled = false;
@@ -192,6 +241,8 @@ export class SolanaChain implements ChainGateway {
   private configAt = 0;
   /** Server key == config.serverAuthority (null until the config was read once). */
   private authorized: boolean | null = null;
+  /** The token's raw supply fits a JS number (null until read). Arenas stay off otherwise. */
+  private supplySafe: boolean | null = null;
 
   private liveSessions: () => Set<string> = () => new Set();
   private readonly settledListeners: ((e: SettledEvent) => void)[] = [];
@@ -204,6 +255,8 @@ export class SolanaChain implements ChainGateway {
   private arenaCache: { at: number; value: ChainArena[] } | null = null;
   private seasonCache: { at: number; value: SeasonView | null } | null = null;
   private seasonFetch: Promise<SeasonView | null> | null = null;
+  private readonly passes = new Map<string, { at: number; value: ChainPass | null }>();
+  private readonly owned = new Map<string, { at: number; value: OwnedPassInfo[] }>();
   private probing: Promise<boolean> | null = null;
 
   private timers: NodeJS.Timeout[] = [];
@@ -243,7 +296,7 @@ export class SolanaChain implements ChainGateway {
           fetch: fetchWithTimeout(RPC_TIMEOUT_MS),
         });
         this.sdk = new SlanaClient(this.connection, programId ?? undefined);
-        this.client = this.sdk;
+        this.client = sdkChainClient(this.sdk, this.connection);
       }
     } catch (err) {
       this.log(`chain: disabled — ${(err as Error).message}; running free play only`);
@@ -293,6 +346,7 @@ export class SolanaChain implements ChainGateway {
       }
       this.applyConfig(config);
       this.enabled = true;
+      await this.checkSupply();
       this.log(
         `chain: ${where} · program ${client.programId.toBase58()} · season ${config.currentSeason} · ` +
           `server ${this.keypair!.publicKey.toBase58()} · stake ${this.stakeEnabled ? 'on' : 'off'}`,
@@ -314,7 +368,49 @@ export class SolanaChain implements ChainGateway {
       return;
     }
     await this.freshConfig();
+    await this.checkSupply();
     await this.refreshSeason();
+  }
+
+  /**
+   * Reads the mint supply: arenas only run while every amount fits a JS number
+   * (`assertSafeSupply`). RPC errors keep the last known answer.
+   */
+  private async checkSupply(): Promise<void> {
+    const config = this.config;
+    if (!config) return;
+    let safe: boolean;
+    try {
+      const supply = await this.client!.fetchMintSupply(config.tokenMint);
+      try {
+        assertSafeSupply(supply);
+        safe = true;
+      } catch (err) {
+        if (this.supplySafe !== false) this.log(`!!! chain: arenas OFF — ${(err as Error).message}`);
+        safe = false;
+      }
+    } catch (err) {
+      this.warn('supply', `chain: token supply lookup failed (${firstLine(err)})`);
+      return;
+    }
+    if (safe && this.supplySafe === false) this.log('chain: token supply is safe again — arenas back on');
+    this.supplySafe = safe;
+    this.updateStakeEnabled();
+  }
+
+  private updateStakeEnabled(): void {
+    this.stakeEnabled = this.authorized === true && this.cfg.chain.stakeEnabled && this.supplySafe === true;
+  }
+
+  /** Raw token units with the mint's decimals and the display symbol (for logs). */
+  private units(raw: number): string {
+    const decimals = this.config?.tokenDecimals;
+    if (decimals === undefined) return `${raw} token units`;
+    try {
+      return `${formatToken(raw, decimals, 'en', { maxFrac: decimals })} ${this.cfg.chain.tokenSymbol}`;
+    } catch {
+      return `${raw} token units`;
+    }
   }
 
   private applyConfig(config: ConfigView): void {
@@ -325,14 +421,14 @@ export class SolanaChain implements ChainGateway {
     if (!authorized && this.authorized !== false) {
       this.log(
         `!!! chain: SERVER_KEYPAIR ${ours} is NOT the program's server authority (${config.serverAuthority}). ` +
-          'Stake arenas and on-chain records are OFF; pending settlements stay queued until this is fixed ' +
+          'Arenas are OFF; pending settlements stay queued until this is fixed ' +
           `(e.g. \`pnpm admin update-config --server ${ours}\`).`,
       );
     } else if (authorized && this.authorized === false) {
       this.log('chain: server authority matches again — settlements resume');
     }
     this.authorized = authorized;
-    this.stakeEnabled = authorized && this.cfg.chain.stakeEnabled;
+    this.updateStakeEnabled();
   }
 
   /** Cached config, re-read when older than `maxAgeMs` (the cached one is kept on RPC errors). */
@@ -386,16 +482,74 @@ export class SolanaChain implements ChainGateway {
     if (!this.enabled || !this.client) {
       return { enabled: false, cluster, programId: null, rpcUrl: null, arenasEnabled: false, currentSeason: null, token: null, pass: null };
     }
+    const config = this.config;
     return {
       enabled: true,
       cluster,
       programId: this.client.programId.toBase58(),
       rpcUrl: publicRpcUrl ?? clusterDefaultRpc(cluster),
       arenasEnabled: this.stakeEnabled,
-      currentSeason: this.config?.currentSeason ?? null,
-      token: null,
-      pass: null,
+      currentSeason: config?.currentSeason ?? null,
+      token: config ? { mint: config.tokenMint, symbol: this.cfg.chain.tokenSymbol || TOKEN_SYMBOL_DEFAULT, decimals: config.tokenDecimals } : null,
+      pass: this.passStatus(),
     };
+  }
+
+  /** From the cached config; null until the Pass collection is set. */
+  passStatus(): PassStatus | null {
+    const c = this.config;
+    if (!this.enabled || !c || !c.passCollection) return null;
+    return {
+      collection: c.passCollection,
+      supply: c.passSupply,
+      minted: c.passMinted,
+      perWallet: c.passPerWallet,
+      mintOpen: c.passMintOpen,
+      mintStartTs: c.passMintStartTs,
+      revealed: c.passRevealed && !!c.passSeed,
+      seed: c.passRevealed ? c.passSeed : null,
+    };
+  }
+
+  /**
+   * A Core asset that is a Slana Pass of our collection (`Slana Pass #n`), with its
+   * current owner. Cached 60 s; RPC errors yield the last known value or null.
+   */
+  async getPass(asset: string): Promise<ChainPass | null> {
+    const collection = this.config?.passCollection;
+    if (!this.enabled || !this.client || !collection || !isPubkey(asset)) return null;
+    const cached = this.passes.get(asset);
+    if (cached && this.now() - cached.at < PASS_TTL_MS) return cached.value;
+    try {
+      const a = await this.client.fetchCoreAsset(asset);
+      const number = a && a.collection === collection ? passNumberFromName(a.name) : null;
+      const value = a && number !== null ? { owner: a.owner, number } : null;
+      if (this.passes.size >= MAX_PASS_CACHE) this.passes.delete(this.passes.keys().next().value!);
+      this.passes.delete(asset);
+      this.passes.set(asset, { at: this.now(), value });
+      return value;
+    } catch (err) {
+      this.warn('pass', `chain: Pass lookup failed (${firstLine(err)})`);
+      return cached?.value ?? null;
+    }
+  }
+
+  /** Passes owned by `wallet` (DAS or getProgramAccounts via the SDK); cached 30 s. */
+  async ownedPasses(wallet: string): Promise<OwnedPassInfo[]> {
+    const collection = this.config?.passCollection;
+    if (!this.enabled || !this.client || !collection || !isPubkey(wallet)) return [];
+    const cached = this.owned.get(wallet);
+    if (cached && this.now() - cached.at < OWNED_TTL_MS) return cached.value;
+    try {
+      const value = (await this.client.listOwnedPasses(wallet, collection)).map((p) => ({ asset: p.asset, number: p.number }));
+      if (this.owned.size >= MAX_PASS_CACHE) this.owned.delete(this.owned.keys().next().value!);
+      this.owned.delete(wallet);
+      this.owned.set(wallet, { at: this.now(), value });
+      return value;
+    } catch (err) {
+      this.warn('owned', `chain: owned-Pass listing failed (${firstLine(err)})`);
+      return cached?.value ?? [];
+    }
   }
 
   /** Cached 60 s (`fresh` bypasses). Never throws: RPC errors yield the last known value or null. */
@@ -432,8 +586,16 @@ export class SolanaChain implements ChainGateway {
     try {
       const s = await this.client.fetchSession(arenaId, player);
       if (!s) return null;
-      // TODO(Task 10): v2 session shape (entry fee in tokens, Pass); mapped onto the v1 fields for now.
-      return { address: s.address, id: s.id, player: s.player, arenaId: s.arenaId, buyIn: toSafeAmount(s.entryFee), openedAt: s.openedAt };
+      return {
+        address: s.address,
+        id: s.id,
+        player: s.player,
+        arenaId: s.arenaId,
+        entryFee: toSafeAmount(s.entryFee),
+        openedAt: s.openedAt,
+        hasPass: s.hasPass,
+        passAsset: s.passAsset,
+      };
     } catch (err) {
       this.warn('session', `chain: session lookup failed (${firstLine(err)})`);
       return null;
@@ -445,17 +607,18 @@ export class SolanaChain implements ChainGateway {
     if (!this.enabled || !this.client) return [];
     if (this.arenaCache && this.now() - this.arenaCache.at < ARENA_TTL_MS) return this.arenaCache.value;
     try {
-      // TODO(Task 10): v2 arena shape (token entry fee, Pass gating, max sessions).
-      const value = (await this.client.fetchArenas()).map((a) => ({
-        id: a.id,
-        address: a.address,
-        buyIn: toSafeAmount(a.entryFee),
-        maxPlayers: Math.min(a.maxSessions, CAPACITY.arena),
-        enabled: a.enabled,
-        openSessions: a.openSessions,
-        pot: toSafeAmount(a.pot),
-        requiresPass: a.requiresPass,
-      }));
+      const value = (await this.client.fetchArenas()).map(
+        (a): ChainArena => ({
+          id: a.id,
+          address: a.address,
+          entryFee: toSafeAmount(a.entryFee),
+          requiresPass: a.requiresPass,
+          maxSessions: a.maxSessions,
+          openSessions: a.openSessions,
+          enabled: a.enabled,
+          pot: toSafeAmount(a.pot),
+        }),
+      );
       this.arenaCache = { at: this.now(), value };
       return value;
     } catch (err) {
@@ -527,7 +690,7 @@ export class SolanaChain implements ChainGateway {
   private emit(e: SettledEvent): void {
     this.profiles.delete(e.player);
     this.seasonCache = null;
-    if (e.kind === 'settle') this.arenaCache = null;
+    this.arenaCache = null;
     for (const fn of this.settledListeners) {
       try {
         fn(e);
@@ -588,7 +751,6 @@ export class SolanaChain implements ChainGateway {
 
   private async process(item: SettlementItem): Promise<void> {
     if (item.kind === 'settle') return this.processSettle(item);
-    if (item.kind === 'record') return this.processRecord(item);
     this.log(`!!! chain: dropping journal item of unknown kind: ${JSON.stringify(item)}`);
     this.journal.remove(item.key);
   }
@@ -631,6 +793,16 @@ export class SolanaChain implements ChainGateway {
       return;
     }
 
+    const ixs: TransactionInstruction[] = [];
+    // settle pays into the player's token account: create it (server pays the rent) when missing
+    const playerAta = ata(item.player, config.tokenMint, config.tokenProgram).toBase58();
+    let ataExists = false;
+    try {
+      ataExists = await this.client!.accountExists(playerAta);
+    } catch {
+      ataExists = false; // idempotent create: harmless when it does exist
+    }
+    if (!ataExists) ixs.push(createAtaIdempotentIx(this.keypair!.publicKey, item.player, config.tokenMint, config.tokenProgram));
     const ix = await this.client!.ix.settleSession(this.keypair!.publicKey, {
       player: item.player,
       arenaId: item.arenaId,
@@ -651,37 +823,24 @@ export class SolanaChain implements ChainGateway {
       this.journal.remove(key);
       return;
     }
+    ixs.push(ix);
+    let fee: number | undefined;
     try {
-      const signature = await this.send(key, [ix]);
+      fee = toSafeAmount(splitPayout(payout, session.entryFee, session.hasPass, config).fee);
+    } catch {
+      fee = undefined;
+    }
+    try {
+      const signature = await this.send(key, ixs);
       this.journal.remove(key);
       this.sentSignatures.delete(key);
-      this.log(`chain: settled ${short(key)} (${item.reason ?? 'settle'}) · ${units(payout)} → ${short(item.player)} · ${signature}`);
-      this.emit({ key, player: item.player, signature, kind: 'settle', payout });
+      this.log(
+        `chain: settled ${short(key)} (${item.reason ?? 'settle'}) · ${this.units(payout)}${fee ? ` (fee ${this.units(fee)})` : ''} → ${short(item.player)} · ${signature}`,
+      );
+      this.emit(fee === undefined ? { key, player: item.player, signature, payout } : { key, player: item.player, signature, payout, fee });
     } catch (err) {
       await this.onSendError(item, err);
     }
-  }
-
-  private async processRecord(item: SettlementItem): Promise<void> {
-    const { key } = item;
-    if (!isPubkey(item.player)) {
-      this.log(`chain: dropping malformed record ${JSON.stringify(item)}`);
-      this.journal.remove(key);
-      return;
-    }
-    if (this.authorized === false) {
-      this.warn('record-drop', 'chain: dropping free-play records — the server key is not the program server authority');
-      this.journal.remove(key);
-      return;
-    }
-    if (item.attempts >= MAX_RECORD_ATTEMPTS) {
-      this.log(`chain: giving up on free-play record ${short(key)} after ${item.attempts} attempts (${item.lastError ?? 'unknown error'})`);
-      this.journal.remove(key);
-      return;
-    }
-    // TODO(Task 10): v2 has no `record_game`; free-play results are no longer written on-chain.
-    this.warn('record-v2', 'chain: free-play records are not written on-chain in v2 — dropping them (logged once a minute)');
-    this.journal.remove(key);
   }
 
   /** The session is gone (or re-opened): drop the item, reporting our own earlier send if it landed. */
@@ -691,7 +850,7 @@ export class SolanaChain implements ChainGateway {
     this.journal.remove(item.key);
     if (signature && (await this.landed(signature))) {
       this.log(`chain: settled ${short(item.key)} (confirmation arrived late) · ${signature}`);
-      this.emit({ key: item.key, player: item.player, signature, kind: 'settle', payout: item.payout });
+      this.emit({ key: item.key, player: item.player, signature, payout: item.payout ?? 0 });
       return;
     }
     this.log(`chain: dropping settlement ${short(item.key)} for ${short(item.player)} — ${why} (already settled or refunded)`);
@@ -713,15 +872,10 @@ export class SolanaChain implements ChainGateway {
     const code = programErrorCode(err);
     const d = describeError(err);
     const label = `${d.name ?? 'error'}${code !== null ? ` ${code}` : ''}: ${firstLine(err)}`;
-    const what = item.kind === 'settle' ? `settlement ${short(key)}` : `record ${short(key)}`;
+    const what = `settlement ${short(key)}`;
 
     if (code === ERR.sessionMismatch || code === ERR.accountNotInitialized || code === ERR.accountOwnedByWrongProgram) {
-      if (item.kind === 'settle') {
-        await this.dropFinished(item, label);
-      } else {
-        this.log(`chain: dropping ${what} — ${label}`);
-        this.journal.remove(key);
-      }
+      await this.dropFinished(item, label);
       return;
     }
     if (code === ERR.unauthorized) {
@@ -732,8 +886,7 @@ export class SolanaChain implements ChainGateway {
         return;
       }
       if (!this.authorized) {
-        if (item.kind === 'record') this.journal.remove(key);
-        else this.journal.retryLater(key, label, this.now());
+        this.journal.retryLater(key, label, this.now());
         return;
       }
       this.log(`!!! chain: dropping ${what} — rejected as unauthorized (${label}) ${JSON.stringify(item)}`);
@@ -744,12 +897,12 @@ export class SolanaChain implements ChainGateway {
       this.configAt = 0; // the season probably moved: re-read before the retry
     }
     if (code === ERR.insufficientPot) {
-      this.warn(`pot-${item.arenaId}`, `!!! chain: arena #${item.arenaId} pot cannot cover ${what} (${units(item.payout ?? 0)}) — retrying with backoff`);
+      this.warn(`pot-${item.arenaId}`, `!!! chain: arena #${item.arenaId} pot cannot cover ${what} (${this.units(item.payout ?? 0)}) — retrying with backoff`);
     }
     if (d.name === 'InsufficientFunds') {
       this.warn('fee-payer', `!!! chain: server wallet ${this.keypair!.publicKey.toBase58()} cannot pay fees — fund it (${label})`);
     }
-    if (item.kind === 'settle' && item.attempts > 0 && item.attempts % 5 === 0) {
+    if (item.attempts > 0 && item.attempts % 5 === 0) {
       this.log(`!!! chain: ${what} still failing after ${item.attempts + 1} attempts: ${label}`);
     }
     this.journal.retryLater(key, label, this.now());

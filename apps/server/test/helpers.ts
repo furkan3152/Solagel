@@ -1,5 +1,5 @@
-import type { ChainStatus, ServerMessage } from '@slana/shared';
-import type { ChainArena, ChainGateway, ChainProfile, ChainSession, SeasonView } from '../src/chain/types';
+import type { ChainStatus, PassStatus, ServerMessage } from '@slana/shared';
+import type { ChainArena, ChainGateway, ChainPass, ChainProfile, ChainSession, OwnedPassInfo, SeasonView } from '../src/chain/types';
 import { Leaderboards } from '../src/leaderboards';
 import { Conn } from '../src/net/conn';
 import type { RoomDeps } from '../src/rooms/room';
@@ -44,6 +44,15 @@ export class ArenaChain implements ChainGateway {
   async season(): Promise<SeasonView | null> {
     return null;
   }
+  async getPass(): Promise<ChainPass | null> {
+    return null;
+  }
+  async ownedPasses(): Promise<OwnedPassInfo[]> {
+    return [];
+  }
+  passStatus(): PassStatus | null {
+    return null;
+  }
   kick(): void {}
   setLiveSessionProvider(): void {}
   onSettled(): void {}
@@ -51,11 +60,11 @@ export class ArenaChain implements ChainGateway {
   async stop(): Promise<void> {}
 }
 
-export const arena = (id: number, buyIn: number, requiresPass = false): ChainArena => ({
+export const arena = (id: number, entryFee: number, requiresPass = false): ChainArena => ({
   id,
   address: `Arena${id}`,
-  buyIn,
-  maxPlayers: 300,
+  entryFee,
+  maxSessions: 300,
   enabled: true,
   openSessions: 0,
   pot: 0,
@@ -67,8 +76,6 @@ export function roomDeps(chain: ChainGateway, journal = new Journal(null)): Room
     chain,
     journal,
     leaderboards: new Leaderboards(null),
-    canRecord: () => false,
-    recordMinScore: Infinity,
     log: () => {},
   };
 }

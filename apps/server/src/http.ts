@@ -7,6 +7,8 @@ import type { ChainGateway } from './chain/types';
 import type { ServerConfig } from './config';
 import type { Leaderboards } from './leaderboards';
 import { clientIp } from './net/gateway';
+import { PassImages } from './pass/images';
+import { collectionMetadata, passMetadata } from './pass/metadata';
 import type { RoomManager } from './rooms/manager';
 
 const MIME: Record<string, string> = {
@@ -32,6 +34,26 @@ interface Ctx {
   chain: ChainGateway;
   auth: Auth;
   startedAt: number;
+  /** Pass image renderer/cache (default: `DATA_DIR/pass`). */
+  passImages?: PassImages;
+}
+
+/** Requests per minute and IP on `/pass/*` and `/api/pass/*`. */
+export const PASS_RATE_PER_MIN = 60;
+const HOST_RE = /^[A-Za-z0-9.-]+(:\d{1,5})?$|^\[[0-9A-Fa-f:.]+\](:\d{1,5})?$/;
+const PASS_PATH = /^\/pass\/(\d{1,6})\.(json|png)$/;
+
+/**
+ * Base URL for links in Pass metadata: `PUBLIC_URL` when set, else the request's
+ * host (and `X-Forwarded-Proto`/`-Host` behind a trusted proxy), else localhost.
+ */
+export function publicBaseUrl(cfg: ServerConfig, req: IncomingMessage, trustProxy: boolean): string {
+  if (cfg.publicUrl) return cfg.publicUrl;
+  const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v)?.split(',')[0]?.trim();
+  const host = (trustProxy ? first(req.headers['x-forwarded-host']) : undefined) ?? req.headers.host;
+  const proto = trustProxy ? first(req.headers['x-forwarded-proto']) : undefined;
+  if (host && HOST_RE.test(host)) return `${proto === 'https' ? 'https' : 'http'}://${host}`;
+  return `http://localhost:${cfg.port}`;
 }
 
 function json(res: ServerResponse, status: number, body: unknown): void {
@@ -87,7 +109,37 @@ function serveStatic(root: string, req: IncomingMessage, res: ServerResponse, pa
 export function createHttpServer(cfg: ServerConfig, ctx: Ctx): Server {
   const apiLimiter = new Limiter(240, 60_000);
   const nonceLimiter = new Limiter(20, 60_000);
+  const passLimiter = new Limiter(PASS_RATE_PER_MIN, 60_000);
   const trustProxy = process.env.TRUST_PROXY === '1';
+  const passImages = ctx.passImages ?? new PassImages(join(cfg.dataDir, 'pass'));
+
+  /** `/pass/collection.json|png`, `/pass/<n>.json|png`; every other `/pass/*` path is a 404. */
+  async function servePass(req: IncomingMessage, res: ServerResponse, pathname: string): Promise<void> {
+    const pass = ctx.chain.passStatus();
+    if (!pass) return json(res, 404, { error: 'pass collection not configured' });
+    const base = publicBaseUrl(cfg, req, trustProxy);
+    const sealed = !(pass.revealed && pass.seed);
+    const cache = sealed ? 'public, max-age=60' : 'public, max-age=3600';
+    const sendJson = (body: unknown) => {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': cache });
+      res.end(req.method === 'HEAD' ? undefined : JSON.stringify(body));
+    };
+    const sendPng = (buf: Buffer) => {
+      res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': buf.length, 'Cache-Control': sealed ? 'public, max-age=300' : 'public, max-age=86400' });
+      res.end(req.method === 'HEAD' ? undefined : buf);
+    };
+    if (pathname === '/pass/collection.json') return sendJson(collectionMetadata(pass, base));
+    if (pathname === '/pass/collection.png') return sendPng((await passImages.png('collection', pass))!);
+    const m = PASS_PATH.exec(pathname);
+    if (!m) return json(res, 404, { error: 'not found' });
+    const n = Number(m[1]);
+    if (m[2] === 'json') {
+      const meta = passMetadata(n, pass, base);
+      return meta ? sendJson(meta) : json(res, 404, { error: 'no such pass' });
+    }
+    const png = await passImages.png(n, pass);
+    return png ? sendPng(png) : json(res, 404, { error: 'no such pass' });
+  }
 
   return createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
@@ -102,8 +154,14 @@ export function createHttpServer(cfg: ServerConfig, ctx: Ctx): Server {
     }
     const ip = clientIp(req, trustProxy);
     try {
+      if (url.pathname.startsWith('/pass/')) {
+        if (req.method !== 'GET' && req.method !== 'HEAD') return json(res, 405, { error: 'method not allowed' });
+        if (!passLimiter.allow(ip)) return json(res, 429, { error: 'rate_limited' });
+        return await servePass(req, res, url.pathname);
+      }
       if (url.pathname.startsWith('/api/')) {
         if (!apiLimiter.allow(ip)) return json(res, 429, { error: 'rate_limited' });
+        if (url.pathname.startsWith('/api/pass/') && !passLimiter.allow(ip)) return json(res, 429, { error: 'rate_limited' });
         switch (url.pathname) {
           case '/api/health':
             return json(res, 200, {
@@ -125,6 +183,11 @@ export function createHttpServer(cfg: ServerConfig, ctx: Ctx): Server {
             const pubkey = url.searchParams.get('pubkey');
             if (!isValidPubkey(pubkey)) return json(res, 400, { error: 'invalid pubkey' });
             return json(res, 200, ctx.auth.issueNonce(pubkey));
+          }
+          case '/api/pass/owned': {
+            const wallet = url.searchParams.get('wallet');
+            if (!isValidPubkey(wallet)) return json(res, 400, { error: 'invalid wallet' });
+            return json(res, 200, { passes: await ctx.chain.ownedPasses(wallet) });
           }
           default:
             return json(res, 404, { error: 'not found' });

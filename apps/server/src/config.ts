@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
-import { CAPACITY, RULES } from '@slana/shared';
+import { CAPACITY, RULES, TOKEN_SYMBOL_DEFAULT } from '@slana/shared';
 import type { BotManagerOptions } from './bots/manager';
 
 export interface ServerConfig {
@@ -9,6 +9,11 @@ export interface ServerConfig {
   /** Allowed CORS origin for REST ("*" by default). */
   corsOrigin: string;
   dataDir: string;
+  /**
+   * Public base URL of this server (`PUBLIC_URL`, no trailing slash), used in Pass metadata
+   * image links. Null: derived from the request's Host header, else `http://localhost:<PORT>`.
+   */
+  publicUrl: string | null;
   /** Optional path to the built web app (apps/web/dist) to serve statically. */
   webDist: string | null;
   maxConnectionsPerIp: number;
@@ -36,9 +41,9 @@ export interface ServerConfig {
     stakeEnabled: boolean;
     /** Arena ids to open as stake rooms (empty = discover on-chain). */
     arenaIds: number[];
-    /** Minimum score for a free game to be written on-chain. */
-    recordMinScore: number;
     priorityFeeMicroLamports: number;
+    /** Display symbol of the game token (`TOKEN_SYMBOL`, default `$SLANA`). */
+    tokenSymbol: string;
   };
 }
 
@@ -61,6 +66,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     host: env.HOST ?? '0.0.0.0',
     corsOrigin: env.CORS_ORIGIN ?? '*',
     dataDir: resolve(env.DATA_DIR ?? 'data'),
+    publicUrl: env.PUBLIC_URL?.trim() ? env.PUBLIC_URL.trim().replace(/\/+$/, '') : null,
     webDist: env.WEB_DIST ? resolve(env.WEB_DIST) : null,
     maxConnectionsPerIp: int(env.MAX_CONNECTIONS_PER_IP, 8),
     maxConnections: int(env.MAX_CONNECTIONS, 600),
@@ -112,8 +118,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
         .filter((s) => s.length > 0)
         .map(Number)
         .filter((n) => Number.isInteger(n) && n >= 0 && n <= 65535),
-      recordMinScore: int(env.RECORD_MIN_SCORE, 40),
       priorityFeeMicroLamports: int(env.PRIORITY_FEE_MICROLAMPORTS, 5000),
+      tokenSymbol: env.TOKEN_SYMBOL?.trim() || TOKEN_SYMBOL_DEFAULT,
     },
   };
 }
