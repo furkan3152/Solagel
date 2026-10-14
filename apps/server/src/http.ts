@@ -2,6 +2,7 @@ import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { PROTOCOL_VERSION } from '@slana/shared';
+import { serializePassJson } from '@slana/art';
 import { isValidPubkey, type Auth } from './auth';
 import type { ChainGateway } from './chain/types';
 import type { ServerConfig } from './config';
@@ -126,7 +127,7 @@ export function createHttpServer(cfg: ServerConfig, ctx: Ctx): Server {
     const cache = !cfg.publicUrl ? 'no-store' : sealed ? 'public, max-age=60' : 'public, max-age=3600';
     const sendJson = (body: unknown) => {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': cache });
-      res.end(req.method === 'HEAD' ? undefined : JSON.stringify(body));
+      res.end(req.method === 'HEAD' ? undefined : serializePassJson(body));
     };
     const sendPng = (buf: Buffer) => {
       res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': buf.length, 'Cache-Control': sealed ? 'public, max-age=300' : 'public, max-age=86400' });

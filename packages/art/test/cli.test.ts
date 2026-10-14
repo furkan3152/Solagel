@@ -2,7 +2,8 @@ import { mkdtempSync, readFileSync, existsSync, writeFileSync, rmSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { passTraits, revealedPassMetadata } from '../src/index';
+import { collectionJson, passJson, serializePassJson } from '../src/index';
+import { main } from '../src/cli/common';
 import { runGenerate } from '../src/cli/generate';
 import { runPreview } from '../src/cli/preview';
 
@@ -37,8 +38,42 @@ describe('pass:generate', () => {
     expect(JSON.parse(readFileSync(join(out, 'collection.json'), 'utf8')).name).toBe('Slana Pass');
     expect(readFileSync(join(out, 'rarity-report.md'), 'utf8')).toContain('Legendary');
     // byte-identical to the shared builder the server uses
-    const expected = JSON.stringify(revealedPassMetadata(passTraits(SEED_HEX, 3, 3333), 3, '3.png', ''), null, 2) + '\n';
-    expect(readFileSync(join(out, '3.json'), 'utf8')).toBe(expected);
+    expect(meta).not.toHaveProperty('external_url');
+    expect(readFileSync(join(out, '3.json'), 'utf8')).toBe(serializePassJson(passJson(3, SEED_HEX, 3333)));
+  });
+
+  it('--site-url writes exactly the bytes the server serves', async () => {
+    const out = join(dir, 'out-site');
+    await runGenerate(['--seed-file', seedFile, '--out', out, '--from', '3', '--to', '3', '--site-url', 'https://h/']);
+    const bytes = readFileSync(join(out, '3.json'), 'utf8');
+    expect(bytes).toBe(serializePassJson(passJson(3, SEED_HEX, 3333, { siteUrl: 'https://h' })));
+    expect(JSON.parse(bytes)).toMatchObject({ image: 'https://h/pass/3.png', external_url: 'https://h' });
+    expect(readFileSync(join(out, 'collection.json'), 'utf8')).toBe(serializePassJson(collectionJson(3333, { siteUrl: 'https://h' })));
+  });
+
+  it('--base-url drives the image, --site-url the external_url', async () => {
+    const out = join(dir, 'out-both');
+    await runGenerate(['--seed-file', seedFile, '--out', out, '--from', '1', '--to', '1', '--base-url', 'ipfs://cid/', '--site-url', 'https://h']);
+    expect(JSON.parse(readFileSync(join(out, '1.json'), 'utf8'))).toMatchObject({ image: 'ipfs://cid/1.png', external_url: 'https://h' });
+  });
+
+  it('groups 1/1 rows in the rarity report', async () => {
+    const report = readFileSync(join(dir, 'out', 'rarity-report.md'), 'utf8');
+    expect(report).toContain('| 1/1 | 10 |');
+    expect(report).not.toContain('oneOfOne');
+  });
+
+  it('main sets a non-zero exit code on a missing seed', async () => {
+    const prev = process.exitCode;
+    const err = console.error;
+    console.error = () => {};
+    try {
+      await main(() => runGenerate(['--seed-file', join(dir, 'nope.json'), '--out', join(dir, 'o4')]));
+      expect(process.exitCode).toBe(1);
+    } finally {
+      console.error = err;
+      process.exitCode = prev;
+    }
   });
 
   it('prefixes image URLs with --base-url and requires a trailing slash', async () => {

@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import type { Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { passTraits } from '@slana/art';
+import { collectionJson, passJson, passTraits, serializePassJson } from '@slana/art';
 import type { PassStatus } from '@slana/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 import { NullChain, type ChainGateway, type OwnedPassInfo } from '../src/chain/types';
@@ -140,6 +140,16 @@ describe('pass http routes', () => {
     chain.status_ = null;
     expect((await fetch(`${url}/pass/1.json`)).status).toBe(404);
     expect((await fetch(`${url}/pass/collection.json`)).status).toBe(404);
+  });
+
+  it('serves exactly the bytes the offline CLI writes (R11 parity)', async () => {
+    const url = await start(new PassChain(), { PUBLIC_URL: 'https://h' });
+    for (const n of [1, 3, 777]) {
+      const body = await (await fetch(`${url}/pass/${n}.json`)).text();
+      expect(body).toBe(serializePassJson(passJson(n, SEED, 3333, { siteUrl: 'https://h' })));
+    }
+    const col = await (await fetch(`${url}/pass/collection.json`)).text();
+    expect(col).toBe(serializePassJson(collectionJson(3333, { siteUrl: 'https://h' })));
   });
 
   it('serves owned passes, derives the image host without PUBLIC_URL and rate-limits 60/min/IP', async () => {
