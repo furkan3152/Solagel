@@ -1,4 +1,4 @@
-import type { ChainStatus } from '@slana/shared';
+import type { ChainStatus, PassStatus } from '@slana/shared';
 
 export interface ChainProfile {
   owner: string;
@@ -17,22 +17,52 @@ export interface ChainSession {
   id: number;
   player: string;
   arenaId: number;
-  buyIn: number;
+  /** Ticket price, raw token units. */
+  entryFee: number;
   /** Unix seconds. */
   openedAt: number;
+  /** The ticket was bought with a Slana Pass (Pass power, lower fee). */
+  hasPass: boolean;
+  /** The Pass asset locked by this session, null without a Pass. */
+  passAsset: string | null;
 }
 
 export interface ChainArena {
   id: number;
   address: string;
-  buyIn: number;
-  maxPlayers: number;
-  enabled: boolean;
-  openSessions: number;
-  /** Lamports above rent held by the arena vault. */
-  pot: number;
+  /** Ticket price, raw token units. */
+  entryFee: number;
   /** A Slana Pass is needed to buy a ticket. */
-  requiresPass?: boolean;
+  requiresPass: boolean;
+  /** On-chain cap on open sessions. */
+  maxSessions: number;
+  openSessions: number;
+  enabled: boolean;
+  /** Raw token units held by the arena vault. */
+  pot: number;
+}
+
+/** A verified Slana Pass (Core asset of our collection). */
+export interface ChainPass {
+  owner: string;
+  number: number;
+}
+
+/** A Slana Pass owned by a wallet. */
+export interface OwnedPassInfo {
+  asset: string;
+  number: number;
+}
+
+export interface SettledEvent {
+  /** Journal key (session PDA). */
+  key: string;
+  player: string;
+  signature: string;
+  /** Raw token units paid out of the vault (before the fee). */
+  payout: number;
+  /** Fee on profit, raw token units (absent when unknown, e.g. a late confirmation). */
+  fee?: number;
 }
 
 export interface SeasonEntry {
@@ -62,11 +92,17 @@ export interface ChainGateway {
   getSession(arenaId: number, player: string): Promise<ChainSession | null>;
   listArenas(): Promise<ChainArena[]>;
   season(): Promise<SeasonView | null>;
+  /** Core asset `asset` when it is a Pass of our collection (cached 60 s); null otherwise. */
+  getPass(asset: string): Promise<ChainPass | null>;
+  /** Passes of our collection owned by `wallet` (cached 30 s). */
+  ownedPasses(wallet: string): Promise<OwnedPassInfo[]>;
+  /** Collection / mint / reveal state, null while the collection is not set. */
+  passStatus(): PassStatus | null;
   /** Wake the settlement worker (new journal items). */
   kick(): void;
   /** Ids of sessions currently owned by a room (live); never refunded as stale. */
   setLiveSessionProvider(fn: () => Set<string>): void;
-  onSettled(fn: (e: { key: string; player: string; signature: string; kind: 'settle' | 'record'; payout?: number }) => void): void;
+  onSettled(fn: (e: SettledEvent) => void): void;
   start(): Promise<void>;
   stop(): Promise<void>;
 }
@@ -97,6 +133,15 @@ export class NullChain implements ChainGateway {
     return [];
   }
   async season(): Promise<SeasonView | null> {
+    return null;
+  }
+  async getPass(_asset: string): Promise<ChainPass | null> {
+    return null;
+  }
+  async ownedPasses(_wallet: string): Promise<OwnedPassInfo[]> {
+    return [];
+  }
+  passStatus(): PassStatus | null {
     return null;
   }
   kick(): void {}

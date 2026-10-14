@@ -6,7 +6,7 @@ import {
   SKIN_COUNT,
   clamp,
   decodeClientInput,
-  isSkinUnlocked,
+  isBasicSkin,
   levelFromXp,
   parseJoinTarget,
   sanitizeName,
@@ -14,7 +14,7 @@ import {
   type ProfileSummary,
 } from '@slana/shared';
 import { WebSocketServer, type RawData, type WebSocket } from 'ws';
-import type { Auth } from '../auth';
+import { isValidPubkey, type Auth } from '../auth';
 import type { ChainGateway, ChainProfile } from '../chain/types';
 import type { ServerConfig } from '../config';
 import type { RoomManager } from '../rooms/manager';
@@ -57,12 +57,13 @@ export class Gateway {
     private readonly trustProxy = process.env.TRUST_PROXY === '1',
   ) {
     chain.onSettled((e) => {
-      // on-chain free-play records are not announced to clients, they only refresh the profile (XP)
-      if (e.kind === 'settle') {
-        for (const conn of this.rooms.connsByWallet(e.player)) {
-          const kind = (e.payout ?? 0) > 0 ? 'cashout' : 'death';
-          conn.send({ t: 'settled', kind, signature: e.signature, payout: e.payout ?? 0 });
-        }
+      for (const conn of this.rooms.connsByWallet(e.player)) {
+        const kind = e.payout > 0 ? 'cashout' : 'death';
+        conn.send(
+          e.fee === undefined
+            ? { t: 'settled', kind, signature: e.signature, payout: e.payout }
+            : { t: 'settled', kind, signature: e.signature, payout: e.payout, fee: e.fee, net: e.payout - e.fee },
+        );
       }
       void this.refreshProfile(e.player);
     });
@@ -239,6 +240,28 @@ export class Gateway {
     conn.send({ t: 'authed', pubkey: wallet, token: this.auth.issueToken(wallet), profile: profileSummary(conn.profile) });
   }
 
+  /**
+   * Number of the Pass `asset` when the signed-in wallet owns it (Core asset of
+   * our collection, read via `getPass`). Otherwise sends `pass_invalid` and
+   * returns 0: the player joins with the chosen basic skin.
+   */
+  private async verifyPass(conn: Conn, asset: unknown): Promise<number> {
+    const invalid = (message: string): number => {
+      this.error(conn, 'pass_invalid', message);
+      return 0;
+    };
+    if (!conn.wallet) return invalid('Sign in with the wallet that holds this Pass to play with it.');
+    if (!isValidPubkey(asset)) return invalid('That is not a Slana Pass.');
+    if (!conn.allowChainOp()) {
+      this.error(conn, 'rate_limited', 'Too many requests — playing with your basic skin.');
+      return 0;
+    }
+    const pass = await this.chain.getPass(asset).catch(() => null);
+    if (!pass) return invalid('That is not a Slana Pass.');
+    if (pass.owner !== conn.wallet) return invalid('That Pass is not in your wallet — playing with your basic skin.');
+    return pass.number;
+  }
+
   private async onJoin(conn: Conn, msg: Record<string, unknown>): Promise<void> {
     if (conn.joining) return;
     const target = typeof msg.room === 'string' ? parseJoinTarget(msg.room) : null;
@@ -250,11 +273,12 @@ export class Gateway {
     try {
       const skin = Number.isInteger(msg.skin) && (msg.skin as number) >= 0 && (msg.skin as number) < SKIN_COUNT ? (msg.skin as number) : 0;
       if (conn.wallet) conn.profile = await this.chain.getProfile(conn.wallet).catch(() => conn.profile);
-      const own = conn.profile ? { xp: conn.profile.xp, premiumMask: conn.profile.premiumSkins } : null;
-      if (!isSkinUnlocked(skin, own)) {
+      // v2: only the basic skins can be picked; a Slana Pass brings its own look
+      if (!isBasicSkin(skin)) {
         this.error(conn, 'skin_locked', 'That skin is locked.');
         return;
       }
+      const wantPass = msg.pass === undefined || msg.pass === null || msg.pass === '' ? null : msg.pass;
       let name = sanitizeName(msg.name);
       let flags = 0;
       if (conn.profile) {
@@ -264,9 +288,11 @@ export class Gateway {
 
       if (target.mode === 'practice') {
         if (conn.player?.alive && conn.room?.opts.mode === 'practice') return; // already playing
+        const pass = wantPass === null ? 0 : await this.verifyPass(conn, wantPass);
+        if (conn.player?.alive && conn.room?.opts.mode === 'practice') return; // joined meanwhile (another message)
         const room = this.rooms.practiceRoom(this.rooms.leagueFor(conn), conn.room);
         if (conn.player?.alive) conn.room?.leave(conn, 'switch');
-        room.join(conn, { name, skin, flags });
+        room.join(conn, { name, skin, flags, pass, hasPass: pass > 0 });
         return;
       }
 
@@ -316,6 +342,10 @@ export class Gateway {
         this.error(conn, 'no_session', 'No open arena ticket found for your wallet.');
         return;
       }
+      if (room.opts.stake?.requiresPass && !session.hasPass) {
+        this.error(conn, 'pass_required', 'This arena needs a ticket bought with a Slana Pass.');
+        return;
+      }
       if (this.journal.pending.some((p) => p.key === session.address)) {
         this.error(conn, 'no_session', 'Your previous game in this arena is still being settled.');
         return;
@@ -324,6 +354,10 @@ export class Gateway {
         this.error(conn, 'no_session', 'This arena ticket expired and will be refunded.');
         return;
       }
+      // look: the Pass locked by the ticket; without one, an optional Pass the wallet owns (no power)
+      let pass = 0;
+      if (session.hasPass && session.passAsset) pass = (await this.chain.getPass(session.passAsset).catch(() => null))?.number ?? 0;
+      else if (wantPass !== null) pass = await this.verifyPass(conn, wantPass);
       // the instance may have filled up or been closed during the awaits above: pick again (arena data is cached)
       room = await this.rooms.confirmArenaRoom(target.arenaId, room);
       if (!room) {
@@ -340,16 +374,17 @@ export class Gateway {
         name,
         skin,
         flags: flags | PlayerFlag.Staker,
+        pass,
         stake: {
           player: conn.wallet,
           session: session.address,
           sessionId: session.id,
           arenaId: target.arenaId,
-          entryFee: session.buyIn,
-          value: session.buyIn,
+          entryFee: session.entryFee,
+          value: session.entryFee,
           openedAt: session.openedAt,
-          // the chain gateway reports Pass sessions from Task 10 on
-          hasPass: false,
+          // Pass power in arenas comes from the on-chain ticket only
+          hasPass: session.hasPass,
         },
       });
     } finally {

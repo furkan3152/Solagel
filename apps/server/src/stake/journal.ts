@@ -4,8 +4,9 @@ import { dirname } from 'node:path';
 export type SettleReason = 'cashout' | 'death' | 'afk' | 'crash' | 'stale' | 'maxage' | 'kicked';
 
 export interface SettlementItem {
-  kind: 'settle' | 'record';
-  /** Unique key: the session PDA for settlements, `<wallet>:<n>` for records. */
+  /** v1 journals also held free-play `record` items; v2 drops them on load. */
+  kind: 'settle';
+  /** Unique key: the session PDA. */
   key: string;
   /** Wallet (base58). */
   player: string;
@@ -13,7 +14,7 @@ export interface SettlementItem {
   session?: string;
   /** On-chain session id (settle only); guards against settling a re-joined session. */
   sessionId?: number;
-  /** Lamports owed (settle only). */
+  /** Raw token units owed. */
   payout?: number;
   score: number;
   kills: number;
@@ -99,7 +100,11 @@ export class Journal {
     try {
       const raw = JSON.parse(readFileSync(this.path, 'utf8')) as JournalFile | JournalFileV1;
       const data = migrate(raw);
-      this.pendingItems = data.pending;
+      // v1 free-play `record` items: v2 writes no on-chain records, so they are dropped
+      const settle = data.pending.filter((p) => (p as { kind: string }).kind === 'settle');
+      const legacy = data.pending.length - settle.length;
+      this.pendingItems = settle;
+      if (legacy > 0) this.log(`journal: dropped ${legacy} legacy free-play record item(s) (v2 writes no on-chain records)`);
       for (const l of data.live) {
         const list = this.liveByRoom.get(l.roomId) ?? [];
         list.push(l);
@@ -110,6 +115,7 @@ export class Journal {
         list.push(l);
         this.lootByRoom.set(l.roomId, list);
       }
+      if (legacy > 0) this.persist();
     } catch (err) {
       const backup = `${this.path}.corrupt-${Date.now()}`;
       this.log(`!!! journal at ${this.path} is unreadable (${(err as Error).message}); moved to ${backup}. Manual review required.`);
