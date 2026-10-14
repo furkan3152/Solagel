@@ -8,3 +8,4 @@ export * from './accessories';
 export * from './coin';
 export * from './digits';
 export * from './pass-card';
+export * from './metadata';
