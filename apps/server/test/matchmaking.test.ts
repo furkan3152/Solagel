@@ -140,6 +140,34 @@ describe('matchmaking', () => {
     expect(j3.recoverLoot(1).every((l) => l.roomId === 'arena-1-1')).toBe(true);
   });
 
+  it('an instance closed during a join is replaced by a live, mapped room', async () => {
+    const m = manager({ ARENA_INSTANCE_CAP: '1' });
+    const a1 = (await m.arenaRoom(1))!;
+    a1.join(fakeConn('keeper'), stakeJoin(1, FEE));
+    const a2 = (await m.arenaRoom(1))!;
+    expect(a2.id).toBe('arena-1-2');
+    // picking a room counts as activity, so cleanup leaves it alone while the join awaits the chain
+    a2.lastActivity = 0;
+    expect(await m.arenaRoom(1)).toBe(a2);
+    expect(Date.now() - a2.lastActivity).toBeLessThan(1000);
+    // a still-valid pick is kept
+    expect(await m.confirmArenaRoom(1, a2)).toBe(a2);
+
+    // cleanup closed the instance during the await (e.g. chain.getSession)
+    m.rooms.delete(a2.id);
+    const room = (await m.confirmArenaRoom(1, a2))!;
+    expect(room).not.toBe(a2);
+    expect(m.rooms.get(room.id)).toBe(room);
+    const join = stakeJoin(1, FEE);
+    room.join(fakeConn(join.stake.player), join);
+    expect(m.findArenaStake(1, join.stake.player)?.room).toBe(room);
+    expect(m.liveSessions().has(join.stake.session)).toBe(true);
+
+    // a pick that filled up meanwhile is replaced too; null when nothing live is left
+    expect((await m.confirmArenaRoom(1, a1))!.isFull).toBe(false);
+    expect(await m.confirmArenaRoom(7, a1)).toBeNull();
+  });
+
   it('rookie promoted to pro after a big game', () => {
     const m = manager();
     const conn = fakeConn(null, '10.0.0.7');

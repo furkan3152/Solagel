@@ -69,6 +69,17 @@ describe('pass power', () => {
     expect(snap.players.find((i) => i.id === plain.id)).toMatchObject({ pass: 0, flags: 0 });
   });
 
+  it('private rooms ignore the Pass', () => {
+    const room = new Room({ id: 'priv-ABCDE', mode: 'private', name: 'P', code: 'ABCDE', maxPlayers: 20, bots: null, seed: 4 }, roomDeps(new ArenaChain([])));
+    const conn = fakeConn();
+    const p = room.join(conn, { name: 'holder', skin: 2, flags: 0, pass: 42, hasPass: true });
+    expect(p.totalMass()).toBeCloseTo(RULES.startMass, 6);
+    expect(p.flags & PlayerFlag.Pass).toBe(0);
+    expect(p.pass).toBe(0);
+    expect(p.hasPass).toBe(false);
+    expect(conn.msgs.find((m) => m.t === 'joined')).not.toHaveProperty('hasPass', true);
+  });
+
   it('pass tuning comes from the environment', async () => {
     const cfg = loadConfig({ DATA_DIR: mkdtempSync(join(tmpdir(), 'slana-pp-')) });
     expect(cfg.pass).toEqual({ startMassMul: 1.15, cashoutMs: 2000 });
