@@ -1,7 +1,7 @@
 import type { IdlAccounts } from '@anchor-lang/core';
-import type { PublicKey } from '@solana/web3.js';
+import { PublicKey } from '@solana/web3.js';
 import type { Slana } from './idl/slana';
-import { levelFromXp, toNumber } from './math';
+import { levelFromXp, toBigInt, toNumber } from './math';
 import { toBase58, type Address } from './program';
 
 /** Raw decoded accounts as returned by the Anchor coder (BN for u64/i64, number[] for byte arrays). */
@@ -10,6 +10,8 @@ export type RawProfile = IdlAccounts<Slana>['playerProfile'];
 export type RawArena = IdlAccounts<Slana>['arena'];
 export type RawSession = IdlAccounts<Slana>['session'];
 export type RawSeason = IdlAccounts<Slana>['season'];
+export type RawPassLock = IdlAccounts<Slana>['passLock'];
+export type RawMintCounter = IdlAccounts<Slana>['mintCounter'];
 export type RawLeaderEntry = RawSeason['entries'][number];
 
 /** Account names in the (camelCased) IDL, as used by `program.coder.accounts`. */
@@ -19,25 +21,45 @@ export const ACCOUNT_NAMES = {
   arena: 'arena',
   session: 'session',
   season: 'season',
+  passLock: 'passLock',
+  mintCounter: 'mintCounter',
 } as const;
 
+/** Raw token amounts are `bigint` base units; lamports and counters are numbers. */
 export interface ConfigView {
   admin: string;
   serverAuthority: string;
-  treasury: string;
+  tokenMint: string;
+  tokenProgram: string;
+  tokenDecimals: number;
   feeBps: number;
-  seasonShareBps: number;
-  /** Lamports. */
-  skinPrice: number;
+  /** Fee on profit of a Pass session (≤ `feeBps`). */
+  passFeeBps: number;
+  /** Fee split (sums to 10 000). */
+  treasuryBps: number;
+  seasonBps: number;
+  burnBps: number;
+  /** Lamports a player deposits per session for the server's settle transaction. */
+  settleFeeLamports: number;
   currentSeason: number;
   paused: boolean;
-  totalPlayers: number;
-  totalGames: number;
-  totalSessions: number;
-  /** Lamports. */
-  totalStaked: number;
-  /** Lamports. */
-  totalPaidOut: number;
+  /** Core collection of the Pass, null until `set_pass_collection`. */
+  passCollection: string | null;
+  passBaseUri: string;
+  passSupply: number;
+  passMinted: number;
+  passPerWallet: number;
+  /** Minimum token balance to mint (0 = none). */
+  passMinTokens: bigint;
+  passMintOpen: boolean;
+  /** Unix seconds. */
+  passMintStartTs: number;
+  /** Hex sha256 of the seed, null while unset. */
+  passSeedHash: string | null;
+  /** Hex seed, null until revealed. */
+  passSeed: string | null;
+  passRevealed: boolean;
+  totals: { players: number; games: number; sessions: number; staked: bigint; paidOut: bigint };
 }
 
 export interface ProfileView {
@@ -46,8 +68,6 @@ export interface ProfileView {
   owner: string;
   name: string;
   skin: number;
-  /** Bit `i` set ⇔ premium skin `16 + i` owned. */
-  premiumSkins: number;
   xp: number;
   level: number;
   gamesPlayed: number;
@@ -58,10 +78,10 @@ export interface ProfileView {
   season: number;
   seasonPoints: number;
   stakeGames: number;
-  /** Lamports. */
-  totalStaked: number;
-  /** Lamports. */
-  totalWon: number;
+  /** Token base units. */
+  totalStaked: bigint;
+  /** Token base units. */
+  totalWon: bigint;
   /** Unix seconds. */
   createdAt: number;
   /** Unix seconds (0 = never played). */
@@ -69,35 +89,39 @@ export interface ProfileView {
 }
 
 export interface ArenaView {
-  /** Arena PDA (also the vault). */
-  address: string;
   id: number;
-  /** Lamports. */
-  buyIn: number;
-  maxPlayers: number;
-  enabled: boolean;
+  /** Arena PDA. */
+  address: string;
+  /** Token base units. */
+  entryFee: bigint;
+  requiresPass: boolean;
+  maxSessions: number;
   openSessions: number;
-  /** Lamports. */
-  totalDeposited: number;
-  /** Lamports. */
-  totalPaidOut: number;
-  /** Lamports held above the rent-exempt minimum. */
-  pot: number;
+  enabled: boolean;
+  /** Token vault `["vault", arena]`. */
+  vault: string;
+  /** Tokens held by the vault (base units). */
+  pot: bigint;
 }
 
 export interface SessionView {
   /** Session PDA. */
   address: string;
+  /** Unique, increasing session id (`settle_session` must echo it). */
+  id: number;
   player: string;
   /** Arena PDA. */
   arena: string;
   arenaId: number;
-  /** Lamports. */
-  buyIn: number;
+  /** Token base units. */
+  entryFee: bigint;
   /** Unix seconds. */
   openedAt: number;
-  /** Unique, increasing session id (`settle_session` must echo it). */
-  id: number;
+  hasPass: boolean;
+  /** Locked Pass asset, null without a Pass. */
+  passAsset: string | null;
+  /** Settle deposit in lamports. */
+  settleFee: number;
 }
 
 export interface LeaderEntryView {
@@ -117,12 +141,12 @@ export interface SeasonView {
   /** Unix seconds (0 while running). */
   endedAt: number;
   finalized: boolean;
-  /** Prize pool frozen by `end_season` (0 while running). Lamports. */
-  prizePool: number;
+  /** This season's tokens in the season vault, not paid out yet (base units). */
+  pool: bigint;
+  /** Prize pool frozen by `end_season` (0 while running). */
+  prizePool: bigint;
   /** Bit `rank` set ⇔ that rank's prize was claimed. */
   claimedMask: number;
-  /** Lamports currently held above rent (the live pool while running; unclaimed prizes after). */
-  pool: number;
   /** Leaderboard, sorted by points (only the used `count` entries). */
   entries: LeaderEntryView[];
 }
@@ -138,22 +162,52 @@ export function decodeName(bytes: ArrayLike<number>, len: number): string {
 }
 
 const pk = (k: PublicKey): string => k.toBase58();
+const pkOrNull = (k: PublicKey): string | null => (k.equals(PublicKey.default) ? null : k.toBase58());
+
+/** Lowercase hex of a byte array, null when all zero. */
+export function hexOrNull(bytes: ArrayLike<number>): string | null {
+  let hex = '';
+  let any = false;
+  for (let i = 0; i < bytes.length; i++) {
+    if (bytes[i] !== 0) any = true;
+    hex += bytes[i].toString(16).padStart(2, '0');
+  }
+  return any ? hex : null;
+}
 
 export function toConfigView(raw: RawConfig): ConfigView {
   return {
     admin: pk(raw.admin),
     serverAuthority: pk(raw.serverAuthority),
-    treasury: pk(raw.treasury),
+    tokenMint: pk(raw.tokenMint),
+    tokenProgram: pk(raw.tokenProgram),
+    tokenDecimals: raw.tokenDecimals,
     feeBps: raw.feeBps,
-    seasonShareBps: raw.seasonShareBps,
-    skinPrice: toNumber(raw.skinPrice),
+    passFeeBps: raw.passFeeBps,
+    treasuryBps: raw.treasuryBps,
+    seasonBps: raw.seasonBps,
+    burnBps: raw.burnBps,
+    settleFeeLamports: toNumber(raw.settleFeeLamports),
     currentSeason: raw.currentSeason,
     paused: raw.paused,
-    totalPlayers: toNumber(raw.totalPlayers),
-    totalGames: toNumber(raw.totalGames),
-    totalSessions: toNumber(raw.totalSessions),
-    totalStaked: toNumber(raw.totalStaked),
-    totalPaidOut: toNumber(raw.totalPaidOut),
+    passCollection: pkOrNull(raw.passCollection),
+    passBaseUri: decodeName(raw.passBaseUri, raw.passBaseUriLen),
+    passSupply: raw.passSupply,
+    passMinted: raw.passMinted,
+    passPerWallet: raw.passPerWallet,
+    passMinTokens: toBigInt(raw.passMinTokens),
+    passMintOpen: raw.passMintOpen,
+    passMintStartTs: toNumber(raw.passMintStartTs),
+    passSeedHash: hexOrNull(raw.passSeedHash),
+    passSeed: raw.passRevealed ? (hexOrNull(raw.passSeed) ?? '00'.repeat(32)) : null,
+    passRevealed: raw.passRevealed,
+    totals: {
+      players: toNumber(raw.totalPlayers),
+      games: toNumber(raw.totalGames),
+      sessions: toNumber(raw.totalSessions),
+      staked: toBigInt(raw.totalStaked),
+      paidOut: toBigInt(raw.totalPaidOut),
+    },
   };
 }
 
@@ -164,7 +218,6 @@ export function toProfileView(address: Address, raw: RawProfile): ProfileView {
     owner: pk(raw.owner),
     name: decodeName(raw.name, raw.nameLen),
     skin: raw.skin,
-    premiumSkins: raw.premiumSkins,
     xp,
     level: levelFromXp(raw.xp),
     gamesPlayed: raw.gamesPlayed,
@@ -174,37 +227,40 @@ export function toProfileView(address: Address, raw: RawProfile): ProfileView {
     season: raw.season,
     seasonPoints: toNumber(raw.seasonPoints),
     stakeGames: raw.stakeGames,
-    totalStaked: toNumber(raw.totalStaked),
-    totalWon: toNumber(raw.totalWon),
+    totalStaked: toBigInt(raw.totalStaked),
+    totalWon: toBigInt(raw.totalWon),
     createdAt: toNumber(raw.createdAt),
     lastPlayed: toNumber(raw.lastPlayed),
   };
 }
 
-/** `lamports`/`rentExemptMinimum` come from the account info (the pot is everything above rent). */
-export function toArenaView(address: Address, raw: RawArena, lamports: number, rentExemptMinimum: number): ArenaView {
+/** `vaultAmount` is the token balance of the arena's vault (read separately). */
+export function toArenaView(address: Address, raw: RawArena, vaultAmount: bigint): ArenaView {
   return {
-    address: toBase58(address),
     id: raw.id,
-    buyIn: toNumber(raw.buyIn),
-    maxPlayers: raw.maxPlayers,
-    enabled: raw.enabled,
+    address: toBase58(address),
+    entryFee: toBigInt(raw.entryFee),
+    requiresPass: raw.requiresPass,
+    maxSessions: raw.maxSessions,
     openSessions: raw.openSessions,
-    totalDeposited: toNumber(raw.totalDeposited),
-    totalPaidOut: toNumber(raw.totalPaidOut),
-    pot: Math.max(0, lamports - rentExemptMinimum),
+    enabled: raw.enabled,
+    vault: pk(raw.vault),
+    pot: vaultAmount,
   };
 }
 
 export function toSessionView(address: Address, raw: RawSession): SessionView {
   return {
     address: toBase58(address),
+    id: toNumber(raw.id),
     player: pk(raw.player),
     arena: pk(raw.arena),
     arenaId: raw.arenaId,
-    buyIn: toNumber(raw.buyIn),
+    entryFee: toBigInt(raw.entryFee),
     openedAt: toNumber(raw.openedAt),
-    id: toNumber(raw.id),
+    hasPass: raw.hasPass,
+    passAsset: raw.hasPass ? pkOrNull(raw.passAsset) : null,
+    settleFee: toNumber(raw.settleFee),
   };
 }
 
@@ -218,7 +274,7 @@ export function toLeaderEntryView(raw: RawLeaderEntry): LeaderEntryView {
   };
 }
 
-export function toSeasonView(address: Address, raw: RawSeason, lamports: number, rentExemptMinimum: number): SeasonView {
+export function toSeasonView(address: Address, raw: RawSeason): SeasonView {
   const count = Math.max(0, Math.min(raw.count, raw.entries.length));
   return {
     address: toBase58(address),
@@ -226,13 +282,9 @@ export function toSeasonView(address: Address, raw: RawSeason, lamports: number,
     startedAt: toNumber(raw.startedAt),
     endedAt: toNumber(raw.endedAt),
     finalized: raw.finalized,
-    prizePool: toNumber(raw.prizePool),
+    pool: toBigInt(raw.pool),
+    prizePool: toBigInt(raw.prizePool),
     claimedMask: raw.claimedMask,
-    pool: Math.max(0, lamports - rentExemptMinimum),
     entries: raw.entries.slice(0, count).map(toLeaderEntryView),
   };
 }
-
-/** Whether premium skin `skin` (16..23) is owned according to `premiumSkins`. */
-export const ownsPremiumSkin = (premiumSkins: number, skin: number): boolean =>
-  skin >= 16 && skin < 24 && ((premiumSkins >>> (skin - 16)) & 1) === 1;

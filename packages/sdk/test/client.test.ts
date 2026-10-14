@@ -1,98 +1,228 @@
 import { readFileSync } from 'node:fs';
+import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { ComputeBudgetProgram, Connection, Keypair, SystemProgram, type PublicKey, type TransactionInstruction } from '@solana/web3.js';
 import { describe, expect, it } from 'vitest';
 import * as constants from '../src/constants';
-import { PROGRAM_ID, SlanaClient, pdas } from '../src';
+import { MPL_CORE_ID, PROGRAM_ID, SlanaClient, ata, pdas } from '../src';
 
-// Port 1 refuses connections: these tests prove the builders never touch the RPC.
-const connection = new Connection('http://127.0.0.1:1', 'confirmed');
+/** A connection that records every method call: builders must make none. */
+function spyConnection(): { connection: Connection; calls: string[] } {
+  const calls: string[] = [];
+  const real = new Connection('http://127.0.0.1:1', 'confirmed');
+  const connection = new Proxy(real, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver) as unknown;
+      if (typeof value !== 'function') return value;
+      return (...args: unknown[]) => {
+        calls.push(String(prop));
+        return (value as (...a: unknown[]) => unknown).apply(target, args);
+      };
+    },
+  });
+  return { connection, calls };
+}
+
+const { connection, calls } = spyConnection();
 const client = new SlanaClient(connection);
+const b58 = (ks: PublicKey[]) => ks.map((k) => k.toBase58());
 const keys = (ix: TransactionInstruction) => ix.keys.map((k) => k.pubkey.toBase58());
 const meta = (ix: TransactionInstruction, key: PublicKey) => ix.keys.find((k) => k.pubkey.equals(key));
 
-describe('instruction builders (no RPC)', () => {
-  const server = Keypair.generate().publicKey;
-  const player = Keypair.generate().publicKey;
-  const treasury = Keypair.generate().publicKey;
+const server = Keypair.generate().publicKey;
+const admin = Keypair.generate().publicKey;
+const player = Keypair.generate().publicKey;
+const tokenMint = Keypair.generate().publicKey;
+const passAsset = Keypair.generate().publicKey;
+const collection = Keypair.generate().publicKey;
+const token = { tokenMint, tokenProgram: TOKEN_2022_PROGRAM_ID };
 
-  it('settleSession passes every account explicitly', async () => {
-    const ix = await client.ix.settleSession(server, {
-      player,
-      arenaId: 2,
-      sessionId: 41,
-      payout: 123_000_000,
-      score: 900,
-      kills: 3,
-      xp: 120,
-      currentSeason: 4,
-      treasury,
-    });
-    expect(ix.programId.equals(PROGRAM_ID)).toBe(true);
+describe('instruction builders (no RPC)', () => {
+  it('joinArena passes every account explicitly', async () => {
+    const ix = await client.ix.joinArena(player, { arenaId: 2, ...token });
     const arena = pdas.arena(2);
     expect(keys(ix)).toEqual(
-      [server, pdas.config(), arena, pdas.session(arena, player), player, pdas.profile(player), pdas.season(4), treasury].map((k) => k.toBase58()),
+      b58([
+        player,
+        pdas.config(),
+        pdas.profile(player),
+        arena,
+        pdas.vault(arena),
+        pdas.session(arena, player),
+        ata(player, tokenMint, TOKEN_2022_PROGRAM_ID),
+        tokenMint,
+        TOKEN_2022_PROGRAM_ID,
+        SystemProgram.programId,
+      ]),
     );
-    expect(meta(ix, server)).toMatchObject({ isSigner: true, isWritable: false });
-    expect(meta(ix, player)).toMatchObject({ isSigner: false, isWritable: true });
-    // discriminator + session_id u64 + payout u64 + score u32 + kills u16 + xp u32
-    expect(ix.data.length).toBe(8 + 8 + 8 + 4 + 2 + 4);
-    expect(ix.data.readBigUInt64LE(8)).toBe(41n);
-    expect(ix.data.readBigUInt64LE(16)).toBe(123_000_000n);
-    expect(ix.data.readUInt32LE(24)).toBe(900);
-    expect(ix.data.readUInt16LE(28)).toBe(3);
-    expect(ix.data.readUInt32LE(30)).toBe(120);
+    expect(meta(ix, player)).toMatchObject({ isSigner: true, isWritable: true });
+    expect(ix.data.length).toBe(8);
   });
 
-  it('recordGame, initialize, endSeason and friends', async () => {
-    const record = await client.ix.recordGame(server, { player, currentSeason: 3, score: 10, kills: 1, xp: 2 });
-    expect(keys(record)).toEqual([server, pdas.config(), pdas.profile(player), pdas.season(3)].map((k) => k.toBase58()));
+  it('joinArenaWithPass includes passLock = PDA(asset)', async () => {
+    const ix = await client.ix.joinArenaWithPass(player, { arenaId: 3, passAsset, ...token });
+    const k = keys(ix);
+    expect(k[9]).toBe(passAsset.toBase58());
+    expect(k[10]).toBe(pdas.passLock(passAsset).toBase58());
+    expect(k).toHaveLength(12);
+    expect(meta(ix, pdas.passLock(passAsset))).toMatchObject({ isSigner: false, isWritable: true });
+  });
 
-    const init = await client.ix.initialize(server, { serverAuthority: server, treasury, feeBps: 500, seasonShareBps: 5000, skinPrice: 50_000_000 });
-    expect(keys(init)).toEqual(
-      [server, pdas.config(), pdas.season(1), PROGRAM_ID, pdas.programData(), SystemProgram.programId].map((k) => k.toBase58()),
+  it('settleSession includes passLock only when hasPass', async () => {
+    const params = { player, arenaId: 2, sessionId: 41, payout: 123_000_000n, score: 900, kills: 3, xp: 120, currentSeason: 4, ...token };
+    const plain = await client.ix.settleSession(server, { ...params, hasPass: false });
+    const arena = pdas.arena(2);
+    expect(keys(plain)).toEqual(
+      b58([
+        server,
+        pdas.config(),
+        arena,
+        pdas.vault(arena),
+        pdas.session(arena, player),
+        player,
+        ata(player, tokenMint, TOKEN_2022_PROGRAM_ID),
+        pdas.profile(player),
+        pdas.season(4),
+        pdas.treasuryVault(),
+        pdas.seasonVault(),
+        tokenMint,
+        TOKEN_2022_PROGRAM_ID,
+        PROGRAM_ID, // optional pass_lock = None
+      ]),
     );
+    expect(keys(plain)).not.toContain(pdas.passLock(passAsset).toBase58());
+    expect(meta(plain, server)).toMatchObject({ isSigner: true, isWritable: true });
+    expect(meta(plain, tokenMint)).toMatchObject({ isWritable: true }); // burn
+    // discriminator + session_id u64 + payout u64 + score u32 + kills u16 + xp u32
+    expect(plain.data.length).toBe(8 + 8 + 8 + 4 + 2 + 4);
+    expect(plain.data.readBigUInt64LE(8)).toBe(41n);
+    expect(plain.data.readBigUInt64LE(16)).toBe(123_000_000n);
+    expect(plain.data.readUInt32LE(24)).toBe(900);
+    expect(plain.data.readUInt16LE(28)).toBe(3);
+    expect(plain.data.readUInt32LE(30)).toBe(120);
 
-    const end = await client.ix.endSeason(server, 5);
-    expect(keys(end)).toEqual([server, pdas.config(), pdas.season(5), pdas.season(6), SystemProgram.programId].map((k) => k.toBase58()));
+    const withPass = await client.ix.settleSession(server, { ...params, hasPass: true, passAsset });
+    expect(keys(withPass)[13]).toBe(pdas.passLock(passAsset).toBase58());
+    expect(() => client.ix.settleSession(server, { ...params, hasPass: true })).toThrow(/passAsset/);
+  });
 
-    const roll = await client.ix.rolloverSeason(server, 2, 5);
-    expect(keys(roll)).toEqual([server, pdas.config(), pdas.season(2), pdas.season(5)].map((k) => k.toBase58()));
+  it('refundSession takes the token accounts and the optional lock', async () => {
+    const arena = pdas.arena(1);
+    const ix = await client.ix.refundSession(player, { arenaId: 1, tokenMint, tokenProgram: TOKEN_PROGRAM_ID });
+    expect(keys(ix)).toEqual(
+      b58([player, pdas.config(), arena, pdas.vault(arena), pdas.session(arena, player), ata(player, tokenMint, TOKEN_PROGRAM_ID), tokenMint, TOKEN_PROGRAM_ID, PROGRAM_ID]),
+    );
+    const locked = await client.ix.refundSession(player, { arenaId: 1, tokenMint, tokenProgram: TOKEN_PROGRAM_ID, passAsset });
+    expect(keys(locked)[8]).toBe(pdas.passLock(passAsset).toBase58());
+  });
 
-    const join = await client.ix.joinArena(player, 1);
-    expect(keys(join)[4]).toBe(pdas.session(pdas.arena(1), player).toBase58());
-    expect(meta(join, player)).toMatchObject({ isSigner: true, isWritable: true });
+  it('mintPass: asset co-signs, minter token is optional', async () => {
+    const ix = await client.ix.mintPass(player, { asset: passAsset, collection });
+    expect(keys(ix)).toEqual(
+      b58([player, passAsset, pdas.config(), collection, pdas.passAuthority(), pdas.passMinted(player), PROGRAM_ID, MPL_CORE_ID, SystemProgram.programId]),
+    );
+    expect(meta(ix, passAsset)).toMatchObject({ isSigner: true, isWritable: true });
+    const withToken = await client.ix.mintPass(player, { asset: passAsset, collection, minterToken: ata(player, tokenMint, TOKEN_PROGRAM_ID) });
+    expect(keys(withToken)[6]).toBe(ata(player, tokenMint, TOKEN_PROGRAM_ID).toBase58());
+  });
 
-    for (const ix of await Promise.all([
-      client.ix.registerPlayer(player, 'gm_gummy', 3),
-      client.ix.updateProfile(player, { skin: 2 }),
-      client.ix.buySkin(player, 18, treasury),
-      client.ix.refundSession(player, 1),
-      client.ix.claimSeasonReward(player, 1),
-      client.ix.fundSeason(player, 1, 1_000_000),
-      client.ix.updateConfig(server, { paused: true, skinPrice: 1n }),
-      client.ix.createArena(server, 9, 10_000_000, 20),
-      client.ix.updateArena(server, 9, { enabled: false }),
-      client.ix.sweepArena(server, 9, treasury),
-    ])) {
+  it('claimSeasonReward, sweepArena, withdrawTreasury, createArena', async () => {
+    const claim = await client.ix.claimSeasonReward(player, { seasonId: 3, ...token });
+    expect(keys(claim)).toEqual(
+      b58([player, pdas.config(), pdas.season(3), pdas.seasonVault(), ata(player, tokenMint, TOKEN_2022_PROGRAM_ID), tokenMint, TOKEN_2022_PROGRAM_ID]),
+    );
+    expect(meta(claim, player)).toMatchObject({ isSigner: true, isWritable: false });
+    expect(claim.data.readUInt32LE(8)).toBe(3);
+
+    const arena = pdas.arena(9);
+    const sweep = await client.ix.sweepArena(admin, { id: 9, currentSeason: 5, ...token });
+    expect(keys(sweep)).toEqual(b58([admin, pdas.config(), arena, pdas.vault(arena), pdas.season(5), pdas.seasonVault(), tokenMint, TOKEN_2022_PROGRAM_ID]));
+
+    const dest = Keypair.generate().publicKey;
+    const withdraw = await client.ix.withdrawTreasury(admin, { amount: 10n ** 15n, destination: dest, ...token });
+    expect(keys(withdraw)).toEqual(b58([admin, pdas.config(), pdas.treasuryVault(), dest, tokenMint, TOKEN_2022_PROGRAM_ID]));
+    expect(withdraw.data.readBigUInt64LE(8)).toBe(10n ** 15n);
+
+    const create = await client.ix.createArena(admin, { id: 9, entryFee: 1_000_000_000n, maxSessions: 300, requiresPass: true, ...token });
+    expect(keys(create)).toEqual(b58([admin, pdas.config(), arena, pdas.vault(arena), tokenMint, TOKEN_2022_PROGRAM_ID, SystemProgram.programId]));
+    expect(create.data.readUInt16LE(8)).toBe(9);
+    expect(create.data.readBigUInt64LE(10)).toBe(1_000_000_000n);
+    expect(create.data.readUInt16LE(18)).toBe(300);
+    expect(create.data[20]).toBe(1);
+  });
+
+  it('initialize and updateConfig encode their args', async () => {
+    const init = await client.ix.initialize(admin, {
+      serverAuthority: server,
+      ...token,
+      feeBps: 500,
+      passFeeBps: 200,
+      split: [5_000, 3_000, 2_000],
+      settleFeeLamports: 10_000,
+    });
+    expect(keys(init)).toEqual(
+      b58([admin, pdas.config(), pdas.season(1), tokenMint, TOKEN_2022_PROGRAM_ID, pdas.treasuryVault(), pdas.seasonVault(), PROGRAM_ID, pdas.programData(), SystemProgram.programId]),
+    );
+    // disc | server 32 | fee u16 | pass fee u16 | treasury u16 | season u16 | burn u16 | settle fee u64
+    expect(init.data.length).toBe(8 + 32 + 2 * 5 + 8);
+    expect([init.data.readUInt16LE(40), init.data.readUInt16LE(42), init.data.readUInt16LE(44), init.data.readUInt16LE(46), init.data.readUInt16LE(48)]).toEqual([
+      500, 200, 5_000, 3_000, 2_000,
+    ]);
+    expect(init.data.readBigUInt64LE(50)).toBe(10_000n);
+
+    const none = await client.ix.updateConfig(admin, {});
+    expect(none.data.length).toBe(8 + 13); // 13 × Option::None
+    const split = await client.ix.updateConfig(admin, { split: [4_000, 4_000, 2_000] });
+    // admin None, server None, fee None, pass fee None, split Some([u16;3]) …
+    expect([...split.data.subarray(8, 8 + 4 + 1 + 6)]).toEqual([0, 0, 0, 0, 1, 0xa0, 0x0f, 0xa0, 0x0f, 0xd0, 0x07]);
+    const uri = await client.ix.updateConfig(admin, { passBaseUri: 'https://x.io/p/', passMintOpen: true, passMintStartTs: 1_760_000_000, passMinTokens: 5n });
+    expect(uri.data.includes(Buffer.from('https://x.io/p/'))).toBe(true);
+    expect(() => client.ix.updateConfig(admin, { passBaseUri: 'https://x.io/p' })).toThrow(/end with/);
+  });
+
+  it('pass admin, season and profile builders', async () => {
+    const setCollection = await client.ix.setPassCollection(admin, collection);
+    expect(keys(setCollection)).toEqual(b58([admin, pdas.config(), collection, pdas.passAuthority()]));
+    const hash = new Uint8Array(32).fill(0xab);
+    const setHash = await client.ix.setPassSeedHash(admin, hash);
+    expect([...setHash.data.subarray(8)]).toEqual([...hash]);
+    const reveal = await client.ix.revealPass(admin, new Uint8Array(32).fill(1));
+    expect(reveal.data.length).toBe(40);
+    expect(() => client.ix.setPassSeedHash(admin, new Uint8Array(31))).toThrow(RangeError);
+
+    const end = await client.ix.endSeason(admin, 5);
+    expect(keys(end)).toEqual(b58([admin, pdas.config(), pdas.season(5), pdas.season(6), SystemProgram.programId]));
+    const roll = await client.ix.rolloverSeason(admin, 2, 5);
+    expect(keys(roll)).toEqual(b58([admin, pdas.config(), pdas.season(2), pdas.season(5)]));
+    const upd = await client.ix.updateArena(admin, 9, { enabled: false, entryFee: 5n, requiresPass: true });
+    expect(keys(upd)).toEqual(b58([admin, pdas.config(), pdas.arena(9)]));
+
+    for (const ix of await Promise.all([client.ix.registerPlayer(player, 'gm_gummy', 3), client.ix.updateProfile(player, { skin: 2 })])) {
       expect(ix.programId.equals(PROGRAM_ID)).toBe(true);
     }
+    expect(calls).toEqual([]);
   });
 
   it('honours a custom program id', async () => {
     const other = Keypair.generate().publicKey;
     const c = new SlanaClient(connection, other.toBase58());
-    const ix = await c.ix.joinArena(player, 1);
+    const ix = await c.ix.joinArena(player, { arenaId: 1, ...token });
     expect(ix.programId.equals(other)).toBe(true);
     expect(keys(ix)[3]).toBe(pdas.arena(1, other).toBase58());
+    const settle = await c.ix.settleSession(server, { player, arenaId: 1, sessionId: 1, payout: 0, score: 0, kills: 0, xp: 0, currentSeason: 1, hasPass: false, ...token });
+    expect(keys(settle)[13]).toBe(other.toBase58());
+  });
+
+  it('builders made zero RPC calls', () => {
+    expect(calls).toEqual([]);
   });
 
   it('buildTransaction prepends ComputeBudget instructions', async () => {
-    const c = new SlanaClient(connection);
+    const c = new SlanaClient(new Connection('http://127.0.0.1:1', 'confirmed'));
     (c.connection as unknown as { getLatestBlockhash: () => Promise<unknown> }).getLatestBlockhash = async () => ({
       blockhash: '11111111111111111111111111111111',
       lastValidBlockHeight: 99,
     });
-    const ix = await c.ix.recordGame(server, { player, currentSeason: 1, score: 1, kills: 0, xp: 1 });
+    const ix = await c.ix.updateProfile(player, { skin: 1 });
     const { tx, lastValidBlockHeight } = await c.buildTransaction([ix], server, { priorityMicroLamports: 5000, computeUnits: 200_000 });
     expect(lastValidBlockHeight).toBe(99);
     expect(tx.instructions.map((i) => i.programId.toBase58())).toEqual([
@@ -118,17 +248,20 @@ describe('constants', () => {
     expect(value('PRIZE_SHARES_BPS')).toEqual(constants.PRIZE_SHARES_BPS);
     expect(value('BPS')).toBe(constants.BPS);
     expect(value('MAX_FEE_BPS')).toBe(constants.MAX_FEE_BPS);
-    expect(value('MIN_BUY_IN')).toBe(constants.MIN_BUY_IN_LAMPORTS);
-    expect(value('MIN_ARENA_PLAYERS')).toBe(constants.MIN_ARENA_PLAYERS);
-    expect(value('MAX_ARENA_PLAYERS')).toBe(constants.MAX_ARENA_PLAYERS);
+    expect(value('MAX_SETTLE_FEE_LAMPORTS')).toBe(constants.MAX_SETTLE_FEE_LAMPORTS);
+    expect(value('MIN_ARENA_SESSIONS')).toBe(constants.MIN_ARENA_SESSIONS);
+    expect(value('MAX_ARENA_SESSIONS')).toBe(constants.MAX_ARENA_SESSIONS);
+    expect(value('MAX_BASE_URI_LEN')).toBe(constants.MAX_BASE_URI_LEN);
+    expect(value('MAX_PASS_SUPPLY')).toBe(constants.MAX_PASS_SUPPLY);
+    expect(value('MAX_PASS_PER_WALLET')).toBe(constants.MAX_PASS_PER_WALLET);
+    expect(value('DEFAULT_PASS_SUPPLY')).toBe(constants.DEFAULT_PASS_SUPPLY);
+    expect(value('DEFAULT_PASS_PER_WALLET')).toBe(constants.DEFAULT_PASS_PER_WALLET);
     expect(value('SESSION_REFUND_TIMEOUT_SECS')).toBe(constants.SESSION_REFUND_TIMEOUT_SECS);
     expect(value('CLAIM_WINDOW_SECS')).toBe(constants.CLAIM_WINDOW_SECS);
     expect(value('MAX_XP_PER_GAME')).toBe(constants.MAX_XP_PER_GAME);
     expect(value('MAX_SCORE_PER_GAME')).toBe(constants.MAX_SCORE_PER_GAME);
     expect(value('FIRST_SEASON')).toBe(constants.FIRST_SEASON);
-    expect(value('SKIN_COUNT')).toBe(constants.SKIN_COUNT);
-    expect(value('FREE_SKINS')).toBe(constants.FREE_SKINS);
-    expect(value('PREMIUM_SKIN_START')).toBe(constants.PREMIUM_SKIN_START);
+    expect(value('BASIC_SKINS')).toBe(constants.BASIC_SKINS);
     expect(value('XP_LEVEL_DIVISOR')).toBe(constants.XP_LEVEL_DIVISOR);
   });
 });

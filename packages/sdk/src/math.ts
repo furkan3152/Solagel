@@ -44,38 +44,55 @@ export function levelFromXp(xp: IntLike): number {
 }
 
 /** `amount * bps / 10_000`, rounded down (exact). */
-export function mulBps(amount: IntLike, bps: number): number {
-  return Number((toBigInt(amount) * BigInt(bps)) / BigInt(BPS));
+export function mulBps(amount: IntLike, bps: number): bigint {
+  return (toBigInt(amount) * BigInt(bps)) / BigInt(BPS);
 }
 
-export interface SettlementSplit {
-  /** Fee charged on profit only. */
-  fee: number;
-  /** Part of the fee that goes to the season prize pool. */
-  seasonCut: number;
-  /** Part of the fee that goes to the treasury. */
-  treasuryCut: number;
+const U64_MAX = (1n << 64n) - 1n;
+
+/** How a stake payout is split (base units of the game token). */
+export interface PayoutSplit {
+  /** Total fee, charged on profit only: `treasury + season + burn`. */
+  fee: bigint;
+  /** Fee share sent to the treasury vault. */
+  treasury: bigint;
+  /** Fee share sent to the season vault (gets the rounding remainder). */
+  season: bigint;
+  /** Fee share burned. */
+  burn: bigint;
   /** What the player receives: `payout - fee`. */
-  playerAmount: number;
+  player: bigint;
 }
 
-/** Mirrors `logic::compute_settlement`: how a stake payout is split. */
-export function computeSettlement(payout: IntLike, buyIn: IntLike, feeBps: number, seasonShareBps: number): SettlementSplit {
+/** The config fields `splitPayout` needs (a `ConfigView` fits). */
+export interface SplitConfig {
+  feeBps: number;
+  passFeeBps: number;
+  treasuryBps: number;
+  burnBps: number;
+}
+
+/**
+ * Mirrors `logic::split_payout` exactly: `fee = (payout - entryFee)⁺ × bps / 10 000` where
+ * `bps` is `passFeeBps` for a Pass session and `feeBps` otherwise; treasury and burn are
+ * rounded down and the season gets the remainder. Throws `RangeError` where the program
+ * fails with `MathOverflow` (shares above 100 %, or a value outside u64).
+ */
+export function splitPayout(payout: IntLike, entryFee: IntLike, hasPass: boolean, cfg: SplitConfig): PayoutSplit {
   const p = toBigInt(payout);
-  const b = toBigInt(buyIn);
-  const profit = p > b ? p - b : 0n;
-  const fee = (profit * BigInt(feeBps)) / BigInt(BPS);
-  const seasonCut = (fee * BigInt(seasonShareBps)) / BigInt(BPS);
-  return {
-    fee: Number(fee),
-    seasonCut: Number(seasonCut),
-    treasuryCut: Number(fee - seasonCut),
-    playerAmount: Number(p - fee),
-  };
+  const e = toBigInt(entryFee);
+  if (p < 0n || e < 0n || p > U64_MAX || e > U64_MAX) throw new RangeError('payout and entry fee must be u64 values');
+  const profit = p > e ? p - e : 0n;
+  const fee = mulBps(profit, hasPass ? cfg.passFeeBps : cfg.feeBps);
+  const treasury = mulBps(fee, cfg.treasuryBps);
+  const burn = mulBps(fee, cfg.burnBps);
+  const season = fee - treasury - burn;
+  if (season < 0n) throw new RangeError('fee split above 100 % (MathOverflow)');
+  return { fee, treasury, season, burn, player: p - fee };
 }
 
 /** Prize of leaderboard `rank` (0-based) for a frozen prize pool; 0 outside the prize ranks. */
-export function prizeAmount(prizePool: IntLike, rank: number): number {
+export function prizeAmount(prizePool: IntLike, rank: number): bigint {
   const share = PRIZE_SHARES_BPS[rank];
-  return share === undefined ? 0 : mulBps(prizePool, share);
+  return share === undefined ? 0n : mulBps(prizePool, share);
 }

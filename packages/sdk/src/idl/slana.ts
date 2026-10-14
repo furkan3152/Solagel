@@ -14,25 +14,21 @@ export type Slana = {
   },
   "instructions": [
     {
-      "name": "buySkin",
+      "name": "claimSeasonReward",
       "discriminator": [
-        160,
-        172,
-        148,
+        129,
+        96,
         145,
-        46,
-        58,
-        70,
-        228
+        129,
+        154,
+        203,
+        29,
+        150
       ],
       "accounts": [
         {
-          "name": "owner",
-          "writable": true,
-          "signer": true,
-          "relations": [
-            "profile"
-          ]
+          "name": "claimer",
+          "signer": true
         },
         {
           "name": "config",
@@ -51,64 +47,6 @@ export type Slana = {
               }
             ]
           }
-        },
-        {
-          "name": "profile",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  112,
-                  114,
-                  111,
-                  102,
-                  105,
-                  108,
-                  101
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "owner"
-              }
-            ]
-          }
-        },
-        {
-          "name": "treasury",
-          "writable": true
-        },
-        {
-          "name": "systemProgram",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "skin",
-          "type": "u8"
-        }
-      ]
-    },
-    {
-      "name": "claimSeasonReward",
-      "discriminator": [
-        129,
-        96,
-        145,
-        129,
-        154,
-        203,
-        29,
-        150
-      ],
-      "accounts": [
-        {
-          "name": "claimer",
-          "writable": true,
-          "signer": true
         },
         {
           "name": "season",
@@ -132,6 +70,44 @@ export type Slana = {
               }
             ]
           }
+        },
+        {
+          "name": "seasonVault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  97,
+                  115,
+                  111,
+                  110,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "claimerToken",
+          "docs": [
+            "Receives the prize: a game-token account of the claimer."
+          ],
+          "writable": true
+        },
+        {
+          "name": "tokenMint"
+        },
+        {
+          "name": "tokenProgram"
         }
       ],
       "args": [
@@ -203,6 +179,37 @@ export type Slana = {
           }
         },
         {
+          "name": "vault",
+          "docs": [
+            "The arena's token vault: holds every entry fee, signed for by the arena PDA."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "arena"
+              }
+            ]
+          }
+        },
+        {
+          "name": "tokenMint"
+        },
+        {
+          "name": "tokenProgram"
+        },
+        {
           "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
@@ -213,12 +220,16 @@ export type Slana = {
           "type": "u16"
         },
         {
-          "name": "buyIn",
+          "name": "entryFee",
           "type": "u64"
         },
         {
-          "name": "maxPlayers",
+          "name": "maxSessions",
           "type": "u16"
+        },
+        {
+          "name": "requiresPass",
+          "type": "bool"
         }
       ]
     },
@@ -301,81 +312,10 @@ export type Slana = {
       "args": []
     },
     {
-      "name": "fundSeason",
-      "discriminator": [
-        251,
-        186,
-        193,
-        242,
-        15,
-        144,
-        254,
-        67
-      ],
-      "accounts": [
-        {
-          "name": "funder",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "config",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "season",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  115,
-                  101,
-                  97,
-                  115,
-                  111,
-                  110
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "config.currentSeason",
-                "account": "config"
-              }
-            ]
-          }
-        },
-        {
-          "name": "systemProgram",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "amount",
-          "type": "u64"
-        }
-      ]
-    },
-    {
       "name": "initialize",
       "docs": [
-        "Creates the config and season 1. Only the program's upgrade authority may call it."
+        "Creates the config, the treasury and season vaults and season 1 for the game mint.",
+        "Only the program's upgrade authority may call it."
       ],
       "discriminator": [
         175,
@@ -438,6 +378,68 @@ export type Slana = {
                   0,
                   0,
                   0
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "tokenMint",
+          "docs": [
+            "The game token. Validated by `token::validate_mint` (no freeze authority, no",
+            "forbidden Token-2022 extension) and stored in the config for good."
+          ]
+        },
+        {
+          "name": "tokenProgram"
+        },
+        {
+          "name": "treasuryVault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  114,
+                  101,
+                  97,
+                  115,
+                  117,
+                  114,
+                  121,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "seasonVault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  97,
+                  115,
+                  111,
+                  110,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
                 ]
               }
             ]
@@ -549,6 +551,9 @@ export type Slana = {
     },
     {
       "name": "joinArena",
+      "docs": [
+        "Pays the entry fee into the arena vault and opens a session (no Pass)."
+      ],
       "discriminator": [
         135,
         217,
@@ -632,6 +637,28 @@ export type Slana = {
           }
         },
         {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "arena"
+              }
+            ]
+          }
+        },
+        {
           "name": "session",
           "docs": [
             "One open session per player per arena: a second join fails because the PDA exists."
@@ -663,6 +690,16 @@ export type Slana = {
           }
         },
         {
+          "name": "playerToken",
+          "writable": true
+        },
+        {
+          "name": "tokenMint"
+        },
+        {
+          "name": "tokenProgram"
+        },
+        {
           "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
@@ -670,23 +707,24 @@ export type Slana = {
       "args": []
     },
     {
-      "name": "recordGame",
+      "name": "joinArenaWithPass",
       "docs": [
-        "Server-signed free-play result."
+        "Like `join_arena`, backed by a Slana Pass that is locked until the session closes."
       ],
       "discriminator": [
-        247,
-        120,
-        117,
-        224,
-        181,
-        219,
-        180,
-        52
+        145,
+        196,
+        60,
+        74,
+        142,
+        112,
+        166,
+        224
       ],
       "accounts": [
         {
-          "name": "server",
+          "name": "player",
+          "writable": true,
           "signer": true
         },
         {
@@ -727,68 +765,10 @@ export type Slana = {
               },
               {
                 "kind": "account",
-                "path": "profile.owner",
-                "account": "playerProfile"
+                "path": "player"
               }
             ]
           }
-        },
-        {
-          "name": "season",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  115,
-                  101,
-                  97,
-                  115,
-                  111,
-                  110
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "config.currentSeason",
-                "account": "config"
-              }
-            ]
-          }
-        }
-      ],
-      "args": [
-        {
-          "name": "args",
-          "type": {
-            "defined": {
-              "name": "recordArgs"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "refundSession",
-      "discriminator": [
-        168,
-        87,
-        185,
-        45,
-        250,
-        170,
-        10,
-        85
-      ],
-      "accounts": [
-        {
-          "name": "player",
-          "writable": true,
-          "signer": true,
-          "relations": [
-            "session"
-          ]
         },
         {
           "name": "arena",
@@ -811,10 +791,29 @@ export type Slana = {
                 "account": "arena"
               }
             ]
-          },
-          "relations": [
-            "session"
-          ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "arena"
+              }
+            ]
+          }
         },
         {
           "name": "session",
@@ -843,6 +842,319 @@ export type Slana = {
               }
             ]
           }
+        },
+        {
+          "name": "playerToken",
+          "writable": true
+        },
+        {
+          "name": "tokenMint"
+        },
+        {
+          "name": "tokenProgram"
+        },
+        {
+          "name": "passAsset",
+          "docs": [
+            "(owned by the Core program, owned by `player`, in `config.pass_collection`)."
+          ]
+        },
+        {
+          "name": "passLock",
+          "docs": [
+            "Exists while the Pass backs an open session: a second join with the same Pass fails",
+            "with the System Program's \"already in use\" error (`PassInUse` in the SDK)."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  97,
+                  115,
+                  115,
+                  95,
+                  108,
+                  111,
+                  99,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "passAsset"
+              }
+            ]
+          }
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "mintPass",
+      "docs": [
+        "Free mint of one Slana Pass (Core asset in the Pass collection) to the signer."
+      ],
+      "discriminator": [
+        142,
+        56,
+        26,
+        197,
+        227,
+        241,
+        84,
+        174
+      ],
+      "accounts": [
+        {
+          "name": "minter",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "asset",
+          "docs": [
+            "The new Core asset (a fresh keypair)."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "collection",
+          "docs": [
+            "`CollectionNotSet`); Core validates its contents during the CPI."
+          ],
+          "writable": true
+        },
+        {
+          "name": "passAuthority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  97,
+                  115,
+                  115,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "mintCounter",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  97,
+                  115,
+                  115,
+                  95,
+                  109,
+                  105,
+                  110,
+                  116,
+                  101,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "minter"
+              }
+            ]
+          }
+        },
+        {
+          "name": "minterToken",
+          "docs": [
+            "Game-token account of the minter; only needed when `config.pass_min_tokens > 0`."
+          ],
+          "optional": true
+        },
+        {
+          "name": "mplCoreProgram",
+          "address": "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "refundSession",
+      "discriminator": [
+        168,
+        87,
+        185,
+        45,
+        250,
+        170,
+        10,
+        85
+      ],
+      "accounts": [
+        {
+          "name": "player",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "session"
+          ]
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "arena",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  114,
+                  101,
+                  110,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "arena.id",
+                "account": "arena"
+              }
+            ]
+          },
+          "relations": [
+            "session"
+          ]
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "arena"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "arena"
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
+        {
+          "name": "playerToken",
+          "writable": true
+        },
+        {
+          "name": "tokenMint"
+        },
+        {
+          "name": "tokenProgram"
+        },
+        {
+          "name": "passLock",
+          "docs": [
+            "Required iff the session has a Pass: its lock, closed back to the player."
+          ],
+          "writable": true,
+          "optional": true
         }
       ],
       "args": []
@@ -921,6 +1233,61 @@ export type Slana = {
         {
           "name": "skin",
           "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "revealPass",
+      "docs": [
+        "Publishes the Pass trait seed (checked against the committed hash), once."
+      ],
+      "discriminator": [
+        233,
+        27,
+        93,
+        192,
+        147,
+        157,
+        246,
+        103
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "seed",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
         }
       ]
     },
@@ -1022,6 +1389,136 @@ export type Slana = {
       ]
     },
     {
+      "name": "setPassCollection",
+      "docs": [
+        "Sets the Pass collection once (a Core collection whose update authority is the",
+        "`pass_authority` PDA)."
+      ],
+      "discriminator": [
+        60,
+        188,
+        194,
+        201,
+        72,
+        107,
+        78,
+        208
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "collection"
+        },
+        {
+          "name": "passAuthority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  97,
+                  115,
+                  115,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "setPassSeedHash",
+      "docs": [
+        "Commits `sha256(seed)` of the Pass trait seed (before the first mint)."
+      ],
+      "discriminator": [
+        192,
+        248,
+        24,
+        81,
+        247,
+        241,
+        216,
+        11
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "settleSession",
       "docs": [
         "Server-signed cash-out of a stake session."
@@ -1039,6 +1536,10 @@ export type Slana = {
       "accounts": [
         {
           "name": "server",
+          "docs": [
+            "Receives the session's settle deposit."
+          ],
+          "writable": true,
           "signer": true
         },
         {
@@ -1087,6 +1588,28 @@ export type Slana = {
           ]
         },
         {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "arena"
+              }
+            ]
+          }
+        },
+        {
           "name": "session",
           "writable": true,
           "pda": {
@@ -1116,10 +1639,21 @@ export type Slana = {
         },
         {
           "name": "player",
+          "docs": [
+            "Pass lock rent)."
+          ],
           "writable": true,
           "relations": [
             "session"
           ]
+        },
+        {
+          "name": "playerToken",
+          "docs": [
+            "Any token account of the game mint owned by the player (the server can always",
+            "(re)create the player's ATA)."
+          ],
+          "writable": true
         },
         {
           "name": "profile",
@@ -1170,8 +1704,74 @@ export type Slana = {
           }
         },
         {
-          "name": "treasury",
+          "name": "treasuryVault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  114,
+                  101,
+                  97,
+                  115,
+                  117,
+                  114,
+                  121,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "seasonVault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  97,
+                  115,
+                  111,
+                  110,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "tokenMint",
+          "docs": [
+            "Writable: the burn share lowers its supply."
+          ],
           "writable": true
+        },
+        {
+          "name": "tokenProgram"
+        },
+        {
+          "name": "passLock",
+          "docs": [
+            "Required iff the session has a Pass: its lock, closed back to the player."
+          ],
+          "writable": true,
+          "optional": true
         }
       ],
       "args": [
@@ -1225,7 +1825,6 @@ export type Slana = {
         },
         {
           "name": "arena",
-          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -1247,8 +1846,81 @@ export type Slana = {
           }
         },
         {
-          "name": "treasury",
-          "writable": true
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "arena"
+              }
+            ]
+          }
+        },
+        {
+          "name": "season",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  97,
+                  115,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.currentSeason",
+                "account": "config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "seasonVault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  97,
+                  115,
+                  111,
+                  110,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "tokenMint"
+        },
+        {
+          "name": "tokenProgram"
         }
       ],
       "args": []
@@ -1323,9 +1995,21 @@ export type Slana = {
           }
         },
         {
-          "name": "maxPlayers",
+          "name": "maxSessions",
           "type": {
             "option": "u16"
+          }
+        },
+        {
+          "name": "entryFee",
+          "type": {
+            "option": "u64"
+          }
+        },
+        {
+          "name": "requiresPass",
+          "type": {
+            "option": "bool"
           }
         }
       ]
@@ -1440,6 +2124,89 @@ export type Slana = {
           }
         }
       ]
+    },
+    {
+      "name": "withdrawTreasury",
+      "discriminator": [
+        40,
+        63,
+        122,
+        158,
+        144,
+        216,
+        83,
+        96
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "treasuryVault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  114,
+                  101,
+                  97,
+                  115,
+                  117,
+                  114,
+                  121,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "destination",
+          "writable": true
+        },
+        {
+          "name": "tokenMint"
+        },
+        {
+          "name": "tokenProgram"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
     }
   ],
   "accounts": [
@@ -1467,6 +2234,32 @@ export type Slana = {
         250,
         204,
         130
+      ]
+    },
+    {
+      "name": "mintCounter",
+      "discriminator": [
+        29,
+        59,
+        15,
+        69,
+        46,
+        22,
+        227,
+        173
+      ]
+    },
+    {
+      "name": "passLock",
+      "discriminator": [
+        111,
+        167,
+        37,
+        191,
+        114,
+        227,
+        253,
+        159
       ]
     },
     {
@@ -1511,6 +2304,19 @@ export type Slana = {
   ],
   "events": [
     {
+      "name": "arenaCreated",
+      "discriminator": [
+        93,
+        57,
+        84,
+        96,
+        112,
+        3,
+        148,
+        17
+      ]
+    },
+    {
       "name": "arenaJoined",
       "discriminator": [
         195,
@@ -1537,16 +2343,42 @@ export type Slana = {
       ]
     },
     {
-      "name": "gameRecorded",
+      "name": "passCollectionSet",
       "discriminator": [
-        148,
-        119,
+        159,
+        63,
+        91,
+        220,
+        66,
+        126,
+        121,
+        171
+      ]
+    },
+    {
+      "name": "passMinted",
+      "discriminator": [
+        41,
         18,
-        172,
-        198,
-        62,
-        150,
-        145
+        56,
+        61,
+        177,
+        162,
+        4,
+        13
+      ]
+    },
+    {
+      "name": "passRevealed",
+      "discriminator": [
+        31,
+        81,
+        11,
+        22,
+        7,
+        225,
+        19,
+        53
       ]
     },
     {
@@ -1602,19 +2434,6 @@ export type Slana = {
       ]
     },
     {
-      "name": "seasonFunded",
-      "discriminator": [
-        86,
-        2,
-        211,
-        175,
-        10,
-        250,
-        20,
-        35
-      ]
-    },
-    {
       "name": "seasonRolledOver",
       "discriminator": [
         70,
@@ -1654,16 +2473,16 @@ export type Slana = {
       ]
     },
     {
-      "name": "skinPurchased",
+      "name": "treasuryWithdrawn",
       "discriminator": [
-        120,
-        227,
-        216,
-        6,
-        255,
-        113,
-        22,
-        85
+        143,
+        181,
+        157,
+        169,
+        87,
+        155,
+        170,
+        46
       ]
     }
   ],
@@ -1695,98 +2514,193 @@ export type Slana = {
     },
     {
       "code": 6005,
-      "name": "skinLocked",
-      "msg": "Skin is locked"
-    },
-    {
-      "code": 6006,
-      "name": "skinAlreadyOwned",
-      "msg": "Skin already owned"
-    },
-    {
-      "code": 6007,
-      "name": "buyInTooLow",
-      "msg": "Buy-in is below the minimum"
-    },
-    {
-      "code": 6008,
-      "name": "invalidMaxPlayers",
-      "msg": "Max players must be between 2 and 100"
-    },
-    {
-      "code": 6009,
       "name": "arenaDisabled",
       "msg": "Arena is disabled"
     },
     {
-      "code": 6010,
+      "code": 6006,
       "name": "arenaFull",
       "msg": "Arena is full"
     },
     {
-      "code": 6011,
+      "code": 6007,
       "name": "insufficientPot",
       "msg": "Amount exceeds the available pot"
     },
     {
-      "code": 6012,
+      "code": 6008,
       "name": "refundTooEarly",
       "msg": "Session cannot be refunded yet"
     },
     {
-      "code": 6013,
+      "code": 6009,
       "name": "seasonFinalized",
       "msg": "Season is already finalized"
     },
     {
-      "code": 6014,
+      "code": 6010,
       "name": "seasonNotFinalized",
       "msg": "Season is not finalized"
     },
     {
-      "code": 6015,
+      "code": 6011,
       "name": "notEligible",
       "msg": "Not eligible for a season reward"
     },
     {
-      "code": 6016,
+      "code": 6012,
       "name": "alreadyClaimed",
       "msg": "Reward already claimed"
     },
     {
-      "code": 6017,
+      "code": 6013,
       "name": "claimWindowClosed",
       "msg": "Claim window is closed"
     },
     {
-      "code": 6018,
+      "code": 6014,
       "name": "claimWindowOpen",
       "msg": "Claim window is still open"
     },
     {
-      "code": 6019,
+      "code": 6015,
       "name": "invalidSeason",
       "msg": "Invalid season"
     },
     {
-      "code": 6020,
+      "code": 6016,
       "name": "arenaHasOpenSessions",
       "msg": "Arena still has open sessions"
     },
     {
-      "code": 6021,
+      "code": 6017,
       "name": "invalidAmount",
       "msg": "Invalid amount"
     },
     {
-      "code": 6022,
+      "code": 6018,
       "name": "mathOverflow",
       "msg": "Math overflow"
     },
     {
-      "code": 6023,
+      "code": 6019,
       "name": "sessionMismatch",
       "msg": "Settlement is for a different session"
+    },
+    {
+      "code": 6020,
+      "name": "mintNotAllowed",
+      "msg": "Token mint is not allowed (wrong program or forbidden Token-2022 extension)"
+    },
+    {
+      "code": 6021,
+      "name": "freezeAuthorityPresent",
+      "msg": "Token mint must not have a freeze authority"
+    },
+    {
+      "code": 6022,
+      "name": "passRequired",
+      "msg": "This arena requires a Slana Pass"
+    },
+    {
+      "code": 6023,
+      "name": "passNotOwned",
+      "msg": "Slana Pass is not owned by the player"
+    },
+    {
+      "code": 6024,
+      "name": "passWrongCollection",
+      "msg": "Asset is not part of the Slana Pass collection"
+    },
+    {
+      "code": 6025,
+      "name": "passInUse",
+      "msg": "Slana Pass is already used by an open session"
+    },
+    {
+      "code": 6026,
+      "name": "mintClosed",
+      "msg": "Pass mint is closed"
+    },
+    {
+      "code": 6027,
+      "name": "mintSoldOut",
+      "msg": "Pass mint is sold out"
+    },
+    {
+      "code": 6028,
+      "name": "mintLimit",
+      "msg": "Pass mint limit per wallet reached"
+    },
+    {
+      "code": 6029,
+      "name": "mintMinTokens",
+      "msg": "Not enough tokens to mint a Pass"
+    },
+    {
+      "code": 6030,
+      "name": "seedMismatch",
+      "msg": "Seed does not match the committed hash"
+    },
+    {
+      "code": 6031,
+      "name": "seedNotSet",
+      "msg": "Pass seed hash is not set"
+    },
+    {
+      "code": 6032,
+      "name": "alreadyRevealed",
+      "msg": "Pass traits are already revealed"
+    },
+    {
+      "code": 6033,
+      "name": "collectionAlreadySet",
+      "msg": "Pass collection is already set"
+    },
+    {
+      "code": 6034,
+      "name": "collectionNotSet",
+      "msg": "Pass collection is not set"
+    },
+    {
+      "code": 6035,
+      "name": "badCollection",
+      "msg": "Invalid Pass collection"
+    },
+    {
+      "code": 6036,
+      "name": "badSplit",
+      "msg": "Fee split must sum to 10000 basis points"
+    },
+    {
+      "code": 6037,
+      "name": "arenaBusy",
+      "msg": "Arena has open sessions"
+    },
+    {
+      "code": 6038,
+      "name": "badBaseUri",
+      "msg": "Invalid Pass base URI"
+    },
+    {
+      "code": 6039,
+      "name": "invalidMaxSessions",
+      "msg": "Max sessions must be between 2 and 2000"
+    },
+    {
+      "code": 6040,
+      "name": "entryFeeZero",
+      "msg": "Entry fee must be greater than zero"
+    },
+    {
+      "code": 6041,
+      "name": "seedLocked",
+      "msg": "Pass seed hash can only change before the first mint"
+    },
+    {
+      "code": 6042,
+      "name": "mintStillOpen",
+      "msg": "Pass mint is still open"
     }
   ],
   "types": [
@@ -1795,8 +2709,7 @@ export type Slana = {
       "docs": [
         "A stake arena tier. PDA `[\"arena\", id.to_le_bytes()]`.",
         "",
-        "The arena account itself is the vault: every lamport above its rent-exempt",
-        "minimum belongs to the pot."
+        "Entry fees are held in the arena's token vault `[\"vault\", arena]` (authority = this PDA)."
       ],
       "type": {
         "kind": "struct",
@@ -1806,11 +2719,28 @@ export type Slana = {
             "type": "u16"
           },
           {
-            "name": "buyIn",
+            "name": "entryFee",
+            "docs": [
+              "Entry fee in base units of the game token."
+            ],
             "type": "u64"
           },
           {
-            "name": "maxPlayers",
+            "name": "requiresPass",
+            "docs": [
+              "Only Slana Pass holders may join."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "maxSessions",
+            "docs": [
+              "Maximum number of simultaneously open sessions."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "openSessions",
             "type": "u16"
           },
           {
@@ -1818,8 +2748,15 @@ export type Slana = {
             "type": "bool"
           },
           {
-            "name": "openSessions",
-            "type": "u16"
+            "name": "vault",
+            "docs": [
+              "The arena's token vault."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "vaultBump",
+            "type": "u8"
           },
           {
             "name": "totalDeposited",
@@ -1832,6 +2769,30 @@ export type Slana = {
           {
             "name": "bump",
             "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "arenaCreated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "arenaId",
+            "type": "u16"
+          },
+          {
+            "name": "entryFee",
+            "type": "u64"
+          },
+          {
+            "name": "maxSessions",
+            "type": "u16"
+          },
+          {
+            "name": "requiresPass",
+            "type": "bool"
           }
         ]
       }
@@ -1854,8 +2815,12 @@ export type Slana = {
             "type": "u64"
           },
           {
-            "name": "buyIn",
+            "name": "entryFee",
             "type": "u64"
+          },
+          {
+            "name": "hasPass",
+            "type": "bool"
           }
         ]
       }
@@ -1868,6 +2833,10 @@ export type Slana = {
           {
             "name": "arenaId",
             "type": "u16"
+          },
+          {
+            "name": "seasonId",
+            "type": "u32"
           },
           {
             "name": "amount",
@@ -1887,23 +2856,34 @@ export type Slana = {
           {
             "name": "admin",
             "docs": [
-              "May change the configuration, create arenas and manage seasons."
+              "May change the configuration, create arenas, manage seasons and withdraw the treasury."
             ],
             "type": "pubkey"
           },
           {
             "name": "serverAuthority",
             "docs": [
-              "Game server key that signs `settle_session` and `record_game`."
+              "Game server key that signs `settle_session`."
             ],
             "type": "pubkey"
           },
           {
-            "name": "treasury",
+            "name": "tokenMint",
             "docs": [
-              "Receives skin purchases, the treasury part of fees and swept arena leftovers."
+              "The game token ($SLANA). Written once and never changed."
             ],
             "type": "pubkey"
+          },
+          {
+            "name": "tokenProgram",
+            "docs": [
+              "Token program owning `token_mint` (SPL Token or Token-2022)."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "tokenDecimals",
+            "type": "u8"
           },
           {
             "name": "feeBps",
@@ -1913,16 +2893,32 @@ export type Slana = {
             "type": "u16"
           },
           {
-            "name": "seasonShareBps",
+            "name": "passFeeBps",
             "docs": [
-              "Part of the fee that goes to the current season prize pool, in basis points."
+              "Fee charged on stake profit of a Pass session (≤ `fee_bps`)."
             ],
             "type": "u16"
           },
           {
-            "name": "skinPrice",
+            "name": "treasuryBps",
             "docs": [
-              "Price of a premium skin in lamports."
+              "Shares of each fee: treasury vault, season vault, burned. They sum to `BPS`."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "seasonBps",
+            "type": "u16"
+          },
+          {
+            "name": "burnBps",
+            "type": "u16"
+          },
+          {
+            "name": "settleFeeLamports",
+            "docs": [
+              "Lamports a player deposits per session to pay the server's settle transaction",
+              "(≤ `MAX_SETTLE_FEE_LAMPORTS`)."
             ],
             "type": "u64"
           },
@@ -1941,7 +2937,102 @@ export type Slana = {
             "type": "bool"
           },
           {
+            "name": "passCollection",
+            "docs": [
+              "Metaplex Core collection of the Pass (`Pubkey::default()` = not set yet)."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "passBaseUri",
+            "docs": [
+              "Base URI of Pass metadata (`pass_base_uri[..pass_base_uri_len]`, zero padded)."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                96
+              ]
+            }
+          },
+          {
+            "name": "passBaseUriLen",
+            "type": "u8"
+          },
+          {
+            "name": "passSupply",
+            "docs": [
+              "Maximum number of Passes (≤ `MAX_PASS_SUPPLY`, ≥ `pass_minted`)."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "passMinted",
+            "docs": [
+              "Passes minted so far."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "passPerWallet",
+            "docs": [
+              "Free mints per wallet (≤ `MAX_PASS_PER_WALLET`)."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "passMinTokens",
+            "docs": [
+              "Minimum game-token balance needed to mint (0 = no requirement)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "passMintOpen",
+            "type": "bool"
+          },
+          {
+            "name": "passMintStartTs",
+            "type": "i64"
+          },
+          {
+            "name": "passSeedHash",
+            "docs": [
+              "`sha256(pass_seed)` committed before the first mint."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "passSeed",
+            "docs": [
+              "The revealed seed (zero until `pass_revealed`)."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "passRevealed",
+            "type": "bool"
+          },
+          {
             "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "treasuryVaultBump",
+            "type": "u8"
+          },
+          {
+            "name": "seasonVaultBump",
             "type": "u8"
           },
           {
@@ -1968,30 +3059,6 @@ export type Slana = {
       }
     },
     {
-      "name": "gameRecorded",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "player",
-            "type": "pubkey"
-          },
-          {
-            "name": "score",
-            "type": "u32"
-          },
-          {
-            "name": "kills",
-            "type": "u16"
-          },
-          {
-            "name": "xp",
-            "type": "u32"
-          }
-        ]
-      }
-    },
-    {
       "name": "initializeArgs",
       "type": {
         "kind": "struct",
@@ -2001,19 +3068,27 @@ export type Slana = {
             "type": "pubkey"
           },
           {
-            "name": "treasury",
-            "type": "pubkey"
-          },
-          {
             "name": "feeBps",
             "type": "u16"
           },
           {
-            "name": "seasonShareBps",
+            "name": "passFeeBps",
             "type": "u16"
           },
           {
-            "name": "skinPrice",
+            "name": "treasuryBps",
+            "type": "u16"
+          },
+          {
+            "name": "seasonBps",
+            "type": "u16"
+          },
+          {
+            "name": "burnBps",
+            "type": "u16"
+          },
+          {
+            "name": "settleFeeLamports",
             "type": "u64"
           }
         ]
@@ -2063,6 +3138,102 @@ export type Slana = {
       }
     },
     {
+      "name": "mintCounter",
+      "docs": [
+        "Number of Passes a wallet minted. PDA `[\"pass_minted\", minter]`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "count",
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "passCollectionSet",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "collection",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "passLock",
+      "docs": [
+        "Lock of a Pass asset while it backs an open session, so one Pass backs at most one",
+        "session at a time (even across transfers). PDA `[\"pass_lock\", asset]`.",
+        "Paid by the player at join and closed back to them at settlement or refund."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "type": "pubkey"
+          },
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "passMinted",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "minter",
+            "type": "pubkey"
+          },
+          {
+            "name": "asset",
+            "type": "pubkey"
+          },
+          {
+            "name": "number",
+            "docs": [
+              "1-based Pass number (`Slana Pass #<number>`)."
+            ],
+            "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "passRevealed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "seed",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "playerProfile",
       "docs": [
         "On-chain player identity and statistics. PDA `[\"profile\", owner]`."
@@ -2093,16 +3264,9 @@ export type Slana = {
           {
             "name": "skin",
             "docs": [
-              "Equipped skin id."
+              "Equipped skin id (`< BASIC_SKINS`)."
             ],
             "type": "u8"
-          },
-          {
-            "name": "premiumSkins",
-            "docs": [
-              "Owned premium skins: bit `i` set ⇔ skin `PREMIUM_SKIN_START + i` owned."
-            ],
-            "type": "u32"
           },
           {
             "name": "xp",
@@ -2195,26 +3359,6 @@ export type Slana = {
       }
     },
     {
-      "name": "recordArgs",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "score",
-            "type": "u32"
-          },
-          {
-            "name": "kills",
-            "type": "u16"
-          },
-          {
-            "name": "xp",
-            "type": "u32"
-          }
-        ]
-      }
-    },
-    {
       "name": "rewardClaimed",
       "type": {
         "kind": "struct",
@@ -2243,7 +3387,10 @@ export type Slana = {
       "docs": [
         "A season with its top-20 leaderboard. PDA `[\"season\", id.to_le_bytes()]`.",
         "",
-        "Every lamport above the rent-exempt minimum is prize money."
+        "Prize tokens live in the global season vault (`[\"season_vault\"]`); `pool` is this",
+        "season's share of it. While the season runs, settle fee shares, sweeps and rollovers add",
+        "to `pool`; `end_season` freezes it into `prize_pool`; each claim takes its prize out of",
+        "`pool`, and `rollover_season` moves what is left into the then-current season."
       ],
       "type": {
         "kind": "struct",
@@ -2268,6 +3415,13 @@ export type Slana = {
             "name": "prizePool",
             "docs": [
               "Prize pool frozen by `end_season`."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "pool",
+            "docs": [
+              "Game tokens of the season vault that belong to this season and are not paid out yet."
             ],
             "type": "u64"
           },
@@ -2325,26 +3479,6 @@ export type Slana = {
       }
     },
     {
-      "name": "seasonFunded",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "seasonId",
-            "type": "u32"
-          },
-          {
-            "name": "funder",
-            "type": "pubkey"
-          },
-          {
-            "name": "amount",
-            "type": "u64"
-          }
-        ]
-      }
-    },
-    {
       "name": "seasonRolledOver",
       "type": {
         "kind": "struct",
@@ -2367,11 +3501,22 @@ export type Slana = {
     {
       "name": "session",
       "docs": [
-        "An open stake session (one per player per arena). PDA `[\"session\", arena, player]`."
+        "An open stake session (one per player per arena). PDA `[\"session\", arena, player]`.",
+        "",
+        "Its lamport balance is its rent plus `settle_fee`, both paid by the player at join: the",
+        "deposit goes to the server at settlement (it pays the settle transaction), the rent back to",
+        "the player. A refund returns both to the player."
       ],
       "type": {
         "kind": "struct",
         "fields": [
+          {
+            "name": "id",
+            "docs": [
+              "`Config::total_sessions` at join (PDAs are reused, ids are not)."
+            ],
+            "type": "u64"
+          },
           {
             "name": "player",
             "type": "pubkey"
@@ -2385,7 +3530,10 @@ export type Slana = {
             "type": "u16"
           },
           {
-            "name": "buyIn",
+            "name": "entryFee",
+            "docs": [
+              "Entry fee paid into the arena vault, in base units of the game token."
+            ],
             "type": "u64"
           },
           {
@@ -2393,7 +3541,24 @@ export type Slana = {
             "type": "i64"
           },
           {
-            "name": "id",
+            "name": "hasPass",
+            "docs": [
+              "Joined with a Slana Pass: lower fee, season points, and `pass_asset` is locked."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "passAsset",
+            "docs": [
+              "The Pass asset backing the session (`Pubkey::default()` without a Pass)."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "settleFee",
+            "docs": [
+              "Settle deposit in lamports (`Config::settle_fee_lamports` at join)."
+            ],
             "type": "u64"
           },
           {
@@ -2449,6 +3614,17 @@ export type Slana = {
             "type": "u64"
           },
           {
+            "name": "burned",
+            "docs": [
+              "Part of `fee` that was burned."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "hasPass",
+            "type": "bool"
+          },
+          {
             "name": "score",
             "type": "u32"
           },
@@ -2476,7 +3652,8 @@ export type Slana = {
           {
             "name": "payout",
             "docs": [
-              "Lamports the player cashed out with (taken from the arena pot)."
+              "Game-token base units the player cashed out with (taken from the arena vault, before",
+              "the fee on profit)."
             ],
             "type": "u64"
           },
@@ -2496,20 +3673,16 @@ export type Slana = {
       }
     },
     {
-      "name": "skinPurchased",
+      "name": "treasuryWithdrawn",
       "type": {
         "kind": "struct",
         "fields": [
           {
-            "name": "owner",
+            "name": "destination",
             "type": "pubkey"
           },
           {
-            "name": "skin",
-            "type": "u8"
-          },
-          {
-            "name": "price",
+            "name": "amount",
             "type": "u64"
           }
         ]
@@ -2518,7 +3691,8 @@ export type Slana = {
     {
       "name": "updateConfigArgs",
       "docs": [
-        "Every `Some` field replaces the stored value; `None` keeps it."
+        "Every `Some` field replaces the stored value; `None` keeps it. The token mint is fixed",
+        "at `initialize` and cannot be changed."
       ],
       "type": {
         "kind": "struct",
@@ -2536,25 +3710,34 @@ export type Slana = {
             }
           },
           {
-            "name": "treasury",
-            "type": {
-              "option": "pubkey"
-            }
-          },
-          {
             "name": "feeBps",
             "type": {
               "option": "u16"
             }
           },
           {
-            "name": "seasonShareBps",
+            "name": "passFeeBps",
             "type": {
               "option": "u16"
             }
           },
           {
-            "name": "skinPrice",
+            "name": "split",
+            "docs": [
+              "`[treasury_bps, season_bps, burn_bps]`, must sum to `BPS`. (An array rather than a",
+              "tuple because the Anchor IDL has no tuple type; the Borsh encoding is identical.)"
+            ],
+            "type": {
+              "option": {
+                "array": [
+                  "u16",
+                  3
+                ]
+              }
+            }
+          },
+          {
+            "name": "settleFeeLamports",
             "type": {
               "option": "u64"
             }
@@ -2563,6 +3746,51 @@ export type Slana = {
             "name": "paused",
             "type": {
               "option": "bool"
+            }
+          },
+          {
+            "name": "passBaseUri",
+            "docs": [
+              "At most `MAX_BASE_URI_LEN` bytes, ends with `/`; frozen once the first Pass is minted."
+            ],
+            "type": {
+              "option": "string"
+            }
+          },
+          {
+            "name": "passSupply",
+            "docs": [
+              "`pass_minted..=MAX_PASS_SUPPLY`."
+            ],
+            "type": {
+              "option": "u32"
+            }
+          },
+          {
+            "name": "passPerWallet",
+            "docs": [
+              "`1..=MAX_PASS_PER_WALLET`."
+            ],
+            "type": {
+              "option": "u8"
+            }
+          },
+          {
+            "name": "passMinTokens",
+            "type": {
+              "option": "u64"
+            }
+          },
+          {
+            "name": "passMintOpen",
+            "type": {
+              "option": "bool"
+            }
+          },
+          {
+            "name": "passMintStartTs",
+            "type": {
+              "option": "i64"
             }
           }
         ]
@@ -2577,6 +3805,14 @@ export type Slana = {
       ],
       "type": "bytes",
       "value": "[97, 114, 101, 110, 97]"
+    },
+    {
+      "name": "basicSkins",
+      "docs": [
+        "Number of basic skins (ids `0..BASIC_SKINS`); every player may use all of them."
+      ],
+      "type": "u8",
+      "value": "8"
     },
     {
       "name": "bps",
@@ -2603,20 +3839,28 @@ export type Slana = {
       "value": "[99, 111, 110, 102, 105, 103]"
     },
     {
+      "name": "defaultPassPerWallet",
+      "docs": [
+        "`Config::pass_per_wallet` set by `initialize`."
+      ],
+      "type": "u8",
+      "value": "1"
+    },
+    {
+      "name": "defaultPassSupply",
+      "docs": [
+        "`Config::pass_supply` set by `initialize`."
+      ],
+      "type": "u32",
+      "value": "3333"
+    },
+    {
       "name": "firstSeason",
       "docs": [
         "Id of the first season (created by `initialize`)."
       ],
       "type": "u32",
       "value": "1"
-    },
-    {
-      "name": "freeSkins",
-      "docs": [
-        "Skins `0..FREE_SKINS` are free."
-      ],
-      "type": "u8",
-      "value": "8"
     },
     {
       "name": "leaderboardSize",
@@ -2627,38 +3871,25 @@ export type Slana = {
       "value": "20"
     },
     {
-      "name": "levelSkinRequirements",
+      "name": "maxArenaSessions",
       "docs": [
-        "Level required by level-gated skins (skin 8 needs level 2 … skin 15 needs level 20)."
-      ],
-      "type": {
-        "array": [
-          "u32",
-          8
-        ]
-      },
-      "value": "[2, 3, 5, 7, 10, 13, 16, 20]"
-    },
-    {
-      "name": "levelSkinStart",
-      "docs": [
-        "Skins `LEVEL_SKIN_START..PREMIUM_SKIN_START` are unlocked by level."
-      ],
-      "type": "u8",
-      "value": "8"
-    },
-    {
-      "name": "maxArenaPlayers",
-      "docs": [
-        "Maximum value of `Arena::max_players`."
+        "Maximum value of `Arena::max_sessions`."
       ],
       "type": "u16",
-      "value": "100"
+      "value": "2000"
+    },
+    {
+      "name": "maxBaseUriLen",
+      "docs": [
+        "Maximum length of `Config::pass_base_uri` in bytes."
+      ],
+      "type": "u8",
+      "value": "96"
     },
     {
       "name": "maxFeeBps",
       "docs": [
-        "Upper bound for `Config::fee_bps` (10 %)."
+        "Upper bound for `Config::fee_bps` (10 %); `pass_fee_bps` must not exceed `fee_bps`."
       ],
       "type": "u16",
       "value": "1000"
@@ -2672,11 +3903,35 @@ export type Slana = {
       "value": "16"
     },
     {
+      "name": "maxPassPerWallet",
+      "docs": [
+        "Upper bound for `Config::pass_per_wallet`."
+      ],
+      "type": "u8",
+      "value": "10"
+    },
+    {
+      "name": "maxPassSupply",
+      "docs": [
+        "Upper bound for `Config::pass_supply`."
+      ],
+      "type": "u32",
+      "value": "10000"
+    },
+    {
       "name": "maxScorePerGame",
       "docs": [
         "Score of a single game is clamped to this value."
       ],
       "type": "u32",
+      "value": "1000000"
+    },
+    {
+      "name": "maxSettleFeeLamports",
+      "docs": [
+        "Upper bound for `Config::settle_fee_lamports` (the per-session settle deposit)."
+      ],
+      "type": "u64",
       "value": "1000000"
     },
     {
@@ -2688,28 +3943,36 @@ export type Slana = {
       "value": "2000"
     },
     {
-      "name": "minArenaPlayers",
+      "name": "minArenaSessions",
       "docs": [
-        "Minimum value of `Arena::max_players`."
+        "Minimum value of `Arena::max_sessions`."
       ],
       "type": "u16",
       "value": "2"
     },
     {
-      "name": "minBuyIn",
+      "name": "passAuthoritySeed",
       "docs": [
-        "Minimum arena buy-in (0.001 SOL)."
+        "Data-less signer PDA that is the update authority of the Pass collection: `[\"pass_authority\"]`."
       ],
-      "type": "u64",
-      "value": "1000000"
+      "type": "bytes",
+      "value": "[112, 97, 115, 115, 95, 97, 117, 116, 104, 111, 114, 105, 116, 121]"
     },
     {
-      "name": "premiumSkinStart",
+      "name": "passLockSeed",
       "docs": [
-        "Skins `PREMIUM_SKIN_START..SKIN_COUNT` are bought with SOL (bit `skin - 16` of `premium_skins`)."
+        "Lock of a Pass asset while it backs an open session: `[\"pass_lock\", asset]`."
       ],
-      "type": "u8",
-      "value": "16"
+      "type": "bytes",
+      "value": "[112, 97, 115, 115, 95, 108, 111, 99, 107]"
+    },
+    {
+      "name": "passMintedSeed",
+      "docs": [
+        "Per-wallet Pass mint counter: `[\"pass_minted\", wallet]`."
+      ],
+      "type": "bytes",
+      "value": "[112, 97, 115, 115, 95, 109, 105, 110, 116, 101, 100]"
     },
     {
       "name": "prizeRanks",
@@ -2749,6 +4012,14 @@ export type Slana = {
       "value": "[115, 101, 97, 115, 111, 110]"
     },
     {
+      "name": "seasonVaultSeed",
+      "docs": [
+        "Global season prize token vault (authority = the config PDA): `[\"season_vault\"]`."
+      ],
+      "type": "bytes",
+      "value": "[115, 101, 97, 115, 111, 110, 95, 118, 97, 117, 108, 116]"
+    },
+    {
       "name": "sessionRefundTimeoutSecs",
       "docs": [
         "A session that was never settled can be refunded by its player after this many seconds (24 h)."
@@ -2765,12 +4036,20 @@ export type Slana = {
       "value": "[115, 101, 115, 115, 105, 111, 110]"
     },
     {
-      "name": "skinCount",
+      "name": "treasuryVaultSeed",
       "docs": [
-        "Total number of skins (ids `0..SKIN_COUNT`)."
+        "Treasury token vault (authority = the config PDA): `[\"treasury_vault\"]`."
       ],
-      "type": "u8",
-      "value": "24"
+      "type": "bytes",
+      "value": "[116, 114, 101, 97, 115, 117, 114, 121, 95, 118, 97, 117, 108, 116]"
+    },
+    {
+      "name": "vaultSeed",
+      "docs": [
+        "Token vault of an arena (authority = the arena PDA): `[\"vault\", arena]`."
+      ],
+      "type": "bytes",
+      "value": "[118, 97, 117, 108, 116]"
     },
     {
       "name": "xpLevelDivisor",

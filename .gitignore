@@ -21,6 +21,7 @@ apps/server/data/
 data/
 *.keypair.json
 keys/
+pass-seed*.json
 .env
 .env.local
 .env.*.local

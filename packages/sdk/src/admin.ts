@@ -3,52 +3,94 @@
  *
  *   pnpm -F @slana/sdk admin <command> [options]      (or `pnpm admin <command>` at the repo root)
  *
- * Run `pnpm -F @slana/sdk admin help` for the command list.
+ * Run `pnpm admin help` for the command list.
  */
-import { readFileSync } from 'node:fs';
+import { createHash, randomBytes } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { resolve } from 'node:path';
-import { arenaMeta } from '@slana/shared';
-import { Connection, Keypair, PublicKey, type TransactionInstruction } from '@solana/web3.js';
+import { dirname, resolve } from 'node:path';
+import { DEFAULT_ARENAS, arenaMeta, formatToken, parseToken } from '@slana/shared';
+import { getMint } from '@solana/spl-token';
+import { Connection, Keypair, PublicKey, type Signer, type TransactionInstruction } from '@solana/web3.js';
 import {
   BPF_LOADER_UPGRADEABLE_ID,
+  BPS,
+  MAX_ARENA_SESSIONS,
   MAX_FEE_BPS,
+  MAX_PASS_PER_WALLET,
+  MAX_PASS_SUPPLY,
+  MAX_SETTLE_FEE_LAMPORTS,
+  MIN_ARENA_SESSIONS,
   PROGRAM_ID,
   SlanaClient,
+  TOKEN_2022_PROGRAM_ID,
+  TOKEN_PROGRAM_ID,
+  assertSafeSupply,
+  ata,
+  checkBaseUri,
+  createAtaIdempotentIx,
+  createCollectionIx,
   describeError,
   explorerAddressUrl,
   explorerTxUrl,
   lamportsToSol,
   pdas,
   shortAddress,
-  solToLamports,
+  type ConfigView,
   type UpdateConfigParams,
 } from './index';
 
+/** Defaults from the v2 plan (all configurable). */
+const DEFAULTS = { feeBps: 500, passFeeBps: 200, split: [5_000, 3_000, 2_000] as const, settleFeeLamports: 20_000 };
+const DEFAULT_SEED_FILE = 'keys/pass-seed.json';
+
 const USAGE = `Slana admin CLI
 
-Usage: pnpm -F @slana/sdk admin <command> [options]
+Usage: pnpm admin <command> [options]
 
-Commands:
-  status                                   config, arenas (with pots), current season top 10 + pool
-  init --server <pubkey> --treasury <pubkey> [--fee-bps 500] [--season-share-bps 5000] [--skin-price-sol 0.05]
-                                           create Config + season 1 (keypair must be the upgrade authority)
-  update-config [--server <pubkey>] [--treasury <pubkey>] [--fee-bps N] [--season-share-bps N]
-                [--skin-price-sol X] [--paused true|false] [--admin <pubkey>]
-  create-arena --id N --buy-in-sol X --max-players N
+Setup
+  init --mint <M> --server <pubkey> [--fee-bps 500] [--pass-fee-bps 200] [--split 5000/3000/2000]
+       [--settle-fee-lamports 20000]
+                          create Config, vaults and season 1 (keypair must be the upgrade authority)
+  update-config [--admin <pubkey>] [--server <pubkey>] [--fee-bps N] [--pass-fee-bps N]
+                [--split T/S/B] [--settle-fee-lamports N] [--paused true|false]
+                [--base-uri <url>/] [--supply N] [--per-wallet N] [--min-tokens X]
+                [--mint-open true|false] [--start <unix>]
+  status                  config, mint, vault balances, arenas, season top 10, Pass mint progress
+
+Slana Pass
+  create-collection --name "Slana Pass" --uri <base>/collection.json --royalty-bps 500 --royalty-to <pubkey>
+                          create the Core collection (update authority = pass authority PDA)
+  set-pass-collection --collection <C>
+  pass-seed --new [--seed-file ${DEFAULT_SEED_FILE}] [--force]
+                          write 32 random bytes and print their sha256 (keep the file secret)
+  set-seed-hash [--seed-file ${DEFAULT_SEED_FILE}]
+                          commit sha256(seed) on-chain (before the first mint)
+  open-mint --base-uri <url>/ [--start <unix>] [--supply N] [--per-wallet N] [--min-tokens X]
+  close-mint
+  reveal [--seed-file ${DEFAULT_SEED_FILE}]
+                          reveal the seed (after the mint is closed or sold out)
+
+Arenas
   create-arena --defaults                  create the default tiers (skips existing ones)
-  update-arena --id N [--enabled true|false] [--max-players N]
-  fund-season --sol X                      donate to the current season's prize pool
+  create-arena --id N --entry <tokens> --max N [--pass]
+  update-arena --id N [--enabled true|false] [--max N] [--entry <tokens>] [--pass true|false]
+  sweep --id N                             move a disabled, idle arena's vault into the season pool
+
+Treasury & seasons
+  withdraw-treasury --amount <tokens> --to <owner>
+                          pay the owner's token account (created if missing)
   end-season                               freeze the current season and open the next one
   rollover --season N                      move unclaimed prizes of season N into the current season
-  sweep --id N                             send an idle arena's leftover pot to the treasury
 
-Options:
+Options
   --url <rpc>          RPC endpoint (default: $SOLANA_RPC_URL or http://127.0.0.1:8899)
   --keypair <path>     signer / fee payer (default: ~/.config/solana/id.json)
   --program <id>       program id (default: $PROGRAM_ID or ${PROGRAM_ID.toBase58()})
   --cluster <name>     cluster for explorer links (default: inferred from --url)
   --verbose            print transaction logs on errors
+
+Token amounts (--entry, --amount, --min-tokens) are whole tokens with '.' decimals, scaled by the mint's decimals.
 `;
 
 class UsageError extends Error {}
@@ -89,9 +131,9 @@ function str(opts: Opts, name: string): string | undefined {
   return v;
 }
 
-function required(opts: Opts, name: string): string {
+function required(opts: Opts, name: string, command: string): string {
   const v = str(opts, name);
-  if (v === undefined) throw new UsageError(`--${name} is required`);
+  if (v === undefined) throw new UsageError(`${command} needs --${name} (see \`pnpm admin help\`)`);
   return v;
 }
 
@@ -121,16 +163,30 @@ function bool(opts: Opts, name: string): boolean | undefined {
   throw new UsageError(`--${name} must be true or false`);
 }
 
-function sol(opts: Opts, name: string): number | undefined {
+/** `--flag` alone means true; `--flag true|false` is accepted too. */
+function flag(opts: Opts, name: string): boolean | undefined {
+  return opts.get(name) === true ? true : bool(opts, name);
+}
+
+/** Whole tokens (en decimals, e.g. `1000` or `0.5`) → base units. */
+function tokens(opts: Opts, name: string, decimals: number): bigint | undefined {
   const v = str(opts, name);
   if (v === undefined) return undefined;
   try {
-    const lamports = solToLamports(v);
-    if (lamports < 0) throw new Error('negative');
-    return lamports;
-  } catch {
-    throw new UsageError(`--${name} must be a non-negative SOL amount (e.g. 0.05)`);
+    return parseToken(v.replace(/_/g, ''), decimals, 'en');
+  } catch (err) {
+    throw new UsageError(`--${name}: ${(err as Error).message}`);
   }
+}
+
+function split(opts: Opts): [number, number, number] | undefined {
+  const v = str(opts, 'split');
+  if (v === undefined) return undefined;
+  const parts = v.split('/').map(Number);
+  if (parts.length !== 3 || parts.some((n) => !Number.isInteger(n) || n < 0 || n > BPS) || parts[0] + parts[1] + parts[2] !== BPS) {
+    throw new UsageError(`--split must be treasury/season/burn basis points summing to ${BPS} (e.g. 5000/3000/2000)`);
+  }
+  return [parts[0], parts[1], parts[2]];
 }
 
 function expandHome(path: string): string {
@@ -154,6 +210,21 @@ function loadKeypair(path: string): Keypair {
   }
 }
 
+function loadSeed(opts: Opts): { file: string; seed: Uint8Array; hash: string } {
+  const file = expandHome(str(opts, 'seed-file') ?? DEFAULT_SEED_FILE);
+  let seed: Uint8Array;
+  try {
+    seed = Uint8Array.from(JSON.parse(readFileSync(file, 'utf8')) as number[]);
+  } catch {
+    throw new UsageError(`cannot read seed file ${file} (create it with \`pnpm admin pass-seed --new\`)`);
+  }
+  if (seed.length !== 32 || seed.some((b) => !Number.isInteger(b) || b < 0 || b > 255)) throw new UsageError(`${file} must hold a JSON array of 32 bytes`);
+  return { file, seed, hash: sha256Hex(seed) };
+}
+
+const sha256Hex = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex');
+const hexBytes = (hex: string): Uint8Array => Uint8Array.from(Buffer.from(hex, 'hex'));
+
 function inferCluster(url: string): string {
   if (/devnet/i.test(url)) return 'devnet';
   if (/testnet/i.test(url)) return 'testnet';
@@ -164,6 +235,7 @@ function inferCluster(url: string): string {
 const fmtSol = (lamports: number): string => `◎${lamportsToSol(lamports).toLocaleString('en-US', { maximumFractionDigits: 9 })}`;
 const fmtPct = (bps: number): string => `${(bps / 100).toFixed(2)} %`;
 const fmtTime = (unix: number): string => (unix > 0 ? new Date(unix * 1000).toISOString().replace('.000Z', 'Z') : '—');
+const fmtTok = (raw: bigint, decimals: number): string => formatToken(raw, decimals, 'en', { maxFrac: Math.min(decimals, 6) });
 
 interface Ctx {
   url: string;
@@ -172,22 +244,22 @@ interface Ctx {
   signer: () => Keypair;
 }
 
-async function send(ctx: Ctx, label: string, ixs: TransactionInstruction[]): Promise<string> {
+async function send(ctx: Ctx, label: string, ixs: TransactionInstruction[], extraSigners: Signer[] = []): Promise<string> {
   const signer = ctx.signer();
-  const signature = await ctx.client.sendAndConfirm(ixs, [signer]);
+  const signature = await ctx.client.sendAndConfirm(ixs, [signer, ...extraSigners]);
   console.log(`✓ ${label}`);
   console.log(`  signature ${signature}`);
   console.log(`  ${explorerTxUrl(signature, ctx.cluster, ctx.url)}`);
   return signature;
 }
 
-async function requireConfig(ctx: Ctx) {
+async function requireConfig(ctx: Ctx): Promise<ConfigView> {
   const config = await ctx.client.fetchConfig();
   if (!config) {
     const deployed = await ctx.client.isDeployed();
     throw new UsageError(
       deployed
-        ? `program ${ctx.client.programId.toBase58()} is not initialized yet — run \`admin init --server <pubkey> --treasury <pubkey>\``
+        ? `program ${ctx.client.programId.toBase58()} is not initialized yet — run \`pnpm admin init --mint <M> --server <pubkey>\``
         : `program ${ctx.client.programId.toBase58()} is not deployed on ${ctx.url}`,
     );
   }
@@ -203,6 +275,23 @@ async function upgradeAuthority(ctx: Ctx): Promise<PublicKey | null> {
   return new PublicKey(info.data.subarray(13, 45));
 }
 
+/** Token program owning `mint` and its on-chain state; refuses supplies beyond 2^53 − 1. */
+async function loadMint(ctx: Ctx, mint: PublicKey) {
+  const info = await ctx.client.connection.getAccountInfo(mint, 'confirmed');
+  if (!info) throw new UsageError(`mint ${mint.toBase58()} does not exist on ${ctx.url}`);
+  const program = info.owner;
+  if (!program.equals(TOKEN_PROGRAM_ID) && !program.equals(TOKEN_2022_PROGRAM_ID)) {
+    throw new UsageError(`${mint.toBase58()} is not an SPL Token / Token-2022 mint (owner ${program.toBase58()})`);
+  }
+  const state = await getMint(ctx.client.connection, mint, 'confirmed', program);
+  try {
+    assertSafeSupply(state.supply);
+  } catch (err) {
+    throw new UsageError((err as Error).message);
+  }
+  return { program, state };
+}
+
 /* -------------------------------------------------------------------- */
 /* Commands                                                              */
 /* -------------------------------------------------------------------- */
@@ -215,159 +304,319 @@ async function cmdStatus(ctx: Ctx): Promise<void> {
   if (!deployed) return;
   const config = await client.fetchConfig();
   if (!config) {
-    console.log('config    ✗ not initialized (run `admin init`)');
+    console.log('config    ✗ not initialized (run `pnpm admin init`)');
     return;
   }
-  const [serverBalance, treasuryBalance] = await Promise.all([
+  const d = config.tokenDecimals;
+  const [serverBalance, vaults, mint] = await Promise.all([
     client.connection.getBalance(new PublicKey(config.serverAuthority)),
-    client.connection.getBalance(new PublicKey(config.treasury)),
+    client.fetchVaultBalances(),
+    getMint(client.connection, new PublicKey(config.tokenMint), 'confirmed', new PublicKey(config.tokenProgram)).catch(() => null),
   ]);
+  const program = config.tokenProgram === TOKEN_2022_PROGRAM_ID.toBase58() ? 'Token-2022' : config.tokenProgram === TOKEN_PROGRAM_ID.toBase58() ? 'SPL Token' : config.tokenProgram;
   console.log(`config    ${pdas.config(client.programId).toBase58()}`);
   console.log(`  admin             ${config.admin}`);
   console.log(`  server authority  ${config.serverAuthority}  (balance ${fmtSol(serverBalance)})`);
-  console.log(`  treasury          ${config.treasury}  (balance ${fmtSol(treasuryBalance)})`);
-  console.log(`  fee               ${fmtPct(config.feeBps)} of profit, ${fmtPct(config.seasonShareBps)} of it to the season pool`);
-  console.log(`  skin price        ${fmtSol(config.skinPrice)}`);
+  console.log(`  token mint        ${config.tokenMint}  (${program}, ${d} decimals)`);
+  if (mint) {
+    console.log(`  supply            ${fmtTok(mint.supply, d)} (${mint.supply} base units)${mint.supply > BigInt(Number.MAX_SAFE_INTEGER) ? '  ✗ above 2^53−1: NOT SUPPORTED' : ''}`);
+    console.log(`  mint/freeze auth  ${mint.mintAuthority?.toBase58() ?? 'none'} / ${mint.freezeAuthority?.toBase58() ?? 'none'}`);
+  } else {
+    console.log('  supply            ✗ mint account not readable');
+  }
+  console.log(`  fee               ${fmtPct(config.feeBps)} of profit (Pass ${fmtPct(config.passFeeBps)})`);
+  console.log(`  fee split         treasury ${fmtPct(config.treasuryBps)} · season ${fmtPct(config.seasonBps)} · burn ${fmtPct(config.burnBps)}`);
+  console.log(`  settle deposit    ${fmtSol(config.settleFeeLamports)} per session`);
   console.log(`  current season    ${config.currentSeason}`);
   console.log(`  paused            ${config.paused ? 'YES (arena joins blocked)' : 'no'}`);
   console.log(
-    `  totals            ${config.totalPlayers} players · ${config.totalGames} games · ${config.totalSessions} sessions · ` +
-      `${fmtSol(config.totalStaked)} staked · ${fmtSol(config.totalPaidOut)} paid out`,
+    `  totals            ${config.totals.players} players · ${config.totals.games} games · ${config.totals.sessions} sessions · ` +
+      `${fmtTok(config.totals.staked, d)} staked · ${fmtTok(config.totals.paidOut, d)} paid out`,
   );
+  console.log(`vaults`);
+  console.log(`  treasury          ${fmtTok(vaults.treasury, d)}  ${pdas.treasuryVault(client.programId).toBase58()}`);
+  console.log(`  season            ${fmtTok(vaults.season, d)}  ${pdas.seasonVault(client.programId).toBase58()}`);
 
   const arenas = await client.fetchArenas();
-  console.log(arenas.length === 0 ? 'arenas    none (run `admin create-arena --defaults`)' : 'arenas');
+  console.log(arenas.length === 0 ? 'arenas    none (run `pnpm admin create-arena --defaults`)' : 'arenas');
   for (const a of arenas) {
     const meta = arenaMeta(a.id);
     console.log(
-      `  #${a.id} ${meta.name.en.padEnd(14)} buy-in ${fmtSol(a.buyIn).padEnd(8)} max ${String(a.maxPlayers).padStart(3)} · ` +
-        `open ${a.openSessions} · pot ${fmtSol(a.pot)} · ${a.enabled ? 'enabled' : 'DISABLED'}  ${a.address}`,
+      `  #${a.id} ${meta.name.en.padEnd(14)} entry ${fmtTok(a.entryFee, d).padEnd(10)} ${a.requiresPass ? 'PASS ' : '     '}` +
+        `open ${a.openSessions}/${a.maxSessions} · pot ${fmtTok(a.pot, d)} · ${a.enabled ? 'enabled' : 'DISABLED'}  ${a.address}`,
     );
   }
 
   const season = await client.fetchSeason(config.currentSeason);
-  if (!season) {
+  if (season) {
+    console.log(`season ${season.id}  started ${fmtTime(season.startedAt)} · pool ${fmtTok(season.pool, d)} · ${season.entries.length} ranked`);
+    season.entries.slice(0, 10).forEach((e, i) => {
+      console.log(`  ${String(i + 1).padStart(2)}. ${e.name.padEnd(16)} ${String(e.points).padStart(9)} pts · best ${String(e.bestScore).padStart(7)} · ${shortAddress(e.player)}`);
+    });
+  } else {
     console.log(`season ${config.currentSeason} account not found`);
-    return;
   }
-  console.log(`season ${season.id}  started ${fmtTime(season.startedAt)} · prize pool ${fmtSol(season.pool)} · ${season.entries.length} ranked`);
-  season.entries.slice(0, 10).forEach((e, i) => {
-    console.log(
-      `  ${String(i + 1).padStart(2)}. ${e.name.padEnd(16)} ${String(e.points).padStart(9)} pts · best ${String(e.bestScore).padStart(7)} · ${shortAddress(e.player)}`,
-    );
-  });
   if (config.currentSeason > 1) {
     const prev = await client.fetchSeason(config.currentSeason - 1);
     if (prev) {
       console.log(
-        `season ${prev.id}  ended ${fmtTime(prev.endedAt)} · frozen pool ${fmtSol(prev.prizePool)} · unclaimed ${fmtSol(prev.pool)} · claimed mask 0b${prev.claimedMask.toString(2)}`,
+        `season ${prev.id}  ended ${fmtTime(prev.endedAt)} · prize pool ${fmtTok(prev.prizePool, d)} · unclaimed ${fmtTok(prev.pool, d)} · claimed mask 0b${prev.claimedMask.toString(2)}`,
       );
     }
   }
+
+  console.log('slana pass');
+  console.log(`  collection        ${config.passCollection ?? '✗ not set (create-collection, then set-pass-collection)'}`);
+  console.log(`  base uri          ${config.passBaseUri || '✗ not set'}`);
+  const pct = config.passSupply > 0 ? ((config.passMinted / config.passSupply) * 100).toFixed(1) : '0.0';
+  console.log(`  minted            ${config.passMinted} / ${config.passSupply} (${pct} %) · ${config.passPerWallet} per wallet · min ${fmtTok(config.passMinTokens, d)} tokens`);
+  const now = Math.floor(Date.now() / 1000);
+  const state = !config.passMintOpen ? 'closed' : config.passMintStartTs > now ? `opens ${fmtTime(config.passMintStartTs)}` : 'OPEN';
+  console.log(`  mint              ${state}${config.passMintOpen && config.passMintStartTs <= now ? ` since ${fmtTime(config.passMintStartTs)}` : ''}`);
+  console.log(`  seed hash         ${config.passSeedHash ?? '✗ not set (pass-seed --new, then set-seed-hash)'}`);
+  console.log(`  revealed          ${config.passRevealed ? `yes · seed ${config.passSeed}` : 'no'}`);
 }
 
 async function cmdInit(ctx: Ctx, opts: Opts): Promise<void> {
+  const mintKey = pubkey(opts, 'mint');
   const server = pubkey(opts, 'server');
-  const treasury = pubkey(opts, 'treasury');
-  if (!server || !treasury) throw new UsageError('init needs --server <pubkey> and --treasury <pubkey>');
-  const feeBps = int(opts, 'fee-bps', 0, MAX_FEE_BPS) ?? 500;
-  const seasonShareBps = int(opts, 'season-share-bps', 0, 10_000) ?? 5_000;
-  const skinPrice = sol(opts, 'skin-price-sol') ?? solToLamports(0.05);
+  if (!mintKey || !server) throw new UsageError('init needs --mint <M> and --server <pubkey>');
+  const feeBps = int(opts, 'fee-bps', 0, MAX_FEE_BPS) ?? DEFAULTS.feeBps;
+  const passFeeBps = int(opts, 'pass-fee-bps', 0, MAX_FEE_BPS) ?? DEFAULTS.passFeeBps;
+  if (passFeeBps > feeBps) throw new UsageError('--pass-fee-bps must not exceed --fee-bps');
+  const feeSplit = split(opts) ?? [...DEFAULTS.split];
+  const settleFeeLamports = int(opts, 'settle-fee-lamports', 0, MAX_SETTLE_FEE_LAMPORTS) ?? DEFAULTS.settleFeeLamports;
   const admin = ctx.signer();
 
   if (!(await ctx.client.isDeployed())) throw new UsageError(`program ${ctx.client.programId.toBase58()} is not deployed on ${ctx.url}`);
   const existing = await ctx.client.fetchConfig();
   if (existing) {
-    console.log(`config already initialized (admin ${existing.admin}) — use \`admin update-config\` to change it`);
+    console.log(`config already initialized (admin ${existing.admin}, mint ${existing.tokenMint}) — use \`pnpm admin update-config\``);
     return;
   }
   const authority = await upgradeAuthority(ctx);
   if (authority && !authority.equals(admin.publicKey)) {
     throw new UsageError(`initialize must be signed by the program's upgrade authority ${authority.toBase58()}, not ${admin.publicKey.toBase58()}`);
   }
-  const ix = await ctx.client.ix.initialize(admin.publicKey, { serverAuthority: server, treasury, feeBps, seasonShareBps, skinPrice });
-  await send(ctx, 'initialized config + season 1', [ix]);
-  console.log(`  admin ${admin.publicKey.toBase58()} · server ${server.toBase58()} · treasury ${treasury.toBase58()}`);
-  console.log(`  fee ${fmtPct(feeBps)} of profit (season share ${fmtPct(seasonShareBps)}) · skin price ${fmtSol(skinPrice)}`);
+  const { program, state } = await loadMint(ctx, mintKey);
+  if (state.freezeAuthority) throw new UsageError(`mint ${mintKey.toBase58()} has a freeze authority; the program refuses it`);
+  const ix = await ctx.client.ix.initialize(admin.publicKey, {
+    serverAuthority: server,
+    tokenMint: mintKey,
+    tokenProgram: program,
+    feeBps,
+    passFeeBps,
+    split: feeSplit,
+    settleFeeLamports,
+  });
+  await send(ctx, 'initialized config, treasury/season vaults and season 1', [ix]);
+  console.log(`  mint ${mintKey.toBase58()} (${program.equals(TOKEN_2022_PROGRAM_ID) ? 'Token-2022' : 'SPL Token'}, ${state.decimals} decimals)`);
+  console.log(`  fee ${fmtPct(feeBps)} (Pass ${fmtPct(passFeeBps)}) · split ${feeSplit.join('/')} · settle deposit ${fmtSol(settleFeeLamports)}`);
 }
 
 async function cmdUpdateConfig(ctx: Ctx, opts: Opts): Promise<void> {
+  const config = await requireConfig(ctx);
   const changes: UpdateConfigParams = {
     admin: pubkey(opts, 'admin'),
     serverAuthority: pubkey(opts, 'server'),
-    treasury: pubkey(opts, 'treasury'),
     feeBps: int(opts, 'fee-bps', 0, MAX_FEE_BPS),
-    seasonShareBps: int(opts, 'season-share-bps', 0, 10_000),
-    skinPrice: sol(opts, 'skin-price-sol'),
+    passFeeBps: int(opts, 'pass-fee-bps', 0, MAX_FEE_BPS),
+    split: split(opts),
+    settleFeeLamports: int(opts, 'settle-fee-lamports', 0, MAX_SETTLE_FEE_LAMPORTS),
     paused: bool(opts, 'paused'),
+    passBaseUri: str(opts, 'base-uri'),
+    passSupply: int(opts, 'supply', 0, MAX_PASS_SUPPLY),
+    passPerWallet: int(opts, 'per-wallet', 1, MAX_PASS_PER_WALLET),
+    passMinTokens: tokens(opts, 'min-tokens', config.tokenDecimals),
+    passMintOpen: bool(opts, 'mint-open'),
+    passMintStartTs: int(opts, 'start', 0, Number.MAX_SAFE_INTEGER),
   };
   const given = Object.entries(changes).filter(([, v]) => v !== undefined);
-  if (given.length === 0) throw new UsageError('update-config: nothing to change (see `admin help`)');
-  await requireConfig(ctx);
-  const ix = await ctx.client.ix.updateConfig(ctx.signer().publicKey, changes);
-  await send(ctx, `updated config (${given.map(([k]) => k).join(', ')})`, [ix]);
+  if (given.length === 0) throw new UsageError('update-config: nothing to change (see `pnpm admin help`)');
+  await sendUpdate(ctx, changes, `updated config (${given.map(([k]) => k).join(', ')})`);
 }
 
-/** SOL tiers for the v1 program this CLI still drives; SDK v2 switches to `DEFAULT_ARENAS` (token tiers) from `@slana/shared`. */
-const V1_DEFAULT_ARENAS = [
-  { id: 1, buyInSol: 0.01, maxPlayers: 20 },
-  { id: 2, buyInSol: 0.05, maxPlayers: 20 },
-  { id: 3, buyInSol: 0.1, maxPlayers: 16 },
-] as const;
+async function sendUpdate(ctx: Ctx, changes: UpdateConfigParams, label: string): Promise<void> {
+  let ix: TransactionInstruction;
+  try {
+    ix = await ctx.client.ix.updateConfig(ctx.signer().publicKey, changes);
+  } catch (err) {
+    if (err instanceof RangeError) throw new UsageError(err.message);
+    throw err;
+  }
+  await send(ctx, label, [ix]);
+}
 
-async function createArena(ctx: Ctx, id: number, buyIn: number, maxPlayers: number): Promise<void> {
-  const ix = await ctx.client.ix.createArena(ctx.signer().publicKey, id, buyIn, maxPlayers);
-  await send(ctx, `created arena #${id} (${arenaMeta(id).name.en}) · buy-in ${fmtSol(buyIn)} · max ${maxPlayers}`, [ix]);
+async function cmdCreateCollection(ctx: Ctx, opts: Opts): Promise<void> {
+  const name = required(opts, 'name', 'create-collection');
+  const uri = required(opts, 'uri', 'create-collection');
+  const royaltyBps = int(opts, 'royalty-bps', 0, BPS);
+  const royaltyTo = pubkey(opts, 'royalty-to');
+  if (royaltyBps === undefined || !royaltyTo) throw new UsageError('create-collection needs --royalty-bps N and --royalty-to <pubkey>');
+  const config = await requireConfig(ctx);
+  if (config.passCollection) console.log(`! config already uses collection ${config.passCollection}; a new one cannot replace it`);
+  const collection = Keypair.generate();
+  const admin = ctx.signer();
+  const ix = createCollectionIx({
+    collection: collection.publicKey,
+    updateAuthority: pdas.passAuthority(ctx.client.programId),
+    payer: admin.publicKey,
+    name,
+    uri,
+    royaltyBps,
+    royaltyTo,
+  });
+  await send(ctx, `created Core collection "${name}" (royalty ${fmtPct(royaltyBps)} to ${royaltyTo.toBase58()})`, [ix], [collection]);
+  console.log(`  collection ${collection.publicKey.toBase58()}`);
+  console.log(`  ${explorerAddressUrl(collection.publicKey.toBase58(), ctx.cluster, ctx.url)}`);
+  console.log(`  next: pnpm admin set-pass-collection --collection ${collection.publicKey.toBase58()}`);
+}
+
+async function cmdSetPassCollection(ctx: Ctx, opts: Opts): Promise<void> {
+  const collection = pubkey(opts, 'collection');
+  if (!collection) throw new UsageError('set-pass-collection needs --collection <C>');
+  const config = await requireConfig(ctx);
+  if (config.passCollection) throw new UsageError(`the Pass collection is already set to ${config.passCollection}`);
+  const ix = await ctx.client.ix.setPassCollection(ctx.signer().publicKey, collection);
+  await send(ctx, `Pass collection set to ${collection.toBase58()}`, [ix]);
+}
+
+function cmdPassSeed(opts: Opts): void {
+  const file = expandHome(str(opts, 'seed-file') ?? DEFAULT_SEED_FILE);
+  if (opts.get('new') !== true) {
+    if (!existsSync(file)) throw new UsageError(`no seed at ${file}; create one with \`pnpm admin pass-seed --new\``);
+    console.log(`seed file ${file}\nsha256    ${loadSeed(opts).hash}`);
+    return;
+  }
+  if (existsSync(file) && opts.get('force') !== true) throw new UsageError(`${file} already exists (pass --force to overwrite it — the old seed is lost)`);
+  const seed = randomBytes(32);
+  mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
+  writeFileSync(file, JSON.stringify([...seed]), { mode: 0o600 });
+  console.log(`✓ wrote 32 random bytes to ${file} — keep it secret and backed up, never commit it`);
+  console.log(`  sha256 ${sha256Hex(seed)}`);
+  console.log(`  next: pnpm admin set-seed-hash --seed-file ${str(opts, 'seed-file') ?? DEFAULT_SEED_FILE}`);
+}
+
+async function cmdSetSeedHash(ctx: Ctx, opts: Opts): Promise<void> {
+  const { file, hash } = loadSeed(opts);
+  const config = await requireConfig(ctx);
+  if (config.passRevealed) throw new UsageError('the Pass seed is already revealed');
+  if (config.passMinted > 0) throw new UsageError('Passes were already minted; the seed hash is locked');
+  const ix = await ctx.client.ix.setPassSeedHash(ctx.signer().publicKey, hexBytes(hash));
+  await send(ctx, `committed seed hash ${hash} (from ${file})`, [ix]);
+}
+
+async function cmdOpenMint(ctx: Ctx, opts: Opts): Promise<void> {
+  const config = await requireConfig(ctx);
+  const baseUri = str(opts, 'base-uri') ?? (config.passBaseUri || undefined);
+  if (!baseUri) throw new UsageError('open-mint needs --base-uri <url>/');
+  if (!config.passCollection) throw new UsageError('set the Pass collection first (create-collection, set-pass-collection)');
+  if (!config.passSeedHash) throw new UsageError('commit the seed hash first (pass-seed --new, set-seed-hash)');
+  if (config.passRevealed) throw new UsageError('the Pass seed is revealed; the mint cannot reopen');
+  const startTs = int(opts, 'start', 0, Number.MAX_SAFE_INTEGER);
+  const changes: UpdateConfigParams = {
+    passMintOpen: true,
+    passBaseUri: str(opts, 'base-uri'),
+    passMintStartTs: startTs,
+    passSupply: int(opts, 'supply', 0, MAX_PASS_SUPPLY),
+    passPerWallet: int(opts, 'per-wallet', 1, MAX_PASS_PER_WALLET),
+    passMinTokens: tokens(opts, 'min-tokens', config.tokenDecimals),
+  };
+  const start = startTs ?? config.passMintStartTs;
+  await sendUpdate(ctx, changes, `Pass mint open${start > Date.now() / 1000 ? ` from ${fmtTime(start)}` : ''} · base uri ${baseUri}`);
+}
+
+async function cmdCloseMint(ctx: Ctx): Promise<void> {
+  const config = await requireConfig(ctx);
+  await sendUpdate(ctx, { passMintOpen: false }, `Pass mint closed at ${config.passMinted} / ${config.passSupply}`);
+}
+
+async function cmdReveal(ctx: Ctx, opts: Opts): Promise<void> {
+  const { hash, seed } = loadSeed(opts);
+  const config = await requireConfig(ctx);
+  if (config.passRevealed) throw new UsageError('already revealed');
+  if (!config.passSeedHash) throw new UsageError('no seed hash is committed on-chain');
+  if (config.passSeedHash !== hash) throw new UsageError(`seed hash mismatch: on-chain ${config.passSeedHash}, file ${hash}`);
+  if (config.passMintOpen && config.passMinted < config.passSupply) {
+    throw new UsageError(`the mint is still open (${config.passMinted} / ${config.passSupply}); run \`pnpm admin close-mint\` first`);
+  }
+  const ix = await ctx.client.ix.revealPass(ctx.signer().publicKey, seed);
+  await send(ctx, `revealed Pass seed ${Buffer.from(seed).toString('hex')}`, [ix]);
+}
+
+async function createArena(ctx: Ctx, config: ConfigView, id: number, entryFee: bigint, maxSessions: number, requiresPass: boolean): Promise<void> {
+  const ix = await ctx.client.ix.createArena(ctx.signer().publicKey, { id, entryFee, maxSessions, requiresPass, tokenMint: config.tokenMint, tokenProgram: config.tokenProgram });
+  await send(ctx, `created arena #${id} (${arenaMeta(id).name.en}) · entry ${fmtTok(entryFee, config.tokenDecimals)} · max ${maxSessions}${requiresPass ? ' · Pass only' : ''}`, [ix]);
   console.log(`  arena ${explorerAddressUrl(pdas.arena(id, ctx.client.programId).toBase58(), ctx.cluster, ctx.url)}`);
 }
 
 async function cmdCreateArena(ctx: Ctx, opts: Opts): Promise<void> {
-  await requireConfig(ctx);
+  const config = await requireConfig(ctx);
+  const scale = 10n ** BigInt(config.tokenDecimals);
   if (opts.get('defaults') === true) {
-    for (const tier of V1_DEFAULT_ARENAS) {
+    for (const tier of DEFAULT_ARENAS) {
       const existing = await ctx.client.fetchArena(tier.id);
       if (existing) {
-        console.log(`• arena #${tier.id} exists (buy-in ${fmtSol(existing.buyIn)}, max ${existing.maxPlayers}) — skipped`);
+        console.log(`• arena #${tier.id} exists (entry ${fmtTok(existing.entryFee, config.tokenDecimals)}, max ${existing.maxSessions}) — skipped`);
         continue;
       }
-      await createArena(ctx, tier.id, solToLamports(tier.buyInSol), tier.maxPlayers);
+      await createArena(ctx, config, tier.id, BigInt(tier.entryTokens) * scale, tier.maxSessions, tier.requiresPass);
     }
     return;
   }
   const id = int(opts, 'id', 0, 65_535);
-  const buyIn = sol(opts, 'buy-in-sol');
-  const maxPlayers = int(opts, 'max-players', 2, 100);
-  if (id === undefined || buyIn === undefined || maxPlayers === undefined) {
-    throw new UsageError('create-arena needs --id N --buy-in-sol X --max-players N (or --defaults)');
+  const entry = tokens(opts, 'entry', config.tokenDecimals);
+  const maxSessions = int(opts, 'max', MIN_ARENA_SESSIONS, MAX_ARENA_SESSIONS);
+  if (id === undefined || entry === undefined || maxSessions === undefined) {
+    throw new UsageError('create-arena needs --id N --entry <tokens> --max N [--pass] (or --defaults)');
   }
+  if (entry === 0n) throw new UsageError('--entry must be greater than zero');
   if (await ctx.client.fetchArena(id)) throw new UsageError(`arena #${id} already exists — use update-arena`);
-  await createArena(ctx, id, buyIn, maxPlayers);
+  await createArena(ctx, config, id, entry, maxSessions, flag(opts, 'pass') ?? false);
 }
 
 async function cmdUpdateArena(ctx: Ctx, opts: Opts): Promise<void> {
   const id = int(opts, 'id', 0, 65_535);
   if (id === undefined) throw new UsageError('update-arena needs --id N');
-  const enabled = bool(opts, 'enabled');
-  const maxPlayers = int(opts, 'max-players', 2, 100);
-  if (enabled === undefined && maxPlayers === undefined) throw new UsageError('update-arena: pass --enabled and/or --max-players');
-  if (!(await ctx.client.fetchArena(id))) throw new UsageError(`arena #${id} does not exist`);
-  const ix = await ctx.client.ix.updateArena(ctx.signer().publicKey, id, { enabled, maxPlayers });
+  const config = await requireConfig(ctx);
+  const changes = {
+    enabled: bool(opts, 'enabled'),
+    maxSessions: int(opts, 'max', MIN_ARENA_SESSIONS, MAX_ARENA_SESSIONS),
+    entryFee: tokens(opts, 'entry', config.tokenDecimals),
+    requiresPass: bool(opts, 'pass'),
+  };
+  if (Object.values(changes).every((v) => v === undefined)) throw new UsageError('update-arena: pass --enabled, --max, --entry and/or --pass');
+  const arena = await ctx.client.fetchArena(id);
+  if (!arena) throw new UsageError(`arena #${id} does not exist`);
+  if ((changes.entryFee !== undefined || changes.requiresPass !== undefined) && arena.openSessions > 0) {
+    console.log(`! arena #${id} has ${arena.openSessions} open sessions; the program refuses entry/pass changes until they settle`);
+  }
+  const ix = await ctx.client.ix.updateArena(ctx.signer().publicKey, id, changes);
   await send(ctx, `updated arena #${id}`, [ix]);
 }
 
-async function cmdFundSeason(ctx: Ctx, opts: Opts): Promise<void> {
-  const lamports = sol(opts, 'sol');
-  if (!lamports) throw new UsageError('fund-season needs --sol X (> 0)');
+async function cmdWithdrawTreasury(ctx: Ctx, opts: Opts): Promise<void> {
   const config = await requireConfig(ctx);
-  const ix = await ctx.client.ix.fundSeason(ctx.signer().publicKey, config.currentSeason, lamports);
-  await send(ctx, `funded season ${config.currentSeason} with ${fmtSol(lamports)}`, [ix]);
+  const amount = tokens(opts, 'amount', config.tokenDecimals);
+  const to = pubkey(opts, 'to');
+  if (amount === undefined || !to) throw new UsageError('withdraw-treasury needs --amount <tokens> --to <owner>');
+  if (amount === 0n) throw new UsageError('--amount must be greater than zero');
+  const { treasury } = await ctx.client.fetchVaultBalances();
+  if (amount > treasury) throw new UsageError(`the treasury holds only ${fmtTok(treasury, config.tokenDecimals)}`);
+  const admin = ctx.signer();
+  const destination = ata(to, config.tokenMint, config.tokenProgram);
+  const ixs = [
+    createAtaIdempotentIx(admin.publicKey, to, config.tokenMint, config.tokenProgram),
+    await ctx.client.ix.withdrawTreasury(admin.publicKey, { amount, destination, tokenMint: config.tokenMint, tokenProgram: config.tokenProgram }),
+  ];
+  await send(ctx, `withdrew ${fmtTok(amount, config.tokenDecimals)} from the treasury to ${to.toBase58()} (${destination.toBase58()})`, ixs);
 }
 
 async function cmdEndSeason(ctx: Ctx): Promise<void> {
   const config = await requireConfig(ctx);
   const season = await ctx.client.fetchSeason(config.currentSeason);
   const ix = await ctx.client.ix.endSeason(ctx.signer().publicKey, config.currentSeason);
-  await send(ctx, `ended season ${config.currentSeason} (prize pool ${fmtSol(season?.pool ?? 0)}); season ${config.currentSeason + 1} is live`, [ix]);
+  await send(ctx, `ended season ${config.currentSeason} (prize pool ${fmtTok(season?.pool ?? 0n, config.tokenDecimals)}); season ${config.currentSeason + 1} is live`, [ix]);
 }
 
 async function cmdRollover(ctx: Ctx, opts: Opts): Promise<void> {
@@ -377,7 +626,7 @@ async function cmdRollover(ctx: Ctx, opts: Opts): Promise<void> {
   const old = await ctx.client.fetchSeason(seasonId);
   if (!old) throw new UsageError(`season ${seasonId} does not exist`);
   const ix = await ctx.client.ix.rolloverSeason(ctx.signer().publicKey, seasonId, config.currentSeason);
-  await send(ctx, `rolled ${fmtSol(old.pool)} from season ${seasonId} into season ${config.currentSeason}`, [ix]);
+  await send(ctx, `rolled ${fmtTok(old.pool, config.tokenDecimals)} from season ${seasonId} into season ${config.currentSeason}`, [ix]);
 }
 
 async function cmdSweep(ctx: Ctx, opts: Opts): Promise<void> {
@@ -386,8 +635,9 @@ async function cmdSweep(ctx: Ctx, opts: Opts): Promise<void> {
   const config = await requireConfig(ctx);
   const arena = await ctx.client.fetchArena(id);
   if (!arena) throw new UsageError(`arena #${id} does not exist`);
-  const ix = await ctx.client.ix.sweepArena(ctx.signer().publicKey, id, config.treasury);
-  await send(ctx, `swept ${fmtSol(arena.pot)} from arena #${id} to the treasury`, [ix]);
+  if (arena.enabled) throw new UsageError(`disable arena #${id} first: pnpm admin update-arena --id ${id} --enabled false`);
+  const ix = await ctx.client.ix.sweepArena(ctx.signer().publicKey, { id, currentSeason: config.currentSeason, tokenMint: config.tokenMint, tokenProgram: config.tokenProgram });
+  await send(ctx, `swept ${fmtTok(arena.pot, config.tokenDecimals)} from arena #${id} into season ${config.currentSeason}`, [ix]);
 }
 
 /* -------------------------------------------------------------------- */
@@ -425,38 +675,29 @@ async function main(argv: string[]): Promise<number> {
       client: new SlanaClient(new Connection(url, 'confirmed'), programId),
       signer: () => (keypair ??= loadKeypair(keypairPath)),
     };
+    const c = ctx;
 
-    switch (command) {
-      case 'status':
-        await cmdStatus(ctx);
-        break;
-      case 'init':
-        await cmdInit(ctx, opts);
-        break;
-      case 'update-config':
-        await cmdUpdateConfig(ctx, opts);
-        break;
-      case 'create-arena':
-        await cmdCreateArena(ctx, opts);
-        break;
-      case 'update-arena':
-        await cmdUpdateArena(ctx, opts);
-        break;
-      case 'fund-season':
-        await cmdFundSeason(ctx, opts);
-        break;
-      case 'end-season':
-        await cmdEndSeason(ctx);
-        break;
-      case 'rollover':
-        await cmdRollover(ctx, opts);
-        break;
-      case 'sweep':
-        await cmdSweep(ctx, opts);
-        break;
-      default:
-        throw new UsageError(`unknown command: ${command}`);
-    }
+    const commands: Record<string, () => Promise<void> | void> = {
+      status: () => cmdStatus(c),
+      init: () => cmdInit(c, opts),
+      'update-config': () => cmdUpdateConfig(c, opts),
+      'create-collection': () => cmdCreateCollection(c, opts),
+      'set-pass-collection': () => cmdSetPassCollection(c, opts),
+      'pass-seed': () => cmdPassSeed(opts),
+      'set-seed-hash': () => cmdSetSeedHash(c, opts),
+      'open-mint': () => cmdOpenMint(c, opts),
+      'close-mint': () => cmdCloseMint(c),
+      reveal: () => cmdReveal(c, opts),
+      'create-arena': () => cmdCreateArena(c, opts),
+      'update-arena': () => cmdUpdateArena(c, opts),
+      'withdraw-treasury': () => cmdWithdrawTreasury(c, opts),
+      'end-season': () => cmdEndSeason(c),
+      rollover: () => cmdRollover(c, opts),
+      sweep: () => cmdSweep(c, opts),
+    };
+    const run = commands[command];
+    if (!run) throw new UsageError(`unknown command: ${command} (see \`pnpm admin help\`)`);
+    await run();
     return 0;
   } catch (err) {
     if (err instanceof UsageError) {

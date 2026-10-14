@@ -15,7 +15,7 @@ import {
   type SeasonView as SdkSeasonView,
   type SessionView,
 } from '@slana/sdk';
-import type { ChainStatus } from '@slana/shared';
+import { CAPACITY, toSafeAmount, type ChainStatus } from '@slana/shared';
 import { Connection, Keypair, PublicKey, type TransactionInstruction } from '@solana/web3.js';
 import type { ServerConfig } from '../config';
 import type { Journal, SettlementItem } from '../stake/journal';
@@ -71,7 +71,7 @@ export interface ChainClient {
   fetchSession(arenaId: number, player: string): Promise<SessionView | null>;
   fetchSessions(): Promise<SessionView[]>;
   fetchSeason(id: number): Promise<SdkSeasonView | null>;
-  readonly ix: Pick<SlanaClient['ix'], 'settleSession' | 'recordGame'>;
+  readonly ix: Pick<SlanaClient['ix'], 'settleSession'>;
 }
 
 export interface SolanaChainDeps {
@@ -138,6 +138,8 @@ const clampInt = (v: unknown, max: number): number => {
 
 const short = (s: string): string => (s.length > 12 ? `${s.slice(0, 4)}…${s.slice(-4)}` : s);
 const sol = (lamports: number): string => `◎${lamportsToSol(lamports).toFixed(4).replace(/\.?0+$/, '')}`;
+// TODO(Task 10): format with the mint's decimals and symbol.
+const units = (raw: number): string => `${raw} token units`;
 const firstLine = (err: unknown): string => String((err as Error)?.message ?? err).split('\n')[0].slice(0, 240);
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms).unref());
 
@@ -162,7 +164,7 @@ const toChainProfile = (p: ProfileView): ChainProfile => ({
   skin: p.skin,
   xp: p.xp,
   level: p.level,
-  premiumSkins: p.premiumSkins,
+  premiumSkins: 0, // TODO(Task 10): premium skins are gone in v2 (Pass skins replace them)
   gamesPlayed: p.gamesPlayed,
   bestScore: p.bestScore,
 });
@@ -430,7 +432,8 @@ export class SolanaChain implements ChainGateway {
     try {
       const s = await this.client.fetchSession(arenaId, player);
       if (!s) return null;
-      return { address: s.address, id: s.id, player: s.player, arenaId: s.arenaId, buyIn: s.buyIn, openedAt: s.openedAt };
+      // TODO(Task 10): v2 session shape (entry fee in tokens, Pass); mapped onto the v1 fields for now.
+      return { address: s.address, id: s.id, player: s.player, arenaId: s.arenaId, buyIn: toSafeAmount(s.entryFee), openedAt: s.openedAt };
     } catch (err) {
       this.warn('session', `chain: session lookup failed (${firstLine(err)})`);
       return null;
@@ -442,14 +445,15 @@ export class SolanaChain implements ChainGateway {
     if (!this.enabled || !this.client) return [];
     if (this.arenaCache && this.now() - this.arenaCache.at < ARENA_TTL_MS) return this.arenaCache.value;
     try {
+      // TODO(Task 10): v2 arena shape (token entry fee, Pass gating, max sessions).
       const value = (await this.client.fetchArenas()).map((a) => ({
         id: a.id,
         address: a.address,
-        buyIn: a.buyIn,
-        maxPlayers: a.maxPlayers,
+        buyIn: toSafeAmount(a.entryFee),
+        maxPlayers: Math.min(a.maxSessions, CAPACITY.arena),
         enabled: a.enabled,
         openSessions: a.openSessions,
-        pot: a.pot,
+        pot: toSafeAmount(a.pot),
       }));
       this.arenaCache = { at: this.now(), value };
       return value;
@@ -485,13 +489,13 @@ export class SolanaChain implements ChainGateway {
             id: current.id,
             startedAt: current.startedAt,
             finalized: current.finalized,
-            prizePool: current.finalized ? current.prizePool : current.pool,
+            prizePool: toSafeAmount(current.finalized ? current.prizePool : current.pool),
             entries: current.entries.map(toEntry),
             previous:
               previous && previous.finalized
                 ? {
                     id: previous.id,
-                    prizePool: previous.prizePool,
+                    prizePool: toSafeAmount(previous.prizePool),
                     endedAt: previous.endedAt,
                     entries: previous.entries.map(toEntry),
                     claimedMask: previous.claimedMask,
@@ -635,7 +639,10 @@ export class SolanaChain implements ChainGateway {
       kills: clampInt(item.kills, 0xffff),
       xp: clampInt(item.xp, 0xffff_ffff),
       currentSeason: config.currentSeason,
-      treasury: config.treasury,
+      tokenMint: config.tokenMint,
+      tokenProgram: config.tokenProgram,
+      hasPass: session.hasPass,
+      passAsset: session.passAsset,
     });
     // Last check right before sending: a stale session may have been picked up meanwhile.
     if (item.reason === 'stale' && this.liveSessions().has(session.address)) {
@@ -647,10 +654,10 @@ export class SolanaChain implements ChainGateway {
       const signature = await this.send(key, [ix]);
       this.journal.remove(key);
       this.sentSignatures.delete(key);
-      this.log(`chain: settled ${short(key)} (${item.reason ?? 'settle'}) · ${sol(payout)} → ${short(item.player)} · ${signature}`);
+      this.log(`chain: settled ${short(key)} (${item.reason ?? 'settle'}) · ${units(payout)} → ${short(item.player)} · ${signature}`);
       this.emit({ key, player: item.player, signature, kind: 'settle', payout });
     } catch (err) {
-      await this.onSendError(item, err, config.treasury);
+      await this.onSendError(item, err);
     }
   }
 
@@ -671,39 +678,9 @@ export class SolanaChain implements ChainGateway {
       this.journal.remove(key);
       return;
     }
-    const config = await this.currentConfig();
-    if (!config || this.authorized !== true) {
-      this.journal.retryLater(key, 'config unavailable', this.now());
-      return;
-    }
-    let profile: ProfileView | null;
-    try {
-      profile = await this.client!.fetchProfile(item.player);
-    } catch (err) {
-      this.journal.retryLater(key, `profile lookup failed: ${firstLine(err)}`, this.now());
-      return;
-    }
-    if (!profile) {
-      this.warn('no-profile', `chain: free-play record of ${short(item.player)} dropped — no on-chain profile (logged once a minute)`);
-      this.journal.remove(key);
-      return;
-    }
-    const ix = await this.client!.ix.recordGame(this.keypair!.publicKey, {
-      player: item.player,
-      currentSeason: config.currentSeason,
-      score: clampInt(item.score, 0xffff_ffff),
-      kills: clampInt(item.kills, 0xffff),
-      xp: clampInt(item.xp, 0xffff_ffff),
-    });
-    try {
-      const signature = await this.send(key, [ix]);
-      this.journal.remove(key);
-      this.sentSignatures.delete(key);
-      this.log(`chain: recorded free game of ${short(item.player)} (score ${item.score}) · ${signature}`);
-      this.emit({ key, player: item.player, signature, kind: 'record' });
-    } catch (err) {
-      await this.onSendError(item, err, config.treasury);
-    }
+    // TODO(Task 10): v2 has no `record_game`; free-play results are no longer written on-chain.
+    this.warn('record-v2', 'chain: free-play records are not written on-chain in v2 — dropping them (logged once a minute)');
+    this.journal.remove(key);
   }
 
   /** The session is gone (or re-opened): drop the item, reporting our own earlier send if it landed. */
@@ -730,7 +707,7 @@ export class SolanaChain implements ChainGateway {
     }
   }
 
-  private async onSendError(item: SettlementItem, err: unknown, treasuryUsed: string): Promise<void> {
+  private async onSendError(item: SettlementItem, err: unknown): Promise<void> {
     const { key } = item;
     const code = programErrorCode(err);
     const d = describeError(err);
@@ -747,7 +724,7 @@ export class SolanaChain implements ChainGateway {
       return;
     }
     if (code === ERR.unauthorized) {
-      // Either our key was rotated out or the treasury changed: re-read the config to tell.
+      // Our key may have been rotated out: re-read the config to tell.
       const config = await this.freshConfig();
       if (!config) {
         this.journal.retryLater(key, `${label} (config re-read failed)`, this.now());
@@ -758,19 +735,15 @@ export class SolanaChain implements ChainGateway {
         else this.journal.retryLater(key, label, this.now());
         return;
       }
-      if (config.treasury !== treasuryUsed) {
-        this.journal.retryLater(key, `treasury changed — retrying (${label})`, this.now());
-        return;
-      }
       this.log(`!!! chain: dropping ${what} — rejected as unauthorized (${label}) ${JSON.stringify(item)}`);
       this.journal.remove(key);
       return;
     }
     if (code === ERR.constraintSeeds || code === ERR.constraintAddress) {
-      this.configAt = 0; // the season or treasury probably moved: re-read before the retry
+      this.configAt = 0; // the season probably moved: re-read before the retry
     }
     if (code === ERR.insufficientPot) {
-      this.warn(`pot-${item.arenaId}`, `!!! chain: arena #${item.arenaId} pot cannot cover ${what} (${sol(item.payout ?? 0)}) — retrying with backoff`);
+      this.warn(`pot-${item.arenaId}`, `!!! chain: arena #${item.arenaId} pot cannot cover ${what} (${units(item.payout ?? 0)}) — retrying with backoff`);
     }
     if (d.name === 'InsufficientFunds') {
       this.warn('fee-payer', `!!! chain: server wallet ${this.keypair!.publicKey.toBase58()} cannot pay fees — fund it (${label})`);
@@ -825,7 +798,7 @@ export class SolanaChain implements ChainGateway {
         arenaId: s.arenaId,
         session: s.address,
         sessionId: s.id,
-        payout: s.buyIn,
+        payout: toSafeAmount(s.entryFee),
         score: 0,
         kills: 0,
         xp: 0,
