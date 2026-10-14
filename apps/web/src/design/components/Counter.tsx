@@ -1,6 +1,6 @@
 import { motion } from 'motion/react';
 import { useMemo } from 'react';
-import { useReducedMotion } from '../motion';
+import { springs, useReducedMotion } from '../motion';
 
 export interface CounterProps {
   value: number;
@@ -49,7 +49,7 @@ export function Counter({ value, format = defaultFormat, unit, className }: Coun
                 transition={
                   reduced
                     ? { duration: 0 }
-                    : { type: 'spring', stiffness: 170, damping: 22, mass: 0.9, delay: (place - 1) * 0.025 }
+                    : { ...springs.dial, delay: (place - 1) * 0.025 }
                 }
               >
                 {DIGITS.map((n) => (

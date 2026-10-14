@@ -38,7 +38,7 @@
   color: inherit;
 }
 .kb :where(a) {
-  color: var(--pink-ink);
+  color: var(--pink-text);
   text-underline-offset: 3px;
   text-decoration-thickness: 1.5px;
 }
@@ -47,7 +47,7 @@
 }
 .kb ::selection {
   background: var(--pink);
-  color: #1e1b2e;
+  color: var(--ink-fixed);
 }
 
 /* focus: a pink registration ring, offset so it never sits on the print */
@@ -105,9 +105,9 @@
 
 /* tone helpers: --tone is the text-safe ink of an accent */
 .kb-tone-ink { --tone: var(--ink); --tone-fill: var(--ink); }
-.kb-tone-pink { --tone: var(--pink-ink); --tone-fill: var(--pink); }
+.kb-tone-pink { --tone: var(--pink-text); --tone-fill: var(--pink); }
 .kb-tone-teal { --tone: var(--teal-ink); --tone-fill: var(--teal); }
-.kb-tone-mustard { --tone: var(--mustard-ink); --tone-fill: var(--mustard); }
+.kb-tone-mustard { --tone: var(--mustard-text); --tone-fill: var(--mustard); }
 .kb-tone-red { --tone: var(--red-ink); --tone-fill: var(--red); }
 .kb-tone-on-dark { --tone: var(--on-cover); --tone-fill: var(--on-cover); }
 
@@ -141,7 +141,7 @@
 }
 .kb-iconbtn--sm:hover {
   box-shadow: none;
-  color: var(--pink-ink);
+  color: var(--pink-text);
 }
 
 /* ── InkButton ────────────────────────────────────────────────────────── */
@@ -206,17 +206,17 @@
 }
 .kb-btn--pink {
   --b-fill: var(--pink);
-  --b-text: #1e1b2e;
+  --b-text: var(--ink-fixed);
   --b-sub: #3a2333;
   --b-shadow: var(--ink);
-  --b-accent: #1e1b2e;
+  --b-accent: var(--ink-fixed);
 }
 .kb-btn--paper {
   --b-fill: var(--card);
   --b-text: var(--ink);
   --b-sub: var(--ink-2);
   --b-shadow: var(--ink);
-  --b-accent: var(--pink-ink);
+  --b-accent: var(--pink-text);
   border: 2px solid var(--ink);
   --b-off: 4px;
 }
@@ -484,7 +484,7 @@
   position: relative;
   padding: 0 8px 12px 0; /* room for the halftone shade */
 }
-.is-printer .kb-receipt__feed {
+.kb-is-printer .kb-receipt__feed {
   overflow: hidden;
   margin-top: -6px;
   padding-top: 0;
@@ -502,8 +502,8 @@
     conic-gradient(from 135deg at top, #0000, #000 1deg 89deg, #0000 90deg) top / calc(var(--zz) * 2) 51% repeat-x,
     conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom / calc(var(--zz) * 2) 51% repeat-x;
 }
-.is-printer .kb-receipt,
-.is-printer .kb-receipt__shade {
+.kb-is-printer .kb-receipt,
+.kb-is-printer .kb-receipt__shade {
   /* the top edge is still in the printer: only tear the bottom */
   -webkit-mask:
     linear-gradient(#000 0 0) top / 100% 51% no-repeat,
@@ -700,8 +700,9 @@
   bottom: 22px;
 }
 .kb-passport__sealstamp .kb-stamp {
+  /* mustard on the teal cover is 3.2:1: print the small label in cover cream */
   mix-blend-mode: normal;
-  --tone: var(--mustard);
+  --tone: var(--on-cover);
 }
 .kb-passport__page {
   position: relative;

@@ -1,9 +1,10 @@
-import { MotionConfig, motion } from 'motion/react';
-import { StrictMode, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { motion } from 'motion/react';
+import { StrictMode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { translate, type TKey } from '../i18n';
 import { useUi, type Lang } from '../store';
 import { ICON_NAMES, Icon } from './icons';
+import { Kb, themeFromSettings, useKbTheme, type KbTheme } from './Kb';
 import { STAGGER, useReducedMotion } from './motion';
 import { Chip } from './components/Chip';
 import { Counter } from './components/Counter';
@@ -17,33 +18,32 @@ import { Sheet } from './components/Sheet';
 import { Stamp } from './components/Stamp';
 import { TabPanel, Tabs } from './components/Tabs';
 import { Tape } from './components/Tape';
-import { Ticket, TicketStub } from './components/Ticket';
+import { Ticket, TicketGroup, TicketStub } from './components/Ticket';
 import { ToastViewport, type ToastItem } from './components/Toast';
 import './gallery.css';
 
-type Theme = 'paper' | 'night';
+type Theme = KbTheme;
 type T = (key: TKey, vars?: Record<string, string | number>) => string;
 
-const SWATCHES: { key: TKey; v: string; hex: string; night?: string; text?: string; nightText?: string }[] = [
-  { key: 'ds.c.paper', v: '--paper', hex: '#F1EADB', night: '#1B1924' },
-  { key: 'ds.c.card', v: '--card', hex: '#FFFCF4', night: '#262331' },
-  { key: 'ds.c.ink', v: '--ink', hex: '#1E1B2E', night: '#F1EADB' },
-  { key: 'ds.c.ink2', v: '--ink-2', hex: '#5D5870', night: '#B3ADC2' },
-  { key: 'ds.c.pink', v: '--pink', hex: '#FF4F87', text: '#D6245F', nightText: '#FF7FA6' },
-  { key: 'ds.c.teal', v: '--teal', hex: '#0E9C9A', text: '#08716F', nightText: '#3CC9C6' },
-  { key: 'ds.c.mustard', v: '--mustard', hex: '#F2B705', text: '#8A6500', nightText: '#F2B705' },
-  { key: 'ds.c.blue', v: '--blue', hex: '#3B5BDB' },
-  { key: 'ds.c.green', v: '--green', hex: '#1F9D61' },
-  { key: 'ds.c.red', v: '--red', hex: '#E5402B' },
+/** Token names only; the printed values are read back from the live CSS. */
+const SWATCHES: { key: TKey; v: string; text?: string }[] = [
+  { key: 'ds.c.paper', v: '--paper' },
+  { key: 'ds.c.card', v: '--card' },
+  { key: 'ds.c.ink', v: '--ink' },
+  { key: 'ds.c.ink2', v: '--ink-2' },
+  { key: 'ds.c.pink', v: '--pink', text: '--pink-text' },
+  { key: 'ds.c.teal', v: '--teal', text: '--teal-ink' },
+  { key: 'ds.c.mustard', v: '--mustard', text: '--mustard-text' },
+  { key: 'ds.c.blue', v: '--blue', text: '--blue-ink' },
+  { key: 'ds.c.green', v: '--green', text: '--green-ink' },
+  { key: 'ds.c.red', v: '--red', text: '--red-ink' },
 ];
 
 export function startDesignGallery(root: HTMLElement): void {
   document.body.style.margin = '0';
   createRoot(root).render(
     <StrictMode>
-      <MotionConfig reducedMotion="user">
-        <Gallery />
-      </MotionConfig>
+      <Gallery />
     </StrictMode>,
   );
 }
@@ -57,7 +57,7 @@ export function Gallery() {
   const [theme, setTheme] = useState<Theme>(() => {
     const q = new URLSearchParams(location.search).get('theme');
     if (q === 'night' || q === 'paper') return q;
-    return useUi.getState().settings.theme === 'dark' ? 'night' : 'paper';
+    return themeFromSettings(useUi.getState().settings.theme);
   });
   const t: T = useCallback((key, vars) => translate(lang, key, vars), [lang]);
   const locale = lang === 'tr' ? 'tr-TR' : 'en-US';
@@ -68,18 +68,21 @@ export function Gallery() {
     document.documentElement.lang = lang;
     document.title = t('ds.docTitle');
   }, [lang, t]);
-  useEffect(() => {
-    document.body.style.background = theme === 'night' ? '#1B1924' : '#F1EADB';
+  const rootRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    // body sits outside the .kb root: paint it with the live --paper token.
+    const paper = rootRef.current ? getComputedStyle(rootRef.current).getPropertyValue('--paper').trim() : '';
+    document.body.style.background = paper;
     document.documentElement.style.colorScheme = theme === 'night' ? 'dark' : 'light';
   }, [theme]);
 
   return (
-    <div className="kb paper g-root" data-theme={theme}>
+    <Kb ref={rootRef} theme={theme} className="g-root">
       <Masthead t={t} lang={lang} setLang={setLang} theme={theme} setTheme={setTheme} reduced={reduced} fmt={fmt} />
       <main className="g-main">
         <div className="g-band">
           <Section n="01" title={t('ds.s.palette')} note={t('ds.s.palette.note')} className="g-palette">
-            <Palette t={t} night={theme === 'night'} />
+            <Palette t={t} />
           </Section>
           <Section n="02" title={t('ds.s.type')} className="g-type">
             <TypeSpecimen t={t} />
@@ -123,7 +126,7 @@ export function Gallery() {
               <PaperBits t={t} fmt={fmt} />
             </Section>
             <Section n="13" title={t('ds.s.overlays')} note={t('ds.s.overlays.note')}>
-              <OverlayDemo t={t} theme={theme} />
+              <OverlayDemo t={t} />
             </Section>
           </div>
         </div>
@@ -132,7 +135,7 @@ export function Gallery() {
         <Rule variant="thick" />
         <p className="mono">{t('ds.footer')}</p>
       </footer>
-    </div>
+    </Kb>
   );
 }
 
@@ -219,9 +222,9 @@ function Masthead({
 function CoinMark({ className, size = 34 }: { className?: string; size?: number }) {
   return (
     <svg className={className} width={size} height={size} viewBox="0 0 40 40" aria-hidden="true">
-      <circle cx="22" cy="22" r="15" fill="#0E9C9A" />
-      <circle cx="19" cy="19" r="15" fill="#FF4F87" style={{ mixBlendMode: 'multiply' }} />
-      <circle cx="19" cy="19" r="10" fill="none" stroke="#1E1B2E" strokeWidth="1.6" opacity="0.5" />
+      <circle cx="22" cy="22" r="15" style={{ fill: 'var(--teal)' }} />
+      <circle cx="19" cy="19" r="15" style={{ fill: 'var(--pink)', mixBlendMode: 'multiply' }} />
+      <circle cx="19" cy="19" r="10" fill="none" style={{ stroke: 'var(--ink-fixed)' }} strokeWidth="1.6" opacity="0.5" />
     </svg>
   );
 }
@@ -245,9 +248,19 @@ function Section({ n, title, note, children, className }: { n: string; title: st
 
 /* ── foundations ──────────────────────────────────────────────────────── */
 
-function Palette({ t, night }: { t: T; night: boolean }) {
+function Palette({ t }: { t: T }) {
+  const theme = useKbTheme();
+  const ref = useRef<HTMLUListElement>(null);
+  const [vals, setVals] = useState<Record<string, string>>({});
+  useLayoutEffect(() => {
+    if (!ref.current) return;
+    const cs = getComputedStyle(ref.current);
+    const next: Record<string, string> = {};
+    for (const s of SWATCHES) for (const v of [s.v, s.text]) if (v) next[v] = cs.getPropertyValue(v).trim().toUpperCase();
+    setVals(next);
+  }, [theme]);
   return (
-    <ul className="g-swatches">
+    <ul className="g-swatches" ref={ref}>
       {SWATCHES.map((s, i) => (
         <motion.li
           key={s.v}
@@ -261,10 +274,15 @@ function Palette({ t, night }: { t: T; night: boolean }) {
           </span>
           <span className="g-swatch__name">{t(s.key)}</span>
           <span className="g-swatch__hex mono" lang="en">
-            {s.v} {night && s.night ? s.night : s.hex}
+            {s.v} {vals[s.v]}
           </span>
           {s.text && (
-            <span className="g-swatch__hex mono">{t('ds.c.textInk', { hex: night && s.nightText ? s.nightText : s.text })}</span>
+            <span className="g-swatch__hex mono">
+              {t('ds.c.textInk')}{' '}
+              <span lang="en">
+                {s.text} {vals[s.text]}
+              </span>
+            </span>
           )}
         </motion.li>
       ))}
@@ -327,7 +345,7 @@ function TicketDemo({ t, fmt }: { t: T; fmt: (n: number) => string }) {
     { id: 'whale', title: t('ds.room.whale'), meta: t('ds.room.onFloor', { n: fmt(310400) }), value: fmt(100000), unit: '$SLANA', pass: true },
   ];
   return (
-    <div className="g-tickets" role="radiogroup" aria-label={t('ds.rooms')}>
+    <TicketGroup className="g-tickets" label={t('ds.rooms')} value={sel} onChange={setSel}>
       {rooms.map((r, i) => (
         <motion.div
           key={r.id}
@@ -336,17 +354,15 @@ function TicketDemo({ t, fmt }: { t: T; fmt: (n: number) => string }) {
           transition={{ delay: 0.1 + i * STAGGER, duration: 0.26 }}
         >
           <Ticket
-            asRadio
+            value={r.id}
             title={r.title}
             meta={r.meta}
             stub={<TicketStub value={r.value} unit={r.unit} />}
             stamp={r.pass ? t('ds.stamp.pass') : undefined}
-            selected={sel === r.id}
-            onClick={() => setSel(r.id)}
           />
         </motion.div>
       ))}
-    </div>
+    </TicketGroup>
   );
 }
 
@@ -405,6 +421,8 @@ function PassportDemo({ t }: { t: T }) {
   return (
     <div className="g-passports">
       <Passport
+        title={t('ds.pp.title')}
+        kind={t('ds.pp.kind')}
         number="0412"
         numberLabel={t('ds.pp.no')}
         sealed={sealed}
@@ -427,19 +445,20 @@ function PassportDemo({ t }: { t: T }) {
   );
 }
 
-/** The crowned coin from artboard B, as Pass art. */
+/** The crowned coin from artboard B, as Pass art. Printed in fixed inks (art does not invert at night). */
 function PassArt() {
+  const ink = { stroke: 'var(--ink-fixed)' };
   return (
     <svg className="g-passart" width="92" height="92" viewBox="0 0 100 100" aria-hidden="true">
-      <circle cx="54" cy="55" r="36" fill="#0E9C9A" />
-      <circle cx="50" cy="51" r="36" fill="#FF4F87" style={{ mixBlendMode: 'multiply' }} />
-      <circle cx="50" cy="51" r="27" fill="none" stroke="#1E1B2E" strokeWidth="2.5" opacity="0.45" />
-      <path d="M30 18 L36 6 L44 15 L50 2 L56 15 L64 6 L70 18 Z" fill="#F2B705" stroke="#1E1B2E" strokeWidth="2.5" strokeLinejoin="round" />
-      <ellipse cx="40" cy="52" rx="4.5" ry="6.5" fill="#1E1B2E" />
-      <ellipse cx="60" cy="52" rx="4.5" ry="6.5" fill="#1E1B2E" />
-      <circle cx="31" cy="62" r="4.5" fill="#F2B705" opacity="0.9" />
-      <circle cx="69" cy="62" r="4.5" fill="#F2B705" opacity="0.9" />
-      <path d="M44 63 Q50 69 56 63" fill="none" stroke="#1E1B2E" strokeWidth="3" strokeLinecap="round" />
+      <circle cx="54" cy="55" r="36" style={{ fill: 'var(--teal)' }} />
+      <circle cx="50" cy="51" r="36" style={{ fill: 'var(--pink)', mixBlendMode: 'multiply' }} />
+      <circle cx="50" cy="51" r="27" fill="none" style={ink} strokeWidth="2.5" opacity="0.45" />
+      <path d="M30 18 L36 6 L44 15 L50 2 L56 15 L64 6 L70 18 Z" style={{ ...ink, fill: 'var(--mustard)' }} strokeWidth="2.5" strokeLinejoin="round" />
+      <ellipse cx="40" cy="52" rx="4.5" ry="6.5" style={{ fill: 'var(--ink-fixed)' }} />
+      <ellipse cx="60" cy="52" rx="4.5" ry="6.5" style={{ fill: 'var(--ink-fixed)' }} />
+      <circle cx="31" cy="62" r="4.5" style={{ fill: 'var(--mustard)' }} opacity="0.9" />
+      <circle cx="69" cy="62" r="4.5" style={{ fill: 'var(--mustard)' }} opacity="0.9" />
+      <path d="M44 63 Q50 69 56 63" fill="none" style={ink} strokeWidth="3" strokeLinecap="round" />
     </svg>
   );
 }
@@ -481,8 +500,8 @@ function ReceiptDemo({ t, fmt }: { t: T; fmt: (n: number) => string }) {
         lines={[
           { label: t('ds.rc.entry'), value: fmt(1000) },
           { label: t('ds.rc.won'), value: `+${fmt(4250)}` },
-          { label: t('ds.rc.fee', { p: t('ds.pct', { n: 3 }) }), value: `−${fmt(157)}`, muted: true },
-          { label: t('ds.rc.net'), value: `${fmt(5093)}`, strong: true },
+          { label: t('ds.rc.fee', { p: t('ds.pct', { n: 2 }) }), value: `−${fmt(85)}`, muted: true },
+          { label: t('ds.rc.net'), value: fmt(1000 + 4250 - 85), strong: true },
         ]}
         footer={
           <a href="#tx" onClick={(e) => e.preventDefault()}>
@@ -580,7 +599,6 @@ function TabsDemo({ t, fmt }: { t: T; fmt: (n: number) => string }) {
       </TabPanel>
       <div className="g-phone">
         <Tabs
-          idBase="g-nav"
           variant="nav"
           label={t('ds.tab.nav')}
           value={nav}
@@ -592,15 +610,12 @@ function TabsDemo({ t, fmt }: { t: T; fmt: (n: number) => string }) {
             { id: 'profile', label: t('ds.tab.profile'), icon: 'user' },
           ]}
         />
-        <TabPanel idBase="g-nav" id={nav} className="kb-sr">
-          {t(`ds.tab.${nav === 'ranks' ? 'ranks' : nav}` as TKey)}
-        </TabPanel>
       </div>
     </div>
   );
 }
 
-function OverlayDemo({ t, theme }: { t: T; theme: Theme }) {
+function OverlayDemo({ t }: { t: T }) {
   const [open, setOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const seq = useRef(0);
@@ -634,7 +649,6 @@ function OverlayDemo({ t, theme }: { t: T; theme: Theme }) {
       <Sheet
         open={open}
         onClose={() => setOpen(false)}
-        theme={theme}
         kicker={t('ds.sh.kicker')}
         title={t('ds.sh.title')}
         closeLabel={t('common.close')}

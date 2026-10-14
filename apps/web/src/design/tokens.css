@@ -7,9 +7,11 @@
  *
  * Contrast notes (WCAG, measured):
  *   --ink-2 on --paper 5.66, on --card 6.62 | night: 8.0 / 7.1
- *   --pink-ink on --card 4.79 but on --paper 4.10 -> small pink text belongs on
- *   --card; on --paper use it only for large/bold text (>= 19px bold, 3:1).
- *   --mustard-ink on --card 5.20, on --paper 4.45 (same rule).
+ *   --pink-ink (spec) is 4.10 on --paper and --mustard-ink (spec) 4.45, so
+ *   they stay for fills, strokes and large type only. All small pink/mustard
+ *   TEXT uses --pink-text / --mustard-text:
+ *     --pink-text    #C21E56  paper 4.85  card 5.67 | night #FF7FA6 7.30 / 6.46
+ *     --mustard-text #7D5A00  paper 5.26  card 6.14 | night #F2B705 9.54 / 8.45
  *   --teal-ink on --paper 4.87. Light text on a teal panel needs --teal-ink
  *   (5.69); plain --teal with --card text is 3.28 (large text only).
  * ------------------------------------------------------------------------- */
@@ -28,6 +30,9 @@
   --teal-ink: #08716f;
   --mustard: #f2b705;
   --mustard-ink: #8a6500;
+  /* small-text-safe pink / mustard (>= 4.5:1 on paper and card) */
+  --pink-text: #c21e56;
+  --mustard-text: #7d5a00;
   --blue: #3b5bdb;
   --green: #1f9d61;
   --red: #e5402b;
@@ -36,6 +41,8 @@
   --blue-ink: #3b5bdb;
   --green-ink: #157347;
   --red-ink: #b42318;
+  /* fixed print ink: text/art on accent fills, same in both themes */
+  --ink-fixed: #1e1b2e;
   /* fixed passport cover stock (same in both themes) */
   --cover: #08716f;
   --on-cover: #fffcf4;
@@ -99,6 +106,8 @@
   --pink-ink: #ff7fa6;
   --teal-ink: #3cc9c6;
   --mustard-ink: #f2b705;
+  --pink-text: #ff7fa6;
+  --mustard-text: #f2b705;
   --blue-ink: #8fa6ff;
   --green-ink: #5bd69a;
   --red-ink: #ff8a75;

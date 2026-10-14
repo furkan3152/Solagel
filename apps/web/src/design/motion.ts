@@ -13,15 +13,13 @@ export const springs = {
   press: { type: 'spring', stiffness: 900, damping: 32, mass: 0.6 },
   /** Sheets and screen changes: ~320 ms with a visible overshoot. */
   sheet: { type: 'spring', stiffness: 420, damping: 32, mass: 0.9 },
-  /** Stamp landing (used by springy follow-ups; the stamp itself is keyed). */
+  /** Stamp: the 2–3° turn settling after impact (Stamp uses it for `rotate`). */
   stamp: { type: 'spring', stiffness: 700, damping: 18, mass: 0.7 },
   /** Odometer wheels and indicators. */
   dial: { type: 'spring', stiffness: 260, damping: 26, mass: 0.8 },
 } as const satisfies Record<string, Transition>;
 
 export type SpringName = keyof typeof springs;
-
-export const durations = { micro: 0.15, screen: 0.32, stamp: 0.42 } as const;
 
 /** Lists appear 30 ms apart. */
 export const STAGGER = 0.03;
@@ -40,7 +38,7 @@ export function printerEase(steps: number): (t: number) => number {
 /** The 420 ms stamp: hits at 70 %, squashes a touch, settles. */
 export const stampKeyframes: Transition = {
   times: [0, 0.7, 1],
-  duration: durations.stamp,
+  duration: 0.42,
   ease: ['easeIn', 'easeOut'],
 };
 
@@ -66,5 +64,3 @@ export function usePreset(name: SpringName, opts: { fade?: boolean } = {}): Tran
   if (reduced) return opts.fade ? FADE : INSTANT;
   return springs[name];
 }
-
-export const reducedTransitions = { instant: INSTANT, fade: FADE } as const;
