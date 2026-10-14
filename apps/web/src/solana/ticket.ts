@@ -207,6 +207,8 @@ export interface GateInput {
   pending: readonly PendingPayout[];
   /** Owned Passes that are not locked in another session. */
   freePasses: number;
+  /** Does the wallet's token account exist? Once it does, a `needsTokenAccount` payout is just settling. */
+  ataExists?: boolean | null;
   nowS: number;
 }
 
@@ -218,7 +220,7 @@ export function ticketGate(g: GateInput): TicketGate {
   const owed = g.pending.filter((p) => (g.session && p.key === g.session.address) || p.arenaId === t.arenaId);
   if (owed.length > 0) {
     const payout = owed.reduce((s, p) => s + p.payout, 0);
-    return owed.some((p) => p.needsTokenAccount) ? { kind: 'needAta', payout } : { kind: 'settling', payout };
+    return owed.some((p) => p.needsTokenAccount) && g.ataExists !== true ? { kind: 'needAta', payout } : { kind: 'settling', payout };
   }
   if (g.session) {
     if (g.nowS - g.session.openedAt >= SESSION_REFUND_TIMEOUT_SECS) return { kind: 'refund' };
@@ -252,3 +254,58 @@ export const PASS_POWER = {
   startPct: Math.round((RULES.passStartMassMul - 1) * 100),
   cashoutS: RULES.passCashoutMs / 1000,
 };
+
+/** R10: payouts still waiting for the player's token account (none once it exists). */
+export function payoutsNeedingAta(pending: readonly PendingPayout[], ataExists: boolean | null): PendingPayout[] {
+  return ataExists === true ? [] : pending.filter((p) => p.needsTokenAccount);
+}
+
+/* ── SOL the ticket transaction moves ───────────────────────────────────── */
+
+/**
+ * Account sizes (8-byte Anchor discriminator + `INIT_SPACE`) from
+ * programs/slana/src/state.rs; the SPL token account is 165 bytes (170 for a
+ * Token-2022 ATA, which carries the immutable-owner extension).
+ */
+export const ACCOUNT_BYTES = {
+  // owner 32 + name 16 + len 1 + skin 1 + xp 8 + games 4 + kills 4 + best 4 + total 8 + season 4 + points 8 + stakeGames 4 + staked 8 + won 8 + created 8 + last 8 + bump 1
+  profile: 8 + 127,
+  // id 8 + player 32 + arena 32 + arenaId 2 + entry 8 + opened 8 + hasPass 1 + passAsset 32 + settleFee 8 + bump 1
+  session: 8 + 132,
+  // session 32 + player 32 + bump 1
+  passLock: 8 + 65,
+  ata: 165,
+  ata2022: 170,
+} as const;
+
+/** Compute-unit limit of the ticket transaction (bounds the priority fee). */
+export const TICKET_COMPUTE_UNITS = 300_000;
+/** Priority fee the web client attaches, micro-lamports per compute unit. */
+export const PRIORITY_MICRO_LAMPORTS = 20_000;
+/** Base fee per signature. */
+export const BASE_FEE_LAMPORTS = 5_000;
+
+/** Rent-exempt minimum the default cluster rent would charge (fallback when the RPC cannot be asked). */
+export const defaultRent = (bytes: number): number => (bytes + 128) * 6_960;
+
+export interface SolCost {
+  /** Everything that leaves the wallet in SOL: rents, deposit, network fees. */
+  total: number;
+  /** Comes back when the ticket closes (session and Pass-lock rent). */
+  refundable: number;
+}
+
+/**
+ * SOL a ticket transaction moves. Session and Pass-lock rent return when the
+ * ticket closes; profile and token-account rent stay with the player's own
+ * accounts; the settle deposit pays the server's payout transaction.
+ */
+export function ticketSolCost(steps: readonly TicketStep[], opts: { settleFeeLamports: number; token2022: boolean; rent: (bytes: number) => number }): SolCost {
+  let refundable = opts.rent(ACCOUNT_BYTES.session);
+  if (steps.includes('joinWithPass')) refundable += opts.rent(ACCOUNT_BYTES.passLock);
+  let kept = 0;
+  if (steps.includes('register')) kept += opts.rent(ACCOUNT_BYTES.profile);
+  if (steps.includes('ata')) kept += opts.rent(opts.token2022 ? ACCOUNT_BYTES.ata2022 : ACCOUNT_BYTES.ata);
+  const fees = BASE_FEE_LAMPORTS + Math.ceil((TICKET_COMPUTE_UNITS * PRIORITY_MICRO_LAMPORTS) / 1_000_000);
+  return { total: refundable + kept + opts.settleFeeLamports + fees, refundable };
+}

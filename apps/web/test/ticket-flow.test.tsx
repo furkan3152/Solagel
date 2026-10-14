@@ -1,13 +1,28 @@
 import { WalletContext, type WalletContextState } from '@solana/wallet-adapter-react';
 import { Keypair } from '@solana/web3.js';
 import { act, render, screen, within } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Kb } from '../src/design';
 import { useChainData } from '../src/solana/chain';
 import { fakeConfig } from '../src/solana/devFake';
 import { TicketFlow } from '../src/solana/TicketFlow';
 import type { TicketModel } from '../src/solana/ticket';
 import { useUi } from '../src/store';
+
+const spies = vi.hoisted(() => ({
+  buildTicketTx: vi.fn(async () => ({ steps: ['join'], ixs: [] })),
+  sendTx: vi.fn(async () => ({ ok: true as const, signature: 'sig' })),
+  fetchArena: vi.fn(),
+  client: null as unknown,
+}));
+spies.client = { ix: {}, programId: null, fetchArena: (id: number) => spies.fetchArena(id), rentExemptMinimum: async (b: number) => (b + 128) * 6960 };
+// the money path's network edges: the arena re-read, the build and the wallet send
+vi.mock('../src/solana/chain', async (orig) => ({
+  ...(await orig<typeof import('../src/solana/chain')>()),
+  useSlanaClient: () => spies.client,
+}));
+vi.mock('../src/solana/ticket', async (orig) => ({ ...(await orig<typeof import('../src/solana/ticket')>()), buildTicketTx: spies.buildTicketTx }));
+vi.mock('../src/solana/tx', async (orig) => ({ ...(await orig<typeof import('../src/solana/tx')>()), sendTx: spies.sendTx }));
 
 const M = 1_000_000n;
 const CHAIN = {
@@ -38,9 +53,14 @@ const chain0 = useChainData.getState();
 
 beforeEach(() => {
   walletOn = true;
+  spies.buildTicketTx.mockClear();
+  spies.sendTx.mockClear();
+  spies.fetchArena.mockReset();
+  spies.fetchArena.mockImplementation(async (id: number) => (id === 1 ? arena(1, 1000n * M, false) : arena(3, 50_000n * M, true)));
   useUi.setState({ settings: { ...ui0.settings, lang: 'tr', name: 'Defne', skin: 4 }, chain: CHAIN });
   useChainData.setState({
     config: { ...fakeConfig(CHAIN), settleFeeLamports: 50_000 },
+    sessions: {},
     tokenBalance: 12_450n * M,
     balance: 420_000_000,
     ataExists: true,
@@ -115,11 +135,77 @@ describe('ticket confirm sheet', () => {
   });
 
   it('R10: the token-account sheet shows what is owed and signs only the account creation', () => {
-    useChainData.setState({ pending: [{ key: 'S', arenaId: 1, payout: 2150 * 1_000_000, needsTokenAccount: true }] });
+    useChainData.setState({ ataExists: false, pending: [{ key: 'S', arenaId: 1, payout: 2150 * 1_000_000, needsTokenAccount: true }] });
     open(PENNY, 'ata');
     expect(screen.getByText('2.150 $SLANA')).toBeTruthy();
     const steps = within(screen.getByRole('region', { name: 'Bu işlemde' })).getAllByRole('listitem');
     expect(steps).toHaveLength(1);
     expect(steps[0].textContent).toContain('Token hesabını aç');
+  });
+
+  it('the ATA sheet only counts payouts that wait for the token account', () => {
+    useChainData.setState({
+      ataExists: false,
+      pending: [
+        { key: 'S', arenaId: 1, payout: 2150 * 1_000_000, needsTokenAccount: true },
+        { key: 'T', arenaId: 2, payout: 999 * 1_000_000, needsTokenAccount: false },
+      ],
+    });
+    open(PENNY, 'ata');
+    expect(screen.getByText('2.150 $SLANA')).toBeTruthy();
+  });
+
+  it('discloses the SOL the transaction moves and what comes back', () => {
+    open(PENNY);
+    expect(screen.getByText('SOL bu işlemde')).toBeTruthy();
+    expect(screen.getByText(/≈ [\d,]+ SOL \([\d,]+ iade edilir\)/)).toBeTruthy();
+  });
+});
+
+describe('ticket flow races', () => {
+  const settle = () => act(async () => new Promise((r) => setTimeout(r, 30)));
+
+  it('a double click (or two Enters) builds and sends exactly one transaction', async () => {
+    open(PENNY);
+    const pay = screen.getByRole('button', { name: /Bileti kes · 1\.000 \$SLANA/ });
+    act(() => {
+      pay.click();
+      pay.click();
+      pay.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      pay.click();
+    });
+    await settle();
+    expect(spies.fetchArena).toHaveBeenCalledTimes(1);
+    expect(spies.buildTicketTx).toHaveBeenCalledTimes(1);
+    expect(spies.sendTx).toHaveBeenCalledTimes(1);
+  });
+
+  it('focus never starts on the pay button', async () => {
+    open(PENNY);
+    await settle();
+    const pay = screen.getByRole('button', { name: /Bileti kes/ });
+    expect(document.activeElement).not.toBe(pay);
+    expect(screen.getByRole('dialog').contains(document.activeElement)).toBe(true);
+  });
+
+  it('re-reads the arena right before building and refuses a changed price', async () => {
+    spies.fetchArena.mockImplementation(async () => arena(1, 1500n * M, false));
+    open(PENNY);
+    act(() => screen.getByRole('button', { name: /Bileti kes/ }).click());
+    await settle();
+    expect(spies.buildTicketTx).not.toHaveBeenCalled();
+    expect(spies.sendTx).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert').textContent).toMatch(/az önce değişti/);
+  });
+
+  it('offers "Devam et" instead of paying again when the ticket turns out to be open', () => {
+    useChainData.setState({
+      sessions: {
+        1: { address: 'S', id: 1, player: 'P', arena: 'A1', arenaId: 1, entryFee: 1000n * M, openedAt: 1, hasPass: false, passAsset: null, settleFee: 20_000 },
+      },
+    });
+    open(PENNY);
+    expect(screen.getByRole('button', { name: /Devam et/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Bileti kes/ })).toBeNull();
   });
 });

@@ -1,5 +1,6 @@
 import { TOKEN_PROGRAM_ID, type ConfigView, type ProfileView, type SessionView } from '@slana/sdk';
 import type { ChainStatus } from '@slana/shared';
+import { DEV_FAKE_PROGRAM_ID } from './devFakeLoader';
 import type { TicketStep } from './ticket';
 
 /**
@@ -11,11 +12,6 @@ import type { TicketStep } from './ticket';
  * that signs transactions. Production builds never enter this path
  * (`import.meta.env.DEV` is false there).
  */
-export const DEV_FAKE_PROGRAM_ID = 'DevFakeChain1111111111111111111111111111111';
-
-export function isDevFake(chain: ChainStatus | null): boolean {
-  return import.meta.env.DEV && chain?.programId === DEV_FAKE_PROGRAM_ID;
-}
 
 const TOKEN = 1_000_000n; // 6 decimals, like the fake server mint
 
@@ -24,6 +20,8 @@ export interface FakeWallet {
   lamports: number;
   profile: ProfileView | null;
   sessions: Record<number, SessionView | null>;
+  /** The wallet's game-token account exists (R10 screenshots set it false). */
+  ataExists: boolean;
   /** Simulated wallet + network delay per phase (ms). */
   delayMs: number;
   /** Next "transaction" fails with this SDK error name (e.g. `PassInUse`), then clears. */
@@ -35,6 +33,7 @@ export const fakeWallet: FakeWallet = {
   lamports: 420_000_000,
   profile: null,
   sessions: {},
+  ataExists: true,
   delayMs: 900,
   failNext: null,
 };
@@ -51,7 +50,7 @@ export function fakeConfig(chain: ChainStatus): ConfigView {
     treasuryBps: 5000,
     seasonBps: 3000,
     burnBps: 2000,
-    settleFeeLamports: 50_000,
+    settleFeeLamports: 20_000,
     currentSeason: chain.currentSeason ?? 1,
     paused: false,
     passCollection: chain.pass?.collection ?? null,
@@ -123,7 +122,7 @@ export async function fakeSendTicket(
     openedAt: Math.floor(Date.now() / 1000),
     hasPass: passAsset !== null,
     passAsset,
-    settleFee: 50_000,
+    settleFee: 20_000,
   };
   return { ok: true, signature };
 }
