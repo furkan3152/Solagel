@@ -1,4 +1,4 @@
-import { collectionMetadataJson, PASS_COLLECTION_NAME, PASS_SYMBOL, passTraits, revealedPassMetadata, type PassMetadata } from '@slana/art';
+import { collectionJson, PASS_COLLECTION_NAME, PASS_SYMBOL, passJson, type PassMetadata } from '@slana/art';
 import type { PassStatus } from '@slana/shared';
 
 export { PASS_SYMBOL, PASS_COLLECTION_NAME, passAttributes } from '@slana/art';
@@ -23,7 +23,7 @@ export function passMetadata(n: number, pass: PassStatus, baseUrl: string): Pass
   if (!passInRange(n, pass)) return null;
   const image = `${baseUrl}/pass/${n}.png`;
   const seed = revealedSeed(pass);
-  if (seed) return revealedPassMetadata(passTraits(seed, n, pass.supply), n, image, baseUrl);
+  if (seed) return passJson(n, seed, pass.supply, { siteUrl: baseUrl });
   return {
     name: `${PASS_COLLECTION_NAME} #${n}`,
     symbol: PASS_SYMBOL,
@@ -37,5 +37,5 @@ export function passMetadata(n: number, pass: PassStatus, baseUrl: string): Pass
 
 /** Metaplex JSON of the collection (`<base>/pass/collection.json`). */
 export function collectionMetadata(pass: PassStatus, baseUrl: string): PassMetadata {
-  return collectionMetadataJson(pass.supply, `${baseUrl}/pass/collection.png`, baseUrl);
+  return collectionJson(pass.supply, { siteUrl: baseUrl });
 }
