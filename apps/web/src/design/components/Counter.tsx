@@ -1,14 +1,13 @@
 import { motion } from 'motion/react';
-import { useMemo } from 'react';
+import { useMemo, type HTMLAttributes } from 'react';
 import { springs, useReducedMotion } from '../motion';
 
-export interface CounterProps {
+export interface CounterProps extends Omit<HTMLAttributes<HTMLSpanElement>, 'children'> {
   value: number;
   /** Formatter, e.g. `(n) => n.toLocaleString('tr-TR')`. Default: en-US grouping. */
   format?: (n: number) => string;
   /** Mono unit after the number, e.g. "$SLANA". */
   unit?: string;
-  className?: string;
 }
 
 const DIGITS = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
@@ -19,12 +18,12 @@ const defaultFormat = (n: number) => Math.round(n).toLocaleString('en-US');
  * wheels are keyed from the right so place values stay put when the number
  * grows. Screen readers get the plain formatted value.
  */
-export function Counter({ value, format = defaultFormat, unit, className }: CounterProps) {
+export function Counter({ value, format = defaultFormat, unit, className, ...rest }: CounterProps) {
   const reduced = useReducedMotion();
   const text = format(value);
   const chars = useMemo(() => [...text], [text]);
   return (
-    <span className={`kb-counter${className ? ` ${className}` : ''}`}>
+    <span {...rest} className={`kb-counter${className ? ` ${className}` : ''}`}>
       <span className="kb-sr">
         {text}
         {unit ? ` ${unit}` : ''}

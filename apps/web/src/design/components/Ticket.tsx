@@ -2,9 +2,11 @@ import { motion } from 'motion/react';
 import {
   createContext,
   useContext,
-  useEffect,
+  useLayoutEffect,
   useRef,
+  useState,
   type ButtonHTMLAttributes,
+  type HTMLAttributes,
   type KeyboardEvent,
   type ReactNode,
 } from 'react';
@@ -31,6 +33,8 @@ export interface TicketProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement
 
 interface GroupCtx {
   value: string | null;
+  /** The one ticket with tabIndex 0: the selection, else the first enabled ticket. */
+  tabStop: string | null;
   select: (v: string) => void;
 }
 const TicketGroupContext = createContext<GroupCtx | null>(null);
@@ -63,7 +67,7 @@ export function Ticket({
   const lifted = selected && !reduced;
 
   const a11y = inGroup
-    ? { role: 'radio' as const, 'aria-checked': selected, tabIndex: selected ? 0 : -1, 'data-kb-value': value }
+    ? { role: 'radio' as const, 'aria-checked': selected, tabIndex: group.tabStop === value ? 0 : -1, 'data-kb-value': value }
     : { 'aria-pressed': selected };
 
   return (
@@ -107,38 +111,48 @@ export function Ticket({
   );
 }
 
-export interface TicketGroupProps {
+export interface TicketGroupProps extends Omit<HTMLAttributes<HTMLDivElement>, 'onChange' | 'role'> {
   /** Accessible name of the radio group (translated). */
   label: string;
   value: string | null;
   onChange: (value: string) => void;
   children: ReactNode;
-  className?: string;
 }
 
 /**
  * Radio group of tickets (WAI-ARIA radiogroup): one tab stop, arrows move and
- * select, Home/End jump. Selection follows focus, like native radios.
+ * select, Home/End jump, disabled tickets are skipped. Selection follows focus,
+ * like native radios. Every ticket's tabIndex comes from context (no DOM writes).
  */
-export function TicketGroup({ label, value, onChange, children, className }: TicketGroupProps) {
+export function TicketGroup({ label, value, onChange, children, onKeyDown, ...rest }: TicketGroupProps) {
   const root = useRef<HTMLDivElement>(null);
+  const [firstEnabled, setFirstEnabled] = useState<string | null>(null);
 
   const radios = () =>
-    [...(root.current?.querySelectorAll<HTMLButtonElement>('[role="radio"]') ?? [])].filter((r) => !r.disabled);
+    [...(root.current?.querySelectorAll<HTMLButtonElement>('[role="radio"]') ?? [])].filter(
+      (r) => r.closest('[role="radiogroup"]') === root.current,
+    );
+  const enabled = () => radios().filter((r) => !r.disabled);
 
-  // With nothing selected, the first enabled ticket is the tab stop.
-  useEffect(() => {
-    const list = radios();
-    if (list.length && !list.some((r) => r.tabIndex === 0)) list[0].tabIndex = 0;
+  // Track the first enabled ticket in DOM order, as React state.
+  useLayoutEffect(() => {
+    const first = enabled()[0]?.dataset.kbValue ?? null;
+    if (first !== firstEnabled) setFirstEnabled(first);
   });
 
+  const tabStop = value ?? firstEnabled;
+
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
-    const list = radios();
+    onKeyDown?.(e);
+    if (e.defaultPrevented) return;
+    const target = e.target as HTMLElement;
+    if (!radios().includes(target as HTMLButtonElement)) return; // only our tickets
+    const list = enabled();
     if (!list.length) return;
-    const i = list.findIndex((r) => r === document.activeElement);
+    const i = list.indexOf(target as HTMLButtonElement);
     let next = -1;
     if (e.key === 'ArrowDown' || e.key === 'ArrowRight') next = (i + 1) % list.length;
-    else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') next = (i - 1 + list.length) % list.length;
+    else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') next = i < 0 ? list.length - 1 : (i - 1 + list.length) % list.length;
     else if (e.key === 'Home') next = 0;
     else if (e.key === 'End') next = list.length - 1;
     if (next < 0) return;
@@ -150,8 +164,8 @@ export function TicketGroup({ label, value, onChange, children, className }: Tic
   };
 
   return (
-    <TicketGroupContext.Provider value={{ value, select: onChange }}>
-      <div ref={root} role="radiogroup" aria-label={label} className={className} onKeyDown={onKey}>
+    <TicketGroupContext.Provider value={{ value, tabStop, select: onChange }}>
+      <div {...rest} ref={root} role="radiogroup" aria-label={label} onKeyDown={onKey}>
         {children}
       </div>
     </TicketGroupContext.Provider>

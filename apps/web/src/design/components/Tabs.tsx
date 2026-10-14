@@ -1,5 +1,5 @@
 import { motion } from 'motion/react';
-import { useId, useRef, type KeyboardEvent, type ReactNode } from 'react';
+import { useId, useRef, type HTMLAttributes, type KeyboardEvent, type ReactNode } from 'react';
 import { Icon, type IconName } from '../icons';
 import { usePreset } from '../motion';
 
@@ -9,7 +9,7 @@ export interface TabItem<T extends string> {
   icon?: IconName;
 }
 
-export interface TabsProps<T extends string> {
+export interface TabsProps<T extends string> extends Omit<HTMLAttributes<HTMLElement>, 'onChange' | 'role'> {
   items: TabItem<T>[];
   value: T;
   onChange: (id: T) => void;
@@ -27,7 +27,6 @@ export interface TabsProps<T extends string> {
    * and only on the selected tab (inactive panels need not be mounted).
    */
   idBase?: string;
-  className?: string;
 }
 
 export const tabId = (base: string, id: string) => `${base}-tab-${id}`;
@@ -42,7 +41,17 @@ export function tabPanelProps(base: string, id: string) {
  * Horizontal tabs with automatic activation: roving tabindex, Left/Right,
  * Home/End. The pink underline is one shared element that slides between tabs.
  */
-export function Tabs<T extends string>({ items, value, onChange, label, variant = 'bar', idBase, className }: TabsProps<T>) {
+export function Tabs<T extends string>({
+  items,
+  value,
+  onChange,
+  label,
+  variant = 'bar',
+  idBase,
+  className,
+  onKeyDown,
+  ...rest
+}: TabsProps<T>) {
   const auto = useId();
   const base = idBase ?? `kb${auto.replace(/[^a-zA-Z0-9]/g, '')}`;
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -53,7 +62,7 @@ export function Tabs<T extends string>({ items, value, onChange, label, variant 
 
   if (variant === 'nav') {
     return (
-      <nav className={cls} aria-label={label}>
+      <nav {...rest} onKeyDown={onKeyDown} className={cls} aria-label={label}>
         {items.map((it) => {
           const on = it.id === value;
           return (
@@ -75,6 +84,8 @@ export function Tabs<T extends string>({ items, value, onChange, label, variant 
   }
 
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    onKeyDown?.(e);
+    if (e.defaultPrevented) return;
     const i = items.findIndex((it) => it.id === value);
     let next = -1;
     if (e.key === 'ArrowRight') next = (i + 1) % items.length;
@@ -88,7 +99,7 @@ export function Tabs<T extends string>({ items, value, onChange, label, variant 
   };
 
   return (
-    <div className={cls} role="tablist" aria-label={label} onKeyDown={onKey}>
+    <div {...rest} className={cls} role="tablist" aria-label={label} onKeyDown={onKey}>
       {items.map((it, i) => {
         const on = it.id === value;
         return (
