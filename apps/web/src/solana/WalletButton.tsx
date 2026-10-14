@@ -1,27 +1,52 @@
 import { useWallet } from '@solana/wallet-adapter-react';
-import { formatSol, shortAddress } from '@slana/shared';
+import { shortAddress } from '@slana/shared';
+import { Icon } from '../design';
 import { useT } from '../i18n';
 import { openModal, useUi } from '../store';
+import { useTokenText } from '../ui/lobby/useLobby';
 import { useChainData } from './chain';
 
+/**
+ * The wallet label in the masthead (artboard B): a dashed slip with the short
+ * address over the $SLANA balance. Disconnected, it is the "connect" slip.
+ */
 export function WalletButton() {
   const t = useT();
   const { publicKey, connected, connecting } = useWallet();
-  const balance = useChainData((s) => s.balance);
+  const tokens = useChainData((s) => s.tokenBalance);
   const auth = useUi((s) => s.auth);
+  const tok = useTokenText();
+
   if (!connected || !publicKey) {
     return (
-      <button className="btn btn-purple wallet-btn" onClick={() => openModal('wallet')} disabled={connecting}>
-        {connecting ? <span className="spin" /> : '👛'} <span className="hide-sm">{t('wallet.connect')}</span>
+      <button type="button" className="kl-wallet is-off" onClick={() => openModal('wallet')} disabled={connecting} aria-busy={connecting}>
+        <span className="kl-wallet__top mono">{t('wl.connectSub')}</span>
+        <span className="kl-wallet__main">
+          <Icon name="wallet" size={18} />
+          {t('wl.connect')}
+        </span>
       </button>
     );
   }
-  const verified = auth?.pubkey === publicKey.toBase58();
+  const addr = publicKey.toBase58();
+  const short = shortAddress(addr, 4, 4);
+  const verified = auth?.pubkey === addr;
+  const bal = tokens === null ? null : tok.fee(tokens);
   return (
-    <button className="btn btn-ghost wallet-btn" onClick={() => openModal('wallet')} title={publicKey.toBase58()}>
-      <span>{verified ? '✅' : '👛'}</span>
-      <span className="hide-sm">{shortAddress(publicKey.toBase58())}</span>
-      {balance !== null && <span className="badge mint">{formatSol(balance)}</span>}
+    <button
+      type="button"
+      className="kl-wallet"
+      onClick={() => openModal('wallet')}
+      aria-label={bal === null ? t('wl.labelNoBal', { addr: short }) : t('wl.label', { addr: short, bal, sym: tok.symbol })}
+      title={addr}
+    >
+      <span className="kl-wallet__top mono">
+        {!verified && <span className="kl-wallet__dot" title={t('wl.unverified')} />}
+        {short}
+      </span>
+      <span className="kl-wallet__main">
+        {bal ?? '…'} <span className="kl-wallet__sym mono">{tok.symbol}</span>
+      </span>
     </button>
   );
 }

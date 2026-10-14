@@ -26,6 +26,10 @@ export interface Settings {
   showFps: boolean;
   showMinimap: boolean;
   showChat: boolean;
+  /** Last arena the player bought a ticket for (Quick Play goes back there). */
+  lastArena: number | null;
+  /** Slana Pass asset worn as the look (server-verified at join), null = basic skin. */
+  passSkin: string | null;
 }
 
 export interface KillItem {
@@ -96,6 +100,8 @@ export interface UiState {
   spectateTarget: number | null;
   toasts: Toast[];
   modal: Modal;
+  /** Death / receipt "Yeni bilet": the lobby selects this ticket and opens its confirm sheet. */
+  lobbyIntent: { ticket: 'practice' | `arena:${number}`; open: boolean; at: number } | null;
   auth: AuthState | null;
   settings: Settings;
 }
@@ -124,6 +130,8 @@ function loadSettings(): Settings {
     showFps: false,
     showMinimap: true,
     showChat: true,
+    lastArena: null,
+    passSkin: null,
   };
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
@@ -162,6 +170,7 @@ export const useUi = create<UiState>(() => ({
   spectateTarget: null,
   toasts: [],
   modal: null,
+  lobbyIntent: null,
   auth: null,
   settings: loadSettings(),
 }));
@@ -184,4 +193,9 @@ export function toast(kind: Toast['kind'], text: string, link?: Toast['link'], t
 }
 
 export const openModal = (modal: Modal) => useUi.setState({ modal });
+
+/** "Yeni bilet": back to the lobby with this ticket selected (and its confirm sheet open for arenas). */
+export function requestTicket(arenaId: number | null): void {
+  useUi.setState({ lobbyIntent: { ticket: arenaId === null ? 'practice' : `arena:${arenaId}`, open: arenaId !== null, at: Date.now() } });
+}
 export const closeModal = () => useUi.setState({ modal: null });

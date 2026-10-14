@@ -2,7 +2,7 @@ import { InkButton, Sheet, Stamp } from '../../design';
 import { engine } from '../../game/instance';
 import { sound } from '../../game/sound';
 import { useT } from '../../i18n';
-import { useUi } from '../../store';
+import { requestTicket, useUi } from '../../store';
 import { CoinPortrait } from './CoinPortrait';
 import { formatClock, roomName, useTokenFormat } from './format';
 import { useEffect } from 'react';
@@ -40,6 +40,8 @@ export function DeathSheet() {
   };
   const newTicket = () => {
     sound.click();
+    // the lobby selects this arena's ticket (its confirm sheet opens once the old ticket is paid out)
+    if (arena && room?.arenaId !== undefined) requestTicket(room.arenaId);
     engine()?.backToLobby();
   };
   const killerLine = death?.killer ? (byBot ? t('gd.byBot') : t('gd.byPlayer', { name: death.killer })) : t('gd.byNobody');

@@ -1,49 +1,115 @@
 import { WalletReadyState } from '@solana/wallet-adapter-base';
 import { useWallet } from '@solana/wallet-adapter-react';
-import { formatSol } from '@slana/shared';
+import { formatToken } from '@slana/shared';
 import { useState } from 'react';
+import { Chip, Icon, InkButton, Sheet } from '../design';
 import { useT } from '../i18n';
 import { closeModal, toast, useUi } from '../store';
-import { Modal } from '../ui/common';
+import { useTokenText } from '../ui/lobby/useLobby';
 import { useChainData } from './chain';
 import { explorerAddress } from './links';
-import { markUserConnect } from './useWalletAuth';
 import { signInWithWallet } from './siws';
+import { markUserConnect } from './useWalletAuth';
 
+/**
+ * Wallet sheet. Disconnected: the Wallet Standard wallets found in the
+ * browser (no per-wallet adapters). Connected: address, $SLANA and SOL
+ * balances, network, the free sign-in signature, explorer and disconnect.
+ */
 export function WalletModal() {
   const t = useT();
+  const open = useUi((s) => s.modal === 'wallet');
   const wallet = useWallet();
   const { wallets, select, publicKey, connected, disconnect } = wallet;
-  const balance = useChainData((s) => s.balance);
+  const lamports = useChainData((s) => s.balance);
+  const tokens = useChainData((s) => s.tokenBalance);
+  const ataExists = useChainData((s) => s.ataExists);
   const auth = useUi((s) => s.auth);
+  const lang = useUi((s) => s.settings.lang);
   const cluster = useUi((s) => s.chain?.cluster ?? 'devnet');
+  const tok = useTokenText();
   const [busy, setBusy] = useState(false);
 
-  if (connected && publicKey) {
-    const addr = publicKey.toBase58();
-    const verified = auth?.pubkey === addr;
-    return (
-      <Modal onClose={closeModal} title={`👛 ${wallet.wallet?.adapter.name ?? 'Wallet'}`}>
-        <div className="col">
-          <div className="stat" style={{ wordBreak: 'break-all' }}>
-            <span>{t('wallet.copy')}</span>
-            <b style={{ fontSize: 14 }}>{addr}</b>
+  const addr = connected && publicKey ? publicKey.toBase58() : null;
+  const verified = !!addr && auth?.pubkey === addr;
+
+  const listed = [...wallets]
+    .filter((w) => w.readyState === WalletReadyState.Installed || w.readyState === WalletReadyState.Loadable)
+    .sort((a, b) => Number(b.readyState === WalletReadyState.Installed) - Number(a.readyState === WalletReadyState.Installed));
+
+  return (
+    <Sheet
+      open={open}
+      onClose={closeModal}
+      closeLabel={t('wl.close')}
+      kicker={t('wl.kicker')}
+      title={addr ? (wallet.wallet?.adapter.name ?? t('wl.kicker')) : t('wl.choose')}
+      className="kl-sheet wl-sheet"
+      footer={
+        addr ? (
+          <InkButton
+            variant="paper"
+            size="md"
+            onClick={() => {
+              void disconnect();
+              closeModal();
+            }}
+          >
+            {t('wl.disconnect')}
+          </InkButton>
+        ) : undefined
+      }
+    >
+      {addr ? (
+        <div className="wl-body">
+          <div className="wl-addr">
+            <span className="mono wl-cap">{t('wl.address')}</span>
+            <code className="wl-addr__full">{addr}</code>
+            <span className="wl-addr__actions">
+              <Chip
+                icon="docs"
+                onClick={() => {
+                  void navigator.clipboard?.writeText(addr).then(() => toast('success', t('wl.copied')));
+                }}
+              >
+                {t('wl.copy')}
+              </Chip>
+              <a className="kl-link mono" href={explorerAddress(addr, cluster)} target="_blank" rel="noreferrer">
+                {t('wl.explorer')}
+              </a>
+            </span>
           </div>
-          <div className="row">
-            <div className="stat grow">
-              <span>{t('wallet.balance')}</span>
-              <b>{balance === null ? '…' : formatSol(balance, 4)}</b>
+          <dl className="wl-bal">
+            <div>
+              <dt className="mono wl-cap">{t('wl.tokens')}</dt>
+              <dd>
+                <span className="wl-bal__big">{tokens === null ? '…' : tok.exact(tokens)}</span> <span className="mono">{tok.symbol}</span>
+              </dd>
             </div>
-            <div className="stat grow">
-              <span>{t('chain.cluster')}</span>
-              <b>{cluster}</b>
+            <div>
+              <dt className="mono wl-cap">{t('wl.sol')}</dt>
+              <dd>
+                <span className="wl-bal__mid">{lamports === null ? '…' : formatToken(lamports, 9, lang, { maxFrac: 4 })}</span>{' '}
+                <span className="mono">SOL</span>
+              </dd>
             </div>
-          </div>
-          {!verified && (
-            <>
-              <div className="notice">{t('wallet.signInfo')}</div>
-              <button
-                className="btn btn-mint"
+            <div>
+              <dt className="mono wl-cap">{t('wl.network')}</dt>
+              <dd className="mono">{cluster}</dd>
+            </div>
+          </dl>
+          {ataExists === false && <p className="kl-note">{t('wl.noAta')}</p>}
+          {verified ? (
+            <p className="wl-ok mono">
+              <Icon name="check" size={16} /> {t('wl.verified')}
+            </p>
+          ) : (
+            <div className="wl-verify">
+              <p className="kl-note">{t('wl.verifyNote')}</p>
+              <InkButton
+                variant="ink"
+                size="md"
+                lead="key"
                 disabled={busy}
                 onClick={async () => {
                   setBusy(true);
@@ -51,69 +117,53 @@ export function WalletModal() {
                   setBusy(false);
                 }}
               >
-                {busy ? <span className="spin" /> : '✍️'} {busy ? t('wallet.verifying') : t('wallet.verify')}
-              </button>
+                {t('wl.verify')}
+              </InkButton>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="wl-body">
+          {listed.length > 0 ? (
+            <ul className="wl-list">
+              {listed.map((w) => (
+                <li key={w.adapter.name}>
+                  <button
+                    type="button"
+                    className="wl-item"
+                    onClick={() => {
+                      markUserConnect();
+                      select(w.adapter.name);
+                      closeModal();
+                    }}
+                  >
+                    <img src={w.adapter.icon} alt="" width={32} height={32} />
+                    <span className="wl-item__name">{w.adapter.name}</span>
+                    {w.readyState === WalletReadyState.Installed && <span className="wl-item__tag mono">{t('wl.installed')}</span>}
+                    <Icon name="chevron" size={20} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <>
+              <p className="kl-note">{t('wl.none')}</p>
+              <span className="wl-install">
+                <a className="kb-btn kb-btn--ink kb-btn--md" href="https://phantom.app/download" target="_blank" rel="noreferrer">
+                  {t('wl.install')}
+                </a>
+                <a className="kl-link mono" href="https://solflare.com/download" target="_blank" rel="noreferrer">
+                  Solflare
+                </a>
+                <a className="kl-link mono" href="https://backpack.app/downloads" target="_blank" rel="noreferrer">
+                  Backpack
+                </a>
+              </span>
             </>
           )}
-          {verified && <div className="badge mint" style={{ alignSelf: 'flex-start' }}>✅ {t('wallet.verified')}</div>}
-          <div className="row">
-            <button className="btn btn-ghost grow" onClick={() => navigator.clipboard?.writeText(addr).then(() => toast('success', '📋 Copied'))}>
-              📋 {t('wallet.copy')}
-            </button>
-            <a className="btn btn-ghost grow" href={explorerAddress(addr, cluster)} target="_blank" rel="noreferrer">
-              🔎 Explorer
-            </a>
-          </div>
-          <button
-            className="btn btn-pink"
-            onClick={() => {
-              void disconnect();
-              closeModal();
-            }}
-          >
-            {t('wallet.disconnect')}
-          </button>
+          <p className="kl-note">{t('wl.verifyNote')}</p>
         </div>
-      </Modal>
-    );
-  }
-
-  const sorted = [...wallets].sort((a, b) => Number(b.readyState === WalletReadyState.Installed) - Number(a.readyState === WalletReadyState.Installed));
-  const installed = sorted.filter((w) => w.readyState === WalletReadyState.Installed || w.readyState === WalletReadyState.Loadable);
-
-  return (
-    <Modal onClose={closeModal} title={`👛 ${t('wallet.choose')}`}>
-      <div className="wallet-list">
-        {installed.map((w) => (
-          <button
-            key={w.adapter.name}
-            className="wallet-item"
-            onClick={() => {
-              markUserConnect();
-              select(w.adapter.name);
-              closeModal();
-            }}
-          >
-            <img src={w.adapter.icon} alt="" />
-            {w.adapter.name}
-            <span className="badge mint tag">✓</span>
-          </button>
-        ))}
-        {installed.length === 0 && (
-          <>
-            <div className="notice">{t('wallet.none')}</div>
-            <a className="btn btn-purple" href="https://phantom.app/download" target="_blank" rel="noreferrer">
-              👻 {t('wallet.install')}
-            </a>
-            <a className="btn btn-ghost" href="https://solflare.com/download" target="_blank" rel="noreferrer">
-              🔆 Solflare
-            </a>
-          </>
-        )}
-      </div>
-      <div className="muted small" style={{ marginTop: 12 }}>
-        {t('wallet.signInfo')}
-      </div>
-    </Modal>
+      )}
+    </Sheet>
   );
 }

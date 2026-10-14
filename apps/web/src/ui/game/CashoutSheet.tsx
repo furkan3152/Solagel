@@ -5,7 +5,7 @@ import { engine } from '../../game/instance';
 import { sound } from '../../game/sound';
 import { useT } from '../../i18n';
 import { explorerTx } from '../../solana/links';
-import { useUi } from '../../store';
+import { requestTicket, useUi } from '../../store';
 import { formatClock, roomName, useTokenFormat } from './format';
 
 /** Program defaults (spec §3.3): 5 % of the profit, 2 % on a Pass ticket. */
@@ -49,6 +49,10 @@ export function CashoutSheet() {
   const settledRaw = useUi((s) => s.lastSettlement);
   const lang = useUi((s) => s.settings.lang);
   const open = useUi((s) => s.screen === 'cashedout' && s.cashoutResult !== null);
+  const newTicket = () => {
+    if (room?.arenaId !== undefined) requestTicket(room.arenaId);
+    engine()?.backToLobby();
+  };
   const reduced = useReducedMotion();
   const [since, setSince] = useState(() => Date.now());
   const [printed, setPrinted] = useState(false);
@@ -122,7 +126,7 @@ export function CashoutSheet() {
       className="g-sheet g-cashout"
       footer={
         <>
-          <InkButton variant="pink" size="lg" icon="ticket" onClick={() => engine()?.backToLobby()} data-autofocus>
+          <InkButton variant="pink" size="lg" icon="ticket" onClick={newTicket} data-autofocus>
             {t('gc.newTicket')}
           </InkButton>
           <InkButton variant="paper" size="lg" icon="play" onClick={() => engine()?.play('practice')}>
