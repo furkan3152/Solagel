@@ -17,7 +17,7 @@ const PASS_SEED = createHash('sha256').update('slana-dev-fake-chain').digest('he
 const passNumberOf = (wallet: string) => (createHash('sha256').update(wallet).digest().readUInt32LE(0) % PASS_SUPPLY) + 1;
 
 /**
- * DEV ONLY (`DEV_FAKE_CHAIN=1`, refused in production). An in-memory chain so
+ * DEV ONLY (`DEV_FAKE_CHAIN=1` with `NODE_ENV=development`, see `assertDevFakeChainAllowed`). An in-memory chain so
  * the arena flow (ticket → play → death / cash-out → settlement) can be driven
  * locally without a validator:
  *  - every signed-in wallet has an open ticket in every default arena; tickets of
@@ -25,6 +25,8 @@ const passNumberOf = (wallet: string) => (createHash('sha256').update(wallet).di
  *  - every wallet owns one revealed Pass (number derived from the wallet);
  *  - settlements are simulated `settleMs` after the journal item appears: the
  *    item is removed, the ticket closes and a `settled` event with the fee fires.
+ *    Only items for tickets this instance issued are ever touched; it also runs
+ *    on its own journal file (`journal.dev-fake.json`).
  */
 export class DevFakeChain implements ChainGateway {
   readonly enabled = true;
@@ -127,7 +129,8 @@ export class DevFakeChain implements ChainGateway {
   kick(): void {
     if (this.stopped) return;
     for (const item of this.journal.pending) {
-      if (this.scheduled.has(item.key)) continue;
+      // only tickets this fake chain issued: anything else in the journal is real money, never touched
+      if (!this.byAddress.has(item.key) || this.scheduled.has(item.key)) continue;
       this.scheduled.add(item.key);
       const timer = setTimeout(() => {
         this.timers.delete(timer);
@@ -139,20 +142,18 @@ export class DevFakeChain implements ChainGateway {
   }
 
   private settle(key: string): void {
-    const item = this.journal.pending.find((p) => p.key === key);
-    if (!item || this.stopped) return;
     const session = this.byAddress.get(key);
+    const item = this.journal.pending.find((p) => p.key === key);
+    if (!session || !item || this.stopped) return;
     const payout = item.payout ?? 0;
-    const profit = Math.max(0, payout - (session?.entryFee ?? payout));
-    const fee = Math.floor((profit * (session?.hasPass ? PASS_FEE_BPS : FEE_BPS)) / 10_000);
+    const profit = Math.max(0, payout - session.entryFee);
+    const fee = Math.floor((profit * (session.hasPass ? PASS_FEE_BPS : FEE_BPS)) / 10_000);
     this.journal.remove(key);
-    if (session) {
-      this.sessions.delete(`${session.arenaId}:${session.player}`);
-      this.byAddress.delete(key);
-    }
+    this.sessions.delete(`${session.arenaId}:${session.player}`);
+    this.byAddress.delete(key);
     const signature = bs58.encode(randomBytes(64));
     this.log(`chain(dev-fake): settled ${key} payout=${payout} fee=${fee}`);
-    for (const fn of this.listeners) fn({ key, player: item.player, signature, payout, fee });
+    for (const fn of this.listeners) fn({ key, player: item.player, arenaId: session.arenaId, signature, payout, fee });
   }
 
   setLiveSessionProvider(): void {}

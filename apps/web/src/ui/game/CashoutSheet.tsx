@@ -12,14 +12,25 @@ import { formatClock, roomName, useTokenFormat } from './format';
 export const FEE_BPS = 500;
 export const PASS_FEE_BPS = 200;
 
-/** Receipt numbers: the settlement's own `fee` / `net` once it arrives, an estimate before. */
+/**
+ * Receipt numbers: the settlement's own `fee` / `net` once it arrives, an
+ * estimate (5 %, 2 % with a Pass) before. After settlement the fee % label is
+ * derived from the real fee and the gain.
+ */
 export function receiptNumbers(payout: number, entryFee: number, hasPass: boolean, settled: { fee?: number; net?: number } | null) {
   const gain = payout - entryFee;
   const bps = hasPass ? PASS_FEE_BPS : FEE_BPS;
   const estFee = Math.floor((Math.max(0, gain) * bps) / 10_000);
+  const final = settled?.fee !== undefined;
   const fee = settled?.fee ?? estFee;
   const net = settled?.net ?? payout - fee;
-  return { gain, fee, net, pct: bps / 100, final: settled?.fee !== undefined };
+  const pct = final && gain > 0 ? Math.round((fee / gain) * 1000) / 10 : bps / 100;
+  return { gain, fee, net, pct, final };
+}
+
+/** The settlement for this ticket: matched by on-chain session address only (R16). */
+export function settlementFor<T extends { session: string | null }>(settled: T | null, ticketSession: string | null | undefined): T | null {
+  return settled && ticketSession && settled.session === ticketSession ? settled : null;
 }
 
 /**
@@ -48,7 +59,7 @@ export function CashoutSheet() {
     setPrinted(false);
   }, [open]);
 
-  const settled = settledRaw && settledRaw.at >= since - 2000 ? settledRaw : null;
+  const settled = settlementFor(settledRaw, ticket?.session);
   useEffect(() => {
     if (settled && printed) sound.stamp();
   }, [settled, printed]);
@@ -65,7 +76,7 @@ export function CashoutSheet() {
     {
       label: (
         <>
-          {t('gc.fee', { pct: n.pct.toLocaleString(lang === 'tr' ? 'tr-TR' : 'en-US') })}
+          {t('gc.fee', { pct: n.pct.toLocaleString(lang === 'tr' ? 'tr-TR' : 'en-US', { maximumFractionDigits: 1 }) })}
           {ticket?.hasPass && <span className="g-receipt__pass">PASS</span>}
         </>
       ),

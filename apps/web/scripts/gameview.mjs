@@ -1,5 +1,5 @@
 // In-game view tour (Task 13): screenshots of the game, the death and cash-out sheets, and fps.
-// Needs a dev server (pnpm dev) whose game server runs with DEV_FAKE_CHAIN=1 (arena steps).
+// Needs a dev server (pnpm dev) whose game server runs with NODE_ENV=development DEV_FAKE_CHAIN=1 (arena steps).
 // Usage: node scripts/gameview.mjs <baseUrl> <outDir> [desktop|mobile|night|arena|mobiledeath|fps|fps2|reduced ...]
 // Shots are saved as <outDir>/game-*.png; results (fps, settlement) are printed as JSON.
 // Death sheets are driven by injecting a "death" message (a real death cannot be scripted).
@@ -156,10 +156,18 @@ if (want('arena')) {
   await play(page, 'arena:1');
   await waitScreen(page, 'playing');
   await wander(page, 2500, 1440, 900);
+  if (await ev(page, () => window.__slana.useUi.getState().screen !== 'playing')) {
+    await ev(page, () => window.__slana.engine.backToLobby());
+    await page.waitForTimeout(3500); // the fake chain settles the old ticket first
+    await play(page, 'arena:1');
+    await waitScreen(page, 'playing');
+    await page.waitForTimeout(800);
+  }
   // loot on the floor around me (client-side injection to show the sprites; a real spill needs a bot kill)
   await ev(page, () => {
     const e = window.__slana.engine;
     const me = e.world.myStats();
+    if (!me) return;
     const now = performance.now();
     const ups = [];
     for (let i = 0; i < 9; i++) {

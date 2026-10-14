@@ -308,9 +308,17 @@ export class GameEngine {
           cashout: { state: 'idle', until: 0, total: 0 },
           hud: { ...useUi.getState().hud, value: m.value ?? null },
           valueDelta: null,
+          // a new ticket: any earlier settlement belongs to an earlier ticket (the server only lets us
+          // join once the previous one is settled), so receipts match `settled.session` from here on
+          lastSettlement: null,
           ticket:
             m.room.mode === 'arena'
-              ? { entryFee: m.entryFee ?? m.room.entryFee ?? 0, hasPass: m.hasPass === true, arenaId: m.room.arenaId ?? null }
+              ? {
+                  entryFee: m.entryFee ?? m.room.entryFee ?? 0,
+                  hasPass: m.hasPass === true,
+                  arenaId: m.room.arenaId ?? null,
+                  session: m.session ?? null,
+                }
               : null,
         });
         return;
@@ -404,7 +412,9 @@ export class GameEngine {
       }
       case 'settled':
         // `fee` is taken from the profit; `net` is what reached the wallet
-        useUi.setState({ lastSettlement: { signature: m.signature, payout: m.payout, fee: m.fee, net: m.net, at: Date.now() } });
+        useUi.setState({
+          lastSettlement: { session: m.session ?? null, arenaId: m.arenaId ?? null, signature: m.signature, payout: m.payout, fee: m.fee, net: m.net, at: Date.now() },
+        });
         return;
       case 'event': {
         if (m.kind === 'coinrain') {
@@ -521,6 +531,8 @@ export class GameEngine {
     const decimals = ui.chain?.token?.decimals ?? 6;
     for (const f of floats) {
       const amount = formatToken(Math.abs(f.delta), decimals, ui.settings.lang, { compact: true, maxFrac: 1 });
+      // dust that rounds to nothing floats nothing (no "+0" / "−0")
+      if (amount === '0') continue;
       const gain = f.delta > 0;
       this.particles.text(f.x, f.y, `${gain ? '+' : '−'}${amount}`, gain ? undefined : RISO.red, gain ? 26 : 22, gain ? RISO.mustard : RISO.fluoPink);
     }

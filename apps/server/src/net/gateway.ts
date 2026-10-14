@@ -12,10 +12,11 @@ import {
   sanitizeName,
   type ErrorCode,
   type ProfileSummary,
+  type ServerMessage,
 } from '@slana/shared';
 import { WebSocketServer, type RawData, type WebSocket } from 'ws';
 import { isValidPubkey, type Auth } from '../auth';
-import type { ChainGateway, ChainProfile } from '../chain/types';
+import type { ChainGateway, ChainProfile, SettledEvent } from '../chain/types';
 import type { ServerConfig } from '../config';
 import type { RoomManager } from '../rooms/manager';
 import { MAX_STAKE_SESSION_AGE_S } from '../rooms/room';
@@ -40,6 +41,23 @@ function toBytes(data: RawData): Uint8Array {
   return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
 }
 
+/**
+ * The `settled` message for a settlement event: it names the on-chain session
+ * (and arena) so a client matches it to the ticket it cashed out (ruling R16).
+ */
+export function settledMessage(e: SettledEvent): Extract<ServerMessage, { t: 'settled' }> {
+  const kind = e.payout > 0 ? 'cashout' : 'death';
+  return {
+    t: 'settled',
+    kind,
+    session: e.key,
+    ...(e.arenaId === undefined ? {} : { arenaId: e.arenaId }),
+    signature: e.signature,
+    payout: e.payout,
+    ...(e.fee === undefined ? {} : { fee: e.fee, net: e.payout - e.fee }),
+  };
+}
+
 /** WebSocket front door: connection limits, message parsing and routing. */
 export class Gateway {
   private readonly wss = new WebSocketServer({ noServer: true, maxPayload: 4096, perMessageDeflate: false });
@@ -58,12 +76,7 @@ export class Gateway {
   ) {
     chain.onSettled((e) => {
       for (const conn of this.rooms.connsByWallet(e.player)) {
-        const kind = e.payout > 0 ? 'cashout' : 'death';
-        conn.send(
-          e.fee === undefined
-            ? { t: 'settled', kind, signature: e.signature, payout: e.payout }
-            : { t: 'settled', kind, signature: e.signature, payout: e.payout, fee: e.fee, net: e.payout - e.fee },
-        );
+        conn.send(settledMessage(e));
       }
       void this.refreshProfile(e.player);
     });

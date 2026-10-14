@@ -230,6 +230,8 @@ export type ServerMessage =
       entryFee?: number;
       /** The ticket carries a Slana Pass (Pass power applies). */
       hasPass?: boolean;
+      /** Arena rooms: the ticket's on-chain session address (matches `settled.session`). */
+      session?: string;
     }
   | { t: 'spectating'; room: RoomInfo; targetPid: number | null }
   | { t: 'left' }
@@ -257,7 +259,18 @@ export type ServerMessage =
       reason: 'eat' | 'loot' | 'eaten' | 'spill';
     }
   // Amounts are raw token units: `fee` is taken from the profit and `net` (= payout - fee) reaches the wallet.
-  | { t: 'settled'; kind: 'cashout' | 'death' | 'refund'; signature: string; payout: number; fee?: number; net?: number }
+  // `session` is the settled ticket's on-chain session address (= `joined.session`) and `arenaId` its arena;
+  // clients match a receipt by `session`. Both are optional so older servers stay readable (R16).
+  | {
+      t: 'settled';
+      kind: 'cashout' | 'death' | 'refund';
+      session?: string;
+      arenaId?: number;
+      signature: string;
+      payout: number;
+      fee?: number;
+      net?: number;
+    }
   | { t: 'event'; kind: 'coinrain'; state: 'start' | 'end'; ms?: number }
   | { t: 'event'; kind: 'airdrop'; state: 'start'; x: number; y: number; powerUp: PowerUpType }
   | { t: 'powerup'; type: PowerUpType; ms: number }

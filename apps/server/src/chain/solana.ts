@@ -854,7 +854,7 @@ export class SolanaChain implements ChainGateway {
       this.log(
         `chain: settled ${short(key)} (${item.reason ?? 'settle'}) · ${this.units(payout)}${fee ? ` (fee ${this.units(fee)})` : ''} → ${short(item.player)} · ${signature}`,
       );
-      this.emit(fee === undefined ? { key, player: item.player, signature, payout } : { key, player: item.player, signature, payout, fee });
+      this.emit({ key, player: item.player, arenaId: item.arenaId, signature, payout, ...(fee === undefined ? {} : { fee }) });
     } catch (err) {
       await this.onSendError(item, err);
     }
@@ -867,7 +867,7 @@ export class SolanaChain implements ChainGateway {
     this.journal.remove(item.key);
     if (signature && (await this.landed(signature))) {
       this.log(`chain: settled ${short(item.key)} (confirmation arrived late) · ${signature}`);
-      this.emit({ key: item.key, player: item.player, signature, payout: item.payout ?? 0 });
+      this.emit({ key: item.key, player: item.player, arenaId: item.arenaId, signature, payout: item.payout ?? 0 });
       return;
     }
     this.log(`chain: dropping settlement ${short(item.key)} for ${short(item.player)} — ${why} (already settled or refunded)`);

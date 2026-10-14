@@ -1,7 +1,7 @@
 import type { Server } from 'node:http';
 import { join } from 'node:path';
 import { Auth } from './auth';
-import { createChain } from './chain';
+import { assertDevFakeChainAllowed, createChain, dataFileNames } from './chain';
 import type { ChainGateway } from './chain/types';
 import type { ServerConfig } from './config';
 import { createHttpServer } from './http';
@@ -28,12 +28,15 @@ export async function createApp(
 ): Promise<App> {
   const log = opts.log ?? ((m: string) => console.log(`[${new Date().toISOString()}] ${m}`));
   const persist = opts.persist ?? true;
-  const journal = new Journal(persist ? join(cfg.dataDir, 'journal.json') : null, log);
+  // refuse a misconfigured DEV_FAKE_CHAIN before any file is opened
+  assertDevFakeChainAllowed(cfg);
+  const files = dataFileNames(cfg);
+  const journal = new Journal(persist ? join(cfg.dataDir, files.journal) : null, log);
   const recovered = journal.recoverLive();
   if (recovered > 0) log(`journal: ${recovered} stake player(s) were alive at last shutdown → queued auto cash-out`);
   if (journal.pending.length > 0) log(`journal: ${journal.pending.length} settlement(s) pending`);
 
-  const leaderboards = new Leaderboards(persist ? join(cfg.dataDir, 'leaderboards.json') : null);
+  const leaderboards = new Leaderboards(persist ? join(cfg.dataDir, files.leaderboards) : null);
   const chain = opts.chain ?? (await createChain(cfg, journal, log));
   const auth = new Auth(cfg.authSecret);
 

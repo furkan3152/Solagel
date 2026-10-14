@@ -3,7 +3,7 @@ import { act, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Kb } from '../src/design';
 import { useUi } from '../src/store';
-import { CashoutSheet, DeathSheet, receiptNumbers, stickerSvg } from '../src/ui/game';
+import { CashoutSheet, DeathSheet, receiptNumbers, settlementFor, stickerSvg } from '../src/ui/game';
 import { roomName, tokenFormat } from '../src/ui/game/format';
 
 const M = 1_000_000; // one whole token (6 decimals)
@@ -24,8 +24,18 @@ describe('cash-out receipt numbers', () => {
     expect(receiptNumbers(3000 * M, 1000 * M, true, null)).toMatchObject({ fee: 40 * M, net: 2960 * M, pct: 2 });
     // a loss pays no fee
     expect(receiptNumbers(400 * M, 1000 * M, false, null)).toMatchObject({ gain: -600 * M, fee: 0, net: 400 * M });
-    // the settlement's own numbers win
-    expect(receiptNumbers(3000 * M, 1000 * M, false, { fee: 99 * M, net: 2901 * M })).toMatchObject({ fee: 99 * M, net: 2901 * M, final: true });
+    // the settlement's own numbers win, and the fee % label follows the real fee
+    expect(receiptNumbers(3000 * M, 1000 * M, false, { fee: 99 * M, net: 2901 * M })).toMatchObject({ fee: 99 * M, net: 2901 * M, final: true, pct: 5 });
+    expect(receiptNumbers(3000 * M, 1000 * M, false, { fee: 30 * M, net: 2970 * M })).toMatchObject({ pct: 1.5 });
+  });
+
+  it('adopts only the settlement of the ticket that was cashed out (by session address)', () => {
+    const s = (session: string | null) => ({ session, arenaId: 1, signature: 'x', payout: 1, at: 0 });
+    expect(settlementFor(s('SessA'), 'SessA')).toEqual(s('SessA'));
+    expect(settlementFor(s('SessB'), 'SessA')).toBeNull();
+    expect(settlementFor(s(null), 'SessA')).toBeNull();
+    expect(settlementFor(s('SessA'), null)).toBeNull();
+    expect(settlementFor(null, 'SessA')).toBeNull();
   });
 });
 
@@ -88,7 +98,7 @@ describe('cash-out sheet', () => {
     useUi.setState({
       screen: 'cashedout',
       room: ARENA,
-      ticket: { entryFee: 1000 * M, hasPass: false, arenaId: 1 },
+      ticket: { entryFee: 1000 * M, hasPass: false, arenaId: 1, session: 'SessMine' },
       cashoutResult: { value: 3000 * M, stats: STATS },
       lastSettlement: null,
     });
@@ -104,7 +114,12 @@ describe('cash-out sheet', () => {
     expect(screen.getByRole('status').textContent).toContain("Solana'da ödeniyor");
     expect(screen.queryByRole('link')).toBeNull();
 
-    act(() => useUi.setState({ lastSettlement: { signature: '5igSig'.padEnd(88, 'x'), payout: 3000 * M, fee: 100 * M, net: 2900 * M, at: Date.now() } }));
+    // a settlement of another ticket (another arena / an earlier session) is ignored
+    act(() => useUi.setState({ lastSettlement: { session: 'SessOther', arenaId: 2, signature: 'otherSig'.padEnd(88, 'y'), payout: 50 * M, fee: 0, net: 50 * M, at: Date.now() } }));
+    expect(screen.queryByRole('link')).toBeNull();
+    expect(screen.getByRole('status').textContent).toContain("Solana'da ödeniyor");
+
+    act(() => useUi.setState({ lastSettlement: { session: 'SessMine', arenaId: 1, signature: '5igSig'.padEnd(88, 'x'), payout: 3000 * M, fee: 100 * M, net: 2900 * M, at: Date.now() } }));
     expect(screen.getByText('−100')).toBeTruthy();
     expect(screen.getByRole('link', { name: /İşlemi gör/ })).toBeTruthy();
     expect(screen.queryByText("Solana'da ödeniyor")).toBeNull();
