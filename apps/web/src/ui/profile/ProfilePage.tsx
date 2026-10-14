@@ -1,5 +1,5 @@
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
-import { BASIC_SKINS, isBasicSkin, sanitizeName, shortAddress, truncateUtf8, utf8Length } from '@slana/shared';
+import { BASIC_SKINS, MAX_NAME_LENGTH, isBasicSkin, sanitizeName, shortAddress, utf8Length } from '@slana/shared';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Field, Icon, InkButton, Stamp } from '../../design';
 import { levelProgress } from '../../game/engine';
@@ -16,6 +16,9 @@ import { useTokenText } from '../lobby/useLobby';
 import { PageHead } from '../PageHead';
 import { SettingsPage } from './SettingsPage';
 import './profile.css';
+
+/** On-chain names are at most 16 UTF-8 bytes (the program's `InvalidName`). */
+const MAX_NAME_BYTES = 16;
 
 /**
  * Profile (spec §7.2.8): the member card (coin, name, level and XP), the
@@ -133,8 +136,10 @@ function NameAndCoin() {
     if (!typed.current) setName(profile?.name ?? settings.name);
   }, [profile?.name, settings.name]);
 
-  const clean = truncateUtf8(sanitizeName(name, ''), 16);
-  const valid = clean.length > 0 && utf8Length(clean) <= 16;
+  // never cut a name silently: over 16 UTF-8 bytes is an error the player sees and fixes
+  const clean = sanitizeName(name, '');
+  const bytes = utf8Length(clean);
+  const valid = clean.length > 0 && bytes <= MAX_NAME_BYTES;
   const skin = isBasicSkin(settings.skin) ? settings.skin : 0;
   const chainDiff = !!profile && (clean !== profile.name || skin !== profile.skin);
   const localDiff = clean !== settings.name;
@@ -190,13 +195,13 @@ function NameAndCoin() {
         label={t('pf.name')}
         hint={t('pf.nameHint')}
         value={name}
-        maxLength={24}
+        maxLength={MAX_NAME_LENGTH}
         disabled={busy}
         onChange={(e) => {
           typed.current = true;
           setName(e.target.value);
         }}
-        suffix={`${utf8Length(clean)}/16`}
+        suffix={`${bytes}/${MAX_NAME_BYTES}`}
         error={!valid && name.length > 0 ? t('tf.err.InvalidName') : undefined}
       />
 

@@ -733,16 +733,9 @@
   z-index: 1;
   color: #1e1b2e;
 }
-.rv-env__post {
-  left: 9%;
-  bottom: 44%;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 9.5px;
-  color: #5d5870;
-}
 .rv-env__priority {
+  align-self: flex-start;
+  margin-bottom: 4px;
   padding: 1px 5px;
   border-radius: 2px;
   background: #3b5bdb;
@@ -750,14 +743,16 @@
 }
 .rv-env__addr {
   left: 9%;
-  bottom: 13%;
+  bottom: 12%;
+  max-width: 40%;
   display: flex;
   flex-direction: column;
   gap: 1px;
   font-size: 9.5px;
 }
 .rv-env__addr-line {
-  font-size: 13px;
+  font-size: 12.5px;
+  white-space: nowrap;
   font-weight: 700;
   border-bottom: 1px solid rgba(30, 27, 46, 0.35);
   padding-bottom: 1px;
@@ -767,12 +762,12 @@
   font-weight: 500;
 }
 .rv-env__postmark {
-  right: 8%;
-  bottom: 12%;
+  right: 7%;
+  bottom: 9%;
 }
 .rv-env__postmark .kb-stamp--round {
-  width: 74px;
-  height: 74px;
+  width: 84px;
+  height: 84px;
   --tone: #08716f;
   mix-blend-mode: multiply;
 }

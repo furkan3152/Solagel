@@ -1,16 +1,11 @@
 export const en = {
-
   'common.close': 'Close',
   'common.cancel': 'Cancel',
 
   'lobby.keys': 'Mouse to move · Space split · W tip · C cash out · 1–8 stickers · Enter chat',
 
-
   'stakes.disclaimer':
     'Real-money games may be restricted where you live. 18+ only. Play responsibly — the smart contract has not been audited.',
-
-
-
 
   'hud.chat': 'Say something nice…',
   'hud.split': 'Split',
@@ -23,9 +18,6 @@ export const en = {
   'pu.2': 'Pump',
   'pu.3': 'HODL Shield',
   'pu.4': 'Mega Bag',
-
-
-
 
   'howto.title': 'How to play',
   'howto.move': 'Your coin follows the mouse (the joystick on phones).',
@@ -666,6 +658,7 @@ export const en = {
   'mt.failed': 'The Pass was not minted',
   'mt.err.Changed': 'The mint changed a moment ago (closed, sold out or new rules). Nothing was signed; check again.',
   'mt.landed': 'Your Pass was minted after all. Nothing more to sign.',
+  'mt.offline': 'The chain is not reachable right now, so the mint cannot be checked. Nothing can be signed; try again in a moment.',
   'mt.lowSol': 'Your SOL is low ({sol} SOL). Minting needs a little SOL for the rent and the fee.',
   'mt.delivered': 'Delivered',
   'mt.deliveredTitle': 'Pass No. {n} is yours',

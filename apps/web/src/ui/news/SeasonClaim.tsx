@@ -28,8 +28,13 @@ type Prize = Extract<ClaimState, { kind: 'claimable' | 'claimed' | 'expired' }>;
  * "Paid"; past the 30-day window → stamped "Expired".
  */
 export function SeasonClaim() {
-  const season = useChainData((s) => s.season);
   const me = useWallet().publicKey?.toBase58() ?? null;
+  // a new wallet starts with a fresh cheque (no "paid" stamp or open claim carried over)
+  return <WalletCheque key={me ?? 'none'} me={me} />;
+}
+
+function WalletCheque({ me }: { me: string | null }) {
+  const season = useChainData((s) => s.season);
   const [open, setOpen] = useState(false);
   /** The prize as it was when the sheet opened: the sheet stays up after the claim lands (the state turns "claimed"). */
   const [claiming, setClaiming] = useState<Extract<ClaimState, { kind: 'claimable' }> | null>(null);
@@ -210,19 +215,19 @@ function ClaimSheet({ open, prize, payee, onClose, onPaid }: { open: boolean; pr
     sound.click();
     const review = live;
     setFrozen(review);
-    if (data.fake) {
-      const dev = await loadDevFake();
-      if (!dev) return fail(t('tf.err.NetworkError'));
-      const sig = `DevFakeSig${Date.now().toString(36)}`;
-      await dev.fakeSimpleTx(onPhase, () => {
-        dev.fakeWallet.claimed.push(review.rank);
-        dev.fakeWallet.tokenBalance += review.amount;
-        dev.fakeWallet.ataExists = true;
-      });
-      return paid(sig);
-    }
-    if (!client) return fail(t('tf.err.NetworkError'));
     try {
+      if (data.fake) {
+        const dev = await loadDevFake();
+        if (!dev) return fail(t('tf.err.NetworkError'));
+        const sig = `DevFakeSig${Date.now().toString(36)}`;
+        await dev.fakeSimpleTx(onPhase, () => {
+          dev.fakeWallet.claimed.push(review.rank);
+          dev.fakeWallet.tokenBalance += review.amount;
+          dev.fakeWallet.ataExists = true;
+        });
+        return paid(sig);
+      }
+      if (!client) return fail(t('tf.err.NetworkError'));
       // re-read the season: the prize signed for must be the prize shown
       const fresh = await client.fetchSeason(review.seasonId);
       const now = Math.floor(Date.now() / 1000);

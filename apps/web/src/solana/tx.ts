@@ -24,7 +24,11 @@ export async function sendTx(
     onPhase?: (phase: TxPhase, signature?: string) => void;
     describe?: DescribeContext;
     computeUnits?: number;
-    /** Extra keypairs that co-sign (the fresh asset of a Pass mint); the wallet signs last and pays. */
+    /**
+     * Extra keypairs that co-sign (the fresh asset of a Pass mint). The wallet signs first
+     * (`signTransaction`), then these partial-sign, then the raw transaction is sent: wallets
+     * such as Phantom ask dapps to let them sign before any other signer.
+     */
     signers?: Signer[];
   } = {},
 ): Promise<TxResult> {
@@ -37,6 +41,16 @@ export async function sendTx(
       computeUnits: opts.computeUnits,
     });
     opts.onPhase?.('signing');
+    if (opts.signers?.length && wallet.signTransaction) {
+      // wallet first, then the extra signers, then send the raw bytes ourselves
+      const signed = await wallet.signTransaction(tx);
+      signed.partialSign(...opts.signers);
+      const signature = await connection.sendRawTransaction(signed.serialize(), { preflightCommitment: 'confirmed', maxRetries: 4 });
+      opts.onPhase?.('confirming', signature);
+      await confirmSignature(connection, signature, lastValidBlockHeight);
+      return { ok: true, signature };
+    }
+    // no signTransaction on this adapter: it signs and sends, adding the extra signers itself
     const signature = await wallet.sendTransaction(tx, connection, {
       preflightCommitment: 'confirmed',
       maxRetries: 4,

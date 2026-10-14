@@ -77,7 +77,7 @@ export function passStatusOf(config: ConfigView | null, server: PassStatus | nul
 }
 
 export type MintGate =
-  /** No collection (chain off or not set up). */
+  /** No collection (chain off or not set up), or the trait seed is not committed yet. */
   | { kind: 'unavailable' }
   | { kind: 'connect' }
   /** Opens at `startsAt` (unix seconds). */
@@ -100,16 +100,19 @@ export interface MintGateInput {
   minTokens: bigint;
   tokenBalance: bigint | null;
   nowS: number;
+  /** `Config.passSeedHash` is set (the program refuses with `SeedNotSet` otherwise); unknown counts as set. */
+  seedCommitted?: boolean;
 }
 
 /** What the mint button does for this wallet right now. Mirrors the program's checks, in its order. */
 export function mintGate(i: MintGateInput): MintGate {
   const s = i.status;
+  // program order: CollectionNotSet, SeedNotSet, MintClosed (open, started, not revealed), MintSoldOut, MintLimit, MintMinTokens
   if (!s || !s.collection) return { kind: 'unavailable' };
-  if (s.revealed) return { kind: 'closed' };
-  if (s.minted >= s.supply) return { kind: 'soldOut' };
-  if (!s.mintOpen) return { kind: 'closed' };
+  if (i.seedCommitted === false) return { kind: 'unavailable' };
+  if (s.revealed || !s.mintOpen) return { kind: 'closed' };
   if (s.mintStartTs > i.nowS) return { kind: 'notStarted', startsAt: s.mintStartTs };
+  if (s.minted >= s.supply) return { kind: 'soldOut' };
   if (!i.walletConnected) return { kind: 'connect' };
   if (i.mintedByMe === null) return { kind: 'loading' };
   if (i.mintedByMe >= s.perWallet) return { kind: 'limit', perWallet: s.perWallet };

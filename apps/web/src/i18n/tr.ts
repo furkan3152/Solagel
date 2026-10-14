@@ -1,18 +1,13 @@
 import type { Dict } from './en';
 
 export const tr: Dict = {
-
   'common.close': 'Kapat',
   'common.cancel': 'Vazgeç',
 
   'lobby.keys': 'Fare ile yönlen · Space böl · W bahşiş · C cash-out · 1–8 çıkartma · Enter sohbet',
 
-
   'stakes.disclaimer':
     'Gerçek parayla oynanan oyunlar bulunduğun yerde kısıtlı olabilir. Sadece 18+. Sorumlu oyna — akıllı kontrat bağımsız denetimden geçmedi.',
-
-
-
 
   'hud.chat': 'Güzel bir şey söyle…',
   'hud.split': 'Böl',
@@ -25,9 +20,6 @@ export const tr: Dict = {
   'pu.2': 'Pump',
   'pu.3': 'HODL Kalkanı',
   'pu.4': 'Mega Çanta',
-
-
-
 
   'howto.title': 'Nasıl oynanır',
   'howto.move': 'Coin’in fareyi izler (telefonda joystick’i).',
@@ -668,6 +660,7 @@ export const tr: Dict = {
   'mt.failed': 'Pass basılmadı',
   'mt.err.Changed': 'Mint az önce değişti (kapandı, tükendi ya da kurallar değişti). Hiçbir şey imzalanmadı; yeniden kontrol et.',
   'mt.landed': 'Pass’in yine de basıldı. İmzalanacak başka bir şey yok.',
+  'mt.offline': 'Zincire şu an ulaşılamıyor, bu yüzden mint kontrol edilemiyor. Hiçbir şey imzalanamaz; birazdan yeniden dene.',
   'mt.lowSol': 'SOL bakiyen düşük ({sol} SOL). Basım için kira ve ücrete biraz SOL gerekir.',
   'mt.delivered': 'Teslim edildi',
   'mt.deliveredTitle': 'Pass No. {n} artık senin',
