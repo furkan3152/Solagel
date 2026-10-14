@@ -5,9 +5,10 @@ import { useChainSync } from './solana/chain';
 import { SolanaProvider } from './solana/provider';
 import { useWalletAuth } from './solana/useWalletAuth';
 import { useUi } from './store';
-import { Hud } from './ui/Hud';
+import { Kb, themeFromSettings } from './design';
 import { Lobby } from './ui/Lobby';
-import { CashoutModal, DeathModal, Modals, Toasts } from './ui/Modals';
+import { Modals, Toasts } from './ui/Modals';
+import { CashoutSheet, DeathSheet, GameHud, SettingsSheet } from './ui/game';
 
 function GameCanvas() {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -19,7 +20,15 @@ function GameCanvas() {
       engine.destroy();
     };
   }, []);
-  return <canvas ref={ref} className="game-canvas" />;
+  const theme = useUi((s) => s.settings.theme);
+  const quality = useUi((s) => s.settings.quality);
+  return (
+    <>
+      <canvas ref={ref} className="game-canvas" />
+      {/* paper grain over the world: a static composited layer (a per-frame canvas fill cost ~10 fps) */}
+      {quality === 'high' && <div className="kb g-grain" data-theme={themeFromSettings(theme)} aria-hidden="true" />}
+    </>
+  );
 }
 
 function ChainSync() {
@@ -30,18 +39,28 @@ function ChainSync() {
 
 function Screens() {
   const screen = useUi((s) => s.screen);
+  const theme = useUi((s) => s.settings.theme);
   return (
     <>
       {screen === 'lobby' && <Lobby />}
-      {(screen === 'playing' || screen === 'spectating' || screen === 'dead' || screen === 'cashedout') && <Hud />}
-      {screen === 'dead' && <DeathModal />}
-      {screen === 'cashedout' && <CashoutModal />}
+      {/* Kâğıt Bilet game view (the legacy lobby keeps its own styles until Task 14) */}
+      <Kb theme={themeFromSettings(theme)} paper={false} className="g-root">
+        {screen !== 'lobby' && <GameHud />}
+        <DeathSheet />
+        <CashoutSheet />
+        <SettingsSheet />
+      </Kb>
     </>
   );
 }
 
 export function App() {
   const theme = useUi((s) => s.settings.theme);
+  const lang = useUi((s) => s.settings.lang);
+  useEffect(() => {
+    // uppercase mono labels follow the language rules (Turkish i → İ)
+    document.documentElement.lang = lang;
+  }, [lang]);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#1A1330' : '#FFF6E9');

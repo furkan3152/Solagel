@@ -87,6 +87,10 @@ describe('formatToken', () => {
   it('formats negative amounts (value deltas)', () => {
     expect(formatToken(-1_234_500_000, 6, 'en')).toBe('-1,234.5');
     expect(formatToken(-500_000n, 6, 'tr')).toBe('-0,5');
+    // a delta that rounds to zero prints without a sign
+    expect(formatToken(-1, 6, 'en')).toBe('0');
+    expect(formatToken(-4_000n, 6, 'tr')).toBe('0');
+    expect(formatToken(-1, 6, 'en', { compact: true })).toBe('0');
   });
 
   it('rounds fractional numbers to whole base units and rejects non-finite ones', () => {

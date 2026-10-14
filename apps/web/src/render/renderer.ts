@@ -1,44 +1,65 @@
-import { CellFlag, EMOTES, EntityKind, PlayerFlag, getSkin } from '@slana/shared';
+import { CARD_PAPER, INK, RISO, type CoinLook } from '@slana/art';
+import { CellFlag, EntityKind, PlayerFlag, type PassStatus } from '@slana/shared';
 import type { Camera } from '../game/camera';
 import type { Particles } from '../game/particles';
 import type { CEntity, ClientWorld } from '../game/state';
 import type { Settings } from '../store';
-import { drawCoin } from './coin';
+import { stickerImage } from '../ui/game/stickers';
+import { drawCoinLook } from './coin';
 import type { Neighbour } from './jelly';
-import { SpriteCache, drawSprite } from './sprites';
+import { LookCache } from './looks';
+import { SpriteCache, drawGlint, drawSprite } from './sprites';
 
 const TAU = Math.PI * 2;
+const DISPLAY_FONT = '"Bricolage Grotesque Variable", "Bricolage Grotesque", system-ui, sans-serif';
+const MONO_FONT = '"DM Mono", ui-monospace, monospace';
 
-export interface Theme {
-  bg: string;
-  grid: string;
+/** World print stock per theme (Kâğıt Bilet tokens; "Gece baskısı" for night). */
+export interface WorldTheme {
+  paper: string;
+  /** Outside the map: a darker sheet with hatching. */
   outside: string;
-  borderA: string;
-  borderB: string;
-  text: string;
-  textStroke: string;
+  hatch: string;
+  gridMinor: string;
+  gridMajor: string;
+  /** Map edge cut line. */
+  edge: string;
+  edgeOver: string;
+  label: string;
+  labelHalo: string;
+  labelSub: string;
 }
 
-export const THEMES: Record<'light' | 'dark', Theme> = {
+export const WORLD_THEMES: Record<'light' | 'dark', WorldTheme> = {
   light: {
-    bg: '#FFF6E9',
-    grid: 'rgba(150,120,210,0.20)',
-    outside: 'rgba(214,190,255,0.45)',
-    borderA: '#FF8FB8',
-    borderB: '#FFFFFF',
-    text: '#FFFFFF',
-    textStroke: '#2B1B44',
+    paper: '#F1EADB',
+    outside: '#E4DCCB',
+    hatch: 'rgba(30,27,46,0.11)',
+    // light-blue millimetre paper
+    gridMinor: 'rgba(60,140,220,0.16)',
+    gridMajor: 'rgba(60,140,220,0.34)',
+    edge: INK,
+    edgeOver: RISO.fluoPink,
+    label: INK,
+    labelHalo: CARD_PAPER,
+    labelSub: '#5D5870',
   },
   dark: {
-    bg: '#1A1330',
-    grid: 'rgba(150,130,240,0.16)',
-    outside: 'rgba(5,2,15,0.55)',
-    borderA: '#14F195',
-    borderB: '#9945FF',
-    text: '#FFFFFF',
-    textStroke: '#120B24',
+    paper: '#1B1924',
+    outside: '#131119',
+    hatch: 'rgba(241,234,219,0.07)',
+    gridMinor: 'rgba(110,170,255,0.08)',
+    gridMajor: 'rgba(110,170,255,0.19)',
+    edge: '#F1EADB',
+    edgeOver: RISO.fluoPink,
+    label: '#F1EADB',
+    labelHalo: '#1B1924',
+    labelSub: '#B3ADC2',
   },
 };
+
+/** Loot is drawn bigger by size tier (0 crumb … 3 jackpot). */
+const LOOT_SCALE = [0.8, 1, 1.3, 1.75];
 
 export interface FrameInput {
   now: number;
@@ -47,8 +68,13 @@ export interface FrameInput {
   camera: Camera;
   particles: Particles;
   settings: Settings;
+  /** Slana Pass collection status (seed once revealed) for Pass looks. */
+  pass: PassStatus | null;
+  /** prefers-reduced-motion: idle loops stop. */
+  reduced: boolean;
   /** Mouse target in world coordinates (for own eyes). */
   aim: { x: number; y: number } | null;
+  /** Own cash-out channel (performance.now() end time and length). */
   cashout: { until: number; total: number } | null;
   coinRain: boolean;
   rand: () => number;
@@ -61,7 +87,7 @@ interface RainCoin {
   r: number;
   rot: number;
   vr: number;
-  hue: number;
+  ink: string;
 }
 
 export class Renderer {
@@ -69,7 +95,9 @@ export class Renderer {
   readonly sprites = new SpriteCache();
   private dpr = 1;
   private rain: RainCoin[] = [];
-  private stars: { x: number; y: number; s: number }[] = [];
+  private hatch: CanvasPattern | null = null;
+  private hatchNight: boolean | null = null;
+  private readonly looks = new LookCache();
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext('2d', { alpha: false })!;
@@ -83,41 +111,46 @@ export class Renderer {
     this.canvas.style.height = `${h}px`;
   }
 
-  private ensureStars(world: ClientWorld): void {
-    if (this.stars.length > 0) return;
-    let s = 12345;
-    const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
-    for (let i = 0; i < 140; i++) this.stars.push({ x: rnd() * world.width, y: rnd() * world.height, s: 6 + rnd() * 10 });
+  /** Coin look of a player (Pass / sealed / basic skin), cached. */
+  lookFor(skin: number, pass: number, status: PassStatus | null): CoinLook {
+    return this.looks.lookFor(skin, pass, status);
   }
 
   draw(f: FrameInput): void {
     const { ctx } = this;
     const cam = f.camera;
-    const theme = THEMES[f.settings.theme];
+    const theme = WORLD_THEMES[f.settings.theme];
+    const night = f.settings.theme === 'dark';
     const z = cam.zoom;
     const low = f.settings.quality === 'low';
+    const still = low || f.reduced;
 
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    ctx.fillStyle = theme.bg;
+    ctx.fillStyle = theme.paper;
     ctx.fillRect(0, 0, cam.w, cam.h);
 
     ctx.setTransform(this.dpr * z, 0, 0, this.dpr * z, this.dpr * (cam.w / 2 - cam.x * z), this.dpr * (cam.h / 2 - cam.y * z));
     const view = cam.visibleRect(60);
-    this.drawGrid(view, f, theme);
+    this.drawPaper(view, f, theme, night);
 
     // collect visible entities
     const food: CEntity[] = [];
     const ejects: CEntity[] = [];
+    const loot: CEntity[] = [];
     const powerUps: CEntity[] = [];
     const bodies: CEntity[] = [];
     for (const e of f.world.entities.values()) {
-      if (e.x + e.r < view.x0 || e.x - e.r > view.x1 || e.y + e.r < view.y0 || e.y - e.r > view.y1) continue;
+      const pad = e.r * 1.8;
+      if (e.x + pad < view.x0 || e.x - pad > view.x1 || e.y + pad < view.y0 || e.y - pad > view.y1) continue;
       switch (e.kind) {
         case EntityKind.Food:
           food.push(e);
           break;
         case EntityKind.Eject:
           ejects.push(e);
+          break;
+        case EntityKind.Loot:
+          loot.push(e);
           break;
         case EntityKind.PowerUp:
           powerUps.push(e);
@@ -127,41 +160,45 @@ export class Renderer {
       }
     }
 
-    // food (tiny pastel coins, twinkling)
+    // food: riso confetti (pops in, golden coins get a dashed mustard halo)
     for (const e of food) {
-      const sprite = this.sprites.foodSprite(e.variant);
       const pop = Math.min(1, (f.now - e.born) / 220);
-      const tw = low ? 1 : 1 + Math.sin(f.now / 260 + e.seed * 40) * 0.08;
-      if (e.variant === 7 && !low) {
-        ctx.globalAlpha = 0.35 + 0.15 * Math.sin(f.now / 200 + e.seed * 10);
-        ctx.fillStyle = '#FFE873';
+      const sz = e.r * (0.4 + 0.6 * (1 - (1 - pop) ** 3));
+      if (e.variant === 7) {
+        ctx.save();
+        ctx.strokeStyle = RISO.mustard;
+        ctx.lineWidth = Math.max(e.r * 0.14, 1.5 / z);
+        ctx.setLineDash([e.r * 0.3, e.r * 0.24]);
+        ctx.lineDashOffset = still ? 0 : -f.now / 120;
         ctx.beginPath();
-        ctx.arc(e.x, e.y, e.r * 1.9, 0, TAU);
-        ctx.fill();
-        ctx.globalAlpha = 1;
+        ctx.arc(e.x, e.y, e.r * 1.55, 0, TAU);
+        ctx.stroke();
+        ctx.restore();
       }
-      drawSprite(ctx, sprite, e.x, e.y, e.r * tw * (0.4 + 0.6 * pop));
+      drawSprite(ctx, this.sprites.foodSprite(e.variant, e.seed), e.x, e.y, sz);
     }
 
     for (const e of ejects) drawSprite(ctx, this.sprites.ejectSprite(e.variant), e.x, e.y, e.r);
 
-    for (const e of powerUps) this.drawPowerUp(e, f);
+    for (const e of loot) this.drawLoot(e, f, still);
 
-    // cells and viruses: small first so bigger ones cover them
+    for (const e of powerUps) this.drawPowerUp(e, f, still);
+
+    // cells and cacti: small first so bigger ones cover them
     bodies.sort((a, b) => a.r - b.r);
     const cells = bodies.filter((b) => b.kind === EntityKind.Cell);
+    const halftone = (r: number, sp: number) => this.sprites.halftone(r, sp, z * this.dpr);
+    const cashP = f.cashout ? Math.max(0, Math.min(1, 1 - (f.cashout.until - f.now) / f.cashout.total)) : undefined;
     for (const e of bodies) {
       if (e.kind === EntityKind.Virus) {
-        const wob = low ? 0 : Math.sin(f.now / 700 + e.seed * 10) * 0.04;
-        drawSprite(ctx, this.sprites.cactusSprite(), e.x, e.y, e.r * 1.0, wob);
+        const wob = still ? 0 : Math.sin(f.now / 700 + e.seed * 10) * 0.04;
+        drawSprite(ctx, this.sprites.cactusSprite(), e.x, e.y, e.r, wob);
         continue;
       }
-      this.drawCell(e, f, cells, theme);
+      this.drawCell(e, f, cells, halftone, cashP);
     }
 
-    if (f.cashout) this.drawCashoutRings(f);
-
-    // emote bubbles on top of everything
+    // emote stickers on top of everything
     this.drawEmotes(f, cells);
 
     f.particles.draw(ctx, z);
@@ -171,85 +208,174 @@ export class Renderer {
     this.drawCoinRain(f);
   }
 
-  private drawGrid(view: { x0: number; y0: number; x1: number; y1: number }, f: FrameInput, theme: Theme): void {
+  /** Paper stock: millimetre grid inside the map, hatched margin outside, grain, cut-line edge. */
+  private drawPaper(view: { x0: number; y0: number; x1: number; y1: number }, f: FrameInput, theme: WorldTheme, night: boolean): void {
     const { ctx } = this;
     const w = f.world;
     const z = f.camera.zoom;
-    let step = 70;
-    while (step * z < 22) step *= 2;
-    ctx.strokeStyle = theme.grid;
-    ctx.lineWidth = 1.4 / z;
-    ctx.beginPath();
-    const gx0 = Math.max(0, Math.floor(view.x0 / step) * step);
-    const gx1 = Math.min(w.width, view.x1);
-    const gy0 = Math.max(0, Math.floor(view.y0 / step) * step);
-    const gy1 = Math.min(w.height, view.y1);
-    for (let x = gx0; x <= gx1; x += step) {
-      ctx.moveTo(x, Math.max(0, view.y0));
-      ctx.lineTo(x, Math.min(w.height, view.y1));
-    }
-    for (let y = gy0; y <= gy1; y += step) {
-      ctx.moveTo(Math.max(0, view.x0), y);
-      ctx.lineTo(Math.min(w.width, view.x1), y);
-    }
-    ctx.stroke();
 
-    // faint decorative sparkles
-    if (f.settings.quality === 'high') {
-      this.ensureStars(w);
-      ctx.fillStyle = theme.grid;
-      for (const s of this.stars) {
-        if (s.x < view.x0 || s.x > view.x1 || s.y < view.y0 || s.y > view.y1) continue;
-        ctx.save();
-        ctx.translate(s.x, s.y);
-        ctx.rotate(Math.PI / 4);
-        ctx.fillRect(-s.s / 2, -s.s / 8, s.s, s.s / 4);
-        ctx.fillRect(-s.s / 8, -s.s / 2, s.s / 4, s.s);
-        ctx.restore();
+    // outside the map: a darker sheet with diagonal hatching
+    if (view.x0 < 0 || view.y0 < 0 || view.x1 > w.width || view.y1 > w.height) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(view.x0 - 10, view.y0 - 10, view.x1 - view.x0 + 20, view.y1 - view.y0 + 20);
+      ctx.rect(0, 0, w.width, w.height);
+      ctx.clip('evenodd');
+      ctx.fillStyle = theme.outside;
+      ctx.fillRect(view.x0 - 10, view.y0 - 10, view.x1 - view.x0 + 20, view.y1 - view.y0 + 20);
+      const hatch = this.hatchPattern(theme, night);
+      if (hatch) {
+        // anchored to the world, constant on-screen spacing
+        hatch.setTransform(new DOMMatrix().scaleSelf(1 / z, 1 / z));
+        ctx.fillStyle = hatch;
+        ctx.fillRect(view.x0 - 10, view.y0 - 10, view.x1 - view.x0 + 20, view.y1 - view.y0 + 20);
       }
+      ctx.restore();
     }
 
-    // outside the world
-    ctx.fillStyle = theme.outside;
-    ctx.beginPath();
-    ctx.rect(view.x0 - 10, view.y0 - 10, view.x1 - view.x0 + 20, view.y1 - view.y0 + 20);
-    ctx.rect(0, 0, w.width, w.height);
-    ctx.fill('evenodd');
+    // millimetre grid: minor 20 u, major every 5th; minor fades out when zoomed out.
+    // Axis-aligned hairlines are filled as thin rects (cheaper than stroking a path).
+    const gx0 = Math.max(0, view.x0);
+    const gx1 = Math.min(w.width, view.x1);
+    const gy0 = Math.max(0, view.y0);
+    const gy1 = Math.min(w.height, view.y1);
+    let minor = 20;
+    while (minor * z < 6) minor *= 5;
+    const major = minor * 5;
+    const minorPx = minor * z;
+    if (minorPx < 40) {
+      const t = 1 / z;
+      ctx.globalAlpha = Math.min(1, (minorPx - 6) / 6 + 0.25);
+      ctx.fillStyle = theme.gridMinor;
+      for (let x = Math.ceil(gx0 / minor) * minor; x <= gx1; x += minor) if (x % major !== 0) ctx.fillRect(x - t / 2, gy0, t, gy1 - gy0);
+      for (let y = Math.ceil(gy0 / minor) * minor; y <= gy1; y += minor) if (y % major !== 0) ctx.fillRect(gx0, y - t / 2, gx1 - gx0, t);
+      ctx.globalAlpha = 1;
+    }
+    const tm = 1.25 / z;
+    ctx.fillStyle = theme.gridMajor;
+    for (let x = Math.ceil(gx0 / major) * major; x <= gx1; x += major) ctx.fillRect(x - tm / 2, gy0, tm, gy1 - gy0);
+    for (let y = Math.ceil(gy0 / major) * major; y <= gy1; y += major) ctx.fillRect(gx0, y - tm / 2, gx1 - gx0, tm);
 
-    // candy-striped border
-    const bw = Math.max(10, 7 / z);
-    ctx.lineWidth = bw;
-    ctx.strokeStyle = theme.borderB;
-    ctx.strokeRect(-bw / 2, -bw / 2, w.width + bw, w.height + bw);
-    ctx.strokeStyle = theme.borderA;
-    ctx.setLineDash([bw * 2, bw * 2]);
-    ctx.lineDashOffset = -f.now / 40;
-    ctx.strokeRect(-bw / 2, -bw / 2, w.width + bw, w.height + bw);
-    ctx.setLineDash([]);
+    // the map edge: a dashed cut line printed twice (pink pass misregistered).
+    // Only the stretches on screen are stroked; the dash phase is anchored to the map.
+    const lw = 2.6 / z;
+    const dash = [15 / z, 9 / z];
+    const off = 2.2 / z;
+    ctx.save();
+    ctx.lineWidth = lw;
+    ctx.setLineDash(dash);
+    const edge = (dx: number, color: string) => {
+      ctx.strokeStyle = color;
+      const side = (horizontal: boolean, at: number, from: number, to: number) => {
+        const a = Math.max(from, horizontal ? view.x0 : view.y0);
+        const b = Math.min(to, horizontal ? view.x1 : view.y1);
+        if (b <= a || at < (horizontal ? view.y0 : view.x0) - lw || at > (horizontal ? view.y1 : view.x1) + lw) return;
+        ctx.lineDashOffset = a - from;
+        ctx.beginPath();
+        if (horizontal) {
+          ctx.moveTo(a, at);
+          ctx.lineTo(b, at);
+        } else {
+          ctx.moveTo(at, a);
+          ctx.lineTo(at, b);
+        }
+        ctx.stroke();
+      };
+      side(true, dx, dx, w.width + dx);
+      side(true, w.height + dx, dx, w.width + dx);
+      side(false, dx, dx, w.height + dx);
+      side(false, w.width + dx, dx, w.height + dx);
+    };
+    edge(off, theme.edgeOver);
+    edge(0, theme.edge);
+    ctx.restore();
   }
 
-  private drawPowerUp(e: CEntity, f: FrameInput): void {
+  private hatchPattern(theme: WorldTheme, night: boolean): CanvasPattern | null {
+    if (this.hatchNight !== night || !this.hatch) {
+      const c = document.createElement('canvas');
+      c.width = c.height = 14;
+      const h = c.getContext('2d')!;
+      h.strokeStyle = theme.hatch;
+      h.lineWidth = 1.4;
+      h.beginPath();
+      for (let k = -14; k <= 28; k += 7) {
+        h.moveTo(k, 14);
+        h.lineTo(k + 14, 0);
+      }
+      h.stroke();
+      this.hatch = this.ctx.createPattern(c, 'repeat');
+      this.hatchNight = night;
+    }
+    return this.hatch;
+  }
+
+  /** Loot: a mustard "$" coin sized by tier, flipping while it slides, with a periodic glint. */
+  private drawLoot(e: CEntity, f: FrameInput, still: boolean): void {
+    const { ctx } = this;
+    const tier = Math.max(0, Math.min(3, e.variant));
+    const pop = Math.min(1, (f.now - e.born) / 260);
+    const popE = 1 + 0.25 * Math.sin(Math.min(1, pop) * Math.PI) * (1 - pop * 0.4);
+    const r = e.r * LOOT_SCALE[tier] * (e.dying ? 1 : Math.min(1, pop * 1.6)) * (still ? 1 : popE);
+    const sp = still ? 0 : Math.hypot(e.nx - e.ox, e.ny - e.oy);
+    // drop shadow: a halftone-ish ink offset under the coin
+    ctx.globalAlpha = 0.16;
+    ctx.fillStyle = INK;
+    ctx.beginPath();
+    ctx.ellipse(e.x + r * 0.16, e.y + r * 0.22, r * 0.98, r * 0.9, 0, 0, TAU);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    const sprite = this.sprites.lootSprite();
+    if (sp > 4) {
+      // still sliding from the spill: the coin flips
+      ctx.save();
+      ctx.translate(e.x, e.y);
+      ctx.scale(Math.abs(Math.cos(f.now / 70 + e.seed * 9)) * 0.75 + 0.25, 1);
+      drawSprite(ctx, sprite, 0, 0, r);
+      ctx.restore();
+    } else drawSprite(ctx, sprite, e.x, e.y, r, still ? 0 : Math.sin(f.now / 900 + e.seed * 20) * 0.08);
+    if (still) return;
+    // glint: every ~2.6 s per coin, a twinkle that grows and shrinks over 380 ms
+    const period = 2600;
+    const t = (f.now + e.seed * period) % period;
+    if (t < 380) {
+      const k = Math.sin((t / 380) * Math.PI);
+      drawGlint(ctx, e.x - r * 0.52, e.y - r * 0.55, r * 0.5 * k + 0.01);
+    }
+  }
+
+  private drawPowerUp(e: CEntity, f: FrameInput, still: boolean): void {
     const { ctx } = this;
     const age = f.now - e.born;
     const sprite = this.sprites.powerUpSprite(e.variant);
-    const landing = Math.min(1, age / 900);
+    const landing = still ? 1 : Math.min(1, age / 900);
     const drop = (1 - landing) * (1 - landing) * 260;
-    const bob = Math.sin(f.now / 300 + e.seed * 8) * e.r * 0.08;
-    // glow
-    ctx.globalAlpha = 0.25 + 0.12 * Math.sin(f.now / 250);
-    ctx.fillStyle = '#FFFFFF';
+    const bob = still ? 0 : Math.sin(f.now / 300 + e.seed * 8) * e.r * 0.08;
+    // dashed ink halo
+    ctx.save();
+    ctx.strokeStyle = INK;
+    ctx.globalAlpha = 0.5;
+    ctx.lineWidth = Math.max(e.r * 0.06, 1.2 / f.camera.zoom);
+    ctx.setLineDash([e.r * 0.2, e.r * 0.16]);
+    ctx.lineDashOffset = still ? 0 : -f.now / 60;
     ctx.beginPath();
-    ctx.arc(e.x, e.y, e.r * 1.45, 0, TAU);
-    ctx.fill();
-    ctx.globalAlpha = 1;
+    ctx.arc(e.x, e.y + bob, e.r * 1.32, 0, TAU);
+    ctx.stroke();
+    ctx.restore();
     // parachute while landing
     if (landing < 1) {
       ctx.save();
       ctx.globalAlpha = 1 - landing * 0.6;
       ctx.translate(e.x, e.y - drop - e.r * 1.6);
-      ctx.fillStyle = '#FF8FB8';
-      ctx.strokeStyle = '#B83D6A';
-      ctx.lineWidth = e.r * 0.06;
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = e.r * 0.07;
+      ctx.strokeStyle = INK;
+      ctx.fillStyle = RISO.mustard;
+      ctx.beginPath();
+      ctx.arc(e.r * 0.1, e.r * 0.08, e.r * 1.1, Math.PI, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = RISO.fluoPink;
       ctx.beginPath();
       ctx.arc(0, 0, e.r * 1.1, Math.PI, 0);
       ctx.closePath();
@@ -266,11 +392,16 @@ export class Renderer {
     drawSprite(ctx, sprite, e.x, e.y - drop + bob, e.r);
   }
 
-  private drawCell(e: CEntity, f: FrameInput, cells: CEntity[], theme: Theme): void {
+  private drawCell(
+    e: CEntity,
+    f: FrameInput,
+    cells: CEntity[],
+    halftone: (r: number, sp: number) => CanvasImageSource | null,
+    cashP: number | undefined,
+  ): void {
     const { ctx } = this;
     const z = f.camera.zoom;
     const player = f.world.players.get(e.playerId);
-    const skin = getSkin(player?.skin ?? 0);
     const mine = e.playerId === f.world.myPid;
     const screenR = e.r * z;
 
@@ -296,7 +427,8 @@ export class Renderer {
     }
 
     // jelly simulation (neighbours = overlapping cells)
-    if (f.settings.quality === 'high' && e.jelly && screenR > 14) {
+    const jellyOn = f.settings.quality === 'high' && !f.reduced;
+    if (jellyOn && e.jelly && screenR > 14) {
       const nbs: Neighbour[] = [];
       for (const o of cells) {
         if (o === e) continue;
@@ -311,87 +443,74 @@ export class Renderer {
 
     const spawnPop = Math.min(1, (f.now - e.born) / 180);
     const r = e.r * (0.6 + 0.4 * spawnPop);
-    drawCoin(ctx, e.x, e.y, r, skin, {
-      time: f.now,
+    const look = this.lookFor(player?.skin ?? 0, player?.pass ?? 0, f.pass);
+    drawCoinLook(ctx, e.x, e.y, r, look, {
+      time: f.reduced ? 0 : f.now,
       lookX: lx,
       lookY: ly,
       expression: e.expression,
       pxPerUnit: z,
-      jelly: f.settings.quality === 'high' ? e.jelly : null,
+      jelly: jellyOn ? e.jelly : null,
       flags: e.flags,
       seed: e.seed * 10 + e.playerId,
+      cashout: mine && cashP !== undefined && e.flags & CellFlag.CashingOut ? cashP : undefined,
+      halftone,
     });
 
-    // labels
+    // labels: ink on a card halo (name in the display face, mass in mono)
     if (!player || screenR < 20) return;
     const showName = f.settings.showNames;
     const showMass = f.settings.showMass && (mine || screenR > 34);
     if (!showName && !showMass) return;
-    const fs = Math.max(r * 0.23, 11 / z);
+    const fs = Math.max(r * 0.22, 12 / z);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round';
-    let y = e.y + r * 0.56;
+    let y = e.y + r * 0.58;
     if (showName) {
-      ctx.font = `700 ${fs}px Fredoka, system-ui, sans-serif`;
-      ctx.lineWidth = fs * 0.2;
-      ctx.strokeStyle = theme.textStroke;
+      ctx.font = `800 ${fs}px ${DISPLAY_FONT}`;
+      ctx.lineWidth = fs * 0.26;
+      ctx.strokeStyle = CARD_PAPER;
       const name = player.name;
       ctx.strokeText(name, e.x, y);
-      ctx.fillStyle = theme.text;
+      ctx.fillStyle = INK;
       ctx.fillText(name, e.x, y);
       if (player.flags & PlayerFlag.Verified) {
         const w = ctx.measureText(name).width;
-        const bx = e.x + w / 2 + fs * 0.45;
-        ctx.fillStyle = '#14C98A';
-        ctx.strokeStyle = theme.textStroke;
+        const bx = e.x + w / 2 + fs * 0.5;
+        ctx.fillStyle = RISO.teal;
+        ctx.strokeStyle = INK;
         ctx.lineWidth = fs * 0.08;
         ctx.beginPath();
-        ctx.arc(bx, y, fs * 0.32, 0, TAU);
+        ctx.arc(bx, y, fs * 0.33, 0, TAU);
         ctx.fill();
         ctx.stroke();
-        ctx.strokeStyle = '#FFFFFF';
-        ctx.lineWidth = fs * 0.09;
+        ctx.strokeStyle = CARD_PAPER;
+        ctx.lineWidth = fs * 0.1;
+        ctx.lineCap = 'round';
         ctx.beginPath();
         ctx.moveTo(bx - fs * 0.14, y);
         ctx.lineTo(bx - fs * 0.03, y + fs * 0.11);
         ctx.lineTo(bx + fs * 0.16, y - fs * 0.12);
         ctx.stroke();
       }
-      y += fs * 0.95;
+      y += fs * 0.98;
     }
     if (showMass) {
-      const mfs = fs * 0.72;
-      ctx.font = `600 ${mfs}px Fredoka, system-ui, sans-serif`;
-      ctx.lineWidth = mfs * 0.2;
-      ctx.strokeStyle = theme.textStroke;
+      const mfs = fs * 0.7;
+      ctx.font = `500 ${mfs}px ${MONO_FONT}`;
+      ctx.lineWidth = mfs * 0.28;
+      ctx.strokeStyle = CARD_PAPER;
       const label = String(Math.floor((e.nr * e.nr) / 100));
       ctx.strokeText(label, e.x, y);
-      ctx.fillStyle = 'rgba(255,255,255,0.92)';
+      ctx.fillStyle = INK;
+      ctx.globalAlpha = 0.85;
       ctx.fillText(label, e.x, y);
+      ctx.globalAlpha = 1;
     }
   }
 
-  private drawCashoutRings(f: FrameInput): void {
-    const { ctx } = this;
-    const c = f.cashout!;
-    const p = Math.max(0, Math.min(1, 1 - (c.until - f.now) / c.total));
-    for (const cell of f.world.myCells()) {
-      if (!(cell.flags & CellFlag.CashingOut)) continue;
-      const R = cell.r * 1.18;
-      ctx.lineCap = 'round';
-      ctx.lineWidth = Math.max(cell.r * 0.08, 4 / f.camera.zoom);
-      ctx.strokeStyle = 'rgba(255,201,60,0.3)';
-      ctx.beginPath();
-      ctx.arc(cell.x, cell.y, R, 0, TAU);
-      ctx.stroke();
-      ctx.strokeStyle = '#FFC93C';
-      ctx.beginPath();
-      ctx.arc(cell.x, cell.y, R, -Math.PI / 2, -Math.PI / 2 + p * TAU);
-      ctx.stroke();
-    }
-  }
-
+  /** Emote stickers: pop in with an overshoot, tilt, bob, then peel away. */
   private drawEmotes(f: FrameInput, cells: CEntity[]): void {
     const { ctx } = this;
     const z = f.camera.zoom;
@@ -404,50 +523,31 @@ export class Renderer {
     }
     for (const [pid, c] of best) {
       const emote = f.world.players.get(pid)!.emote!;
-      const def = EMOTES[emote.id];
-      if (!def) continue;
+      const img = stickerImage(emote.id);
+      if (!img) continue;
       const age = f.now - emote.at;
-      const pop = Math.min(1, age / 160);
-      const fade = age > 2200 ? 1 - (age - 2200) / 400 : 1;
-      const fs = 22 / z;
-      ctx.font = `700 ${fs}px Fredoka, "Noto Color Emoji", system-ui, sans-serif`;
-      const tw = ctx.measureText(def.text).width;
-      const w = tw + fs * 1.0;
-      const h = fs * 1.55;
-      const x = c.x;
-      const y = c.y - c.r - h * 0.9 - 6 / z;
+      const t = Math.min(1, age / 260);
+      // spring-ish overshoot: 0.4 → 1.12 → 1
+      const pop = f.reduced ? 1 : t < 1 ? 0.4 + 0.72 * Math.sin((t * Math.PI) / 2) ** 2 + 0.12 * Math.sin(t * Math.PI) - 0.12 * t : 1;
+      const fade = age > 2200 ? Math.max(0, 1 - (age - 2200) / 400) : f.reduced ? Math.min(1, age / 120) : 1;
+      const size = Math.max(46, Math.min(80, c.r * z * 0.85)) / z;
+      const bob = f.reduced ? 0 : Math.sin(age / 260) * size * 0.03;
+      const tilt = ((emote.id % 3) - 1) * 0.1 + (f.reduced ? 0 : Math.sin(age / 400) * 0.03);
       ctx.save();
-      ctx.globalAlpha = Math.max(0, fade);
-      ctx.translate(x, y);
-      ctx.scale(0.6 + 0.4 * pop, 0.6 + 0.4 * pop);
-      ctx.fillStyle = '#FFFFFF';
-      ctx.strokeStyle = '#2B1B44';
-      ctx.lineWidth = 2.5 / z;
-      const rr = h / 2;
-      ctx.beginPath();
-      ctx.moveTo(-w / 2 + rr, -h / 2);
-      ctx.arcTo(w / 2, -h / 2, w / 2, h / 2, rr);
-      ctx.arcTo(w / 2, h / 2, -w / 2, h / 2, rr);
-      ctx.lineTo(fs * 0.25, h / 2);
-      ctx.lineTo(0, h / 2 + fs * 0.4);
-      ctx.lineTo(-fs * 0.25, h / 2);
-      ctx.arcTo(-w / 2, h / 2, -w / 2, -h / 2, rr);
-      ctx.arcTo(-w / 2, -h / 2, w / 2, -h / 2, rr);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-      ctx.fillStyle = '#2B1B44';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(def.text, 0, fs * 0.05);
+      ctx.globalAlpha = fade;
+      ctx.translate(c.x + c.r * 0.45, c.y - c.r - size * 0.42 + bob);
+      ctx.rotate(tilt);
+      ctx.scale(pop, pop);
+      ctx.drawImage(img, -size / 2, -size / 2, size, size);
       ctx.restore();
     }
   }
 
+  /** Coin rain (screen space): flat mustard riso coins tumbling down. */
   private drawCoinRain(f: FrameInput): void {
     const { ctx } = this;
     const cam = f.camera;
-    if (f.coinRain && f.settings.quality === 'high' && this.rain.length < 70) {
+    if (f.coinRain && f.settings.quality === 'high' && !f.reduced && this.rain.length < 70) {
       for (let i = 0; i < 2; i++) {
         this.rain.push({
           x: f.rand() * cam.w,
@@ -456,7 +556,7 @@ export class Renderer {
           r: 6 + f.rand() * 9,
           rot: f.rand() * 6,
           vr: (f.rand() - 0.5) * 8,
-          hue: f.rand() < 0.7 ? 45 : 320,
+          ink: f.rand() < 0.75 ? RISO.mustard : RISO.fluoPink,
         });
       }
     }
@@ -470,21 +570,32 @@ export class Renderer {
       ctx.save();
       ctx.translate(c.x, c.y);
       ctx.scale(Math.abs(Math.cos(c.rot)) * 0.85 + 0.15, 1);
-      ctx.globalAlpha = 0.85;
-      ctx.fillStyle = `hsl(${c.hue} 95% 62%)`;
+      ctx.globalAlpha = 0.92;
+      ctx.fillStyle = RISO.orange;
+      ctx.beginPath();
+      ctx.arc(c.r * 0.15, c.r * 0.15, c.r, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = c.ink;
       ctx.beginPath();
       ctx.arc(0, 0, c.r, 0, TAU);
       ctx.fill();
-      ctx.strokeStyle = `hsl(${c.hue} 80% 38%)`;
-      ctx.lineWidth = c.r * 0.22;
+      ctx.strokeStyle = INK;
+      ctx.lineWidth = c.r * 0.2;
       ctx.stroke();
       ctx.restore();
     }
     this.rain.length = w;
   }
 
-  /** Minimap: world outline, sectors, leaders (crowns) and you. */
-  drawMinimap(mm: HTMLCanvasElement, f: { world: ClientWorld; camera: Camera; leaders: { x: number; y: number }[]; dark: boolean; now: number }): void {
+  /**
+   * Minimap as a map sheet ("pafta"): card stock, blue sector grid with mono
+   * sector labels, dashed view frame, mustard crowns for the leaders and a
+   * pink pin for me.
+   */
+  drawMinimap(
+    mm: HTMLCanvasElement,
+    f: { world: ClientWorld; camera: Camera; leaders: { x: number; y: number }[]; dark: boolean; now: number; reduced: boolean },
+  ): void {
     const ctx = mm.getContext('2d');
     if (!ctx) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -493,39 +604,49 @@ export class Renderer {
       mm.width = Math.round(size * dpr);
       mm.height = Math.round(size * dpr);
     }
+    const ink = f.dark ? '#F1EADB' : INK;
+    const ink2 = f.dark ? '#B3ADC2' : '#5D5870';
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, size, size);
     const s = size / Math.max(f.world.width, f.world.height);
-    ctx.fillStyle = f.dark ? 'rgba(20,12,40,0.75)' : 'rgba(255,255,255,0.75)';
-    ctx.fillRect(0, 0, size, size);
-    ctx.strokeStyle = f.dark ? 'rgba(150,130,240,0.25)' : 'rgba(110,86,196,0.18)';
+    // sector grid
+    ctx.strokeStyle = f.dark ? 'rgba(110,170,255,0.22)' : 'rgba(60,140,220,0.38)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     for (let i = 1; i < 5; i++) {
-      ctx.moveTo((size * i) / 5, 0);
-      ctx.lineTo((size * i) / 5, size);
-      ctx.moveTo(0, (size * i) / 5);
-      ctx.lineTo(size, (size * i) / 5);
+      const p = Math.round((size * i) / 5) + 0.5;
+      ctx.moveTo(p, 0);
+      ctx.lineTo(p, size);
+      ctx.moveTo(0, p);
+      ctx.lineTo(size, p);
     }
     ctx.stroke();
-    ctx.fillStyle = f.dark ? 'rgba(200,190,255,0.35)' : 'rgba(110,86,196,0.35)';
-    ctx.font = '600 9px Fredoka, system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    for (let cx = 0; cx < 5; cx++) for (let cy = 0; cy < 5; cy++) ctx.fillText(`${'ABCDE'[cy]}${cx + 1}`, (cx + 0.5) * (size / 5), (cy + 0.5) * (size / 5));
+    ctx.fillStyle = ink2;
+    ctx.globalAlpha = 0.7;
+    ctx.font = `500 8.5px ${MONO_FONT}`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    for (let cx = 0; cx < 5; cx++) for (let cy = 0; cy < 5; cy++) ctx.fillText(`${'ABCDE'[cy]}${cx + 1}`, cx * (size / 5) + 3, cy * (size / 5) + 3);
+    ctx.globalAlpha = 1;
 
-    // camera view
+    // camera view: dashed frame
     const v = f.camera.visibleRect();
-    ctx.strokeStyle = f.dark ? 'rgba(255,255,255,0.5)' : 'rgba(61,44,94,0.45)';
-    ctx.strokeRect(v.x0 * s, v.y0 * s, (v.x1 - v.x0) * s, (v.y1 - v.y0) * s);
+    ctx.save();
+    ctx.strokeStyle = ink;
+    ctx.globalAlpha = 0.6;
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([3, 2.5]);
+    ctx.strokeRect(Math.max(0, v.x0 * s), Math.max(0, v.y0 * s), Math.min(size, (v.x1 - v.x0) * s), Math.min(size, (v.y1 - v.y0) * s));
+    ctx.restore();
 
-    // leaders
-    f.leaders.forEach((l, i) => {
-      ctx.fillStyle = ['#FFC93C', '#C9CDD9', '#E8875A'][i] ?? '#FFC93C';
-      ctx.strokeStyle = '#2B1B44';
-      ctx.lineWidth = 1.2;
+    // leaders: little mustard crowns
+    f.leaders.forEach((l) => {
       const x = l.x * s;
       const y = l.y * s;
+      ctx.fillStyle = RISO.mustard;
+      ctx.strokeStyle = INK;
+      ctx.lineWidth = 1.1;
+      ctx.lineJoin = 'round';
       ctx.beginPath();
       ctx.moveTo(x - 5, y + 3);
       ctx.lineTo(x - 5, y - 3);
@@ -539,15 +660,26 @@ export class Renderer {
       ctx.stroke();
     });
 
-    // me
+    // me: a pink pin with a ring that pulses outward
     const me = f.world.myStats();
     if (me) {
-      const pulse = 4 + Math.sin(f.now / 200) * 1.2;
-      ctx.fillStyle = '#FF5C93';
-      ctx.strokeStyle = '#FFFFFF';
-      ctx.lineWidth = 2;
+      const x = me.x * s;
+      const y = me.y * s;
+      if (!f.reduced) {
+        const p = (f.now / 1400) % 1;
+        ctx.strokeStyle = RISO.fluoPink;
+        ctx.globalAlpha = 1 - p;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(x, y, 4 + p * 9, 0, TAU);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+      ctx.fillStyle = RISO.fluoPink;
+      ctx.strokeStyle = INK;
+      ctx.lineWidth = 1.6;
       ctx.beginPath();
-      ctx.arc(me.x * s, me.y * s, pulse, 0, TAU);
+      ctx.arc(x, y, 4.2, 0, TAU);
       ctx.fill();
       ctx.stroke();
     }

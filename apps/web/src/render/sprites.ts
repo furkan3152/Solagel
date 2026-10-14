@@ -1,19 +1,28 @@
-import { INK, heartPath, starPath } from '@slana/art';
-import { PowerUpType, getSkin } from '@slana/shared';
+import { CARD_PAPER, INK, RISO, drawHalftoneDots, heartPath, lookForBasicSkin, starPath } from '@slana/art';
+import { PowerUpType } from '@slana/shared';
 
 const TAU = Math.PI * 2;
 
-/** Pastel coin colours for food variants 0..5: [face, rim]. */
-export const FOOD_COLORS: [string, string][] = [
-  ['#FFB3CF', '#E0638F'], // pink
-  ['#A8F0D4', '#2FB283'], // mint
-  ['#FFE58A', '#D9A21C'], // lemon
-  ['#B4DCFF', '#4A92D6'], // sky
-  ['#D6C6FF', '#8463E0'], // lavender
-  ['#FFC9A3', '#D9773E'], // peach
+/**
+ * Riso confetti for food variants 0..5: [shape, ink, overprint]. Variant 6 is
+ * a gem, 7 a golden coin. `FOOD_COLORS[v][0]` stays the particle ink.
+ */
+type ConfettiShape = 'dot' | 'star' | 'tri';
+const CONFETTI: [ConfettiShape, string, string][] = [
+  ['dot', RISO.fluoPink, RISO.mustard],
+  ['star', RISO.teal, RISO.fluoPink],
+  ['tri', RISO.mustard, RISO.blue],
+  ['dot', RISO.blue, RISO.aqua],
+  ['tri', RISO.orange, RISO.teal],
+  ['star', RISO.green, RISO.mustard],
 ];
+export const FOOD_COLORS: [string, string][] = CONFETTI.map(([, ink, over]) => [ink, over]);
 
-type Sprite = { canvas: HTMLCanvasElement; size: number };
+export type Sprite = { canvas: HTMLCanvasElement; size: number };
+
+/** Sprites are rendered once at high resolution and drawn scaled (radius → size/2 * 0.8). */
+const SPRITE_FILL = 0.8;
+export const spriteScale = (r: number, sprite: Sprite): number => (r * 2) / (sprite.size * SPRITE_FILL);
 
 function makeCanvas(size: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
   const c = document.createElement('canvas');
@@ -23,143 +32,204 @@ function makeCanvas(size: number): [HTMLCanvasElement, CanvasRenderingContext2D]
   return [c, ctx];
 }
 
-/** Sprites are rendered once at high resolution and drawn scaled (radius → size/2 * 0.8). */
-const SPRITE_FILL = 0.8;
-export const spriteScale = (r: number, sprite: Sprite): number => (r * 2) / (sprite.size * SPRITE_FILL);
+/**
+ * One riso print of a path: the second ink misregistered by (dx, dy) peeking
+ * out from under the first, then an ink rim. `path` adds a sub-path.
+ */
+function risoPrint(
+  ctx: CanvasRenderingContext2D,
+  path: (ctx: CanvasRenderingContext2D) => void,
+  ink: string,
+  over: string,
+  o: { dx: number; dy: number; rim: number; rimColor?: string },
+): void {
+  ctx.save();
+  ctx.translate(o.dx, o.dy);
+  ctx.beginPath();
+  path(ctx);
+  ctx.fillStyle = over;
+  ctx.fill();
+  ctx.restore();
+  ctx.beginPath();
+  path(ctx);
+  ctx.fillStyle = ink;
+  ctx.fill();
+  if (o.rim > 0) {
+    ctx.lineWidth = o.rim;
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = o.rimColor ?? INK;
+    ctx.stroke();
+  }
+}
 
-function coinSprite(face: string, rim: string, size = 64, star = false): Sprite {
+const triPath = (s: number) => (ctx: CanvasRenderingContext2D) => {
+  for (let i = 0; i < 3; i++) {
+    const a = -Math.PI / 2 + (i / 3) * TAU;
+    const x = Math.cos(a) * s;
+    const y = Math.sin(a) * s + s * 0.18;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+};
+
+/** Food confetti: dot, star or triangle in riso inks, one rotation per sprite. */
+function confettiSprite(variant: number, rot: number, size = 48): Sprite {
   const [canvas, ctx] = makeCanvas(size);
   const r = (size / 2) * SPRITE_FILL;
-  const g = ctx.createRadialGradient(-r * 0.35, -r * 0.4, r * 0.1, 0, 0, r);
-  g.addColorStop(0, '#FFFFFF');
-  g.addColorStop(0.35, face);
-  g.addColorStop(1, rim);
-  ctx.fillStyle = g;
-  ctx.beginPath();
-  ctx.arc(0, 0, r, 0, TAU);
-  ctx.fill();
-  ctx.lineWidth = r * 0.16;
-  ctx.strokeStyle = rim;
-  ctx.stroke();
-  ctx.lineWidth = r * 0.08;
-  ctx.strokeStyle = 'rgba(255,255,255,0.6)';
-  ctx.beginPath();
-  ctx.arc(0, 0, r * 0.62, 0, TAU);
-  ctx.stroke();
-  if (star) {
-    ctx.fillStyle = '#FFF7D6';
-    starPath(ctx, r * 0.42, r * 0.18);
-    ctx.fill();
-  }
-  ctx.fillStyle = 'rgba(255,255,255,0.85)';
-  ctx.beginPath();
-  ctx.ellipse(-r * 0.32, -r * 0.38, r * 0.2, r * 0.11, -0.6, 0, TAU);
-  ctx.fill();
+  const [shape, ink, over] = CONFETTI[variant];
+  ctx.rotate(rot);
+  const off = { dx: r * 0.16, dy: r * 0.14, rim: r * 0.1 };
+  if (shape === 'dot') risoPrint(ctx, (c) => c.arc(0, 0, r * 0.82, 0, TAU), ink, over, off);
+  else if (shape === 'star') risoPrint(ctx, (c) => starPath(c, r, r * 0.45, 5), ink, over, off);
+  else risoPrint(ctx, triPath(r * 0.95), ink, over, off);
   return { canvas, size };
 }
 
+/** Gem food (mass 2): a faceted aqua diamond with a blue pass. */
 function gemSprite(size = 64): Sprite {
   const [canvas, ctx] = makeCanvas(size);
   const s = (size / 2) * SPRITE_FILL;
-  const g = ctx.createLinearGradient(-s, -s, s, s);
-  g.addColorStop(0, '#E9FFFF');
-  g.addColorStop(0.5, '#8DF2FF');
-  g.addColorStop(1, '#C59BFF');
-  ctx.fillStyle = g;
-  ctx.strokeStyle = '#5A6FD6';
-  ctx.lineWidth = s * 0.12;
+  const body = (c: CanvasRenderingContext2D) => {
+    c.moveTo(-s * 0.95, -s * 0.2);
+    c.lineTo(-s * 0.5, -s * 0.75);
+    c.lineTo(s * 0.5, -s * 0.75);
+    c.lineTo(s * 0.95, -s * 0.2);
+    c.lineTo(0, s * 0.95);
+    c.closePath();
+  };
+  risoPrint(ctx, body, RISO.aqua, RISO.blue, { dx: s * 0.14, dy: s * 0.12, rim: s * 0.11 });
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = s * 0.07;
   ctx.lineJoin = 'round';
   ctx.beginPath();
   ctx.moveTo(-s * 0.95, -s * 0.2);
-  ctx.lineTo(-s * 0.5, -s * 0.75);
-  ctx.lineTo(s * 0.5, -s * 0.75);
   ctx.lineTo(s * 0.95, -s * 0.2);
-  ctx.lineTo(0, s * 0.95);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-  ctx.strokeStyle = 'rgba(255,255,255,0.75)';
-  ctx.lineWidth = s * 0.07;
-  ctx.beginPath();
-  ctx.moveTo(-s * 0.95, -s * 0.2);
-  ctx.lineTo(s * 0.95, -s * 0.2);
-  ctx.moveTo(-s * 0.3, -s * 0.2);
+  ctx.moveTo(-s * 0.32, -s * 0.2);
   ctx.lineTo(0, s * 0.85);
-  ctx.lineTo(s * 0.3, -s * 0.2);
+  ctx.lineTo(s * 0.32, -s * 0.2);
+  ctx.stroke();
+  ctx.strokeStyle = CARD_PAPER;
+  ctx.lineWidth = s * 0.09;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(-s * 0.55, -s * 0.48);
+  ctx.lineTo(-s * 0.32, -s * 0.48);
   ctx.stroke();
   return { canvas, size };
 }
 
-function goldSprite(size = 96): Sprite {
-  const sprite = coinSprite('#FFD54A', '#C98A00', size, true);
-  const ctx = sprite.canvas.getContext('2d')!;
-  // soft glow behind is drawn at runtime (pulsing); add a sparkle here
-  ctx.setTransform(1, 0, 0, 1, size / 2, size / 2);
-  ctx.fillStyle = '#FFFFFF';
-  ctx.save();
-  ctx.translate(size * 0.24, -size * 0.24);
-  starPath(ctx, size * 0.09, size * 0.03, 4, 0);
-  ctx.fill();
-  ctx.restore();
-  return sprite;
+/** "$" as strokes (no canvas text in sprites, same as the art package). */
+function dollarPath(ctx: CanvasRenderingContext2D, s: number): void {
+  ctx.moveTo(s * 0.42, -s * 0.42);
+  ctx.bezierCurveTo(s * 0.2, -s * 0.66, -s * 0.5, -s * 0.62, -s * 0.48, -s * 0.24);
+  ctx.bezierCurveTo(-s * 0.46, s * 0.08, s * 0.46, -s * 0.06, s * 0.48, s * 0.26);
+  ctx.bezierCurveTo(s * 0.5, s * 0.64, -s * 0.24, s * 0.68, -s * 0.46, s * 0.4);
+  ctx.moveTo(0, -s * 0.82);
+  ctx.lineTo(0, s * 0.82);
 }
 
-/** Rug cactus: a round spiky cactus with a pink flower and a sleepy smile. */
-function cactusSprite(size = 256): Sprite {
+/**
+ * A mustard riso coin: overprint, ink rim, inner dotted groove and either a
+ * star (golden food) or a stamped "$" (loot).
+ */
+function mustardCoin(size: number, mark: 'star' | 'dollar'): Sprite {
+  const [canvas, ctx] = makeCanvas(size);
+  const r = (size / 2) * SPRITE_FILL;
+  risoPrint(ctx, (c) => c.arc(0, 0, r, 0, TAU), RISO.mustard, RISO.orange, { dx: r * 0.1, dy: r * 0.1, rim: r * 0.12 });
+  // halftone shade on the lower right
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.94, 0, TAU);
+  ctx.clip();
+  ctx.globalCompositeOperation = 'multiply';
+  ctx.globalAlpha = 0.28;
+  drawHalftoneDots(ctx, r, r * 0.11);
+  ctx.restore();
+  // groove
+  ctx.save();
+  ctx.strokeStyle = INK;
+  ctx.globalAlpha = 0.45;
+  ctx.lineWidth = r * 0.05;
+  ctx.setLineDash([r * 0.1, r * 0.08]);
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.74, 0, TAU);
+  ctx.stroke();
+  ctx.restore();
+  if (mark === 'star') {
+    risoPrint(ctx, (c) => starPath(c, r * 0.46, r * 0.2), CARD_PAPER, RISO.orange, { dx: r * 0.06, dy: r * 0.06, rim: r * 0.07 });
+  } else {
+    // the "$" stamp: a rubber-stamp ring with the sign, slightly off-centre and turned
+    ctx.save();
+    ctx.rotate(-0.18);
+    ctx.translate(-r * 0.02, r * 0.02);
+    ctx.strokeStyle = INK;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = r * 0.13;
+    ctx.beginPath();
+    dollarPath(ctx, r * 0.5);
+    ctx.stroke();
+    ctx.restore();
+  }
+  // print highlight
+  ctx.strokeStyle = CARD_PAPER;
+  ctx.lineCap = 'round';
+  ctx.lineWidth = r * 0.1;
+  ctx.globalAlpha = 0.9;
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.62, 1.12 * Math.PI, 1.36 * Math.PI);
+  ctx.stroke();
+  return { canvas, size };
+}
+
+/** Rug cactus: a green riso spiky ball with a mischievous face and a pink flower. */
+function cactusSprite(size = 320): Sprite {
   const [canvas, ctx] = makeCanvas(size);
   const r = (size / 2) * SPRITE_FILL * 0.86;
   const spikes = 22;
-  // spikes
-  ctx.fillStyle = '#FFF8E7';
-  ctx.strokeStyle = '#2E7D4F';
-  ctx.lineWidth = size * 0.012;
-  ctx.lineJoin = 'round';
-  ctx.beginPath();
-  for (let i = 0; i < spikes; i++) {
-    const a = (i / spikes) * TAU;
-    const a0 = a - 0.09;
-    const a1 = a + 0.09;
-    ctx.moveTo(Math.cos(a0) * r * 0.92, Math.sin(a0) * r * 0.92);
-    ctx.lineTo(Math.cos(a) * r * 1.18, Math.sin(a) * r * 1.18);
-    ctx.lineTo(Math.cos(a1) * r * 0.92, Math.sin(a1) * r * 0.92);
-  }
-  ctx.fill();
-  ctx.stroke();
-  // body
-  const g = ctx.createRadialGradient(-r * 0.3, -r * 0.35, r * 0.1, 0, 0, r);
-  g.addColorStop(0, '#B8F5A0');
-  g.addColorStop(0.55, '#5FCB6E');
-  g.addColorStop(1, '#2F9E57');
-  ctx.fillStyle = g;
-  ctx.beginPath();
-  ctx.arc(0, 0, r, 0, TAU);
-  ctx.fill();
-  // ribs
+  const spikePath = (c: CanvasRenderingContext2D) => {
+    for (let i = 0; i < spikes; i++) {
+      const a = (i / spikes) * TAU;
+      const a0 = a - 0.1;
+      const a1 = a + 0.1;
+      c.moveTo(Math.cos(a0) * r * 0.9, Math.sin(a0) * r * 0.9);
+      c.lineTo(Math.cos(a) * r * 1.2, Math.sin(a) * r * 1.2);
+      c.lineTo(Math.cos(a1) * r * 0.9, Math.sin(a1) * r * 0.9);
+      c.closePath();
+    }
+  };
+  risoPrint(ctx, spikePath, CARD_PAPER, RISO.mustard, { dx: r * 0.03, dy: r * 0.03, rim: r * 0.035 });
+  // body: green over a misregistered teal pass
+  risoPrint(ctx, (c) => c.arc(0, 0, r, 0, TAU), RISO.green, RISO.teal, { dx: r * 0.06, dy: r * 0.05, rim: r * 0.065 });
   ctx.save();
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.96, 0, TAU);
   ctx.clip();
-  ctx.strokeStyle = 'rgba(30,110,60,0.22)';
-  ctx.lineWidth = r * 0.05;
+  // ribs
+  ctx.strokeStyle = INK;
+  ctx.globalAlpha = 0.28;
+  ctx.lineWidth = r * 0.035;
   for (let i = -2; i <= 2; i++) {
     ctx.beginPath();
     ctx.ellipse(0, 0, Math.abs(i) * r * 0.3 + r * 0.05, r * 1.02, 0, -Math.PI / 2, Math.PI / 2, i < 0);
     ctx.stroke();
   }
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'multiply';
+  ctx.globalAlpha = 0.3;
+  drawHalftoneDots(ctx, r, r * 0.07);
   ctx.restore();
-  ctx.lineWidth = r * 0.07;
-  ctx.strokeStyle = '#237A45';
-  ctx.beginPath();
-  ctx.arc(0, 0, r, 0, TAU);
-  ctx.stroke();
-  // little white dots (prickles)
-  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  // prickle dots
+  ctx.fillStyle = CARD_PAPER;
   for (let i = 0; i < 14; i++) {
     const a = i * 2.39996;
     const d = r * (0.25 + ((i * 37) % 60) / 100);
     ctx.beginPath();
-    ctx.arc(Math.cos(a) * d, Math.sin(a) * d, r * 0.025, 0, TAU);
+    ctx.arc(Math.cos(a) * d, Math.sin(a) * d, r * 0.028, 0, TAU);
     ctx.fill();
   }
-  // face: mischievous eyes with slanted brows and a smirk (it *will* rug you)
+  // face: slanted brows and a smirk (it *will* rug you)
   ctx.fillStyle = INK;
   ctx.strokeStyle = INK;
   ctx.lineCap = 'round';
@@ -167,7 +237,7 @@ function cactusSprite(size = 256): Sprite {
     ctx.beginPath();
     ctx.ellipse(s * r * 0.28, r * 0.06, r * 0.075, r * 0.095, 0, 0, TAU);
     ctx.fill();
-    ctx.fillStyle = '#FFFFFF';
+    ctx.fillStyle = CARD_PAPER;
     ctx.beginPath();
     ctx.arc(s * r * 0.28 - r * 0.025, r * 0.03, r * 0.028, 0, TAU);
     ctx.fill();
@@ -183,183 +253,248 @@ function cactusSprite(size = 256): Sprite {
   ctx.moveTo(-r * 0.12, r * 0.25);
   ctx.quadraticCurveTo(r * 0.04, r * 0.33, r * 0.16, r * 0.2);
   ctx.stroke();
-  ctx.fillStyle = 'rgba(255,120,160,0.5)';
+  ctx.fillStyle = RISO.fluoPink;
+  ctx.globalAlpha = 0.75;
   for (const s of [-1, 1]) {
     ctx.beginPath();
-    ctx.ellipse(s * r * 0.5, r * 0.25, r * 0.11, r * 0.06, 0, 0, TAU);
+    ctx.ellipse(s * r * 0.5, r * 0.25, r * 0.1, r * 0.055, 0, 0, TAU);
     ctx.fill();
   }
+  ctx.globalAlpha = 1;
   // flower
   ctx.save();
   ctx.translate(r * 0.15, -r * 0.88);
-  ctx.fillStyle = '#FF8FB8';
-  ctx.strokeStyle = '#D14C7E';
-  ctx.lineWidth = r * 0.03;
   for (let i = 0; i < 5; i++) {
     ctx.save();
     ctx.rotate((i / 5) * TAU);
-    ctx.beginPath();
-    ctx.ellipse(0, -r * 0.13, r * 0.08, r * 0.13, 0, 0, TAU);
-    ctx.fill();
-    ctx.stroke();
+    risoPrint(ctx, (c) => c.ellipse(0, -r * 0.13, r * 0.08, r * 0.13, 0, 0, TAU), RISO.fluoPink, RISO.mustard, { dx: r * 0.015, dy: r * 0.015, rim: r * 0.025 });
     ctx.restore();
   }
-  ctx.fillStyle = '#FFE873';
+  ctx.fillStyle = RISO.mustard;
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = r * 0.025;
   ctx.beginPath();
   ctx.arc(0, 0, r * 0.07, 0, TAU);
   ctx.fill();
+  ctx.stroke();
   ctx.restore();
   return { canvas, size };
 }
 
-function powerUpSprite(type: PowerUpType, size = 128): Sprite {
+/** Power-up sticker: card disc with an ink rim, riso ring and the power drawn in ink. */
+function powerUpSprite(type: PowerUpType, size = 160): Sprite {
   const [canvas, ctx] = makeCanvas(size);
   const r = (size / 2) * SPRITE_FILL;
-  const palette: Record<PowerUpType, [string, string]> = {
-    [PowerUpType.Magnet]: ['#FFD1E1', '#FF5C93'],
-    [PowerUpType.Pump]: ['#FFE6C2', '#FF9F2E'],
-    [PowerUpType.Shield]: ['#D6F0FF', '#4A9EE0'],
-    [PowerUpType.Bag]: ['#FFF3B8', '#E6AD00'],
+  const tint: Record<PowerUpType, [string, string]> = {
+    [PowerUpType.Magnet]: [RISO.fluoPink, RISO.mustard],
+    [PowerUpType.Pump]: [RISO.orange, RISO.fluoPink],
+    [PowerUpType.Shield]: [RISO.blue, RISO.aqua],
+    [PowerUpType.Bag]: [RISO.mustard, RISO.orange],
   };
-  const [light, main] = palette[type];
-  // capsule bubble
-  const g = ctx.createRadialGradient(-r * 0.3, -r * 0.35, r * 0.1, 0, 0, r);
-  g.addColorStop(0, '#FFFFFF');
-  g.addColorStop(0.5, light);
-  g.addColorStop(1, main);
-  ctx.fillStyle = g;
-  ctx.beginPath();
-  ctx.arc(0, 0, r, 0, TAU);
-  ctx.fill();
-  ctx.lineWidth = r * 0.1;
-  ctx.strokeStyle = main;
-  ctx.stroke();
+  const [ink, over] = tint[type];
+  risoPrint(ctx, (c) => c.arc(0, 0, r, 0, TAU), ink, over, { dx: r * 0.08, dy: r * 0.08, rim: r * 0.08 });
+  ctx.fillStyle = CARD_PAPER;
+  ctx.strokeStyle = INK;
   ctx.lineWidth = r * 0.05;
-  ctx.strokeStyle = 'rgba(255,255,255,0.8)';
-  ctx.setLineDash([r * 0.18, r * 0.12]);
   ctx.beginPath();
-  ctx.arc(0, 0, r * 0.8, 0, TAU);
+  ctx.arc(0, 0, r * 0.7, 0, TAU);
+  ctx.fill();
   ctx.stroke();
-  ctx.setLineDash([]);
-  // icon
+  // perforated ring between the two
+  ctx.save();
+  ctx.strokeStyle = CARD_PAPER;
+  ctx.lineWidth = r * 0.06;
+  ctx.setLineDash([r * 0.08, r * 0.1]);
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.86, 0, TAU);
+  ctx.stroke();
+  ctx.restore();
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
+  const lw = r * 0.07;
   switch (type) {
     case PowerUpType.Magnet: {
-      ctx.lineWidth = r * 0.22;
-      ctx.strokeStyle = '#E8335F';
+      ctx.lineWidth = r * 0.24;
+      ctx.strokeStyle = INK;
+      const u = (c: CanvasRenderingContext2D) => {
+        c.arc(0, -r * 0.02, r * 0.3, Math.PI, 0, true);
+        c.moveTo(-r * 0.3, -r * 0.02);
+        c.lineTo(-r * 0.3, -r * 0.34);
+        c.moveTo(r * 0.3, -r * 0.02);
+        c.lineTo(r * 0.3, -r * 0.34);
+      };
       ctx.beginPath();
-      ctx.arc(0, -r * 0.02, r * 0.32, Math.PI, 0, true);
-      ctx.moveTo(-r * 0.32, -r * 0.02);
-      ctx.lineTo(-r * 0.32, -r * 0.3);
-      ctx.moveTo(r * 0.32, -r * 0.02);
-      ctx.lineTo(r * 0.32, -r * 0.3);
+      u(ctx);
       ctx.stroke();
-      ctx.strokeStyle = '#E9EEF5';
-      ctx.lineCap = 'butt';
+      ctx.lineWidth = r * 0.14;
+      ctx.strokeStyle = RISO.fluoPink;
       ctx.beginPath();
-      ctx.moveTo(-r * 0.32, -r * 0.3);
-      ctx.lineTo(-r * 0.32, -r * 0.45);
-      ctx.moveTo(r * 0.32, -r * 0.3);
-      ctx.lineTo(r * 0.32, -r * 0.45);
+      u(ctx);
+      ctx.stroke();
+      ctx.lineCap = 'butt';
+      ctx.strokeStyle = CARD_PAPER;
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.3, -r * 0.24);
+      ctx.lineTo(-r * 0.3, -r * 0.36);
+      ctx.moveTo(r * 0.3, -r * 0.24);
+      ctx.lineTo(r * 0.3, -r * 0.36);
       ctx.stroke();
       break;
     }
     case PowerUpType.Pump: {
       ctx.save();
       ctx.rotate(Math.PI / 4);
-      ctx.fillStyle = '#FFFFFF';
-      ctx.strokeStyle = '#E2541B';
-      ctx.lineWidth = r * 0.06;
-      ctx.beginPath();
-      ctx.moveTo(0, -r * 0.5);
-      ctx.bezierCurveTo(r * 0.25, -r * 0.3, r * 0.22, r * 0.1, r * 0.16, r * 0.28);
-      ctx.lineTo(-r * 0.16, r * 0.28);
-      ctx.bezierCurveTo(-r * 0.22, r * 0.1, -r * 0.25, -r * 0.3, 0, -r * 0.5);
-      ctx.fill();
-      ctx.stroke();
-      ctx.fillStyle = '#7CC8FF';
+      risoPrint(
+        ctx,
+        (c) => {
+          c.moveTo(0, -r * 0.5);
+          c.bezierCurveTo(r * 0.25, -r * 0.3, r * 0.22, r * 0.1, r * 0.16, r * 0.28);
+          c.lineTo(-r * 0.16, r * 0.28);
+          c.bezierCurveTo(-r * 0.22, r * 0.1, -r * 0.25, -r * 0.3, 0, -r * 0.5);
+        },
+        CARD_PAPER,
+        RISO.orange,
+        { dx: r * 0.04, dy: r * 0.04, rim: lw },
+      );
+      ctx.fillStyle = RISO.aqua;
       ctx.beginPath();
       ctx.arc(0, -r * 0.12, r * 0.08, 0, TAU);
       ctx.fill();
-      ctx.fillStyle = '#FF9F2E';
-      ctx.beginPath();
-      ctx.moveTo(-r * 0.12, r * 0.3);
-      ctx.lineTo(0, r * 0.55);
-      ctx.lineTo(r * 0.12, r * 0.3);
-      ctx.fill();
+      ctx.stroke();
+      risoPrint(
+        ctx,
+        (c) => {
+          c.moveTo(-r * 0.12, r * 0.32);
+          c.lineTo(0, r * 0.56);
+          c.lineTo(r * 0.12, r * 0.32);
+          c.closePath();
+        },
+        RISO.fluoPink,
+        RISO.mustard,
+        { dx: 0, dy: r * 0.04, rim: lw * 0.8 },
+      );
       ctx.restore();
       break;
     }
     case PowerUpType.Shield: {
-      ctx.fillStyle = '#FFFFFF';
-      ctx.strokeStyle = '#2D72B0';
-      ctx.lineWidth = r * 0.07;
+      risoPrint(
+        ctx,
+        (c) => {
+          c.moveTo(0, -r * 0.46);
+          c.quadraticCurveTo(r * 0.3, -r * 0.34, r * 0.4, -r * 0.34);
+          c.quadraticCurveTo(r * 0.42, r * 0.22, 0, r * 0.48);
+          c.quadraticCurveTo(-r * 0.42, r * 0.22, -r * 0.4, -r * 0.34);
+          c.quadraticCurveTo(-r * 0.3, -r * 0.34, 0, -r * 0.46);
+        },
+        RISO.aqua,
+        RISO.blue,
+        { dx: r * 0.05, dy: r * 0.05, rim: lw },
+      );
+      ctx.fillStyle = CARD_PAPER;
       ctx.beginPath();
-      ctx.moveTo(0, -r * 0.48);
-      ctx.quadraticCurveTo(r * 0.3, -r * 0.36, r * 0.4, -r * 0.36);
-      ctx.quadraticCurveTo(r * 0.42, r * 0.22, 0, r * 0.5);
-      ctx.quadraticCurveTo(-r * 0.42, r * 0.22, -r * 0.4, -r * 0.36);
-      ctx.quadraticCurveTo(-r * 0.3, -r * 0.36, 0, -r * 0.48);
-      ctx.fill();
-      ctx.stroke();
-      ctx.fillStyle = '#7CC8FF';
-      heartPath(ctx, r * 0.16);
+      heartPath(ctx, r * 0.15);
       ctx.fill();
       break;
     }
     case PowerUpType.Bag: {
-      ctx.fillStyle = '#F2C14E';
-      ctx.strokeStyle = '#9C6A00';
-      ctx.lineWidth = r * 0.06;
+      risoPrint(
+        ctx,
+        (c) => {
+          c.moveTo(-r * 0.12, -r * 0.28);
+          c.quadraticCurveTo(-r * 0.5, -r * 0.08, -r * 0.42, r * 0.26);
+          c.quadraticCurveTo(-r * 0.35, r * 0.48, 0, r * 0.48);
+          c.quadraticCurveTo(r * 0.35, r * 0.48, r * 0.42, r * 0.26);
+          c.quadraticCurveTo(r * 0.5, -r * 0.08, r * 0.12, -r * 0.28);
+          c.lineTo(r * 0.24, -r * 0.46);
+          c.lineTo(-r * 0.24, -r * 0.46);
+          c.closePath();
+        },
+        RISO.mustard,
+        RISO.orange,
+        { dx: r * 0.05, dy: r * 0.05, rim: lw },
+      );
+      ctx.strokeStyle = INK;
+      ctx.lineWidth = lw * 0.9;
       ctx.beginPath();
-      ctx.moveTo(-r * 0.12, -r * 0.3);
-      ctx.quadraticCurveTo(-r * 0.5, -r * 0.1, -r * 0.42, r * 0.25);
-      ctx.quadraticCurveTo(-r * 0.35, r * 0.48, 0, r * 0.48);
-      ctx.quadraticCurveTo(r * 0.35, r * 0.48, r * 0.42, r * 0.25);
-      ctx.quadraticCurveTo(r * 0.5, -r * 0.1, r * 0.12, -r * 0.3);
-      ctx.closePath();
-      ctx.fill();
+      ctx.moveTo(-r * 0.16, -r * 0.28);
+      ctx.lineTo(r * 0.16, -r * 0.28);
       ctx.stroke();
+      ctx.lineWidth = lw * 1.1;
       ctx.beginPath();
-      ctx.moveTo(-r * 0.14, -r * 0.3);
-      ctx.lineTo(-r * 0.24, -r * 0.48);
-      ctx.lineTo(r * 0.24, -r * 0.48);
-      ctx.lineTo(r * 0.14, -r * 0.3);
-      ctx.fill();
+      ctx.save();
+      ctx.translate(0, r * 0.12);
+      dollarPath(ctx, r * 0.25);
+      ctx.restore();
       ctx.stroke();
-      ctx.fillStyle = '#7A4E00';
-      ctx.font = `700 ${r * 0.48}px Fredoka, system-ui, sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('$', 0, r * 0.12);
       break;
     }
   }
-  ctx.fillStyle = 'rgba(255,255,255,0.75)';
-  ctx.beginPath();
-  ctx.ellipse(-r * 0.4, -r * 0.5, r * 0.2, r * 0.1, -0.6, 0, TAU);
-  ctx.fill();
   return { canvas, size };
 }
 
-function ejectSprite(skinId: number, size = 64): Sprite {
-  const skin = getSkin(skinId);
-  return coinSprite(skin.colors.base, skin.colors.rim, size);
+/** Ejected mass: a little riso coin in the skin's inks. */
+function ejectSprite(skinId: number, size = 72): Sprite {
+  const [canvas, ctx] = makeCanvas(size);
+  const r = (size / 2) * SPRITE_FILL;
+  const look = lookForBasicSkin(skinId);
+  ctx.fillStyle = CARD_PAPER;
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, TAU);
+  ctx.fill();
+  risoPrint(ctx, (c) => c.arc(0, 0, r, 0, TAU), look.body, look.overprint, { dx: r * 0.12, dy: r * 0.12, rim: r * 0.12 });
+  ctx.strokeStyle = INK;
+  ctx.globalAlpha = 0.45;
+  ctx.lineWidth = r * 0.07;
+  ctx.setLineDash([r * 0.16, r * 0.12]);
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.66, 0, TAU);
+  ctx.stroke();
+  return { canvas, size };
 }
+
+/** Loot glint: a 4-point twinkle in card paper with an ink rim (drawn live, pulsing). */
+export function drawGlint(ctx: CanvasRenderingContext2D, x: number, y: number, s: number): void {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.beginPath();
+  starPath(ctx, s, s * 0.28, 4, 0);
+  ctx.fillStyle = CARD_PAPER;
+  ctx.fill();
+  ctx.lineWidth = s * 0.16;
+  ctx.strokeStyle = INK;
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** Confetti rotations pre-rendered per variant (cheap: no per-frame rotate). */
+const ROTATIONS = 6;
+/** Halftone shades cached per on-screen radius bucket (≈ 12 % steps). */
+const HALFTONE_STEP = 1.12;
 
 /** Lazily created, cached sprites. Must only be used in the browser. */
 export class SpriteCache {
-  private food: Sprite[] | null = null;
+  private food: Sprite[][] | null = null;
   private cactus: Sprite | null = null;
+  private gold: Sprite | null = null;
+  private loot: Sprite | null = null;
   private powerUps = new Map<number, Sprite>();
   private ejects = new Map<number, Sprite>();
+  private halftones = new Map<number, HTMLCanvasElement>();
 
-  foodSprite(variant: number): Sprite {
+  /** Food sprite for a variant; `seed` (0..1) picks one of the pre-rendered rotations. */
+  foodSprite(variant: number, seed = 0): Sprite {
     if (!this.food) {
-      this.food = [...FOOD_COLORS.map(([f, r]) => coinSprite(f, r, 48)), gemSprite(56), goldSprite(96)];
+      this.food = CONFETTI.map((_, v) => Array.from({ length: ROTATIONS }, (_, k) => confettiSprite(v, (k / ROTATIONS) * TAU, 48)));
+      this.food.push([gemSprite(64)]);
+      this.gold = mustardCoin(96, 'star');
+      this.food.push([this.gold]);
     }
-    return this.food[variant] ?? this.food[0];
+    const set = this.food[variant] ?? this.food[0];
+    return set[Math.floor(seed * set.length) % set.length];
+  }
+
+  lootSprite(): Sprite {
+    return (this.loot ??= mustardCoin(128, 'dollar'));
   }
 
   cactusSprite(): Sprite {
@@ -382,6 +517,29 @@ export class SpriteCache {
       this.ejects.set(skin, s);
     }
     return s;
+  }
+
+  /**
+   * `CoinState.halftone` provider: the coin's halftone shade rendered once per
+   * on-screen size bucket. `ppu` is screen pixels per world unit.
+   */
+  halftone(r: number, spacing: number, ppu: number): HTMLCanvasElement | null {
+    const px = r * ppu;
+    if (px < 10 || px > 900) return null;
+    const bucket = Math.round(Math.log(px) / Math.log(HALFTONE_STEP));
+    let c = this.halftones.get(bucket);
+    if (!c) {
+      const R = Math.ceil(HALFTONE_STEP ** bucket);
+      c = document.createElement('canvas');
+      c.width = c.height = R * 2;
+      const ctx = c.getContext('2d')!;
+      ctx.translate(R, R);
+      // same spacing rule as the art (r × 0.075, at least 3 screen px)
+      drawHalftoneDots(ctx, R, Math.max(R * 0.075, (spacing / r) * R));
+      if (this.halftones.size > 64) this.halftones.clear();
+      this.halftones.set(bucket, c);
+    }
+    return c;
   }
 }
 
