@@ -8,7 +8,6 @@ import {
   assertSafeSupply,
   ata,
   clusterDefaultRpc,
-  createAtaIdempotentIx,
   describeError,
   lamportsToSol,
   listOwnedPasses,
@@ -65,6 +64,8 @@ const SEND_TIMEOUT_MS = 120_000;
 const RPC_TIMEOUT_MS = 20_000;
 const LOW_BALANCE_LAMPORTS = 50_000_000; // 0.05 SOL
 const MAX_PROFILE_CACHE = 5_000;
+/** Re-check interval for a settlement waiting on the player's token account. */
+export const NO_ATA_RETRY_MS = 5 * 60_000;
 const STOP_GRACE_MS = 5_000;
 
 const ERR = {
@@ -793,16 +794,32 @@ export class SolanaChain implements ChainGateway {
       return;
     }
 
-    const ixs: TransactionInstruction[] = [];
-    // settle pays into the player's token account: create it (server pays the rent) when missing
+    // Settle pays into the player's token account. The server never pays its rent (a player
+    // could close and re-open it to drain the server): without one the item stays owed and is
+    // re-checked every 5 minutes; the player's own 24 h refund remains the fallback.
     const playerAta = ata(item.player, config.tokenMint, config.tokenProgram).toBase58();
-    let ataExists = false;
+    let ataExists: boolean;
     try {
       ataExists = await this.client!.accountExists(playerAta);
-    } catch {
-      ataExists = false; // idempotent create: harmless when it does exist
+    } catch (err) {
+      this.journal.retryLater(key, `token account lookup failed: ${firstLine(err)}`, this.now());
+      return;
     }
-    if (!ataExists) ixs.push(createAtaIdempotentIx(this.keypair!.publicKey, item.player, config.tokenMint, config.tokenProgram));
+    if (!ataExists) {
+      if (!item.needsTokenAccount) {
+        this.log(
+          `chain: settlement ${short(key)} waits — ${short(item.player)} has no token account ${short(playerAta)} ` +
+            `(the player must create it; re-checking every ${NO_ATA_RETRY_MS / 60_000} min)`,
+        );
+      }
+      this.journal.retryLater(key, 'player token account missing', this.now(), { delayMs: NO_ATA_RETRY_MS, needsTokenAccount: true });
+      return;
+    }
+    if (item.needsTokenAccount) {
+      this.log(`chain: settlement ${short(key)} — token account of ${short(item.player)} found, settling`);
+      this.journal.clearNeedsTokenAccount(key);
+    }
+    const ixs: TransactionInstruction[] = [];
     const ix = await this.client!.ix.settleSession(this.keypair!.publicKey, {
       player: item.player,
       arenaId: item.arenaId,

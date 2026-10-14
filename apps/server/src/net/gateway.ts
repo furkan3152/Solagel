@@ -245,14 +245,15 @@ export class Gateway {
    * our collection, read via `getPass`). Otherwise sends `pass_invalid` and
    * returns 0: the player joins with the chosen basic skin.
    */
-  private async verifyPass(conn: Conn, asset: unknown): Promise<number> {
+  private async verifyPass(conn: Conn, asset: unknown, opts: { limited?: boolean } = {}): Promise<number> {
     const invalid = (message: string): number => {
       this.error(conn, 'pass_invalid', message);
       return 0;
     };
     if (!conn.wallet) return invalid('Sign in with the wallet that holds this Pass to play with it.');
     if (!isValidPubkey(asset)) return invalid('That is not a Slana Pass.');
-    if (!conn.allowChainOp()) {
+    // arena joins already spent their chain-op slot on the session lookup
+    if (opts.limited !== false && !conn.allowChainOp()) {
       this.error(conn, 'rate_limited', 'Too many requests — playing with your basic skin.');
       return 0;
     }
@@ -357,7 +358,7 @@ export class Gateway {
       // look: the Pass locked by the ticket; without one, an optional Pass the wallet owns (no power)
       let pass = 0;
       if (session.hasPass && session.passAsset) pass = (await this.chain.getPass(session.passAsset).catch(() => null))?.number ?? 0;
-      else if (wantPass !== null) pass = await this.verifyPass(conn, wantPass);
+      else if (wantPass !== null) pass = await this.verifyPass(conn, wantPass, { limited: false });
       // the instance may have filled up or been closed during the awaits above: pick again (arena data is cached)
       room = await this.rooms.confirmArenaRoom(target.arenaId, room);
       if (!room) {

@@ -516,4 +516,15 @@ describe('server over websocket', () => {
     a.close();
     b.close();
   });
+
+  it('lists pending settlements with needsTokenAccount', async () => {
+    const pubkey = newWallet();
+    const now = Date.now();
+    app.journal.enqueue({ kind: 'settle', key: `Owed-${pubkey}`, player: pubkey, arenaId: 1, session: `Owed-${pubkey}`, sessionId: 9, payout: 12_000_000, score: 1, kills: 0, xp: 0, attempts: 0, nextAttemptAt: now + 60_000, createdAt: now });
+    app.journal.retryLater(`Owed-${pubkey}`, 'player token account missing', now, { delayMs: 300_000, needsTokenAccount: true });
+    const res = (await (await fetch(`http://127.0.0.1:${port}/api/pending?wallet=${pubkey}`)).json()) as unknown;
+    expect(res).toEqual({ pending: [{ key: `Owed-${pubkey}`, arenaId: 1, payout: 12_000_000, needsTokenAccount: true }] });
+    expect((await fetch(`http://127.0.0.1:${port}/api/pending?wallet=nope`)).status).toBe(400);
+    app.journal.remove(`Owed-${pubkey}`);
+  });
 });
