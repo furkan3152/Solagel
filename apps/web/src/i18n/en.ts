@@ -185,7 +185,7 @@ export const en = {
   'err.no_session': 'No open arena ticket found.',
   'err.session_busy': 'You are already playing in this arena.',
   'err.skin_locked': 'That skin is locked.',
-  'err.stake_disabled': 'SOL arenas are offline.',
+  'err.arenas_disabled': 'SOL arenas are offline.',
   'err.version_mismatch': 'A new version is out — please refresh.',
   'err.rate_limited': 'Slow down a little 🐢',
   'err.bad_request': 'Something went wrong.',

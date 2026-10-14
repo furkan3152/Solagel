@@ -31,7 +31,7 @@ export function DeathModal() {
   const shareText = encodeURIComponent(t('death.shareText', { mass: compact(s.maxMass) }));
   const again = () => {
     sound.click();
-    engine()?.play(room?.mode === 'private' && room.code ? `private:${room.code}` : 'free');
+    engine()?.play(room?.mode === 'private' && room.code ? `private:${room.code}` : 'practice');
   };
   return (
     <Modal>
@@ -48,7 +48,7 @@ export function DeathModal() {
             t('death.byNobody')
           )}
         </div>
-        {room?.mode === 'stake' && death.killer && <div className="notice">{t('death.lost', { name: death.killer })}</div>}
+        {room?.mode === 'arena' && death.killer && <div className="notice">{t('death.lost', { name: death.killer })}</div>}
       </div>
       <div className="result-grid">
         <Stat label={t('death.alive')} value={formatDuration(s.aliveMs)} />
@@ -60,7 +60,7 @@ export function DeathModal() {
       </div>
       {!auth && <div className="notice">{t('lobby.guestNote')}</div>}
       <div className="row" style={{ marginTop: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
-        {room?.mode !== 'stake' && (
+        {room?.mode !== 'arena' && (
           <button className="btn btn-gold btn-xl" onClick={again} autoFocus>
             ▶ {t('death.again')}
           </button>
@@ -88,8 +88,8 @@ export function CashoutModal() {
   const settled = useUi((s) => s.lastSettlement);
   const [since] = useState(() => Date.now());
   if (!res) return null;
-  const paid = settled && settled.at >= since - 2000 && settled.kind !== 'record';
-  const profit = room?.buyIn ? res.value - room.buyIn : null;
+  const paid = settled && settled.at >= since - 2000;
+  const profit = room?.entryFee ? res.value - room.entryFee : null;
   return (
     <Modal>
       <div className="death-hero">

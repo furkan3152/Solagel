@@ -187,7 +187,7 @@ export const tr: Dict = {
   'err.no_session': 'Açık arena bileti bulunamadı.',
   'err.session_busy': 'Bu arenada zaten oynuyorsun.',
   'err.skin_locked': 'Bu skin kilitli.',
-  'err.stake_disabled': 'SOL arenaları kapalı.',
+  'err.arenas_disabled': 'SOL arenaları kapalı.',
   'err.version_mismatch': 'Yeni sürüm çıktı — sayfayı yenile.',
   'err.rate_limited': 'Biraz yavaşla 🐢',
   'err.bad_request': 'Bir şeyler ters gitti.',
