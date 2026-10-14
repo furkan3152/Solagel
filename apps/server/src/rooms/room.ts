@@ -59,9 +59,9 @@ export interface JoinOptions {
   flags: number;
   /** Arena ticket; `stake.hasPass` turns on Pass power in arenas. */
   stake?: Omit<ArenaEntry, 'pid'>;
-  /** Verified Slana Pass number the player wears (0 / absent = none). Outside arenas it also turns on Pass power. */
+  /** Verified Slana Pass number the player wears (0 / absent = none). In practice it also turns on Pass power; private rooms ignore it. */
   pass?: number;
-  /** Outside arenas: a verified Pass is equipped (Pass power) even when its number is unknown. */
+  /** Practice: a verified Pass is equipped (Pass power) even when its number is unknown. Private rooms ignore it. */
   hasPass?: boolean;
 }
 
@@ -198,9 +198,12 @@ export class Room {
 
   join(conn: Conn, opts: JoinOptions): Player {
     this.attach(conn);
-    const pass = Number.isInteger(opts.pass) && (opts.pass ?? 0) > 0 && (opts.pass ?? 0) <= 0xffff ? opts.pass! : 0;
-    // Pass power: arenas take it from the ticket, other rooms from a verified Pass
-    const hasPass = this.ledger ? (opts.stake?.hasPass ?? false) : pass > 0 || opts.hasPass === true;
+    // private rooms ignore the Pass entirely
+    const practice = this.opts.mode === 'practice';
+    const passOk = !!this.ledger || practice;
+    const pass = passOk && Number.isInteger(opts.pass) && (opts.pass ?? 0) > 0 && (opts.pass ?? 0) <= 0xffff ? opts.pass! : 0;
+    // Pass power: arenas take it from the ticket, practice from a verified Pass
+    const hasPass = this.ledger ? (opts.stake?.hasPass ?? false) : practice && (pass > 0 || opts.hasPass === true);
     const flags = hasPass || pass > 0 ? opts.flags | PlayerFlag.Pass : opts.flags & ~PlayerFlag.Pass;
     const mass = hasPass ? RULES.startMass * this.passPower.startMassMul : RULES.startMass;
     const player = this.world.addPlayer({ name: opts.name, skin: opts.skin, flags, mass });

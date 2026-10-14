@@ -192,7 +192,25 @@ export class RoomManager {
       if (r.humans.size >= this.cfg.arenaInstanceCap) continue;
       if (!best || r.humans.size > best.humans.size) best = r;
     }
-    return best ?? this.createArenaInstance(arenaId, arena);
+    const room = best ?? this.createArenaInstance(arenaId, arena);
+    // a join is under way: keep cleanup from closing this (possibly idle) instance meanwhile
+    room.lastActivity = Date.now();
+    return room;
+  }
+
+  /**
+   * Re-validates a room picked by `arenaRoom` after the join's awaits: it must
+   * still be in the map (cleanup may have closed it) and have space. Otherwise
+   * picks again, with the same checks. Null when no live room is available.
+   */
+  async confirmArenaRoom(arenaId: number, room: Room): Promise<Room | null> {
+    const live = (r: Room | null): r is Room => r !== null && this.rooms.get(r.id) === r && !r.isFull;
+    if (live(room)) {
+      room.lastActivity = Date.now();
+      return room;
+    }
+    const again = await this.arenaRoom(arenaId);
+    return live(again) ? again : null;
   }
 
   /** The instance of `arenaId` in which `wallet` holds a live ticket, if any. */
