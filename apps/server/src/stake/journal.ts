@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
+import { basename, dirname } from 'node:path';
 
 export type SettleReason = 'cashout' | 'death' | 'afk' | 'crash' | 'stale' | 'maxage' | 'kicked';
 
@@ -25,10 +25,11 @@ export interface SettlementItem {
   createdAt: number;
   lastError?: string;
   /**
-   * The player's game-token account is missing: settling waits until the player
-   * creates it (the server never pays that rent). Shown via `/api/pending`.
+   * Attempts that failed on the player's token account itself (closed meanwhile, owner
+   * changed, Token-2022 MemoTransfer required, ...). After a few, the worker settles without
+   * the account and the session is finalized with `owed` (ruling R24).
    */
-  needsTokenAccount?: boolean;
+  tokenFailures?: number;
 }
 
 export interface LiveStake {
@@ -92,6 +93,8 @@ export class Journal {
   private lootByRoom = new Map<string, LootRecord[]>();
   /** Arenas whose loot was already adopted in this process (restored once only). */
   private readonly adopted = new Set<number>();
+  /** `load` quarantined an unreadable file in this process. */
+  private quarantinedHere = false;
 
   constructor(
     private readonly path: string | null,
@@ -123,6 +126,7 @@ export class Journal {
       }
       if (legacy > 0) this.persist();
     } catch (err) {
+      this.quarantinedHere = true;
       const backup = `${this.path}.corrupt-${Date.now()}`;
       this.log(`!!! journal at ${this.path} is unreadable (${(err as Error).message}); moved to ${backup}. Manual review required.`);
       try {
@@ -254,12 +258,6 @@ export class Journal {
     this.commit({ enqueue: [item] });
   }
 
-  /** The player's token account exists now: clear the wait flag (persisted with the next write). */
-  clearNeedsTokenAccount(key: string): void {
-    const item = this.pendingItems.find((p) => p.key === key);
-    if (item) delete item.needsTokenAccount;
-  }
-
   /** Marks an item as done (settled on-chain or no longer applicable). */
   remove(key: string): void {
     const before = this.pendingItems.length;
@@ -269,18 +267,32 @@ export class Journal {
 
   /**
    * Records a failed attempt with exponential backoff (max 5 minutes), or after
-   * `opts.delayMs` when given. `needsTokenAccount` true/false flags/clears a wait
-   * for the player's token account (left as is when omitted).
+   * `opts.delayMs` when given. `tokenFailure` counts a failure caused by the player's
+   * token account (`tokenFailures`).
    */
-  retryLater(key: string, error: string, now = Date.now(), opts: { delayMs?: number; needsTokenAccount?: boolean } = {}): void {
+  retryLater(key: string, error: string, now = Date.now(), opts: { delayMs?: number; tokenFailure?: boolean } = {}): void {
     const item = this.pendingItems.find((p) => p.key === key);
     if (!item) return;
     item.attempts++;
     item.lastError = error.slice(0, 300);
     item.nextAttemptAt = now + (opts.delayMs ?? Math.min(300_000, 2000 * 2 ** Math.min(item.attempts, 8)));
-    if (opts.needsTokenAccount === true) item.needsTokenAccount = true;
-    else if (opts.needsTokenAccount === false) delete item.needsTokenAccount;
+    if (opts.tokenFailure) item.tokenFailures = (item.tokenFailures ?? 0) + 1;
     this.persist();
+  }
+
+  /**
+   * Quarantined journal files next to this one (`<name>.corrupt-<ts>`, moved aside by
+   * `load`). While any exists, what the server owed at that time is unknown (M9).
+   */
+  quarantinedFiles(): string[] {
+    if (!this.path) return this.quarantinedHere ? ['(in-memory)'] : [];
+    const dir = dirname(this.path);
+    const prefix = `${basename(this.path)}.corrupt-`;
+    try {
+      return readdirSync(dir).filter((f) => f.startsWith(prefix));
+    } catch {
+      return this.quarantinedHere ? [`${prefix}?`] : [];
+    }
   }
 
   private persist(): void {

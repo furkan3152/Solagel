@@ -1,9 +1,9 @@
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { extname, join, normalize, resolve, sep } from 'node:path';
-import { PROTOCOL_VERSION } from '@slana/shared';
+import { PROTOCOL_VERSION, siwsChainId } from '@slana/shared';
 import { serializePassJson } from '@slana/art';
-import { isValidPubkey, type Auth } from './auth';
+import { isValidPubkey, type Auth, type SiwsOrigin } from './auth';
 import type { ChainGateway } from './chain/types';
 import { publicChainStatus, type ServerConfig } from './config';
 import type { Leaderboards } from './leaderboards';
@@ -58,6 +58,15 @@ export function publicBaseUrl(cfg: ServerConfig, req: IncomingMessage, trustProx
   const proto = trustProxy ? first(req.headers['x-forwarded-proto']) : undefined;
   if (host && HOST_RE.test(host)) return `${proto === 'https' ? 'https' : 'http'}://${host}`;
   return `http://localhost:${cfg.port}`;
+}
+
+/**
+ * SIWS origin of a login (M1): the domain is the `PUBLIC_URL` host, else the request host
+ * (as in `publicBaseUrl`); the URI is that base URL; the chain id names the cluster.
+ */
+export function siwsOrigin(cfg: ServerConfig, req: IncomingMessage, trustProxy: boolean): SiwsOrigin {
+  const uri = publicBaseUrl(cfg, req, trustProxy);
+  return { domain: new URL(uri).host, uri, chainId: siwsChainId(cfg.chain.cluster) };
 }
 
 function json(res: ServerResponse, status: number, body: unknown): void {
@@ -187,15 +196,16 @@ export function createHttpServer(cfg: ServerConfig, ctx: Ctx): Server {
             if (!nonceLimiter.allow(ip)) return json(res, 429, { error: 'rate_limited' });
             const pubkey = url.searchParams.get('pubkey');
             if (!isValidPubkey(pubkey)) return json(res, 400, { error: 'invalid pubkey' });
-            return json(res, 200, ctx.auth.issueNonce(pubkey));
+            return json(res, 200, ctx.auth.issueNonce(pubkey, siwsOrigin(cfg, req, trustProxy)));
           }
           case '/api/pending': {
-            // settlements owed to a wallet; `needsTokenAccount`: the player must create their token account
+            // settlements the server still has to send for a wallet. Finalized sessions (R24: settled,
+            // payout waiting to be collected) live on chain; the web reads them there (SessionView.finalized/owed)
             const wallet = url.searchParams.get('wallet');
             if (!isValidPubkey(wallet)) return json(res, 400, { error: 'invalid wallet' });
             const pending = (ctx.journal?.pending ?? [])
               .filter((p) => p.player === wallet)
-              .map((p) => ({ key: p.key, arenaId: p.arenaId ?? null, payout: p.payout ?? 0, needsTokenAccount: p.needsTokenAccount === true }));
+              .map((p) => ({ key: p.key, arenaId: p.arenaId ?? null, payout: p.payout ?? 0 }));
             return json(res, 200, { pending });
           }
           case '/api/pass/owned': {

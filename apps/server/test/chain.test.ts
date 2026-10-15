@@ -17,7 +17,7 @@ import {
 import { Connection, Keypair, PublicKey, TransactionInstruction } from '@solana/web3.js';
 import { describe, expect, it } from 'vitest';
 import { createChain } from '../src/chain';
-import { NO_ATA_RETRY_MS, SolanaChain, STALE_SESSION_AFTER_S, type ChainClient } from '../src/chain/solana';
+import { SolanaChain, STALE_SESSION_AFTER_S, TOKEN_FAILURES_BEFORE_FINALIZE, type ChainClient } from '../src/chain/solana';
 import type { SettledEvent } from '../src/chain/types';
 import { loadConfig, type ServerConfig } from '../src/config';
 import { Journal, type SettlementItem } from '../src/stake/journal';
@@ -198,6 +198,8 @@ class FakeClient implements ChainClient {
       settleFee: 20_000,
       // the fee fixed at join (Pass 2 %, else 5 %)
       feeBps: opts.hasPass ? 200 : 500,
+      finalized: false,
+      owed: 0n,
       ...opts,
     };
     this.sessions.set(`${s.arenaId}:${player}`, s);
@@ -556,60 +558,117 @@ describe('settlement worker', () => {
     expect(h.settled.map((e) => e.fee)).toEqual([117_283, 46_913]);
   });
 
-  it('missing player ATA keeps the settle queued without server-paid rent', async () => {
+  it('R24: a missing player ATA settles at once without the token account (finalize, no server-paid rent)', async () => {
     const h = await harness();
     const s = h.client.addSession(wallet());
     const playerAta = ata(s.player, h.client.config!.tokenMint, h.client.config!.tokenProgram);
     h.client.missing.add(playerAta.toBase58());
     h.journal.enqueue(settleItem(s));
     await h.chain.processPending();
-    expect(h.sent).toBe(0); // nothing sent: no settle, no server-paid ATA creation
-    expect(h.journal.pending).toHaveLength(1);
-    const item = h.journal.pending[0];
-    expect(item.needsTokenAccount).toBe(true);
-    expect(item.nextAttemptAt).toBe(T0 + NO_ATA_RETRY_MS);
-    // one log line per item, not per retry
-    for (let i = 0; i < 3; i++) {
-      h.clock.now += NO_ATA_RETRY_MS;
-      await h.chain.processPending();
-    }
-    expect(h.sent).toBe(0);
-    expect(h.journal.pending).toHaveLength(1);
-    expect(h.logs.filter((l) => /has no token account/.test(l))).toHaveLength(1);
+    expect(h.sent).toBe(1);
+    expect(h.journal.pending).toHaveLength(0);
+    expect(h.client.settles[0].playerToken).toBeNull();
+    // the real instruction carries the program id in the optional player_token slot
+    const keys = h.client.built[0].keys.map((k) => k.pubkey.toBase58());
+    expect(keys[6]).toBe(PROGRAM.toBase58());
+    expect(keys).not.toContain(playerAta.toBase58());
     expect(h.sentIxs.flat().some((ix) => ix.programId.equals(ASSOCIATED_TOKEN_PROGRAM_ID))).toBe(false);
+    expect(h.settled).toMatchObject([{ key: s.address, collect: true }]);
+    expect(h.logs.some((l) => /finalized .* \(to collect\)/.test(l))).toBe(true);
   });
 
-  it('NO_ATA_RETRY_S sets the re-check interval', async () => {
-    const h = await harness({ cfg: { noAtaRetryS: 3 } });
-    const s = h.client.addSession(wallet());
-    h.client.missing.add(ata(s.player, h.client.config!.tokenMint, h.client.config!.tokenProgram).toBase58());
-    h.journal.enqueue(settleItem(s));
-    await h.chain.processPending();
-    expect(h.journal.pending[0]).toMatchObject({ needsTokenAccount: true, nextAttemptAt: T0 + 3_000 });
-  });
-
-  it('settles once the player ATA exists', async () => {
+  it('a zero payout without an ATA is not flagged as a payout to collect', async () => {
     const h = await harness();
     const s = h.client.addSession(wallet());
-    const playerAta = ata(s.player, h.client.config!.tokenMint, h.client.config!.tokenProgram).toBase58();
-    h.client.missing.add(playerAta);
+    h.client.missing.add(ata(s.player, h.client.config!.tokenMint, h.client.config!.tokenProgram).toBase58());
+    h.journal.enqueue(settleItem(s, { payout: 0, reason: 'death' }));
+    await h.chain.processPending();
+    expect(h.client.settles[0].playerToken).toBeNull();
+    expect(h.settled[0].collect).toBeUndefined();
+  });
+
+  it(`R24: after ${TOKEN_FAILURES_BEFORE_FINALIZE} token-account failures (e.g. MemoTransfer) the worker settles without it`, async () => {
+    const h = await harness();
+    const s = h.client.addSession(wallet());
     h.journal.enqueue(settleItem(s));
-    await h.chain.processPending();
-    expect(h.journal.pending[0].needsTokenAccount).toBe(true);
-    h.client.missing.delete(playerAta); // the player created it
-    await h.chain.processPending();
-    expect(h.sent).toBe(0); // not due before the 5-minute re-check
-    h.clock.now += NO_ATA_RETRY_MS;
+    const memo = () => ({
+      logs: [
+        'Program TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb invoke [2]',
+        'Program log: Error: No memo in previous instruction; required for recipient to receive a transfer',
+        'Program TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb failed: custom program error: 0x24',
+      ],
+    });
+    for (let i = 0; i < TOKEN_FAILURES_BEFORE_FINALIZE; i++) h.failures.push(memo());
+    for (let i = 0; i < TOKEN_FAILURES_BEFORE_FINALIZE; i++) {
+      await h.chain.processPending();
+      expect(h.journal.pending[0].tokenFailures).toBe(i + 1);
+      h.clock.now = h.journal.pending[0].nextAttemptAt;
+    }
+    expect(h.client.settles.every((p) => p.playerToken === undefined)).toBe(true);
     await h.chain.processPending();
     expect(h.journal.pending).toHaveLength(0);
-    expect(h.sentIxs).toHaveLength(1);
-    expect(h.sentIxs[0]).toHaveLength(1); // the settle instruction only
-    expect(h.settled.map((e) => e.key)).toEqual([s.address]);
+    expect(h.client.settles.at(-1)!.playerToken).toBeNull();
+    expect(h.settled).toMatchObject([{ key: s.address, collect: true }]);
+    // an owner-changed account (ConstraintTokenOwner) counts too
+    const t = await harness();
+    const s2 = t.client.addSession(wallet());
+    t.journal.enqueue(settleItem(s2));
+    t.failures.push({ logs: ['Program log: AnchorError caused by account: player_token. Error Code: ConstraintTokenOwner. Error Number: 2015. Error Message: x.'] });
+    await t.chain.processPending();
+    expect(t.journal.pending[0].tokenFailures).toBe(1);
+  });
+
+  it('I2: AccountNotInitialized with the session still open retries; dropped only once the session is gone', async () => {
+    const h = await harness();
+    const s = h.client.addSession(wallet());
+    h.journal.enqueue(settleItem(s));
+    // the player closed the ATA between the existence check and the send
+    h.failures.push(new Error('failed ({"err":{"InstructionError":[1,{"Custom":3012}]}})'));
+    await h.chain.processPending();
+    expect(h.journal.pending).toHaveLength(1);
+    expect(h.journal.pending[0].lastError).toMatch(/session still open/);
+    // next attempt: the ATA is gone → finalize without it
+    h.client.missing.add(ata(s.player, h.client.config!.tokenMint, h.client.config!.tokenProgram).toBase58());
+    h.clock.now = h.journal.pending[0].nextAttemptAt;
+    await h.chain.processPending();
+    expect(h.journal.pending).toHaveLength(0);
+    expect(h.client.settles.at(-1)!.playerToken).toBeNull();
+
+    // the session really closed (someone else settled/refunded it): dropped
+    const g = await harness();
+    const s2 = g.client.addSession(wallet());
+    g.journal.enqueue(settleItem(s2));
+    g.failures.push(new Error('failed ({"err":{"InstructionError":[1,{"Custom":3012}]}})'));
+    const fetch = g.client.fetchSession.bind(g.client);
+    let calls = 0;
+    g.client.fetchSession = async (a, p) => (++calls > 1 ? null : fetch(a, p));
+    await g.chain.processPending();
+    expect(g.journal.pending).toHaveLength(0);
+    expect(g.logs.some((l) => /dropping settlement/.test(l))).toBe(true);
+    // a re-opened session (newer id) is dropped too
+    const r = await harness();
+    const s3 = r.client.addSession(wallet(), { id: 5 });
+    r.journal.enqueue(settleItem(s3));
+    r.failures.push(new Error('failed ({"err":{"InstructionError":[1,{"Custom":3007}]}})'));
+    let n = 0;
+    r.client.fetchSession = async () => (++n > 1 ? { ...s3, id: 6 } : s3);
+    await r.chain.processPending();
+    expect(r.journal.pending).toHaveLength(0);
+  });
+
+  it('a finalized session is never settled again', async () => {
+    const h = await harness();
+    const s = h.client.addSession(wallet(), { finalized: true, owed: 5n });
+    h.journal.enqueue(settleItem(s));
+    await h.chain.processPending();
+    expect(h.sent).toBe(0);
+    expect(h.journal.pending).toHaveLength(0);
+    expect(h.logs.some((l) => /finalized/.test(l))).toBe(true);
   });
 
   it('drops items whose session is gone or belongs to a newer join', async () => {
     const h = await harness();
-    const gone = settleItem({ address: wallet(), player: wallet(), arena: wallet(), arenaId: 1, entryFee: 1n, openedAt: 1, id: 3, hasPass: false, passAsset: null, settleFee: 0, feeBps: 500 });
+    const gone = settleItem({ address: wallet(), player: wallet(), arena: wallet(), arenaId: 1, entryFee: 1n, openedAt: 1, id: 3, hasPass: false, passAsset: null, settleFee: 0, feeBps: 500, finalized: false, owed: 0n });
     const s = h.client.addSession(wallet(), { id: 9 });
     const old = settleItem(s, { sessionId: 8 });
     h.journal.commit({ enqueue: [gone, old] });
@@ -656,7 +715,7 @@ describe('settlement worker', () => {
     h.journal.commit({ enqueue: [settleItem(a), settleItem(b, { createdAt: T0 + 1 })] });
     h.failures.push(
       { logs: ['Program log: AnchorError occurred. Error Code: SessionMismatch. Error Number: 6019. Error Message: x.'] },
-      new Error('failed ({"err":{"InstructionError":[1,{"Custom":3012}]}})'),
+      { logs: ['Program log: AnchorError occurred. Error Code: SessionFinalized. Error Number: 6054. Error Message: x.'] },
     );
     await h.chain.processPending();
     expect(h.sent).toBe(2);
@@ -828,6 +887,36 @@ describe('stale-session sweeper', () => {
     expect(h.logs.some((l) => /older than 5 s/.test(l))).toBe(true);
   });
 
+  it('skips finalized sessions (their payout is the player\'s to collect)', async () => {
+    const h = await harness();
+    const nowS = Math.floor(T0 / 1000);
+    h.client.addSession(wallet(), { openedAt: nowS - 3_600, finalized: true, owed: 9n });
+    expect(await h.chain.sweepStale()).toBe(0);
+  });
+
+  it('M9: stays off after a journal quarantine until STALE_SWEEP_ACK=1', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'slana-quarantine-'));
+    const path = join(dir, 'journal.json');
+    writeFileSync(path, '{ not json');
+    const nowS = Math.floor(T0 / 1000);
+    for (const ack of [false, true]) {
+      const h = await harness({ cfg: { staleSweepAck: ack } });
+      const journal = new Journal(path);
+      expect(journal.quarantinedFiles()).toHaveLength(1);
+      const chain = new SolanaChain(chainConfig({ staleSweepAck: ack }), journal, (m) => h.logs.push(m), {
+        client: h.client,
+        keypair: h.server,
+        loops: false,
+        now: () => h.clock.now,
+        balance: async () => 1_000_000_000,
+      });
+      await chain.start();
+      h.client.addSession(wallet(), { openedAt: nowS - 3_600 });
+      expect(await chain.sweepStale()).toBe(ack ? 1 : 0);
+      if (!ack) expect(h.logs.some((l) => /sweeper is OFF .*STALE_SWEEP_ACK=1/.test(l))).toBe(true);
+    }
+  });
+
   it('only sweeps the configured arenas', async () => {
     const h = await harness({ cfg: { arenaIds: [1] } });
     const nowS = Math.floor(T0 / 1000);
@@ -886,6 +975,8 @@ describe('Pass reads', () => {
       openedAt: s.openedAt,
       hasPass: true,
       passAsset: asset,
+      finalized: false,
+      owed: 0,
     });
     h.client.arenas = [
       { id: 2, address: 'A2', entryFee: 5_000n, requiresPass: true, maxSessions: 64, openSessions: 3, enabled: true, vault: 'V2', pot: 15_000n },

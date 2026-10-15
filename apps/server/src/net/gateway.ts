@@ -55,6 +55,7 @@ export function settledMessage(e: SettledEvent): Extract<ServerMessage, { t: 'se
     signature: e.signature,
     payout: e.payout,
     ...(e.fee === undefined ? {} : { fee: e.fee, net: e.payout - e.fee }),
+    ...(e.collect ? { collect: true } : {}),
   };
 }
 
@@ -357,6 +358,11 @@ export class Gateway {
         this.error(conn, 'no_session', 'No open arena ticket found for your wallet.');
         return;
       }
+      if (session.finalized) {
+        // R24: this game is over (settled without a token account); the payout waits for the player
+        this.error(conn, 'payout_waiting', 'Your last game in this arena is settled. Collect your payout first.');
+        return;
+      }
       if (room.opts.stake?.requiresPass && !session.hasPass) {
         this.error(conn, 'pass_required', 'This arena needs a ticket bought with a Slana Pass.');
         return;
@@ -382,6 +388,11 @@ export class Gateway {
       // re-check after the awaits above: another tab may have joined with the same ticket meanwhile (in any instance)
       if (this.rooms.findArenaStake(target.arenaId, conn.wallet) || this.rooms.liveSessions().has(session.address)) {
         this.error(conn, 'session_busy', 'You are already playing in this arena.');
+        return;
+      }
+      // I1: a settlement (e.g. a stale refund) may have been queued for this session during the awaits
+      if (this.journal.pending.some((p) => p.key === session.address)) {
+        this.error(conn, 'no_session', 'Your previous game in this arena is still being settled.');
         return;
       }
       if (conn.player?.alive) conn.room?.leave(conn, 'switch');
