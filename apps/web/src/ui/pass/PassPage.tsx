@@ -5,7 +5,7 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Chip, Counter, Icon, InkButton, Passport, Stamp, StampSpinner, springs, useReducedMotion } from '../../design';
-import { sound } from '../../game/sound';
+import { sound } from '../../audio';
 import { useT } from '../../i18n';
 import { usePassPower, usePassStatus, useChainData } from '../../solana/chain';
 import { mintGate, passNo, passView, previewSeed, previewTraits, splitDuration, type MintGate } from '../../solana/pass';

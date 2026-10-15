@@ -4,7 +4,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { Field, Icon, InkButton, Stamp, staggerIn, useReducedMotion } from '../../design';
 import { levelProgress } from '../../game/engine';
-import { sound } from '../../game/sound';
+import { sound } from '../../audio';
 import { useT } from '../../i18n';
 import { refreshChain, useChainData, usePassStatus, useSlanaClient } from '../../solana/chain';
 import { loadDevFake } from '../../solana/devFakeLoader';

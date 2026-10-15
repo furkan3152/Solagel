@@ -4,7 +4,7 @@ import { parseCoreAsset, passNumberFromName, type OwnedPass } from '@slana/sdk';
 import { formatToken, shortAddress } from '@slana/shared';
 import { useEffect, useRef, useState } from 'react';
 import { Icon, InkButton, Sheet, useReducedMotion } from '../../design';
-import { sound } from '../../game/sound';
+import { announce, sound } from '../../audio';
 import { useT } from '../../i18n';
 import { goPage, toast, useUi } from '../../store';
 import { refreshChain, rememberMint, useChainData, usePassStatus, useSlanaClient } from '../../solana/chain';
@@ -151,6 +151,7 @@ export function MintSheet({ open, onClose }: { open: boolean; onClose: () => voi
     if (owner) rememberMint(owner, pass);
     setMinted(pass);
     setPhase('delivered');
+    announce('minted');
     const href = sig.startsWith('DevFake') ? undefined : { href: explorerTx(sig, cluster), label: t('tf.viewTx') };
     toast('success', t('mt.ok'), href, 6000);
     refreshChain();

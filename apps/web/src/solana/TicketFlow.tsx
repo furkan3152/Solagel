@@ -5,7 +5,7 @@ import { motion } from 'motion/react';
 import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Field, Icon, InkButton, Sheet, Stamp, StampSpinner, markTransitionOrigin, useReducedMotion } from '../design';
 import { engine } from '../game/instance';
-import { sound } from '../game/sound';
+import { announce, sound } from '../audio';
 import { useT } from '../i18n';
 import { toast, updateSettings, useUi } from '../store';
 import { CoinPortrait } from '../ui/game/CoinPortrait';
@@ -181,7 +181,8 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
 
   const enterRoom = (sig: string, pass: string | null) => {
     setPhase('stamped');
-    if (!reduced) later(290, () => sound.stamp());
+    if (!reduced) later(290, () => sound.stamp('valid'));
+    later(reduced ? 300 : 700, () => announce('punched'));
     const href = sig.startsWith('DevFake') ? undefined : { href: explorerTx(sig, cluster), label: t('tf.viewTx') };
     toast('success', t('tf.ticketOk'), href, 6000);
     updateSettings({ lastArena: arenaId, ...(register ? { name: register.name } : {}) });
@@ -196,7 +197,7 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
   };
 
   const resume = () => {
-    sound.click();
+    sound.punch();
     updateSettings({ lastArena: arenaId });
     markTransitionOrigin(document.querySelector('.tf-ticket'));
     engine()?.play(`arena:${arenaId}`, session?.hasPass && session.passAsset && !data.fake ? { pass: session.passAsset } : {});
@@ -625,7 +626,10 @@ function TicketPreview({
       setTorn(false);
       return;
     }
-    const id = setTimeout(() => setTorn(true), reduced ? 200 : TEAR_AT_MS);
+    const id = setTimeout(() => {
+      setTorn(true);
+      if (!reduced) sound.tear();
+    }, reduced ? 200 : TEAR_AT_MS);
     return () => clearTimeout(id);
   }, [stamped, reduced]);
   const now = new Date();

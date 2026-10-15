@@ -1,6 +1,7 @@
 import { INK, RISO } from '@slana/art';
 import {
   PowerUpType,
+  arenaMeta,
   clamp,
   formatToken,
   encodeEject,
@@ -23,8 +24,11 @@ import { Camera } from './camera';
 import { Input } from './input';
 import { Net } from './net';
 import { Particles } from './particles';
-import { sound } from './sound';
+import { announce, sound, unlockAudio } from '../audio';
 import { ClientWorld } from './state';
+
+/** "Whale alert." once a life reaches this mass (25 times the start mass). */
+const WHALE_MASS = 500;
 
 const TOKEN_KEY = 'slana.auth.v1';
 const REDUCED_QUERY = '(prefers-reduced-motion: reduce)';
@@ -56,6 +60,8 @@ export class GameEngine {
   private reduced = false;
   /** My coin dropping onto the paper after a join / respawn (performance.now() start). */
   private drop: { at: number; rung: boolean } | null = null;
+  /** This life's bites, for the announcer (first bite, double, triple, whale). */
+  private life = { bites: 0, streak: 0, streakAt: -Infinity, whale: false };
   /** Death slow motion start (performance.now()), renderer time only. */
   private slowmoAt = -Infinity;
   private readonly unsub: () => void;
@@ -93,12 +99,10 @@ export class GameEngine {
         },
       },
       (dy) => this.camera.wheel(dy),
-      () => sound.unlock(),
+      unlockAudio,
     );
     const applySettings = () => {
       const s = useUi.getState().settings;
-      sound.enabled = s.sound;
-      sound.setVolume(s.volume);
       this.particles.lowQuality = s.quality === 'low';
     };
     applySettings();
@@ -157,7 +161,7 @@ export class GameEngine {
    * RPC may lag the confirmation) is retried quietly a few times.
    */
   play(room: string, opts: { pass?: string | null; awaitTicket?: boolean } = {}): void {
-    sound.unlock();
+    unlockAudio();
     const { settings } = useUi.getState();
     // the equipped Pass look only while the connected wallet still holds it (else the server says pass_invalid)
     const equipped = settings.passSkin && useChainData.getState().passes.some((p) => p.asset === settings.passSkin) ? settings.passSkin : null;
@@ -326,6 +330,11 @@ export class GameEngine {
           this.camera.zoomIntro(fromPaper ? DUR.zoomIn : 0);
         }
         this.slowmoAt = -Infinity;
+        this.life = { bites: 0, streak: 0, streakAt: -Infinity, whale: false };
+        if (this.world.myPid !== m.playerId) {
+          const where = m.room.mode === 'arena' && m.room.arenaId !== undefined ? arenaMeta(m.room.arenaId).name : t('an.practice');
+          announce('joined', { room: where });
+        }
         this.world.myPid = m.playerId;
         this.world.width = m.room.width;
         this.world.height = m.room.height;
@@ -401,6 +410,7 @@ export class GameEngine {
           if (m.stats.byBot && (m.stats.lootSpilled ?? 0) > 0) this.particles.coinBurst(me.x, me.y, Math.max(60, me.maxR), 22);
         }
         sound.death();
+        announce('eaten');
         this.world.myPid = null;
         this.wasArena = null;
         useUi.setState({
@@ -417,6 +427,7 @@ export class GameEngine {
           const total = m.ms ?? this.cashoutMs();
           useUi.setState({ cashout: { state: 'channel', until: now + total, total } });
           sound.print(total);
+          announce('cashingOut');
           return;
         }
         if (m.state === 'canceled') {
@@ -426,6 +437,7 @@ export class GameEngine {
           return;
         }
         sound.cashout();
+        announce('paid');
         const me = this.world.myStats();
         if (me) this.particles.coinBurst(me.x, me.y, Math.max(60, me.maxR), 36);
         this.world.myPid = null;
@@ -529,6 +541,17 @@ export class GameEngine {
     this.net.sendBinary(encodeTarget(aim.x, aim.y));
   }
 
+  /** A cell of mine ate a coin: first bite of this life, then doubles and triples within 4 s. */
+  private bite(now: number): void {
+    const l = this.life;
+    l.streak = now - l.streakAt < 4000 ? l.streak + 1 : 1;
+    l.streakAt = now;
+    l.bites++;
+    if (l.bites === 1) announce('firstBite');
+    else if (l.streak === 2) announce('double');
+    else if (l.streak === 3) announce('triple');
+  }
+
   private handleEats(): void {
     const arena = useUi.getState().room?.mode === 'arena';
     for (const ev of this.world.drainEats()) {
@@ -553,6 +576,7 @@ export class GameEngine {
           const look = this.renderer.lookFor(victim?.skin ?? 0, victim?.pass ?? 0, useUi.getState().chain?.pass ?? null);
           if (ev.mine) {
             sound.chomp();
+            this.bite(performance.now());
             this.particles.scraps(ev.x, ev.y, ev.r, 16, [look.body, look.overprint, '#FFFCF4']);
             if (!arena) this.particles.text(ev.x, ev.y, `+${Math.floor((ev.r * ev.r) / 100)}`, undefined, 24);
           } else if (ev.me) {
@@ -629,6 +653,7 @@ export class GameEngine {
       if (this.drop && !this.drop.rung && (now - this.drop.at) / (DUR.drop * 1000) >= DROP_LAND) {
         // the coin lands: an ink ring goes off on the paper
         this.drop.rung = true;
+        sound.drop();
         this.particles.ring(me.x, me.y, Math.max(40, me.maxR * 1.25), INK);
         this.particles.dots(me.x, me.y, Math.max(40, me.maxR), RISO.fluoPink, 8);
       }
@@ -674,6 +699,11 @@ export class GameEngine {
       this.lastHud = now;
       const mass = me ? Math.floor(me.mass) : 0;
       if (ui.hud.mass !== mass || ui.hud.cells !== (me?.count ?? 0)) useUi.setState({ hud: { ...ui.hud, mass, cells: me?.count ?? 0 } });
+      // a big coin now: once per life
+      if (mass >= WHALE_MASS && !this.life.whale && ui.screen === 'playing') {
+        this.life.whale = true;
+        announce('whale');
+      }
       // expire power-up timers, banners and kill feed
       const wall = Date.now();
       if (ui.powerups.some((p) => p.until <= wall)) useUi.setState({ powerups: ui.powerups.filter((p) => p.until > wall) });
