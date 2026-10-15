@@ -15,17 +15,24 @@
 
 pub mod create_arena;
 pub mod initialize;
+pub mod join_arena;
+pub mod refund_session;
+pub mod register_player;
 pub mod set_pass_collection;
 pub mod set_pass_seed_hash;
+pub mod settle_session;
+pub mod stake;
+pub mod sweep_arena;
 pub mod update_arena;
 pub mod update_config;
+pub mod update_profile;
 pub mod withdraw_treasury;
 
 use {
     crate::error::Result,
     crate::{
-        accounts::{check_pda, check_writable, keq},
-        borsh::{rd_key, rd_u8},
+        accounts::keq,
+        borsh::rd_key,
         constants::*,
         error::{
             require, BAD_SPLIT, ENTRY_FEE_ZERO, INVALID_FEE, INVALID_MAX_SESSIONS, UNAUTHORIZED,
@@ -33,7 +40,6 @@ use {
         state::config,
     },
     pinocchio::{
-        cpi::Seed,
         sysvars::{clock::CLOCK_ID, get_sysvar},
         AccountView,
     },
@@ -49,11 +55,7 @@ pub(crate) fn check_admin_config(
     admin: &AccountView,
     mutable: bool,
 ) -> Result {
-    let bump = [rd_u8(cfg, config::BUMP)];
-    check_pda(config, &[Seed::from(CONFIG_SEED), Seed::from(&bump)])?;
-    if mutable {
-        check_writable(config)?;
-    }
+    stake::check_config(config, cfg, mutable)?;
     require(
         keq(&rd_key(cfg, config::ADMIN), admin.address().as_array()),
         UNAUTHORIZED,

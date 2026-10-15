@@ -213,6 +213,12 @@ pub fn rd_key(d: &[u8], off: usize) -> [u8; 32] {
     chunk(d, off)
 }
 
+/// `N` bytes at `off` (zeros when out of range).
+#[inline(always)]
+pub fn rd_arr<const N: usize>(d: &[u8], off: usize) -> [u8; N] {
+    chunk(d, off)
+}
+
 #[inline(always)]
 pub fn wr_u8(d: &mut [u8], off: usize, v: u8) {
     put(d, off, &[v]);

@@ -51,7 +51,7 @@ fn process_instruction(program_id: &Address, accounts: &[AccountView], data: &[u
     let Some((disc, args)) = data.split_first_chunk::<8>() else {
         return Err(err(INSTRUCTION_FALLBACK_NOT_FOUND));
     };
-    // Compared as one u64 per arm. Instructions not ported yet (Tasks 3–5) answer like an
+    // Compared as one u64 per arm. Instructions not ported yet (Tasks 4–5) answer like an
     // unknown instruction (Anchor 101).
     match u64::from_le_bytes(*disc) {
         INITIALIZE => ix::initialize::process(accounts, args),
@@ -61,6 +61,13 @@ fn process_instruction(program_id: &Address, accounts: &[AccountView], data: &[u
         WITHDRAW_TREASURY => ix::withdraw_treasury::process(accounts, args),
         SET_PASS_COLLECTION => ix::set_pass_collection::process(accounts, args),
         SET_PASS_SEED_HASH => ix::set_pass_seed_hash::process(accounts, args),
+        REGISTER_PLAYER => ix::register_player::process(accounts, args),
+        UPDATE_PROFILE => ix::update_profile::process(accounts, args),
+        JOIN_ARENA => ix::join_arena::process(accounts, args, false),
+        JOIN_ARENA_WITH_PASS => ix::join_arena::process(accounts, args, true),
+        SETTLE_SESSION => ix::settle_session::process(accounts, args),
+        REFUND_SESSION => ix::refund_session::process(accounts, args),
+        SWEEP_ARENA => ix::sweep_arena::process(accounts, args),
         EVENT_IX_TAG => Err(err(EVENT_INSTRUCTION_STUB)),
         _ => Err(err(INSTRUCTION_FALLBACK_NOT_FOUND)),
     }
@@ -73,4 +80,11 @@ const UPDATE_ARENA: u64 = u64::from_le_bytes(d::UPDATE_ARENA);
 const WITHDRAW_TREASURY: u64 = u64::from_le_bytes(d::WITHDRAW_TREASURY);
 const SET_PASS_COLLECTION: u64 = u64::from_le_bytes(d::SET_PASS_COLLECTION);
 const SET_PASS_SEED_HASH: u64 = u64::from_le_bytes(d::SET_PASS_SEED_HASH);
+const REGISTER_PLAYER: u64 = u64::from_le_bytes(d::REGISTER_PLAYER);
+const UPDATE_PROFILE: u64 = u64::from_le_bytes(d::UPDATE_PROFILE);
+const JOIN_ARENA: u64 = u64::from_le_bytes(d::JOIN_ARENA);
+const JOIN_ARENA_WITH_PASS: u64 = u64::from_le_bytes(d::JOIN_ARENA_WITH_PASS);
+const SETTLE_SESSION: u64 = u64::from_le_bytes(d::SETTLE_SESSION);
+const REFUND_SESSION: u64 = u64::from_le_bytes(d::REFUND_SESSION);
+const SWEEP_ARENA: u64 = u64::from_le_bytes(d::SWEEP_ARENA);
 const EVENT_IX_TAG: u64 = u64::from_le_bytes(d::EVENT_IX_TAG_LE);

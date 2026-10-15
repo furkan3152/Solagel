@@ -233,7 +233,10 @@ fn join_checks_pause_capacity_and_balance() {
     let poor = env.token_player("poor", ENTRY_FEE - 1);
 
     // Not enough tokens: the token program rejects the transfer.
-    assert!(env.join(&poor, 1).is_err());
+    assert_custom_error(
+        env.join(&poor, 1),
+        anchor_spl::token::spl_token::error::TokenError::InsufficientFunds as u32,
+    );
     assert!(env.session(1, &poor.pubkey()).is_none());
 
     assert_ok(env.update_config(UpdateConfigArgs {
@@ -506,7 +509,10 @@ fn refund_after_timeout_returns_tokens_and_deposit() {
         env.warp(1);
 
         // Someone else cannot refund it (their session PDA does not exist).
-        assert!(env.refund(&mallory, 1).is_err());
+        assert_anchor_error(
+            env.refund(&mallory, 1),
+            AnchorErrorCode::AccountNotInitialized,
+        );
 
         assert_ok(env.refund(&a, 1));
         assert_eq!(env.tokens(&a_ata), ENTRY_FEE);

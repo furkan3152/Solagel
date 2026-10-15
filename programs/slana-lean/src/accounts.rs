@@ -11,7 +11,8 @@
 //! | `seeds = [..], bump = stored`          | [`check_pda`]              | 2006 ConstraintSeeds        |
 //! | `seeds = [..], bump` (canonical)       | [`find_pda`] + key compare | 2006 ConstraintSeeds        |
 //! | `init, payer, space, seeds, bump`      | [`init_pda`]               | system program / 4101       |
-//! | `close = dest`                         | [`close`]                  | —                           |
+//! | `Option<T>` (None = program id)        | `kind::OPT`, [`is_none`]   | as `T` when Some            |
+//! | `close = dest`                         | [`close`]                  | 2011 ConstraintClose        |
 //!
 //! Account data is never borrowed through `try_borrow*`; [`load`] and [`data`] hand out the
 //! data as a fixed-size array after the length was checked.
@@ -168,6 +169,15 @@ pub mod kind {
     pub const PASS_LOCK: u8 = 12;
     pub const SEASON: u8 = 13;
     pub const MINT_COUNTER: u8 = 14;
+    /// Flag: `Option<T>` (Anchor encodes `None` as the program id, which is consumed and not
+    /// checked). Use [`super::is_none`] in the handler.
+    pub const OPT: u8 = 0x80;
+}
+
+/// An `Option<..>` account passed as `None` (its key is the program id).
+#[inline(always)]
+pub fn is_none(acc: &AccountView) -> bool {
+    acc.address() == &ID
 }
 
 /// `(DISCRIMINATOR, SPACE)` of the program accounts, in `kind::CONFIG..` order.
@@ -197,10 +207,15 @@ pub fn parse<'a, const N: usize>(
         .ok_or_else(|| err(ACCOUNT_NOT_ENOUGH_KEYS))
 }
 
+/// [`parse`] for a kinds list chosen at run time (no account array is returned).
 #[inline(never)]
-fn check_kinds(accounts: &[AccountView], kinds: &[u8]) -> Result {
+pub fn check_kinds(accounts: &[AccountView], kinds: &[u8]) -> Result {
     for (i, &k) in kinds.iter().enumerate() {
         let acc = at(accounts, i)?;
+        if k & kind::OPT != 0 && is_none(acc) {
+            continue;
+        }
+        let k = k & !kind::OPT;
         match k {
             kind::ANY => {}
             kind::SIGNER => check_signer(acc)?,
