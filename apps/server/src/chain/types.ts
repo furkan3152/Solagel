@@ -25,6 +25,13 @@ export interface ChainSession {
   hasPass: boolean;
   /** The Pass asset locked by this session, null without a Pass. */
   passAsset: string | null;
+  /**
+   * R24: already settled without the player's token account; the result is final and
+   * `owed` waits for the player to collect it. Never playable, never refunded as stale.
+   */
+  finalized: boolean;
+  /** Raw token units the player can collect (finalized sessions; 0 otherwise). */
+  owed: number;
 }
 
 export interface ChainArena {
@@ -68,6 +75,8 @@ export interface SettledEvent {
   payout: number;
   /** Fee on profit, raw token units (absent when unknown, e.g. a late confirmation). */
   fee?: number;
+  /** R24: settled without a usable token account; the player collects the net payout. */
+  collect?: boolean;
 }
 
 export interface SeasonEntry {

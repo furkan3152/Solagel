@@ -64,13 +64,22 @@ const SEND_TIMEOUT_MS = 120_000;
 const RPC_TIMEOUT_MS = 20_000;
 const LOW_BALANCE_LAMPORTS = 50_000_000; // 0.05 SOL
 const MAX_PROFILE_CACHE = 5_000;
-/** Re-check interval for a settlement waiting on the player's token account (`NO_ATA_RETRY_S` overrides it). */
-export const NO_ATA_RETRY_MS = 5 * 60_000;
+/**
+ * Failed attempts caused by the player's token account (owner changed, Token-2022
+ * MemoTransfer required, closed between check and send, ...) before the worker settles
+ * without it and the session is finalized with `owed` (R24).
+ */
+export const TOKEN_FAILURES_BEFORE_FINALIZE = 3;
+/** Anchor constraint errors that name the player's token account. */
+const TOKEN_ACCOUNT_CODES: readonly number[] = [2014, 2015, 2021];
+/** SPL Token and Token-2022 program ids (a failure inside them on settle is the player's account). */
+const TOKEN_PROGRAM_FAILED = /Program (TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA|TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb) failed/;
 const STOP_GRACE_MS = 5_000;
 
 const ERR = {
   unauthorized: SlanaErrorCode.Unauthorized,
   sessionMismatch: SlanaErrorCode.SessionMismatch,
+  sessionFinalized: SlanaErrorCode.SessionFinalized,
   insufficientPot: SlanaErrorCode.InsufficientPot,
   /** Anchor: account does not exist (session already closed / profile missing). */
   accountNotInitialized: 3012,
@@ -194,6 +203,20 @@ const clampInt = (v: unknown, max: number): number => {
 const short = (s: string): string => (s.length > 12 ? `${s.slice(0, 4)}…${s.slice(-4)}` : s);
 const sol = (lamports: number): string => `◎${lamportsToSol(lamports).toFixed(4).replace(/\.?0+$/, '')}`;
 const firstLine = (err: unknown): string => String((err as Error)?.message ?? err).split('\n')[0].slice(0, 240);
+/** Transaction log lines carried by a send error (SendTransactionError, TransactionFailedError, ...). */
+function errorLogs(err: unknown, depth = 0): string[] {
+  if (!err || typeof err !== 'object' || depth > 3) return [];
+  const r = err as Record<string, unknown>;
+  for (const k of ['logs', 'transactionLogs']) {
+    const v = r[k];
+    if (Array.isArray(v) && v.every((l) => typeof l === 'string')) return v as string[];
+  }
+  for (const k of ['cause', 'error', 'err']) {
+    const inner = errorLogs(r[k], depth + 1);
+    if (inner.length > 0) return inner;
+  }
+  return [];
+}
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms).unref());
 
 function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
@@ -638,6 +661,8 @@ export class SolanaChain implements ChainGateway {
         openedAt: s.openedAt,
         hasPass: s.hasPass,
         passAsset: s.passAsset,
+        finalized: s.finalized,
+        owed: toSafeAmount(s.owed),
       };
     } catch (err) {
       this.warn('session', `chain: session lookup failed (${firstLine(err)})`);
@@ -830,6 +855,11 @@ export class SolanaChain implements ChainGateway {
       await this.dropFinished(item, session ? `on-chain session is #${session.id}, item is for #${item.sessionId}` : 'session already closed');
       return;
     }
+    if (session.finalized) {
+      // our earlier settlement landed without the token account (R24); the player collects
+      await this.dropFinished(item, 'session already finalized (the player collects the payout)');
+      return;
+    }
     if (item.reason === 'stale' && this.liveSessions().has(session.address)) {
       this.log(`chain: stale refund of ${short(key)} cancelled — the player is in the arena now`);
       this.journal.remove(key);
@@ -837,8 +867,9 @@ export class SolanaChain implements ChainGateway {
     }
 
     // Settle pays into the player's token account. The server never pays its rent (a player
-    // could close and re-open it to drain the server): without one the item stays owed and is
-    // re-checked every 5 minutes; the player's own 24 h refund remains the fallback.
+    // could close and re-open it to drain the server). R24: without a usable account
+    // the server settles anyway, without it: the fee split and stats happen now and the
+    // session is finalized with `owed`, which the player collects themselves (no waiting).
     const playerAta = ata(item.player, config.tokenMint, config.tokenProgram).toBase58();
     let ataExists: boolean;
     try {
@@ -847,19 +878,13 @@ export class SolanaChain implements ChainGateway {
       this.journal.retryLater(key, `token account lookup failed: ${firstLine(err)}`, this.now());
       return;
     }
-    if (!ataExists) {
-      if (!item.needsTokenAccount) {
-        this.log(
-          `chain: settlement ${short(key)} waits — ${short(item.player)} has no token account ${short(playerAta)} ` +
-            `(the player must create it; re-checking every ${Math.round(this.noAtaRetryMs() / 1000)} s)`,
-        );
-      }
-      this.journal.retryLater(key, 'player token account missing', this.now(), { delayMs: this.noAtaRetryMs(), needsTokenAccount: true });
-      return;
-    }
-    if (item.needsTokenAccount) {
-      this.log(`chain: settlement ${short(key)} — token account of ${short(item.player)} found, settling`);
-      this.journal.clearNeedsTokenAccount(key);
+    const tokenFailures = item.tokenFailures ?? 0;
+    const finalize = !ataExists || tokenFailures >= TOKEN_FAILURES_BEFORE_FINALIZE;
+    if (finalize) {
+      this.log(
+        `chain: settlement ${short(key)} — ${ataExists ? `token account ${short(playerAta)} refused ${tokenFailures} time(s)` : `no token account ${short(playerAta)}`}; ` +
+          'settling without it (the player collects the payout)',
+      );
     }
     const ixs: TransactionInstruction[] = [];
     const ix = await this.client!.ix.settleSession(this.keypair!.publicKey, {
@@ -875,6 +900,7 @@ export class SolanaChain implements ChainGateway {
       tokenProgram: config.tokenProgram,
       hasPass: session.hasPass,
       passAsset: session.passAsset,
+      ...(finalize ? { playerToken: null } : {}),
     });
     // Last check right before sending: a stale session may have been picked up meanwhile.
     if (item.reason === 'stale' && this.liveSessions().has(session.address)) {
@@ -895,11 +921,11 @@ export class SolanaChain implements ChainGateway {
       this.journal.remove(key);
       this.sentSignatures.delete(key);
       this.log(
-        `chain: settled ${short(key)} (${item.reason ?? 'settle'}) · ${this.units(payout)}${fee ? ` (fee ${this.units(fee)})` : ''} → ${short(item.player)} · ${signature}`,
+        `chain: ${finalize ? 'finalized' : 'settled'} ${short(key)} (${item.reason ?? 'settle'}) · ${this.units(payout)}${fee ? ` (fee ${this.units(fee)})` : ''} → ${short(item.player)}${finalize ? ' (to collect)' : ''} · ${signature}`,
       );
-      this.emit({ key, player: item.player, arenaId: item.arenaId, signature, payout, ...(fee === undefined ? {} : { fee }) });
+      this.emit({ key, player: item.player, arenaId: item.arenaId, signature, payout, ...(fee === undefined ? {} : { fee }), ...(finalize && payout > 0 ? { collect: true } : {}) });
     } catch (err) {
-      await this.onSendError(item, err);
+      await this.onSendError(item, err, finalize);
     }
   }
 
@@ -927,15 +953,42 @@ export class SolanaChain implements ChainGateway {
     }
   }
 
-  private async onSendError(item: SettlementItem, err: unknown): Promise<void> {
+  private async onSendError(item: SettlementItem, err: unknown, finalized = false): Promise<void> {
     const { key } = item;
     const code = programErrorCode(err);
     const d = describeError(err);
     const label = `${d.name ?? 'error'}${code !== null ? ` ${code}` : ''}: ${firstLine(err)}`;
     const what = `settlement ${short(key)}`;
 
-    if (code === ERR.sessionMismatch || code === ERR.accountNotInitialized || code === ERR.accountOwnedByWrongProgram) {
+    if (code === ERR.sessionMismatch || code === ERR.sessionFinalized) {
       await this.dropFinished(item, label);
+      return;
+    }
+    if (code === ERR.accountNotInitialized || code === ERR.accountOwnedByWrongProgram) {
+      // I2: these also fire for the player's token account (closed after our check). Drop the
+      // item only when the session itself is gone or re-opened; otherwise retry (the next
+      // attempt sees the missing account and finalizes without it).
+      let session: SessionView | null;
+      try {
+        session = await this.client!.fetchSession(item.arenaId!, item.player);
+      } catch (e) {
+        this.journal.retryLater(key, `${label} (session re-check failed: ${firstLine(e)})`, this.now());
+        return;
+      }
+      if (!session || (item.sessionId !== undefined && session.id !== item.sessionId) || session.finalized) {
+        await this.dropFinished(item, label);
+        return;
+      }
+      this.journal.retryLater(key, `${label} (session still open)`, this.now(), { tokenFailure: !finalized });
+      return;
+    }
+    if (!finalized && this.isTokenAccountFailure(err, code)) {
+      const n = (item.tokenFailures ?? 0) + 1;
+      this.log(
+        `chain: ${what} — the player's token account refused the payout (${label}); ` +
+          (n >= TOKEN_FAILURES_BEFORE_FINALIZE ? 'settling without it next' : `attempt ${n}/${TOKEN_FAILURES_BEFORE_FINALIZE}`),
+      );
+      this.journal.retryLater(key, label, this.now(), { tokenFailure: true });
       return;
     }
     if (code === ERR.unauthorized) {
@@ -968,6 +1021,13 @@ export class SolanaChain implements ChainGateway {
     this.journal.retryLater(key, label, this.now());
   }
 
+  /** A settle failure caused by the player's token account (not by the chain or the server). */
+  private isTokenAccountFailure(err: unknown, code: number | null): boolean {
+    if (code !== null && TOKEN_ACCOUNT_CODES.includes(code)) return true;
+    const logs = errorLogs(err);
+    return logs.some((l) => TOKEN_PROGRAM_FAILED.test(l));
+  }
+
   private send(key: string, ixs: TransactionInstruction[]): Promise<string> {
     const onSignature = (signature: string) => this.sentSignatures.set(key, signature);
     if (this.deps.send) return withTimeout(this.deps.send(ixs, onSignature), SEND_TIMEOUT_MS, 'send');
@@ -988,10 +1048,22 @@ export class SolanaChain implements ChainGateway {
     return Number.isFinite(v) && v >= 1 ? Math.floor(v) : STALE_SESSION_AFTER_S;
   }
 
-  /** `NO_ATA_RETRY_S` in ms (default 5 min). */
-  private noAtaRetryMs(): number {
-    const v = this.cfg.chain.noAtaRetryS;
-    return Number.isFinite(v) && v >= 1 ? Math.floor(v) * 1000 : NO_ATA_RETRY_MS;
+  /**
+   * M9: after a journal quarantine (`journal.json.corrupt-*`), sessions whose real result was
+   * in the lost journal look "unplayed"; refunding them at the buy-in would be wrong. The
+   * sweeper stays off until the operator reviews the quarantined file and sets
+   * `STALE_SWEEP_ACK=1` (or moves the file away). Logged loudly, every 30 minutes.
+   */
+  private staleSweepAllowed(): boolean {
+    const files = this.journal.quarantinedFiles();
+    if (files.length === 0 || this.cfg.chain.staleSweepAck) return true;
+    this.warn(
+      'stale-ack',
+      `!!! chain: stale-session sweeper is OFF — quarantined journal ${files.join(', ')} needs manual review. ` +
+        'Settle what it owed by hand, then set STALE_SWEEP_ACK=1 (or move the file away) and restart.',
+      30 * 60_000,
+    );
+    return false;
   }
 
   /**
@@ -1001,6 +1073,7 @@ export class SolanaChain implements ChainGateway {
    */
   async sweepStale(): Promise<number> {
     if (this.stopped || !this.enabled || this.authorized !== true || !this.client) return 0;
+    if (!this.staleSweepAllowed()) return 0;
     let sessions: SessionView[];
     try {
       sessions = await this.client.fetchSessions();
@@ -1015,6 +1088,8 @@ export class SolanaChain implements ChainGateway {
     const staleAfterS = this.staleAfterS();
     const enqueue: SettlementItem[] = [];
     for (const s of sessions) {
+      // a finalized session (R24) is settled: its owed payout is the player's to collect
+      if (s.finalized) continue;
       if (live.has(s.address) || pending.has(s.address)) continue;
       if (now / 1000 - s.openedAt < staleAfterS) continue;
       if (only.length > 0 && !only.includes(s.arenaId)) continue;

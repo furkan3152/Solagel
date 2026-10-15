@@ -1,21 +1,25 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import bs58 from 'bs58';
 import nacl from 'tweetnacl';
+import { parseSiwsMessage, siwsChainId, siwsMessage } from '@slana/shared';
 
 const NONCE_TTL_MS = 5 * 60_000;
 const TOKEN_TTL_MS = 24 * 60 * 60_000;
+/** Hard cap on outstanding nonces: the oldest are evicted beyond it (M2). */
+export const MAX_NONCES = 10_000;
 
-/** Builds the exact text a wallet signs to log in (Sign-In-With-Solana style). */
-export function loginMessage(pubkey: string, nonce: string, issuedAt: string, domain = 'Slana'): string {
-  return [
-    `${domain} wants you to sign in with your Solana account:`,
-    pubkey,
-    '',
-    'Sign this message to prove you own this wallet. It is free and does not send a transaction.',
-    '',
-    `Nonce: ${nonce}`,
-    `Issued At: ${issuedAt}`,
-  ].join('\n');
+/** Where a login message says the player signs in (SIWS `domain`, `URI`, `Chain ID`). */
+export interface SiwsOrigin {
+  domain: string;
+  uri: string;
+  chainId: string;
+}
+
+const DEFAULT_ORIGIN: SiwsOrigin = { domain: 'localhost', uri: 'http://localhost', chainId: siwsChainId('localnet') };
+
+/** Builds the exact text a wallet signs to log in (Sign-In-With-Solana). */
+export function loginMessage(pubkey: string, nonce: string, issuedAt: string, origin: SiwsOrigin = DEFAULT_ORIGIN): string {
+  return siwsMessage({ domain: origin.domain, address: pubkey, uri: origin.uri, chainId: origin.chainId, nonce, issuedAt });
 }
 
 export function isValidPubkey(s: unknown): s is string {
@@ -29,26 +33,43 @@ export function isValidPubkey(s: unknown): s is string {
 
 /** Wallet login: one-time nonces signed by the wallet, then stateless HMAC tokens. */
 export class Auth {
-  private readonly nonces = new Map<string, { pubkey: string; message: string; expires: number }>();
+  private readonly nonces = new Map<string, { pubkey: string; message: string; expires: number; origin: SiwsOrigin }>();
 
   constructor(private readonly secret: Buffer) {}
 
-  issueNonce(pubkey: string, now = Date.now()): { nonce: string; message: string } {
+  /**
+   * A one-time nonce and the SIWS message for it. The fields are returned too, so the web
+   * client can rebuild the message itself and refuse to sign anything else.
+   */
+  issueNonce(
+    pubkey: string,
+    origin: SiwsOrigin = DEFAULT_ORIGIN,
+    now = Date.now(),
+  ): { nonce: string; message: string; domain: string; uri: string; chainId: string; issuedAt: string } {
     if (!isValidPubkey(pubkey)) throw new Error('invalid pubkey');
     this.prune(now);
     const nonce = randomBytes(12).toString('hex');
-    const message = loginMessage(pubkey, nonce, new Date(now).toISOString());
-    this.nonces.set(nonce, { pubkey, message, expires: now + NONCE_TTL_MS });
-    return { nonce, message };
+    const issuedAt = new Date(now).toISOString();
+    const message = loginMessage(pubkey, nonce, issuedAt, origin);
+    this.nonces.set(nonce, { pubkey, message, expires: now + NONCE_TTL_MS, origin });
+    return { nonce, message, domain: origin.domain, uri: origin.uri, chainId: origin.chainId, issuedAt };
+  }
+
+  /** Outstanding nonces (tests). */
+  get nonceCount(): number {
+    return this.nonces.size;
   }
 
   /** Verifies a signed login message; the nonce is consumed on success. */
   verifySignature(pubkey: string, message: string, signatureB58: string, now = Date.now()): boolean {
     if (!isValidPubkey(pubkey) || typeof message !== 'string' || typeof signatureB58 !== 'string') return false;
-    const m = /Nonce: ([0-9a-f]{24})/.exec(message);
-    if (!m) return false;
-    const entry = this.nonces.get(m[1]);
+    const fields = parseSiwsMessage(message);
+    if (!fields) return false;
+    const entry = this.nonces.get(fields.nonce);
     if (!entry || entry.expires < now || entry.pubkey !== pubkey || entry.message !== message) return false;
+    // the signed text names this server: its domain, URI and cluster, and the signing wallet
+    const o = entry.origin;
+    if (fields.address !== pubkey || fields.domain !== o.domain || fields.uri !== o.uri || fields.chainId !== o.chainId) return false;
     let sig: Uint8Array;
     try {
       sig = bs58.decode(signatureB58);
@@ -57,7 +78,7 @@ export class Auth {
     }
     if (sig.length !== 64) return false;
     const ok = nacl.sign.detached.verify(new TextEncoder().encode(message), sig, bs58.decode(pubkey));
-    if (ok) this.nonces.delete(m[1]);
+    if (ok) this.nonces.delete(fields.nonce);
     return ok;
   }
 
@@ -83,8 +104,11 @@ export class Auth {
     return pubkey;
   }
 
+  /** Drops expired nonces once there are many, then evicts the oldest beyond `MAX_NONCES`. */
   private prune(now: number): void {
     if (this.nonces.size < 1000) return;
     for (const [k, v] of this.nonces) if (v.expires < now) this.nonces.delete(k);
+    // Map iteration is insertion order: the first keys are the oldest nonces
+    while (this.nonces.size >= MAX_NONCES) this.nonces.delete(this.nonces.keys().next().value!);
   }
 }
