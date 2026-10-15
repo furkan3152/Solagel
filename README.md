@@ -205,8 +205,9 @@ arenas; it writes the server environment to `.localnet/server.env`. Requirements
 ```bash
 scripts/build-lean.sh && scripts/localnet.sh        # or just: pnpm demo:localnet
 cd apps/server && env $(cat ../../.localnet/server.env | xargs) \
-  STALE_SESSION_AFTER_S=5 ARENA_BOT_TARGET=0 ARENA_BOT_MIN=0 ARENA_BOT_MAX=0 npx tsx src/index.ts
-pnpm -F @slana/server e2e          # in another terminal; ~2 min
+  STALE_SESSION_AFTER_S=5 ROUND_SECONDS=30 ROUND_JOIN_CLOSE_SECONDS=5 \
+  ARENA_BOT_TARGET=0 ARENA_BOT_MIN=0 ARENA_BOT_MAX=0 npx tsx src/index.ts
+pnpm -F @slana/server e2e          # in another terminal; ~3 min
 scripts/localnet.sh --stop
 ```
 

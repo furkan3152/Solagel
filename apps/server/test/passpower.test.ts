@@ -18,13 +18,14 @@ function arenaRoom(): Room {
 }
 
 const cashoutMsgs = (c: TestConn) => c.msgs.filter((m): m is Extract<ServerMessage, { t: 'cashout' }> => m.t === 'cashout');
+const errors = (c: TestConn) => c.msgs.filter((m): m is Extract<ServerMessage, { t: 'error' }> => m.t === 'error');
 
 function runMs(room: Room, ms: number) {
   for (let t = 0; t < ms; t += TICK_MS) room.tick(TICK_MS);
 }
 
 describe('pass power', () => {
-  it('pass session starts 15% heavier and cashes out in 2s', () => {
+  it('pass session starts 15% heavier; arenas refuse cash-out (rounds)', () => {
     const room = arenaRoom();
     const conn = fakeConn('w-pass');
     const p = room.join(conn, stakeJoin(1, FEE, true));
@@ -33,26 +34,24 @@ describe('pass power', () => {
     expect(conn.msgs.find((m) => m.t === 'joined')).toMatchObject({ hasPass: true, entryFee: FEE, value: FEE });
 
     room.cashout(conn);
-    expect(cashoutMsgs(conn)[0]).toEqual({ t: 'cashout', state: 'started', ms: 2000 });
-    runMs(room, 1900);
+    expect(errors(conn).at(-1)).toMatchObject({ t: 'error', code: 'no_cashout' });
+    runMs(room, 2500);
     expect(p.alive).toBe(true);
-    runMs(room, 200);
-    expect(cashoutMsgs(conn).at(-1)).toMatchObject({ state: 'done', value: FEE });
+    expect(cashoutMsgs(conn)).toEqual([]);
+    expect(room.ledger!.value(p.id)).toBe(FEE);
   });
 
-  it('non-pass session 3s', () => {
+  it('non-pass session: normal start mass, no cash-out either', () => {
     const room = arenaRoom();
     const conn = fakeConn('w-plain');
     const p = room.join(conn, stakeJoin(1, FEE, false));
     expect(p.totalMass()).toBeCloseTo(RULES.startMass, 6);
     expect(p.flags & PlayerFlag.Pass).toBe(0);
     room.cashout(conn);
-    expect(cashoutMsgs(conn)[0]).toEqual({ t: 'cashout', state: 'started', ms: 3000 });
-    runMs(room, 2900);
+    expect(errors(conn).at(-1)).toMatchObject({ code: 'no_cashout' });
+    runMs(room, 3500);
     expect(p.alive).toBe(true);
-    expect(cashoutMsgs(conn).some((m) => m.state === 'done')).toBe(false);
-    runMs(room, 200);
-    expect(cashoutMsgs(conn).at(-1)).toMatchObject({ state: 'done', value: FEE });
+    expect(cashoutMsgs(conn)).toEqual([]);
   });
 
   it('a verified Pass in practice: heavier start, Pass flag and number in snapshots', () => {
@@ -103,7 +102,5 @@ describe('pass power', () => {
     const conn = fakeConn('w-tuned');
     const p = room.join(conn, stakeJoin(1, FEE, true));
     expect(p.totalMass()).toBeCloseTo(RULES.startMass * 1.3, 6);
-    room.cashout(conn);
-    expect(cashoutMsgs(conn)[0]).toMatchObject({ ms: 1500 });
   });
 });

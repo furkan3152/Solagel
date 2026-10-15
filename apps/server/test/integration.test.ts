@@ -10,6 +10,7 @@ import {
   type PassStatus,
   type ServerMessage,
   type SnapshotData,
+  roundAt,
   siwsMessage,
 } from '@slana/shared';
 import bs58 from 'bs58';
@@ -175,6 +176,17 @@ let app: App;
 let port: number;
 let chain: FakeChain;
 
+/**
+ * The server's round clock: real time shifted so the suite starts 2 s into a 5-minute round
+ * (no round ends by accident); tests move it with `jumpTo`.
+ */
+const t0 = Date.now();
+let clockBase = roundAt(t0).startsAt + 2_000;
+const serverNow = () => clockBase + (Date.now() - t0);
+const jumpTo = (at: number) => {
+  clockBase = at - (Date.now() - t0);
+};
+
 beforeAll(async () => {
   const dir = mkdtempSync(join(tmpdir(), 'slana-int-'));
   const cfg = loadConfig({
@@ -187,7 +199,7 @@ beforeAll(async () => {
     MARKET_URL_TENSOR: 'https://www.tensor.trade/trade/slana_pass',
   });
   chain = new FakeChain();
-  app = await createApp(cfg, { chain, log: () => {}, persist: true });
+  app = await createApp(cfg, { chain, log: () => {}, persist: true, now: serverNow });
   port = await app.listen();
 });
 
@@ -203,6 +215,14 @@ describe('server over websocket', () => {
     expect(welcome.rooms.some((r) => r.id === 'practice-rookie-1')).toBe(true);
     expect(welcome.rooms.some((r) => r.mode === 'arena' && r.arenaId === 1)).toBe(true);
     expect(welcome.chain.enabled).toBe(true);
+    // the round clock: every arena room carries the same round, on the server clock
+    expect(Math.abs(welcome.serverNow - serverNow())).toBeLessThan(1000);
+    const r = roundAt(welcome.serverNow);
+    for (const room of welcome.rooms.filter((x) => x.mode === 'arena')) expect(room.round).toEqual({ n: r.n, endsAt: r.endsAt, joinsCloseAt: r.joinsCloseAt });
+    expect(welcome.rooms.find((x) => x.mode === 'practice')?.round).toBeUndefined();
+    c.send({ t: 'ping', ts: 7 });
+    const pong = await c.wait('pong');
+    expect(Math.abs(pong.serverNow - serverNow())).toBeLessThan(1000);
     // marketplace links from the server config ride along with the chain status
     expect(welcome.chain.markets).toEqual({ tensor: 'https://www.tensor.trade/trade/slana_pass' });
     expect(welcome.blocked).toEqual([]);
@@ -345,7 +365,7 @@ describe('server over websocket', () => {
     c.close();
   });
 
-  it('stake arena: join with an on-chain ticket, cash out, queue settlement', async () => {
+  it('stake arena: join with an on-chain ticket, no cash-out, settled at value when the round ends', async () => {
     const kp = nacl.sign.keyPair();
     const pubkey = bs58.encode(kp.publicKey);
     chain.sessions.set(`1:${pubkey}`, session(pubkey, { address: `Session-${pubkey}`, id: 1 }));
@@ -361,21 +381,75 @@ describe('server over websocket', () => {
     const joined = await c.wait('joined');
     expect(joined.room.mode).toBe('arena');
     expect(joined.value).toBe(10_000_000);
+    const r = roundAt(serverNow());
+    expect(joined.round).toEqual({ n: r.n, endsAt: r.endsAt, joinsCloseAt: r.joinsCloseAt });
     expect(app.journal.live().map((l) => l.session)).toContain(`Session-${pubkey}`);
 
+    // paid arenas have no cash-out
     c.send({ t: 'cashout' });
-    expect((await c.wait('cashout', 2000, (m) => m.state === 'started')).ms).toBe(3000);
-    const done = await c.wait('cashout', 5000, (m) => m.state === 'done');
-    expect(done.value).toBe(10_000_000);
+    expect((await c.wait('error', 2000, (m) => m.code === 'no_cashout')).code).toBe('no_cashout');
+    await sleep(100);
+    expect(c.msgs.some((m) => m.t === 'cashout')).toBe(false);
+    expect(app.journal.pending.some((p) => p.key === `Session-${pubkey}`)).toBe(false);
+
+    // the bell: settled at value (reason `round`), with the round's standings
+    jumpTo(r.endsAt);
+    const over = await c.wait('roundOver', 3000);
+    expect(over.round).toBe(r.n);
+    expect(over.payout).toBe(10_000_000);
+    expect(over.stats.payout).toBe(10_000_000);
+    expect(over.standings.find((s) => s.you)).toEqual({ name: 'Whale', value: 10_000_000, you: true });
     const item = app.journal.pending.find((p) => p.key === `Session-${pubkey}`);
-    expect(item).toMatchObject({ kind: 'settle', payout: 10_000_000, reason: 'cashout', player: pubkey });
+    expect(item).toMatchObject({ kind: 'settle', payout: 10_000_000, reason: 'round', player: pubkey });
     expect(chain.kicked).toBeGreaterThan(0);
     expect(app.journal.live().map((l) => l.session)).not.toContain(`Session-${pubkey}`);
 
     // the same ticket cannot be reused while its settlement is pending
     c.send({ t: 'join', room: 'arena:1', name: 'Whale', skin: 0 });
     expect((await c.wait('error', 2000, (m) => m.code === 'no_session')).code).toBe('no_session');
+    app.journal.remove(`Session-${pubkey}`);
+    chain.sessions.delete(`1:${pubkey}`);
     c.close();
+  }, 15_000);
+
+  it('arena joins close in the last minute; an AFK staker may still come back; the next round opens joins', async () => {
+    const afk = newWallet();
+    chain.sessions.set(`1:${afk}`, session(afk));
+    const a = await signedIn(afk);
+    a.send({ t: 'join', room: 'arena:1', name: 'Early', skin: 0 });
+    const ja = await a.wait('joined');
+    a.close();
+    await sleep(150);
+
+    const r = roundAt(serverNow());
+    jumpTo(r.joinsCloseAt);
+    const late = newWallet();
+    chain.sessions.set(`1:${late}`, session(late));
+    const b = await signedIn(late);
+    b.send({ t: 'join', room: 'arena:1', name: 'Late', skin: 0 });
+    const err = await b.wait('error', 2000, (m) => m.code === 'round_closed');
+    expect(err.opensAt).toBe(r.endsAt);
+    expect(b.msgs.some((m) => m.t === 'joined')).toBe(false);
+    expect(app.rooms.liveSessions().size).toBeGreaterThan(0);
+
+    // the AFK return path is not a new join: allowed while joins are closed
+    const a2 = await signedIn(afk);
+    a2.send({ t: 'join', room: 'arena:1', name: 'Early', skin: 0 });
+    const back = await a2.wait('joined');
+    expect(back.playerId).toBe(ja.playerId);
+
+    // the next round opens: the held ticket joins
+    jumpTo(r.endsAt);
+    await a2.wait('roundOver', 3000);
+    b.send({ t: 'join', room: 'arena:1', name: 'Late', skin: 0 });
+    const jb = await b.wait('joined');
+    expect(jb.round?.n).toBe(r.n + 1);
+    for (const w of [afk, late]) {
+      for (const p of app.journal.pending.filter((x) => x.kind === 'settle' && x.player === w)) app.journal.remove(p.key);
+      chain.sessions.delete(`1:${w}`);
+    }
+    a2.close();
+    b.close();
   }, 15_000);
 
   it('stake players who disconnect stay AFK and can reconnect', async () => {

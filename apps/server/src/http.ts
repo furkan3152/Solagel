@@ -205,8 +205,8 @@ export function createHttpServer(cfg: ServerConfig, ctx: Ctx): Server {
             const wallet = url.searchParams.get('wallet');
             if (!isValidPubkey(wallet)) return json(res, 400, { error: 'invalid wallet' });
             const pending = (ctx.journal?.pending ?? [])
-              .filter((p) => p.player === wallet)
-              .map((p) => ({ key: p.key, arenaId: p.arenaId ?? null, payout: p.payout ?? 0 }));
+              // loot sweeps (`kind: 'sweep'`) belong to no wallet
+              .flatMap((p) => (p.kind === 'settle' && p.player === wallet ? [{ key: p.key, arenaId: p.arenaId ?? null, payout: p.payout ?? 0 }] : []));
             return json(res, 200, { pending });
           }
           case '/api/dev/pass/mint':

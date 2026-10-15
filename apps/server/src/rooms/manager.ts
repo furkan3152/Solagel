@@ -1,4 +1,4 @@
-import { TICK_MS, arenaMeta, type BlockedArena, type League, type RoomInfo } from '@slana/shared';
+import { TICK_MS, arenaMeta, roundAt, type BlockedArena, type League, type RoomInfo, type RoundWindow } from '@slana/shared';
 import type { ChainGateway } from '../chain/types';
 import type { ServerConfig } from '../config';
 import type { Conn } from '../net/conn';
@@ -48,6 +48,7 @@ export class RoomManager {
     this.deps = {
       ...deps,
       pass: deps.pass ?? cfg.pass,
+      round: deps.round ?? cfg.round,
       onGameOver: (e) => {
         this.onGameOver(e);
         deps.onGameOver?.(e);
@@ -55,6 +56,17 @@ export class RoomManager {
     };
     this.createPractice('rookie');
     this.createPractice('pro');
+  }
+
+  /** The wall clock arena rounds run on (Unix ms; injectable through `RoomDeps.now`). */
+  now(): number {
+    return this.deps.now ? this.deps.now() : Date.now();
+  }
+
+  /** The arena round running at `now` (shared by every arena and instance). */
+  roundWindow(now = this.now()): RoundWindow {
+    const r = this.deps.round;
+    return roundAt(now, r?.roundMs, r?.closeMs);
   }
 
   /* ---------------------------------------------------------------- */

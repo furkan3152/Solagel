@@ -91,6 +91,19 @@ export class BotManager {
     this.spawnQueue.push(now + randRange(this.rng, 1500, 5000));
   }
 
+  /**
+   * Round reset: every bot leaves the world and a fresh population (natural size mix) spawns
+   * on the next `update`, so bots keep playing into the new round. Returns the removed player ids.
+   */
+  resetRound(): number[] {
+    const gone = [...this.bots.keys()];
+    for (const pid of gone) this.world.removePlayer(pid);
+    this.bots.clear();
+    this.spawnQueue = [];
+    this.initialized = false;
+    return gone;
+  }
+
   /** A bot ate a player: sometimes it gloats. */
   onKill(pid: number): void {
     if (this.bots.has(pid) && this.rng() < 0.3) this.pendingEmotes.push({ pid, id: this.rng() < 0.7 ? EMOTE_YUM : EMOTE_ROCKET });

@@ -124,6 +124,27 @@ export interface RoomInfo {
   loot?: number;
   /** Private rooms only. */
   code?: string;
+  /** Arena rooms: the round in play (shared by every arena and instance). */
+  round?: RoundInfo;
+}
+
+/** An arena round as clients see it (Unix ms on the server clock; see `serverNow`). */
+export interface RoundInfo {
+  /** Round number: floor(serverNow / roundMs). */
+  n: number;
+  /** The round ends (and the next one opens) at this time. */
+  endsAt: number;
+  /** New joins are refused (`round_closed`) from this time until `endsAt`. */
+  joinsCloseAt: number;
+}
+
+/** A row of the round-end standings (`roundOver`): stakers by value at the bell. */
+export interface RoundStanding {
+  name: string;
+  /** Value at the bell, raw token units. */
+  value: number;
+  /** This row is the receiving player. */
+  you?: boolean;
 }
 
 /**
@@ -254,7 +275,17 @@ export interface DeathStats {
 }
 
 export type ServerMessage =
-  | { t: 'welcome'; v: number; serverTime: number; rooms: RoomInfo[]; chain: ChainStatus; online: number; blocked?: BlockedArena[] }
+  | {
+      t: 'welcome';
+      v: number;
+      serverTime: number;
+      /** Server clock (Unix ms) that round times are on; clients correct their clock skew with it. */
+      serverNow: number;
+      rooms: RoomInfo[];
+      chain: ChainStatus;
+      online: number;
+      blocked?: BlockedArena[];
+    }
   | { t: 'authed'; pubkey: string; token: string; profile: ProfileSummary | null }
   | {
       t: 'joined';
@@ -270,6 +301,8 @@ export type ServerMessage =
       hasPass?: boolean;
       /** Arena rooms: the ticket's on-chain session address (matches `settled.session`). */
       session?: string;
+      /** Arena rooms: the round in play (same as `room.round`). */
+      round?: RoundInfo;
     }
   | { t: 'spectating'; room: RoomInfo; targetPid: number | null }
   | { t: 'left' }
@@ -286,6 +319,9 @@ export type ServerMessage =
   | { t: 'emote'; pid: number; id: number }
   | { t: 'death'; stats: DeathStats; killer: string | null; killerSkin: number | null }
   | { t: 'cashout'; state: 'started' | 'canceled' | 'done'; ms?: number; value?: number; stats?: DeathStats }
+  // Arena rooms: the round ended with this player alive; `payout` (= value at the bell, raw token units,
+  // before the fee) is being settled (a `settled` message follows). `standings`: top 10 stakers by value.
+  | { t: 'roundOver'; round: number; payout: number; stats: DeathStats; standings: RoundStanding[] }
   // Arena rooms: the player's in-game value changed.
   | {
       t: 'value';
@@ -320,8 +356,9 @@ export type ServerMessage =
   | { t: 'xp'; xp: number; level: number }
   | { t: 'history'; chat: { pid: number; from: string; skin: number; text: string; system?: boolean }[] }
   | { t: 'rooms'; rooms: RoomInfo[]; online: number; blocked?: BlockedArena[] }
-  | { t: 'error'; code: ErrorCode; message: string }
-  | { t: 'pong'; ts: number; serverTime: number };
+  // `opensAt` (Unix ms, server clock): with `round_closed`, when the next round opens for joins.
+  | { t: 'error'; code: ErrorCode; message: string; opensAt?: number }
+  | { t: 'pong'; ts: number; serverTime: number; serverNow: number };
 
 export type ErrorCode =
   | 'bad_request'
@@ -339,7 +376,11 @@ export type ErrorCode =
   | 'pass_in_use'
   | 'arenas_disabled'
   | 'server_full'
-  | 'version_mismatch';
+  | 'version_mismatch'
+  /** Arena joins are closed for the rest of the round; `opensAt` says when the next one opens. */
+  | 'round_closed'
+  /** Paid arenas have no cash-out: everyone alive is paid at the round end. */
+  | 'no_cashout';
 
 /** Parse a join target into its parts. Returns null for malformed input. */
 export function parseJoinTarget(

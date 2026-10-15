@@ -27,7 +27,8 @@ function fakeConn(wallet: string): Conn & { msgs: ServerMessage[] } {
 function arena(bots: number): Room {
   return new Room(
     { id: 'stake-1', mode: 'arena', name: 'Arena', maxPlayers: 50, bots: { target: bots, min: bots, max: bots }, stake: { arenaId: 3, buyIn: FEE }, seed: 7 },
-    { chain: new NullChain(), journal: new Journal(null), leaderboards: new Leaderboards(null), log: () => {} },
+    // a fixed wall clock mid-round: no round end during the test
+    { chain: new NullChain(), journal: new Journal(null), leaderboards: new Leaderboards(null), log: () => {}, now: () => 1_791_000_060_000 },
   );
 }
 

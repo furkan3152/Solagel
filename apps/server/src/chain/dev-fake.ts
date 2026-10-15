@@ -65,6 +65,8 @@ export class DevFakeChain implements ChainGateway, DevFakePassActions {
   private readonly mints = new Map<string, number[]>();
   private minted = PRE_MINTED;
   private revealed: boolean;
+  /** Raw token units of floor loot swept into the running season's pool (round ends). */
+  private swept = 0;
 
   constructor(
     private readonly journal: Journal,
@@ -157,7 +159,7 @@ export class DevFakeChain implements ChainGateway, DevFakePassActions {
       id: 2,
       startedAt: now - 11 * day - 3_600,
       finalized: false,
-      prizePool: 84_200 * token,
+      prizePool: 84_200 * token + this.swept,
       entries: entries(DEV_SEASON_NAMES, 4_210),
       previous: {
         id: 1,
@@ -216,8 +218,10 @@ export class DevFakeChain implements ChainGateway, DevFakePassActions {
   kick(): void {
     if (this.stopped) return;
     for (const item of this.journal.pending) {
-      // only tickets this fake chain issued: anything else in the journal is real money, never touched
-      if (!this.byAddress.has(item.key) || this.scheduled.has(item.key)) continue;
+      // only tickets this fake chain issued (and loot sweeps of its own journal file): anything else is real money, never touched
+      if (item.kind === 'settle' && !this.byAddress.has(item.key)) continue;
+      if (item.kind !== 'settle' && item.kind !== 'sweep') continue;
+      if (this.scheduled.has(item.key)) continue;
       this.scheduled.add(item.key);
       const timer = setTimeout(() => {
         this.timers.delete(timer);
@@ -228,10 +232,23 @@ export class DevFakeChain implements ChainGateway, DevFakePassActions {
     }
   }
 
+  /** Season pool of the running season, raw units (tests). */
+  get seasonPool(): number {
+    return 84_200 * 10 ** DECIMALS + this.swept;
+  }
+
   private settle(key: string): void {
-    const session = this.byAddress.get(key);
     const item = this.journal.pending.find((p) => p.key === key);
-    if (!session || !item || this.stopped) return;
+    if (!item || this.stopped) return;
+    if (item.kind === 'sweep') {
+      // sweep_loot: the floor loot of a finished round moves to the season pool
+      this.journal.remove(key);
+      this.swept += item.amount;
+      this.log(`chain(dev-fake): swept ${item.amount} loot of ${item.roomId} round ${item.round} into the season pool`);
+      return;
+    }
+    const session = this.byAddress.get(key);
+    if (!session) return;
     const payout = item.payout ?? 0;
     const profit = Math.max(0, payout - session.entryFee);
     const fee = Math.floor((profit * (session.hasPass ? PASS_FEE_BPS : FEE_BPS)) / 10_000);
