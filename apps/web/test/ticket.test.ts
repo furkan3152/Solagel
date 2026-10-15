@@ -171,6 +171,11 @@ describe('ticketGate', () => {
     const owed = [{ key: 'S', arenaId: 1, payout: 5, needsTokenAccount: false }];
     expect(ticketGate(g({ ticket: blocked, pending: owed }))).toEqual({ kind: 'settling', payout: 5 });
     expect(ticketGate(g({ ticket: blocked, pending: [{ ...owed[0], needsTokenAccount: true }], ataExists: false }))).toEqual({ kind: 'needAta', payout: 5 });
+    // an open ticket in a blocked arena keeps resume and, after 24 h, the self-refund
+    const session = { address: 'S', openedAt: 1_000_000 - 3600, hasPass: false, passAsset: null };
+    expect(ticketGate(g({ ticket: blocked, session })).kind).toBe('resume');
+    expect(ticketGate(g({ ticket: blocked, session: { ...session, openedAt: 1_000_000 - 86_400 } })).kind).toBe('refund');
+    expect(ticketGate(g({ ticket: blocked, session, verified: false })).kind).toBe('verify');
   });
 
   it('resumes an open ticket without a transaction and offers a refund after 24 h', () => {

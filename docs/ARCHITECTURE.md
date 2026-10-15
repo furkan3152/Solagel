@@ -190,7 +190,9 @@ Consequences, stated plainly in the player guide:
   (holders included) can capture at any moment, and the game server and the web Pass page do so automatically, so no
   single party controls the timing. A party that could keep every capture out of every block for ~3.5 minutes (e.g. by
   censoring transactions) could still force a re-roll; the project does not claim more than this. As everywhere on
-  Solana, the leader producing the target slot also influences its bank hash.
+  Solana, the leader producing the target slot also influences its bank hash. Since the leader schedule is public, the
+  timing of `reveal_pass` (or of a re-target) selects which leader produces the target slot, and a colluding leader could
+  then grind or skip that slot; this is the same class of risk as the leader influence just stated.
 - `pass_supply` is frozen once the mint opens, so the traits every server and generator computes cannot shift later.
 - The upgrade authority is the strongest key: keep it in a multisig or make the program immutable after an audit.
 - Collusion (feeding a second wallet) is not detected in this version.

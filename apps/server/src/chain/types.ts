@@ -95,7 +95,8 @@ export interface ChainGateway {
   status(): ChainStatus;
   getProfile(owner: string, fresh?: boolean): Promise<ChainProfile | null>;
   getSession(arenaId: number, player: string): Promise<ChainSession | null>;
-  listArenas(): Promise<ChainArena[]>;
+  /** On-chain arenas; cached briefly unless `fresh` (a re-read that bypasses the cache). */
+  listArenas(fresh?: boolean): Promise<ChainArena[]>;
   season(): Promise<SeasonView | null>;
   /** Core asset `asset` when it is a Pass of our collection (cached 60 s); null otherwise. */
   getPass(asset: string): Promise<ChainPass | null>;
