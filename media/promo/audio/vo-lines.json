@@ -1,0 +1,46 @@
+[
+ {
+  "id": "hook_a",
+  "text": "Eat a player."
+ },
+ {
+  "id": "hook_b",
+  "text": "And keep their tokens."
+ },
+ {
+  "id": "logo",
+  "text": "This is Slana. The on-chain arena on Solana."
+ },
+ {
+  "id": "ticket",
+  "text": "Buy a ticket, and drop into a live room. It never closes."
+ },
+ {
+  "id": "play",
+  "text": "Eat smaller players... Take what they carry... and grow."
+ },
+ {
+  "id": "cashout",
+  "text": "Cash out whenever you like. The fee only touches your profit."
+ },
+ {
+  "id": "bots",
+  "text": "Bots carry no value. But when a bot eats you, your tokens spill as loot."
+ },
+ {
+  "id": "pass",
+  "text": "The Slana Pass is free to mint. Lower fees, Pass rooms, and a head start."
+ },
+ {
+  "id": "season",
+  "text": "Every season, the top ten split the pool."
+ },
+ {
+  "id": "split",
+  "text": "Fees split three ways. A fifth is burned. Players pay players."
+ },
+ {
+  "id": "end",
+  "text": "Slana... Eat... Grow... Cash out."
+ }
+]
