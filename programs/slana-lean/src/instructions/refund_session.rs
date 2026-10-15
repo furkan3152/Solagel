@@ -114,7 +114,7 @@ pub fn process(accounts: &[AccountView], _args: &[u8]) -> Result {
         player_token,
         token_program,
         refund,
-    );
+    )?;
 
     let open = rd_u16(r, arena::OPEN_SESSIONS).saturating_sub(1);
     wr_u16(r, arena::OPEN_SESSIONS, open);

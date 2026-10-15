@@ -2,6 +2,7 @@
 
 use {
     super::invoke,
+    crate::error::Result,
     crate::{
         borsh::{wr_bytes, wr_u64},
         constants::SYSTEM_PROGRAM_ID,
@@ -17,7 +18,7 @@ pub fn create_account(
     space: u64,
     owner: &Address,
     signers: &[Signer],
-) {
+) -> Result {
     let mut data = [0u8; 52];
     wr_u64(&mut data, 4, lamports);
     wr_u64(&mut data, 12, space);
@@ -31,11 +32,11 @@ pub fn create_account(
         &[from, to],
         &data,
         signers,
-    );
+    )
 }
 
 /// `Transfer { lamports }` from a system-owned signer.
-pub fn transfer(from: &AccountView, to: &AccountView, lamports: u64) {
+pub fn transfer(from: &AccountView, to: &AccountView, lamports: u64) -> Result {
     let mut data = [0u8; 12];
     data[0] = 2;
     wr_u64(&mut data, 4, lamports);
@@ -48,11 +49,11 @@ pub fn transfer(from: &AccountView, to: &AccountView, lamports: u64) {
         &[from, to],
         &data,
         &[],
-    );
+    )
 }
 
 /// `Allocate { space }`.
-pub fn allocate(account: &AccountView, space: u64, signers: &[Signer]) {
+pub fn allocate(account: &AccountView, space: u64, signers: &[Signer]) -> Result {
     let mut data = [0u8; 12];
     data[0] = 8;
     wr_u64(&mut data, 4, space);
@@ -62,11 +63,11 @@ pub fn allocate(account: &AccountView, space: u64, signers: &[Signer]) {
         &[account],
         &data,
         signers,
-    );
+    )
 }
 
 /// `Assign { owner }`.
-pub fn assign(account: &AccountView, owner: &Address, signers: &[Signer]) {
+pub fn assign(account: &AccountView, owner: &Address, signers: &[Signer]) -> Result {
     let mut data = [0u8; 36];
     data[0] = 1;
     wr_bytes(&mut data, 4, owner.as_ref());
@@ -76,5 +77,5 @@ pub fn assign(account: &AccountView, owner: &Address, signers: &[Signer]) {
         &[account],
         &data,
         signers,
-    );
+    )
 }

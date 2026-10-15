@@ -12,6 +12,7 @@ use {
     crate::{
         constants::{MPL_CORE_ID, SYSTEM_PROGRAM_ID},
         cpi::invoke,
+        error::Result,
         logic::{dec, Cursor},
     },
     pinocchio::{cpi::Signer, instruction::InstructionAccount, AccountView, Address},
@@ -27,7 +28,8 @@ const NONE: u8 = 0;
 const DATA_MAX: usize = 160;
 
 /// Instruction data of `CreateV2` with no plugins for Pass `number` under `base_uri`.
-#[inline(never)]
+/// Built inside [`create_v2`], its only caller (a separate function for the unit tests).
+#[inline(always)]
 pub fn create_v2_data(number: u32, base_uri: &[u8]) -> Cursor<DATA_MAX> {
     let mut digits = [0u8; 20];
     let n = dec(u64::from(number), &mut digits);
@@ -85,7 +87,7 @@ pub fn create_v2(
     number: u32,
     base_uri: &[u8],
     signers: &[Signer],
-) {
+) -> Result {
     let data = create_v2_data(number, base_uri);
     invoke(
         &MPL_CORE_ID,
@@ -106,7 +108,7 @@ pub fn create_v2(
         ],
         data.bytes(),
         signers,
-    );
+    )
 }
 
 #[cfg(test)]

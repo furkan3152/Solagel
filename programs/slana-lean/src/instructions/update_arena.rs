@@ -11,7 +11,7 @@
 //! | `arena: Account<Arena>`                                       | `load`                       | 3012 / 3007 / 3001 / 3002 / 3003 |
 //! | `config: seeds = [CONFIG_SEED], bump = config.bump`           | `check_admin_config`         | 2006 |
 //! | `config: has_one = admin @ Unauthorized`                      | `check_admin_config`         | Unauthorized |
-//! | `arena: seeds = [ARENA_SEED, arena.id LE], bump = arena.bump` | `check_pda`                  | 2006 |
+//! | `arena: seeds = [ARENA_SEED, arena.id LE], bump = arena.bump` | `check_pda_seeds`            | 2006 |
 //! | `arena: mut`                                                  | `check_writable`             | 2000 |
 
 use {

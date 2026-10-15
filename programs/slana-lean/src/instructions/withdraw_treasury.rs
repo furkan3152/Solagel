@@ -15,7 +15,7 @@
 //! | duplicate `mut` accounts (treasury_vault, destination)              | key compare                    | 2040 |
 //! | `config: seeds = [CONFIG_SEED], bump = config.bump`                 | `check_admin_config`           | 2006 |
 //! | `config: has_one = admin @ Unauthorized`                            | `check_admin_config`           | Unauthorized |
-//! | `treasury_vault: seeds = [TREASURY_VAULT_SEED], bump = config.treasury_vault_bump` | `check_pda`     | 2006 |
+//! | `treasury_vault: seeds = [TREASURY_VAULT_SEED], bump = config.treasury_vault_bump` | `check_pda_seeds` | 2006 |
 //! | `treasury_vault: mut`                                               | `check_writable`               | 2000 |
 //! | `treasury_vault: token::authority = config`                         | `check_token_account`          | 2015 |
 //! | `treasury_vault: token::mint = token_mint`                          | `check_token_account`          | 2014 |
@@ -134,7 +134,7 @@ pub fn process(accounts: &[AccountView], args: &[u8]) -> Result {
         amount,
         rd_u8(c, config::TOKEN_DECIMALS),
         &[Signer::from(&seeds)],
-    );
+    )?;
 
     events::emit(&events::treasury_withdrawn(
         destination.address().as_array(),

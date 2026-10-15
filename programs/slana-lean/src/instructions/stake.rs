@@ -269,9 +269,9 @@ pub(crate) fn pay_from_vault(
     to: &AccountView,
     token_program: &AccountView,
     amount: u64,
-) {
+) -> Result {
     if amount == 0 {
-        return;
+        return Ok(());
     }
     with_arena_signer(a, |signer| {
         transfer_checked(
@@ -284,16 +284,16 @@ pub(crate) fn pay_from_vault(
             rd_u8(c, config::TOKEN_DECIMALS),
             signer,
         )
-    });
+    })
 }
 
 /// Runs `f` with the arena PDA's signer seeds `[ARENA_SEED, id LE, bump]`.
 #[inline(always)]
-pub(crate) fn with_arena_signer(a: &[u8; arena::SPACE], f: impl FnOnce(&[Signer])) {
+pub(crate) fn with_arena_signer<R>(a: &[u8; arena::SPACE], f: impl FnOnce(&[Signer]) -> R) -> R {
     let id = rd_u16(a, arena::ID).to_le_bytes();
     let bump = [rd_u8(a, arena::BUMP)];
     let seeds = [Seed::from(ARENA_SEED), Seed::from(&id), Seed::from(&bump)];
-    f(&[Signer::from(&seeds)]);
+    f(&[Signer::from(&seeds)])
 }
 
 /// `a + b`, else `MathOverflow` (the reference's `checked_add(..).ok_or(MathOverflow)`).
