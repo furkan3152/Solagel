@@ -62,9 +62,11 @@ export interface Toast {
 
 export type Modal = 'settings' | 'howto' | 'wallet' | null;
 
-/** Lobby pages: the ticket front page, the newspaper leaderboard, the Pass office, the profile. */
-export type LobbyPage = 'play' | 'ranks' | 'pass' | 'profile';
-const PAGES: readonly LobbyPage[] = ['play', 'ranks', 'pass', 'profile'];
+/** Lobby pages: the ticket front page, the newspaper leaderboard, the Pass office, the profile, the player guide. */
+export type LobbyPage = 'play' | 'ranks' | 'pass' | 'profile' | 'docs';
+const PAGES: readonly LobbyPage[] = ['play', 'ranks', 'pass', 'profile', 'docs'];
+/** The player guide also lives at the path `/docs` (the server's SPA fallback serves index.html there). */
+const DOCS_PATH = /^\/docs\/?$/;
 
 export interface AuthState {
   pubkey: string;
@@ -104,7 +106,7 @@ export interface UiState {
   spectateTarget: number | null;
   toasts: Toast[];
   modal: Modal;
-  /** Lobby page (mirrored in the URL hash: `#pass`, `#ranks`, `#profile`). */
+  /** Lobby page (mirrored in the URL hash: `#pass`, `#ranks`, `#profile`, `#docs`; the guide also at `/docs`). */
   page: LobbyPage;
   /** Death / receipt "Yeni bilet": the lobby selects this ticket and opens its confirm sheet. */
   lobbyIntent: { ticket: 'practice' | `arena:${number}`; open: boolean; at: number } | null;
@@ -176,7 +178,7 @@ export const useUi = create<UiState>(() => ({
   spectateTarget: null,
   toasts: [],
   modal: null,
-  page: pageFromHash(),
+  page: pageFromLocation(),
   lobbyIntent: null,
   auth: null,
   settings: loadSettings(),
@@ -201,21 +203,38 @@ export function toast(kind: Toast['kind'], text: string, link?: Toast['link'], t
 
 export const openModal = (modal: Modal) => useUi.setState({ modal });
 
-function pageFromHash(): LobbyPage {
+/** The page a URL names: a known hash wins, else `/docs` is the guide, else the front page. */
+export function pageFromUrl(pathname: string, hash: string): LobbyPage {
+  const h = hash.replace(/^#/, '') as LobbyPage;
+  if (PAGES.includes(h)) return h;
+  return DOCS_PATH.test(pathname) ? 'docs' : 'play';
+}
+
+function pageFromLocation(): LobbyPage {
   try {
-    const h = location.hash.replace(/^#/, '') as LobbyPage;
-    return PAGES.includes(h) ? h : 'play';
+    return pageFromUrl(location.pathname, location.hash);
   } catch {
     return 'play';
   }
 }
 
-/** Opens a lobby page (and keeps the URL hash in step, so a page can be linked: `/#pass`). */
+/**
+ * The URL for `page` seen from `pathname`: pages are hashes (`/#pass`); the guide keeps
+ * the path `/docs` when it was opened there, and leaving it from `/docs` goes back to `/`.
+ */
+export function urlForPage(page: LobbyPage, pathname: string, search: string): string {
+  const onDocs = DOCS_PATH.test(pathname);
+  if (page === 'docs') return onDocs ? `${pathname}${search}` : `${pathname}${search}#docs`;
+  const path = onDocs ? '/' : pathname;
+  return `${path}${search}${page === 'play' ? '' : `#${page}`}`;
+}
+
+/** Opens a lobby page (and keeps the URL in step, so a page can be linked: `/#pass`, `/docs`). */
 export function goPage(page: LobbyPage): void {
   useUi.setState({ page });
   try {
-    const hash = page === 'play' ? '' : `#${page}`;
-    if (location.hash !== hash) history.replaceState(null, '', `${location.pathname}${location.search}${hash}`);
+    const url = urlForPage(page, location.pathname, location.search);
+    if (`${location.pathname}${location.search}${location.hash}` !== url) history.replaceState(null, '', url);
   } catch {
     /* no history (tests) */
   }
@@ -223,7 +242,7 @@ export function goPage(page: LobbyPage): void {
 
 if (typeof window !== 'undefined') {
   window.addEventListener('hashchange', () => {
-    const page = pageFromHash();
+    const page = pageFromLocation();
     if (page !== useUi.getState().page) useUi.setState({ page });
   });
 }

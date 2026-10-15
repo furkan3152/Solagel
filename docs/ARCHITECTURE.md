@@ -1,0 +1,184 @@
+# Slana architecture
+
+*Türkçe özet: Slana hibrit bir oyundur. Fizik yetkili oyun sunucusunda, para kuralları Solana programında çalışır. Bu
+doküman para akışını, değişmezleri ve güven modelini anlatır. Ürün tasarımı: [tasarım dokümanı (TR)](superpowers/specs/2026-10-14-slana-design.md).*
+
+Every number below is quoted from the code: program constants from `programs/slana/src/constants.rs`, admin defaults
+from `packages/sdk/src/constants.ts` (`pnpm admin init`), game rules from `packages/shared/src/constants.ts` (`RULES`,
+`CAPACITY`) and server timings from `apps/server/src`.
+
+## Components
+
+| Part | Runs | Holds |
+|---|---|---|
+| `programs/slana` (Anchor 1.2.1) | Solana | Config, arena vaults, sessions, fees, burn, season table and prize pool, Slana Pass collection, mint and reveal |
+| `apps/server` (Node 22) | your host | 30 Hz simulation, rooms and instances, bots, in-game value ledger, loot, journal, settlement queue, Pass metadata |
+| `apps/web` (Vite + React) | browser | lobby, ticket flow, HUD, Pass office, standings, player guide (`/docs`) |
+| `packages/sdk` | everywhere | PDAs, instruction builders, account views, fee math (`splitPayout`, mirrors `logic::split_payout`), admin CLI |
+| `packages/art` | everywhere | `passTraits(seed, n, supply)`, coin and Pass drawing, `pnpm pass:*` CLI |
+| `packages/shared` | everywhere | rules, binary protocol, arena metadata, token formatting |
+
+The browser talks to the server over a WebSocket (binary snapshots, 30 ticks per second) and signs its own transactions
+(register, join, create token account, mint, claim, refund) against the RPC. The server signs only `settle_session`.
+
+## Money flow
+
+```mermaid
+flowchart LR
+  P["Player wallet"]
+  SRV["Game server key"]
+  ADM["Admin wallet"]
+  subgraph PROGRAM["slana program accounts"]
+    AV["Arena vault<br/>PDA vault + arena"]
+    SES["Session account<br/>rent + settle deposit (SOL)"]
+    TV["Treasury vault<br/>PDA treasury_vault"]
+    SV["Season vault<br/>PDA season_vault"]
+  end
+  BURN(("Burned<br/>token supply"))
+
+  P -- "join_arena: entry fee (tokens)" --> AV
+  P -- "join_arena: rent + settle_fee_lamports" --> SES
+  AV -- "settle_session: payout - fee" --> P
+  AV -- "fee x treasury_bps" --> TV
+  AV -- "fee x season_bps + rounding" --> SV
+  AV -- "fee x burn_bps" --> BURN
+  SES -- "settle: deposit" --> SRV
+  SES -- "settle / refund: rent" --> P
+  AV -- "refund_session after 24 h: min(entry fee, vault)" --> P
+  AV -- "sweep_arena: disabled and idle" --> SV
+  SV -- "claim_season_reward: top 10" --> P
+  TV -- "withdraw_treasury" --> ADM
+```
+
+Inside a room the value moves between players without touching the chain:
+
+- A ticket's value starts at its entry fee (`Session.entry_fee`).
+- Eating a cell moves `floor(V · m / M)` of the victim's value to the eater (`ArenaLedger.transfer`); the last cell moves
+  everything left.
+- Bots are worth 0. When a bot eats (part of) a player, the same share leaves the player as loot
+  (`ArenaLedger.spill`), split into `clamp(ceil(V / (entry_fee × 0.25)), 3, 24)` pieces that add up exactly
+  (`RULES.lootPieces*`). Loot never despawns and only real players collect it.
+- Cash-out (3 s, `RULES.cashoutMs`; 2 s with a Pass, `PASS_CASHOUT_MS`), death, AFK (45 s, `RULES.afkGraceMs`) and the
+  6 h age limit (`MAX_STAKE_SESSION_AGE_S`) all end in one `settle_session` with `payout` = the ledger value (0 after a
+  death).
+
+### Ticket lifecycle
+
+```mermaid
+sequenceDiagram
+  participant W as Wallet and web client
+  participant P as slana program
+  participant S as Game server
+  W->>P: register_player (first ticket) + join_arena or join_arena_with_pass
+  Note over P: entry fee to the arena vault, Session opened with rent + deposit, PassLock if a Pass backs it
+  W->>S: join arena (signed-in WebSocket)
+  S->>P: read Session (id, entry fee, has_pass, pass asset)
+  Note over S: value = entry fee, kept in the ledger and journaled
+  W->>S: cash-out
+  S->>S: journal the settlement (atomic write)
+  S->>P: settle_session(session_id, payout, score, kills, xp)
+  P-->>W: payout minus fee to the token account, Session and PassLock rent
+  P-->>S: settle deposit
+```
+
+## Fees
+
+`logic::split_payout` (mirrored by `splitPayout` in the SDK, tested to agree):
+
+```
+profit   = max(0, payout − entry_fee)
+fee      = floor(profit × bps / 10 000)        bps = pass_fee_bps on a Pass session, else fee_bps
+treasury = floor(fee × treasury_bps / 10 000)
+burn     = floor(fee × burn_bps / 10 000)
+season   = fee − treasury − burn               (gets the rounding remainder)
+player   = payout − fee
+```
+
+Defaults (`pnpm admin init`): `fee_bps` 500, `pass_fee_bps` 200, split 5000 / 3000 / 2000, `settle_fee_lamports`
+20 000. Bounds: `fee_bps ≤ MAX_FEE_BPS` (1000), `pass_fee_bps ≤ fee_bps`, split sums to 10 000,
+`settle_fee_lamports ≤ MAX_SETTLE_FEE_LAMPORTS` (1 000 000).
+
+Worked example (the player guide shows it as receipts): entry 1 000, cash-out 2 000 → profit 1 000 → fee 50
+(treasury 25, season 15, burn 10), player 1 950. With a Pass: fee 20 (10 / 6 / 4), player 1 980.
+
+## Invariants
+
+On-chain (enforced by the program):
+
+1. **A payout never exceeds the vault.** `settle_session` requires `vault.amount ≥ payout` (`InsufficientPot`);
+   `refund_session` pays `min(entry_fee, vault.amount)`.
+2. **One open ticket per player per arena**: the Session PDA is `["session", arena, player]`.
+3. **One open ticket per Pass**: `join_arena_with_pass` creates `["pass_lock", asset]`; a second join with the same asset
+   fails, even after a transfer. Settle and refund close it back to the player.
+4. **No replayed payouts**: `settle_session` requires `session_id == Session.id` (ids come from `Config.total_sessions`,
+   PDAs are reused).
+5. **Fees only on profit and bounded** (see Fees). The burn lowers the mint supply.
+6. **The deposit pays the settler**: a Session holds rent + `settle_fee`; settle moves `settle_fee` to the server and closes
+   the rest to the player; refund returns everything to the player after `SESSION_REFUND_TIMEOUT_SECS` (24 h).
+7. **Season pools**: every transfer into or out of the season vault changes exactly one season's `pool` (settle fee share,
+   sweep and rollover add; claims subtract), so the vault balance equals the sum of the pools. `end_season` freezes
+   `prize_pool`; rank `r` (0-based) of the top `PRIZE_RANKS` (10) claims `prize_pool × PRIZE_SHARES_BPS[r] / 10 000`
+   once (`claimed_mask`) within `CLAIM_WINDOW_SECS` (30 days); `rollover_season` only after the window.
+8. **Season points only from Pass tickets**: `record_result` adds the score to `season_points` and the leaderboard only
+   when `Session.has_pass` (captured at join). Score and XP are clamped (`MAX_SCORE_PER_GAME` 1 000 000,
+   `MAX_XP_PER_GAME` 2 000).
+9. **The token is fixed**: `token_mint` is written once by `initialize`. Mints with a freeze authority and Token-2022 mints
+   with any of `DENIED_MINT_EXTENSIONS` (transfer fee, transfer hook, permanent delegate, non-transferable, default
+   account state, confidential transfer and its fee / mint-burn variants, pausable, mint close authority) are refused.
+10. **Pass mint rules**: `pass_minted ≤ pass_supply ≤ MAX_PASS_SUPPLY` (10 000); a per-wallet counter
+    `["pass_minted", wallet]` ≤ `pass_per_wallet`; the seed hash must be set before the first mint and is locked after it;
+    `reveal_pass` needs `sha256(seed) == pass_seed_hash` and a closed or sold-out mint; after the reveal the mint cannot
+    reopen; `pass_base_uri` (≤ 96 bytes, ends with `/`) is frozen after the first mint.
+11. **Pause blocks joins only**: `paused` stops `join_arena`; settlements and refunds keep working.
+
+Off-chain (enforced by the server, covered by tests in `apps/server/test`):
+
+12. **Value conservation per arena**: Σ live ledger values + Σ loot + Σ pending payouts = Σ entry fees of the arena's
+    joined tickets − Σ settled payouts (`conservation.test.ts`). The journal (`DATA_DIR/journal.json`) is written with
+    write-to-temp + rename whenever a settlement is queued and at most once per second while values or loot change, so the
+    file on disk always satisfies the same equation. With invariant 1 the vault always covers the server's books: the vault
+    also holds the entry fees of tickets that were bought but not yet played.
+13. **Bots carry no value**: they never enter the ledger, eating one gives mass only, and they never pick up loot
+    (`loot.test.ts` "bots never pick loot", `bots.test.ts` "bots ignore loot").
+14. **Crash recovery**: live tickets found in the journal at start are queued for automatic cash-out; loot is restored into
+    the arena's first instance.
+15. **No server-paid player rent** (ruling R10): a settlement whose player has no token account waits (`needsTokenAccount`
+    in `GET /api/pending`) and is retried every 5 min (`NO_ATA_RETRY_MS`); the player can always self-refund after 24 h.
+
+## Trust model
+
+| Actor | Can | Cannot |
+|---|---|---|
+| Player | buy and refund tickets (refund after 24 h), mint Passes, claim prizes, edit the profile | settle a ticket, move other players' tokens |
+| Server key (`Config.server_authority`) | close any open ticket with any `payout ≤ vault` and any score / kills / XP (clamped) | touch the treasury or season vault, change the config, open tickets, mint |
+| Admin (`Config.admin`) | change fees (≤ 10 %), split, deposit, pause; replace the server key or the admin; create, update, disable and sweep arenas (into the season pool); end and roll over seasons; withdraw the treasury; set the Pass collection (once), seed hash, mint window and supply; reveal | change the token mint; take an arena vault directly; set a fee above 10 %; reveal a seed that does not match the hash; reopen the mint after the reveal |
+| Upgrade authority | replace the program code | (nothing is out of reach) |
+| Server operator | rooms, bots, matchmaking, Pass power (`PASS_START_MASS_MUL`, `PASS_CASHOUT_MS`), Pass metadata and images | anything on-chain except through the server key |
+
+Consequences, stated plainly in the player guide:
+
+- The game outcome is trusted. A buggy or malicious server can split an arena's vault wrongly between that arena's
+  players (never more than the vault). Because the admin can replace the server key, trusting the server means trusting
+  the admin.
+- Until the reveal, only the admin knows the Pass seed, and Pass numbers are sequential.
+- Pass traits are `passTraits(seed, n, supply)` with the on-chain `pass_supply`; `pass_supply` stays changeable
+  (≥ minted), so changing it after the reveal would change the traits every server and generator computes. Never change
+  it after the mint opens (see [OPERATIONS.md](OPERATIONS.md)).
+- The upgrade authority is the strongest key: keep it in a multisig or make the program immutable after an audit.
+- Collusion (feeding a second wallet) is not detected in this version.
+
+## Server internals
+
+- **Rooms** (`rooms/manager.ts`): practice instances `practice-rookie-N` / `practice-pro-N` (`PRACTICE_CAPACITY`, 40
+  humans); Pro for profiles at level ≥ 5 and, for 24 h, for IPs whose Rookie game passed 3 000 mass or 8 kills. Arena
+  instances `arena-<id>-<n>` hold `ARENA_INSTANCE_CAP` (50) humans; a new instance opens on the same vault when all are
+  full. The arena list is re-read from the chain every 30 s.
+- **Settlement worker** (`chain/solana.ts`): drains the journal queue (at most 4 in flight), retries transient failures
+  with backoff (up to 5 min), drops permanent ones (`SessionMismatch`, closed session), and every 5 min queues a refund at
+  the entry fee for tickets nobody played for 15 min (`STALE_SESSION_AFTER_S`). It warns when the server key holds less
+  than 0.05 SOL.
+- **Pass endpoints** (`http.ts`): `GET /pass/<n>.json`, `/pass/<n>.png`, `/pass/collection.json`, `/pass/collection.png`
+  (sealed before the reveal, images cached under `DATA_DIR/pass/`), `GET /api/pass/owned?wallet=`, rate limited.
+- **Other REST**: `/api/health`, `/api/rooms`, `/api/leaderboard`, `/api/season`, `/api/config`, `/api/auth/nonce`,
+  `/api/pending?wallet=`. With `WEB_DIST` the server also serves the web build and falls back to `index.html` for client
+  routes such as `/docs`.

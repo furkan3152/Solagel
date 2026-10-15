@@ -41,5 +41,14 @@ export const FIRST_SEASON = 1;
 export const BASIC_SKINS = 8;
 /** `level = 1 + isqrt(xp / XP_LEVEL_DIVISOR)`. */
 export const XP_LEVEL_DIVISOR = 50;
+/**
+ * Defaults of `pnpm admin init` (not program constants: the admin sets them in `Config`
+ * and may change them with `update-config`). Fee on stake profit 5 % (Pass 2 %), fee split
+ * treasury / season / burn 50 / 30 / 20 %, settle deposit 20 000 lamports per session.
+ */
+export const DEFAULT_FEE_BPS = 500;
+export const DEFAULT_PASS_FEE_BPS = 200;
+export const DEFAULT_FEE_SPLIT_BPS: readonly [number, number, number] = [5_000, 3_000, 2_000];
+export const DEFAULT_SETTLE_FEE_LAMPORTS = 20_000;
 /** Name of Pass number `n` (`mint_pass` names assets `Slana Pass #<n>`). */
 export const PASS_NAME_PREFIX = 'Slana Pass #';
