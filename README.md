@@ -118,6 +118,21 @@ Adım adım (program, token, Pass koleksiyonu, mint, arenalar, sunucu, Docker, m
 **[docs/DEPLOY.md](docs/DEPLOY.md)**. Günlük işler (sezon, açılış, hazine, durdurma, anahtar değişimi, yedek):
 **[docs/OPERATIONS.md](docs/OPERATIONS.md)**. Bütün yönetici komutları: `pnpm admin help`.
 
+### Program build and deploy
+
+The deployed program is the Pinocchio build `programs/slana-lean` (59,344 bytes, size gate 71,000). The Anchor crate
+`programs/slana-ref` is only the IDL source and the conformance oracle in the tests, and is **never deployed**.
+
+```bash
+anchor build --ignore-keys && pnpm -F @slana/sdk sync-idl     # IDL (and the reference slana.so used by the tests)
+bash scripts/build-lean.sh                                    # target/deploy/slana_lean.so, prints size and rent
+solana program deploy target/deploy/slana_lean.so --program-id target/deploy/slana-keypair.json
+```
+
+Never use `anchor deploy`: it would ship the ~679 KB reference. The lean program locks
+414,238,320 lamports (≈ ◎0.414) of ProgramData rent, and the deploy briefly needs about ◎0.83 because of the temporary
+buffer. The full cost table is in [docs/DEPLOY.md](docs/DEPLOY.md#13-mainnet-maliyetleri).
+
 ### Localnet ve uçtan uca test
 
 `scripts/localnet.sh` temiz bir yerel küme kurar: Slana programı ve Metaplex Core yüklü `solana-test-validator`,
@@ -194,7 +209,11 @@ Ek araçlar: `pnpm -F @slana/server sim` (bot dengesi), `pnpm -F @slana/web shot
 - **Seasons:** points come only from Pass tickets; the on-chain top 20 is kept and the top 10 share the pool; 30 days to
   claim.
 - **Architecture:** a hybrid model. The authoritative Node server runs the 30 Hz simulation and settles tickets on-chain;
-  the Anchor program holds the money rules. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+  the Solana program holds the money rules. The deployed program is a Pinocchio build (`programs/slana-lean`, 59,344
+  bytes, ≈ ◎0.414 of rent). It is wire-compatible with the Anchor reference (`programs/slana-ref`), which supplies the
+  IDL and is checked against it by the same LiteSVM suite, but is never deployed. Build with
+  `bash scripts/build-lean.sh`, deploy with `solana program deploy target/deploy/slana_lean.so --program-id <keypair>`,
+  never `anchor deploy`. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ```bash
 corepack enable && pnpm install && pnpm dev     # http://localhost:5173, practice, no wallet needed

@@ -21,6 +21,59 @@ from `packages/sdk/src/constants.ts` (`pnpm admin init`), game rules from `packa
 The browser talks to the server over a WebSocket (binary snapshots, 30 ticks per second) and signs its own transactions
 (register, join, create token account, mint, claim, refund) against the RPC. The server signs only `settle_session`.
 
+## The on-chain program: two crates, one deployed
+
+The money rules exist twice, as two crates that must behave identically on the wire:
+
+| Crate | Built by | Output | Role |
+|---|---|---|---|
+| `programs/slana-ref` (Anchor 1.2.1, lib name `slana`) | `anchor build --ignore-keys` | `target/deploy/slana.so` (~679 KB) and the IDL | **Reference, never deployed.** The IDL (`pnpm -F @slana/sdk sync-idl` → `packages/sdk/src/idl`) and so every TS type come from it. In the tests it is the conformance oracle. |
+| `programs/slana-lean` (Pinocchio 0.11, `no_std`, no allocator, no `core::fmt`, no floats) | `bash scripts/build-lean.sh` (`cargo build-sbf`) | `target/deploy/slana_lean.so` (59,344 bytes) | **The deployed program**, at the same program id. It dispatches on the 8-byte Anchor discriminators and reads/writes accounts at fixed offsets. It reproduces the reference's account checks, error codes (6000+ and the Anchor built-ins it raises), events and the `Pass entropy: slot … hash …` log line. |
+
+Wire compatibility means the following match: instruction discriminators and Borsh arguments, account order and
+signer/writable flags, account discriminators, layouts and sizes, PDA seeds, error codes and event bytes. Anchor's
+`Instruction: <Name>` log lines are not part of it, and the lean program does not print them. Clients identify
+instructions by discriminator, never by log text.
+
+Deploy only `slana_lean.so`, with `solana program deploy target/deploy/slana_lean.so --program-id <keypair>`. Never
+use `anchor deploy`, because it would ship the reference. The lean crate keeps its own copy of the program id
+(`ID` in `programs/slana-lean/src/lib.rs`), and a unit test pins it to the reference's `declare_id!`.
+
+**Conformance testing.** The LiteSVM suite lives in `programs/slana-ref/tests` and always builds its instructions
+with the reference's Anchor types. `SLANA_IMPL` selects which `.so` is loaded at the program id:
+
+- `ref` loads `slana.so`;
+- `lean`, the default, loads `slana_lean.so`.
+
+`scripts/test-program.sh` runs the whole suite under both, and CI fails if either fails. The suite covers every
+instruction. Beyond the outcomes, it compares:
+
+- the exact error code of each constraint failure, including Anchor's check order;
+- the account bytes written by lean against the reference's re-serialization (`layout.rs`);
+- the event bytes against `Event::data()`;
+- the compute units per instruction (`cu.rs`, printed side by side in CI).
+
+The lean crate's host tests (`cargo test -p slana-lean`) check:
+
+- the discriminators against `sha256("global:<name>")`, the reference and the IDL;
+- the constants and error codes;
+- differential tests of the money math (`mul_bps`, `split_payout`, prizes) against the reference functions;
+- the CPI and SlotHashes helpers.
+
+Finally, the localnet e2e (`pnpm -F @slana/server e2e`) runs the deployed lean `.so` on a real `solana-test-validator`
+with the game server and the web's own transaction builders.
+
+**Size gate.** `programs/slana-ref/tests/size.rs` fails when `slana_lean.so` exceeds 71,000 bytes, or when its
+ProgramData rent, `(len + 45 + 128) × 6960` lamports, exceeds ◎0.5. CI runs it on every push. Today the program is
+59,344 bytes, which is 414,238,320 lamports ≈ ◎0.414. The reference would lock ◎4.73. The size settings are
+per-package overrides in the root `Cargo.toml`:
+
+- `opt-level = "z"` for the lean crate and the Pinocchio crates;
+- `overflow-checks = false` for the lean crate only, because its value arithmetic uses explicit `checked_*` (clippy's
+  `arithmetic_side_effects` is denied outside tests).
+
+Fat LTO and one codegen unit come from the shared release profile. The reference build is unaffected. Deploy and rent figures are in [DEPLOY.md](DEPLOY.md).
+
 ## Money flow
 
 ```mermaid
