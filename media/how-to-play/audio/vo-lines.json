@@ -5,11 +5,11 @@
  },
  {
   "id": "c1",
-  "text": "Slana is agar dot io, on-chain. You're a coin in a live arena on Solana. Eat smaller players, take their tokens, and cash out whenever you like."
+  "text": "Slana is agar dot io, on-chain. You're a coin in a live arena on Solana. Eat smaller players, take their tokens, and be alive at the bell to get paid."
  },
  {
   "id": "c2",
-  "text": "Start for free. In the lobby, pick the Practice ticket and press Quick Play. No wallet, no tokens: just you and the bots. Practice has two leagues, Rookie and Pro."
+  "text": "Start for free. In the lobby, pick the Practice ticket and press Quick Play. No wallet, no tokens: just you and the bots."
  },
  {
   "id": "c3a",
@@ -53,23 +53,35 @@
  },
  {
   "id": "c6a",
-  "text": "To cash out, press C and survive three seconds without losing a cell. Your receipt prints, and the tokens go to your wallet."
+  "text": "Arenas play five-minute rounds on the clock, and you can join one that's already running."
  },
  {
   "id": "c6b",
-  "text": "The fee is charged on profit only. Enter with one thousand, cash out at two thousand: that's one thousand profit. The five percent fee is fifty, so you get nineteen fifty."
+  "text": "Joins close in the final minute. Buy a ticket then, and it's held: you join the next round by yourself."
  },
  {
   "id": "c6c",
-  "text": "With a Pass, the fee is two percent. That's twenty, and you keep nineteen eighty."
+  "text": "Eaten? Buy back in, at the same fee, and jump straight back into the round."
  },
  {
   "id": "c6d",
-  "text": "Fees split three ways: half to the treasury, thirty percent to the season pool, and twenty percent is burned."
+  "text": "When the bell rings, everyone still alive is paid their till."
+ },
+ {
+  "id": "c6e",
+  "text": "The fee is charged on profit only. Enter with one thousand, finish the round on two thousand: that's one thousand profit. The five percent fee is fifty, so you get nineteen fifty."
+ },
+ {
+  "id": "c6f",
+  "text": "With a Pass, the fee is two percent. That's twenty, and you keep nineteen eighty."
+ },
+ {
+  "id": "c6g",
+  "text": "And any loot left on the floor at the bell goes to the season pool."
  },
  {
   "id": "c7a",
-  "text": "The Slana Pass is a free-mint NFT. It opens the Pass rooms, drops the fee to two percent, and gives you a fifteen percent head start and a two-second cash-out."
+  "text": "The Slana Pass is a free-mint NFT. It opens the Pass rooms, drops the fee to two percent, and gives you a fifteen percent head start."
  },
  {
   "id": "c7b",
@@ -77,10 +89,10 @@
  },
  {
   "id": "c8",
-  "text": "Quick tips. Warm up in Practice. Only split when the catch is sure: a split coin is easy prey. And cash out while you're ahead."
+  "text": "Quick tips. Warm up in Practice. Only split when the catch is sure. And in the final minute, play it safe: you're only paid if you're alive at the bell."
  },
  {
   "id": "outro",
-  "text": "Slana. Eat. Grow. Cash out."
+  "text": "Slana. Eat. Grow. Last the round."
  }
 ]

@@ -30,8 +30,8 @@ fi
 "$FF" -hide_banner -loglevel error -y -i "$WORK/picture.mp4" -i "$WORK/mix.wav" -map 0:v -map 1:a \
   -c:v libx264 -preset slow -crf 17 -tune animation -pix_fmt yuv420p -r 30 -g 60 -profile:v high -level 4.1 \
   -c:a aac -b:a 256k -ar 48000 -movflags +faststart -shortest "$OUT/$NAME-master.mp4"
-# web: two-pass to fit in 29 MB with 192 kb/s audio
-VB=$(node -e "console.log(Math.floor((29*8*1024*1024/$DUR - 192000*1.02)/1000))")
+# web: two-pass to about 28 MB (under 30 MB) with 192 kb/s audio
+VB=$(node -e "console.log(Math.floor((26.5*8*1024*1024/$DUR - 192000*1.02)/1000))")
 cd "$WORK"
 "$FF" -hide_banner -loglevel error -y -i picture.mp4 -c:v libx264 -preset slow -tune animation -b:v ${VB}k -maxrate $((VB*2))k -bufsize $((VB*2))k -pix_fmt yuv420p -r 30 -g 60 -pass 1 -passlogfile x264 -an -f mp4 /dev/null
 "$FF" -hide_banner -loglevel error -y -i picture.mp4 -i mix.wav -map 0:v -map 1:a -c:v libx264 -preset slow -tune animation -b:v ${VB}k -maxrate $((VB*2))k -bufsize $((VB*2))k -pix_fmt yuv420p -r 30 -g 60 -pass 2 -passlogfile x264 \

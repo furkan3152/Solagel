@@ -1,6 +1,6 @@
 # How to play Slana (Video B)
 
-A narrated tutorial, about 2:29, 1920x1080, 30 fps, H.264 + AAC, -14 LUFS, in
+A narrated tutorial, about 2:35, 1920x1080, 30 fps, H.264 + AAC, -14 LUFS, in
 eight chapters with the brand's ticket chapter cards:
 
 1. What Slana is
@@ -10,15 +10,21 @@ eight chapters with the brand's ticket chapter cards:
    rug cacti, loot when a bot eats you)
 5. Arenas and tickets (wallet, the four arenas and their entry fees, the
    ticket sheet, your till)
-6. Cash out (C, the 3 s channel, the receipt; the guide's worked example as
-   two printing receipts: 1,000 in, 2,000 out, fee 50 or 20 with a Pass, net
-   1,950 or 1,980; the 50/30/20 fee split)
-7. The Slana Pass and seasons
-8. Tips, then the end card
+6. Rounds and payouts (5-minute wall-clock rounds and joining a running one;
+   joins close in the final minute and a ticket bought then is held for the
+   next round; eaten means buy back in at the same fee; everyone alive at the
+   bell is paid their till; the guide's worked example as two printing "Round
+   over" receipts: 1,000 in, 2,000 at the bell, fee 50 or 20 with a Pass, net
+   1,950 or 1,980; the 50/30/20 fee split; floor loot at the bell goes to the
+   season pool)
+7. The Slana Pass and seasons (Pass rooms, 2% fee, +15% head start)
+8. Tips (warm up, split only when sure, play safe in the final minute), then
+   the end card
 
 Every rule and number on screen and in the voiceover comes from the in-app
-guide (`apps/web/src/ui/docs/content.en.ts` and `facts.ts`) and the controls
-from `apps/web/src/game/input.ts`.
+guide (`apps/web/src/ui/docs/content.en.ts` and `facts.ts`), the rounds spec
+(`docs/superpowers/specs/2026-10-15-slana-rounds-design.md`) and the controls
+from `apps/web/src/game/input.ts`. Arenas have no cash-out key.
 
 ## Layout
 
@@ -30,7 +36,8 @@ from `apps/web/src/game/input.ts`.
 
 Footage, motion graphics, the compositor and the mixer are shared with the
 gameplay video: see `media/gameplay/README.md`. The takes it uses are `lobby`,
-`practice`, `controls`, `spill`, `arena`, `arena-t7`.
+`practice`, `spill`, `held`, `arena` and `arena2` (`controls` instead of
+`practice` for the controls when it exists).
 
 ## Re-render
 

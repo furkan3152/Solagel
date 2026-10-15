@@ -149,7 +149,7 @@ export class Edit {
         tx = s.cam.x; ty = s.cam.y;
       } else if (s.cam === 'auto') {
         const sm = sampleAt(s.take, src);
-        if (sm && sm.me && (sm.screen === 'playing' || sm.screen === 'cashedout')) {
+        if (sm && sm.me && (sm.screen === 'playing' || sm.screen === 'roundover')) {
           tx = sm.me.x; ty = sm.me.y;
           const near = (sm.near || []).filter((q) => (q[0] === 'p' && q[4] > 0) || q[0] === 'T' || q[0] === 'l').filter((q) => Math.hypot(q[1] - sm.me.x, q[2] - sm.me.y) < 420 + sm.me.r);
           if (near.length) {
