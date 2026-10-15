@@ -2,7 +2,6 @@ export interface InputActions {
   split(): void;
   eject(): void;
   emote(id: number): void;
-  cashout(): void;
   openChat(): void;
   escape(): void;
   spectateNext(): void;
@@ -63,9 +62,6 @@ export class Input {
         return;
       case 'KeyW':
         if (!e.repeat) this.startEject();
-        return;
-      case 'KeyC':
-        if (!e.repeat) this.actions.cashout();
         return;
       case 'KeyQ':
         if (!e.repeat) this.actions.spectateNext();

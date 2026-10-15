@@ -392,7 +392,7 @@
   border-radius: 3px;
 }
 
-/* ── bottom dock: cash-out + sticker sheet ────────────────────────────── */
+/* ── bottom dock: sticker sheet ──────────────────────────────────────── */
 .g-dock {
   position: absolute;
   left: 50%;
@@ -453,86 +453,92 @@
   text-align: center;
 }
 
-/* cash-out button + receipt printer */
-.g-cash {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-.g-cash__btn {
-  min-width: 272px;
-}
-.g-cash.is-printing .g-cash__btn[disabled] {
-  /* pressed down into its shadow while the printer runs, not greyed out */
-  opacity: 1;
-  cursor: progress;
-  transform: translate(4px, 4px);
-  box-shadow: 1px 1px 0 var(--ink);
-}
-.g-cash__printer {
-  position: absolute;
-  left: 50%;
-  bottom: calc(100% - 6px);
-  width: 212px;
-  transform: translateX(-50%) translateY(6px);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 140ms linear, transform 220ms var(--ease-spring);
-}
-.g-cash.is-printing .g-cash__printer {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
-}
-.g-cash__slot {
-  position: relative;
-  height: 12px;
-  border-radius: 6px;
-  background: var(--ink);
-  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.3);
-}
-.g-cash__slip {
-  --p: 0;
-  position: relative;
-  width: 180px;
-  height: calc(var(--p) * 64px);
-  margin: 0 auto -5px;
-  overflow: hidden;
-}
-.g-cash__slip-paper {
-  /* the first printed line leaves the slot first: the paper hangs from its top */
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  height: 64px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 6px;
-  padding: 12px 12px 8px;
-  background: var(--card);
-  font-size: 10.5px;
-  color: var(--ink);
-  --zz: 5px;
-  -webkit-mask:
-    conic-gradient(from 135deg at top, #0000, #000 1deg 89deg, #0000 90deg) top / calc(var(--zz) * 2) 51% repeat-x,
-    linear-gradient(#000 0 0) bottom / 100% 51% no-repeat;
-  mask:
-    conic-gradient(from 135deg at top, #0000, #000 1deg 89deg, #0000 90deg) top / calc(var(--zz) * 2) 51% repeat-x,
-    linear-gradient(#000 0 0) bottom / 100% 51% no-repeat;
-}
-.g-cash__line {
+/* ── round clock (arenas) ─────────────────────────────────────────────── */
+.g-round {
   display: flex;
   align-items: baseline;
-  gap: 6px;
+  gap: 10px;
+  min-height: 44px;
+  padding: 10px 16px 8px;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: 3px 3px 0 var(--teal);
+  transition: background-color 240ms linear, box-shadow 240ms linear;
 }
-.g-cash__line b {
+.g-round__label {
+  font-size: var(--t-label);
+  color: var(--ink-2);
+}
+.g-round__time {
+  font-size: 22px;
   font-weight: 500;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
 }
-.g-cash__line i {
-  flex: 1;
-  border-bottom: 1.5px dotted var(--line);
+/* the final minute: joins are closed, the chip turns mustard (ink-fixed on mustard: 10:1) */
+.g-round.is-closing {
+  border-color: var(--ink-fixed);
+  background: var(--mustard);
+  color: var(--ink-fixed);
+  box-shadow: 3px 3px 0 var(--ink-fixed);
+}
+.g-round.is-closing .g-round__label {
+  color: var(--ink-fixed);
+}
+.g-round.is-count {
+  box-shadow: 3px 3px 0 var(--pink);
+}
+/* the last ten seconds: a stamped number under the top edge, over the world */
+.g-count {
+  position: absolute;
+  top: 150px;
+  left: 50%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.g-count__n {
+  position: absolute;
+  left: -60px;
+  top: 0;
+  display: grid;
+  place-items: center;
+  width: 120px;
+  height: 120px;
+  border: 3px solid var(--ink);
+  border-radius: 50%;
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: 5px 5px 0 var(--mustard);
+  font-family: var(--font-display);
+  font-size: 72px;
+  font-weight: 800;
+  font-stretch: 85%;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.g-count__n.is-last {
+  color: var(--pink-text);
+  box-shadow: 5px 5px 0 var(--pink);
+}
+.g-hud.is-narrow .g-count {
+  /* under the till, the feed and the round chip */
+  top: 236px;
+}
+.g-hud.is-narrow .g-count__n {
+  left: -44px;
+  width: 88px;
+  height: 88px;
+  font-size: 52px;
+}
+.g-hud.is-narrow .g-round {
+  padding: 8px 12px 6px;
+}
+.g-hud.is-narrow .g-round__time {
+  font-size: 18px;
 }
 
 /* ── feed: kills + chat ───────────────────────────────────────────────── */
@@ -813,35 +819,11 @@
   background: var(--ink);
   color: var(--on-ink);
 }
-.g-touch__btn.is-cash {
-  right: 82px;
-  bottom: 84px;
-  width: 74px;
-  height: 74px;
-  background: var(--teal);
-}
 .g-touch__btn.is-alt {
   right: 96px;
   bottom: 92px;
   width: 52px;
   height: 52px;
-}
-.g-touch__btn.is-cash[disabled] {
-  cursor: default;
-}
-.g-touch__ring {
-  position: absolute;
-  inset: -9px;
-  width: calc(100% + 18px);
-  height: calc(100% + 18px);
-  transform: rotate(-90deg);
-  pointer-events: none;
-}
-.g-touch__ring circle {
-  fill: none;
-  stroke: var(--mustard);
-  stroke-width: 3.5;
-  stroke-linecap: round;
 }
 .g-touch__emotes {
   right: 12px;
@@ -911,7 +893,7 @@
   justify-content: space-between;
 }
 
-/* ── sheets (death, cash-out, settings) ───────────────────────────────── */
+/* ── sheets (death, round over, settings) ─────────────────────────────── */
 .g-sheet .kb-sheet__title .kb-stamp {
   margin: 6px 0 4px 2px;
 }
@@ -921,7 +903,7 @@
   white-space: nowrap;
 }
 .g-death__body,
-.g-cashout__body {
+.g-roundover__body {
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -1058,15 +1040,15 @@
   }
 }
 
-/* cash-out receipt */
-.g-cashout__body {
+/* round over: the receipt, my place and the room's top 5 */
+.g-roundover__body {
   align-items: center;
 }
-.g-cashout__slip {
+.g-roundover__slip {
   position: relative;
   width: min(340px, 100%);
 }
-.g-cashout__stamp {
+.g-roundover__stamp {
   /* lands on the torn corner, half off the slip, clear of the totals */
   position: absolute;
   right: -40px;
@@ -1136,10 +1118,96 @@
     transform: translateY(-3px);
   }
 }
-.g-cashout__note {
+.g-roundover__note {
   font-size: 10.5px;
   color: var(--ink-2);
   text-align: center;
+}
+
+/* wide screens: the receipt on the left, my place and the top 5 beside it */
+.kb-sheet.g-roundover.has-board:not(.is-bottom) {
+  width: min(780px, 100%);
+}
+.g-roundover.has-board:not(.is-bottom) .g-roundover__body {
+  display: grid;
+  grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
+  grid-auto-rows: min-content;
+  align-items: start;
+  gap: 14px 32px;
+}
+.g-roundover.has-board:not(.is-bottom) .g-board {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  width: 100%;
+  margin-top: 8px;
+}
+.g-board {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(340px, 100%);
+  padding-top: 12px;
+  border-top: 2px solid var(--ink);
+}
+.g-board__place {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+}
+.g-board__place dt,
+.g-board__title {
+  margin: 0;
+  font-size: var(--t-label);
+  font-weight: 500;
+  color: var(--ink-2);
+}
+.g-board__place dd {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 800;
+  font-stretch: 88%;
+  line-height: 1;
+}
+.g-board__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.g-board__row {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px dotted var(--line);
+  font-size: 15px;
+}
+.g-board__row:last-child {
+  border-bottom: 0;
+}
+.g-board__rank {
+  font-size: 11px;
+  color: var(--ink-2);
+}
+.g-board__name {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.g-board__nm {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.g-board__value {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.g-board__row.is-me .g-board__nm {
+  font-weight: 750;
 }
 
 /* settings */
@@ -1258,7 +1326,7 @@
   .g-emote,
   .g-touch__btn,
   .g-punch__hole,
-  .g-cash__printer,
+  .g-round,
   .g-stick__knob {
     transition: none;
   }

@@ -24,6 +24,8 @@ export function rateLimiter(gapMs: number, now: () => number = () => performance
 
 /** Hover ticks: at most 8 per second (spec). */
 export const HOVER_GAP_MS = 125;
+/** Round countdown ticks: one per second at most (a late frame never doubles one). */
+export const TICK_GAP_MS = 700;
 
 interface ToneOpts {
   type?: OscillatorType;
@@ -48,6 +50,7 @@ export class Sfx {
   private lastPlayed = -Infinity;
   private readonly hoverOk: () => boolean;
   private readonly blipOk: () => boolean;
+  private readonly tickOk: () => boolean;
 
   constructor(
     private readonly mixer: Mixer,
@@ -56,6 +59,7 @@ export class Sfx {
   ) {
     this.hoverOk = rateLimiter(HOVER_GAP_MS, now);
     this.blipOk = rateLimiter(55, now);
+    this.tickOk = rateLimiter(TICK_GAP_MS, now);
   }
 
   /** Did any effect start in the last `ms`? (The generic click yields to a specific sound.) */
@@ -305,6 +309,37 @@ export class Sfx {
     this.tone(784, 0.4, { type: 'sine', gain: 0.06, delay: 0.5 });
     this.tone(1046, 0.5, { type: 'sine', gain: 0.06, delay: 0.62 });
     this.mixer.duck(1.6);
+  }
+
+  /**
+   * The round's last seconds: a soft clock tick, a little brighter for the last three. Very
+   * quiet (it sits under the game) and rate-limited to one per second.
+   */
+  roundTick(secondsLeft: number): void {
+    if (!this.mixer.input('sfx') || !this.tickOk()) return;
+    const last = secondsLeft <= 3;
+    this.noise(0.014, 4600, 3200, { type: 'highpass', q: 0.8, gain: 0.03 });
+    this.tone(last ? 1760 : 1320, 0.05, { type: 'triangle', gain: last ? 0.035 : 0.025, delay: 0.004 });
+  }
+
+  /**
+   * The round bell: two strikes of a small brass bell (inharmonic partials, a long ring); the
+   * music ducks under it.
+   */
+  bell(): void {
+    const partials: [ratio: number, gain: number, dur: number][] = [
+      [1, 0.09, 2.2],
+      [2.01, 0.05, 1.6],
+      [2.42, 0.035, 1.2],
+      [3.03, 0.025, 0.9],
+      [4.17, 0.015, 0.6],
+    ];
+    for (const [i, at] of [0, 0.34].entries()) {
+      const soft = i === 0 ? 1 : 0.8;
+      this.noise(0.03, 3600, 1800, { gain: 0.05 * soft, delay: at });
+      for (const [ratio, gain, dur] of partials) this.tone(659 * ratio, dur, { type: 'sine', gain: gain * soft, delay: at, attack: 0.004 });
+    }
+    this.mixer.duck(2.2);
   }
 
   coinRain(): void {

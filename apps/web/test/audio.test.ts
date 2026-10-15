@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Announcer, GLOBAL_COOLDOWN_MS, LINES, pickVoice } from '../src/audio/announcer';
 import { AUDIO_DEFAULTS, CEILING, DUCK_GAIN, Mixer, limiterCurve, prefsFromSettings } from '../src/audio/mixer';
 import { CROSSFADE, EIGHTH, LOOKAHEAD, Music, phrase } from '../src/audio/music';
-import { HOVER_GAP_MS, Sfx, rateLimiter } from '../src/audio/sfx';
+import { HOVER_GAP_MS, Sfx, TICK_GAP_MS, rateLimiter } from '../src/audio/sfx';
 import { FakeGain, FakeShaper, fakeCtor, flush, type FakeAudioContext } from './fake-audio';
 
 const settings = (patch: Record<string, unknown> = {}) => ({ sound: true, volume: 0.6, ...patch });
@@ -203,6 +203,8 @@ describe('sfx', () => {
       () => sfx.chomp(),
       () => sfx.death(),
       () => sfx.cashout(),
+      () => sfx.roundTick(3),
+      () => sfx.bell(),
     ];
     for (const f of all) f();
     const peaks = ctx.nodes
@@ -212,6 +214,28 @@ describe('sfx', () => {
     // voice gains (not the bus / master / duck levels) top out at 0.2
     const voices = ctx.nodes.filter((n): n is FakeGain => n instanceof FakeGain && n.outputs.includes(mixer.busNode('sfx') as never));
     for (const v of voices) for (const e of v.gain.events) expect(e[1]).toBeLessThanOrEqual(0.2);
+  });
+});
+
+describe('round sounds', () => {
+  it('the last-seconds tick is quiet and at most one a second; the bell ducks the music', async () => {
+    const { mixer, ctx } = await liveMixer();
+    let t = 0;
+    const sfx = new Sfx(mixer, () => t);
+    const before = ctx.sources().length;
+    sfx.roundTick(5);
+    sfx.roundTick(4); // a late frame in the same second
+    expect(ctx.sources().length - before).toBe(2); // one tick: a noise grain and a tone
+    t += TICK_GAP_MS;
+    sfx.roundTick(4);
+    expect(ctx.sources().length - before).toBe(4);
+    const tickGains = ctx.nodes
+      .filter((n): n is FakeGain => n instanceof FakeGain && n.outputs.includes(mixer.busNode('sfx') as never))
+      .flatMap((g) => g.gain.events.map((e) => e[1]));
+    expect(Math.max(...tickGains)).toBeLessThanOrEqual(0.04);
+    expect(mixer.isDucked()).toBe(false);
+    sfx.bell();
+    expect(mixer.isDucked()).toBe(true);
   });
 });
 
@@ -390,6 +414,22 @@ describe('announcer', () => {
     spoken[0].onend?.();
     mixer.ctx && ((mixer.ctx as unknown as FakeAudioContext).currentTime = 10);
     expect(mixer.isDucked()).toBe(false);
+  });
+
+  it('reads the round lines under the same cooldown rules', async () => {
+    const { a } = await make();
+    expect(a.say('oneMinute')).toBe(true);
+    now += 50_000;
+    expect(a.say('tenSeconds')).toBe(true);
+    now += 2_000;
+    // the global cooldown holds back a line that comes too soon
+    expect(a.say('roundOver')).toBe(false);
+    now += 8_000;
+    expect(a.say('roundOver')).toBe(true);
+    expect(spoken.map((x) => x.text)).toEqual(['One minute left.', 'Ten seconds.', 'Round over.']);
+    // once a round at most
+    now += GLOBAL_COOLDOWN_MS;
+    expect(a.say('roundOver')).toBe(false);
   });
 
   it('pickVoice prefers calm English voices and skips novelty and other languages', () => {

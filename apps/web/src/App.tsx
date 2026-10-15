@@ -11,7 +11,7 @@ import { Kb, ScreenTransition, themeFromSettings, type Box } from './design';
 import { Lobby } from './ui/lobby/Lobby';
 import { Toasts } from './ui/Toasts';
 import { WalletModal } from './solana/WalletModal';
-import { CashoutSheet, DeathSheet, GameHud, HowToSheet, SettingsSheet } from './ui/game';
+import { DeathSheet, GameHud, HowToSheet, RoundOverSheet, SettingsSheet } from './ui/game';
 
 function GameCanvas() {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -61,7 +61,7 @@ function Screens() {
       <Kb theme={themeFromSettings(theme)} paper={false} className="g-root">
         <AnimatePresence>{screen !== 'lobby' && <GameHud key="hud" />}</AnimatePresence>
         <DeathSheet />
-        <CashoutSheet />
+        <RoundOverSheet />
         <SettingsSheet />
         <HowToSheet />
         <WalletModal />

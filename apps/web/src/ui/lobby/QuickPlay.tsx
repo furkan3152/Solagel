@@ -1,6 +1,8 @@
 import { InkButton, type IconName } from '../../design';
+import { formatCountdown } from '../../game/round';
 import { useT } from '../../i18n';
 import type { TicketGate, TicketModel } from '../../solana/ticket';
+import { useHeldCountdown } from './HeldBanner';
 import { ticketName, useTokenText } from './useLobby';
 
 export interface CtaText {
@@ -69,7 +71,11 @@ export function QuickPlay({
   onPress: () => void;
   busy?: boolean;
 }) {
-  const text = useCtaText(ticket, gate);
+  const t = useT();
+  const held = useHeldCountdown();
+  let text = useCtaText(ticket, gate);
+  // this ticket is held for the next round: it joins by itself, nothing to press
+  if (held && ticket?.arenaId === held.arenaId) text = { label: t('lo.cta.held'), sub: t('lo.cta.heldSub', { time: formatCountdown(held.msLeft) }), icon: 'ticket', inert: true };
   return (
     <InkButton size="lg" block className="kl-cta" icon={text.icon} sub={text.sub} disabled={text.inert || busy} onClick={onPress}>
       {text.label}

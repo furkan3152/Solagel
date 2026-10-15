@@ -1,5 +1,6 @@
 import { DUR, InkButton, Sheet, Stamp, useReducedMotion } from '../../design';
 import { engine } from '../../game/instance';
+import { formatCountdown, useRound } from '../../game/round';
 import { sound } from '../../audio';
 import { useT } from '../../i18n';
 import { requestTicket, useUi } from '../../store';
@@ -13,7 +14,8 @@ export const DEATH_SHEET_DELAY_MS = Math.round((DUR.slowmo + 0.12) * 1000);
 /**
  * Death: an "EATEN" verdict stamp, who ate us (or the bot line: our tokens
  * spilled across the map), the value lost and two ways on: a new ticket or
- * practice.
+ * practice. In an arena the new ticket re-enters the same round ("Buy back in")
+ * while joins are open; in the final minute it says when the next round opens.
  */
 export function DeathSheet() {
   const t = useT();
@@ -23,6 +25,7 @@ export function DeathSheet() {
   const me = useUi((s) => s.me);
   const signedIn = useUi((s) => s.auth !== null);
   const dead = useUi((s) => s.screen === 'dead' && s.death !== null);
+  const ticket = useUi((s) => s.ticket);
   const reduced = useReducedMotion();
   // the world slows down over the ink splash first; the verdict comes after that beat
   const [open, setOpen] = useState(false);
@@ -61,6 +64,18 @@ export function DeathSheet() {
     if (arena && room?.arenaId !== undefined) requestTicket(room.arenaId);
     engine()?.backToLobby();
   };
+  const round = useRound(arena ? (room?.arenaId ?? null) : null, arena && open);
+  const closed = round?.phase === 'closing';
+  const fee = ticket?.entryFee ?? room?.entryFee ?? 0;
+  const buyBack = closed ? (
+    <InkButton variant="pink" size="lg" icon="ticket" sub={t('gd.nextRoundSub')} onClick={newTicket} data-autofocus>
+      {t('gd.nextRoundIn', { time: formatCountdown(round.msLeft) })}
+    </InkButton>
+  ) : (
+    <InkButton variant="pink" size="lg" icon="ticket" onClick={newTicket} data-autofocus>
+      {t('gd.buyBack', { fee: tf.fmt(fee, { compact: true, maxFrac: 1 }), sym: tf.symbol })}
+    </InkButton>
+  );
   const killerLine = death?.killer ? (byBot ? t('gd.byBot') : t('gd.byPlayer', { name: death.killer })) : t('gd.byNobody');
 
   return (
@@ -74,9 +89,7 @@ export function DeathSheet() {
       footer={
         arena ? (
           <>
-            <InkButton variant="pink" size="lg" icon="ticket" onClick={newTicket} data-autofocus>
-              {t('gd.newTicket')}
-            </InkButton>
+            {buyBack}
             <InkButton variant="paper" size="lg" icon="play" onClick={practice}>
               {t('gd.practice')}
             </InkButton>

@@ -1,5 +1,5 @@
 import { CARD_PAPER, INK, RISO, type CoinLook } from '@slana/art';
-import { CellFlag, EntityKind, PlayerFlag, type PassStatus } from '@slana/shared';
+import { EntityKind, PlayerFlag, type PassStatus } from '@slana/shared';
 import { DROP_LAND, dropScale } from '../design/curves';
 import type { Camera } from '../game/camera';
 import type { Particles } from '../game/particles';
@@ -84,8 +84,6 @@ export interface FrameInput {
   reduced: boolean;
   /** Mouse target in world coordinates (for own eyes). */
   aim: { x: number; y: number } | null;
-  /** Own cash-out channel (performance.now() end time and length). */
-  cashout: { until: number; total: number } | null;
   coinRain: boolean;
   rand: () => number;
   /** My coin dropping onto the paper (join / respawn): progress 0…1, null when landed. */
@@ -201,14 +199,13 @@ export class Renderer {
     bodies.sort((a, b) => a.r - b.r);
     const cells = bodies.filter((b) => b.kind === EntityKind.Cell);
     const halftone = (r: number, sp: number) => this.sprites.halftone(r, sp, z * this.dpr);
-    const cashP = f.cashout ? Math.max(0, Math.min(1, 1 - (f.cashout.until - f.now) / f.cashout.total)) : undefined;
     for (const e of bodies) {
       if (e.kind === EntityKind.Virus) {
         const wob = still ? 0 : Math.sin(f.now / 700 + e.seed * 10) * 0.04;
         drawSprite(ctx, this.sprites.cactusSprite(), e.x, e.y, e.r, wob);
         continue;
       }
-      this.drawCell(e, f, cells, halftone, cashP);
+      this.drawCell(e, f, cells, halftone);
     }
 
     // emote stickers on top of everything
@@ -410,7 +407,6 @@ export class Renderer {
     f: FrameInput,
     cells: CEntity[],
     halftone: (r: number, sp: number) => CanvasImageSource | null,
-    cashP: number | undefined,
   ): void {
     const { ctx } = this;
     const z = f.camera.zoom;
@@ -478,7 +474,6 @@ export class Renderer {
       jelly: jellyOn ? e.jelly : null,
       flags: e.flags,
       seed: e.seed * 10 + e.playerId,
-      cashout: mine && cashP !== undefined && e.flags & CellFlag.CashingOut ? cashP : undefined,
       halftone,
       // live renderer speed-ups (Pass images never use them): one flat body fill,
       // and no multiply overprint / halftone on coins under ~25 px radius
