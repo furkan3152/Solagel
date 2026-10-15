@@ -17,7 +17,7 @@ import {
 import { Connection, Keypair, PublicKey, TransactionInstruction } from '@solana/web3.js';
 import { describe, expect, it } from 'vitest';
 import { createChain } from '../src/chain';
-import { SolanaChain, STALE_SESSION_AFTER_S, SWEEP_RESEND_AFTER_MS, TOKEN_FAILURES_BEFORE_FINALIZE, type ChainClient } from '../src/chain/solana';
+import { SolanaChain, STALE_SESSION_AFTER_S, TOKEN_FAILURES_BEFORE_FINALIZE, type ChainClient } from '../src/chain/solana';
 import type { SettledEvent } from '../src/chain/types';
 import { loadConfig, type ServerConfig } from '../src/config';
 import { Journal, sweepKey, type SettlementItem, type SweepItem } from '../src/stake/journal';
@@ -242,6 +242,10 @@ interface Harness {
   live: Set<string>;
   landed: Set<string>;
   clock: { now: number };
+  /** Block height ('confirmed'); a send's blockhash stays valid for 150 blocks. */
+  chainHeight: { now: number };
+  /** RPC failures of the sweep checks: status lookup / block height. */
+  rpc: { statusDown: boolean; heightDown: boolean };
 }
 
 async function harness(
@@ -264,6 +268,8 @@ async function harness(
     live: new Set(),
     landed: new Set(),
     clock: { now: T0 },
+    chainHeight: { now: 1_000 },
+    rpc: { statusDown: false, heightDown: false },
   };
   h.chain = new SolanaChain(chainConfig(opts.cfg), journal, (m) => h.logs.push(m), {
     client,
@@ -271,12 +277,19 @@ async function harness(
     loops: false,
     now: () => h.clock.now,
     balance: async () => 1_000_000_000,
-    signatureLanded: async (sig) => h.landed.has(sig),
+    signatureLanded: async (sig) => {
+      if (h.rpc.statusDown) throw new TypeError('fetch failed');
+      return h.landed.has(sig);
+    },
+    blockHeight: async () => {
+      if (h.rpc.heightDown) throw new TypeError('fetch failed');
+      return h.chainHeight.now;
+    },
     send: async (ixs, onSignature) => {
       h.sent++;
       h.sentIxs.push(ixs);
       const signature = `sig${h.sent}`;
-      onSignature(signature);
+      onSignature(signature, h.chainHeight.now + 150);
       const failure = h.failures.shift();
       if (failure !== undefined) throw failure;
       client.sessions.delete(ixs[ixs.length - 1].data.toString()); // settle_session closes the session
@@ -1053,46 +1066,96 @@ describe('loot sweeps (round end)', () => {
     expect(new Journal(path).pending).toEqual([]);
   });
 
-  it('never sends a sweep twice while an earlier send may still land', async () => {
+  /** A sweep whose send timed out (outcome unknown): its signature and blockhash expiry are on disk. */
+  async function lostSweep() {
     const path = join(mkdtempSync(join(tmpdir(), 'slana-sweep-')), 'journal.json');
     const h = await harness({ journal: new Journal(path) });
     h.journal.enqueue(sweepItem());
-    h.failures.push(new Error('block height exceeded? timeout'));
+    h.failures.push(new Error('confirmation timeout'));
     await h.chain.processPending();
     expect(h.sent).toBe(1);
-    // the signature was persisted before the send
-    expect(new Journal(path).pending[0]).toMatchObject({ kind: 'sweep', sentSignature: 'sig1', sentAt: T0 });
+    expect(new Journal(path).pending[0]).toMatchObject({ kind: 'sweep', sentSignature: 'sig1', sentAt: T0, sentLastValidBlockHeight: 1_150 });
+    const again = async () => {
+      h.clock.now = h.journal.pending[0]?.nextAttemptAt ?? h.clock.now;
+      await h.chain.processPending();
+    };
+    return { h, path, again };
+  }
 
-    // not landed, still young: only the status is re-checked
-    h.clock.now = h.journal.pending[0].nextAttemptAt;
-    await h.chain.processPending();
-    expect(h.sent).toBe(1);
-
-    // it landed after all: done without a second transaction
+  it('landed before expiry: marked done, never sent again', async () => {
+    const { h, path, again } = await lostSweep();
     h.landed.add('sig1');
-    h.clock.now = h.journal.pending[0].nextAttemptAt;
-    await h.chain.processPending();
+    await again();
     expect(h.sent).toBe(1);
     expect(h.journal.pending).toHaveLength(0);
+    expect(new Journal(path).pending).toEqual([]);
     expect(h.client.sweeps).toHaveLength(1);
   });
 
-  it('resends a sweep whose transaction expired unlanded, and retries a program error at once', async () => {
-    const h = await harness();
-    h.journal.enqueue(sweepItem());
-    h.failures.push(new Error('timeout'));
-    await h.chain.processPending();
-    h.clock.now = T0 + SWEEP_RESEND_AFTER_MS;
-    await h.chain.processPending();
+  it('not landed but the blockhash is still valid: waits, no resend', async () => {
+    const { h, again } = await lostSweep();
+    for (const height of [1_000, 1_100, 1_150]) {
+      h.chainHeight.now = height; // at lastValidBlockHeight the transaction may still land
+      await again();
+      expect(h.sent).toBe(1);
+      expect(h.journal.pending).toHaveLength(1);
+    }
+    // landed even after a long wall-clock delay: still never resent
+    h.clock.now += 10 * 60_000;
+    h.landed.add('sig1');
+    await again();
+    expect(h.sent).toBe(1);
+    expect(h.journal.pending).toHaveLength(0);
+  });
+
+  it('expired and not found: sent again (with a new expiry), exactly once', async () => {
+    const { h, again } = await lostSweep();
+    h.chainHeight.now = 1_151;
+    await again();
     expect(h.sent).toBe(2);
     expect(h.journal.pending).toHaveLength(0);
+    expect(h.client.sweeps).toHaveLength(2);
+    await again();
+    expect(h.sent).toBe(2);
+  });
 
+  it('an RPC error while checking: waits and retries later, never resends', async () => {
+    const { h, again } = await lostSweep();
+    h.chainHeight.now = 5_000; // expired, but the checks cannot be read
+    h.rpc.statusDown = true;
+    await again();
+    expect(h.sent).toBe(1);
+    expect(h.journal.pending[0].lastError).toMatch(/status unknown/);
+    h.rpc.statusDown = false;
+    h.rpc.heightDown = true;
+    await again();
+    expect(h.sent).toBe(1);
+    expect(h.journal.pending[0].lastError).toMatch(/block height unavailable/);
+    // the RPC is back: expired and not landed → resend
+    h.rpc.heightDown = false;
+    await again();
+    expect(h.sent).toBe(2);
+    expect(h.journal.pending).toHaveLength(0);
+  });
+
+  it('a sweep sent without a recorded expiry is never resent', async () => {
+    const h = await harness();
+    h.journal.enqueue(sweepItem({ sentSignature: 'old', sentAt: T0 - 3_600_000 }));
+    h.chainHeight.now = 99_999;
+    await h.chain.processPending();
+    expect(h.sent).toBe(0);
+    expect(h.journal.pending).toHaveLength(1);
+    expect(h.logs.some((l) => /without a recorded blockhash expiry/.test(l))).toBe(true);
+  });
+
+  it('a program error is final (nothing moved): retried at once', async () => {
     const t = await harness();
     t.journal.enqueue(sweepItem());
     t.failures.push({ logs: ['Program log: AnchorError occurred. Error Code: InsufficientPot. Error Number: 6007. Error Message: x.'] });
     await t.chain.processPending();
     const left = t.journal.pending[0] as SweepItem;
     expect(left.sentSignature).toBeUndefined();
+    expect(left.sentLastValidBlockHeight).toBeUndefined();
     expect(left.attempts).toBe(1);
     t.clock.now = left.nextAttemptAt;
     await t.chain.processPending();
