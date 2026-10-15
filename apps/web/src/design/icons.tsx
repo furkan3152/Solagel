@@ -35,7 +35,7 @@ export const ICON_NAMES = [
   'emote',
   'split',
   'eject',
-  'cashout',
+  'payout',
   'map',
   'info',
   'docs',
@@ -190,7 +190,7 @@ const P: Record<IconName, ReactElement> = {
       <path d="M5.5 18.5h13" />
     </>
   ),
-  cashout: (
+  payout: (
     <>
       <path d="M12 14V3.5M7.8 7.7L12 3.5l4.2 4.2" />
       <path d="M4 12.5v5.5A2.5 2.5 0 0 0 6.5 20.5h11A2.5 2.5 0 0 0 20 18v-5.5" />

@@ -491,18 +491,19 @@
 .g-round.is-count {
   box-shadow: 3px 3px 0 var(--pink);
 }
-/* the last ten seconds: a stamped number under the top edge, over the world */
+/* the last ten seconds: a stamped number in the top column's flow (under the buttons) */
 .g-count {
-  position: absolute;
-  top: 150px;
-  left: 50%;
-  width: 0;
+  position: relative;
+  width: 120px;
   height: 0;
   pointer-events: none;
 }
+.g-count.is-on {
+  height: 120px;
+}
 .g-count__n {
   position: absolute;
-  left: -60px;
+  left: 0;
   top: 0;
   display: grid;
   place-items: center;
@@ -525,11 +526,12 @@
   box-shadow: 5px 5px 0 var(--pink);
 }
 .g-hud.is-narrow .g-count {
-  /* under the till, the feed and the round chip */
-  top: 236px;
+  width: 88px;
+}
+.g-hud.is-narrow .g-count.is-on {
+  height: 88px;
 }
 .g-hud.is-narrow .g-count__n {
-  left: -44px;
   width: 88px;
   height: 88px;
   font-size: 52px;
@@ -869,14 +871,15 @@
 }
 .g-hud.is-narrow .g-feed {
   left: 10px;
-  right: 10px;
+  right: auto;
   bottom: auto;
   top: 150px;
-  width: auto;
+  /* the left column: the round chip and the buttons own the right one */
+  width: min(48vw, 230px);
   pointer-events: none;
 }
 .g-hud.is-narrow .g-kill {
-  max-width: 230px;
+  max-width: 100%;
   font-size: 10.5px;
 }
 .g-hud.is-narrow .g-chat {

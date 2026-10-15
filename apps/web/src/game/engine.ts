@@ -78,16 +78,23 @@ export class GameEngine {
   /** The last join asked for (a held ticket repeats it when the next round opens). */
   private lastJoin: { room: string; pass: string | null } | null = null;
   /** A ticket held through the closed window; it joins when the next round opens. */
-  private readonly heldTicket = new HeldTicket(
-    (room, pass) => {
+  private readonly heldTicket = new HeldTicket({
+    join: (room, pass) => {
+      // the socket is down: the hold waits for the next `welcome` (rearm)
+      if (!this.net.open) return false;
       this.ticketRetry = { room, pass, left: 2 };
       this.sendJoin(room, pass);
+      return true;
     },
-    () => {
-      const s = useUi.getState();
-      return !(s.screen === 'playing' && s.room?.mode === 'arena');
+    // only from the lobby (or watching): never pull a player out of a game, practice included
+    free: () => {
+      const screen = useUi.getState().screen;
+      return screen === 'lobby' || screen === 'spectating';
     },
-  );
+    released: (reason) => {
+      toast(reason === 'busy' ? 'info' : 'warn', t(reason === 'busy' ? 'lo.held.busy' : 'lo.held.gaveUp'), undefined, 9000);
+    },
+  });
   /** Round clock cues: last-seconds ticks, the bell and the announcer lines. */
   private readonly cues = new RoundCues({
     tick: (s) => sound.roundTick(s),
@@ -355,6 +362,8 @@ export class GameEngine {
     switch (m.t) {
       case 'welcome': {
         serverClock.sync(m.serverNow);
+        // a held ticket whose join was lost with the old socket (or still waits) goes again
+        this.heldTicket.rearm();
         useUi.setState({ connected: true, connecting: false, rooms: m.rooms, chain: m.chain, online: m.online, blockedArenas: (m.blocked ?? []).map((b) => b.arenaId) });
         const auth = useUi.getState().auth;
         if (auth) this.authToken(auth.token);
@@ -558,6 +567,7 @@ export class GameEngine {
           // back after a bell that settled our ticket while we were away: the till was paid
           this.ticketRetry = null;
           this.wasArena = null;
+          this.clearHeld();
           if (useUi.getState().screen !== 'lobby') this.backToLobby();
           toast('info', t('err.round_ended'), undefined, 9000);
           return;
@@ -571,6 +581,8 @@ export class GameEngine {
           return;
         }
         this.ticketRetry = null;
+        // a held join refused for any other reason: the hold lets go (the lobby offers the ticket again)
+        this.heldTicket.refused();
         const key = `err.${m.code}` as const;
         toast(m.code === 'rate_limited' ? 'warn' : 'error', t(key as 'err.bad_request') || m.message, undefined, m.code === 'version_mismatch' ? 600_000 : 5000);
         if (m.code === 'skin_locked') useUi.setState((s) => ({ settings: { ...s.settings, skin: 0 } }));
@@ -711,7 +723,8 @@ export class GameEngine {
     }
     this.particles.update(rdt);
     // the round clock's sounds, while an arena is on screen (playing, eaten or watching it)
-    this.cues.update(ui.room?.mode === 'arena' && ui.screen !== 'lobby' ? currentRound(ui.room.arenaId ?? null) : null);
+    // (not on the round's receipt: the next round's clock is none of its business)
+    this.cues.update(ui.room?.mode === 'arena' && ui.screen !== 'lobby' && ui.screen !== 'roundover' ? currentRound(ui.room.arenaId ?? null) : null);
 
     // camera
     const me = world.myStats();

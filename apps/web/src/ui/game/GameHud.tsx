@@ -301,10 +301,11 @@ export function GameHud() {
     >
       {(playing || roundOver) && <TillSlip />}
       <Standings compact={narrow} />
-      {!roundOver && <RoundCountdown />}
       <div className="g-center">
         {!roundOver && <RoundChip />}
         <TopBar />
+        {/* in the column's flow, so it never covers the buttons, a banner or my coin */}
+        {!roundOver && <RoundCountdown />}
         <Banner />
         <PowerUps />
         <NetStats />

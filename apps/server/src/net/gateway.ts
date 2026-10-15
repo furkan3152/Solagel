@@ -148,10 +148,6 @@ export class Gateway {
   }
 
   /**
-   * New arena joins are refused from `joinsCloseAt` until the round ends (`round_closed` with
-   * `opensAt` = the end). Returns true when refused. Reconnects of a live staker never come here.
-   */
-  /**
    * The returning player's ticket was settled at a bell while they were away: their till was paid.
    * The memo stays (a reload asks again) until it expires or a newer ticket is seen.
    */
@@ -159,6 +155,10 @@ export class Gateway {
     this.error(conn, 'round_ended', 'The round ended while you were away. Your ticket was settled at the bell.');
   }
 
+  /**
+   * New arena joins are refused from `joinsCloseAt` until the round ends (`round_closed` with
+   * `opensAt` = the end). Returns true when refused. Reconnects of a live staker never come here.
+   */
   private roundClosed(conn: Conn): boolean {
     const now = this.rooms.now();
     const r = this.rooms.roundWindow(now);
@@ -385,8 +385,9 @@ export class Gateway {
           this.roundEnded(conn);
           return;
         }
-        // a newer ticket (or a payout waiting to be collected): the usual checks apply
-        this.rooms.forgetBellSettled(target.arenaId, conn.wallet);
+        // a newer ticket (or a payout waiting to be collected): the usual checks apply. When the chain
+        // could not be read (`live` undefined) the memo stays, so a later retry still hears round_ended.
+        if (live !== undefined) this.rooms.forgetBellSettled(target.arenaId, conn.wallet);
       }
       // a new join (not the AFK return above): only while the round's joins are open
       if (this.roundClosed(conn)) return;

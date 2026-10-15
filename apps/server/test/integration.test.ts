@@ -34,7 +34,13 @@ class FakeChain implements ChainGateway {
   async getProfile(owner: string) {
     return this.profiles.get(owner) ?? null;
   }
+  /** The next `getSession` fails like an RPC error. */
+  failNextGetSession = false;
   async getSession(arenaId: number, player: string) {
+    if (this.failNextGetSession) {
+      this.failNextGetSession = false;
+      throw new Error('rpc down');
+    }
     return this.sessions.get(`${arenaId}:${player}`) ?? null;
   }
   async listArenas(): Promise<ChainArena[]> {
@@ -504,6 +510,12 @@ describe('server over websocket', () => {
     await awayAtBell(session(w));
     chain.sessions.delete(`1:${w}`);
     const e = await signedIn(w);
+    // the chain read fails once: the usual path answers, and the bell's memo is kept
+    chain.failNextGetSession = true;
+    e.send({ t: 'join', room: 'arena:1', name: 'Away', skin: 0 });
+    expect((await e.wait('error', 2000, (m) => m.code === 'round_ended' || m.code === 'no_session')).code).toBe('no_session');
+    expect(app.rooms.bellSettled(1, w)).not.toBeNull();
+    e.msgs.length = 0;
     e.send({ t: 'join', room: 'arena:1', name: 'Away', skin: 0 });
     expect((await e.wait('error', 2000, (m) => m.code === 'round_ended' || m.code === 'no_session')).code).toBe('round_ended');
     e.close();

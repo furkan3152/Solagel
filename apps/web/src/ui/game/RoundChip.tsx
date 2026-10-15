@@ -49,7 +49,7 @@ export function RoundCountdown() {
   const reduced = useReducedMotion();
   const count = round ? countOf(round) : null;
   return (
-    <div className="g-count" aria-hidden="true">
+    <div className={`g-count${count !== null ? ' is-on' : ''}`} aria-hidden="true">
       <AnimatePresence initial={false}>
         {count !== null && (
           <motion.span

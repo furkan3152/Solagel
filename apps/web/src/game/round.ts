@@ -58,6 +58,15 @@ export function roundInfoFor(rooms: readonly RoomInfo[], room: RoomInfo | null, 
   return rooms.find((r) => r.mode === 'arena' && r.round)?.round ?? null;
 }
 
+/**
+ * A round as players name it: the wall-clock time it started ("15:45"), not its index since
+ * 1970. `info` (any arena's) gives the round length.
+ */
+export function roundStartLabel(n: number, info: RoundInfo | null | undefined): string {
+  const roundMs = info ? roundLengths(info).roundMs : RULES.roundMs;
+  return new Date(n * roundMs).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+}
+
 /** `m:ss` of a countdown, rounded up (0:01 until the very end). */
 export function formatCountdown(ms: number): string {
   const s = Math.max(0, Math.ceil(ms / 1000));
