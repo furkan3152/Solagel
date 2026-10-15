@@ -56,16 +56,20 @@ export interface ConfigView {
   passMintStartTs: number;
   /** The mint has been opened at least once: `passSupply` is frozen. */
   passMintOpened: boolean;
-  /** The mint ended for good (closed or sold out) and `passEntropy` is captured; it never reopens. */
+  /** The mint ended for good (closed or sold out); it never reopens. `passEntropyTargetSlot` is set. */
   passMintEnded: boolean;
   /** Hex sha256 of the seed, null while unset. */
   passSeedHash: string | null;
   /** The admin's committed seed (hex), null until revealed. Traits do NOT derive from it: use `passFinalSeed`. */
   passSeed: string | null;
   passRevealed: boolean;
-  /** Hex SlotHashes entry captured when the mint ended, null before. */
+  /** Slot whose hash becomes the entropy (first block at or after it); 0 before the mint ended. */
+  passEntropyTargetSlot: number;
+  /** `capture_pass_entropy` stored `passEntropy`. */
+  passEntropyCaptured: boolean;
+  /** Hex hash of the first slot at or after the target (captured permissionlessly), null before. */
   passEntropy: string | null;
-  /** Slot of `passEntropy` (0 before the mint ended). */
+  /** Slot of `passEntropy` (0 before the capture). */
   passEntropySlot: number;
   /**
    * The revealed seed every Pass trait derives from: `sha256(passSeed || passEntropy)` (hex),
@@ -218,7 +222,9 @@ export function toConfigView(raw: RawConfig): ConfigView {
     passSeedHash: hexOrNull(raw.passSeedHash),
     passSeed: raw.passRevealed ? (hexOrNull(raw.passSeed) ?? '00'.repeat(32)) : null,
     passRevealed: raw.passRevealed,
-    passEntropy: raw.passMintEnded ? (hexOrNull(raw.passEntropy) ?? '00'.repeat(32)) : null,
+    passEntropyTargetSlot: toNumber(raw.passEntropyTargetSlot),
+    passEntropyCaptured: raw.passEntropyCaptured,
+    passEntropy: raw.passEntropyCaptured ? (hexOrNull(raw.passEntropy) ?? '00'.repeat(32)) : null,
     passEntropySlot: toNumber(raw.passEntropySlot),
     passFinalSeed: raw.passRevealed ? (hexOrNull(raw.passFinalSeed) ?? '00'.repeat(32)) : null,
     totals: {

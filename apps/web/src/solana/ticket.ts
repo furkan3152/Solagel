@@ -80,6 +80,8 @@ export interface TicketModel {
   loot: number;
   /** The arena exists on chain and is open (practice: always). */
   open: boolean;
+  /** The server keeps this arena closed (R20: its vault cannot cover the journal): "under maintenance", no sales. */
+  blocked?: boolean;
 }
 
 /**
@@ -88,7 +90,7 @@ export interface TicketModel {
  * the price (it is what the player signs); rooms fill in when the chain is not
  * readable yet. Sorted by price.
  */
-export function buildTickets(rooms: readonly RoomInfo[], arenas: readonly ArenaLike[]): TicketModel[] {
+export function buildTickets(rooms: readonly RoomInfo[], arenas: readonly ArenaLike[], blocked: readonly number[] = []): TicketModel[] {
   const practice: TicketModel = { key: 'practice', arenaId: null, entryFee: 0n, requiresPass: false, humans: 0, bots: 0, loot: 0, open: true };
   const byId = new Map<number, TicketModel>();
   for (const a of arenas) {
@@ -122,6 +124,10 @@ export function buildTickets(rooms: readonly RoomInfo[], arenas: readonly ArenaL
     t.bots += r.bots;
     t.loot += r.loot ?? 0;
   }
+  for (const id of blocked) {
+    const t = byId.get(id);
+    if (t) t.blocked = true;
+  }
   const list = [...byId.values()].sort((a, b) => (a.entryFee < b.entryFee ? -1 : a.entryFee > b.entryFee ? 1 : (a.arenaId ?? 0) - (b.arenaId ?? 0)));
   return [practice, ...list];
 }
@@ -150,7 +156,7 @@ export function quickPlayTarget(input: QuickPlayInput): TicketKey {
     const resumable = input.walletConnected ? input.tickets.find((t) => t.arenaId !== null && input.openSessions?.includes(t.arenaId)) : undefined;
     return resumable ? resumable.key : 'practice';
   }
-  const arenas = input.tickets.filter((t) => t.arenaId !== null && t.open);
+  const arenas = input.tickets.filter((t) => t.arenaId !== null && t.open && !t.blocked);
   const open = arenas.find((t) => input.openSessions?.includes(t.arenaId!));
   if (open) return open.key;
   const balance = input.balance;
@@ -183,6 +189,8 @@ export interface OpenSession {
 export type TicketGate =
   | { kind: 'practice' }
   | { kind: 'offline' }
+  /** R20: the server keeps this arena closed (its vault cannot cover the journal); nothing is sold. */
+  | { kind: 'maintenance' }
   | { kind: 'connect' }
   /** The previous game in this arena is being paid out (no new ticket yet). */
   | { kind: 'settling'; payout: number }
@@ -215,7 +223,9 @@ export interface GateInput {
 export function ticketGate(g: GateInput): TicketGate {
   const t = g.ticket;
   if (t.arenaId === null) return { kind: 'practice' };
-  if (!g.arenasEnabled || !t.open) return { kind: 'offline' };
+  if (!g.arenasEnabled) return { kind: 'offline' };
+  if (t.blocked) return { kind: 'maintenance' };
+  if (!t.open) return { kind: 'offline' };
   if (!g.walletConnected) return { kind: 'connect' };
   const owed = g.pending.filter((p) => (g.session && p.key === g.session.address) || p.arenaId === t.arenaId);
   if (owed.length > 0) {

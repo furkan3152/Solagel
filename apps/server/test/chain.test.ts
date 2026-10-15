@@ -68,6 +68,8 @@ function configView(server: Keypair, overrides: Partial<ConfigView> = {}): Confi
     passSeedHash: null,
     passSeed: null,
     passRevealed: false,
+    passEntropyTargetSlot: 0,
+    passEntropyCaptured: false,
     passEntropy: null,
     passEntropySlot: 0,
     passFinalSeed: null,
@@ -126,6 +128,8 @@ class FakeClient implements ChainClient {
   profileFetches = 0;
   profileError: Error | null = null;
   rpcDown = false;
+  slot = 0;
+  captures: string[] = [];
 
   constructor(server: Keypair) {
     this.config = configView(server);
@@ -155,6 +159,10 @@ class FakeClient implements ChainClient {
   }
   async fetchSessions() {
     return [...this.sessions.values()];
+  }
+  async getSlot() {
+    this.check();
+    return this.slot;
   }
   async fetchSeason(id: number) {
     return this.seasons.get(id) ?? null;
@@ -199,6 +207,10 @@ class FakeClient implements ChainClient {
       this.settles.push(p as unknown as Record<string, unknown>);
       this.built.push(await realIx.settleSession(server, p));
       return dummyIx(`${p.arenaId}:${p.player}`);
+    },
+    capturePassEntropy: async (signer: PublicKey) => {
+      this.captures.push(signer.toBase58());
+      return realIx.capturePassEntropy(signer);
     },
   } as unknown as ChainClient['ix'];
 }
@@ -358,7 +370,7 @@ describe('SolanaChain status & reads', () => {
     });
     expect(h.chain.status().pass).toEqual(h.chain.passStatus());
     // after the reveal the trait seed is the final seed sha256(seed || entropy), never the admin seed
-    h.client.config = { ...h.client.config!, passMintOpen: false, passMintEnded: true, passRevealed: true, passSeed: '07'.repeat(32), passEntropy: '5a'.repeat(32), passFinalSeed: 'fe'.repeat(32) };
+    h.client.config = { ...h.client.config!, passMintOpen: false, passMintEnded: true, passEntropyCaptured: true, passRevealed: true, passSeed: '07'.repeat(32), passEntropy: '5a'.repeat(32), passFinalSeed: 'fe'.repeat(32) };
     await (h.chain as unknown as { freshConfig(): Promise<unknown> }).freshConfig();
     expect(h.chain.passStatus()).toMatchObject({ revealed: true, seed: 'fe'.repeat(32) });
     const h2 = await harness({ cfg: { publicRpcUrl: 'https://rpc.example', stakeEnabled: false } });
@@ -481,6 +493,43 @@ describe('settlement worker', () => {
     }
     // the Pass session pays the lower fee: (12 345 678 − 10 000 000) × 2 %
     expect(h.settled.map((e) => e.fee)).toEqual([117_283, 46_913]);
+  });
+
+  it('R22: captures the Pass entropy once the target slot passed, retrying on failure', async () => {
+    const h = await harness();
+    const capture = () => h.chain.captureEntropyIfDue();
+    // mint still open: nothing to do
+    h.client.slot = 10_000;
+    await capture();
+    expect(h.client.captures).toHaveLength(0);
+
+    // the mint ended at slot 1000: target 1150
+    h.client.config = { ...h.client.config!, passMintEnded: true, passEntropyTargetSlot: 1_150 };
+    await (h.chain as unknown as { freshConfig(): Promise<unknown> }).freshConfig();
+    h.client.slot = 1_150; // not past the target yet
+    await capture();
+    expect(h.sent).toBe(0);
+
+    // past the target: the server signs and pays; the first send fails and is retried
+    h.client.slot = 1_151;
+    h.failures.push(new Error('blockhash not found'));
+    await capture();
+    expect(h.sent).toBe(1);
+    expect(h.client.captures).toEqual([h.server.publicKey.toBase58()]);
+    expect(h.logs.some((l) => /Pass entropy capture failed .*retrying/.test(l))).toBe(true);
+    // the real instruction: signer, config, SlotHashes sysvar
+    const ix = h.sentIxs[0][0];
+    expect(ix.keys[0].pubkey.equals(h.server.publicKey)).toBe(true);
+    expect(ix.keys[2].pubkey.toBase58()).toBe('SysvarS1otHashes111111111111111111111111111');
+
+    // the retry lands: the chain now shows the entropy, no further sends
+    expect(h.failures).toHaveLength(0);
+    h.client.config = { ...h.client.config!, passEntropyCaptured: true, passEntropy: 'ab'.repeat(32), passEntropySlot: 1_150 };
+    await capture();
+    expect(h.sent).toBe(2);
+    expect(h.logs.some((l) => /Pass entropy captured — hash of slot 1150/.test(l))).toBe(true);
+    await capture();
+    expect(h.sent).toBe(2);
   });
 
   it('the settled fee is the one fixed at join, not the current config', async () => {

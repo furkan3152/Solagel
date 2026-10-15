@@ -29,7 +29,7 @@ const SEED = 'ab'.repeat(32);
 const disc = (name: string) =>
   Buffer.from((IDL as unknown as { instructions: { name: string; discriminator: number[] }[] }).instructions.find((i) => i.name === name)!.discriminator);
 /** Account order of `mint_pass` in the IDL. */
-const MINT_ACCOUNTS = ['minter', 'asset', 'config', 'collection', 'pass_authority', 'mint_counter', 'minter_token', 'mpl_core_program', 'slot_hashes', 'system_program'];
+const MINT_ACCOUNTS = ['minter', 'asset', 'config', 'collection', 'pass_authority', 'mint_counter', 'minter_token', 'mpl_core_program', 'system_program'];
 
 const status = (over: Partial<PassStatus> = {}): PassStatus => ({
   collection,

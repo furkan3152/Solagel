@@ -194,7 +194,23 @@ describe('server over websocket', () => {
     expect(welcome.chain.enabled).toBe(true);
     // marketplace links from the server config ride along with the chain status
     expect(welcome.chain.markets).toEqual({ tensor: 'https://www.tensor.trade/trade/slana_pass' });
+    expect(welcome.blocked).toEqual([]);
     c.close();
+  });
+
+  it('R20: arenas kept closed by the vault guard reach the lobby payloads', async () => {
+    const underfunded = (app.rooms as unknown as { underfunded: Map<number, string> }).underfunded;
+    underfunded.set(7, 'vault short');
+    try {
+      const res = (await (await fetch(`http://127.0.0.1:${port}/api/rooms`)).json()) as { blocked: unknown };
+      expect(res.blocked).toEqual([{ arenaId: 7, reason: 'vault_short' }]);
+      const c = await Client.connect(port);
+      c.send({ t: 'hello', v: PROTOCOL_VERSION });
+      expect((await c.wait('welcome')).blocked).toEqual([{ arenaId: 7, reason: 'vault_short' }]);
+      c.close();
+    } finally {
+      underfunded.delete(7);
+    }
   });
 
   it('rejects an old protocol version', async () => {

@@ -126,6 +126,16 @@ export interface RoomInfo {
   code?: string;
 }
 
+/**
+ * An arena the server keeps closed although it is enabled on chain (R20: its vault
+ * cannot cover the loot, cash-outs and tickets the server journaled). No ticket may be sold.
+ */
+export interface BlockedArena {
+  arenaId: number;
+  /** `vault_short`: the vault holds less than the journal owes. */
+  reason: 'vault_short';
+}
+
 /** The Slana Pass collection as the server sees it on chain. */
 export interface PassStatus {
   /** Collection address. */
@@ -225,7 +235,7 @@ export interface DeathStats {
 }
 
 export type ServerMessage =
-  | { t: 'welcome'; v: number; serverTime: number; rooms: RoomInfo[]; chain: ChainStatus; online: number }
+  | { t: 'welcome'; v: number; serverTime: number; rooms: RoomInfo[]; chain: ChainStatus; online: number; blocked?: BlockedArena[] }
   | { t: 'authed'; pubkey: string; token: string; profile: ProfileSummary | null }
   | {
       t: 'joined';
@@ -285,7 +295,7 @@ export type ServerMessage =
   | { t: 'powerup'; type: PowerUpType; ms: number }
   | { t: 'xp'; xp: number; level: number }
   | { t: 'history'; chat: { pid: number; from: string; skin: number; text: string; system?: boolean }[] }
-  | { t: 'rooms'; rooms: RoomInfo[]; online: number }
+  | { t: 'rooms'; rooms: RoomInfo[]; online: number; blocked?: BlockedArena[] }
   | { t: 'error'; code: ErrorCode; message: string }
   | { t: 'pong'; ts: number; serverTime: number };
 

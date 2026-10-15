@@ -9,7 +9,8 @@ const USAGE = `pnpm pass:generate (--seed-file ${DEFAULT_SEED_FILE} --entropy <h
                    [--from 1] [--to <supply>]
 
 Traits derive from the final seed sha256(seed || entropy), where entropy is Config.pass_entropy:
-the SlotHashes entry the program captured when the mint ended (\`pnpm admin status\` prints it).
+the hash of the slot the program fixed when the mint ended, stored by capture_pass_entropy
+(\`pnpm admin status\` prints it).
 After the reveal the final seed is public (Config.pass_final_seed), so anyone can regenerate with
 --final-seed.`;
 

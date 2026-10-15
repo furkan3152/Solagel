@@ -57,7 +57,7 @@ kesinti, Pass, sezon ve ödüller Solana programında. Ayrıntı, para akışı 
 | `programs/slana` | Anchor 1.2.1 programı: token arenaları (SPL Token / Token-2022), oturumlar, kesinti/yakım, sezonlar, Slana Pass (Core CPI, commit–reveal) + LiteSVM testleri |
 | `packages/shared` | Oyun kuralları, ikili protokol, arena verisi, token biçimlendirme |
 | `packages/sdk` | TypeScript istemci (PDA'lar, talimatlar, hesap okuma, kesinti matematiği) + **admin CLI** (`pnpm admin`) |
-| `packages/art` | Pass özellikleri `passTraits(finalSeed, n, supply)` (`finalSeed = sha256(tohum ‖ mint kapanış entropisi)`), risograf coin/Pass çizimi, `pnpm pass:*` üretim aracı |
+| `packages/art` | Pass özellikleri `passTraits(finalSeed, n, supply)` (`finalSeed = sha256(tohum ‖ mint kapandıktan ~150 slot sonraki slotun hash'i)`), risograf coin/Pass çizimi, `pnpm pass:*` üretim aracı |
 | `apps/server` | Oyun sunucusu: odalar ve örnekler, botlar, ganimet, günlük (journal), ödeme kuyruğu, Pass metadata uç noktaları |
 | `apps/web` | Oyun istemcisi: "Kâğıt Bilet" tasarım sistemi, lobi, bilet akışı, Pass ofisi, sıralama, oyuncu kılavuzu |
 
@@ -132,8 +132,9 @@ Ek araçlar: `pnpm -F @slana/server sim` (bot dengesi), `pnpm -F @slana/web shot
   default, 2 % with a Pass, split 50 % treasury / 30 % season pool / 20 % burned. The rate is fixed on-chain when the
   ticket is bought.
 - **Slana Pass** is a Metaplex Core NFT with a free mint (rent and network fee only), supply 3,333, one per wallet and a
-  commit–reveal trait seed mixed with a slot hash the program records when the mint closes (nobody, the team included,
-  can know traits while Passes can be minted; the supply is fixed once the mint opens). Perks: Pass rooms, the 2 % fee, season points and prizes, and **in-game power** (+15 % start
+  commit–reveal trait seed mixed with the hash of a slot ~150 slots after the mint closes, captured permissionlessly
+  (nobody, the team included, can know or steer traits while Passes can be minted; the supply is fixed once the mint
+  opens). Perks: Pass rooms, the 2 % fee, season points and prizes, and **in-game power** (+15 % start
   mass, 2 s cash-out), disclosed on every ticket and in the guide.
 - **Seasons:** points come only from Pass tickets; the on-chain top 20 is kept and the top 10 share the pool; 30 days to
   claim.

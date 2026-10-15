@@ -105,9 +105,14 @@ pub const MAX_ARENA_SESSIONS: u16 = 2_000;
 /// Metaplex Core program (owner of Pass assets and of the Pass collection).
 pub const MPL_CORE_ID: Pubkey = pubkey!("CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d");
 
-/// The SlotHashes sysvar. Its most recent entry is the Pass trait entropy captured when the
-/// mint ends (see `logic::parse_latest_slot_hash`).
+/// The SlotHashes sysvar: `capture_pass_entropy` reads the Pass trait entropy from it
+/// (see `logic::find_slot_hash`).
 pub const SLOT_HASHES_ID: Pubkey = pubkey!("SysvarS1otHashes111111111111111111111111111");
+
+/// Slots between the end of the Pass mint and the slot whose hash becomes the trait entropy
+/// (~1 minute at 400 ms). Whoever ends the mint cannot know that future hash.
+#[constant]
+pub const ENTROPY_DELAY_SLOTS: u64 = 150;
 
 /// Maximum length of `Config::pass_base_uri` in bytes.
 #[constant]

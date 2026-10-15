@@ -1,4 +1,4 @@
-import { TICK_MS, arenaMeta, type League, type RoomInfo } from '@slana/shared';
+import { TICK_MS, arenaMeta, type BlockedArena, type League, type RoomInfo } from '@slana/shared';
 import type { ChainGateway } from '../chain/types';
 import type { ServerConfig } from '../config';
 import type { Conn } from '../net/conn';
@@ -207,6 +207,11 @@ export class RoomManager {
   /** Arenas the vault guard keeps disabled (id → reason). */
   underfundedArenas(): ReadonlyMap<number, string> {
     return this.underfunded;
+  }
+
+  /** The public form of `underfundedArenas` (rooms message, `/api/rooms`): the lobby must not sell these. */
+  blockedArenas(): BlockedArena[] {
+    return [...this.underfunded.keys()].sort((a, b) => a - b).map((arenaId) => ({ arenaId, reason: 'vault_short' }));
   }
 
   private arenaAllowed(arenaId: number): boolean {

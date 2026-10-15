@@ -496,7 +496,6 @@ pub mod ix {
                 minter_token,
                 mpl_core_program: MPL_CORE_ID,
                 system_program: system_program::ID,
-                slot_hashes: SLOT_HASHES_ID,
             },
         )
     }
@@ -506,6 +505,16 @@ pub mod ix {
             slana::instruction::ClosePassMint {}.data(),
             slana::accounts::ClosePassMint {
                 admin: *admin,
+                config: config_pda(),
+            },
+        )
+    }
+
+    pub fn capture_pass_entropy(signer: &Pubkey) -> Instruction {
+        build(
+            slana::instruction::CapturePassEntropy {}.data(),
+            slana::accounts::CapturePassEntropy {
+                signer: *signer,
                 config: config_pda(),
                 slot_hashes: SLOT_HASHES_ID,
             },
@@ -1150,6 +1159,25 @@ impl TestEnv {
     pub fn close_mint(&mut self) -> TxResult {
         let admin = self.admin.insecure_clone();
         self.close_mint_as(&admin)
+    }
+
+    pub fn capture_entropy_as(&mut self, signer: &Keypair) -> TxResult {
+        self.send(&[ix::capture_pass_entropy(&signer.pubkey())], &[signer])
+    }
+
+    pub fn slot(&self) -> u64 {
+        self.svm.get_sysvar::<Clock>().slot
+    }
+
+    /// Sets the clock's slot (the SlotHashes sysvar is not touched; see `set_slot_hashes`).
+    pub fn warp_to_slot(&mut self, slot: u64) {
+        self.svm.warp_to_slot(slot);
+    }
+
+    /// SlotHashes with one entry per slot in `from..=to` (newest first), hash byte = slot as u8.
+    pub fn slot_hashes_range(&mut self, from: u64, to: u64) {
+        let entries: Vec<(u64, [u8; 32])> = (from..=to).rev().map(|s| (s, [s as u8; 32])).collect();
+        self.set_slot_hashes(&entries);
     }
 
     /// Replaces the SlotHashes sysvar with `entries` (newest first), in its bincode layout.

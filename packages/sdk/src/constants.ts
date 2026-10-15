@@ -35,6 +35,10 @@ export const SESSION_REFUND_TIMEOUT_SECS = 86_400;
 export const CLAIM_WINDOW_SECS = 2_592_000;
 export const MAX_XP_PER_GAME = 2_000;
 export const MAX_SCORE_PER_GAME = 1_000_000;
+/** Slots between the end of the Pass mint and its entropy target slot (~1 minute). */
+export const ENTROPY_DELAY_SLOTS = 150;
+/** Entries kept by the SlotHashes sysvar: a target older than this many slots can no longer be captured. */
+export const SLOT_HASHES_WINDOW = 512;
 /** Season created by `initialize`. */
 export const FIRST_SEASON = 1;
 /** Basic skins (ids `0..BASIC_SKINS`); every player may use all of them. */

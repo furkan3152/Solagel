@@ -204,6 +204,32 @@ describe('ticket flow races', () => {
     expect(screen.getByRole('alert').textContent).toMatch(/Kesinti ya da depozito az önce değişti/);
   });
 
+  it('R20: never builds a ticket for an arena the server keeps closed', async () => {
+    open(PENNY);
+    const pay = screen.getByRole('button', { name: /Bileti kes/ }) as HTMLButtonElement;
+    expect(pay.disabled).toBe(false);
+    // the server reports the arena blocked while the sheet is open
+    act(() => useUi.setState({ blockedArenas: [1] }));
+    expect((screen.getByRole('button', { name: /Bileti kes/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/Bu oda şu an bakımda/)).toBeTruthy();
+    act(() => screen.getByRole('button', { name: /Bileti kes/ }).click());
+    await settle();
+    expect(spies.buildTicketTx).not.toHaveBeenCalled();
+    expect(spies.sendTx).not.toHaveBeenCalled();
+  });
+
+  it('R20: the fresh re-check refuses an arena blocked while the chain was being read', async () => {
+    spies.fetchArena.mockImplementation(async () => {
+      useUi.setState({ blockedArenas: [1] });
+      return arena(1, 1000n * M, false);
+    });
+    open(PENNY);
+    act(() => screen.getByRole('button', { name: /Bileti kes/ }).click());
+    await settle();
+    expect(spies.buildTicketTx).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert').textContent).toMatch(/bakımda/);
+  });
+
   it('re-reads the arena right before building and refuses a changed price', async () => {
     spies.fetchArena.mockImplementation(async () => arena(1, 1500n * M, false));
     open(PENNY);

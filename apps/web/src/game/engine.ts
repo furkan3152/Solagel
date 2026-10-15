@@ -278,7 +278,7 @@ export class GameEngine {
     const now = performance.now();
     switch (m.t) {
       case 'welcome': {
-        useUi.setState({ connected: true, connecting: false, rooms: m.rooms, chain: m.chain, online: m.online });
+        useUi.setState({ connected: true, connecting: false, rooms: m.rooms, chain: m.chain, online: m.online, blockedArenas: (m.blocked ?? []).map((b) => b.arenaId) });
         const auth = useUi.getState().auth;
         if (auth) this.authToken(auth.token);
         this.resize();
@@ -293,7 +293,7 @@ export class GameEngine {
         return;
       }
       case 'rooms':
-        useUi.setState({ rooms: m.rooms, online: m.online });
+        useUi.setState({ rooms: m.rooms, online: m.online, blockedArenas: (m.blocked ?? []).map((b) => b.arenaId) });
         return;
       case 'authed': {
         useUi.setState({ auth: { pubkey: m.pubkey, token: m.token, profile: m.profile } });
