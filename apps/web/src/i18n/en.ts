@@ -481,7 +481,7 @@ export const en = {
   'tf.feeNote': 'The entry fee goes into the room. Eat players to grow it; if you are eaten, your value goes to the eater. No profit, no fee.',
   'tf.deposit': 'Deposit',
   'tf.depositV': '{sol} SOL',
-  'tf.depositNote': "Pays for the server's payout transaction. The ticket account's rent comes back to you when the ticket closes.",
+  'tf.depositNote': "The deposit pays for the server's payout transaction. The ticket account's rent comes back to you when the ticket closes.",
   'tf.balance': 'Your balance',
   'tf.signs': 'This transaction',
   'tf.step.ata': 'Open your token account (you pay the rent)',

@@ -42,12 +42,12 @@ Budget by area (rough): entrypoint/dispatch + validation helpers 10 KB, token CP
 ## 3. English-only project
 
 - Remove `apps/web/src/i18n/tr.ts`, the language switch and `lang` setting; `en.ts` becomes the only table (keys kept). Locale-aware number formatting uses `en-US` (`1,234`, compact `1.5K`).
-- Rename Turkish product terms: design system "Kâğıt Bilet" → **"Paper Ticket"**; arena names (e.g. "Kuruş Gölü") → English names chosen once in `packages/shared/src/arenas.ts`; stamps/labels ("YENİLDİN", "ÖDENDİ", "Bakımda", "Açılışı tamamla", …) → English equivalents already present in `en.ts`.
+- Rename Turkish product terms: design system (Turkish name) → **"Paper Ticket"**; arena names (e.g. the Turkish name of Penny Pond) → English names chosen once in `packages/shared/src/arenas.ts`; stamps/labels (the Turkish forms of "EATEN", "PAID", "Under maintenance", "Complete the reveal", …) → English equivalents already present in `en.ts`.
 - Translate all docs: README, `docs/*.md`, in-app docs content (drop `content.tr.ts`), the v2 spec and v2 plan, the new v3 plan, PASS-ART, OPERATIONS, DEPLOY (DEPLOY was Turkish).
 - Code: comments, test names, log/error strings, bot names, chat filter word lists (keep an English list; the Turkish profanity list is removed), sticker/emote labels, art trait names (`traits.ts`, `palette.ts`), CLI help text, `localnet.sh`.
 - Pass NFT metadata (names, trait values, descriptions) is English. Because traits are derived, renaming trait **labels** does not change which Pass gets which trait; byte-parity tests are regenerated in the same commit.
 - Screenshots in `docs/images` are re-shot in English.
-- A CI grep guard fails on Turkish-specific letters (`çğıöşüÇĞİÖŞÜ`) outside `docs/superpowers/**/2026-10-14-*` history files (which are translated, so the guard has no exceptions in the end).
+- A CI grep guard fails on Turkish-specific letters (`[\x{e7}\x{11f}\x{131}\x{f6}\x{15f}\x{fc}\x{c7}\x{11e}\x{130}\x{d6}\x{15e}\x{dc}]`) outside `docs/superpowers/**/2026-10-14-*` history files (which are translated, so the guard has no exceptions in the end).
 
 ## 4. Risks
 
