@@ -66,15 +66,21 @@ function WalletCheque({ me }: { me: string | null }) {
   );
 }
 
+/** `1` → `1st`, `2` → `2nd`, `11` → `11th`. */
+export function ordinal(n: number): string {
+  const teen = n % 100 >= 11 && n % 100 <= 13;
+  const suffix = teen ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] ?? 'th';
+  return `${n}${suffix}`;
+}
+
 function Cheque({ prize, payee, onClaim, stamped, compact = false }: { prize: Prize; payee: string; onClaim?: () => void; stamped?: boolean; compact?: boolean }) {
   const t = useT();
-  const lang = useUi((s) => s.settings.lang);
   const tok = useTokenText();
   const n = String(prize.seasonId).padStart(2, '0');
   const rank = prize.rank + 1;
   const deadline =
     prize.kind === 'claimable'
-      ? new Date(prize.closesAt * 1000).toLocaleDateString(lang === 'tr' ? 'tr-TR' : 'en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+      ? new Date(prize.closesAt * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
       : null;
   return (
     <article className={`sc-cheque is-${prize.kind}${compact ? ' is-compact' : ''}`} aria-labelledby={`sc-h-${prize.seasonId}`}>
@@ -86,7 +92,7 @@ function Cheque({ prize, payee, onClaim, stamped, compact = false }: { prize: Pr
       <div className="sc-cheque__body">
         <span className="sc-cheque__kicker mono">{t('sc.kicker')}</span>
         <h3 id={`sc-h-${prize.seasonId}`} className="sc-cheque__title">
-          {t('sc.title', { rank, n })}
+          {t('sc.title', { rank: ordinal(rank), n })}
         </h3>
         <div className="sc-cheque__pay">
           <span className="mono">{t('sc.payTo')}</span>
@@ -95,7 +101,7 @@ function Cheque({ prize, payee, onClaim, stamped, compact = false }: { prize: Pr
         <div className="sc-cheque__amount">
           <span className="sc-cheque__value">{tok.fee(prize.amount)}</span>
           <span className="mono">{tok.symbol}</span>
-          <span className="sc-cheque__share mono">{t('sc.share', { pct: bpsPercent(PRIZE_SHARES_BPS[prize.rank], lang) })}</span>
+          <span className="sc-cheque__share mono">{t('sc.share', { pct: bpsPercent(PRIZE_SHARES_BPS[prize.rank]) })}</span>
         </div>
         {prize.kind === 'claimable' && !stamped && (
           <>
@@ -139,7 +145,6 @@ interface Review {
  */
 function ClaimSheet({ open, prize, payee, onClose, onPaid }: { open: boolean; prize: Extract<ClaimState, { kind: 'claimable' }>; payee: string; onClose: () => void; onPaid: () => void }) {
   const t = useT();
-  const lang = useUi((s) => s.settings.lang);
   const cluster = useUi((s) => s.chain?.cluster ?? 'devnet');
   const wallet = useWallet();
   const { connection } = useConnection();
@@ -183,7 +188,7 @@ function ClaimSheet({ open, prize, payee, onClose, onPaid }: { open: boolean; pr
   const v = frozen ?? live;
   const busy = phase === 'preparing' || phase === 'signing' || phase === 'confirming';
   const done = phase === 'done';
-  const sol = (lamports: number) => formatToken(lamports, SOL_DECIMALS, lang, { maxFrac: 6 });
+  const sol = (lamports: number) => formatToken(lamports, SOL_DECIMALS, { maxFrac: 6 });
   const n = String(prize.seasonId).padStart(2, '0');
 
   const fail = (text: string) => {

@@ -4,7 +4,7 @@ import { springs, useReducedMotion } from '../motion';
 
 export interface CounterProps extends Omit<HTMLAttributes<HTMLSpanElement>, 'children'> {
   value: number;
-  /** Formatter, e.g. `(n) => n.toLocaleString('tr-TR')`. Default: en-US grouping. */
+  /** Formatter, e.g. `(n) => n.toFixed(2)`. Default: en-US grouping. */
   format?: (n: number) => string;
   /** Mono unit after the number, e.g. "$SLANA". */
   unit?: string;
@@ -14,7 +14,7 @@ const DIGITS = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
 const defaultFormat = (n: number) => Math.round(n).toLocaleString('en-US');
 
 /**
- * Mechanical counter (spec §7.4 "makine sayacı"): every digit is a wheel that
+ * Mechanical counter (spec §7.4 "mechanical counter"): every digit is a wheel that
  * rolls to its new value; wheels are keyed from the right so place values stay
  * put when the number grows. Screen readers get the plain formatted value.
  */

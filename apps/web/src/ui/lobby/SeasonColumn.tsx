@@ -4,7 +4,6 @@ import { Icon } from '../../design';
 import { useT } from '../../i18n';
 import { useChainData } from '../../solana/chain';
 import { bpsPercent } from '../../solana/ticket';
-import { useUi } from '../../store';
 import { useTokenText } from './useLobby';
 
 /**
@@ -13,12 +12,11 @@ import { useTokenText } from './useLobby';
  */
 export function SeasonColumn({ limit = 10, onMore }: { limit?: number; onMore?: () => void }) {
   const t = useT();
-  const lang = useUi((s) => s.settings.lang);
   const season = useChainData((s) => s.season);
   const tok = useTokenText();
   const me = useWallet().publicKey?.toBase58() ?? null;
   const rows = (season?.entries ?? []).slice(0, limit);
-  const nf = new Intl.NumberFormat(lang === 'tr' ? 'tr-TR' : 'en-US');
+  const nf = new Intl.NumberFormat('en-US');
   return (
     <section className="kl-season" aria-labelledby="kl-season-h">
       <header className="kl-season__head">
@@ -47,7 +45,7 @@ export function SeasonColumn({ limit = 10, onMore }: { limit?: number; onMore?: 
                 <td className="kl-standings__name">{r.name}</td>
                 <td className="kl-standings__pts mono">{t('lo.ranks.points', { n: nf.format(r.points) })}</td>
                 <td className="kl-standings__share mono">
-                  {i < PRIZE_SHARES_BPS.length ? t('lo.ranks.prize', { n: bpsPercent(PRIZE_SHARES_BPS[i], lang) }) : ''}
+                  {i < PRIZE_SHARES_BPS.length ? t('lo.ranks.prize', { n: bpsPercent(PRIZE_SHARES_BPS[i]) }) : ''}
                 </td>
               </tr>
             ))}

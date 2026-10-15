@@ -111,7 +111,7 @@ export const docsEn = (symbol: string = sym, power: PassPower | null = null): Do
           caption: 'Default arenas',
           head: ['No', 'Room', 'Entry fee', 'Pass'],
           numeric: [0, 2],
-          rows: F.arenas.map((a) => [String(a.id), a.name.en, `${num(a.entry)} ${symbol}`, a.pass ? 'required' : 'not needed']),
+          rows: F.arenas.map((a) => [String(a.id), a.name, `${num(a.entry)} ${symbol}`, a.pass ? 'required' : 'not needed']),
         },
         {
           kind: 'p',

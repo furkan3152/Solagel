@@ -44,7 +44,6 @@ interface Review {
  */
 export function MintSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const t = useT();
-  const lang = useUi((s) => s.settings.lang);
   const chain = useUi((s) => s.chain);
   const cluster = chain?.cluster ?? 'devnet';
   const wallet = useWallet();
@@ -131,7 +130,7 @@ export function MintSheet({ open, onClose }: { open: boolean; onClose: () => voi
     seedCommitted: config ? config.passSeedHash !== null : undefined,
   });
   const busy = phase === 'preparing' || phase === 'signing' || phase === 'confirming';
-  const sol = (lamports: number) => formatToken(lamports, SOL_DECIMALS, lang, { maxFrac: 6 });
+  const sol = (lamports: number) => formatToken(lamports, SOL_DECIMALS, { maxFrac: 6 });
   const lowSol = data.balance !== null && v !== null && data.balance < v.cost.total;
   // a mint landed after all (e.g. the confirmation timed out): never offer to mint twice
   const landed =

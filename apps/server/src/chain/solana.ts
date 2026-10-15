@@ -470,7 +470,7 @@ export class SolanaChain implements ChainGateway {
     const decimals = this.config?.tokenDecimals;
     if (decimals === undefined) return `${raw} token units`;
     try {
-      return `${formatToken(raw, decimals, 'en', { maxFrac: decimals })} ${this.cfg.chain.tokenSymbol}`;
+      return `${formatToken(raw, decimals, { maxFrac: decimals })} ${this.cfg.chain.tokenSymbol}`;
     } catch {
       return `${raw} token units`;
     }

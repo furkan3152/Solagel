@@ -3,12 +3,12 @@ import { TOKEN_SYMBOL_DEFAULT, arenaMeta, formatToken } from '@slana/shared';
 import { useEffect, useMemo, useState } from 'react';
 import { freePasses, useChainData } from '../../solana/chain';
 import { buildTickets, quickPlayTarget, ticketGate, type OpenSession, type TicketGate, type TicketKey, type TicketModel } from '../../solana/ticket';
-import { useUi, type Lang } from '../../store';
+import { useUi } from '../../store';
 
 export interface TokenText {
   symbol: string;
   decimals: number;
-  /** Exact amount with grouping (`12.450`), compact (K/M/B) from one million up. */
+  /** Exact amount with grouping (`12,450`), compact (K/M/B) from one million up. */
   fee: (raw: bigint | number) => string;
   /** Always compact (`310K`). */
   compact: (raw: bigint | number) => string;
@@ -16,26 +16,25 @@ export interface TokenText {
   exact: (raw: bigint | number) => string;
 }
 
-export function tokenText(lang: Lang, decimals: number, symbol: string): TokenText {
+export function tokenText(decimals: number, symbol: string): TokenText {
   const million = 10n ** BigInt(decimals + 6);
   return {
     symbol,
     decimals,
-    fee: (raw) => formatToken(raw, decimals, lang, { compact: BigInt(raw) >= million }),
-    compact: (raw) => formatToken(raw, decimals, lang, { compact: true, maxFrac: 1 }),
-    exact: (raw) => formatToken(raw, decimals, lang, { maxFrac: decimals }),
+    fee: (raw) => formatToken(raw, decimals, { compact: BigInt(raw) >= million }),
+    compact: (raw) => formatToken(raw, decimals, { compact: true, maxFrac: 1 }),
+    exact: (raw) => formatToken(raw, decimals, { maxFrac: decimals }),
   };
 }
 
 export function useTokenText(): TokenText {
-  const lang = useUi((s) => s.settings.lang);
   const token = useUi((s) => s.chain?.token ?? null);
   const decimals = useChainData((s) => s.config?.tokenDecimals) ?? token?.decimals ?? 6;
-  return useMemo(() => tokenText(lang, decimals, token?.symbol ?? TOKEN_SYMBOL_DEFAULT), [lang, decimals, token?.symbol]);
+  return useMemo(() => tokenText(decimals, token?.symbol ?? TOKEN_SYMBOL_DEFAULT), [decimals, token?.symbol]);
 }
 
-export const ticketName = (t: Pick<TicketModel, 'arenaId'>, lang: Lang, practice: string): string =>
-  t.arenaId === null ? practice : arenaMeta(t.arenaId).name[lang];
+export const ticketName = (t: Pick<TicketModel, 'arenaId'>, practice: string): string =>
+  t.arenaId === null ? practice : arenaMeta(t.arenaId).name;
 
 export interface LobbyModel {
   tickets: TicketModel[];

@@ -1,4 +1,4 @@
-/* ─────────────────────────── Kâğıt Bilet · tokens ───────────────────────────
+/* ─────────────────────────── Paper Ticket · tokens ───────────────────────────
  * Spec §7.1. The tokens sit on `:root` (the page itself, body background,
  * the canvas stage) and again on every `.kb` root, so a `<Kb theme>` subtree
  * keeps its own paper / night print whatever the page around it uses.
@@ -95,7 +95,7 @@
   color-scheme: light;
 }
 
-/* Gece baskısı: same accents, inverted stock. Text-safe accent inks are
+/* Night print: same accents, inverted stock. Text-safe accent inks are
  * lightened so they keep >= 4.5:1 on the dark paper and card. */
 :root[data-theme='dark'],
 .kb[data-theme='night'],

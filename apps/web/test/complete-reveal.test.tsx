@@ -67,7 +67,6 @@ beforeEach(() => {
   spies.sendTx.mockClear();
   spies.capture.mockClear();
   spies.config = { passRevealed: false, passSeedRevealed: true, passEntropyTargetSlot: 1_150 };
-  useUi.setState({ settings: { ...ui0.settings, lang: 'tr' } });
   useChainData.setState({ fake: false });
 });
 afterEach(() => {
@@ -82,17 +81,17 @@ describe('CompleteReveal (R23: anybody can complete the reveal)', () => {
     spies.slot = 1_100;
     show(waiting);
     await settle();
-    expect(screen.getByText('Açılışın tamamlanması bekleniyor')).toBeTruthy();
-    expect(screen.getByRole('status').textContent).toMatch(/yaklaşık 21 sn kaldı/);
-    expect(screen.queryByRole('button', { name: 'Açılışı tamamla' })).toBeNull();
+    expect(screen.getByText('Waiting for the reveal to complete')).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toMatch(/about 21 s left/);
+    expect(screen.queryByRole('button', { name: 'Complete the reveal' })).toBeNull();
   });
 
   it('after the target any connected wallet sends exactly one capture, fee disclosed', async () => {
     spies.slot = 1_151;
     show(waiting);
     await settle();
-    expect(screen.getByText(/yalnızca ağ ücreti öder \(≈◎0,0000062\)/)).toBeTruthy();
-    const btn = screen.getByRole('button', { name: 'Açılışı tamamla' });
+    expect(screen.getByText(/costs only the network fee \(≈◎0\.0000062\)/)).toBeTruthy();
+    const btn = screen.getByRole('button', { name: 'Complete the reveal' });
     act(() => {
       btn.click();
       btn.click();
@@ -108,7 +107,7 @@ describe('CompleteReveal (R23: anybody can complete the reveal)', () => {
     spies.config = { passRevealed: true, passSeedRevealed: true, passEntropyTargetSlot: 1_150 };
     show(waiting);
     await settle();
-    act(() => screen.getByRole('button', { name: 'Açılışı tamamla' }).click());
+    act(() => screen.getByRole('button', { name: 'Complete the reveal' }).click());
     await settle();
     expect(spies.capture).not.toHaveBeenCalled();
     expect(spies.sendTx).not.toHaveBeenCalled();
@@ -119,7 +118,7 @@ describe('CompleteReveal (R23: anybody can complete the reveal)', () => {
     spies.slot = 1_151;
     const { unmount } = show(waiting);
     await settle();
-    expect(screen.getByText(/cüzdan bağla ya da bekle/)).toBeTruthy();
+    expect(screen.getByText(/Connect a wallet to complete the reveal, or wait/)).toBeTruthy();
     unmount();
     const r = show(base);
     await settle();

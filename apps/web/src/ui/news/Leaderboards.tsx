@@ -8,7 +8,6 @@ import { useT } from '../../i18n';
 import { useChainData, type PreviousSeasonInfo, type SeasonInfo } from '../../solana/chain';
 import { CLAIM_WINDOW_S, PRIZE_RANKS, prizeAmount } from '../../solana/season';
 import { bpsPercent } from '../../solana/ticket';
-import { useUi } from '../../store';
 import { CoinPortrait } from '../game/CoinPortrait';
 import { useMedia, useTokenText, type TokenText } from '../lobby/useLobby';
 import { PageHead } from '../PageHead';
@@ -81,14 +80,13 @@ export function Leaderboards() {
 
 function SeasonFront({ season }: { season: SeasonInfo | null }) {
   const t = useT();
-  const lang = useUi((s) => s.settings.lang);
   const tok = useTokenText();
   const me = useWallet().publicKey?.toBase58() ?? null;
   const wide = useMedia('(min-width: 900px)');
   if (!season) return <p className="nw-note">{t('lo.ranks.offline')}</p>;
   const n = String(season.id).padStart(2, '0');
   const leader = season.entries[0];
-  const nf = new Intl.NumberFormat(lang === 'tr' ? 'tr-TR' : 'en-US');
+  const nf = new Intl.NumberFormat('en-US');
   const pool = BigInt(Math.trunc(season.prizePool));
 
   const lead = (
@@ -101,7 +99,7 @@ function SeasonFront({ season }: { season: SeasonInfo | null }) {
         <Standings
           rows={season.entries.map((e) => ({ key: e.player, name: e.name, skin: e.skin, me: e.player === me, value: nf.format(e.points) }))}
           valueLabel={t('nw.col.points')}
-          prize={(i) => (i < PRIZE_RANKS ? `${bpsPercent(PRIZE_SHARES_BPS[i], lang)}% · ${tok.compact(prizeAmount(pool, i))}` : null)}
+          prize={(i) => (i < PRIZE_RANKS ? `${bpsPercent(PRIZE_SHARES_BPS[i])}% · ${tok.compact(prizeAmount(pool, i))}` : null)}
           prizeLabel={t('nw.col.prize')}
         />
       )}
@@ -137,24 +135,23 @@ function SeasonFront({ season }: { season: SeasonInfo | null }) {
 
 function PoolBox({ season, tok }: { season: SeasonInfo; tok: TokenText }) {
   const t = useT();
-  const lang = useUi((s) => s.settings.lang);
   const seasonBps = useChainData((s) => s.config?.seasonBps ?? 3000);
   const pool = BigInt(Math.trunc(season.prizePool));
   const whole = Number(pool / 10n ** BigInt(tok.decimals));
-  const nf = new Intl.NumberFormat(lang === 'tr' ? 'tr-TR' : 'en-US');
+  const nf = new Intl.NumberFormat('en-US');
   return (
     <section className="nw-pool" aria-labelledby="nw-pool-h">
       <h3 id="nw-pool-h" className="nw-pool__kicker mono">
         {t('nw.pool')}
       </h3>
       <Counter value={whole} format={(v) => nf.format(Math.round(v))} unit={tok.symbol} className="nw-pool__value" />
-      <p className="nw-pool__note">{t('nw.poolNote', { pct: bpsPercent(seasonBps, lang) })}</p>
+      <p className="nw-pool__note">{t('nw.poolNote', { pct: bpsPercent(seasonBps) })}</p>
       <h4 className="nw-shares__h mono">{t('nw.shares')}</h4>
       <ol className="nw-shares">
         {PRIZE_SHARES_BPS.map((bps, i) => (
           <li key={i}>
             <span className="nw-shares__rank mono">{String(i + 1).padStart(2, '0')}</span>
-            <span className="nw-shares__pct">{bpsPercent(bps, lang)}%</span>
+            <span className="nw-shares__pct">{bpsPercent(bps)}%</span>
             <span className="nw-shares__amt mono">{tok.compact(prizeAmount(pool, i))}</span>
           </li>
         ))}
@@ -165,11 +162,10 @@ function PoolBox({ season, tok }: { season: SeasonInfo; tok: TokenText }) {
 
 function PreviousTable({ prev, tok, me }: { prev: PreviousSeasonInfo; tok: TokenText; me: string | null }) {
   const t = useT();
-  const lang = useUi((s) => s.settings.lang);
   const pool = BigInt(Math.trunc(prev.prizePool));
   const closes = prev.endedAt + CLAIM_WINDOW_S;
   const open = Date.now() / 1000 <= closes;
-  const date = new Date(closes * 1000).toLocaleDateString(lang === 'tr' ? 'tr-TR' : 'en-GB', { day: 'numeric', month: 'long' });
+  const date = new Date(closes * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
   const n = String(prev.id).padStart(2, '0');
   return (
     <section className="nw-prev" aria-labelledby="nw-prev-h">
@@ -200,9 +196,8 @@ function PreviousTable({ prev, tok, me }: { prev: PreviousSeasonInfo; tok: Token
 
 function OffchainFront({ kind, boards }: { kind: 'today' | 'all'; boards: Boards }) {
   const t = useT();
-  const lang = useUi((s) => s.settings.lang);
   const me = useWallet().publicKey?.toBase58() ?? null;
-  const nf = new Intl.NumberFormat(lang === 'tr' ? 'tr-TR' : 'en-US');
+  const nf = new Intl.NumberFormat('en-US');
   const rows = boards.state === 'ok' ? (kind === 'today' ? boards.daily : boards.allTime) : [];
   const top = rows[0];
   return (

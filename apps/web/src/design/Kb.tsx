@@ -5,7 +5,7 @@ export type KbTheme = 'paper' | 'night';
 
 const ThemeContext = createContext<KbTheme>('paper');
 
-/** Current Kâğıt Bilet stock. Portalled pieces (Sheet, toasts) read this. */
+/** Current Paper Ticket stock. Portalled pieces (Sheet, toasts) read this. */
 export function useKbTheme(): KbTheme {
   return useContext(ThemeContext);
 }
@@ -24,7 +24,7 @@ export interface KbProps extends HTMLAttributes<HTMLDivElement> {
 
 /**
  * Design-system root: `class="kb paper"` + `data-theme`, theme context and
- * motion's reduced-motion policy. Wrap every Kâğıt Bilet screen in it.
+ * motion's reduced-motion policy. Wrap every Paper Ticket screen in it.
  */
 export const Kb = forwardRef<HTMLDivElement, KbProps>(function Kb(
   { theme = 'paper', paper = true, className, children, ...rest },

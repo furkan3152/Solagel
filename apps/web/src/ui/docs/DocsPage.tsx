@@ -5,21 +5,18 @@ import { useUi } from '../../store';
 import { useTokenText } from '../lobby/useLobby';
 import { PageHead } from '../PageHead';
 import { docsEn } from './content.en';
-import { docsTr } from './content.tr';
 import { FACTS, type DocBlock, type DocsContent } from './facts';
 import './docs.css';
 
 /**
  * The player guide (`/docs`, `#docs`): how to play, rooms, value flow, fees,
- * the Pass, mint, seasons, what is on-chain, wallet safety and an FAQ, in TR
- * and EN. Typed content lives in content.tr.ts / content.en.ts; every number
- * comes from the code through facts.ts.
+ * the Pass, mint, seasons, what is on-chain, wallet safety and an FAQ. Typed
+ * content lives in content.en.ts; every number comes from the code through facts.ts.
  */
 export function DocsPage() {
-  const lang = useUi((s) => s.settings.lang);
   const tok = useTokenText();
   const power = useUi((s) => s.chain?.passPower ?? null);
-  const c = useMemo(() => (lang === 'tr' ? docsTr : docsEn)(tok.symbol, power), [lang, tok.symbol, power]);
+  const c = useMemo(() => docsEn(tok.symbol, power), [tok.symbol, power]);
   const config = useChainData((s) => s.config);
   const reduced = useReducedMotion();
   const top = useRef<HTMLDivElement>(null);
@@ -35,7 +32,7 @@ export function DocsPage() {
 
   return (
     <div className="dc-page" ref={top}>
-      <PageHead kicker={c.kicker} title={c.title} deck={c.deck} id="dc-title" aside={<Stamp text={lang === 'tr' ? 'Kılavuz' : 'Guide'} sub="TR · EN" tone="teal" round size="md" rotate={-6} />} />
+      <PageHead kicker={c.kicker} title={c.title} deck={c.deck} id="dc-title" aside={<Stamp text="Guide" sub="Player copy" tone="teal" round size="md" rotate={-6} />} />
       <Dateline items={c.dateline} label={c.tocLabel} className="dc-dateline" />
 
       <div className="dc-layout">

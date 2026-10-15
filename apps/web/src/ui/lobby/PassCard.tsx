@@ -12,8 +12,8 @@ const passNo = (n: number) => String(n).padStart(4, '0');
 
 /**
  * The holder's Pass, printed on the teal cover stock: the Pass coin in a
- * photo box, number and state, perk chips and a "GEÇERLİ" seal. Without a Pass
- * it becomes the "Pass başvurusu" call to action.
+ * photo box, number and state, perk chips and a "VALID" seal. Without a Pass
+ * it becomes the "Apply for a Pass" call to action.
  */
 export function PassCard({ onOpen, large = false }: { onOpen?: () => void; large?: boolean }) {
   const passes = useChainData((s) => s.passes);
@@ -27,7 +27,6 @@ export function PassCard({ onOpen, large = false }: { onOpen?: () => void; large
 function PassCover({ pass, more, locked, large, onOpen }: { pass: OwnedPass; more: number; locked: boolean; large: boolean; onOpen?: () => void }) {
   const t = useT();
   const power = usePassPower();
-  const lang = useUi((s) => s.settings.lang);
   const skin = useUi((s) => s.settings.skin);
   const config = useChainData((s) => s.config);
   const status = usePassStatus();
@@ -52,7 +51,7 @@ function PassCover({ pass, more, locked, large, onOpen }: { pass: OwnedPass; mor
         </span>
         <span className="kl-pass__chips">
           <Chip tone="on-dark">{t('lo.pass.chip.rooms')}</Chip>
-          <Chip tone="on-dark">{t('lo.pass.chip.fee', { n: bpsPercent(feeBps(config, true), lang) })}</Chip>
+          <Chip tone="on-dark">{t('lo.pass.chip.fee', { n: bpsPercent(feeBps(config, true)) })}</Chip>
           <Chip tone="on-dark">{t('lo.pass.chip.season')}</Chip>
           <Chip tone="on-dark">{t('lo.pass.chip.mass', { n: power.startPct })}</Chip>
         </span>
@@ -66,7 +65,6 @@ function PassCover({ pass, more, locked, large, onOpen }: { pass: OwnedPass; mor
 
 function PassApply({ onApply }: { onApply?: () => void }) {
   const t = useT();
-  const lang = useUi((s) => s.settings.lang);
   const pass = usePassStatus();
   const Tag = onApply ? 'button' : 'div';
   return (
@@ -79,7 +77,7 @@ function PassApply({ onApply }: { onApply?: () => void }) {
         <span className="kl-apply__body">{t('lo.apply.body')}</span>
         {pass && (
           <span className="kl-apply__supply mono">
-            {t('lo.apply.supply', { m: formatToken(pass.minted, 0, lang), s: formatToken(pass.supply, 0, lang) })} ·{' '}
+            {t('lo.apply.supply', { m: formatToken(pass.minted, 0), s: formatToken(pass.supply, 0) })} ·{' '}
             {pass.mintOpen && !pass.revealed && pass.minted < pass.supply ? t('lo.apply.open') : t('lo.apply.closed')}
           </span>
         )}

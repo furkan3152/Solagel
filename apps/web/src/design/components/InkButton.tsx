@@ -8,7 +8,7 @@ export interface InkButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElem
   icon?: IconName;
   /** Leading icon. */
   lead?: IconName;
-  /** Mono second line (lg only reads well), e.g. "Kuruş Gölü · 1.000 $SLANA". */
+  /** Mono second line (lg only reads well), e.g. "Penny Pond · 1,000 $SLANA". */
   sub?: ReactNode;
   block?: boolean;
   children: ReactNode;

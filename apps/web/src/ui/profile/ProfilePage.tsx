@@ -58,15 +58,14 @@ function MemberCard() {
   const profile = useChainData((s) => s.profile);
   const passes = useChainData((s) => s.passes);
   const wallet = useWallet();
-  const lang = settings.lang;
   const owner = wallet.publicKey?.toBase58() ?? null;
-  const nf = new Intl.NumberFormat(lang === 'tr' ? 'tr-TR' : 'en-US');
+  const nf = new Intl.NumberFormat('en-US');
   const name = profile?.name ?? auth?.profile?.name ?? (settings.name || t('pf.guest'));
   const xp = profile?.xp ?? auth?.profile?.xp ?? 0;
   const prog = levelProgress(xp);
   const wearing = passes.find((p) => p.asset === settings.passSkin) ?? null;
   const since = profile?.createdAt
-    ? new Date(profile.createdAt * 1000).toLocaleDateString(lang === 'tr' ? 'tr-TR' : 'en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+    ? new Date(profile.createdAt * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
     : null;
   return (
     <section className="pf-card" aria-labelledby="pf-card-h">
@@ -117,7 +116,6 @@ function MemberCard() {
 function NameAndCoin() {
   const t = useT();
   const settings = useUi((s) => s.settings);
-  const lang = settings.lang;
   const wallet = useWallet();
   const { connection } = useConnection();
   const client = useSlanaClient();
@@ -220,10 +218,10 @@ function NameAndCoin() {
                     sound.click();
                     updateSettings({ skin: s.id, passSkin: null });
                   }}
-                  aria-label={s.name[lang]}
+                  aria-label={s.name}
                 />
                 <CoinPortrait skin={s.id} size={52} still={!on} seed={s.id + 1} />
-                <span className="pf-look__name">{s.name[lang]}</span>
+                <span className="pf-look__name">{s.name}</span>
               </label>
             );
           })}
@@ -267,11 +265,10 @@ function NameAndCoin() {
 
 function Record() {
   const t = useT();
-  const lang = useUi((s) => s.settings.lang);
   const profile = useChainData((s) => s.profile);
   const currentSeason = useChainData((s) => s.config?.currentSeason ?? null);
   const tok = useTokenText();
-  const nf = new Intl.NumberFormat(lang === 'tr' ? 'tr-TR' : 'en-US');
+  const nf = new Intl.NumberFormat('en-US');
   if (!profile) {
     return (
       <section className="pf-box" aria-labelledby="pf-record-h">

@@ -60,7 +60,6 @@ function useNow(active: boolean, everyMs = 1000): number {
  */
 export function PassPage() {
   const t = useT();
-  const lang = useUi((s) => s.settings.lang);
   const markets = useUi((s) => s.chain?.markets);
   const status = usePassStatus();
   const passes = useChainData((s) => s.passes);
@@ -73,7 +72,7 @@ export function PassPage() {
   const [mintOpen, setMintOpen] = useState(false);
   const waiting = !!status && status.mintStartTs > Date.now() / 1000;
   const nowS = useNow(waiting || mintOpen);
-  const nf = new Intl.NumberFormat(lang === 'tr' ? 'tr-TR' : 'en-US');
+  const nf = new Intl.NumberFormat('en-US');
 
   const gate = mintGate({ status, walletConnected: !!owner, mintedByMe, minTokens, tokenBalance, nowS, seedCommitted });
   const holding = passes.length > 0;
@@ -161,7 +160,6 @@ function Passports({ passes, status }: { passes: OwnedPass[]; status: PassStatus
 
 function PassportCard({ pass, status }: { pass: OwnedPass; status: PassStatus }) {
   const t = useT();
-  const lang = useUi((s) => s.settings.lang);
   const worn = useUi((s) => s.settings.passSkin === pass.asset);
   const name = useUi((s) => s.settings.name);
   const profile = useChainData((s) => s.profile);
@@ -194,7 +192,7 @@ function PassportCard({ pass, status }: { pass: OwnedPass; status: PassStatus })
   const fields = traits
     ? [
         { label: t('pp.f.rarity'), value: t(rarityKey(traits.rarity)) },
-        ...traitRows(traits, lang, t).map((r) => ({ label: t(r.label), value: r.value })),
+        ...traitRows(traits, t).map((r) => ({ label: t(r.label), value: r.value })),
         { label: t('pp.f.session'), value: locked ? t('pp.session.locked') : t('pp.session.free') },
       ]
     : [];
@@ -296,11 +294,10 @@ function PassportCard({ pass, status }: { pass: OwnedPass; status: PassStatus })
 
 function ApplyForm({ status, gate, nowS, onMint }: { status: PassStatus; gate: MintGate; nowS: number; onMint: () => void }) {
   const t = useT();
-  const lang = useUi((s) => s.settings.lang);
   const owner = useWallet().publicKey?.toBase58() ?? null;
   const minTokens = useChainData((s) => s.config?.passMinTokens ?? 0n);
   const tok = useTokenText();
-  const nf = new Intl.NumberFormat(lang === 'tr' ? 'tr-TR' : 'en-US');
+  const nf = new Intl.NumberFormat('en-US');
   const left = Math.max(0, status.supply - status.minted);
   const over = gate.kind === 'soldOut' || gate.kind === 'closed';
 
@@ -430,13 +427,12 @@ function GateNote({ icon, title, body }: { icon: Parameters<typeof Icon>[0]['nam
 
 function Countdown({ startsAt, nowS }: { startsAt: number; nowS: number }) {
   const t = useT();
-  const lang = useUi((s) => s.settings.lang);
   const pad = (n: number) => String(n).padStart(2, '0');
   const fmt = (n: number) => {
     const { d, h, m, s } = splitDuration(n);
     return `${d > 0 ? `${d}${t('ap.cd.d')} ` : ''}${pad(h)}:${pad(m)}:${pad(s)}`;
   };
-  const date = new Date(startsAt * 1000).toLocaleString(lang === 'tr' ? 'tr-TR' : 'en-GB', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+  const date = new Date(startsAt * 1000).toLocaleString('en-GB', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
   return (
     <div className="pp-count">
       <span className="pp-count__label mono">{t('ap.g.notStarted')}</span>
@@ -449,7 +445,6 @@ function Countdown({ startsAt, nowS }: { startsAt: number; nowS: number }) {
 /** "Might come out like": looks rolled from a client-side preview seed, never the collection's seed. */
 function RollingPreview() {
   const t = useT();
-  const lang = useUi((s) => s.settings.lang);
   const reduced = useReducedMotion();
   const [seed, setSeed] = useState(previewSeed);
   const looks = useMemo(() => previewTraits(seed, 24), [seed]);
@@ -462,7 +457,7 @@ function RollingPreview() {
     const id = setInterval(() => setI((x) => (x + 1) % looks.length), 1900);
     return () => clearInterval(id);
   }, [still, looks.length]);
-  const tr = looks[i % looks.length];
+  const look = looks[i % looks.length];
   const next = () => {
     sound.click();
     if (i + 1 >= looks.length) {
@@ -472,7 +467,7 @@ function RollingPreview() {
   };
   return (
     <figure className="pp-preview" aria-labelledby={capId}>
-      <div className="pp-preview__photo" style={{ background: PAPERS[tr.paper] }}>
+      <div className="pp-preview__photo" style={{ background: PAPERS[look.paper] }}>
         <AnimatePresence mode="popLayout" initial={false}>
           <motion.span
             key={`${seed}:${i}`}
@@ -482,7 +477,7 @@ function RollingPreview() {
             exit={reduced ? { opacity: 0 } : { x: -46, rotate: -8, opacity: 0 }}
             transition={reduced ? { duration: 0.15 } : springs.sheet}
           >
-            <CoinPortrait skin={0} look={lookForPass(tr)} size={148} expression="happy" seed={i + 3} still={still} />
+            <CoinPortrait skin={0} look={lookForPass(look)} size={148} expression="happy" seed={i + 3} still={still} />
           </motion.span>
         </AnimatePresence>
         <span className="pp-preview__sample mono" aria-hidden="true">
@@ -490,7 +485,7 @@ function RollingPreview() {
         </span>
       </div>
       <figcaption id={capId} className="pp-preview__cap">
-        <span className="pp-preview__line">{lookLine(tr, lang)}</span>
+        <span className="pp-preview__line">{lookLine(look)}</span>
         <span className="pp-preview__ctl">
           {!reduced && (
             <button
@@ -523,12 +518,11 @@ function RollingPreview() {
 
 function Perks() {
   const t = useT();
-  const lang = useUi((s) => s.settings.lang);
   const config = useChainData((s) => s.config);
   const power = usePassPower();
   const perks = [
     t('lo.perk.rooms'),
-    t('lo.perk.fee', { base: bpsPercent(feeBps(config, false), lang), pass: bpsPercent(feeBps(config, true), lang) }),
+    t('lo.perk.fee', { base: bpsPercent(feeBps(config, false)), pass: bpsPercent(feeBps(config, true)) }),
     t('lo.perk.season'),
     t('lo.perk.power', { start: power.startPct, s: power.cashoutS }),
     t('lo.perk.look'),

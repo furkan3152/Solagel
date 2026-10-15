@@ -9,14 +9,12 @@ import type {
 import { create } from 'zustand';
 
 export type Screen = 'lobby' | 'playing' | 'dead' | 'spectating' | 'cashedout';
-export type Lang = 'en' | 'tr';
 export type Quality = 'high' | 'low';
 export type Theme = 'light' | 'dark';
 
 export interface Settings {
   name: string;
   skin: number;
-  lang: Lang;
   theme: Theme;
   quality: Quality;
   sound: boolean;
@@ -88,7 +86,7 @@ export interface UiState {
   room: RoomInfo | null;
   me: { pid: number; name: string; skin: number } | null;
   hud: { mass: number; cells: number; value: number | null; rank: number; players: number };
-  /** Last arena value change, for the KASA slip's "+X" chip (id changes per message). */
+  /** Last arena value change, for the till slip's "+X" chip (id changes per message). */
   valueDelta: { id: number; delta: number; reason: 'eat' | 'loot' | 'eaten' | 'spill' } | null;
   /** The arena ticket being played: its own price and whether it carries a Slana Pass. */
   ticket: { entryFee: number; hasPass: boolean; arenaId: number | null; session: string | null } | null;
@@ -111,7 +109,7 @@ export interface UiState {
   modal: Modal;
   /** Lobby page (mirrored in the URL hash: `#pass`, `#ranks`, `#profile`, `#docs`; the guide also at `/docs`). */
   page: LobbyPage;
-  /** Death / receipt "Yeni bilet": the lobby selects this ticket and opens its confirm sheet. */
+  /** Death / receipt "New ticket": the lobby selects this ticket and opens its confirm sheet. */
   lobbyIntent: { ticket: 'practice' | `arena:${number}`; open: boolean; at: number } | null;
   auth: AuthState | null;
   settings: Settings;
@@ -119,19 +117,10 @@ export interface UiState {
 
 const SETTINGS_KEY = 'slana.settings.v1';
 
-function defaultLang(): Lang {
-  try {
-    return navigator.language?.toLowerCase().startsWith('tr') ? 'tr' : 'en';
-  } catch {
-    return 'en';
-  }
-}
-
 function loadSettings(): Settings {
   const defaults: Settings = {
     name: '',
     skin: 0,
-    lang: defaultLang(),
     theme: 'light',
     quality: 'high',
     sound: true,
@@ -146,7 +135,11 @@ function loadSettings(): Settings {
   };
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
-    if (raw) return { ...defaults, ...(JSON.parse(raw) as Partial<Settings>) };
+    if (raw) {
+      // `lang` is a retired field (the interface is English only); drop it from older saves
+      const { lang: _retired, ...saved } = JSON.parse(raw) as Partial<Settings> & { lang?: unknown };
+      return { ...defaults, ...saved };
+    }
   } catch {
     /* storage unavailable */
   }
@@ -251,7 +244,7 @@ if (typeof window !== 'undefined') {
   });
 }
 
-/** "Yeni bilet": back to the lobby with this ticket selected (and its confirm sheet open for arenas). */
+/** "New ticket": back to the lobby with this ticket selected (and its confirm sheet open for arenas). */
 export function requestTicket(arenaId: number | null): void {
   useUi.setState({ lobbyIntent: { ticket: arenaId === null ? 'practice' : `arena:${arenaId}`, open: arenaId !== null, at: Date.now() } });
 }

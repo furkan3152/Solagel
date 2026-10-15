@@ -14,7 +14,7 @@ import { SpriteCache, drawGlint, drawSprite } from './sprites';
 const TAU = Math.PI * 2;
 const MONO_FONT = '"DM Mono", ui-monospace, monospace';
 
-/** World print stock per theme (Kâğıt Bilet tokens; "Gece baskısı" for night). */
+/** World print stock per theme (Paper Ticket tokens; "Night print" for night). */
 export interface WorldTheme {
   paper: string;
   /** Outside the map: a darker sheet with hatching. */

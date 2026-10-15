@@ -88,7 +88,7 @@ beforeEach(() => {
   spies.fetchArena.mockImplementation(async (id: number) => (id === 1 ? arena(1, 1000n * M, false) : arena(3, 50_000n * M, true)));
   spies.fetchConfig.mockReset();
   spies.fetchConfig.mockImplementation(async () => useChainData.getState().config);
-  useUi.setState({ settings: { ...ui0.settings, lang: 'tr', name: 'Defne', skin: 4 }, chain: CHAIN });
+  useUi.setState({ settings: { ...ui0.settings, name: 'Daphne', skin: 4 }, chain: CHAIN });
   useChainData.setState({
     config: { ...fakeConfig(CHAIN), settleFeeLamports: 50_000 },
     sessions: {},
@@ -124,71 +124,71 @@ describe('ticket confirm sheet', () => {
   it('shows the exact amount, the fee policy, the deposit and every instruction before signing', () => {
     open(PENNY);
     const dialog = screen.getByRole('dialog');
-    expect(within(dialog).getAllByText('1.000 $SLANA').length).toBeGreaterThan(0);
-    expect(within(dialog).getByText('%5 · yalnızca kârdan · bu bilet için sabit')).toBeTruthy();
-    expect(within(dialog).getByText('0,00005 SOL')).toBeTruthy();
-    expect(within(dialog).getByText('12.450 → 11.450 $SLANA')).toBeTruthy();
-    const steps = within(within(dialog).getByRole('region', { name: 'Bu işlemde' })).getAllByRole('listitem');
+    expect(within(dialog).getAllByText('1,000 $SLANA').length).toBeGreaterThan(0);
+    expect(within(dialog).getByText('5% · on profit only · fixed for this ticket')).toBeTruthy();
+    expect(within(dialog).getByText('0.00005 SOL')).toBeTruthy();
+    expect(within(dialog).getByText('12,450 → 11,450 $SLANA')).toBeTruthy();
+    const steps = within(within(dialog).getByRole('region', { name: 'This transaction' })).getAllByRole('listitem');
     // no profile yet: it is created in the same transaction
-    expect(steps.map((s) => s.textContent)).toEqual(['1Zincir üstü profilini oluştur · Defne', '2Bileti kes · Penny Pond']);
-    expect((within(dialog).getByRole('button', { name: /Bileti kes · 1\.000 \$SLANA/ }) as HTMLButtonElement).disabled).toBe(false);
+    expect(steps.map((s) => s.textContent)).toEqual(['1Create your on-chain profile · Daphne', '2Buy the ticket · Penny Pond']);
+    expect((within(dialog).getByRole('button', { name: /Pay 1,000 \$SLANA/ }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it('cannot sign without a wallet', () => {
     walletOn = false;
     open(PENNY);
-    expect((screen.getByRole('button', { name: /Bileti kes/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: /^Pay / }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('never offers to sign a price the arena account does not confirm', () => {
     useChainData.setState({ arenas: [arena(1, 1200n * M, false)] });
     open(PENNY);
     // the sheet shows the ticket's price, but the chain disagrees: no signing
-    expect((screen.getByRole('button', { name: /Bileti kes/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: /^Pay / }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('R8: a Pass is opt-in in an open arena and switches the fee to the Pass rate', () => {
     useChainData.setState({ passes: [{ asset: 'A1', number: 412 }], profile: null });
     open(PENNY);
-    const sw = screen.getByRole('switch', { name: /Pass’imle gir/ });
+    const sw = screen.getByRole('switch', { name: /Enter with my Pass/ });
     expect(sw.getAttribute('aria-checked')).toBe('false');
     act(() => sw.click());
-    expect(screen.getByText('%2 · yalnızca kârdan · bu bilet için sabit')).toBeTruthy();
-    expect(screen.getByText(/Bileti Pass No\. 0412 ile kes · Penny Pond/)).toBeTruthy();
+    expect(screen.getByText('2% · on profit only · fixed for this ticket')).toBeTruthy();
+    expect(screen.getByText(/Buy the ticket with Pass No\. 0412 · Penny Pond/)).toBeTruthy();
     // the Pass line discloses every perk, the faster cash-out included
-    expect(screen.getByText(new RegExp(`^No\\. 0412 · %2 kesinti, \\+%\\d+ başlangıç, ${PASS_POWER.cashoutS} sn cash-out$`))).toBeTruthy();
+    expect(screen.getByText(new RegExp(`^No\\. 0412 · 2% fee, \\+\\d+% start, ${PASS_POWER.cashoutS} s cash-out$`))).toBeTruthy();
   });
 
   it('I3: the Pass line discloses the Pass power the server applies, not the built-in default', () => {
     useUi.setState({ chain: { ...CHAIN, passPower: { startMassMul: 1.3, cashoutMs: 1_000 } } });
     useChainData.setState({ passes: [{ asset: 'A1', number: 412 }], profile: null });
     open(PENNY);
-    act(() => screen.getByRole('switch', { name: /Pass’imle gir/ }).click());
-    expect(screen.getByText('No. 0412 · %2 kesinti, +%30 başlangıç, 1 sn cash-out')).toBeTruthy();
+    act(() => screen.getByRole('switch', { name: /Enter with my Pass/ }).click());
+    expect(screen.getByText('No. 0412 · 2% fee, +30% start, 1 s cash-out')).toBeTruthy();
   });
 
-  it('R8: a Pass room requires a Pass; locked Passes are explained and the ticket cannot be cut', () => {
+  it('R8: a Pass room requires a Pass; locked Passes are explained and the ticket cannot be bought', () => {
     useChainData.setState({ passes: [{ asset: 'A1', number: 7 }], lockedPasses: ['A1'], tokenBalance: 60_000n * M });
     open(GOLD);
-    expect(screen.getByText('Bu oda Pass ister')).toBeTruthy();
-    expect(screen.getByText(/Pass’lerin başka biletlere kilitli/)).toBeTruthy();
-    expect((screen.getByRole('button', { name: /Bileti kes · 50\.000 \$SLANA/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText('This room needs a Pass')).toBeTruthy();
+    expect(screen.getByText(/Your Passes are locked to other tickets/)).toBeTruthy();
+    expect((screen.getByRole('button', { name: /Pay 50,000 \$SLANA/ }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('R24: the collect sheet shows the payout, the SOL it moves, and signs the account creation + collect', () => {
     useChainData.setState({ ataExists: false, sessions: { 1: finalized(2150n * M) } });
     open(PENNY, 'collect');
-    expect(screen.getAllByText('2.150 $SLANA').length).toBeGreaterThan(0);
-    const steps = within(screen.getByRole('region', { name: 'Bu işlemde' })).getAllByRole('listitem');
-    expect(steps.map((li) => li.textContent)).toEqual([expect.stringContaining('Token hesabın yoksa aç'), expect.stringContaining('Ödemeni al')]);
-    expect(screen.getByText(/ağ ücreti ve gerekirse token hesabı kirası/)).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Al · 2\.150 \$SLANA/ })).toBeTruthy();
+    expect(screen.getAllByText('2,150 $SLANA').length).toBeGreaterThan(0);
+    const steps = within(screen.getByRole('region', { name: 'This transaction' })).getAllByRole('listitem');
+    expect(steps.map((li) => li.textContent)).toEqual([expect.stringContaining('Open your token account if it is missing'), expect.stringContaining('Collect your payout')]);
+    expect(screen.getByText(/network fee and token account rent if needed/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Collect · 2,150 \$SLANA/ })).toBeTruthy();
   });
 
   it('discloses the SOL the transaction moves and what comes back', () => {
     open(PENNY);
-    expect(screen.getByText('SOL bu işlemde')).toBeTruthy();
-    expect(screen.getByText(/≈ [\d,]+ SOL \([\d,]+ iade edilir\)/)).toBeTruthy();
+    expect(screen.getByText('SOL in this transaction')).toBeTruthy();
+    expect(screen.getByText(/≈ [\d.]+ SOL \([\d.]+ comes back\)/)).toBeTruthy();
   });
 });
 
@@ -197,7 +197,7 @@ describe('ticket flow races', () => {
 
   it('a double click (or two Enters) builds and sends exactly one transaction', async () => {
     open(PENNY);
-    const pay = screen.getByRole('button', { name: /Bileti kes · 1\.000 \$SLANA/ });
+    const pay = screen.getByRole('button', { name: /Pay 1,000 \$SLANA/ });
     act(() => {
       pay.click();
       pay.click();
@@ -215,7 +215,7 @@ describe('ticket flow races', () => {
   it('R24: collect is guarded, re-checks the session on chain, and passes no Pass lock', async () => {
     useChainData.setState({ sessions: { 1: finalized(2150n * M) } });
     open(PENNY, 'collect');
-    const btn = screen.getByRole('button', { name: /Al · 2\.150/ });
+    const btn = screen.getByRole('button', { name: /Collect · 2,150/ });
     act(() => {
       btn.click();
       btn.click();
@@ -231,17 +231,17 @@ describe('ticket flow races', () => {
     useChainData.setState({ sessions: { 1: finalized(2150n * M) } });
     spies.fetchSession.mockImplementation(async () => ({ ...finalized(1n), id: 9 }));
     open(PENNY, 'collect');
-    act(() => screen.getByRole('button', { name: /Al · 2\.150/ }).click());
+    act(() => screen.getByRole('button', { name: /Collect · 2,150/ }).click());
     await settle();
     expect(spies.buildCloseTx).not.toHaveBeenCalled();
     expect(spies.sendTx).not.toHaveBeenCalled();
-    expect(screen.getByRole('alert').textContent).toMatch(/Bu bilet az önce değişti/);
+    expect(screen.getByRole('alert').textContent).toMatch(/This ticket changed a moment ago/);
   });
 
   it('focus never starts on the pay button', async () => {
     open(PENNY);
     await settle();
-    const pay = screen.getByRole('button', { name: /Bileti kes/ });
+    const pay = screen.getByRole('button', { name: /^Pay / });
     expect(document.activeElement).not.toBe(pay);
     expect(screen.getByRole('dialog').contains(document.activeElement)).toBe(true);
   });
@@ -249,23 +249,23 @@ describe('ticket flow races', () => {
   it('re-reads the config right before building and refuses a changed fee rate (it is fixed into the ticket)', async () => {
     spies.fetchConfig.mockImplementation(async () => ({ ...useChainData.getState().config!, feeBps: 1_000 }));
     open(PENNY);
-    act(() => screen.getByRole('button', { name: /Bileti kes/ }).click());
+    act(() => screen.getByRole('button', { name: /^Pay / }).click());
     await settle();
     expect(spies.fetchConfig).toHaveBeenCalledTimes(1);
     expect(spies.buildTicketTx).not.toHaveBeenCalled();
     expect(spies.sendTx).not.toHaveBeenCalled();
-    expect(screen.getByRole('alert').textContent).toMatch(/Kesinti ya da depozito az önce değişti/);
+    expect(screen.getByRole('alert').textContent).toMatch(/The fee or the deposit changed a moment ago/);
   });
 
   it('R20: never builds a ticket for an arena the server keeps closed', async () => {
     open(PENNY);
-    const pay = screen.getByRole('button', { name: /Bileti kes/ }) as HTMLButtonElement;
+    const pay = screen.getByRole('button', { name: /^Pay / }) as HTMLButtonElement;
     expect(pay.disabled).toBe(false);
     // the server reports the arena blocked while the sheet is open
     act(() => useUi.setState({ blockedArenas: [1] }));
-    expect((screen.getByRole('button', { name: /Bileti kes/ }) as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText(/Bu oda şu an bakımda/)).toBeTruthy();
-    act(() => screen.getByRole('button', { name: /Bileti kes/ }).click());
+    expect((screen.getByRole('button', { name: /^Pay / }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/This room is under maintenance right now/)).toBeTruthy();
+    act(() => screen.getByRole('button', { name: /^Pay / }).click());
     await settle();
     expect(spies.buildTicketTx).not.toHaveBeenCalled();
     expect(spies.sendTx).not.toHaveBeenCalled();
@@ -277,30 +277,30 @@ describe('ticket flow races', () => {
       return arena(1, 1000n * M, false);
     });
     open(PENNY);
-    act(() => screen.getByRole('button', { name: /Bileti kes/ }).click());
+    act(() => screen.getByRole('button', { name: /^Pay / }).click());
     await settle();
     expect(spies.buildTicketTx).not.toHaveBeenCalled();
-    expect(screen.getByRole('alert').textContent).toMatch(/bakımda/);
+    expect(screen.getByRole('alert').textContent).toMatch(/under maintenance/);
   });
 
   it('re-reads the arena right before building and refuses a changed price', async () => {
     spies.fetchArena.mockImplementation(async () => arena(1, 1500n * M, false));
     open(PENNY);
-    act(() => screen.getByRole('button', { name: /Bileti kes/ }).click());
+    act(() => screen.getByRole('button', { name: /^Pay / }).click());
     await settle();
     expect(spies.buildTicketTx).not.toHaveBeenCalled();
     expect(spies.sendTx).not.toHaveBeenCalled();
-    expect(screen.getByRole('alert').textContent).toMatch(/az önce değişti/);
+    expect(screen.getByRole('alert').textContent).toMatch(/changed a moment ago/);
   });
 
-  it('offers "Devam et" instead of paying again when the ticket turns out to be open', () => {
+  it('offers "Resume" instead of paying again when the ticket turns out to be open', () => {
     useChainData.setState({
       sessions: {
         1: { address: 'S', id: 1, player: 'P', arena: 'A1', arenaId: 1, entryFee: 1000n * M, openedAt: 1, hasPass: false, passAsset: null, settleFee: 20_000, feeBps: 500, finalized: false, owed: 0n },
       },
     });
     open(PENNY);
-    expect(screen.getByRole('button', { name: /Devam et/ })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /Bileti kes/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /Resume/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^Pay / })).toBeNull();
   });
 });

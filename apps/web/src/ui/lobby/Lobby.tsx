@@ -1,7 +1,7 @@
 import { useWallet } from '@solana/wallet-adapter-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
-import { Chip, Dateline, Icon, Kb, Rule, Tabs, springs, themeFromSettings, useReducedMotion, type IconName, type TabItem } from '../../design';
+import { Dateline, Icon, Kb, Rule, Tabs, springs, themeFromSettings, useReducedMotion, type IconName, type TabItem } from '../../design';
 import { engine } from '../../game/instance';
 import { sound } from '../../game/sound';
 import { useT } from '../../i18n';
@@ -57,7 +57,7 @@ export function Lobby() {
   const ticket = model.tickets.find((x) => x.key === selectedKey);
   const gate = model.gates[selectedKey];
 
-  // "Yeni bilet" from the death / receipt sheets: select that ticket, open its confirm sheet
+  // "New ticket" from the death / receipt sheets: select that ticket, open its confirm sheet
   useEffect(() => {
     if (!intent) return;
     if (has(intent.ticket)) {
@@ -341,7 +341,7 @@ function Masthead({ full, wide }: { full: boolean; wide: boolean }) {
     season ? t('lo.pool', { n: tok.fee(season.prizePool), sym: tok.symbol }) : null,
     wide ? (connected ? t('lo.online', { n: online }) : t('lo.live.connecting')) : null,
   ].filter((x): x is string => x !== null);
-  const today = new Date().toLocaleDateString(s.lang === 'tr' ? 'tr-TR' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const today = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
   return (
     <>
@@ -361,14 +361,6 @@ function Masthead({ full, wide }: { full: boolean; wide: boolean }) {
         <div className="kl-mast__right">
           {full && (
             <div className="kl-controls">
-              <div className="kl-seg" role="group" aria-label={t('lo.lang')}>
-                <Chip selected={s.lang === 'tr'} onClick={() => updateSettings({ lang: 'tr' })} lang="tr" aria-label="Türkçe">
-                  TR
-                </Chip>
-                <Chip selected={s.lang === 'en'} onClick={() => updateSettings({ lang: 'en' })} lang="en" aria-label="English">
-                  EN
-                </Chip>
-              </div>
               <button
                 type="button"
                 className="kb-iconbtn"

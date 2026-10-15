@@ -202,7 +202,7 @@ export class RoomManager {
       {
         id: `arena-${arenaId}-${n}`,
         mode: 'arena',
-        name: n === 1 ? meta.name.en : `${meta.name.en} #${n}`,
+        name: n === 1 ? meta.name : `${meta.name} #${n}`,
         instance: n,
         maxPlayers: this.cfg.arenaInstanceCap,
         bots: this.cfg.bots.arena,

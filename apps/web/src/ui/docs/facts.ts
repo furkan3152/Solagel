@@ -41,14 +41,14 @@ export const SERVER = {
   privateCodeLength: 5,
 } as const;
 
-/** The worked fee example of the guide: a 1.000-token ticket cashed out at 2.000 tokens. */
+/** The worked fee example of the guide: a 1,000-token ticket cashed out at 2,000 tokens. */
 export const EXAMPLE = { entry: 1000, cashout: 2000 } as const;
 
 export interface DocsFacts {
   fee: { bps: number; passBps: number; maxBps: number; split: readonly [number, number, number] };
   settleFeeLamports: number;
   example: { entry: number; cashout: number; normal: PayoutSplit; pass: PayoutSplit };
-  arenas: { id: number; name: { tr: string; en: string }; entry: number; pass: boolean; maxSessions: number }[];
+  arenas: { id: number; name: string; entry: number; pass: boolean; maxSessions: number }[];
   capacity: { practice: number; private: number; arena: number };
   rules: {
     cashoutS: number;
