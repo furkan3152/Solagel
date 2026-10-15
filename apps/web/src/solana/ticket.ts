@@ -22,6 +22,8 @@ export interface TicketTxInput {
   register: { name: string; skin: number } | null;
   /** Slana Pass asset backing the ticket (`joinArenaWithPass`); `null` for a plain ticket. */
   passAsset: string | null;
+  /** The fee rate (bps) shown on the frozen review: the program refuses a higher one (`FeeAboveLimit`). */
+  maxFeeBps: number;
 }
 
 /** The instructions a ticket transaction carries, in order. */
@@ -44,8 +46,8 @@ export async function buildTicketTx(ix: SlanaInstructions, input: TicketTxInput)
     if (step === 'ata') ixs.push(createAtaIdempotentIx(input.player, input.player, input.token.tokenMint, input.token.tokenProgram));
     else if (step === 'register') ixs.push(await ix.registerPlayer(input.player, input.register!.name, input.register!.skin));
     else if (step === 'joinWithPass')
-      ixs.push(await ix.joinArenaWithPass(input.player, { arenaId: input.arenaId, ...input.token, passAsset: input.passAsset! }));
-    else ixs.push(await ix.joinArena(input.player, { arenaId: input.arenaId, ...input.token }));
+      ixs.push(await ix.joinArenaWithPass(input.player, { arenaId: input.arenaId, ...input.token, passAsset: input.passAsset!, maxFeeBps: input.maxFeeBps }));
+    else ixs.push(await ix.joinArena(input.player, { arenaId: input.arenaId, ...input.token, maxFeeBps: input.maxFeeBps }));
   }
   return { steps, ixs };
 }
@@ -224,14 +226,16 @@ export function ticketGate(g: GateInput): TicketGate {
   const t = g.ticket;
   if (t.arenaId === null) return { kind: 'practice' };
   if (!g.arenasEnabled) return { kind: 'offline' };
-  if (t.blocked) return { kind: 'maintenance' };
-  if (!t.open) return { kind: 'offline' };
-  if (!g.walletConnected) return { kind: 'connect' };
+  if (!t.blocked && !t.open) return { kind: 'offline' };
+  if (!g.walletConnected) return t.blocked ? { kind: 'maintenance' } : { kind: 'connect' };
+  // a payout owed to this wallet comes first, even in a blocked arena (R10 CTA included)
   const owed = g.pending.filter((p) => (g.session && p.key === g.session.address) || p.arenaId === t.arenaId);
   if (owed.length > 0) {
     const payout = owed.reduce((s, p) => s + p.payout, 0);
     return owed.some((p) => p.needsTokenAccount) && g.ataExists !== true ? { kind: 'needAta', payout } : { kind: 'settling', payout };
   }
+  // R20: the server keeps this arena closed; nothing is sold
+  if (t.blocked) return { kind: 'maintenance' };
   if (g.session) {
     if (g.nowS - g.session.openedAt >= SESSION_REFUND_TIMEOUT_SECS) return { kind: 'refund' };
     return g.verified ? { kind: 'resume' } : { kind: 'verify' };

@@ -68,6 +68,7 @@ function configView(server: Keypair, overrides: Partial<ConfigView> = {}): Confi
     passSeedHash: null,
     passSeed: null,
     passRevealed: false,
+    passSeedRevealed: false,
     passEntropyTargetSlot: 0,
     passEntropyCaptured: false,
     passEntropy: null,
@@ -366,11 +367,17 @@ describe('SolanaChain status & reads', () => {
       mintOpen: true,
       mintStartTs: 1_700_000_000,
       revealed: false,
+      seedRevealed: false,
+      entropyTargetSlot: 0,
       seed: null,
     });
     expect(h.chain.status().pass).toEqual(h.chain.passStatus());
+    // R23 intermediate state: the seed is public, the traits are not yet (seed stays null)
+    h.client.config = { ...h.client.config!, passMintOpen: false, passMintEnded: true, passSeedRevealed: true, passSeed: '07'.repeat(32), passEntropyTargetSlot: 900 };
+    await (h.chain as unknown as { freshConfig(): Promise<unknown> }).freshConfig();
+    expect(h.chain.passStatus()).toMatchObject({ revealed: false, seedRevealed: true, entropyTargetSlot: 900, seed: null });
     // after the reveal the trait seed is the final seed sha256(seed || entropy), never the admin seed
-    h.client.config = { ...h.client.config!, passMintOpen: false, passMintEnded: true, passEntropyCaptured: true, passRevealed: true, passSeed: '07'.repeat(32), passEntropy: '5a'.repeat(32), passFinalSeed: 'fe'.repeat(32) };
+    h.client.config = { ...h.client.config!, passMintOpen: false, passMintEnded: true, passSeedRevealed: true, passEntropyCaptured: true, passRevealed: true, passSeed: '07'.repeat(32), passEntropy: '5a'.repeat(32), passFinalSeed: 'fe'.repeat(32) };
     await (h.chain as unknown as { freshConfig(): Promise<unknown> }).freshConfig();
     expect(h.chain.passStatus()).toMatchObject({ revealed: true, seed: 'fe'.repeat(32) });
     const h2 = await harness({ cfg: { publicRpcUrl: 'https://rpc.example', stakeEnabled: false } });
@@ -495,7 +502,7 @@ describe('settlement worker', () => {
     expect(h.settled.map((e) => e.fee)).toEqual([117_283, 46_913]);
   });
 
-  it('R22: captures the Pass entropy once the target slot passed, retrying on failure', async () => {
+  it('R22/R23: completes the reveal once the seed is public and the target slot passed, retrying on failure', async () => {
     const h = await harness();
     const capture = () => h.chain.captureEntropyIfDue();
     // mint still open: nothing to do
@@ -503,8 +510,14 @@ describe('settlement worker', () => {
     await capture();
     expect(h.client.captures).toHaveLength(0);
 
-    // the mint ended at slot 1000: target 1150
-    h.client.config = { ...h.client.config!, passMintEnded: true, passEntropyTargetSlot: 1_150 };
+    // the mint ended, but the seed is not public yet: no target, nothing to do
+    h.client.config = { ...h.client.config!, passMintEnded: true };
+    await (h.chain as unknown as { freshConfig(): Promise<unknown> }).freshConfig();
+    await capture();
+    expect(h.sent).toBe(0);
+
+    // reveal_pass published the seed at slot 1000: target 1150
+    h.client.config = { ...h.client.config!, passSeedRevealed: true, passSeed: '07'.repeat(32), passEntropyTargetSlot: 1_150 };
     await (h.chain as unknown as { freshConfig(): Promise<unknown> }).freshConfig();
     h.client.slot = 1_150; // not past the target yet
     await capture();
@@ -524,7 +537,7 @@ describe('settlement worker', () => {
 
     // the retry lands: the chain now shows the entropy, no further sends
     expect(h.failures).toHaveLength(0);
-    h.client.config = { ...h.client.config!, passEntropyCaptured: true, passEntropy: 'ab'.repeat(32), passEntropySlot: 1_150 };
+    h.client.config = { ...h.client.config!, passEntropyCaptured: true, passRevealed: true, passEntropy: 'ab'.repeat(32), passEntropySlot: 1_150, passFinalSeed: 'cd'.repeat(32) };
     await capture();
     expect(h.sent).toBe(2);
     expect(h.logs.some((l) => /Pass entropy captured — hash of slot 1150/.test(l))).toBe(true);

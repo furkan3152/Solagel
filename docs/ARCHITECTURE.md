@@ -115,7 +115,8 @@ On-chain (enforced by the program):
 4. **No replayed payouts**: `settle_session` requires `session_id == Session.id` (ids come from `Config.total_sessions`,
    PDAs are reused).
 5. **Fees only on profit, bounded and fixed at purchase** (see Fees): `Session.fee_bps` is written by the join and is the
-   only rate `settle_session` uses. The burn lowers the mint supply.
+   only rate `settle_session` uses. The join takes `max_fee_bps` (the rate the player was shown) and fails with
+   `FeeAboveLimit` if the rate it would fix is higher. The burn lowers the mint supply.
 6. **The deposit pays the settler**: a Session holds rent + `settle_fee`; settle moves `settle_fee` to the server and closes
    the rest to the player; refund returns everything to the player after `SESSION_REFUND_TIMEOUT_SECS` (24 h).
 7. **Season pools**: every transfer into or out of the season vault changes exactly one season's `pool` (settle fee share,
@@ -133,13 +134,18 @@ On-chain (enforced by the program):
     the seed hash must be set before the first mint and is locked after it; `pass_base_uri` (≤ 96 bytes, ends with `/`) is
     frozen after the first mint. The mint **ends** for good with `close_pass_mint` (needs ≥ 1 minted Pass; before that
     `update_config` may still close and reopen it) or automatically when the last Pass of the supply is minted: the
-    program sets `pass_mint_ended` and `pass_entropy_target_slot = slot + ENTROPY_DELAY_SLOTS` (150), and the mint can
-    never reopen (`MintEnded`). The permissionless `capture_pass_entropy` (any signer; the server sends it automatically)
-    needs `slot > target` and stores as `pass_entropy` the SlotHashes hash of the first slot with a block at or after the
-    target (an exact lookup, not "the newest"); if the target already left the SlotHashes window (~512 slots) it sets a new
-    target `slot + 150` instead; once captured it is a no-op. `reveal_pass` needs the entropy captured
-    (`EntropyNotCaptured`) and `sha256(seed) == pass_seed_hash`, and stores
-    `pass_final_seed = sha256(seed ‖ pass_entropy)`; every trait derives from that final seed.
+    program sets `pass_mint_ended` and the mint can never reopen (`MintEnded`). No entropy target exists yet. Then, in
+    this order (ruling R23):
+    1. `reveal_pass(seed)` (admin, once, only after the mint ended) checks `sha256(seed) == pass_seed_hash`, stores the
+       seed publicly (`pass_seed`, `pass_seed_revealed`) and **only then** sets
+       `pass_entropy_target_slot = slot + ENTROPY_DELAY_SLOTS` (150).
+    2. The permissionless `capture_pass_entropy` (any signer: the server sends it automatically, the web Pass page offers
+       "Complete the reveal" to any wallet, the CLI has `capture-entropy`) needs the seed revealed (`SeedNotRevealed`)
+       and `slot > target`, reads the address-checked SlotHashes sysvar itself and stores as `pass_entropy` the hash of
+       the first slot with a block at or after the target; it then computes `pass_final_seed = sha256(seed ‖
+       pass_entropy)`, sets `pass_revealed` and logs `Pass entropy: slot N hash H`. If the target already left the
+       SlotHashes window (~512 slots) it sets a new target `slot + 150` instead; once revealed it is a no-op.
+    Every trait derives from `pass_final_seed`.
 11. **Pause blocks joins only**: `paused` stops `join_arena`; settlements and refunds keep working.
 
 Off-chain (enforced by the server, covered by tests in `apps/server/test`):
@@ -176,12 +182,15 @@ Consequences, stated plainly in the player guide:
   the admin.
 - The admin knows the committed Pass seed during the mint and Pass numbers are sequential, but traits are
   `passTraits(pass_final_seed, n, pass_supply)` with `pass_final_seed = sha256(seed ‖ pass_entropy)`, and the entropy is
-  the hash of a slot ~150 slots **after** the mint ended, after which nobody can mint. Whoever ends the mint (the admin's
-  `close_pass_mint` or the last minter) fixes only the target slot, never a hash they have seen, so they cannot grind for
-  favourable traits; the capture reads that exact slot's entry, so the capturer cannot choose either. The only power left
-  to anyone is delaying the capture past the SlotHashes window, which moves the target to another unknown future slot.
-  So nobody, the team included, can know or steer a number's traits while it can still be minted. (As everywhere on
-  Solana, the leader producing the target slot influences its bank hash; that is outside the project's control.)
+  the hash of a slot fixed only **after** the mint ended **and** the seed was published. So nobody, the team included,
+  can know a number's traits while Passes can still be minted, and the admin gets no head start: once the target slot
+  passes, everybody can compute the outcome from public data at the same moment.
+- Residual, stated honestly: once the outcome is computable, someone who dislikes it could try to let the ~512-slot
+  window pass without a capture, which re-targets to a new future slot. They cannot stop anybody else: any wallet
+  (holders included) can capture at any moment, and the game server and the web Pass page do so automatically, so no
+  single party controls the timing. A party that could keep every capture out of every block for ~3.5 minutes (e.g. by
+  censoring transactions) could still force a re-roll; the project does not claim more than this. As everywhere on
+  Solana, the leader producing the target slot also influences its bank hash.
 - `pass_supply` is frozen once the mint opens, so the traits every server and generator computes cannot shift later.
 - The upgrade authority is the strongest key: keep it in a multisig or make the program immutable after an audit.
 - Collusion (feeding a second wallet) is not detected in this version.

@@ -297,10 +297,11 @@ pub mod ix {
         arena_id: u16,
         mint: &Pubkey,
         token_program: &Pubkey,
+        max_fee_bps: u16,
     ) -> Instruction {
         let arena = arena_pda(arena_id);
         build(
-            slana::instruction::JoinArena {}.data(),
+            slana::instruction::JoinArena { max_fee_bps }.data(),
             slana::accounts::JoinArena {
                 player: *player,
                 config: config_pda(),
@@ -322,10 +323,11 @@ pub mod ix {
         pass_asset: &Pubkey,
         mint: &Pubkey,
         token_program: &Pubkey,
+        max_fee_bps: u16,
     ) -> Instruction {
         let arena = arena_pda(arena_id);
         build(
-            slana::instruction::JoinArenaWithPass {}.data(),
+            slana::instruction::JoinArenaWithPass { max_fee_bps }.data(),
             slana::accounts::JoinArenaWithPass {
                 player: *player,
                 config: config_pda(),
@@ -934,15 +936,37 @@ impl TestEnv {
         self.mint_state(&self.mint).0.supply
     }
 
+    /// `join_arena` accepting any fee up to the program's cap (`MAX_FEE_BPS`).
     pub fn join(&mut self, player: &Keypair, arena_id: u16) -> TxResult {
+        self.join_max(player, arena_id, MAX_FEE_BPS)
+    }
+
+    /// `join_arena` with the fee bound the player signed.
+    pub fn join_max(&mut self, player: &Keypair, arena_id: u16, max_fee_bps: u16) -> TxResult {
         let (mint, program) = (self.mint, self.token_program);
         self.send(
-            &[ix::join_arena(&player.pubkey(), arena_id, &mint, &program)],
+            &[ix::join_arena(
+                &player.pubkey(),
+                arena_id,
+                &mint,
+                &program,
+                max_fee_bps,
+            )],
             &[player],
         )
     }
 
     pub fn join_with_pass(&mut self, player: &Keypair, arena_id: u16, asset: &Pubkey) -> TxResult {
+        self.join_with_pass_max(player, arena_id, asset, MAX_FEE_BPS)
+    }
+
+    pub fn join_with_pass_max(
+        &mut self,
+        player: &Keypair,
+        arena_id: u16,
+        asset: &Pubkey,
+        max_fee_bps: u16,
+    ) -> TxResult {
         let (mint, program) = (self.mint, self.token_program);
         self.send(
             &[ix::join_arena_with_pass(
@@ -951,6 +975,7 @@ impl TestEnv {
                 asset,
                 &mint,
                 &program,
+                max_fee_bps,
             )],
             &[player],
         )

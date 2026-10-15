@@ -75,13 +75,13 @@ Slana Pass
                           commit sha256(seed) on-chain (before the first mint)
   open-mint --base-uri <url>/ [--start <unix>] [--supply N] [--per-wallet N] [--min-tokens X]
                           the supply is fixed for good once the mint opens
-  close-mint              end the mint for good (it never reopens; selling out does the same). The
-                          program sets the entropy target: the slot ${ENTROPY_DELAY_SLOTS} slots ahead
-  capture-entropy         store the entropy (hash of the first block at or after the target slot); anyone
-                          may send it once the target passed, and the game server does it automatically
+  close-mint              end the mint for good (it never reopens; selling out does the same)
   reveal [--seed-file ${DEFAULT_SEED_FILE}]
-                          reveal the seed (after the entropy is captured); the program stores the final
-                          seed sha256(seed || entropy) that every Pass trait derives from
+                          after the mint ended: publish the seed (checked against the hash); only then
+                          the program sets the entropy target, the slot ${ENTROPY_DELAY_SLOTS} slots ahead
+  capture-entropy         complete the reveal: store the hash of the first block at or after the target
+                          slot and the final seed sha256(seed || entropy). Anyone may send it (the game
+                          server and the web Pass page do too)
 
 Arenas
   create-arena --defaults                  create the default tiers (skips existing ones)
@@ -237,8 +237,6 @@ function loadSeed(opts: Opts): { file: string; seed: Uint8Array; hash: string } 
 }
 
 const sha256Hex = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex');
-/** `sha256(seed || entropy)` as hex: the program's `pass_final_seed`. */
-const finalSeedHex = (seed: Uint8Array, entropy: Uint8Array): string => createHash('sha256').update(seed).update(entropy).digest('hex');
 const hexBytes = (hex: string): Uint8Array => Uint8Array.from(Buffer.from(hex, 'hex'));
 
 function inferCluster(url: string): string {
@@ -392,15 +390,18 @@ async function cmdStatus(ctx: Ctx): Promise<void> {
   console.log(`  supply lock       ${config.passMintOpened || config.passMinted > 0 ? 'fixed (the mint has opened)' : 'changeable until the mint opens'}`);
   console.log(`  seed hash         ${config.passSeedHash ?? '✗ not set (pass-seed --new, then set-seed-hash)'}`);
   console.log(
+    `  seed              ${config.passSeedRevealed ? `public · ${config.passSeed}` : config.passMintEnded ? 'secret — run `pnpm admin reveal`' : 'secret (revealed after the mint ends)'}`,
+  );
+  console.log(
     `  entropy           ${
       config.passEntropyCaptured
         ? `${config.passEntropy} (hash of slot ${config.passEntropySlot}; target ${config.passEntropyTargetSlot})`
-        : config.passMintEnded
-          ? `pending — target slot ${config.passEntropyTargetSlot} (capture-entropy, or the server does it)`
-          : 'not yet — the target slot is set when the mint ends (close-mint or sell-out)'
+        : config.passSeedRevealed
+          ? `pending — target slot ${config.passEntropyTargetSlot} (anyone can capture after it: server, web, capture-entropy)`
+          : 'not yet — the target slot is set by the reveal'
     }`,
   );
-  console.log(`  revealed          ${config.passRevealed ? `yes · admin seed ${config.passSeed}` : 'no'}`);
+  console.log(`  revealed          ${config.passRevealed ? 'yes (traits public)' : config.passSeedRevealed ? 'seed public, waiting for the entropy capture' : 'no'}`);
   if (config.passRevealed) console.log(`  final seed        ${config.passFinalSeed}  (sha256(seed || entropy); every trait derives from it)`);
 }
 
@@ -588,45 +589,46 @@ async function cmdCloseMint(ctx: Ctx): Promise<void> {
   await send(ctx, `Pass mint ended for good at ${config.passMinted} / ${config.passSupply}`, [ix]);
   const after = await ctx.client.fetchConfig();
   if (after?.passMintEnded) console.log(`  entropy target slot ${after.passEntropyTargetSlot} (~${Math.round((ENTROPY_DELAY_SLOTS * 0.4) / 60)} min)`);
-  console.log('  next: the game server captures the entropy once the slot passes (or `pnpm admin capture-entropy`), then `pnpm admin reveal`');
+  console.log('  next: `pnpm admin reveal` publishes the seed and sets the entropy target slot');
 }
 
 async function cmdCaptureEntropy(ctx: Ctx): Promise<void> {
   const config = await requireConfig(ctx);
-  if (!config.passMintEnded) throw new UsageError('the Pass mint has not ended yet (close-mint or sell-out sets the entropy target)');
-  if (config.passEntropyCaptured) {
-    console.log(`entropy already captured: ${config.passEntropy} (hash of slot ${config.passEntropySlot})`);
+  if (config.passRevealed) {
+    console.log(`already revealed: entropy ${config.passEntropy} (hash of slot ${config.passEntropySlot}) · final seed ${config.passFinalSeed}`);
     return;
   }
+  if (!config.passSeedRevealed) throw new UsageError('the seed is not public yet: `pnpm admin reveal` (after the mint ended) sets the entropy target');
   const slot = await ctx.client.connection.getSlot('confirmed');
   if (slot <= config.passEntropyTargetSlot) {
-    throw new UsageError(`target slot ${config.passEntropyTargetSlot} has not passed (now ${slot}); wait ~${Math.ceil(((config.passEntropyTargetSlot - slot + 1) * 0.4))} s`);
+    throw new UsageError(`target slot ${config.passEntropyTargetSlot} has not passed (now ${slot}); wait ~${Math.ceil((config.passEntropyTargetSlot - slot + 1) * 0.4)} s`);
   }
   const ix = await ctx.client.ix.capturePassEntropy(ctx.signer().publicKey);
   await send(ctx, 'sent capture_pass_entropy', [ix]);
   const after = await ctx.client.fetchConfig();
-  if (after?.passEntropyCaptured) console.log(`  entropy ${after.passEntropy} (hash of slot ${after.passEntropySlot})`);
-  else if (after) console.log(`  the target left the SlotHashes window uncaptured; new target slot ${after.passEntropyTargetSlot} (run again after it)`);
+  if (after?.passRevealed) {
+    console.log(`  entropy    ${after.passEntropy} (hash of slot ${after.passEntropySlot})`);
+    console.log(`  final seed ${after.passFinalSeed}  = sha256(seed || entropy); every Pass trait derives from it`);
+    console.log(`  images:    pnpm pass:generate --final-seed ${after.passFinalSeed}`);
+  } else if (after) {
+    console.log(`  the target left the SlotHashes window uncaptured; new target slot ${after.passEntropyTargetSlot} (run again after it)`);
+  }
 }
 
 async function cmdReveal(ctx: Ctx, opts: Opts): Promise<void> {
   const { hash, seed } = loadSeed(opts);
   const config = await requireConfig(ctx);
-  if (config.passRevealed) throw new UsageError('already revealed');
+  if (config.passRevealed || config.passSeedRevealed) throw new UsageError('the seed is already revealed (see `pnpm admin status`)');
   if (!config.passSeedHash) throw new UsageError('no seed hash is committed on-chain');
   if (config.passSeedHash !== hash) throw new UsageError(`seed hash mismatch: on-chain ${config.passSeedHash}, file ${hash}`);
   if (!config.passMintEnded) {
     throw new UsageError(`the mint has not ended (${config.passMinted} / ${config.passSupply}); run \`pnpm admin close-mint\` first`);
   }
-  if (!config.passEntropyCaptured || !config.passEntropy) {
-    throw new UsageError(`the entropy is not captured yet (target slot ${config.passEntropyTargetSlot}); run \`pnpm admin capture-entropy\` once that slot has passed`);
-  }
-  const finalSeed = finalSeedHex(seed, hexBytes(config.passEntropy));
   const ix = await ctx.client.ix.revealPass(ctx.signer().publicKey, seed);
   await send(ctx, `revealed Pass seed ${Buffer.from(seed).toString('hex')}`, [ix]);
-  console.log(`  entropy    ${config.passEntropy} (hash of slot ${config.passEntropySlot})`);
-  console.log(`  final seed ${finalSeed}  = sha256(seed || entropy); every Pass trait derives from it`);
-  console.log(`  images:    pnpm pass:generate --seed-file <file> --entropy ${config.passEntropy}`);
+  const after = await ctx.client.fetchConfig();
+  console.log(`  entropy target slot ${after?.passEntropyTargetSlot ?? '?'} (~${Math.round(ENTROPY_DELAY_SLOTS * 0.4)} s): its hash completes the reveal`);
+  console.log('  the game server captures it automatically; anyone can (web Pass page, `pnpm admin capture-entropy`)');
 }
 
 async function createArena(ctx: Ctx, config: ConfigView, id: number, entryFee: bigint, maxSessions: number, requiresPass: boolean): Promise<void> {

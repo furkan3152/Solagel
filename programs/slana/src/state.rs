@@ -56,17 +56,21 @@ pub struct Config {
     /// The mint has been opened at least once: `pass_supply` is frozen from then on.
     pub pass_mint_opened: bool,
     /// The mint ended for good (`close_pass_mint`, or the last Pass of the supply was minted).
-    /// It never reopens; `pass_entropy_target_slot` is set.
+    /// It never reopens; `reveal_pass` may publish the seed from then on.
     pub pass_mint_ended: bool,
 
     // ----- Pass trait reveal (commit / reveal) ---------------------------------------------
     /// `sha256(pass_seed)` committed before the first mint.
     pub pass_seed_hash: [u8; 32],
-    /// The admin's revealed seed (zero until `pass_revealed`).
+    /// The admin's seed, public once `pass_seed_revealed` (zero before).
     pub pass_seed: [u8; 32],
+    /// The traits are public: `capture_pass_entropy` stored `pass_final_seed`.
     pub pass_revealed: bool,
-    /// Set when the mint ends: `slot + ENTROPY_DELAY_SLOTS` (moved forward again if nobody
-    /// captured it while it was in the SlotHashes window).
+    /// `reveal_pass` published `pass_seed` (checked against `pass_seed_hash`) and set the
+    /// entropy target slot. The seed is public before any entropy target exists.
+    pub pass_seed_revealed: bool,
+    /// Set by `reveal_pass` (after the seed is public): `slot + ENTROPY_DELAY_SLOTS`, moved
+    /// forward again if nobody captured it while it was in the SlotHashes window. 0 before.
     pub pass_entropy_target_slot: u64,
     /// `pass_entropy` holds the captured hash.
     pub pass_entropy_captured: bool,
@@ -76,8 +80,8 @@ pub struct Config {
     pub pass_entropy: [u8; 32],
     /// Slot of `pass_entropy`.
     pub pass_entropy_slot: u64,
-    /// `sha256(pass_seed || pass_entropy)`, set by the reveal (zero before). The single seed
-    /// every Pass trait is derived from (`passTraits(final_seed, n, supply)`).
+    /// `sha256(pass_seed || pass_entropy)`, set by `capture_pass_entropy` (zero before). The
+    /// single seed every Pass trait is derived from (`passTraits(final_seed, n, supply)`).
     pub pass_final_seed: [u8; 32],
 
     // ----- bumps -------------------------------------------------------------------------

@@ -18,7 +18,10 @@ pub struct SetPassSeedHash<'info> {
 
 pub fn handle_set_pass_seed_hash(ctx: Context<SetPassSeedHash>, hash: [u8; 32]) -> Result<()> {
     let config = &mut ctx.accounts.config;
-    require!(!config.pass_revealed, SlanaError::AlreadyRevealed);
+    require!(
+        !config.pass_revealed && !config.pass_seed_revealed,
+        SlanaError::AlreadyRevealed
+    );
     require!(config.pass_minted == 0, SlanaError::SeedLocked);
     config.pass_seed_hash = hash;
     Ok(())

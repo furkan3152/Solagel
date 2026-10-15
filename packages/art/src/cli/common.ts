@@ -66,7 +66,7 @@ const HEX32 = /^[0-9a-fA-F]{64}$/;
 /**
  * The revealed seed every trait derives from: `sha256(seed || entropy)` (hex), exactly the
  * program's `Config.pass_final_seed` after `reveal_pass`. `entropy` is `Config.pass_entropy`,
- * the hash of the target slot fixed when the mint ended, stored by `capture_pass_entropy` (`pnpm admin status`).
+ * the hash of the target slot set by `reveal_pass` (after the seed is public), stored by `capture_pass_entropy` (`pnpm admin status`).
  */
 export function finalSeedHex(seedHex: string, entropyHex: string): string {
   if (!HEX32.test(seedHex)) throw new CliError('the seed must be 32 bytes (64 hex chars)');
@@ -89,7 +89,7 @@ export function traitSeedHex(opts: Opts): string {
   const seedHex = readSeedHex(userPath(str(opts, 'seed-file') ?? DEFAULT_SEED_FILE));
   if (entropy === undefined) {
     throw new CliError(
-      'traits derive from sha256(seed || entropy): pass --entropy <hex> (Config.pass_entropy, captured after the mint ended; see `pnpm admin status`) or --final-seed <hex>',
+      'traits derive from sha256(seed || entropy): pass --entropy <hex> (Config.pass_entropy, captured after the seed was revealed; see `pnpm admin status`) or --final-seed <hex>',
     );
   }
   return finalSeedHex(seedHex, entropy.toLowerCase());

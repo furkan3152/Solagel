@@ -38,7 +38,7 @@ const token = { tokenMint, tokenProgram: TOKEN_2022_PROGRAM_ID };
 
 describe('instruction builders (no RPC)', () => {
   it('joinArena passes every account explicitly', async () => {
-    const ix = await client.ix.joinArena(player, { arenaId: 2, ...token });
+    const ix = await client.ix.joinArena(player, { arenaId: 2, ...token, maxFeeBps: 500 });
     const arena = pdas.arena(2);
     expect(keys(ix)).toEqual(
       b58([
@@ -55,11 +55,15 @@ describe('instruction builders (no RPC)', () => {
       ]),
     );
     expect(meta(ix, player)).toMatchObject({ isSigner: true, isWritable: true });
-    expect(ix.data.length).toBe(8);
+    // discriminator + max_fee_bps (u16 LE)
+    expect(ix.data.length).toBe(10);
+    expect(ix.data.readUInt16LE(8)).toBe(500);
+    expect(() => client.ix.joinArena(player, { arenaId: 2, ...token, maxFeeBps: 70_000 })).toThrow(RangeError);
   });
 
   it('joinArenaWithPass includes passLock = PDA(asset)', async () => {
-    const ix = await client.ix.joinArenaWithPass(player, { arenaId: 3, passAsset, ...token });
+    const ix = await client.ix.joinArenaWithPass(player, { arenaId: 3, passAsset, ...token, maxFeeBps: 200 });
+    expect(ix.data.readUInt16LE(8)).toBe(200);
     const k = keys(ix);
     expect(k[9]).toBe(passAsset.toBase58());
     expect(k[10]).toBe(pdas.passLock(passAsset).toBase58());
@@ -212,7 +216,7 @@ describe('instruction builders (no RPC)', () => {
   it('honours a custom program id', async () => {
     const other = Keypair.generate().publicKey;
     const c = new SlanaClient(connection, other.toBase58());
-    const ix = await c.ix.joinArena(player, { arenaId: 1, ...token });
+    const ix = await c.ix.joinArena(player, { arenaId: 1, ...token, maxFeeBps: 500 });
     expect(ix.programId.equals(other)).toBe(true);
     expect(keys(ix)[3]).toBe(pdas.arena(1, other).toBase58());
     const settle = await c.ix.settleSession(server, { player, arenaId: 1, sessionId: 1, payout: 0, score: 0, kills: 0, xp: 0, currentSeason: 1, hasPass: false, ...token });

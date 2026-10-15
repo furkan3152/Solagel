@@ -97,11 +97,16 @@ pub struct PassMinted {
     pub number: u32,
 }
 
-/// The Pass mint ended for good (closed by the admin or sold out). The trait entropy will be
-/// the hash of the first slot at or after `entropy_target_slot` (`capture_pass_entropy`).
+/// The Pass mint ended for good (closed by the admin or sold out). Next: `reveal_pass`.
 #[event]
 pub struct PassMintEnded {
     pub minted: u32,
+}
+
+/// `reveal_pass` published the seed and set the entropy target slot.
+#[event]
+pub struct PassSeedRevealed {
+    pub seed: [u8; 32],
     pub entropy_target_slot: u64,
 }
 
@@ -120,6 +125,7 @@ pub struct PassEntropyRetargeted {
     pub entropy_target_slot: u64,
 }
 
+/// `capture_pass_entropy` stored the entropy and the final seed: the traits are public.
 #[event]
 pub struct PassRevealed {
     /// The admin's committed seed (`sha256(seed) == pass_seed_hash`).

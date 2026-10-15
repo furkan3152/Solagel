@@ -381,6 +381,31 @@ fn settle_uses_the_fee_fixed_at_join() {
 }
 
 #[test]
+fn join_refuses_a_fee_above_the_signed_bound() {
+    let mut env = TestEnv::initialized();
+    assert_ok(env.create_arena(1, 1_000, 300, false));
+    let a = env.token_player("a", 1_000);
+    let b = env.token_player("b", 1_000);
+    let (_, asset) = env.give_pass(&b.pubkey());
+    // The player was shown 4 % but the config says 5 %: refused, nothing moves.
+    assert_error(
+        env.join_max(&a, 1, FEE_BPS - 100),
+        SlanaError::FeeAboveLimit,
+    );
+    assert!(env.session(1, &a.pubkey()).is_none());
+    assert_eq!(env.tokens(&env.player_ata(&a.pubkey())), 1_000);
+    // The Pass rate is the one checked for a Pass join.
+    assert_error(
+        env.join_with_pass_max(&b, 1, &asset, PASS_FEE_BPS - 1),
+        SlanaError::FeeAboveLimit,
+    );
+    // Exactly the shown rate (or a looser bound) is accepted.
+    assert_ok(env.join_max(&a, 1, FEE_BPS));
+    assert_ok(env.join_with_pass_max(&b, 1, &asset, PASS_FEE_BPS));
+    assert_eq!(env.session(1, &b.pubkey()).unwrap().fee_bps, PASS_FEE_BPS);
+}
+
+#[test]
 fn settle_works_while_paused_and_requires_the_server() {
     let mut env = TestEnv::initialized();
     assert_ok(env.create_arena(1, ENTRY_FEE, 300, false));

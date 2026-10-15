@@ -228,6 +228,8 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
         ataExists: review.steps.includes('ata') ? false : true,
         register: review.register,
         passAsset: pass,
+        // the rate on the frozen review: the program refuses the join if the fixed rate is higher
+        maxFeeBps: review.bps,
       });
       const res = await sendTx(client, connection, wallet, ixs, {
         onPhase,

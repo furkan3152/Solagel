@@ -3,17 +3,19 @@ use anchor_lang::prelude::*;
 use crate::{
     constants::*,
     error::SlanaError,
-    events::{PassEntropyCaptured, PassEntropyRetargeted},
+    events::{PassEntropyCaptured, PassEntropyRetargeted, PassRevealed},
     logic::{self, SlotHashLookup},
     state::Config,
 };
 
-/// Permissionless: stores the Pass trait entropy once the mint has ended and the target slot
-/// has passed. The entropy is the hash of the first slot with a block at or after
-/// `pass_entropy_target_slot`, read from the SlotHashes sysvar, so the caller cannot choose
-/// it. If the target already left the SlotHashes window (~512 slots) uncaptured, the target
-/// moves to `slot + ENTROPY_DELAY_SLOTS` instead: delaying capture only leads to another
-/// unknown future slot. Idempotent once captured. The server calls it automatically.
+/// Permissionless (any signer: the game server, the web "Complete the reveal" button, the
+/// admin CLI): completes the reveal once the seed is public (`reveal_pass`) and the target
+/// slot has passed. Stores as `pass_entropy` the hash of the first slot with a block at or
+/// after `pass_entropy_target_slot`, read by the program itself from the address-checked
+/// SlotHashes sysvar, then `pass_final_seed = sha256(pass_seed || pass_entropy)`, and marks
+/// the Pass as revealed. If the target already left the SlotHashes window (~512 slots)
+/// uncaptured, the target moves to `slot + ENTROPY_DELAY_SLOTS` instead. Idempotent once
+/// captured.
 #[derive(Accounts)]
 pub struct CapturePassEntropy<'info> {
     /// Anyone; only pays the transaction fee.
@@ -27,10 +29,10 @@ pub struct CapturePassEntropy<'info> {
 
 pub fn handle_capture_pass_entropy(ctx: Context<CapturePassEntropy>) -> Result<()> {
     let config = &mut ctx.accounts.config;
-    require!(config.pass_mint_ended, SlanaError::MintStillOpen);
-    if config.pass_entropy_captured {
+    if config.pass_revealed {
         return Ok(());
     }
+    require!(config.pass_seed_revealed, SlanaError::SeedNotRevealed);
     let slot = Clock::get()?.slot;
     let target = config.pass_entropy_target_slot;
     require!(slot > target, SlanaError::EntropyNotReady);
@@ -41,12 +43,25 @@ pub fn handle_capture_pass_entropy(ctx: Context<CapturePassEntropy>) -> Result<(
     };
     match lookup {
         SlotHashLookup::Found(found_slot, hash) => {
+            let final_seed = logic::pass_final_seed(&config.pass_seed, &hash);
             config.pass_entropy = hash;
             config.pass_entropy_slot = found_slot;
             config.pass_entropy_captured = true;
+            config.pass_final_seed = final_seed;
+            config.pass_revealed = true;
+            msg!(
+                "Pass entropy: slot {} hash {}",
+                found_slot,
+                logic::hex32(&hash)
+            );
             emit!(PassEntropyCaptured {
                 slot: found_slot,
                 entropy: hash,
+            });
+            emit!(PassRevealed {
+                seed: config.pass_seed,
+                entropy: hash,
+                final_seed,
             });
         }
         SlotHashLookup::NotYet => return err!(SlanaError::EntropyNotReady),

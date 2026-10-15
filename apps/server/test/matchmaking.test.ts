@@ -178,6 +178,64 @@ describe('matchmaking', () => {
     expect(m2.blockedArenas()).toEqual([]);
   });
 
+  it('R20 while running: a swept arena with live loot stays blocked when re-enabled', async () => {
+    const journal = new Journal(null);
+    const logs: string[] = [];
+    const chain = new ArenaChain([{ ...arena(1, FEE), pot: 0 }]);
+    const cfg = loadConfig({ DATA_DIR: mkdtempSync(join(tmpdir(), 'slana-mm-')) });
+    const m = new RoomManager(cfg, { ...roomDeps(chain, journal), log: (l) => logs.push(l) }, chain);
+    const refresh = async () => {
+      (m as unknown as { arenaCache: unknown }).arenaCache = null; // the 30 s cache expired
+      await m.ensureArenaRooms();
+    };
+    // an instance runs and a player's value lies on its floor as loot (the vault holds it)
+    const a1 = (await m.arenaRoom(1))!;
+    spillStaker(a1, FEE);
+    expect(journal.owedByArena(1)).toBe(FEE);
+    chain.arenas[0] = { ...chain.arenas[0], pot: FEE };
+    await refresh();
+    expect(m.blockedArenas()).toEqual([]);
+
+    // the admin disables the arena: still covered, no alarm
+    chain.arenas[0] = { ...chain.arenas[0], enabled: false };
+    await refresh();
+    expect(m.blockedArenas()).toEqual([]);
+    // ... and sweeps it: the vault drops to 0 while the loot is still journaled
+    chain.arenas[0] = { ...chain.arenas[0], pot: 0 };
+    await refresh();
+    expect(m.blockedArenas()).toEqual([{ arenaId: 1, reason: 'vault_short' }]);
+    // re-enabled: the instance still exists, yet the arena stays blocked and sells nothing
+    chain.arenas[0] = { ...chain.arenas[0], enabled: true };
+    await refresh();
+    expect(m.rooms.has('arena-1-1')).toBe(true);
+    expect(await m.arenaRoom(1)).toBeNull();
+    expect(m.blockedArenas()).toEqual([{ arenaId: 1, reason: 'vault_short' }]);
+    expect(logs.filter((l) => /arena #1 KEPT DISABLED/.test(l))).toHaveLength(1);
+
+    // the vault is topped up: the stale entry clears on the next refresh
+    chain.arenas[0] = { ...chain.arenas[0], pot: FEE };
+    await refresh();
+    expect(m.blockedArenas()).toEqual([]);
+    expect(await m.arenaRoom(1)).toBe(a1);
+    expect(logs.some((l) => /arena #1: vault .* now covers the journal/.test(l))).toBe(true);
+  });
+
+  it('R20: a disabled → enabled flip is re-checked even without a sweep in between', async () => {
+    const journal = new Journal(null);
+    journal.commit({ loot: { roomId: 'arena-1-1', arenaId: 1, items: [{ x: 1, y: 1, value: 2 * FEE }] } });
+    const chain = new ArenaChain([{ ...arena(1, FEE), enabled: false, pot: 2 * FEE }]);
+    const cfg = loadConfig({ DATA_DIR: mkdtempSync(join(tmpdir(), 'slana-mm-')) });
+    const m = new RoomManager(cfg, { ...roomDeps(chain, journal), log: () => {} }, chain);
+    await m.ensureArenaRooms();
+    expect(m.blockedArenas()).toEqual([]);
+    // enabled again with a vault that was drained meanwhile (read in the same refresh)
+    chain.arenas[0] = { ...chain.arenas[0], enabled: true, pot: FEE };
+    (m as unknown as { arenaCache: unknown }).arenaCache = null;
+    await m.ensureArenaRooms();
+    expect(m.blockedArenas()).toEqual([{ arenaId: 1, reason: 'vault_short' }]);
+    expect(m.rooms.has('arena-1-1')).toBe(false);
+  });
+
   it('an instance closed during a join is replaced by a live, mapped room', async () => {
     const m = manager({ ARENA_INSTANCE_CAP: '1' });
     const a1 = (await m.arenaRoom(1))!;
