@@ -1,5 +1,5 @@
 /* ─────────────────────── Paper Ticket · lobby & ticket flow ───────────────────────
- * Task 14. Phones follow artboard B (docs/design/kagit-bilet-lobby.html);
+ * Phones get a single column of tickets;
  * desktop is a newspaper front page whose photo is a window cut into the
  * paper (a CSS mask) onto the live game canvas. Everything lives under the
  * `.kl-root` Kb root or in portalled `.kb-sheet` panels (tf-, wl-, pf-).

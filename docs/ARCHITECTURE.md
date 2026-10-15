@@ -1,7 +1,8 @@
 # Slana architecture
 
-*Türkçe özet: Slana hibrit bir oyundur. Fizik yetkili oyun sunucusunda, para kuralları Solana programında çalışır. Bu
-doküman para akışını, değişmezleri ve güven modelini anlatır. Ürün tasarımı: [tasarım dokümanı (TR)](superpowers/specs/2026-10-14-slana-design.md).*
+*Summary: Slana is a hybrid game. The physics runs on the authoritative game server, the money rules in the Solana
+program. This document covers the money flow, the invariants and the trust model. Product design:
+[design document](superpowers/specs/2026-10-14-slana-design.md).*
 
 Every number below is quoted from the code: program constants from `programs/slana-ref/src/constants.rs`, admin defaults
 from `packages/sdk/src/constants.ts` (`pnpm admin init`), game rules from `packages/shared/src/constants.ts` (`RULES`,

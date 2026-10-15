@@ -1,5 +1,5 @@
 // Lobby and ticket-flow tour: screenshots of the lobby (desktop / mobile,
-// paper / night), the ticket confirm sheet, the stamp-and-tear frame, the R10 payout CTA,
+// paper / night), the ticket confirm sheet, the stamp-and-tear frame, the R24 collect-payout slip,
 // the PassInUse error, and the wallet / profile sheets.
 // Needs a dev server (pnpm dev) whose game server runs NODE_ENV=development DEV_FAKE_CHAIN=1:
 // the web dev build then uses its fake chain stand-in (src/solana/devFake.ts), so no
@@ -16,7 +16,7 @@ const bs58 = require('bs58').default ?? require('bs58');
 
 const [base, out, ...which] = process.argv.slice(2);
 const want = (k) => which.length === 0 || which.includes(k);
-const exe = process.env.CHROME_PATH;
+const exe = [process.env.CHROME_PATH, '/opt/pw-browsers/chromium'].filter(Boolean).find((p) => existsSync(p));
 const browser = await chromium.launch({ executablePath: exe, args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const logs = [];
 
@@ -307,26 +307,46 @@ if (want('passarena')) {
   await ctx.close();
 }
 
-// ── R10: a payout waits for the player's token account ──
+// ── R24: a finalized session waits for the player to collect the payout ──
 if (want('pending')) {
-  const pending = [{ key: 'DevPendingSession1', arenaId: 1, payout: 2_150 * M, needsTokenAccount: true }];
   for (const [k, viewport, mobile] of [
     ['desktop', D, false],
     ['mobile', P, true],
   ]) {
-    const { ctx, page } = await newPage({ viewport, mobile, pending });
-    // the payout waits for a token account this wallet does not have yet
-    await page.evaluate(() => {
-      window.__slanaChain.fakeWallet.ataExists = false;
-      window.__slanaChain.refresh();
-    });
+    const { ctx, page } = await newPage({ viewport, mobile });
+    // the server settled the game without a usable token account: the session is finalized
+    // and its payout (`owed`) waits in the arena vault
+    await page.evaluate(
+      ([owed]) => {
+        const w = window.__slanaChain.fakeWallet;
+        w.ataExists = false;
+        w.sessions[1] = {
+          address: 'DevFinalizedSession1',
+          id: 1,
+          player: 'DevPlayer',
+          arena: 'DevArena1',
+          arenaId: 1,
+          entryFee: 1_000_000_000n,
+          openedAt: Math.floor(Date.now() / 1000) - 600,
+          hasPass: false,
+          passAsset: null,
+          settleFee: 20_000,
+          feeBps: 500,
+          finalized: true,
+          owed: BigInt(owed),
+        };
+        window.__slanaChain.refresh();
+      },
+      [String(2_150 * M)],
+    );
     await page.waitForTimeout(1200);
     await shot(page, `pending-${k}`);
     if (k === 'mobile') {
+      // "Collect payout" opens the collect sheet (one transaction, the token account is created)
       await page.locator('.kl-owed .kb-btn').click();
       await page.waitForSelector('.tf-sheet');
       await page.waitForTimeout(700);
-      await shot(page, 'pending-ata-sheet');
+      await shot(page, 'pending-collect-sheet');
     }
     await ctx.close();
   }

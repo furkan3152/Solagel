@@ -30,6 +30,9 @@ function errorCodes(): string[] {
   return [...union.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
 }
 
+/** The CI guard's Turkish letters, built from code points so this file passes the guard itself. */
+const TURKISH = new RegExp(`[${String.fromCodePoint(0xe7, 0x11f, 0x131, 0xf6, 0x15f, 0xfc, 0xc7, 0x11e, 0x130, 0xd6, 0x15e, 0xdc)}]`);
+
 describe('the English string table', () => {
   it('has every key the code asks for with a literal t() call', () => {
     const used = new Set([...code.matchAll(/\b(?:t|tx)\(\s*'([a-zA-Z0-9_.]+)'/g)].map((m) => m[1]));
@@ -51,8 +54,7 @@ describe('the English string table', () => {
   it('is non-empty, English and free of emoji', () => {
     for (const [key, value] of Object.entries(en)) {
       expect(value.trim().length, key).toBeGreaterThan(0);
-      // the CI guard's Turkish letters, as escapes so this file passes the guard itself
-      expect(value, key).not.toMatch(/[çğıöşüÇĞİÖŞÜ]/);
+      expect(value, key).not.toMatch(TURKISH);
       expect(value, key).not.toMatch(/\p{Extended_Pictographic}/u);
     }
   });

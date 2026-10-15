@@ -1,40 +1,38 @@
-# Slana: kurulum ve dağıtım rehberi (devnet → mainnet)
+# Slana: setup and deployment guide (devnet → mainnet)
 
-Bu rehber Solana programını derleyip dağıtmayı, $SLANA token'ını bağlamayı, Slana Pass koleksiyonunu ve mint'i kurmayı,
-arenaları açmayı ve oyun sunucusunu yayına almayı anlatır. Günlük işler (sezon, açılış, hazine, durdurma, anahtar
-değişimi, yedek) için: [OPERATIONS.md](OPERATIONS.md). Mimari ve güven modeli: [ARCHITECTURE.md](ARCHITECTURE.md).
-**Önce devnet'te deneyin.**
+This guide covers building and deploying the Solana program, wiring up the $SLANA token, setting up the Slana Pass
+collection and mint, opening the arenas and putting the game server live. For day-to-day work (seasons, the reveal, the
+treasury, pausing, key rotation, backups): [OPERATIONS.md](OPERATIONS.md). Architecture and trust model:
+[ARCHITECTURE.md](ARCHITECTURE.md). Commands are quoted from `pnpm admin help` and `apps/server/.env.example`.
+**Try it on devnet first.**
 
-*English: step-by-step deployment of the program, token, Pass collection and mint, arenas and game server, with mainnet
-costs. Commands are quoted from `pnpm admin help` and `apps/server/.env.example`.*
+> **Legal and security warning.** Slana is a game played with a token of real value and may need a licence where you
+> operate. The Pass's in-game power can count as a "purchased advantage". The smart contract **has not been audited**:
+> get an audit before opening it with real money on mainnet, and start with small fees. To close the arenas without
+> touching the chain, set `STAKE_ENABLED=false` on the server.
 
-> **Yasal ve güvenlik uyarısı.** Slana gerçek değerli bir tokenle oynanan bir oyundur ve bulunduğunuz ülkede lisans
-> gerektirebilir. Pass'in oyun içi gücü "satın alınan avantaj" sayılabilir. Akıllı kontrat **bağımsız bir denetimden
-> geçmemiştir**: mainnet'te gerçek parayla açmadan önce denetim yaptırın, küçük bedellerle başlayın. Arenaları zincire
-> dokunmadan kapatmak için sunucuda `STAKE_ENABLED=false` kullanılabilir.
+Every admin command runs as `pnpm admin <command>`; the full list is `pnpm admin help`. Common options:
 
-Bütün yönetici komutları `pnpm admin <komut>` ile çalışır; tam liste `pnpm admin help`. Ortak seçenekler:
-
-| Seçenek | Varsayılan |
+| Option | Default |
 |---|---|
-| `--url <rpc>` | `$SOLANA_RPC_URL` ya da `http://127.0.0.1:8899` |
-| `--keypair <path>` | `~/.config/solana/id.json` (imzalayan ve ücreti ödeyen) |
-| `--program <id>` | `$PROGRAM_ID` ya da SDK'daki IDL adresi |
-| `--cluster <name>` | `--url`'den çıkarılır (gezgin bağlantıları için) |
-| `--verbose` | hatalarda işlem günlüklerini yazar |
+| `--url <rpc>` | `$SOLANA_RPC_URL` or `http://127.0.0.1:8899` |
+| `--keypair <path>` | `~/.config/solana/id.json` (signs and pays the fee) |
+| `--program <id>` | `$PROGRAM_ID` or the IDL address in the SDK |
+| `--cluster <name>` | derived from `--url` (for explorer links) |
+| `--verbose` | prints the transaction logs on errors |
 
-Token tutarları (`--entry`, `--amount`, `--min-tokens`) **tam token** olarak yazılır (`.` ondalık), mint'in ondalık
-sayısıyla ölçeklenir. Aşağıdaki örneklerde `--url` kısalık için yazılmadı: `export SOLANA_RPC_URL=...` yapın ya da her
-komuta ekleyin.
+Token amounts (`--entry`, `--amount`, `--min-tokens`) are written in **whole tokens** (`.` as the decimal point) and
+scaled by the mint's decimals. The examples below leave `--url` out for brevity: `export SOLANA_RPC_URL=...` or add it to
+every command.
 
 ---
 
-## 0. Gerekenler
+## 0. Requirements
 
-| Araç | Sürüm | Not |
+| Tool | Version | Note |
 |---|---|---|
-| Node.js | 22+ | `corepack enable` (pnpm 10.28.0, `package.json` `packageManager`) |
-| Rust | 1.97.1 | `rust-toolchain.toml` seçer |
+| Node.js | 22+ | `corepack enable` (pnpm 10.28.0, `packageManager` in `package.json`) |
+| Rust | 1.97.1 | selected by `rust-toolchain.toml` |
 | Solana (Agave) CLI | 4.3.x | `solana`, `solana-keygen`, `cargo-build-sbf` |
 | Anchor CLI | 1.2.1 | `npm i -g @anchor-lang/cli@1.2.1` |
 
@@ -42,17 +40,18 @@ komuta ekleyin.
 pnpm install
 ```
 
-## 1. Üçüncü taraf programlar
+## 1. Third-party programs
 
-Program testleri (LiteSVM) Metaplex Core programını yükler. Bir kez indirin:
+The program tests (LiteSVM) load the Metaplex Core program. Download it once:
 
 ```bash
-scripts/fetch-programs.sh                    # mainnet'ten Core → target/programs/mpl_core.so
-MAINNET_RPC=<url> scripts/fetch-programs.sh  # başka bir RPC ile
+scripts/fetch-programs.sh                    # Core from mainnet → target/programs/mpl_core.so
+MAINNET_RPC=<url> scripts/fetch-programs.sh  # with another RPC
 ```
 
-Betik `solana program dump` ile `CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d` programını indirir; dosya varsa atlar.
-`target/` git'e girmez: üçüncü taraf `.so` dosyaları **asla commit edilmez**. Devnet ve mainnet'te Core zaten dağıtılmıştır.
+The script downloads the `CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d` program with `solana program dump`; it skips the
+download if the file exists. `target/` is not tracked by git: third-party `.so` files are **never committed**. Core is
+already deployed on devnet and mainnet.
 
 ## 2. Program keypair and build
 
@@ -83,160 +82,160 @@ scripts/test-program.sh                                 # LiteSVM suite against 
 > **Never use `anchor deploy`.** It deploys the Anchor reference `slana.so` (~◎4.73 of rent) instead of the lean
 > program. Always deploy with `solana program deploy target/deploy/slana_lean.so --program-id <keypair>`.
 
-## 3. Anahtarlar
+## 3. Keys
 
-`keys/` klasörü git'e girmez (`.gitignore`: `keys/`, `*.keypair.json`, `pass-seed*.json`, `.env`).
+The `keys/` folder is not tracked by git (`.gitignore`: `keys/`, `*.keypair.json`, `pass-seed*.json`, `.env`).
 
-| Anahtar | Ne yapar | Öneri |
+| Key | What it does | Recommendation |
 |---|---|---|
-| Yönetici (`~/.config/solana/id.json`) | programın **upgrade authority**'si; `init` yalnızca onunla imzalanır; Config `admin`'i olur | mainnet'te sonra multisig'e (Squads) devredin |
-| Sunucu (`keys/server.json`) | `settle_session` imzalar (`Config.server_authority`) | yalnızca sunucuda; biraz SOL |
-| Hazine sahibi | `withdraw-treasury --to` ve koleksiyon telifinin alıcısı | multisig |
-| Pass tohumu (`keys/pass-seed.json`) | commit–reveal'in gizli tohumu | **gizli ve yedekli**; kaybolursa açılış yapılamaz |
+| Admin (`~/.config/solana/id.json`) | the program's **upgrade authority**; `init` can only be signed by it; it becomes the Config `admin` | on mainnet, hand it over to a multisig (Squads) later |
+| Server (`keys/server.json`) | signs `settle_session` (`Config.server_authority`) | only on the server; a little SOL |
+| Treasury owner | `withdraw-treasury --to` and the recipient of the collection royalty | multisig |
+| Pass seed (`keys/pass-seed.json`) | the secret seed of the commit–reveal | **secret and backed up**; if it is lost the reveal cannot happen |
 
 ```bash
 mkdir -p keys
 solana-keygen new -o keys/server.json --no-bip39-passphrase
 ```
 
-## 4. Programı dağıtın (devnet)
+## 4. Deploy the program (devnet)
 
 ```bash
 solana config set --url devnet
-solana airdrop 5                                  # gerekirse https://faucet.solana.com
+solana airdrop 5                                  # if needed, https://faucet.solana.com
 solana program deploy target/deploy/slana_lean.so --program-id target/deploy/slana-keypair.json   # never `anchor deploy` (it deploys the reference)
 solana transfer $(solana-keygen pubkey keys/server.json) 0.5 --allow-unfunded-recipient
 ```
 
 ## 5. Token
 
-Program, mint adresini `init` sırasında **bir kez** Config'e yazar; sonradan değiştirilemez. Şartlar (programda ve
-`pnpm admin init`'te kontrol edilir):
+The program writes the mint address into the Config **once**, during `init`; it cannot be changed later. Requirements
+(checked by the program and by `pnpm admin init`):
 
-- SPL Token ya da Token-2022 mint'i;
-- **dondurma yetkisi olmamalı** (`freeze authority` varsa reddedilir);
-- Token-2022 ise şu uzantılar reddedilir: TransferFeeConfig, TransferHook, PermanentDelegate, NonTransferable,
+- an SPL Token or Token-2022 mint;
+- no freeze authority (a mint with a `freeze authority` is refused);
+- for Token-2022, these extensions are refused: TransferFeeConfig, TransferHook, PermanentDelegate, NonTransferable,
   DefaultAccountState, ConfidentialTransferMint, ConfidentialTransferFeeConfig, Pausable, MintCloseAuthority,
-  ConfidentialMintBurn (meta veri uzantılarına izin verilir);
-- arz en fazla 2^53 − 1 taban birimi olmalı (admin CLI daha büyüğünü reddeder; sunucu arenaları kapatır).
+  ConfidentialMintBurn (the metadata extensions are allowed);
+- a supply of at most 2^53 − 1 base units (the admin CLI refuses a larger one; the server closes the arenas).
 
-Mainnet'te $SLANA mint adresini kullanın. Devnet denemesi için dondurma yetkisi olmayan bir test mint'i oluşturun
-(ör. `spl-token create-token --decimals 6`) ve kendinize biraz basın.
+On mainnet, use the $SLANA mint address. For a devnet trial, create a test mint without a freeze authority (e.g.
+`spl-token create-token --decimals 6`) and mint yourself some.
 
-## 6. Programı başlatın: `init --mint`
+## 6. Initialize the program: `init --mint`
 
 ```bash
 pnpm admin init --mint <MINT> --server $(solana-keygen pubkey keys/server.json)
 pnpm admin status
 ```
 
-`init`; Config'i, hazine ve sezon kasalarını ve sezon 1'i oluşturur. Varsayılanlar (`pnpm admin help`):
+`init` creates the Config, the treasury and season vaults and season 1. Defaults (`pnpm admin help`):
 
-| Seçenek | Varsayılan | Anlamı |
+| Option | Default | Meaning |
 |---|---|---|
-| `--fee-bps` | 500 | kârdan kesinti %5 (üst sınır 1000 = %10) |
-| `--pass-fee-bps` | 200 | Pass'li bilette %2 (≤ `--fee-bps`) |
-| `--split` | 5000/3000/2000 | kesintinin hazine / sezon / yakım payı (toplam 10000) |
-| `--settle-fee-lamports` | 20000 | bilet başına ödeme depozitosu (≤ 1 000 000) |
+| `--fee-bps` | 500 | 5 % fee on profit (upper bound 1000 = 10 %) |
+| `--pass-fee-bps` | 200 | 2 % on a Pass ticket (≤ `--fee-bps`) |
+| `--split` | 5000/3000/2000 | treasury / season / burn share of the fee (total 10000) |
+| `--settle-fee-lamports` | 20000 | payout deposit per ticket (≤ 1 000 000) |
 
-İmzalayan, programın upgrade authority'si olmalıdır; değilse `init` reddedilir. Pass varsayılanları: arz 3.333, cüzdan
-başı 1, minimum token şartı yok.
+The signer must be the program's upgrade authority; otherwise `init` is refused. Pass defaults: supply 3,333, 1 per
+wallet, no minimum token requirement.
 
-## 7. Slana Pass: tohum ve koleksiyon
+## 7. Slana Pass: seed and collection
 
-Sıra önemlidir: tohum özeti **ilk mint'ten önce** zincire yazılmalı, koleksiyon bir kez ayarlanır.
+The order matters: the seed hash must be on-chain **before the first mint**, and the collection is set once.
 
 ```bash
-pnpm admin pass-seed --new                 # keys/pass-seed.json: 32 rastgele bayt, sha256'sını yazar
-pnpm admin set-seed-hash                   # sha256(seed) zincire (ilk mint'ten önce)
-pnpm admin create-collection --name "Slana Pass" --uri https://<alan-adı>/pass/collection.json \
-  --royalty-bps 500 --royalty-to <hazine sahibi>
-pnpm admin set-pass-collection --collection <C>   # create-collection çıktısındaki adres; bir kez
+pnpm admin pass-seed --new                 # keys/pass-seed.json: 32 random bytes, prints its sha256
+pnpm admin set-seed-hash                   # sha256(seed) on-chain (before the first mint)
+pnpm admin create-collection --name "Slana Pass" --uri https://<domain>/pass/collection.json \
+  --royalty-bps 500 --royalty-to <treasury owner>
+pnpm admin set-pass-collection --collection <C>   # the address printed by create-collection; once
 ```
 
-- `create-collection` Core koleksiyonunu oluşturur; güncelleme yetkilisi programın `["pass_authority"]` PDA'sıdır, yani
-  Pass'leri yalnızca program basabilir. Royalties eklentisi `--royalty-to` adresine `--royalty-bps` telif yazar.
-- `pass-seed --new` var olan dosyanın üstüne yazmaz (`--force` gerekir; eski tohum kaybolur). Tohumu **yedekleyin** ve
-  **commit etmeyin**.
-- Tohum tek başına özellikleri belirlemez: mint bittikten sonra `reveal` tohumu açıklar ve ancak o zaman ~150 slot
-  sonrası için bir hedef slot kaydeder; o slotun hash'i (herkesin gönderebildiği, oyun sunucusunun da otomatik gönderdiği
-  `capture_pass_entropy` ile) entropi olur ve özellikler `passTraits(sha256(tohum ‖ entropi), n, arz)` ile hesaplanır.
-  Böylece yönetici de mint
-  sürerken hangi numaranın nadir olacağını bilemez.
-- Arzı (`update-config --supply N`, varsayılan 3333) **mint'i açmadan önce** ayarlayın: mint bir kez açılınca program
-  arzı kilitler (`SupplyLocked`).
-- Koleksiyon görselleri ve metadata varsayılan olarak oyun sunucusundan servis edilir (`/pass/...`); `<alan-adı>`
-  sunucunun `PUBLIC_URL`'üdür. Arweave ve görsel üretimi: [PASS-ART.md](PASS-ART.md).
+- `create-collection` creates the Core collection; its update authority is the program's `["pass_authority"]` PDA, so
+  only the program can mint Passes. The Royalties plugin writes a `--royalty-bps` royalty to the `--royalty-to` address.
+- `pass-seed --new` does not overwrite an existing file (it needs `--force`; the old seed is lost). **Back up** the seed
+  and **do not commit it**.
+- The seed alone does not decide the traits: after the mint is over, `reveal` publishes the seed and only then records a
+  target slot ~150 slots ahead; that slot's hash becomes the entropy (through `capture_pass_entropy`, which anyone can
+  send and the game server sends automatically) and the traits are computed with
+  `passTraits(sha256(seed ‖ entropy), n, supply)`. So not even the admin can know which number will be rare while the
+  mint is running.
+- Set the supply (`update-config --supply N`, default 3333) **before opening the mint**: once the mint has opened, the
+  program locks the supply (`SupplyLocked`).
+- By default the collection images and metadata are served by the game server (`/pass/...`); `<domain>` is the server's
+  `PUBLIC_URL`. Arweave and image generation: [PASS-ART.md](PASS-ART.md).
 
-## 8. Arenalar
+## 8. Arenas
 
 ```bash
-pnpm admin create-arena --defaults         # varsayılan dört arena (var olanları atlar)
+pnpm admin create-arena --defaults         # the four default arenas (skips existing ones)
 pnpm admin create-arena --id 5 --entry 5000 --max 300 [--pass]
 pnpm admin update-arena --id 2 --enabled false
 ```
 
-Varsayılan arenalar (`packages/shared/src/arenas.ts`, `DEFAULT_ARENAS`):
+Default arenas (`packages/shared/src/arenas.ts`, `DEFAULT_ARENAS`):
 
-| id | Ad | Bedel | Pass | Aynı anda açık bilet |
+| id | Name | Fee | Pass | Open tickets at once |
 |---|---|---|---|---|
-| 1 | Kuruş Gölü (Penny Pond) | 1.000 $SLANA | gerekmez | 300 |
-| 2 | Gümüş Dere (Silver Stream) | 10.000 $SLANA | gerekmez | 300 |
-| 3 | Altın Göl (Golden Lake) | 50.000 $SLANA | gerekli | 300 |
-| 4 | Balina Koyu (Whale Bay) | 250.000 $SLANA | gerekli | 300 |
+| 1 | Penny Pond | 1,000 $SLANA | not needed | 300 |
+| 2 | Silver Creek | 10,000 $SLANA | not needed | 300 |
+| 3 | Gold Lake | 50,000 $SLANA | required | 300 |
+| 4 | Whale Bay | 250,000 $SLANA | required | 300 |
 
-`--max` 2 ile 2000 arasındadır. Bir arenanın bedeli ve Pass şartı, açık bileti varken değiştirilemez (program reddeder).
-Sunucu arena listesini zincirden 30 sn'de bir okur; yeni arenalar lobiye kendiliğinden gelir.
+`--max` is between 2 and 2000. An arena's fee and Pass requirement cannot change while it has open tickets (the program
+refuses). The server reads the arena list from the chain every 30 s; new arenas appear in the lobby by themselves.
 
-## 9. Oyun sunucusu
+## 9. Game server
 
-Örnek dosya: `apps/server/.env.example`. Sunucu `.env` dosyasını **kendisi okumaz**; değişkenleri ortamdan verin
-(Docker: `--env-file`, systemd: `EnvironmentFile=`, elle: `set -a; . apps/server/.env; set +a`).
+Example file: `apps/server/.env.example`. The server does not read the `.env` file itself; pass the variables through
+the environment (Docker: `--env-file`, systemd: `EnvironmentFile=`, by hand: `set -a; . apps/server/.env; set +a`).
 
-Zincir için gerekenler: `PROGRAM_ID`, `SOLANA_RPC_URL`, `SERVER_KEYPAIR`. Biri eksikse sunucu zincirsiz (yalnızca
-antrenman) çalışır.
+Required for the chain: `PROGRAM_ID`, `SOLANA_RPC_URL`, `SERVER_KEYPAIR`. If one is missing, the server runs without a
+chain (practice only).
 
-| Değişken | Varsayılan (kod) | Not |
+| Variable | Default (code) | Note |
 |---|---|---|
 | `PORT` / `HOST` | `8787` / `0.0.0.0` | |
-| `DATA_DIR` | `data` | journal (borçlu ödemeler!), tablolar ve Pass görsel önbelleği. Kalıcı disk kullanın |
-| `AUTH_SECRET` | rastgele | `openssl rand -hex 32`; yoksa her yeniden başlatmada oyuncular yeniden imzalar |
+| `DATA_DIR` | `data` | journal (owed payouts!), tables and the Pass image cache. Use a persistent disk |
+| `AUTH_SECRET` | random | `openssl rand -hex 32`; without it players sign in again after every restart |
 | `CORS_ORIGIN` | `*` | |
-| `TRUST_PROXY` | `0` | ters vekil arkasında `1` (X-Forwarded-For / -Proto / -Host) |
-| `PUBLIC_URL` | boş | sunucunun herkese açık adresi (`https://slana.example`); Pass metadata bağlantıları ve cüzdan girişindeki (SIWS) alan adı. Web sayfası başka bir alan adından sunuluyorsa giriş mesajı oyun sunucusunun adını gösterir. **Üretimde ayarlayın** |
-| `MARKET_URLS` | boş | JSON (`magicEden`, `tensor`, `opensea`); yalnızca https bağlantılar kullanılır |
-| `MARKET_URL_MAGICEDEN` / `_TENSOR` / `_OPENSEA` | boş | `MARKET_URLS`'ten önceliklidir |
-| `WEB_DIST` | boş | web derlemesini bu klasörden servis eder (tek origin) |
-| `PRACTICE_CAPACITY` | `40` | antrenman odası başına insan |
+| `TRUST_PROXY` | `0` | `1` behind a reverse proxy (X-Forwarded-For / -Proto / -Host) |
+| `PUBLIC_URL` | empty | the server's public address (`https://slana.example`); Pass metadata links and the domain in the wallet login (SIWS). If the web page is served from another domain, the login message shows the game server's name. **Set it in production** |
+| `MARKET_URLS` | empty | JSON (`magicEden`, `tensor`, `opensea`); only https links are used |
+| `MARKET_URL_MAGICEDEN` / `_TENSOR` / `_OPENSEA` | empty | take precedence over `MARKET_URLS` |
+| `WEB_DIST` | empty | serves the web build from this folder (single origin) |
+| `PRACTICE_CAPACITY` | `40` | humans per practice room |
 | `PRIVATE_ROOM_CAPACITY` | `20` | |
-| `ARENA_INSTANCE_CAP` | `50` | arena örneği başına insan; dolunca `arena-<id>-<n>` açılır |
-| `BOT_TARGET` / `BOT_MIN` / `BOT_MAX` | `20` / `4` / `20` | antrenman botları |
-| `ARENA_BOT_TARGET` / `ARENA_BOT_MIN` / `ARENA_BOT_MAX` | `24` / `2` / `16` | arena botları (değerleri 0) |
+| `ARENA_INSTANCE_CAP` | `50` | humans per arena instance; when full, `arena-<id>-<n>` opens |
+| `BOT_TARGET` / `BOT_MIN` / `BOT_MAX` | `20` / `4` / `20` | practice bots |
+| `ARENA_BOT_TARGET` / `ARENA_BOT_MIN` / `ARENA_BOT_MAX` | `24` / `2` / `16` | arena bots (worth 0) |
 | `PRIVATE_BOT_TARGET` | `8` | |
-| `PASS_START_MASS_MUL` | `1.15` | Pass gücü: başlangıç kütlesi çarpanı (en az 1; `1` = kapalı) |
-| `PASS_CASHOUT_MS` | `2000` | Pass'li bilette cash-out süresi (normal süre 3000; `3000` = avantaj yok) |
+| `PASS_START_MASS_MUL` | `1.15` | Pass power: start mass multiplier (at least 1; `1` = off) |
+| `PASS_CASHOUT_MS` | `2000` | cash-out time on a Pass ticket (normal time 3000; `3000` = no advantage) |
 | `MAX_CONNECTIONS` / `MAX_CONNECTIONS_PER_IP` | `600` / `8` | |
-| `SOLANA_CLUSTER` | `localnet` | `localnet`, `devnet` ya da `mainnet-beta` |
-| `SOLANA_RPC_URL` | boş | sunucunun RPC'si (API anahtarı içerebilir; mainnet'te ücretli RPC önerilir) |
-| `SOLANA_WS_URL` | boş | isteğe bağlı websocket RPC (yalnızca `config.ts`'te) |
-| `PUBLIC_RPC_URL` | boş | tarayıcılara duyurulan RPC; **sır içermemeli** |
-| `PROGRAM_ID` | boş | dağıttığınız program |
-| `SERVER_KEYPAIR` | boş | keypair dosya yolu ya da JSON dizisi; `Config.server_authority` ile aynı olmalı |
-| `STAKE_ENABLED` | `true` | `false`: arenalar zincire dokunmadan kapanır (ödemeler sürer) |
-| `STAKE_ARENA_IDS` | boş | yalnızca bu arena id'leri (virgülle); boş = zincirdeki tüm açık arenalar |
-| `TOKEN_SYMBOL` | `$SLANA` | yalnızca görünüm. Bazı env yükleyiciler `$NAME`'i genişletir; örnek dosyada yorum satırıdır |
-| `PRIORITY_FEE_MICROLAMPORTS` | `5000` | ödeme işlemlerinin öncelik ücreti |
-| `STALE_SESSION_AFTER_S` | `900` | hiç oynanmayan biletin iadesi için bekleme (sn); daha kısası yalnızca test içindir (localnet e2e: `5`) |
-| `STALE_SWEEP_ACK` | boş | `1`: karantinaya alınmış bir journal (`journal.json.corrupt-*`) incelendi, bayat bilet süpürücüsü yeniden çalışabilir (bkz. OPERATIONS) |
-| `DEV_FAKE_CHAIN` | boş | **yalnızca geliştirme**: `NODE_ENV=development` ister, `PROGRAM_ID`/`SERVER_KEYPAIR` varken başlamaz |
+| `SOLANA_CLUSTER` | `localnet` | `localnet`, `devnet` or `mainnet-beta` |
+| `SOLANA_RPC_URL` | empty | the server's RPC (may contain an API key; a paid RPC is recommended on mainnet) |
+| `SOLANA_WS_URL` | empty | optional websocket RPC (only in `config.ts`) |
+| `PUBLIC_RPC_URL` | empty | the RPC announced to browsers; **must not contain secrets** |
+| `PROGRAM_ID` | empty | the program you deployed |
+| `SERVER_KEYPAIR` | empty | keypair file path or JSON array; must equal `Config.server_authority` |
+| `STAKE_ENABLED` | `true` | `false`: the arenas close without touching the chain (payouts go on) |
+| `STAKE_ARENA_IDS` | empty | only these arena ids (comma-separated); empty = every enabled arena on-chain |
+| `TOKEN_SYMBOL` | `$SLANA` | display only. Some env loaders expand `$NAME`; it is commented out in the example file |
+| `PRIORITY_FEE_MICROLAMPORTS` | `5000` | priority fee of the payout transactions |
+| `STALE_SESSION_AFTER_S` | `900` | wait (s) before refunding a ticket that was never played; shorter values are for tests only (localnet e2e: `5`) |
+| `STALE_SWEEP_ACK` | empty | `1`: a quarantined journal (`journal.json.corrupt-*`) has been inspected and the stale-ticket sweeper may run again (see OPERATIONS) |
+| `DEV_FAKE_CHAIN` | empty | **development only**: needs `NODE_ENV=development`, refuses to start while `PROGRAM_ID`/`SERVER_KEYPAIR` is set |
 
-Sunucu anahtarı ödeme işlemlerinin ücretini öder; her bilet `settle_fee_lamports` depozitosuyla bunu geri öder. Sunucu
-oyuncu token hesaplarının kirasını **hiç ödemez**: hesabı olmayan (ya da ödemeyi reddeden) oyuncunun oyunu yine de
-hemen sonuçlandırılır, ödemesi kasada `owed` olarak kalır ve lobide "Ödemeni al" çağrısı görünür (R24; oyuncu hesabı
-kendisi açar, bekleme süresi yok). Sunucu anahtarı 0,05 SOL'ün altına düşünce günlüğe uyarı
-yazar.
+The server key pays the fee of the payout transactions; every ticket pays it back with the `settle_fee_lamports`
+deposit. The server **never** pays the rent of players' token accounts: the game of a player without an account (or
+whose account refuses the payout) is still settled at once, the payout stays in the vault as `owed`, and the lobby shows
+a "Collect payout" call (R24; the player opens the account themselves, with no waiting time). The server logs a warning
+when the server key drops below 0.05 SOL.
 
-Yerelde: `pnpm dev` (sunucu :8787 + web :5173; Vite `/ws` ve `/api`'yi sunucuya yönlendirir).
+Locally: `pnpm dev` (server :8787 + web :5173; Vite forwards `/ws` and `/api` to the server).
 
 ## 10. Docker
 
@@ -245,54 +244,52 @@ docker build -t slana .
 docker run -p 8787:8787 -v slana-data:/data --env-file apps/server/.env slana
 ```
 
-Tek konteyner = oyun sunucusu + web istemcisi (aynı origin). İmajda `NODE_ENV=production`, `DATA_DIR=/data`,
-`WEB_DIST=/app/web`, `TRUST_PROXY=1` ayarlıdır; `/data` bir volume'dur (journal burada: **kalıcı olmalı**). Sağlık
-kontrolü `GET /api/health`. Sunucu `/docs` gibi istemci yollarında `index.html` döner, yani oyuncu kılavuzu
-`https://<alan-adı>/docs` adresinde açılır.
+One container = game server + web client (same origin). The image sets `NODE_ENV=production`, `DATA_DIR=/data`,
+`WEB_DIST=/app/web`, `TRUST_PROXY=1`; `/data` is a volume (the journal lives there, so it must be persistent). The health
+check is `GET /api/health`. The server returns `index.html` for client paths such as `/docs`, so the player guide opens
+at `https://<domain>/docs`.
 
-Web istemcisini ayrı barındırmak isterseniz derleme argümanları: `VITE_SERVER_URL` (oyun sunucusunun adresi) ve
-`VITE_RPC_URL` (tarayıcının RPC'si). Statik barındırıcı da `/docs` için `index.html`'e düşmelidir (SPA fallback).
-Pass metadata'sı her durumda oyun sunucusundan gelir (`PUBLIC_URL`).
+To host the web client separately, the build arguments are `VITE_SERVER_URL` (the game server's address) and
+`VITE_RPC_URL` (the browser's RPC). The static host must also fall back to `index.html` for `/docs` (SPA fallback). Pass
+metadata always comes from the game server (`PUBLIC_URL`).
 
-## 11. Pass mint'ini açın
+## 11. Open the Pass mint
 
-Önce sunucu `PUBLIC_URL` ile yayında olmalı: pazar yerleri `/pass/<n>.json` ve görselleri buradan çeker.
+The server must be live with `PUBLIC_URL` first: marketplaces fetch `/pass/<n>.json` and the images from it.
 
 ```bash
-pnpm admin open-mint --base-uri https://<alan-adı>/pass/ [--start <unix>] [--supply N] [--per-wallet N] [--min-tokens X]
-pnpm admin status                          # "mint OPEN", basılan / arz
+pnpm admin open-mint --base-uri https://<domain>/pass/ [--start <unix>] [--supply N] [--per-wallet N] [--min-tokens X]
+pnpm admin status                          # "mint OPEN", minted / supply
 ```
 
-- `--base-uri` `/` ile bitmeli ve en fazla 96 bayt olmalı. Program her Pass'e `<base-uri><n>.json` yazar ve **ilk
-  mint'ten sonra base URI değiştirilemez**.
-- `open-mint` koleksiyon ve tohum özeti ayarlanmadan çalışmaz; mint bittikten (`close-mint` ya da arzın tükenmesi) sonra
-  yeniden açılamaz.
-- Mint ücretsizdir: mint eden yalnızca Core varlığının ve cüzdan sayacının kirasını ve ağ ücretini öder.
-- Pass özellikleri `passTraits(son tohum, n, arz)` ile hesaplanır; son tohum = `sha256(tohum ‖ entropi)`. Arz, mint ilk
-  açıldığında kilitlenir: `open-mint --supply` yalnızca ilk açılışta işe yarar, sonra program da CLI de reddeder.
+- `--base-uri` must end with `/` and be at most 96 bytes. The program writes `<base-uri><n>.json` into every Pass, and
+  **the base URI cannot change after the first mint**.
+- `open-mint` does not run before the collection and the seed hash are set; once the mint is over (`close-mint` or the
+  supply sold out) it cannot reopen.
+- The mint is free: the minter pays only the rent of the Core asset and of the wallet counter, plus the network fee.
+- Pass traits are computed with `passTraits(final seed, n, supply)`; final seed = `sha256(seed ‖ entropy)`. The supply
+  is locked when the mint first opens: `open-mint --supply` only works on the first opening; after that both the program
+  and the CLI refuse it.
 
-Mint'i bitirmek (`close-mint`), tohumu açıklamak (`reveal`, hedef slotu kaydeder) ve açılışı tamamlamak
-(`capture-entropy`; sunucu ve web de yapar) için:
-[OPERATIONS.md](OPERATIONS.md#pass-açılışı-reveal).
+To end the mint (`close-mint`), publish the seed (`reveal`, records the target slot) and complete the reveal
+(`capture-entropy`; the server and the web do it too): [OPERATIONS.md](OPERATIONS.md#pass-reveal).
 
 ## 12. Mainnet
 
-1. Program anahtarı ve derlemeyi (adım 2) mainnet için yapın; devnet'teki tüm akışı (bilet → oyun → cash-out → ödeme →
-   sezon) önce devnet'te tamamlayın.
-2. `solana config set --url mainnet-beta` (ya da ücretli RPC), yönetici cüzdanına aşağıdaki maliyetler kadar SOL koyun.
+1. Do the program keypair and the build (step 2) for mainnet; complete the whole flow (ticket → game → cash-out → payout →
+   season) on devnet first.
+2. `solana config set --url mainnet-beta` (or a paid RPC), and put as much SOL as the costs below into the admin wallet.
 3. `bash scripts/build-lean.sh && solana program deploy target/deploy/slana_lean.so --program-id target/deploy/slana-keypair.json` (never `anchor deploy`: it ships the Anchor reference).
-4. Adım 6–11'i mainnet RPC'si ile tekrarlayın. `SOLANA_CLUSTER=mainnet-beta`, ücretli bir `SOLANA_RPC_URL`, sırsız bir
+4. Repeat steps 6–11 with the mainnet RPC. `SOLANA_CLUSTER=mainnet-beta`, a paid `SOLANA_RPC_URL`, a secret-free
    `PUBLIC_RPC_URL`.
-5. Upgrade authority'yi ve `admin`'i multisig'e devredin (`solana program set-upgrade-authority`,
-   `pnpm admin update-config --admin <multisig>`), ya da denetimden sonra programı değiştirilemez yapın.
-6. Küçük bedellerle başlayın; `pnpm admin status` ve sunucu günlüklerini izleyin.
+5. Hand the upgrade authority and the `admin` over to a multisig (`solana program set-upgrade-authority`,
+   `pnpm admin update-config --admin <multisig>`), or make the program immutable after the audit.
+6. Start with small fees; watch `pnpm admin status` and the server logs.
 
-## 13. Mainnet maliyetleri
+## 13. Mainnet costs
 
-Kira = `(bayt + 128) × 6960` lamport (varsayılan kira: 3480 lamport/bayt-yıl × 2 yıl muafiyet). `solana rent <bayt>` bir
-RPC'ye ihtiyaç duyar; aşağıdaki değerler bu formülle hesaplandı. Hesap boyutları programdaki `INIT_SPACE` değerleridir
-(Config 507, Season 1289, Arena 74, PlayerProfile 135, Session 151, PassLock 73, MintCounter 10 bayt; SDK'daki
-`ACCOUNT_BYTES` ve bir SDK testi bunları IDL'den yeniden hesaplar).
+Rent = `(bytes + 128) × 6960` lamports (default rent: 3480 lamports per byte-year × the 2-year exemption). `solana rent
+<bytes>` needs an RPC; the values below were computed with this formula.
 
 **Program deployment.** The deployed program is `target/deploy/slana_lean.so` = **59,344 bytes**
 (`bash scripts/build-lean.sh`; the size gate `tests/size.rs` and CI fail above 71,000 bytes or ◎0.5 of rent). Rent is
@@ -311,39 +308,40 @@ is never deployed.
 
 `solana program deploy` sizes the ProgramData to the program by default (`--max-len`), so a larger later version needs
 `solana program extend` first (same rent per extra byte). To reserve room up to the size gate at once, deploy with
-`--max-len 71000`: the ProgramData then holds 71,045 bytes, 495,364,080 lamports ≈ ◎0.4954, still under ◎0.5.
+`--max-len 71000`: the ProgramData then holds 71,045 bytes, 495,364,080 lamports ≈ ◎0.4954, still under ◎0.5. The deploy
+peak is then 495,364,080 (ProgramData) + 414,182,640 (buffer) + 1,141,440 (program account) = **910,688,160 lamports
+≈ ◎0.91** + transaction fees.
 
-**Account rents (exact, `(bytes + 128) × 6960` lamports).** These sizes are the same for the lean program and the
-reference (the layout tests compare them).
+**Account rents (exact, `(bytes + 128) × 6960` lamports).** The sizes are the programs' `INIT_SPACE` values; they are the
+same for the lean program and the reference (the layout tests compare them), and the SDK's `ACCOUNT_BYTES` and an SDK
+test recompute them from the IDL.
 
 | Account | Bytes | Rent | Paid by |
 |---|---|---|---|
 | Config | 507 | 4,419,600 ≈ ◎0.0044 | admin (`init`) |
 | Season | 1289 | 9,862,320 ≈ ◎0.0099 | admin (`init`, then each `end-season`) |
 | Arena | 74 | 1,405,920 ≈ ◎0.0014 | admin (`create-arena`) |
-| Vault / token account (SPL Token) | 165 | 2,039,280 ≈ ◎0.0020 | admin (treasury, season and arena vaults) |
+| Vault / token account (SPL Token) | 165 | 2,039,280 ≈ ◎0.0020 | admin (treasury, season and arena vaults); player (own token account, stays with the player) |
 | Token account (Token-2022, with extensions, e.g.) | 170 | 2,074,080 ≈ ◎0.0021 | admin / player |
+| Core collection + Royalties plugin (one recipient) | ≈ 170 (**estimate**) | ≈ 2,074,080 ≈ ◎0.0021 | admin (`create-collection`) |
 | PlayerProfile | 135 | 1,830,480 ≈ ◎0.0018 | player (stays with the player) |
 | Session | 151 | 1,941,840 ≈ ◎0.0019 | player (returned when the ticket closes) |
 | PassLock | 73 | 1,398,960 ≈ ◎0.0014 | player (returned when the ticket closes) |
 | MintCounter | 10 | 960,480 ≈ ◎0.0010 | player (first Pass mint) |
+| Core asset (Slana Pass, e.g. with `https://slana.example/pass/`) | ≈ 127 | ≈ 1,774,800 ≈ ◎0.0018 | player (each Pass mint) |
 
-**Kurulum (yönetici öder, tek seferlik).**
+The Core collection size is an estimate: ≈ 49 + name + URI + ~69 plugin bytes, i.e. ≈ 170 bytes with `Slana Pass` and a
+42-byte URI (6960 lamports per byte; the exact amount depends on Core's account layout, so check it with
+`solana rent <bytes>` or with the account's balance after the transaction).
 
-| İşlem | Hesaplar | Kira |
-|---|---|---|
-| `init` | Config (507) + Season 1 (1289) + hazine ve sezon kasası (token hesabı, SPL'de 165 bayt) | ≈ ◎0,0143 + 2 × ◎0,0020 ≈ ◎0,018 |
-| `create-arena` (her biri) | Arena (74) + kasa (165) | 1.405.920 + 2.039.280 lamport ≈ ◎0,0034; 4 varsayılan arena ≈ ◎0,0138 |
-| `end-season` (her sezon) | yeni Season (1289) | ≈ ◎0,0099 |
-| `create-collection` | Core koleksiyonu + Royalties eklentisi (tek alıcı) | **tahmin**: ≈ 49 + ad + URI + ~69 eklenti baytı; `Slana Pass` ve 42 baytlık bir URI ile ≈ 170 bayt ≈ ◎0,0021 (bayt başına 6960 lamport; kesin tutar Core'un hesap düzenine bağlıdır, `solana rent <bayt>` ya da işlemden sonra hesabın bakiyesiyle doğrulayın) |
+**Setup (paid by the admin, one-off).** `init` = Config + Season 1 + the treasury and season vaults (SPL token accounts)
+≈ ◎0.0143 + 2 × ◎0.0020 ≈ ◎0.018. Each `create-arena` = Arena + vault = 1,405,920 + 2,039,280 lamports ≈ ◎0.0034; the 4
+default arenas ≈ ◎0.0138. Each `end-season` = a new Season ≈ ◎0.0099. `create-collection` ≈ ◎0.0021 (estimate above).
 
-Token-2022 token hesapları uzantılar nedeniyle biraz daha büyüktür (ör. 170 bayt ≈ ◎0,0021).
+**Ongoing.** Hosting the game server and a paid RPC. The server key pays the fee of the payout transactions; every ticket
+covers it with a 20,000-lamport deposit (base fee 5,000 lamports per signature + `PRIORITY_FEE_MICROLAMPORTS` × compute
+units). Keep some SOL on the key as a buffer (the server warns below ◎0.05).
 
-**Sürekli.** Oyun sunucusunun barındırması ve ücretli RPC. Sunucu anahtarı ödeme işlemlerinin ücretini öder; her bilet
-20.000 lamport depozitoyla bunu karşılar (taban ücret 5.000 lamport/imza + `PRIORITY_FEE_MICROLAMPORTS` × işlem
-birimi). Anahtarda bir miktar SOL tampon tutun (sunucu ◎0,05 altında uyarır).
-
-**Oyuncunun ödedikleri (bilgi için).** Oturum kirası 151 bayt ≈ ◎0,00194 ve Pass kilidi 73 bayt ≈ ◎0,0014 (bilet
-kapanınca geri döner); profil 135 bayt ≈ ◎0,0018 ve token hesabı ≈ ◎0,0020 (oyuncuda kalır); depozito ◎0,00002;
-Pass mint: Core varlığı (ör. `https://slana.example/pass/` ile ≈ 127 bayt ≈ ◎0,0018) + ilk mint'te sayaç (10 bayt
-≈ ◎0,00096).
+**What the player pays (for reference).** Session rent ≈ ◎0.00194 and the Pass lock ≈ ◎0.0014 (returned when the ticket
+closes); profile ≈ ◎0.0018 and token account ≈ ◎0.0020 (stay with the player); deposit ◎0.00002; Pass mint: the Core
+asset ≈ ◎0.0018 + the counter on the first mint ≈ ◎0.00096 (sizes and rents in the table above).
