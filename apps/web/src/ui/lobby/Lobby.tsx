@@ -12,6 +12,7 @@ import { TicketFlow, type FlowMode } from '../../solana/TicketFlow';
 import { payoutsNeedingAta, type TicketKey } from '../../solana/ticket';
 import { WalletButton } from '../../solana/WalletButton';
 import { goPage, openModal, updateSettings, useUi, type LobbyPage } from '../../store';
+import { DocsPage } from '../docs/DocsPage';
 import { Leaderboards } from '../news/Leaderboards';
 import { PassPage } from '../pass/PassPage';
 import { ProfilePage } from '../profile/ProfilePage';
@@ -218,6 +219,7 @@ export function Lobby() {
           </motion.main>
         )}
         </AnimatePresence>
+        <Colophon onDocs={() => setTab('docs')} />
       </div>
 
       {!mid && (
@@ -240,17 +242,19 @@ function SectionPage({ page }: { page: LobbyPage }) {
   if (page === 'ranks') return <Leaderboards />;
   if (page === 'pass') return <PassPage />;
   if (page === 'profile') return <ProfilePage />;
+  if (page === 'docs') return <DocsPage />;
   return null;
 }
 
-const SECTIONS: { id: LobbyPage; key: 'lo.tickets' | 'lo.tab.ranks' | 'lo.tab.pass' | 'lo.tab.profile'; icon: IconName }[] = [
+const SECTIONS: { id: LobbyPage; key: 'lo.tickets' | 'lo.tab.ranks' | 'lo.tab.pass' | 'lo.tab.profile' | 'lo.tab.docs'; icon: IconName }[] = [
   { id: 'play', key: 'lo.tickets', icon: 'ticket' },
   { id: 'ranks', key: 'lo.tab.ranks', icon: 'trophy' },
   { id: 'pass', key: 'lo.tab.pass', icon: 'passport' },
   { id: 'profile', key: 'lo.tab.profile', icon: 'user' },
+  { id: 'docs', key: 'lo.tab.docs', icon: 'docs' },
 ];
 
-/** Desktop section index under the dateline: the newspaper's pages, A to D. */
+/** Desktop section index under the dateline: the newspaper's pages, A to E. */
 function SectionNav({ page, onChange }: { page: LobbyPage; onChange: (p: LobbyPage) => void }) {
   const t = useT();
   const spring = springs.dial;
@@ -282,6 +286,32 @@ function PhoneTabs({ tab, setTab }: { tab: LobbyPage; setTab: (t: LobbyPage) => 
     { id: 'profile', label: t('lo.tab.profile'), icon: 'user' },
   ];
   return <Tabs variant="nav" items={items} value={tab} onChange={setTab} label={t('lo.nav')} className="kl-tabs" />;
+}
+
+/** The page footer: the paper's colophon with the link to the player guide (also at `/docs`). */
+function Colophon({ onDocs }: { onDocs: () => void }) {
+  const t = useT();
+  return (
+    <footer className="kl-colophon">
+      <Rule variant="double" />
+      <div className="kl-colophon__row">
+        <span className="kl-colophon__name mono">{t('lo.colophon')}</span>
+        <a
+          className="kl-colophon__link"
+          href="/docs"
+          onClick={(e) => {
+            if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+            e.preventDefault();
+            onDocs();
+          }}
+        >
+          <Icon name="docs" size={20} />
+          <span className="kl-colophon__label">{t('lo.colophon.docs')}</span>
+          <span className="kl-colophon__sub mono">{t('lo.colophon.docsSub')}</span>
+        </a>
+      </div>
+    </footer>
+  );
 }
 
 /** The newspaper deck under the photo. */
