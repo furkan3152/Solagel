@@ -167,6 +167,8 @@ reel (`out/videos/` is gitignored). It starts the fake-chain stack by itself and
 already run, add `--url http://localhost:5173/`. Needs ffmpeg on the PATH (`FFMPEG=<binary>` overrides) and Chromium:
 Playwright's own (`pnpm -F @slana/web exec playwright install chromium`) or `CHROME_PATH=<binary>`. A full run takes a
 few minutes; `pnpm demo:record --quick` records a shorter clip (lobby, wallet, ticket, arena) as `slana-quick.mp4`.
+The videos carry the game's sound (effects and music, captured from the dev build's master bus); the announcer speaks
+through the OS speech engine and is not in the recording. `--no-audio` records silent videos.
 
 ## Running with the chain
 
