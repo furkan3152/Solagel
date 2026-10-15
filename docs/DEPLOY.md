@@ -59,7 +59,7 @@ Two crates build from this repository. Only one of them is deployed:
 
 | Crate | Output | Role |
 |---|---|---|
-| `programs/slana-lean` (Pinocchio, `no_std`) | `target/deploy/slana_lean.so`, 59,344 bytes, at most 71,000 (size gate) | **the deployed program** |
+| `programs/slana-lean` (Pinocchio, `no_std`) | `target/deploy/slana_lean.so`, 59,896 bytes, at most 71,000 (size gate) | **the deployed program** |
 | `programs/slana-ref` (Anchor 1.2.1) | `target/deploy/slana.so` (~679 KB) and the IDL | never deployed: it is the source of the IDL and TS types, and the conformance oracle in the tests |
 
 Both use the same program id. The `declare_id!` in the repo is a development address. **Generate your own program
@@ -249,7 +249,8 @@ chain (practice only).
 | `ARENA_BOT_TARGET` / `ARENA_BOT_MIN` / `ARENA_BOT_MAX` | `24` / `2` / `16` | arena bots (worth 0) |
 | `PRIVATE_BOT_TARGET` | `8` | |
 | `PASS_START_MASS_MUL` | `1.15` | Pass power: start mass multiplier (at least 1; `1` = off) |
-| `PASS_CASHOUT_MS` | `2000` | cash-out time on a Pass ticket (normal time 3000; `3000` = no advantage) |
+| `ROUND_SECONDS` | `300` | length of a paid-arena round; rounds are aligned to Unix time, so every arena and instance ends at the same moment. Production keeps the default; shorten it only for demos and tests (`90` for a demo, `30` in the localnet e2e). At least 2 |
+| `ROUND_JOIN_CLOSE_SECONDS` | `60` | new joins are refused this long before the bell (`round_closed`; a bought ticket is held until the next round). Capped at half a round (localnet e2e: `5`) |
 | `MAX_CONNECTIONS` / `MAX_CONNECTIONS_PER_IP` | `600` / `8` | |
 | `SOLANA_CLUSTER` | `localnet` | `localnet`, `devnet` or `mainnet-beta` |
 | `SOLANA_RPC_URL` | empty | the server's RPC (may contain an API key; a paid RPC is recommended on mainnet) |
@@ -266,7 +267,11 @@ chain (practice only).
 | `DEV_FAKE_CHAIN` | empty | **development only**: needs `NODE_ENV=development`, refuses to start while `PROGRAM_ID`/`SERVER_KEYPAIR` is set |
 | `DEV_FAKE_PASS` | `mint` | with `DEV_FAKE_CHAIN` only: `mint` (open, unrevealed mint; `POST /api/dev/pass/reveal` reveals) or `revealed` (every wallet has a revealed Pass) |
 
-The server key pays the fee of the payout transactions; every ticket pays it back with the `settle_fee_lamports`
+`PASS_CASHOUT_MS` is no longer used: paid arenas have no cash-out. The server still reads it, so an old env file works,
+but it changes nothing in arenas and it is not shown to players.
+
+The server key pays the fee of the payout transactions and of the round-end `sweep_loot` transactions (one per arena
+round that left floor loot); every ticket pays back the payouts with the `settle_fee_lamports`
 deposit. The server **never** pays the rent of players' token accounts: the game of a player without an account (or
 whose account refuses the payout) is still settled at once, the payout stays in the vault as `owed`, and the lobby shows
 a "Collect payout" call (R24; the player opens the account themselves, with no waiting time). The server logs a warning
@@ -313,7 +318,7 @@ To end the mint (`close-mint`), publish the seed (`reveal`, records the target s
 
 ## 12. Mainnet
 
-1. Do the program keypair and the build (step 2) for mainnet; complete the whole flow (ticket → game → cash-out → payout →
+1. Do the program keypair and the build (step 2) for mainnet; complete the whole flow (ticket → game → round bell → payout →
    season) on devnet first.
 2. `solana config set --url mainnet-beta` (or a paid RPC), and put as much SOL as the costs below into the admin wallet.
 3. `bash scripts/build-lean.sh && scripts/deploy-lean.sh mainnet-beta target/deploy/slana-keypair.json --keypair keys/deployer.json`
@@ -331,25 +336,25 @@ To end the mint (`close-mint`), publish the seed (`reveal`, records the target s
 Rent = `(bytes + 128) × 6960` lamports (default rent: 3480 lamports per byte-year × the 2-year exemption). `solana rent
 <bytes>` needs an RPC; the values below were computed with this formula.
 
-**Program deployment.** The deployed program is `target/deploy/slana_lean.so` = **59,344 bytes**
+**Program deployment.** The deployed program is `target/deploy/slana_lean.so` = **59,896 bytes**
 (`bash scripts/build-lean.sh`; the size gate `tests/size.rs` and CI fail above 71,000 bytes or ◎0.5 of rent). Rent is
 `(len + 45 + 128) × 6960` lamports for the ProgramData.
 
 | Account | Bytes | Rent |
 |---|---|---|
-| ProgramData (`.so` + 45) | 59,389 | (59,344 + 45 + 128) × 6960 = **414,238,320 lamports ≈ ◎0.4142** (locked while the program exists; recovered with `solana program close`) |
+| ProgramData (`.so` + 45) | 59,941 | (59,896 + 45 + 128) × 6960 = **418,080,240 lamports ≈ ◎0.4181** (locked while the program exists; recovered with `solana program close`) |
 | Program account | 36 | 1,141,440 lamports ≈ ◎0.0011 (locked) |
-| Deploy buffer (`.so` + 37, temporary) | 59,381 | 414,182,640 lamports ≈ ◎0.4142 (returned to the payer when the deploy finishes) |
+| Deploy buffer (`.so` + 37, temporary) | 59,933 | 418,024,560 lamports ≈ ◎0.4180 (returned to the payer when the deploy finishes) |
 
-So the wallet needs about **◎0.83 + transaction fees** during the deploy (◎0.8296 of rent), and **◎0.4154** stays
-locked in the program afterwards. The localnet e2e reads the same ProgramData balance (◎0.41423832) from the validator.
+So the wallet needs about **◎0.84 + transaction fees** during the deploy (◎0.8372 of rent), and **◎0.4192** stays
+locked in the program afterwards. The localnet e2e reads the same ProgramData balance (◎0.41808024) from the validator.
 For comparison, the Anchor reference (679,256 bytes) would lock ◎4.73 and need ◎9.46 during a deploy: this is why it
 is never deployed.
 
 `solana program deploy` sizes the ProgramData to the program by default (`--max-len`), so a larger later version needs
 `solana program extend` first (same rent per extra byte). To reserve room up to the size gate at once, deploy with
 `--max-len 71000`: the ProgramData then holds 71,045 bytes, 495,364,080 lamports ≈ ◎0.4954, still under ◎0.5. The deploy
-peak is then 495,364,080 (ProgramData) + 414,182,640 (buffer) + 1,141,440 (program account) = **910,688,160 lamports
+peak is then 495,364,080 (ProgramData) + 418,024,560 (buffer) + 1,141,440 (program account) = **914,530,080 lamports
 ≈ ◎0.91** + transaction fees.
 
 **Account rents (exact, `(bytes + 128) × 6960` lamports).** The sizes are the programs' `INIT_SPACE` values; they are the

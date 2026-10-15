@@ -33,7 +33,7 @@ export const SERVER = {
   promoteKills: 8,
   /** …for `PROMOTION_MS` (24 h). */
   promotionHours: 24,
-  /** `MAX_STAKE_SESSION_AGE_S` (rooms/room.ts): arena players are cashed out automatically after 6 h. */
+  /** `MAX_STAKE_SESSION_AGE_S` (rooms/room.ts): a safety cap; rounds end every 5 minutes, so tickets close far sooner. */
   maxTicketHours: 6,
   /** `STALE_SESSION_AFTER_S` (chain/solana.ts): a ticket nobody plays is settled at its entry fee after 15 min. */
   staleTicketMinutes: 15,
@@ -41,7 +41,7 @@ export const SERVER = {
   privateCodeLength: 5,
 } as const;
 
-/** The worked fee example of the guide: a 1,000-token ticket cashed out at 2,000 tokens. */
+/** The worked fee example of the guide: a 1,000-token ticket paid out at 2,000 tokens at the bell. */
 export const EXAMPLE = { entry: 1000, cashout: 2000 } as const;
 
 export interface DocsFacts {
@@ -51,8 +51,8 @@ export interface DocsFacts {
   arenas: { id: number; name: string; entry: number; pass: boolean; maxSessions: number }[];
   capacity: { practice: number; private: number; arena: number };
   rules: {
-    cashoutS: number;
-    passCashoutS: number;
+    roundMin: number;
+    joinCloseS: number;
     passStartPct: number;
     afkS: number;
     spawnShieldS: number;
@@ -80,8 +80,8 @@ export const FACTS: DocsFacts = {
   arenas: DEFAULT_ARENAS.map((a) => ({ id: a.id, name: arenaMeta(a.id).name, entry: a.entryTokens, pass: a.requiresPass, maxSessions: a.maxSessions })),
   capacity: { practice: CAPACITY.practice, private: CAPACITY.private, arena: CAPACITY.arena },
   rules: {
-    cashoutS: RULES.cashoutMs / 1000,
-    passCashoutS: RULES.passCashoutMs / 1000,
+    roundMin: RULES.roundMs / 60_000,
+    joinCloseS: RULES.roundJoinCloseMs / 1000,
     passStartPct: Math.round((RULES.passStartMassMul - 1) * 100),
     afkS: RULES.afkGraceMs / 1000,
     spawnShieldS: RULES.spawnShieldMs / 1000,
@@ -176,5 +176,5 @@ export interface DocsContent {
  */
 export function rulesWith(power: PassPower | null | undefined): DocsFacts['rules'] {
   if (!power) return FACTS.rules;
-  return { ...FACTS.rules, passCashoutS: power.cashoutMs / 1000, passStartPct: Math.round((power.startMassMul - 1) * 100) };
+  return { ...FACTS.rules, passStartPct: Math.round((power.startMassMul - 1) * 100) };
 }

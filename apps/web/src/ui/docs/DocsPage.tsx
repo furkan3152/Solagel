@@ -68,7 +68,7 @@ export function DocsPage() {
               </header>
               <div className="dc-sec__body">
                 {s.blocks.map((b, j) => (
-                  <Block key={j} block={b} c={c} live={s.id === 'cashout' ? live : null} />
+                  <Block key={j} block={b} c={c} live={s.id === 'payout' ? live : null} />
                 ))}
               </div>
             </section>

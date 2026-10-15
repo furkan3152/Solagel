@@ -42,10 +42,10 @@ const scrollTo = (sel) => async (page) => {
 for (const theme of ['light', 'dark']) {
   const t = theme === 'light' ? 'paper' : 'night';
   await shoot({ name: `desk-${t}-top`, theme, mobile: false });
-  await shoot({ name: `desk-${t}-cashout`, theme, mobile: false, after: scrollTo('#docs-cashout') });
+  await shoot({ name: `desk-${t}-payout`, theme, mobile: false, after: scrollTo('#docs-payout') });
   await shoot({ name: `desk-${t}-pass`, theme, mobile: false, after: scrollTo('#docs-pass') });
   await shoot({ name: `phone-${t}-top`, theme, mobile: true });
-  await shoot({ name: `phone-${t}-cashout`, theme, mobile: true, after: scrollTo('#docs-cashout .dc-fee') });
+  await shoot({ name: `phone-${t}-payout`, theme, mobile: true, after: scrollTo('#docs-payout .dc-fee') });
 }
 // more sections (paper) and the lobby links
 await shoot({ name: 'desk-paper-value', theme: 'light', mobile: false, after: scrollTo('#docs-value') });

@@ -527,7 +527,7 @@ function Perks() {
     t('lo.perk.rooms'),
     t('lo.perk.fee', { base: bpsPercent(feeBps(config, false)), pass: bpsPercent(feeBps(config, true)) }),
     t('lo.perk.season'),
-    t('lo.perk.power', { start: power.startPct, s: power.cashoutS }),
+    t('lo.perk.power', { start: power.startPct }),
     t('lo.perk.look'),
   ];
   return (

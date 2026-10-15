@@ -24,17 +24,17 @@ export const docsEn = (symbol: string = sym, power: PassPower | null = null): Do
   deck: `How Slana plays, where your money goes, what the Pass gives you and what lives on-chain: short and plain. Numbers are the defaults in the game's code; the admin can change some of them. The amounts on the ticket confirmation are the ones that count.`,
   dateline: [
     `Fee ${pct(F.fee.bps)} · Pass ${pct(F.fee.passBps)}`,
-    `Cash-out ${R.cashoutS} s · Pass ${R.passCashoutS} s`,
+    `Rounds ${R.roundMin} min · joins close ${R.joinCloseS} s before the bell`,
     `${F.capacity.arena} players per room`,
     `Top ${F.season.prizeRanks} win prizes`,
   ],
   tocLabel: 'Contents',
   receipt: {
-    title: 'Cash-out',
-    titlePass: 'Cash-out · Pass',
+    title: 'Round over',
+    titlePass: 'Round over · Pass',
     meta: 'Example · default settings',
     entry: 'Entry fee',
-    cashout: 'Cash-out value',
+    cashout: 'Value at the bell',
     profit: 'Profit',
     fee: (p) => `Fee (${p} of profit)`,
     net: 'To your wallet',
@@ -42,7 +42,7 @@ export const docsEn = (symbol: string = sym, power: PassPower | null = null): Do
     treasury: 'Treasury',
     season: 'Season pool',
     burn: 'Burned',
-    caption: `A ${num(F.example.entry)} ${symbol} ticket cashed out at ${num(F.example.cashout)} ${symbol}`,
+    caption: `A ${num(F.example.entry)} ${symbol} ticket paid out at ${num(F.example.cashout)} ${symbol}`,
   },
   perkWhere: { chain: 'On-chain', server: 'Server' },
   rank: (n) => `#${n}`,
@@ -66,7 +66,6 @@ export const docsEn = (symbol: string = sym, power: PassPower | null = null): Do
             { key: 'Mouse', action: 'Move (joystick on phones)' },
             { key: 'Space', action: 'Split: launch a half at runners' },
             { key: 'W', action: 'Tip out a little mass (hold to repeat)' },
-            { key: 'C', action: 'Cash out (ticket rooms)' },
             { key: 'Enter', action: 'Chat' },
             { key: '1–8', action: 'Stickers (emotes)' },
             { key: 'Q', action: 'Next player while spectating' },
@@ -101,7 +100,7 @@ export const docsEn = (symbol: string = sym, power: PassPower | null = null): Do
             },
             {
               term: 'Arenas',
-              text: `are accounts on-chain. Your entry fee goes into the arena's vault, an account of the program that nobody holds a private key for. Arenas are open 24/7; bots play while they are empty. A room instance holds up to ${F.capacity.arena} real players; when it is full, a new instance opens on the same vault.`,
+              text: `are accounts on-chain. Your entry fee goes into the arena's vault, an account of the program that nobody holds a private key for. Arenas are open 24/7 and play in rounds (see Rounds and payout); bots play while they are empty. A room instance holds up to ${F.capacity.arena} real players; when it is full, a new instance opens on the same vault.`,
             },
             { term: 'One ticket:', text: 'You can hold one open ticket per arena at a time. Each arena also caps how many tickets are open at once.' },
           ],
@@ -134,7 +133,7 @@ export const docsEn = (symbol: string = sym, power: PassPower | null = null): Do
           steps: [
             { title: 'Entry', text: 'Your value starts at the entry fee.' },
             { title: 'Eating', text: "An eaten cell moves its share of the victim's value to the eater: ⌊V · m / M⌋. The last cell moves everything left." },
-            { title: 'Cash-out', text: 'Your value, minus the fee on profit, goes to your wallet.' },
+            { title: 'The bell', text: 'When the round ends, your value, minus the fee on profit, goes to your wallet.' },
           ],
         },
         {
@@ -147,9 +146,9 @@ export const docsEn = (symbol: string = sym, power: PassPower | null = null): Do
             },
             { term: 'Loot', text: 'never despawns. Only real players can pick it up; bots pass through it.' },
             { term: 'Mass is not value.', text: 'Tipping mass (W), cactus pops and mass decay do not change your value; value only changes hands by eating.' },
-            { term: 'If you disconnect,', text: `your coin stays in the arena for ${R.afkS} s. Come back and you carry on; otherwise you are cashed out automatically.` },
+            { term: 'If you disconnect,', text: `your coin stays in the arena (it can still be eaten) and you carry on if you come back. If you are still alive at the bell, you are paid as usual.` },
             { term: 'If you die,', text: 'your value goes to the player who ate you, or to loot if a bot did. The ticket closes and its account rent comes back to you.' },
-            { term: 'Time limit:', text: `A ticket plays for at most ${S.maxTicketHours} hours; then the server cashes you out automatically.` },
+            { term: 'No early exit:', text: 'There is no cash-out in an arena. Your till is paid only when the round ends; a ticket never outlives its round.' },
           ],
         },
         {
@@ -157,22 +156,26 @@ export const docsEn = (symbol: string = sym, power: PassPower | null = null): Do
           tone: 'info',
           stamp: 'Vault',
           title: 'A payout never exceeds the vault',
-          text: "Every value in play (live coins, loot on the floor, payouts waiting to be sent) is backed by the tokens in the arena's vault. The program never pays out more than the vault holds. The server writes live values and loot to disk on every change; if it crashes, open tickets are cashed out automatically.",
+          text: "Every value in play (live coins, loot on the floor, payouts waiting to be sent) is backed by the tokens in the arena's vault. The program never pays out more than the vault holds. The server writes live values and loot to disk on every change; if it crashes, open tickets are settled automatically at their last saved value. Loot still on the floor at the bell moves from the arena vault to the season pool.",
         },
       ],
     },
     {
-      id: 'cashout',
-      title: 'Cash-out and fees',
-      lede: `Press C (the cash-out button on phones), survive ${R.cashoutS} s, get your receipt.`,
+      id: 'payout',
+      title: 'Rounds, payout and fees',
+      lede: `Arenas play ${R.roundMin}-minute rounds. Stay alive until the bell and you are paid your value.`,
       blocks: [
         {
           kind: 'p',
-          text: `A cash-out takes ${R.cashoutS} s, ${R.passCashoutS} s on a Pass ticket. If one of your cells is eaten meanwhile, the cash-out is cancelled; if you are eaten completely, you lose your value. When it completes the server sends the payout on-chain and the receipt shows the transaction link.`,
+          text: `Rounds follow the clock: a new one starts every ${R.roundMin} minutes, at the same moment in every arena. There is no cash-out in an arena and no way to leave early with money. When the bell rings, everyone still alive is paid their current value, the server sends the payout on-chain and the "Round over" receipt shows the transaction link. If you are eaten completely, you lose your value; whoever ate you keeps it.`,
         },
         {
           kind: 'p',
-          text: `The fee is charged on profit only: profit = cash-out value − entry fee. At a loss or break-even there is no fee. The default rate is ${pct(F.fee.bps)}, ${pct(F.fee.passBps)} on a Pass ticket; the program caps it at ${pct(F.fee.maxBps)}. The rate is written into your ticket when you buy it, and the cash-out uses that rate even if the admin changes the setting meanwhile.`,
+          text: `You can join a running round at the same entry fee, and if you were eaten you may buy a new ticket and re-enter the same round. Joins close ${R.joinCloseS} s before the bell. A ticket bought in that window is not lost: the lobby holds it and the game joins automatically when the next round opens. Loot still on the floor at the bell goes to the season prize pool.`,
+        },
+        {
+          kind: 'p',
+          text: `The fee is charged on profit only: profit = value at the bell − entry fee. At a loss or break-even there is no fee. The default rate is ${pct(F.fee.bps)}, ${pct(F.fee.passBps)} on a Pass ticket; the program caps it at ${pct(F.fee.maxBps)}. The rate is written into your ticket when you buy it, and the payout uses that rate even if the admin changes the setting meanwhile.`,
         },
         { kind: 'fee-example' },
         {
@@ -211,8 +214,8 @@ export const docsEn = (symbol: string = sym, power: PassPower | null = null): Do
             { title: `${pct(F.fee.passBps)} fee`, text: `A Pass ticket pays ${pct(F.fee.passBps)} of profit (${pct(F.fee.bps)} without).`, where: 'chain' },
             { title: 'Season points and prizes', text: 'Season points come only from Pass tickets, so only Pass players reach the prize table.', where: 'chain' },
             {
-              title: `+${pct(R.passStartPct * 100)} start, ${R.passCashoutS} s cash-out`,
-              text: `With a Pass ticket in an arena (and wearing a Pass in practice) you start with +${pct(R.passStartPct * 100)} mass and cash out in ${R.passCashoutS} s (normally ${R.cashoutS} s).`,
+              title: `+${pct(R.passStartPct * 100)} start mass`,
+              text: `With a Pass ticket in an arena (and wearing a Pass in practice) you start with +${pct(R.passStartPct * 100)} mass.`,
               where: 'server',
             },
             { title: 'Coin look', text: "Your Pass's risograph coin becomes your look in the game; the server verifies you own it.", where: 'server' },
@@ -223,7 +226,7 @@ export const docsEn = (symbol: string = sym, power: PassPower | null = null): Do
           tone: 'warn',
           stamp: 'Disclosure',
           title: 'The Pass gives in-game power',
-          text: `A Pass ticket starts with +${pct(R.passStartPct * 100)} mass and cashes out in ${R.passCashoutS} s (normally ${R.cashoutS} s). That is a real edge over players without a Pass in the same room. The mint is free, but Passes trade for money on marketplaces, so the edge can be bought: it is close to pay-to-win. The ticket confirmation lists these perks on its Pass line. The values are server settings; the admin can change or switch them off.`,
+          text: `A Pass ticket starts with +${pct(R.passStartPct * 100)} mass. That is a real edge over players without a Pass in the same room. The mint is free, but Passes trade for money on marketplaces, so the edge can be bought: it is close to pay-to-win. The ticket confirmation lists these perks on its Pass line. The values are server settings; the admin can change or switch them off.`,
         },
         {
           kind: 'list',
@@ -231,7 +234,7 @@ export const docsEn = (symbol: string = sym, power: PassPower | null = null): Do
             { term: 'Opt-in:', text: 'Using your Pass in an arena that does not require one is your choice. Pick "Enter with my Pass" on the ticket confirmation and the perks apply to that ticket.' },
             {
               term: 'Lock:',
-              text: 'A Pass backs one ticket at a time. The lock lifts when the ticket closes (cash-out, death or refund) and its rent comes back to you. Even if you transfer the Pass mid-game, the new owner cannot use it until the lock lifts.',
+              text: 'A Pass backs one ticket at a time. The lock lifts when the ticket closes (round end, death or refund) and its rent comes back to you. Even if you transfer the Pass mid-game, the new owner cannot use it until the lock lifts.',
             },
             { term: 'Fixed at purchase:', text: 'The Pass and the fee rate (Pass or normal) are written on-chain when you buy the ticket; a later fee change, or buying or selling a Pass, does not change an open ticket.' },
           ],
@@ -275,10 +278,10 @@ export const docsEn = (symbol: string = sym, power: PassPower | null = null): Do
           items: [
             {
               term: 'Points',
-              text: `come only from arena games played with a Pass ticket, whether you cash out or die. A game scores the highest mass you reached (capped at ${num(F.season.maxScore)} per game), added up over the season.`,
+              text: `come only from arena games played with a Pass ticket, whether you are paid at the bell or die. A game scores the highest mass you reached (capped at ${num(F.season.maxScore)} per game), added up over the season.`,
             },
             { term: 'The table', text: `lives on-chain and shows the top ${F.season.boardSize}; the top ${F.season.prizeRanks} win prizes.` },
-            { term: 'The pool', text: `fills from the season share of player fees (default ${pct(sBps)}) and from leftovers of closed arenas. The team does not fund it.` },
+            { term: 'The pool', text: `fills from the season share of player fees (default ${pct(sBps)}), from floor loot swept at the end of every round and from leftovers of closed arenas. The team does not fund it.` },
             { term: 'The end:', text: 'A season has no fixed end time on-chain. The admin ends it; the pool is frozen at that moment and the next season starts.' },
             {
               term: 'Claiming:',
@@ -311,7 +314,7 @@ export const docsEn = (symbol: string = sym, power: PassPower | null = null): Do
           right: {
             title: 'On the server: you trust it',
             items: [
-              'Physics and the outcome: who ate whom, what you were worth at cash-out. The server signs the payout amount.',
+              'Physics and the outcome: who ate whom, what you were worth at the bell. The server signs the payout amount.',
               'Score, XP and kill counts (season points come from them).',
               'Bots, matchmaking and leagues.',
               'Pass power and checking the Pass you wear.',
@@ -321,7 +324,7 @@ export const docsEn = (symbol: string = sym, power: PassPower | null = null): Do
         },
         {
           kind: 'p',
-          text: "The server key can only close open tickets: it pays from an arena's vault and cannot touch the treasury, the season vault or the settings. A buggy or malicious server could still split an arena's vault wrongly between players. This hybrid model, standard for real-time games, requires trusting the server.",
+          text: "The server key can only close open tickets and sweep floor loot: it pays from an arena's vault, moves round-end loot from the vault to the season pool (never more than the vault holds) and cannot touch the treasury or the settings. A buggy or malicious server could still split an arena's vault wrongly between players. This hybrid model, standard for real-time games, requires trusting the server.",
         },
         {
           kind: 'p',
@@ -368,7 +371,8 @@ export const docsEn = (symbol: string = sym, power: PassPower | null = null): Do
               a: 'On a decentralized exchange. Check the correct mint address only through official channels; the program accepts the single mint recorded once at setup.',
             },
             { q: 'Do I earn tokens by eating bots?', a: 'No. Bots are always worth 0; you only gain mass.' },
-            { q: 'I lost my connection or closed the tab.', a: `Your coin stays in the arena for ${R.afkS} s. Come back in time and you carry on; otherwise you are cashed out automatically.` },
+            { q: 'I lost my connection or closed the tab.', a: `Your coin stays in the arena and can still be eaten. Come back and you carry on; if it is still alive at the bell, you are paid as usual.` },
+            { q: 'Can I cash out early?', a: `No. Arenas have no cash-out: you are paid your value when the ${R.roundMin}-minute round ends.` },
             { q: 'I bought a ticket but never played.', a: `The server closes it at its entry fee after about ${S.staleTicketMinutes} minutes. If it does not, refund it yourself after ${F.refundHours} hours.` },
             {
               q: 'My payout has not arrived.',
