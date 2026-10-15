@@ -12,6 +12,8 @@ members = ["programs/slana-ref"]
 resolution = true
 skip-lint = false
 
+# The ids below exist only so `anchor build`/`anchor keys` work for the reference.
+# NEVER run `anchor deploy` or `anchor test`: they would deploy the reference, not slana_lean.so.
 [programs.localnet]
 slana = "5skf5Twyqr8M84dJ8RLGfz1NU6fR3zPDRLUvGd5y7472"
 

@@ -264,7 +264,7 @@ Mint'i bitirmek (`close-mint`), tohumu açıklamak (`reveal`, hedef slotu kayded
 1. Program anahtarı ve derlemeyi (adım 2) mainnet için yapın; devnet'teki tüm akışı (bilet → oyun → cash-out → ödeme →
    sezon) önce devnet'te tamamlayın.
 2. `solana config set --url mainnet-beta` (ya da ücretli RPC), yönetici cüzdanına aşağıdaki maliyetler kadar SOL koyun.
-3. `anchor deploy --provider.cluster mainnet` (ya da `solana program deploy ...`).
+3. `bash scripts/build-lean.sh && solana program deploy target/deploy/slana_lean.so --program-id target/deploy/slana-keypair.json` (never `anchor deploy`: it ships the Anchor reference).
 4. Adım 6–11'i mainnet RPC'si ile tekrarlayın. `SOLANA_CLUSTER=mainnet-beta`, ücretli bir `SOLANA_RPC_URL`, sırsız bir
    `PUBLIC_RPC_URL`.
 5. Upgrade authority'yi ve `admin`'i multisig'e devredin (`solana program set-upgrade-authority`,
