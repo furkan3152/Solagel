@@ -121,6 +121,21 @@ describe('DEV_FAKE_CHAIN', () => {
     createdAt: Date.now(),
   });
 
+  it('a loot sweep adds its amount to the running season pool', async () => {
+    const journal = new Journal(null);
+    const chain = new DevFakeChain(journal, () => {}, 10);
+    const pool = (await chain.season())!.prizePool;
+    expect(chain.seasonPool).toBe(pool);
+    journal.enqueue({ kind: 'sweep', key: 'sweep:arena-1-1:7', arenaId: 1, roomId: 'arena-1-1', round: 7, amount: 4_321_000, attempts: 0, nextAttemptAt: 0, createdAt: Date.now() });
+    chain.kick();
+    chain.kick();
+    await sleep(60);
+    expect(journal.pending).toHaveLength(0);
+    expect((await chain.season())!.prizePool).toBe(pool + 4_321_000);
+    expect(chain.seasonPool).toBe(pool + 4_321_000);
+    await chain.stop();
+  });
+
   it('serves a sample season with a finalized previous season for the leaderboard', async () => {
     const chain = new DevFakeChain(new Journal(null), () => {});
     const season = await chain.season();

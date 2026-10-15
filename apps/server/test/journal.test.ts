@@ -76,7 +76,7 @@ describe('journal v2', () => {
     const logs: string[] = [];
     const j = new Journal(path, (m) => logs.push(m));
     expect(logs.some((l) => /unreadable/.test(l))).toBe(false);
-    expect(j.pending.map((p) => [p.key, p.payout])).toEqual([['s-old', 150]]);
+    expect(j.settlements().map((p) => [p.key, p.payout])).toEqual([['s-old', 150]]);
     expect(j.live()).toEqual([{ ...v1.live[0], hasPass: false }]);
     expect(j.recoverLoot(1)).toEqual([]);
     // the next write upgrades the file

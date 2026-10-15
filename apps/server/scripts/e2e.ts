@@ -4,20 +4,24 @@
  *
  *   scripts/localnet.sh        # validator + Slana + Metaplex Core + test mint + config + Pass mint + arenas
  *   cd apps/server && env $(cat ../../.localnet/server.env | xargs) \
- *     STALE_SESSION_AFTER_S=5 ARENA_BOT_TARGET=0 ARENA_BOT_MIN=0 ARENA_BOT_MAX=0 \
+ *     STALE_SESSION_AFTER_S=5 ROUND_SECONDS=30 ROUND_JOIN_CLOSE_SECONDS=5 \
+ *     ARENA_BOT_TARGET=0 ARENA_BOT_MIN=0 ARENA_BOT_MAX=0 \
  *     npx tsx src/index.ts
  *   pnpm -F @slana/server e2e [ws://127.0.0.1:8787/ws]
  *
  * What it proves, in order:
  *  1. fresh wallets get SOL (airdrop) and $SLANA (from the admin);
  *  2. two of them mint a Slana Pass with the web's mint transaction (Core asset + counter);
- *  3. both sign in over the WebSocket, buy a Pass ticket for the Pass-only arena with the web's
- *     ticket transaction (ATA idempotent + register_player + join_arena_with_pass) and join it;
+ *  3. at the start of a fresh round (timed rounds, `ROUND_SECONDS`), both sign in over the
+ *     WebSocket, buy a Pass ticket for the Pass-only arena with the web's ticket transaction
+ *     (ATA idempotent + register_player + join_arena_with_pass) and join it;
  *  4. the admin raises the Pass fee: the open sessions keep the fee they were sold with;
  *  5. the hunter eats the prey in the game and collects its value; the prey's death settles
- *     (payout 0), the hunter cashes out and the server settles: fee = 2 % of the profit, its burn
+ *     (payout 0); cash-out is refused (paid arenas play rounds); at the round end the hunter is
+ *     paid its value (`roundOver`) and the server settles: fee = 2 % of the profit, its burn
  *     share leaves the token supply, treasury and season vaults get theirs, the season
- *     leaderboard lists the hunter;
+ *     leaderboard lists the hunter. With no bots no loot is left on the floor, so no
+ *     `sweep_loot` runs here (the server tests cover the sweep worker);
  *  6. the Pass reveal: close-mint → reveal_pass (admin seed) → the server's own
  *     capture_pass_entropy after the target slot → final seed = sha256(seed || entropy) and
  *     `/pass/<n>.json` carries the traits `passTraits(finalSeed, n, supply)`;
@@ -31,6 +35,8 @@
  *     account sizes the web quotes against the real accounts.
  *
  * Needs a FRESH localnet: the Pass mint ends for good in step 6 and the season ends in step 8.
+ * The game server must run short rounds (ROUND_SECONDS=30, joins closed only in the last 5 s):
+ * the run waits for a fresh round before the tickets and for its end to settle the hunter.
  * Env: SOLANA_RPC_URL (default http://127.0.0.1:8899), PROGRAM_ID (default: SDK IDL address),
  *      ADMIN_KEYPAIR (default ~/.config/solana/id.json), PASS_SEED_FILE (default .localnet/pass-seed.json),
  *      PASS_ARENA_ID (default 3), PLAIN_ARENA_ID (default 1).
@@ -407,7 +413,8 @@ async function main(): Promise<void> {
     ok(`Slana Pass #${number} → ${short(who.publicKey.toBase58())} · minted ${config.passMinted}/${config.passSupply} · ${sig.slice(0, 16)}…`);
   }
 
-  /* 3. sign in, buy a Pass ticket, join the arena */
+  /* 3. a fresh round; sign in, buy a Pass ticket, join the arena */
+  const roundMs = await waitForFreshRound();
   const sockets = new Map<string, GameSocket>();
   const sessions = new Map<string, SessionView>();
   try {
@@ -475,7 +482,7 @@ async function main(): Promise<void> {
     assert(config.passFeeBps === snapshotBps + 100, 'fee update did not land');
     ok(`config Pass fee ${config.passFeeBps} bps; the open sessions keep ${snapshotBps} bps`);
 
-    /* 5. the hunter eats the prey, then cashes out */
+    /* 5. the hunter eats the prey, then is paid at the round end */
     const hws = sockets.get(hunter.publicKey.toBase58())!;
     const pws = sockets.get(prey.publicKey.toBase58())!;
     const hSession = sessions.get(hunter.publicKey.toBase58())!;
@@ -497,7 +504,13 @@ async function main(): Promise<void> {
     }, 50);
     let preyDeath;
     try {
-      preyDeath = await pws.wait('death', 180_000);
+      // the hunt must end before the bell (both would then be paid their value)
+      preyDeath = await Promise.race([
+        pws.wait('death', 180_000),
+        pws.wait('roundOver', 180_000).then((m): never => {
+          throw new Fail(`round ${m.round} ended before the hunt finished: run the game server with a longer ROUND_SECONDS`);
+        }),
+      ]);
     } finally {
       clearInterval(steer);
     }
@@ -517,16 +530,17 @@ async function main(): Promise<void> {
     const supplyBefore = await supply();
     const vaultsBefore = await client.fetchVaultBalances();
     const hunterTokensBefore = await balance(hunter.publicKey);
-    step('hunter: cash out');
+    step('hunter: no cash-out in a paid arena; it waits for the round end');
     const hPos = hws.me();
     hws.target(hPos.x, hPos.y);
     hws.send({ t: 'cashout' });
-    await hws.wait('cashout', 5_000, (m) => m.state === 'started');
-    const done = await hws.wait('cashout', 15_000, (m) => m.state === 'done' || m.state === 'canceled');
-    assert(done.state === 'done', 'the cash-out was canceled');
-    const payout = done.value ?? 0;
-    assert(payout === Number(hSession.entryFee + pSession.entryFee), `cash-out value ${payout}`);
-    ok(`cash-out in game: ${fmt(payout)}`);
+    await hws.wait('error', 5_000, (m) => m.code === 'no_cashout', false);
+    const over = await hws.wait('roundOver', roundMs + 15_000);
+    const payout = over.payout;
+    assert(payout === Number(hSession.entryFee + pSession.entryFee), `round-end payout ${payout}`);
+    assert(over.stats.payout === payout && over.standings[0]?.you === true && over.standings[0].value === payout, `roundOver ${j(over)}`);
+    assert(!hws.has('cashout'), 'the server answered a cash-out in a paid arena');
+    ok(`round ${over.round} over: the hunter is paid its value ${fmt(payout)} at the bell (#1 of ${over.standings.length})`);
 
     step('waiting for the server settle_session');
     const settled = await hws.wait('settled', 90_000);
@@ -536,7 +550,7 @@ async function main(): Promise<void> {
     assert(split.fee === (BigInt(payout) - hSession.entryFee) * BigInt(snapshotBps) / 10_000n, 'fee is not 2 % of the profit');
     assert(settled.kind === 'cashout' && settled.session === hSession.address && settled.payout === payout, `settled ${j(settled)}`);
     assert(settled.fee === Number(split.fee) && settled.net === Number(split.player), `settled fee ${settled.fee} / net ${settled.net}, expected ${split.fee} / ${split.player}`);
-    units.push({ label: 'settle_session (server, cash-out, Pass)', used: await txUnits(settled.signature), limit: null });
+    units.push({ label: 'settle_session (server, round end, Pass)', used: await txUnits(settled.signature), limit: null });
     await waitUntil('the hunter session to close', 30_000, async () => !(await client.fetchSession(passArenaId, hunter.publicKey)));
     const delta = (await balance(hunter.publicKey)) - hunterTokensBefore;
     const burned = supplyBefore - (await supply());
@@ -672,10 +686,37 @@ async function main(): Promise<void> {
   console.log('Account sizes (real = quoted by the web):');
   for (const s of sizes) console.log(`  ${s.label.padEnd(64)} ${String(s.real).padStart(7)} = ${s.quoted}`);
   console.log(
-    `\n✅ e2e passed in ${elapsed().trim()}: fund → mint Pass ×2 → login → Pass tickets → join → fee raise (snapshot kept) → eat → ` +
-      `death settle → cash-out settle (fee ${fmt(splitSessionPayout(Number(passArena.entryFee) * 2, { entryFee: passArena.entryFee, feeBps: 200 }, config).fee)}, burn in supply) → season entry → ` +
+    `\n✅ e2e passed in ${elapsed().trim()}: fund → mint Pass ×2 → fresh round → login → Pass tickets → join → fee raise (snapshot kept) → eat → ` +
+      `death settle → round-end settle (fee ${fmt(splitSessionPayout(Number(passArena.entryFee) * 2, { entryFee: passArena.entryFee, feeBps: 200 }, config).fee)}, burn in supply) → season entry → ` +
       `close-mint → reveal → server capture → revealed metadata → stale refund finalized without a token account (R24) → collect → end season → claim`,
   );
+}
+
+/**
+ * Arena rounds are wall-clock aligned on the server clock (`welcome.serverNow`, `room.round`).
+ * Waits for the next round to open unless one just started, so the joins and the hunt fit in
+ * one round. Returns the round length (ms).
+ */
+async function waitForFreshRound(): Promise<number> {
+  const probe = await GameSocket.connect(wsUrl, 'round probe');
+  try {
+    probe.send({ t: 'hello', v: PROTOCOL_VERSION });
+    const welcome = await probe.wait('welcome', 10_000);
+    const round = welcome.rooms.find((r) => r.mode === 'arena' && r.arenaId === passArenaId)?.round;
+    assert(round && typeof welcome.serverNow === 'number', `arena #${passArenaId} has no round on this server (an old build?)`);
+    // round n runs [n·len, (n+1)·len): the length follows from its end
+    const roundMs = round.endsAt / (round.n + 1);
+    const into = welcome.serverNow - (round.endsAt - roundMs);
+    assert(roundMs <= 120_000, `rounds last ${roundMs / 1000} s: run the game server with ROUND_SECONDS=30 ROUND_JOIN_CLOSE_SECONDS=5`);
+    if (into > 1_500) {
+      step(`waiting ${((round.endsAt - welcome.serverNow) / 1000).toFixed(1)} s for the next ${roundMs / 1000} s round (joins close ${(round.endsAt - round.joinsCloseAt) / 1000} s before its end)`);
+      await sleep(round.endsAt - welcome.serverNow + 300);
+    }
+    ok(`round of ${roundMs / 1000} s open for joins`);
+    return roundMs;
+  } finally {
+    probe.close();
+  }
 }
 
 /**
