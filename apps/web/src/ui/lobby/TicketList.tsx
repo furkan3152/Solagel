@@ -3,8 +3,8 @@ import { motion } from 'motion/react';
 import type { CSSProperties } from 'react';
 import { STAGGER, Ticket, TicketGroup, TicketStub, useReducedMotion } from '../../design';
 import { useT } from '../../i18n';
-import { useChainData } from '../../solana/chain';
-import { PASS_POWER, bpsPercent, feeBps, type TicketGate, type TicketKey, type TicketModel } from '../../solana/ticket';
+import { useChainData, usePassPower } from '../../solana/chain';
+import { bpsPercent, feeBps, type TicketGate, type TicketKey, type TicketModel } from '../../solana/ticket';
 import { useUi } from '../../store';
 import { ticketName, useTokenText } from './useLobby';
 
@@ -35,7 +35,8 @@ export function TicketList({
   const config = useChainData((s) => s.config);
   const tok = useTokenText();
   const reduced = useReducedMotion();
-  const perk = t('lo.perk', { start: PASS_POWER.startPct, s: PASS_POWER.cashoutS, fee: bpsPercent(feeBps(config, true), lang) });
+  const power = usePassPower();
+  const perk = t('lo.perk', { start: power.startPct, s: power.cashoutS, fee: bpsPercent(feeBps(config, true), lang) });
 
   const count = (n: number, one: 'lo.humans1' | 'lo.bots1', many: 'lo.humans' | 'lo.bots') => (n === 1 ? t(one) : t(many, { n }));
 
@@ -48,7 +49,7 @@ export function TicketList({
         const maintenance = gate?.kind === 'maintenance';
         const closed = gate?.kind === 'offline' || maintenance;
         const status =
-          gate?.kind === 'settling' || gate?.kind === 'needAta'
+          gate?.kind === 'settling' || gate?.kind === 'collect'
             ? t('lo.payoutChip')
             : !practice && openTickets.includes(tk.arenaId!)
               ? t('lo.yourTicket')

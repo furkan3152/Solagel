@@ -6,11 +6,14 @@ import { Connection, Keypair, type TransactionInstruction } from '@solana/web3.j
 import { describe, expect, it } from 'vitest';
 import {
   ACCOUNT_BYTES,
-  buildAtaTx,
+  buildCloseTx,
   buildTicketTx,
   buildTickets,
-  payoutsNeedingAta,
+  cashoutMsOf,
+  closeSolCost,
+  passPowerOf,
   quickPlayTarget,
+  sessionsToCollect,
   ticketGate,
   ticketSolCost,
   ticketSteps,
@@ -33,7 +36,7 @@ const isAta = (ix: TransactionInstruction) => ix.programId.equals(ASSOCIATED_TOK
 
 describe('buildTicketTx', () => {
   it('includes ATA create when missing, register when no profile, joinArenaWithPass when pass selected', async () => {
-    const { steps, ixs } = await buildTicketTx(client.ix, { player, arenaId: 3, token, ataExists: false, register: { name: 'Defne', skin: 4 }, passAsset, maxFeeBps: 200 });
+    const { steps, ixs } = await buildTicketTx(client.ix, { player, arenaId: 3, token, ataExists: false, register: { name: 'Defne', skin: 4 }, passAsset, maxFeeBps: 200, maxEntryFee: 50_000n * M, maxSettleFee: 20_000 });
     expect(steps).toEqual(['ata', 'register', 'joinWithPass']);
     expect(ixs).toHaveLength(3);
     expect(isAta(ixs[0])).toBe(true);
@@ -48,12 +51,14 @@ describe('buildTicketTx', () => {
     expect(keys).toContain(pdas.passLock(passAsset, PROGRAM_ID).toBase58());
     // the session belongs to this arena
     expect(keys).toContain(pdas.session(pdas.arena(3, PROGRAM_ID), player, PROGRAM_ID).toBase58());
-    // the fee bound the player was shown rides in the instruction (u16 after the discriminator)
+    // the bounds the player was shown ride in the instruction (M3): fee bps u16, entry fee u64, deposit u64
     expect(ixs[2].data.readUInt16LE(8)).toBe(200);
+    expect(ixs[2].data.readBigUInt64LE(10)).toBe(50_000n * M);
+    expect(ixs[2].data.readBigUInt64LE(18)).toBe(20_000n);
   });
 
   it('is a plain joinArena when the account and profile exist and no Pass is used', async () => {
-    const { steps, ixs } = await buildTicketTx(client.ix, { player, arenaId: 1, token, ataExists: true, register: null, passAsset: null, maxFeeBps: 500 });
+    const { steps, ixs } = await buildTicketTx(client.ix, { player, arenaId: 1, token, ataExists: true, register: null, passAsset: null, maxFeeBps: 500, maxEntryFee: 1000n * M, maxSettleFee: 20_000 });
     expect(steps).toEqual(['join']);
     expect(ixs[0].data.readUInt16LE(8)).toBe(500);
     expect(ixs).toHaveLength(1);
@@ -66,11 +71,39 @@ describe('buildTicketTx', () => {
     expect(ticketSteps({ ataExists: null, register: null, passAsset: null })).toEqual(['ata', 'join']);
   });
 
-  it('R10: the payout-unblocking transaction is only the player-paid ATA create', () => {
-    const ixs = buildAtaTx(player, token);
-    expect(ixs).toHaveLength(1);
+  it('R24: collect is [player-paid ATA idempotent create] + refund_session without a Pass lock', async () => {
+    const { steps, ixs } = await buildCloseTx(client.ix, { player, arenaId: 2, token, finalized: true, passAsset });
+    expect(steps).toEqual(['ata', 'collect']);
+    expect(ixs).toHaveLength(2);
     expect(isAta(ixs[0])).toBe(true);
     expect(ixs[0].keys[0].pubkey.equals(player)).toBe(true);
+    expect(ixs[0].data[0]).toBe(1); // CreateIdempotent
+    expect(isIx(ixs[1], 'refund_session')).toBe(true);
+    const keys = ixs[1].keys.map((k) => k.pubkey.toBase58());
+    expect(keys).not.toContain(pdas.passLock(passAsset, PROGRAM_ID).toBase58());
+    expect(keys.at(-1)).toBe(PROGRAM_ID.toBase58()); // pass_lock = None
+    // an unsettled refund passes its lock
+    const refund = await buildCloseTx(client.ix, { player, arenaId: 2, token, finalized: false, passAsset });
+    expect(refund.steps).toEqual(['ata', 'refund']);
+    expect(refund.ixs[1].keys.map((k) => k.pubkey.toBase58())).toContain(pdas.passLock(passAsset, PROGRAM_ID).toBase58());
+  });
+
+  it('closeSolCost: ATA rent only when missing, plus bounded fees; the session rent comes back', () => {
+    const rent = (b: number) => b * 1000;
+    const fees = 5_000 + 2_000; // base + 100k CU × 20 000 µL
+    expect(closeSolCost({ ataExists: true, token2022: false, finalized: true, settleFeeLamports: 20_000, rent })).toEqual({ total: fees, back: ACCOUNT_BYTES.session * 1000 });
+    expect(closeSolCost({ ataExists: false, token2022: true, finalized: false, settleFeeLamports: 20_000, rent })).toEqual({
+      total: ACCOUNT_BYTES.ata2022 * 1000 + fees,
+      back: ACCOUNT_BYTES.session * 1000 + 20_000,
+    });
+  });
+
+  it('I3: Pass power comes from the server status, RULES as fallback', () => {
+    expect(passPowerOf({ startMassMul: 1.25, cashoutMs: 1_500 })).toEqual({ startPct: 25, cashoutS: 1.5 });
+    expect(passPowerOf(null)).toEqual({ startPct: 15, cashoutS: 2 });
+    expect(cashoutMsOf({ passPower: { startMassMul: 1, cashoutMs: 900 } }, true)).toBe(900);
+    expect(cashoutMsOf({ passPower: { startMassMul: 1, cashoutMs: 900 } }, false)).toBe(3_000);
+    expect(cashoutMsOf(null, true)).toBe(2_000);
   });
 });
 
@@ -167,10 +200,11 @@ describe('ticketGate', () => {
     expect(ticketGate(g({ ticket: blocked })).kind).toBe('maintenance');
     expect(ticketGate(g({ ticket: blocked, walletConnected: false })).kind).toBe('maintenance');
     expect(ticketGate(g({ ticket: blocked, arenasEnabled: false })).kind).toBe('offline');
-    // a payout owed in that arena takes priority (settling, or the R10 token-account CTA)
-    const owed = [{ key: 'S', arenaId: 1, payout: 5, needsTokenAccount: false }];
+    // a payout owed in that arena takes priority (settling, or R24 collect)
+    const owed = [{ key: 'S', arenaId: 1, payout: 5 }];
     expect(ticketGate(g({ ticket: blocked, pending: owed }))).toEqual({ kind: 'settling', payout: 5 });
-    expect(ticketGate(g({ ticket: blocked, pending: [{ ...owed[0], needsTokenAccount: true }], ataExists: false }))).toEqual({ kind: 'needAta', payout: 5 });
+    const fin = { address: 'S', openedAt: 1, hasPass: false, passAsset: null, finalized: true, owed: 7n };
+    expect(ticketGate(g({ ticket: blocked, session: fin }))).toEqual({ kind: 'collect', owed: 7n });
     // an open ticket in a blocked arena keeps resume and, after 24 h, the self-refund
     const session = { address: 'S', openedAt: 1_000_000 - 3600, hasPass: false, passAsset: null };
     expect(ticketGate(g({ ticket: blocked, session })).kind).toBe('resume');
@@ -184,18 +218,18 @@ describe('ticketGate', () => {
     expect(ticketGate(g({ session: { ...session, openedAt: 1_000_000 - 86_400 } })).kind).toBe('refund');
   });
 
-  it('shows the pending payout instead of a raw "still being settled" error (R10 CTA when the account is missing)', () => {
+  it('shows the pending payout instead of a raw "still being settled" error', () => {
     const session = { address: 'S', openedAt: 1_000_000 - 60, hasPass: false, passAsset: null };
-    expect(ticketGate(g({ session, pending: [{ key: 'S', arenaId: 1, payout: 2150, needsTokenAccount: false }] }))).toEqual({ kind: 'settling', payout: 2150 });
-    expect(ticketGate(g({ session, pending: [{ key: 'S', arenaId: 1, payout: 2150, needsTokenAccount: true }] }))).toEqual({ kind: 'needAta', payout: 2150 });
+    expect(ticketGate(g({ session, pending: [{ key: 'S', arenaId: 1, payout: 2150 }] }))).toEqual({ kind: 'settling', payout: 2150 });
   });
 
-  it('R10: once the token account exists, a queued payout is shown as settling (no create-account CTA)', () => {
-    const session = { address: 'S', openedAt: 1_000_000 - 60, hasPass: false, passAsset: null };
-    const pending = [{ key: 'S', arenaId: 1, payout: 2150, needsTokenAccount: true }];
-    expect(ticketGate(g({ session, pending, ataExists: true }))).toEqual({ kind: 'settling', payout: 2150 });
-    expect(payoutsNeedingAta(pending, true)).toEqual([]);
-    expect(payoutsNeedingAta([...pending, { key: 'T', arenaId: 2, payout: 5, needsTokenAccount: false }], false)).toHaveLength(1);
+  it('R24: a finalized session asks to collect first, even offline, and never resumes or refunds', () => {
+    const fin = { address: 'S', openedAt: 1_000_000 - 90_000, hasPass: true, passAsset: 'P', finalized: true, owed: 2150n };
+    expect(ticketGate(g({ session: fin }))).toEqual({ kind: 'collect', owed: 2150n });
+    expect(ticketGate(g({ session: fin, arenasEnabled: false }))).toEqual({ kind: 'collect', owed: 2150n });
+    expect(ticketGate(g({ session: fin, verified: false })).kind).toBe('collect');
+    expect(ticketGate(g({ session: fin, walletConnected: false })).kind).toBe('connect');
+    expect(sessionsToCollect({ 1: fin, 2: null, 3: { ...fin, finalized: false } })).toEqual([{ arenaId: 1, owed: 2150n }]);
   });
 });
 

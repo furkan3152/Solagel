@@ -104,7 +104,8 @@ export interface UiState {
   death: { stats: DeathStats; killer: string | null; killerSkin: number | null } | null;
   cashoutResult: { value: number; stats: DeathStats | null } | null;
   /** Last `settled` message; `session` matches it to a ticket (ruling R16). */
-  lastSettlement: { session: string | null; arenaId: number | null; signature: string; payout: number; fee?: number; net?: number; at: number } | null;
+  /** `collect`: R24, settled without a usable token account; the net waits in the vault for "Collect payout". */
+  lastSettlement: { session: string | null; arenaId: number | null; signature: string; payout: number; fee?: number; net?: number; collect?: boolean; at: number } | null;
   spectateTarget: number | null;
   toasts: Toast[];
   modal: Modal;

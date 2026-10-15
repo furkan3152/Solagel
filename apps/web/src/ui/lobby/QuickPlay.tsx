@@ -35,8 +35,8 @@ export function useCtaText(ticket: TicketModel | undefined, gate: TicketGate | u
       return { label: t('lo.cta.resume'), sub: t('lo.cta.resumeSub', { room }), icon: 'play', inert: false };
     case 'settling':
       return { label: t('lo.cta.settling'), sub: t('lo.cta.settlingSub', { amount: tok.fee(gate.payout), sym: tok.symbol }), icon: 'coin', inert: true };
-    case 'needAta':
-      return { label: t('lo.cta.needAta'), sub: t('lo.cta.needAtaSub', { amount: tok.fee(gate.payout), sym: tok.symbol }), icon: 'wallet', inert: false };
+    case 'collect':
+      return { label: t('lo.cta.collect'), sub: t('lo.cta.collectSub', { amount: tok.fee(gate.owed), sym: tok.symbol }), icon: 'coin', inert: false };
     case 'refund':
       return { label: t('lo.cta.refund'), sub: t('lo.cta.refundSub', { room }), icon: 'coin', inert: false };
     case 'needPass':
