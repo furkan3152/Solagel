@@ -2064,6 +2064,152 @@
       "args": []
     },
     {
+      "name": "sweep_loot",
+      "docs": [
+        "Server-signed: moves `amount` (at most the vault balance) from an arena vault into the",
+        "current season's pool, while the arena runs. `amount == 0` succeeds and does nothing."
+      ],
+      "discriminator": [
+        221,
+        67,
+        119,
+        145,
+        176,
+        100,
+        54,
+        6
+      ],
+      "accounts": [
+        {
+          "name": "server",
+          "signer": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "arena",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  114,
+                  101,
+                  110,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "arena.id",
+                "account": "Arena"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "arena"
+              }
+            ]
+          }
+        },
+        {
+          "name": "season",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  97,
+                  115,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.current_season",
+                "account": "Config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "season_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  97,
+                  115,
+                  111,
+                  110,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_mint"
+        },
+        {
+          "name": "token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "update_arena",
       "discriminator": [
         179,
@@ -2478,6 +2624,19 @@
         87,
         201,
         80
+      ]
+    },
+    {
+      "name": "LootSwept",
+      "discriminator": [
+        81,
+        202,
+        37,
+        221,
+        228,
+        204,
+        163,
+        220
       ]
     },
     {
@@ -3463,6 +3622,26 @@
           {
             "name": "skin",
             "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LootSwept",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "arena_id",
+            "type": "u16"
+          },
+          {
+            "name": "season_id",
+            "type": "u32"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
           }
         ]
       }

@@ -2070,6 +2070,152 @@ export type Slana = {
       "args": []
     },
     {
+      "name": "sweepLoot",
+      "docs": [
+        "Server-signed: moves `amount` (at most the vault balance) from an arena vault into the",
+        "current season's pool, while the arena runs. `amount == 0` succeeds and does nothing."
+      ],
+      "discriminator": [
+        221,
+        67,
+        119,
+        145,
+        176,
+        100,
+        54,
+        6
+      ],
+      "accounts": [
+        {
+          "name": "server",
+          "signer": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "arena",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  114,
+                  101,
+                  110,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "arena.id",
+                "account": "arena"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "arena"
+              }
+            ]
+          }
+        },
+        {
+          "name": "season",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  97,
+                  115,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.currentSeason",
+                "account": "config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "seasonVault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  97,
+                  115,
+                  111,
+                  110,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "tokenMint"
+        },
+        {
+          "name": "tokenProgram"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "updateArena",
       "discriminator": [
         179,
@@ -2484,6 +2630,19 @@ export type Slana = {
         87,
         201,
         80
+      ]
+    },
+    {
+      "name": "lootSwept",
+      "discriminator": [
+        81,
+        202,
+        37,
+        221,
+        228,
+        204,
+        163,
+        220
       ]
     },
     {
@@ -3469,6 +3628,26 @@ export type Slana = {
           {
             "name": "skin",
             "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "lootSwept",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "arenaId",
+            "type": "u16"
+          },
+          {
+            "name": "seasonId",
+            "type": "u32"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
           }
         ]
       }

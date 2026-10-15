@@ -13,6 +13,7 @@ pub const SEASON_ENDED: [u8; 8] = [231, 210, 35, 6, 231, 92, 111, 69];
 pub const REWARD_CLAIMED: [u8; 8] = [49, 28, 87, 84, 158, 48, 229, 175];
 pub const SEASON_ROLLED_OVER: [u8; 8] = [70, 173, 38, 206, 53, 30, 122, 83];
 pub const ARENA_SWEPT: [u8; 8] = [132, 32, 57, 60, 149, 87, 201, 80];
+pub const LOOT_SWEPT: [u8; 8] = [81, 202, 37, 221, 228, 204, 163, 220];
 pub const ARENA_CREATED: [u8; 8] = [93, 57, 84, 96, 112, 3, 148, 17];
 pub const TREASURY_WITHDRAWN: [u8; 8] = [143, 181, 157, 169, 87, 155, 170, 46];
 pub const PASS_COLLECTION_SET: [u8; 8] = [159, 63, 91, 220, 66, 126, 121, 171];
@@ -189,10 +190,11 @@ pub fn season_rolled_over(from: u32, to: u32, amount: u64) -> [u8; 24] {
     e
 }
 
-/// `ArenaSwept { arena_id: u16, season_id: u32, amount: u64 }`.
-pub fn arena_swept(arena_id: u16, season_id: u32, amount: u64) -> [u8; 22] {
+/// `ArenaSwept` / `LootSwept` (`discriminator` = [`ARENA_SWEPT`] / [`LOOT_SWEPT`]): the same
+/// fields `{ arena_id: u16, season_id: u32, amount: u64 }`.
+pub fn swept(discriminator: &[u8; 8], arena_id: u16, season_id: u32, amount: u64) -> [u8; 22] {
     let mut e = [0u8; 22];
-    wr_bytes(&mut e, 0, &ARENA_SWEPT);
+    wr_bytes(&mut e, 0, discriminator);
     wr_u16(&mut e, 8, arena_id);
     wr_u32(&mut e, 10, season_id);
     wr_u64(&mut e, 14, amount);
@@ -264,7 +266,7 @@ mod tests {
 
     #[test]
     fn discriminators_match_the_reference() {
-        let table: [([u8; 8], &[u8]); 18] = [
+        let table: [([u8; 8], &[u8]); 19] = [
             (PLAYER_REGISTERED, r::PlayerRegistered::DISCRIMINATOR),
             (PROFILE_UPDATED, r::ProfileUpdated::DISCRIMINATOR),
             (ARENA_JOINED, r::ArenaJoined::DISCRIMINATOR),
@@ -274,6 +276,7 @@ mod tests {
             (REWARD_CLAIMED, r::RewardClaimed::DISCRIMINATOR),
             (SEASON_ROLLED_OVER, r::SeasonRolledOver::DISCRIMINATOR),
             (ARENA_SWEPT, r::ArenaSwept::DISCRIMINATOR),
+            (LOOT_SWEPT, r::LootSwept::DISCRIMINATOR),
             (ARENA_CREATED, r::ArenaCreated::DISCRIMINATOR),
             (TREASURY_WITHDRAWN, r::TreasuryWithdrawn::DISCRIMINATOR),
             (PASS_COLLECTION_SET, r::PassCollectionSet::DISCRIMINATOR),
@@ -378,7 +381,16 @@ mod tests {
             amount: 0x0708_090a_0b0c_0d0e,
         };
         assert_eq!(
-            arena_swept(e.arena_id, e.season_id, e.amount).to_vec(),
+            swept(&ARENA_SWEPT, e.arena_id, e.season_id, e.amount).to_vec(),
+            e.data()
+        );
+        let e = r::LootSwept {
+            arena_id: 0x0102,
+            season_id: 0x0304_0506,
+            amount: 0x0708_090a_0b0c_0d0e,
+        };
+        assert_eq!(
+            swept(&LOOT_SWEPT, e.arena_id, e.season_id, e.amount).to_vec(),
             e.data()
         );
         let e = r::SeasonEnded {

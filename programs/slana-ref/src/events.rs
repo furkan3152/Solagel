@@ -76,6 +76,13 @@ pub struct ArenaSwept {
 }
 
 #[event]
+pub struct LootSwept {
+    pub arena_id: u16,
+    pub season_id: u32,
+    pub amount: u64,
+}
+
+#[event]
 pub struct ArenaCreated {
     pub arena_id: u16,
     pub entry_fee: u64,

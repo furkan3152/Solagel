@@ -476,6 +476,30 @@ pub mod ix {
         )
     }
 
+    pub fn sweep_loot(
+        server: &Pubkey,
+        arena_id: u16,
+        season: u32,
+        amount: u64,
+        mint: &Pubkey,
+        token_program: &Pubkey,
+    ) -> Instruction {
+        let arena = arena_pda(arena_id);
+        build(
+            slana::instruction::SweepLoot { amount }.data(),
+            slana::accounts::SweepLoot {
+                server: *server,
+                config: config_pda(),
+                arena,
+                vault: vault_pda(&arena),
+                season: season_pda(season),
+                season_vault: season_vault_pda(),
+                token_mint: *mint,
+                token_program: *token_program,
+            },
+        )
+    }
+
     pub fn claim_season_reward(
         claimer: &Pubkey,
         season_id: u32,
@@ -1269,6 +1293,40 @@ impl TestEnv {
     pub fn sweep(&mut self, arena_id: u16) -> TxResult {
         let admin = self.admin.insecure_clone();
         self.sweep_as(&admin, arena_id)
+    }
+
+    /// `sweep_loot` signed by `signer` into the season `season`.
+    pub fn sweep_loot_to(
+        &mut self,
+        signer: &Keypair,
+        arena_id: u16,
+        season: u32,
+        amount: u64,
+    ) -> TxResult {
+        let (mint, program) = (self.mint, self.token_program);
+        self.send(
+            &[ix::sweep_loot(
+                &signer.pubkey(),
+                arena_id,
+                season,
+                amount,
+                &mint,
+                &program,
+            )],
+            &[signer],
+        )
+    }
+
+    /// `sweep_loot` signed by `signer` into the current season.
+    pub fn sweep_loot_as(&mut self, signer: &Keypair, arena_id: u16, amount: u64) -> TxResult {
+        let season = self.config().current_season;
+        self.sweep_loot_to(signer, arena_id, season, amount)
+    }
+
+    /// `sweep_loot` signed by the server authority into the current season.
+    pub fn sweep_loot(&mut self, arena_id: u16, amount: u64) -> TxResult {
+        let server = self.server.insecure_clone();
+        self.sweep_loot_as(&server, arena_id, amount)
     }
 
     pub fn pass_lock(&self, asset: &Pubkey) -> Option<PassLock> {

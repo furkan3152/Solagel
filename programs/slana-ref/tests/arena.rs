@@ -1,5 +1,5 @@
 //! Arenas: `create_arena` (token vault), `update_arena` and the token session flow
-//! (`join_arena`, `settle_session`, `refund_session`, `sweep_arena`).
+//! (`join_arena`, `settle_session`, `refund_session`, `sweep_arena`, `sweep_loot`).
 //! Pass gating and locks are covered by `pass_gate.rs`.
 
 mod common;
@@ -575,4 +575,130 @@ fn sweep_moves_vault_to_season_pool() {
         assert_ok(env.sweep(1));
         assert_eq!(env.season(FIRST_SEASON).pool, 1_300);
     }
+}
+
+#[test]
+fn sweep_loot_moves_part_of_a_live_vault_to_the_season_pool() {
+    use slana::events::LootSwept;
+    for kind in [MintKind::Spl, MintKind::Token2022] {
+        let mut env = TestEnv::initialized_with(kind);
+        assert_ok(env.create_arena(1, 1_000, 300, false));
+        let a = env.token_player("a", 1_000);
+        let b = env.token_player("b", 1_000);
+        assert_ok(env.join(&a, 1));
+        assert_ok(env.join(&b, 1));
+        let vault = vault_pda(&arena_pda(1));
+        assert_eq!(env.tokens(&vault), 2_000);
+
+        // The arena stays enabled with open sessions: the server sweeps part of the vault.
+        let meta = assert_ok(env.sweep_loot(1, 600));
+        assert_event(
+            &meta,
+            &LootSwept {
+                arena_id: 1,
+                season_id: FIRST_SEASON,
+                amount: 600,
+            },
+        );
+        assert_eq!(env.tokens(&vault), 1_400);
+        assert_eq!(env.tokens(&season_vault_pda()), 600);
+        assert_eq!(env.season(FIRST_SEASON).pool, 600);
+        let arena = env.arena(1);
+        assert!(arena.enabled);
+        assert_eq!(arena.open_sessions, 2);
+
+        // The rest of the vault, exactly.
+        assert_ok(env.sweep_loot(1, 1_400));
+        assert_eq!(env.tokens(&vault), 0);
+        assert_eq!(env.tokens(&season_vault_pda()), 2_000);
+        assert_eq!(env.season(FIRST_SEASON).pool, 2_000);
+    }
+}
+
+#[test]
+fn sweep_loot_requires_the_server() {
+    let mut env = TestEnv::initialized();
+    assert_ok(env.create_arena(1, 1_000, 300, false));
+    let a = env.token_player("a", 1_000);
+    assert_ok(env.join(&a, 1));
+
+    let mallory = env.funded_keypair(SOL);
+    assert_error(
+        env.sweep_loot_as(&mallory, 1, 100),
+        SlanaError::Unauthorized,
+    );
+    // Not the admin either.
+    let admin = env.admin.insecure_clone();
+    assert_error(env.sweep_loot_as(&admin, 1, 100), SlanaError::Unauthorized);
+    assert_eq!(env.tokens(&vault_pda(&arena_pda(1))), 1_000);
+    assert_eq!(env.season(FIRST_SEASON).pool, 0);
+}
+
+#[test]
+fn sweep_loot_is_capped_by_the_vault() {
+    let mut env = TestEnv::initialized();
+    assert_ok(env.create_arena(1, 1_000, 300, false));
+    let a = env.token_player("a", 1_000);
+    assert_ok(env.join(&a, 1));
+
+    assert_error(env.sweep_loot(1, 1_001), SlanaError::InsufficientPot);
+    assert_error(env.sweep_loot(1, u64::MAX), SlanaError::InsufficientPot);
+    // Tokens sitting elsewhere do not count: only the arena vault pays.
+    env.mint_to(&season_vault_pda(), 10_000);
+    assert_error(env.sweep_loot(1, 1_001), SlanaError::InsufficientPot);
+    assert_eq!(env.tokens(&vault_pda(&arena_pda(1))), 1_000);
+    assert_eq!(env.season(FIRST_SEASON).pool, 0);
+}
+
+#[test]
+fn sweep_loot_of_zero_does_nothing() {
+    let mut env = TestEnv::initialized();
+    assert_ok(env.create_arena(1, 1_000, 300, false));
+    let vault = vault_pda(&arena_pda(1));
+
+    // An empty vault: zero is the only amount it allows.
+    assert_error(env.sweep_loot(1, 1), SlanaError::InsufficientPot);
+    let meta = assert_ok(env.sweep_loot(1, 0));
+    let a = env.token_player("a", 1_000);
+    assert_ok(env.join(&a, 1));
+    let meta2 = assert_ok(env.sweep_loot(1, 0));
+    for meta in [meta, meta2] {
+        // No transfer (no token program CPI) and no event.
+        assert!(
+            !meta.logs.iter().any(|l| l.starts_with("Program data: ")),
+            "unexpected event\n{}",
+            meta.pretty_logs()
+        );
+        assert!(
+            !meta.logs.iter().any(|l| l.contains("invoke [2]")),
+            "unexpected CPI\n{}",
+            meta.pretty_logs()
+        );
+    }
+    assert_eq!(env.tokens(&vault), 1_000);
+    assert_eq!(env.tokens(&season_vault_pda()), 0);
+    assert_eq!(env.season(FIRST_SEASON).pool, 0);
+}
+
+#[test]
+fn sweep_loot_only_pays_the_current_season() {
+    let mut env = TestEnv::initialized();
+    assert_ok(env.create_arena(1, 1_000, 300, false));
+    let a = env.token_player("a", 1_000);
+    assert_ok(env.join(&a, 1));
+    assert_ok(env.end_season());
+    assert_eq!(env.config().current_season, FIRST_SEASON + 1);
+
+    let server = env.server.insecure_clone();
+    assert_anchor_error(
+        env.sweep_loot_to(&server, 1, FIRST_SEASON, 100),
+        AnchorErrorCode::ConstraintSeeds,
+    );
+    let (old, new) = (
+        env.season(FIRST_SEASON).pool,
+        env.season(FIRST_SEASON + 1).pool,
+    );
+    assert_ok(env.sweep_loot(1, 100));
+    assert_eq!(env.season(FIRST_SEASON).pool, old);
+    assert_eq!(env.season(FIRST_SEASON + 1).pool, new + 100);
 }
