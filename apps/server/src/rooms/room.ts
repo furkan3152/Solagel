@@ -95,6 +95,8 @@ export class Room {
   /** Living human players → their connection (null while AFK in a stake room). */
   readonly humans = new Map<number, Conn | null>();
   private readonly afkSince = new Map<number, number>();
+  /** Arena rooms: value each staker lost this game (`valueLost` / `lootSpilled` in the death stats). */
+  private readonly losses = new Map<number, { lost: number; spilled: number }>();
   private readonly walletOf = new Map<number, string>();
   private readonly chatLog: ChatLine[] = [];
   private readonly writer = new BinaryWriter(32 * 1024);
@@ -439,15 +441,26 @@ export class Room {
     this.journalDirty = true;
     if (ledger.has(ce.eater.id)) {
       const t = ledger.transfer(ce.victim.id, ce.eater.id, ce.mass, ce.victimTotalBefore, ce.last);
+      this.noteLoss(ce.victim.id, t, 0);
       this.sendValue(ce.eater.id, t, 'eat');
       this.sendValue(ce.victim.id, -t, 'eaten');
       return;
     }
     const t = ledger.spill(ce.victim.id, ce.mass, ce.victimTotalBefore, ce.last);
     if (t <= 0) return;
+    this.noteLoss(ce.victim.id, t, t);
     const pieces = clamp(Math.ceil(t / (this.entryFee * RULES.lootPieceEntryFraction)), RULES.lootPiecesMin, RULES.lootPiecesMax);
     this.world.spawnLoot(ce.x, ce.y, t, pieces);
     this.sendValue(ce.victim.id, -t, 'spill');
+  }
+
+  /** Value a staker lost this game (to eaters, and the part spilled as loot): reported on the death sheet. */
+  private noteLoss(pid: number, lost: number, spilled: number): void {
+    if (lost <= 0) return;
+    const l = this.losses.get(pid) ?? { lost: 0, spilled: 0 };
+    l.lost += lost;
+    l.spilled += spilled;
+    this.losses.set(pid, l);
   }
 
   /** Arena rooms: credits picked-up loot (put back on the floor if nobody can hold it). */
@@ -473,9 +486,17 @@ export class Room {
     this.deps.leaderboards.submit({ name: p.name, score, skin: p.skin, wallet, kills: stats.playersEaten, at: now });
 
     const enqueue: SettlementItem[] = [];
+    const loss = this.losses.get(p.id);
+    this.losses.delete(p.id);
     if (this.ledger?.has(p.id)) {
       const entry = this.ledger.leave(p.id)!;
       stats.payout = entry.value;
+      if (cause === 'death') {
+        // the death sheet's "value lost" / "spilled as loot" lines (DeathStats)
+        stats.valueLost = loss?.lost ?? 0;
+        stats.lootSpilled = loss?.spilled ?? 0;
+        stats.byBot = !!killer && this.bots?.isBot(killer.id) === true;
+      }
       const reason: SettleReason = cause === 'left' ? 'afk' : cause;
       enqueue.push({
         kind: 'settle',

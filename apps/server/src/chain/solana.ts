@@ -49,7 +49,7 @@ export type { SettledEvent } from './types';
 const WORKER_INTERVAL_MS = 1_000;
 const REFRESH_INTERVAL_MS = 30_000;
 const SWEEP_INTERVAL_MS = 5 * 60_000;
-/** Sessions nobody plays for this long are refunded (payout = buy-in). */
+/** Sessions nobody plays for this long are refunded (payout = buy-in); `STALE_SESSION_AFTER_S` overrides it. */
 export const STALE_SESSION_AFTER_S = 15 * 60;
 const PROFILE_TTL_MS = 60_000;
 const PASS_TTL_MS = 60_000;
@@ -64,7 +64,7 @@ const SEND_TIMEOUT_MS = 120_000;
 const RPC_TIMEOUT_MS = 20_000;
 const LOW_BALANCE_LAMPORTS = 50_000_000; // 0.05 SOL
 const MAX_PROFILE_CACHE = 5_000;
-/** Re-check interval for a settlement waiting on the player's token account. */
+/** Re-check interval for a settlement waiting on the player's token account (`NO_ATA_RETRY_S` overrides it). */
 export const NO_ATA_RETRY_MS = 5 * 60_000;
 const STOP_GRACE_MS = 5_000;
 
@@ -309,13 +309,13 @@ export class SolanaChain implements ChainGateway {
     }
     await this.probe();
     if (this.deps.loops === false) return;
+    const staleAfterS = this.staleAfterS();
+    if (staleAfterS !== STALE_SESSION_AFTER_S) this.log(`chain: unplayed sessions are refunded after ${staleAfterS} s (STALE_SESSION_AFTER_S)`);
     this.timers.push(
       setInterval(() => this.pump(), WORKER_INTERVAL_MS),
       setInterval(() => void this.refresh(), REFRESH_INTERVAL_MS),
-      setInterval(() => {
-        void this.sweepStale();
-        void this.checkBalance();
-      }, SWEEP_INTERVAL_MS),
+      setInterval(() => void this.checkBalance(), SWEEP_INTERVAL_MS),
+      setInterval(() => void this.sweepStale(), Math.min(SWEEP_INTERVAL_MS, Math.max(1_000, staleAfterS * 1000))),
     );
     for (const t of this.timers) t.unref();
     this.kick();
@@ -851,10 +851,10 @@ export class SolanaChain implements ChainGateway {
       if (!item.needsTokenAccount) {
         this.log(
           `chain: settlement ${short(key)} waits — ${short(item.player)} has no token account ${short(playerAta)} ` +
-            `(the player must create it; re-checking every ${NO_ATA_RETRY_MS / 60_000} min)`,
+            `(the player must create it; re-checking every ${Math.round(this.noAtaRetryMs() / 1000)} s)`,
         );
       }
-      this.journal.retryLater(key, 'player token account missing', this.now(), { delayMs: NO_ATA_RETRY_MS, needsTokenAccount: true });
+      this.journal.retryLater(key, 'player token account missing', this.now(), { delayMs: this.noAtaRetryMs(), needsTokenAccount: true });
       return;
     }
     if (item.needsTokenAccount) {
@@ -982,9 +982,21 @@ export class SolanaChain implements ChainGateway {
   /* Stale sessions                                                   */
   /* ---------------------------------------------------------------- */
 
+  /** `STALE_SESSION_AFTER_S` (default 15 min). */
+  private staleAfterS(): number {
+    const v = this.cfg.chain.staleSessionAfterS;
+    return Number.isFinite(v) && v >= 1 ? Math.floor(v) : STALE_SESSION_AFTER_S;
+  }
+
+  /** `NO_ATA_RETRY_S` in ms (default 5 min). */
+  private noAtaRetryMs(): number {
+    const v = this.cfg.chain.noAtaRetryS;
+    return Number.isFinite(v) && v >= 1 ? Math.floor(v) * 1000 : NO_ATA_RETRY_MS;
+  }
+
   /**
    * Queues a refund (payout = buy-in, no fee) for every open session that is not in a room,
-   * not already queued and older than 15 minutes — i.e. the player paid but never played.
+   * not already queued and older than `STALE_SESSION_AFTER_S` (15 minutes by default) — i.e. the player paid but never played.
    * Returns the number of sessions queued.
    */
   async sweepStale(): Promise<number> {
@@ -1000,10 +1012,11 @@ export class SolanaChain implements ChainGateway {
     const pending = new Set(this.journal.pending.map((p) => p.key));
     const only = this.cfg.chain.arenaIds;
     const now = this.now();
+    const staleAfterS = this.staleAfterS();
     const enqueue: SettlementItem[] = [];
     for (const s of sessions) {
       if (live.has(s.address) || pending.has(s.address)) continue;
-      if (now / 1000 - s.openedAt < STALE_SESSION_AFTER_S) continue;
+      if (now / 1000 - s.openedAt < staleAfterS) continue;
       if (only.length > 0 && !only.includes(s.arenaId)) continue;
       enqueue.push({
         kind: 'settle',
@@ -1024,7 +1037,7 @@ export class SolanaChain implements ChainGateway {
     }
     if (enqueue.length === 0) return 0;
     this.journal.commit({ enqueue });
-    this.log(`chain: ${enqueue.length} unplayed session(s) older than 15 min → refund queued`);
+    this.log(`chain: ${enqueue.length} unplayed session(s) older than ${staleAfterS >= 120 ? `${Math.round(staleAfterS / 60)} min` : `${staleAfterS} s`} → refund queued`);
     this.kick();
     return enqueue.length;
   }

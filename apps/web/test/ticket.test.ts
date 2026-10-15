@@ -202,7 +202,7 @@ describe('ticketGate', () => {
 describe('ticketSolCost', () => {
   const rent = (b: number) => b * 1000;
   it('counts session (+ Pass lock) rent as refundable, profile and ATA rent as kept, plus deposit and bounded fees', () => {
-    const fees = 5_000 + 6_000; // base + 300k CU × 20 000 µL
+    const fees = 5_000 + 3_000; // base + 150k CU × 20 000 µL
     const plain = ticketSolCost(['join'], { settleFeeLamports: 20_000, token2022: false, rent });
     expect(plain).toEqual({ refundable: ACCOUNT_BYTES.session * 1000, total: ACCOUNT_BYTES.session * 1000 + 20_000 + fees });
     const full = ticketSolCost(['ata', 'register', 'joinWithPass'], { settleFeeLamports: 20_000, token2022: true, rent });
