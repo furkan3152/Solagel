@@ -53,12 +53,15 @@ pub const INSTRUCTION_FALLBACK_NOT_FOUND: u32 = 101;
 pub const INSTRUCTION_DID_NOT_DESERIALIZE: u32 = 102;
 pub const EVENT_INSTRUCTION_STUB: u32 = 1500;
 pub const CONSTRAINT_MUT: u32 = 2000;
+pub const CONSTRAINT_OWNER: u32 = 2004;
+pub const CONSTRAINT_RENT_EXEMPT: u32 = 2005;
 pub const CONSTRAINT_SEEDS: u32 = 2006;
 pub const CONSTRAINT_CLOSE: u32 = 2011;
 pub const CONSTRAINT_ADDRESS: u32 = 2012;
 pub const CONSTRAINT_TOKEN_MINT: u32 = 2014;
 pub const CONSTRAINT_TOKEN_OWNER: u32 = 2015;
 pub const CONSTRAINT_TOKEN_TOKEN_PROGRAM: u32 = 2021;
+pub const CONSTRAINT_SPACE: u32 = 2019;
 pub const CONSTRAINT_MINT_TOKEN_PROGRAM: u32 = 2022;
 pub const CONSTRAINT_DUPLICATE_MUTABLE_ACCOUNT: u32 = 2040;
 pub const ACCOUNT_DISCRIMINATOR_NOT_FOUND: u32 = 3001;
@@ -195,6 +198,9 @@ mod tests {
             (CONSTRAINT_MUT, A::ConstraintMut),
             (CONSTRAINT_SEEDS, A::ConstraintSeeds),
             (CONSTRAINT_CLOSE, A::ConstraintClose),
+            (CONSTRAINT_OWNER, A::ConstraintOwner),
+            (CONSTRAINT_RENT_EXEMPT, A::ConstraintRentExempt),
+            (CONSTRAINT_SPACE, A::ConstraintSpace),
             (CONSTRAINT_ADDRESS, A::ConstraintAddress),
             (CONSTRAINT_TOKEN_MINT, A::ConstraintTokenMint),
             (CONSTRAINT_TOKEN_OWNER, A::ConstraintTokenOwner),

@@ -37,6 +37,9 @@ pub const MAX_PASS_SUPPLY: u32 = 10_000;
 pub const MAX_PASS_PER_WALLET: u8 = 10;
 pub const DEFAULT_PASS_SUPPLY: u32 = 3_333;
 pub const DEFAULT_PASS_PER_WALLET: u8 = 1;
+/// `reveal_pass` sets the entropy target this many slots after the reveal (and a missed
+/// target moves this far past the current slot).
+pub const ENTROPY_DELAY_SLOTS: u64 = 150;
 
 // ----- game -----------------------------------------------------------------------------------
 
@@ -75,6 +78,12 @@ pub const BPF_LOADER_UPGRADEABLE_ID: Address = Address::new_from_array([
 pub const MPL_CORE_ID: Address = Address::new_from_array([
     175, 84, 171, 16, 189, 151, 165, 66, 160, 158, 247, 179, 152, 137, 221, 12, 211, 148, 164, 204,
     233, 223, 166, 205, 201, 126, 190, 45, 35, 91, 167, 72,
+]);
+
+/// SlotHashes sysvar (`SysvarS1otHashes111111111111111111111111111`).
+pub const SLOT_HASHES_ID: Address = Address::new_from_array([
+    6, 167, 213, 23, 25, 47, 10, 175, 198, 242, 101, 227, 251, 119, 204, 122, 218, 130, 197, 41,
+    208, 190, 59, 19, 110, 45, 0, 85, 32, 0, 0, 0,
 ]);
 
 #[cfg(test)]
@@ -120,6 +129,7 @@ mod tests {
         assert_eq!(MAX_XP_PER_GAME, r::MAX_XP_PER_GAME);
         assert_eq!(MAX_SCORE_PER_GAME, r::MAX_SCORE_PER_GAME);
         assert_eq!(BASIC_SKINS, r::BASIC_SKINS);
+        assert_eq!(ENTROPY_DELAY_SLOTS, r::ENTROPY_DELAY_SLOTS);
     }
 
     #[test]
@@ -130,5 +140,6 @@ mod tests {
         assert_eq!(key(&TOKEN_2022_PROGRAM_ID), anchor_spl::token_2022::ID);
         assert_eq!(key(&BPF_LOADER_UPGRADEABLE_ID), bpf_loader_upgradeable::ID);
         assert_eq!(key(&MPL_CORE_ID), r::MPL_CORE_ID);
+        assert_eq!(key(&SLOT_HASHES_ID), r::SLOT_HASHES_ID);
     }
 }

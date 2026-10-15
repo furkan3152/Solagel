@@ -10,7 +10,8 @@
 //!
 //! `PlayerProfile`, `Session` (151 bytes), `PassLock` and leaderboard rows written by the
 //! player and arena instructions are checked in `stake_flow_writes_reference_layouts_and_events`;
-//! `MintCounter` is covered by the host golden tests in `programs/slana-lean/src/state.rs`.
+//! `MintCounter`, the Pass events and the reveal fields of `Config` are checked in
+//! `pass_flow_writes_reference_layouts_and_events`.
 
 // `TxResult` is LiteSVM's own result type; its error variant is large by design.
 #![allow(clippy::result_large_err)]
@@ -1068,4 +1069,101 @@ fn stake_constraint_errors_match_anchor() {
         env.send(&[sweep], &[&admin]),
         AnchorErrorCode::ConstraintDuplicateMutableAccount,
     );
+}
+
+/// Pass mint (sell-out), reveal, a missed entropy window and the capture: the `MintCounter`
+/// and `Config` the program writes decode with the reference and re-serialize to the stored
+/// bytes, and every Pass event matches the reference's `Event::data()`.
+#[test]
+fn pass_flow_writes_reference_layouts_and_events() {
+    use slana::{
+        events::{
+            PassEntropyCaptured, PassEntropyRetargeted, PassMintEnded, PassMinted, PassRevealed,
+            PassSeedRevealed,
+        },
+        state::MintCounter,
+    };
+    let seed = [7u8; 32];
+    let mut env = TestEnv::initialized();
+    load_mpl_core(&mut env.svm);
+    let admin = env.admin.insecure_clone();
+    let collection = env.create_core_collection(&pass_authority_pda());
+    assert_ok(env.set_collection_as(&admin, &collection));
+    assert_ok(env.set_seed_hash_as(&admin, solana_sha256_hasher::hash(&seed).to_bytes()));
+    assert_ok(env.update_config(UpdateConfigArgs {
+        pass_base_uri: Some("https://slana.example/pass/".into()),
+        pass_supply: Some(1),
+        pass_mint_open: Some(true),
+        ..Default::default()
+    }));
+
+    let minter = env.funded_keypair(10 * SOL);
+    let (res, asset) = env.mint_pass(&minter);
+    let meta = assert_ok(res);
+    assert_event(
+        &meta,
+        &PassMinted {
+            minter: minter.pubkey(),
+            asset,
+            number: 1,
+        },
+    );
+    // The only Pass of the supply: sold out.
+    assert_event(&meta, &PassMintEnded { minted: 1 });
+    let counter_key = mint_counter_pda(&minter.pubkey());
+    let data = raw(&env, &counter_key);
+    assert_eq!(data.len(), 8 + MintCounter::INIT_SPACE);
+    let counter = env.mint_counter(&minter.pubkey()).expect("counter");
+    assert_eq!(counter.count, 1);
+    assert_eq!(data, serialize(&counter));
+
+    env.warp_to_slot(5_000);
+    let meta = assert_ok(env.reveal_as(&admin, seed));
+    let target = 5_000 + ENTROPY_DELAY_SLOTS;
+    assert_event(
+        &meta,
+        &PassSeedRevealed {
+            seed,
+            entropy_target_slot: target,
+        },
+    );
+
+    let anyone = env.funded_keypair(SOL);
+    let now = target + 700;
+    env.warp_to_slot(now);
+    env.slot_hashes_range(now - 512, now - 1);
+    let meta = assert_ok(env.capture_entropy_as(&anyone));
+    let next = now + ENTROPY_DELAY_SLOTS;
+    assert_event(
+        &meta,
+        &PassEntropyRetargeted {
+            missed_target_slot: target,
+            entropy_target_slot: next,
+        },
+    );
+
+    env.warp_to_slot(next + 3);
+    env.slot_hashes_range(next - 5, next + 2);
+    let meta = assert_ok(env.capture_entropy_as(&anyone));
+    let entropy = [next as u8; 32];
+    let final_seed = slana::logic::pass_final_seed(&seed, &entropy);
+    assert_event(
+        &meta,
+        &PassEntropyCaptured {
+            slot: next,
+            entropy,
+        },
+    );
+    assert_event(
+        &meta,
+        &PassRevealed {
+            seed,
+            entropy,
+            final_seed,
+        },
+    );
+    let config = env.config();
+    assert!(config.pass_revealed && config.pass_entropy_captured);
+    assert_eq!(config.pass_final_seed, final_seed);
+    assert_eq!(raw(&env, &config_pda()), serialize(&config));
 }

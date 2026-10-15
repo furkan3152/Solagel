@@ -13,11 +13,15 @@
 //!
 //! Every file starts with a table mapping each reference constraint to its lean check.
 
+pub mod capture_pass_entropy;
+pub mod close_pass_mint;
 pub mod create_arena;
 pub mod initialize;
 pub mod join_arena;
+pub mod mint_pass;
 pub mod refund_session;
 pub mod register_player;
+pub mod reveal_pass;
 pub mod set_pass_collection;
 pub mod set_pass_seed_hash;
 pub mod settle_session;
@@ -60,6 +64,13 @@ pub(crate) fn check_admin_config(
         keq(&rd_key(cfg, config::ADMIN), admin.address().as_array()),
         UNAUTHORIZED,
     )
+}
+
+/// `Clock::get()?.slot`.
+pub(crate) fn clock_slot() -> Result<u64> {
+    let mut slot = [0u8; 8];
+    get_sysvar(&mut slot, &CLOCK_ID, 0).map_err(|_| crate::error::Error::UNSUPPORTED_SYSVAR)?;
+    Ok(u64::from_le_bytes(slot))
 }
 
 /// `Clock::get()?.unix_timestamp`.
