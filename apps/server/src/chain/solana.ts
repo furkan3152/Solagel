@@ -379,11 +379,11 @@ export class SolanaChain implements ChainGateway {
   }
 
   /**
-   * Ruling R22: once the Pass mint has ended and its entropy target slot has passed, sends the
-   * permissionless `capture_pass_entropy` (the server pays only the network fee). Runs on every
-   * 30 s refresh until the config shows the entropy captured, so a failure simply retries. If
-   * the target left the SlotHashes window, the program re-targets and the next refresh tries
-   * the new slot. Never throws.
+   * Rulings R22/R23: once the seed is public (`reveal_pass`) and the entropy target slot has
+   * passed, sends the permissionless `capture_pass_entropy`, which completes the reveal (the
+   * server pays only the network fee). Runs on every 30 s refresh until the config shows the
+   * Pass revealed, so a failure simply retries. If the target left the SlotHashes window, the
+   * program re-targets and the next refresh tries the new slot. Never throws.
    */
   captureEntropyIfDue(): Promise<void> {
     this.capturing ??= this.captureEntropyNow().finally(() => (this.capturing = null));
@@ -393,7 +393,7 @@ export class SolanaChain implements ChainGateway {
   private async captureEntropyNow(): Promise<void> {
     if (!this.enabled || !this.client || !this.keypair) return;
     const config = this.config;
-    if (!config || !config.passMintEnded || config.passEntropyCaptured) return;
+    if (!config || !config.passSeedRevealed || config.passRevealed) return;
     try {
       const slot = await this.client.getSlot();
       if (slot <= config.passEntropyTargetSlot) return;
@@ -401,8 +401,8 @@ export class SolanaChain implements ChainGateway {
       const signature = await this.send('pass-entropy', [ix]);
       this.sentSignatures.delete('pass-entropy');
       const after = await this.freshConfig();
-      if (after?.passEntropyCaptured) {
-        this.log(`chain: Pass entropy captured — hash of slot ${after.passEntropySlot} · ${signature}`);
+      if (after?.passRevealed) {
+        this.log(`chain: Pass entropy captured — hash of slot ${after.passEntropySlot}, final seed ${after.passFinalSeed} · ${signature}`);
       } else if (after && after.passEntropyTargetSlot !== config.passEntropyTargetSlot) {
         this.log(`chain: Pass entropy target ${config.passEntropyTargetSlot} was missed; new target slot ${after.passEntropyTargetSlot} · ${signature}`);
       }
@@ -547,6 +547,8 @@ export class SolanaChain implements ChainGateway {
       mintOpen: c.passMintOpen,
       mintStartTs: c.passMintStartTs,
       revealed: c.passRevealed && !!c.passFinalSeed,
+      seedRevealed: c.passSeedRevealed,
+      entropyTargetSlot: c.passEntropyTargetSlot,
       // traits derive from the final seed sha256(seed || entropy), never the admin seed
       seed: c.passRevealed ? c.passFinalSeed : null,
     };

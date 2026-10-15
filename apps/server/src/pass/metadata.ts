@@ -6,7 +6,7 @@ export type { PassAttribute, PassMetadata } from '@slana/art';
 
 export const SEALED_DESCRIPTION =
   'A sealed Slana Pass. Its risograph coin and traits are revealed on-chain after the mint ends. ' +
-  'Traits come from a committed seed mixed with a Solana slot hash from just after the mint closes, ' +
+  'Traits come from a committed seed, published after the mint closes, mixed with a later Solana slot hash, ' +
   'so nobody, the team included, can know which number is rare while Passes can still be minted. ' +
   'In Slana the Pass opens the Pass rooms, lowers the arena fee and gives a head start.';
 

@@ -50,40 +50,46 @@ duyurursunuz.
 
 ## Pass açılışı (reveal)
 
-Açılış commit–reveal'in ikinci yarısıdır. Mint **bittiğinde** (`close-mint` ya da son Pass'in basılması) program bir
-**hedef slot** kaydeder: o anki slot + `ENTROPY_DELAY_SLOTS` (150 slot ≈ 1 dakika); mint bundan sonra **bir daha
-açılamaz**. Hedef geçince herkesin gönderebildiği `capture_pass_entropy`, hedefte ya da ondan sonraki ilk blokta oluşan
-slotun hash'ini SlotHashes sysvar'ından okuyup `pass_entropy` olarak saklar. Açılışta program son tohumu
-`pass_final_seed = sha256(tohum ‖ pass_entropy)` olarak saklar ve bütün Pass'lerin özellikleri
-`passTraits(pass_final_seed, n, pass_supply)` ile herkesçe hesaplanabilir. Mint'i bitiren (yönetici ya da son Pass'i
-basan) gelecekteki o hash'i bilemez ve seçemez; yakalamayı geciktiren biri de yalnızca yeni ve yine bilinmeyen bir hedefe
-yol açar (hedef SlotHashes penceresinden, ≈512 slot, yakalanmadan çıkarsa aynı komut hedefi o anki slot + 150'ye taşır).
-Böylece Pass basılabildiği sürece hangi numaranın nadir olduğunu kimse, ekip dahil, bilemez.
+Açılış commit–reveal'in ikinci yarısıdır ve sırası önemlidir (karar R23):
+
+- Mint **bittiğinde** (`close-mint` ya da son Pass'in basılması) mint **bir daha açılamaz**; henüz hiçbir entropi hedefi
+  yoktur.
+- `reveal` tohumu zincirde **herkese açık** yayınlar (program `sha256(tohum) == pass_seed_hash` şartını denetler) ve
+  **ancak ondan sonra** hedef slotu kaydeder: o anki slot + `ENTROPY_DELAY_SLOTS` (150 slot ≈ 1 dakika).
+- Hedef geçince herkesin gönderebildiği `capture_pass_entropy`, hedefte ya da ondan sonraki ilk blokta oluşan slotun
+  hash'ini SlotHashes sysvar'ından okuyup `pass_entropy` olarak saklar, son tohumu
+  `pass_final_seed = sha256(tohum ‖ pass_entropy)` hesaplar ve açılışı tamamlar. Bütün Pass'lerin özellikleri
+  `passTraits(pass_final_seed, n, pass_supply)` ile herkesçe hesaplanabilir.
+
+Tohum hedef slottan önce açık olduğu için sonucu herkes aynı anda öğrenir; yöneticinin bilgi avantajı yoktur. Kalan risk
+(dürüstçe): sonucu beğenmeyen biri pencerenin (≈512 slot) yakalama olmadan geçmesini umabilir, bu hedefi yeni bir gelecek
+slota taşır. Ama herkes (Pass sahipleri dahil) her an yakalayabilir; oyun sunucusu ve web'deki Pass sayfası da yakalar,
+bu yüzden zamanlamayı tek bir taraf kontrol edemez.
 
 1. Mint'i bitirin (arz bittiyse program zaten bitirmiştir):
    ```bash
    pnpm admin close-mint
    ```
-   Komut `close_pass_mint` gönderir ve hedef slotu yazar. Hiç Pass basılmadıysa yalnızca bayrağı kapatır (hedef yok,
-   mint yeniden açılabilir). Basım başladıysa `update-config --mint-open false` reddedilir (`UseCloseMint`): mint'i
-   yalnızca `close-mint` bitirir.
-2. Entropiyi yakalayın: oyun sunucusu hedef slot geçince `capture_pass_entropy`'yi kendisi gönderir (yalnızca ağ ücretini
-   öder, başarısız olursa 30 sn'de bir yeniden dener; günlükte `chain: Pass entropy captured`). Sunucu kapalıysa:
-   ```bash
-   pnpm admin capture-entropy                 # herhangi bir cüzdan gönderebilir
-   pnpm admin status                          # "entropy <hex> (hash of slot N)"
-   ```
-3. Tohum dosyasının özetini zincirdekiyle karşılaştırın:
+   Hiç Pass basılmadıysa komut yalnızca bayrağı kapatır (mint yeniden açılabilir). Basım başladıysa
+   `update-config --mint-open false` reddedilir (`UseCloseMint`): mint'i yalnızca `close-mint` bitirir.
+2. Tohum dosyasının özetini zincirdekiyle karşılaştırın:
    ```bash
    pnpm admin pass-seed                       # keys/pass-seed.json'un sha256'sını yazar
    pnpm admin status                          # "seed hash" satırı
    ```
-4. Açıklayın:
+3. Tohumu açıklayın (hedef slotu da bu ayarlar):
    ```bash
    pnpm admin reveal [--seed-file keys/pass-seed.json]
    ```
-   Program `sha256(seed) == pass_seed_hash` şartını ve entropinin yakalanmış olmasını (`EntropyNotCaptured`) kontrol
-   eder; son tohumu kaydeder. Komut entropiyi, son tohumu ve görselleri üretme komutunu yazar.
+   Program mint'in bitmiş olmasını ve `sha256(seed) == pass_seed_hash` şartını denetler; tohumu açık saklar ve hedef
+   slotu yazar. Komut hedef slotu yazdırır. Pass sayfası "Açılışın tamamlanması bekleniyor" durumunu gösterir.
+4. Açılışı tamamlayın: oyun sunucusu hedef slot geçince `capture_pass_entropy`'yi kendisi gönderir (yalnızca ağ
+   ücretini öder, başarısız olursa 30 sn'de bir yeniden dener; günlükte `chain: Pass entropy captured … final seed …`).
+   Web'deki Pass sayfasında bağlı her cüzdan "Açılışı tamamla" düğmesine basabilir. Elle:
+   ```bash
+   pnpm admin capture-entropy                 # herhangi bir cüzdan gönderebilir
+   pnpm admin status                          # entropy, final seed
+   ```
 5. Oyun sunucusu açılışı zincirden okur (yapılandırma önbelleği 30 sn) ve `/pass/<n>.json` ile `/pass/<n>.png` mühürlü
    içerik yerine özellikleri döndürür. Önbellek süreleri: JSON mühürlüyken 60 sn, açılıştan sonra 1 saat (`PUBLIC_URL`
    boşsa JSON hiç önbelleğe alınmaz); PNG mühürlüyken 300 sn, açılıştan sonra 1 gün. Pazar yerlerinden metadata

@@ -17,22 +17,15 @@ use crate::{
 // Pass mint end
 // ---------------------------------------------------------------------------------------
 
-/// Ends the Pass mint for good and sets the trait entropy target: `slot + ENTROPY_DELAY_SLOTS`.
-/// Called by `close_pass_mint` and by `mint_pass` when the last Pass of the supply is minted.
-/// The entropy itself (that future slot's hash) is captured later by the permissionless
-/// `capture_pass_entropy`, so whoever ends the mint cannot know or choose it.
+/// Ends the Pass mint for good (it never reopens). Called by `close_pass_mint` and by
+/// `mint_pass` when the last Pass of the supply is minted. No entropy target is set here:
+/// `reveal_pass` sets it only after the seed is public (ruling R23).
 pub(crate) fn end_pass_mint(config: &mut Config) -> Result<()> {
     require!(!config.pass_mint_ended, SlanaError::MintEnded);
-    let slot = Clock::get()?.slot;
-    let target = slot
-        .checked_add(ENTROPY_DELAY_SLOTS)
-        .ok_or(SlanaError::MathOverflow)?;
     config.pass_mint_ended = true;
     config.pass_mint_open = false;
-    config.pass_entropy_target_slot = target;
     emit!(PassMintEnded {
         minted: config.pass_minted,
-        entropy_target_slot: target,
     });
     Ok(())
 }

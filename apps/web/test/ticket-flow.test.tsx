@@ -183,6 +183,8 @@ describe('ticket flow races', () => {
     expect(spies.fetchArena).toHaveBeenCalledTimes(1);
     expect(spies.buildTicketTx).toHaveBeenCalledTimes(1);
     expect(spies.sendTx).toHaveBeenCalledTimes(1);
+    // the join carries the fee shown on the frozen review as its on-chain bound
+    expect(spies.buildTicketTx.mock.calls[0]).toEqual([expect.anything(), expect.objectContaining({ maxFeeBps: 500 })]);
   });
 
   it('focus never starts on the pay button', async () => {

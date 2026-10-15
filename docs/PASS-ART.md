@@ -7,13 +7,20 @@ Every Slana Pass is a risograph coin character drawn by the same code in the gam
 metadata images and in the offline generator (`packages/art`). Its traits are a pure function of the final seed, the
 Pass number and the collection supply: `passTraits(finalSeed, n, supply)`, where
 
-    finalSeed = sha256(seed ‖ entropy)          (Config.pass_final_seed, stored by reveal_pass)
+    finalSeed = sha256(seed ‖ entropy)          (Config.pass_final_seed, stored by capture_pass_entropy)
 
-`seed` is the admin's committed seed (`sha256(seed)` is on-chain before the first mint) and `entropy` is
-`Config.pass_entropy`: the SlotHashes hash of the first slot at or after the target slot fixed when the mint ended
-(`close_pass_mint` or the last Pass of the supply; target = that slot + 150), stored by the permissionless
-`capture_pass_entropy`. Nobody, the team included, can know or choose a number's traits while it can still be minted;
-delaying the capture only moves the target to another unknown future slot.
+The order is fixed by the program (ruling R23):
+
+1. the mint ends (`close_pass_mint` or the last Pass of the supply);
+2. `reveal_pass` publishes `seed` (checked against `sha256(seed)`, committed before the first mint) and only then sets
+   the entropy target slot (that slot + 150);
+3. once the target has passed, anyone sends `capture_pass_entropy`: the program stores as `entropy`
+   (`Config.pass_entropy`) the SlotHashes hash of the first slot at or after the target, computes the final seed and
+   marks the Pass revealed.
+
+Nobody, the team included, can know a number's traits while it can still be minted, and once the seed is public
+everybody learns the outcome at the same moment. Letting the SlotHashes window pass without a capture would re-target,
+but anyone (the game server, the web Pass page, any holder) can capture first.
 
 ## Traits and rarity
 
@@ -35,7 +42,7 @@ Create the reveal seed once, before the mint (never commit it; `keys/` and `pass
     pnpm admin set-seed-hash                   # commits sha256(seed) on-chain, before the first mint
 
 Keep the file secret and backed up: without it the collection cannot be revealed. The seed alone does not determine the
-traits: they also need the entropy captured after the mint ends.
+traits: they also need the entropy captured after the seed is published.
 
 ## Generator
 
@@ -133,14 +140,16 @@ Upload `out/pass/` as one folder with your Arweave or IPFS tool of choice, check
 ## Reveal
 
 The full procedure, with the commands, is in [OPERATIONS.md](OPERATIONS.md#pass-açılışı-reveal):
-`close-mint` (unless sold out; it sets the entropy target slot), let the server (or `pnpm admin capture-entropy`) capture
-the entropy, compare `pnpm admin pass-seed` with the on-chain hash in
-`pnpm admin status`, then `pnpm admin reveal`. The server switches to the revealed art within its 30 s config cache; ask
+`close-mint` (unless sold out), compare `pnpm admin pass-seed` with the on-chain hash in `pnpm admin status`, then
+`pnpm admin reveal` (it publishes the seed and sets the entropy target slot); after the target slot the server, the web
+Pass page or `pnpm admin capture-entropy` completes the reveal. The server switches to the revealed art within its 30 s config cache; ask
 marketplaces to refresh.
 
-Anyone can check the art after the reveal. `pnpm admin status` prints the admin seed, the entropy and the final seed as
-hex (`revealed yes · admin seed <hex>`, `entropy <hex> (hash of slot N; target T)`, `final seed <hex>`). Check that the final
-seed really is `sha256(seed ‖ entropy)` and that the seed matches the hash committed before the mint, then generate:
+Anyone can check the art after the reveal. Read `Config.pass_seed`, `Config.pass_entropy`, `Config.pass_entropy_slot` and
+`Config.pass_final_seed` with `pnpm admin status` (`seed public · <hex>`, `entropy <hex> (hash of slot N; target T)`,
+`final seed <hex>`) or the SDK (`fetchConfig()` → `passSeed`, `passEntropy`, `passEntropySlot`, `passFinalSeed`). The
+capture transaction also logs a readable line, `Pass entropy: slot N hash <hex>`. Check that the seed matches the hash
+committed before the mint and that the final seed really is `sha256(seed ‖ entropy)`, then generate:
 
     node -e "const c=require('crypto'),[s,e]=process.argv.slice(1).map(h=>Buffer.from(h,'hex'));\
       console.log('hash ', c.createHash('sha256').update(s).digest('hex'));\
@@ -148,7 +157,7 @@ seed really is `sha256(seed ‖ entropy)` and that the seed matches the hash com
     pnpm pass:generate --final-seed <final seed hex> --supply <on-chain pass_supply> --site-url https://<server> --out out/check
 
 `hash` must equal the `seed hash` line and `final` the `final seed` line. The entropy is the slot's bank hash as the
-SlotHashes sysvar lists it (not the block's `blockhash`): the program read it itself in the `capture_pass_entropy`
-transaction, whose `PassEntropyCaptured` event (slot and hash) stays in the transaction logs; while the slot is still in
-the window it can also be read with `solana account SysvarS1otHashes111111111111111111111111111`. With the server's
-`PUBLIC_URL` as `--site-url`, `out/check/<n>.json` is byte-identical to `/pass/<n>.json`.
+SlotHashes sysvar lists it (not the block's `blockhash`). The guarantee is that the program reads the sysvar itself,
+at its fixed address (any other account is refused with `BadSlotHashes`), in the capture transaction: no caller can
+supply the value. With the server's `PUBLIC_URL` as `--site-url`, `out/check/<n>.json` is byte-identical to
+`/pass/<n>.json`.

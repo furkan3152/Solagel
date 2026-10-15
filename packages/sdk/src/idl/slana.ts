@@ -16,8 +16,9 @@ export type Slana = {
     {
       "name": "capturePassEntropy",
       "docs": [
-        "Permissionless: stores the trait entropy (hash of the first slot at or after the",
-        "target) once the target slot has passed, or re-targets if it left the window."
+        "Permissionless: once the seed is public and the target slot has passed, stores the",
+        "entropy (hash of the first slot at or after the target) and the final seed, which",
+        "reveals the traits; re-targets if the target left the SlotHashes window."
       ],
       "discriminator": [
         187,
@@ -647,7 +648,9 @@ export type Slana = {
     {
       "name": "joinArena",
       "docs": [
-        "Pays the entry fee into the arena vault and opens a session (no Pass)."
+        "Pays the entry fee into the arena vault and opens a session (no Pass). Fails with",
+        "`FeeAboveLimit` if the fee rate fixed into the session exceeds `max_fee_bps` (the rate",
+        "the player was shown)."
       ],
       "discriminator": [
         135,
@@ -799,7 +802,12 @@ export type Slana = {
           "address": "11111111111111111111111111111111"
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "maxFeeBps",
+          "type": "u16"
+        }
+      ]
     },
     {
       "name": "joinArenaWithPass",
@@ -989,7 +997,12 @@ export type Slana = {
           "address": "11111111111111111111111111111111"
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "maxFeeBps",
+          "type": "u16"
+        }
+      ]
     },
     {
       "name": "mintPass",
@@ -1335,7 +1348,7 @@ export type Slana = {
       "name": "revealPass",
       "docs": [
         "Publishes the Pass trait seed (checked against the committed hash), once, after the",
-        "mint ended; stores the final seed `sha256(seed || entropy)`."
+        "mint ended, then sets the entropy target slot."
       ],
       "discriminator": [
         233,
@@ -2518,6 +2531,19 @@ export type Slana = {
       ]
     },
     {
+      "name": "passSeedRevealed",
+      "discriminator": [
+        42,
+        110,
+        80,
+        48,
+        148,
+        5,
+        106,
+        38
+      ]
+    },
+    {
       "name": "playerRegistered",
       "discriminator": [
         175,
@@ -2872,6 +2898,16 @@ export type Slana = {
       "code": 6049,
       "name": "entropyNotCaptured",
       "msg": "The Pass entropy is not captured yet"
+    },
+    {
+      "code": 6050,
+      "name": "seedNotRevealed",
+      "msg": "The Pass seed is not revealed yet"
+    },
+    {
+      "code": 6051,
+      "name": "feeAboveLimit",
+      "msg": "The fee rate is above the limit the player signed"
     }
   ],
   "types": [
@@ -3177,7 +3213,7 @@ export type Slana = {
             "name": "passMintEnded",
             "docs": [
               "The mint ended for good (`close_pass_mint`, or the last Pass of the supply was minted).",
-              "It never reopens; `pass_entropy_target_slot` is set."
+              "It never reopens; `reveal_pass` may publish the seed from then on."
             ],
             "type": "bool"
           },
@@ -3196,7 +3232,7 @@ export type Slana = {
           {
             "name": "passSeed",
             "docs": [
-              "The admin's revealed seed (zero until `pass_revealed`)."
+              "The admin's seed, public once `pass_seed_revealed` (zero before)."
             ],
             "type": {
               "array": [
@@ -3207,13 +3243,24 @@ export type Slana = {
           },
           {
             "name": "passRevealed",
+            "docs": [
+              "The traits are public: `capture_pass_entropy` stored `pass_final_seed`."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "passSeedRevealed",
+            "docs": [
+              "`reveal_pass` published `pass_seed` (checked against `pass_seed_hash`) and set the",
+              "entropy target slot. The seed is public before any entropy target exists."
+            ],
             "type": "bool"
           },
           {
             "name": "passEntropyTargetSlot",
             "docs": [
-              "Set when the mint ends: `slot + ENTROPY_DELAY_SLOTS` (moved forward again if nobody",
-              "captured it while it was in the SlotHashes window)."
+              "Set by `reveal_pass` (after the seed is public): `slot + ENTROPY_DELAY_SLOTS`, moved",
+              "forward again if nobody captured it while it was in the SlotHashes window. 0 before."
             ],
             "type": "u64"
           },
@@ -3248,8 +3295,8 @@ export type Slana = {
           {
             "name": "passFinalSeed",
             "docs": [
-              "`sha256(pass_seed || pass_entropy)`, set by the reveal (zero before). The single seed",
-              "every Pass trait is derived from (`passTraits(final_seed, n, supply)`)."
+              "`sha256(pass_seed || pass_entropy)`, set by `capture_pass_entropy` (zero before). The",
+              "single seed every Pass trait is derived from (`passTraits(final_seed, n, supply)`)."
             ],
             "type": {
               "array": [
@@ -3477,8 +3524,7 @@ export type Slana = {
     {
       "name": "passMintEnded",
       "docs": [
-        "The Pass mint ended for good (closed by the admin or sold out). The trait entropy will be",
-        "the hash of the first slot at or after `entropy_target_slot` (`capture_pass_entropy`)."
+        "The Pass mint ended for good (closed by the admin or sold out). Next: `reveal_pass`."
       ],
       "type": {
         "kind": "struct",
@@ -3486,10 +3532,6 @@ export type Slana = {
           {
             "name": "minted",
             "type": "u32"
-          },
-          {
-            "name": "entropyTargetSlot",
-            "type": "u64"
           }
         ]
       }
@@ -3519,6 +3561,9 @@ export type Slana = {
     },
     {
       "name": "passRevealed",
+      "docs": [
+        "`capture_pass_entropy` stored the entropy and the final seed: the traits are public."
+      ],
       "type": {
         "kind": "struct",
         "fields": [
@@ -3554,6 +3599,30 @@ export type Slana = {
                 32
               ]
             }
+          }
+        ]
+      }
+    },
+    {
+      "name": "passSeedRevealed",
+      "docs": [
+        "`reveal_pass` published the seed and set the entropy target slot."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "seed",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "entropyTargetSlot",
+            "type": "u64"
           }
         ]
       }

@@ -56,6 +56,8 @@ pub enum SlanaError {
     PassInUse,
     #[msg("Pass mint is closed")]
     MintClosed,
+    /// Deprecated: unreachable since selling out ends the mint (later mints fail with
+    /// `MintClosed`). Kept so the following error codes keep their numbers.
     #[msg("Pass mint is sold out")]
     MintSoldOut,
     #[msg("Pass mint limit per wallet reached")]
@@ -102,4 +104,8 @@ pub enum SlanaError {
     EntropyNotReady,
     #[msg("The Pass entropy is not captured yet")]
     EntropyNotCaptured,
+    #[msg("The Pass seed is not revealed yet")]
+    SeedNotRevealed,
+    #[msg("The fee rate is above the limit the player signed")]
+    FeeAboveLimit,
 }

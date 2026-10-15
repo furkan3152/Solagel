@@ -181,6 +181,7 @@ describe('account decoding', () => {
       passSeedHash: new Array(32).fill(0xab),
       passSeed: new Array(32).fill(0),
       passRevealed: false,
+      passSeedRevealed: false,
       passEntropyTargetSlot: new BN(0),
       passEntropyCaptured: false,
       passEntropy: new Array(32).fill(0),
@@ -222,6 +223,7 @@ describe('account decoding', () => {
       passMintEnded: false,
       passSeedHash: 'ab'.repeat(32),
       passSeed: null,
+      passSeedRevealed: false,
       passRevealed: false,
       passEntropyTargetSlot: 0,
       passEntropyCaptured: false,
@@ -230,10 +232,12 @@ describe('account decoding', () => {
       passFinalSeed: null,
       totals: { players: 7, games: 70, sessions: 42, staked: 9_000_000_000_000_000n, paidOut: 5n },
     });
-    const unset = toConfigView({ ...raw, passCollection: PublicKey.default, passSeedHash: new Array(32).fill(0), passSeed: new Array(32).fill(1), passRevealed: true });
+    const unset = toConfigView({ ...raw, passCollection: PublicKey.default, passSeedHash: new Array(32).fill(0), passSeed: new Array(32).fill(1), passSeedRevealed: true });
     expect(unset.passCollection).toBeNull();
     expect(unset.passSeedHash).toBeNull();
     expect(unset.passSeed).toBe('01'.repeat(32));
+    // the seed is public once reveal_pass ran, before the traits are (capture_pass_entropy)
+    expect([unset.passSeedRevealed, unset.passRevealed, unset.passFinalSeed]).toEqual([true, false, null]);
     // After the reveal the final seed (what traits derive from) is separate from the admin seed.
     const revealed = toConfigView({
       ...raw,
@@ -245,6 +249,7 @@ describe('account decoding', () => {
       passEntropySlot: new BN(77),
       passSeed: new Array(32).fill(7),
       passFinalSeed: new Array(32).fill(0xfe),
+      passSeedRevealed: true,
       passRevealed: true,
     });
     expect(revealed).toMatchObject({ passMintEnded: true, passEntropyTargetSlot: 70, passEntropyCaptured: true, passEntropy: '5a'.repeat(32), passEntropySlot: 77, passSeed: '07'.repeat(32), passFinalSeed: 'fe'.repeat(32) });

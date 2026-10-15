@@ -155,7 +155,7 @@ async function main(): Promise<void> {
   step(`join_arena #${arenaId}`);
   const token = { tokenMint: config.tokenMint, tokenProgram: config.tokenProgram };
   const joinSig = await client.sendAndConfirm(
-    [createAtaIdempotentIx(player.publicKey, player.publicKey, config.tokenMint, config.tokenProgram), await client.ix.joinArena(player.publicKey, { arenaId, ...token })],
+    [createAtaIdempotentIx(player.publicKey, player.publicKey, config.tokenMint, config.tokenProgram), await client.ix.joinArena(player.publicKey, { arenaId, ...token, maxFeeBps: config.feeBps })],
     [player],
   );
   const session = await client.fetchSession(arenaId, player.publicKey);

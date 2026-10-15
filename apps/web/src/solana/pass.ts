@@ -72,6 +72,8 @@ export function passStatusOf(config: ConfigView | null, server: PassStatus | nul
     mintOpen: config.passMintOpen,
     mintStartTs: config.passMintStartTs,
     revealed: config.passRevealed && !!config.passFinalSeed,
+    seedRevealed: config.passSeedRevealed,
+    entropyTargetSlot: config.passEntropyTargetSlot,
     // traits derive from the final seed sha256(seed || entropy), never the admin seed
     seed: config.passRevealed ? config.passFinalSeed : null,
   };
@@ -166,4 +168,32 @@ export const passNo = (n: number) => String(n).padStart(4, '0');
 export function splitDuration(totalS: number): { d: number; h: number; m: number; s: number } {
   const t = Math.max(0, Math.floor(totalS));
   return { d: Math.floor(t / 86_400), h: Math.floor((t % 86_400) / 3600), m: Math.floor((t % 3600) / 60), s: t % 60 };
+}
+
+/* ── completing the reveal (ruling R23) ──────────────────────────────────── */
+
+/** Compute-unit limit of `capture_pass_entropy` (a full 512-entry SlotHashes scan is ~18k CU). */
+export const CAPTURE_COMPUTE_UNITS = 60_000;
+
+/** SOL the "Complete the reveal" transaction costs: one signature plus the priority fee. Nothing else moves. */
+export const captureFeeLamports = (): number => BASE_FEE_LAMPORTS + Math.ceil((CAPTURE_COMPUTE_UNITS * PRIORITY_MICRO_LAMPORTS) / 1_000_000);
+
+export type RevealStage =
+  /** The seed is secret (mint running or ended, `reveal_pass` not sent yet). */
+  | { kind: 'sealed' }
+  /** The seed is public; the target slot has not passed yet (or the current slot is unknown). */
+  | { kind: 'waiting'; targetSlot: number; slotsLeft: number | null }
+  /** The target slot passed: anyone (the server, any wallet) can complete the reveal. */
+  | { kind: 'completable'; targetSlot: number }
+  | { kind: 'revealed' };
+
+/** Where the reveal stands for `status` at `slot` (null = current slot unknown). */
+export function revealStage(status: PassStatus | null, slot: number | null): RevealStage {
+  if (!status) return { kind: 'sealed' };
+  if (status.revealed && status.seed) return { kind: 'revealed' };
+  if (!status.seedRevealed) return { kind: 'sealed' };
+  const targetSlot = status.entropyTargetSlot ?? 0;
+  if (slot === null) return { kind: 'waiting', targetSlot, slotsLeft: null };
+  if (slot <= targetSlot) return { kind: 'waiting', targetSlot, slotsLeft: targetSlot - slot + 1 };
+  return { kind: 'completable', targetSlot };
 }

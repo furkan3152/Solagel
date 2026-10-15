@@ -282,6 +282,17 @@ pub fn find_slot_hash(data: &[u8], target: u64) -> Option<SlotHashLookup> {
     Some(SlotHashLookup::Found(slot_at(best), hash))
 }
 
+/// Lowercase hex of 32 bytes (for the readable capture log line).
+pub fn hex32(bytes: &[u8; 32]) -> String {
+    const DIGITS: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(64);
+    for b in bytes {
+        out.push(char::from(DIGITS[usize::from(b >> 4)]));
+        out.push(char::from(DIGITS[usize::from(b & 0x0f)]));
+    }
+    out
+}
+
 /// `sha256(seed || entropy)`: the seed every Pass trait is derived from after the reveal.
 pub fn pass_final_seed(seed: &[u8; 32], entropy: &[u8; 32]) -> [u8; 32] {
     solana_sha256_hasher::hashv(&[seed, entropy]).to_bytes()
@@ -315,6 +326,34 @@ mod tests {
         assert_eq!(find_slot_hash(&0u64.to_le_bytes(), 1), None);
         assert_eq!(find_slot_hash(&data[..data.len() - 1], 43), None);
         assert_eq!(find_slot_hash(&[], 1), None);
+    }
+
+    #[test]
+    fn skipped_target_edges() {
+        use SlotHashLookup::*;
+        // The target and the slots right after it were skipped: the next block counts.
+        let data = slot_hashes(&[(50, 5), (48, 8)]);
+        assert_eq!(find_slot_hash(&data, 49), Some(Found(50, [5; 32])));
+        // A skipped target just above the oldest entry is still covered by the window.
+        let data = slot_hashes(&[(60, 6), (59, 9), (40, 4)]);
+        assert_eq!(find_slot_hash(&data, 41), Some(Found(59, [9; 32])));
+        // A skipped target older than every entry: the window no longer proves which block
+        // came first after it, so it is a miss (re-target), never a guess.
+        let data = slot_hashes(&[(60, 6), (59, 9)]);
+        assert_eq!(find_slot_hash(&data, 58), Some(Missed));
+        // A skipped newest slot: nothing at or after the target yet.
+        assert_eq!(find_slot_hash(&data, 61), Some(NotYet));
+    }
+
+    #[test]
+    fn hex32_is_lowercase_hex() {
+        let mut b = [0u8; 32];
+        b[0] = 0xab;
+        b[31] = 0x0f;
+        let h = hex32(&b);
+        assert_eq!(h.len(), 64);
+        assert!(h.starts_with("ab00"));
+        assert!(h.ends_with("000f"));
     }
 
     #[test]
