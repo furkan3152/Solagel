@@ -5,12 +5,14 @@
 //   pnpm demo:record [-- --quick] [-- --url http://localhost:5173/] [-- --out out/videos]
 //
 //   --quick        a short clip (about a minute on a slow machine): lobby, wallet, one Penny Pond
-//                  ticket, a short arena run, end card
+//                  ticket, a short arena run, end card (no bell)
 //   --url <url>    record this running stack (it must be `pnpm demo`'s fake chain); by default
 //                  the stack is started for the recording (scripts/demo.mjs) and stopped afterwards
 //   --out <dir>    output folder (default out/videos, which is gitignored)
 //   --keep-frames  keep the raw screencast frames
 //   --no-audio     record without sound (the old silent videos)
+// Rounds: arenas have no cash-out. The full run plays until the round bell and shows the "Round over" receipt.
+//   ROUND_SECONDS=<n>  round length of the stack this script starts (default 90, so the bell comes soon)
 // Audio: the game's WebAudio output is captured through the dev-only master tap
 // (`window.__slanaAudioTap()`, a MediaStream after the limiter) with MediaRecorder (webm/opus),
 // pulled out of the page in one-second chunks, aligned to the first video frame and muxed as AAC.
@@ -34,6 +36,12 @@ const EXTERNAL = flag('--url');
 const base = opt('--url', 'http://localhost:5173/');
 const out = resolve(ROOT, opt('--out', 'out/videos'));
 const FFMPEG = process.env.FFMPEG || 'ffmpeg';
+// Paid arenas play wall-clock rounds (no cash-out): the walkthrough plays until the bell. When this script
+// starts the stack it runs short rounds (ROUND_SECONDS, default 90) so the bell comes soon; with --url the
+// stack's own ROUND_SECONDS applies (the default round is 300 s).
+const ROUND_SECONDS = Number(process.env.ROUND_SECONDS) || (EXTERNAL ? 300 : 90);
+// two bells' worth: a bot can eat the autopilot before the first one, and an eaten player gets no receipt
+const ROUND_WAIT_MS = (2 * ROUND_SECONDS + 30) * 1000;
 
 // ── preflight: ffmpeg and a browser, before anything is started ──
 const ff = spawnSync(FFMPEG, ['-version'], { encoding: 'utf8' });
@@ -77,7 +85,7 @@ for (const evt of ['uncaughtException', 'unhandledRejection']) {
 for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => void stopStack().then(() => process.exit(130)));
 if (!EXTERNAL) {
   console.log('starting the fake-chain stack (scripts/demo.mjs)...');
-  stack = spawn('node', [resolve(ROOT, 'scripts/demo.mjs')], { cwd: ROOT, detached: true, stdio: ['ignore', 'inherit', 'inherit'] });
+  stack = spawn('node', [resolve(ROOT, 'scripts/demo.mjs')], { cwd: ROOT, env: { ...process.env, ROUND_SECONDS: String(ROUND_SECONDS) }, detached: true, stdio: ['ignore', 'inherit', 'inherit'] });
   stack.on('exit', (c) => {
     if (stack) {
       console.error(`the demo stack exited early (code ${c}); see its output above`);
@@ -382,7 +390,7 @@ if (!QUICK) {
   await wait(800);
   r = await autopilot(40_000);
   await snap('3-practice');
-  if (r === 'dead') {
+  if (r === 'dead' || (await screen()) !== 'playing') {
     log('practice: eaten');
     await wait(3500);
     await snap('3-eaten');
@@ -392,7 +400,12 @@ if (!QUICK) {
     if ((await screen()) !== 'lobby') await click('.g-death .kb-sheet__head .kb-iconbtn').catch(() => {});
   } else {
     await wait(300);
-    await click('.g-topbar__btn[aria-label="Menu"]');
+    // the autopilot can be eaten between its last frame and this click: then leave by the EATEN sheet
+    if ((await screen()) === 'playing') await click('.g-topbar__btn[aria-label="Menu"]').catch(() => {});
+    if ((await screen()) === 'dead') {
+      await wait(3500);
+      await page.keyboard.press('Escape');
+    }
   }
   await page.waitForFunction(() => window.__slana.useUi.getState().screen === 'lobby', null, { timeout: 10000 }).catch(async () => {
     problems.push('practice: did not get back to the lobby by the UI; screen=' + (await screen()));
@@ -426,7 +439,7 @@ async function buyTicket(first) {
   await page.waitForSelector('.tf-ticket__stamp', { timeout: 10000 }).catch(() => problems.push('no ticket stamp'));
   await wait(400);
   if (first) await snap('4-stamp');
-  await page.waitForFunction(() => window.__slana.useUi.getState().screen === 'playing', null, { timeout: 20000 });
+  await page.waitForFunction(() => window.__slana.useUi.getState().screen === 'playing', null, { timeout: 70000 }); // a ticket bought while joins are closed is held until the next round
 }
 await chapter('4 · Buy a ticket');
 await buyTicket(true);
@@ -453,34 +466,59 @@ if (r === 'dead') {
   r = await autopilot(Math.max(QUICK ? 5_000 : 22_000, arenaMs - (Date.now() - tA)));
 }
 
-// 6 · Cash out
+// 6 · The bell: paid arenas have no cash-out, so play on until the round ends, then show the receipt
 if (QUICK) {
   await wait(500);
-} else if (r !== 'dead') {
-  await chapter('6 · Cash out');
-  await click('.g-cash__btn', { before: 500 });
-  await wait(1400);
-  await snap('6-printing');
-  await page.waitForFunction(() => window.__slana.useUi.getState().screen === 'cashedout', null, { timeout: 15000 }).catch(() => problems.push('no cashedout screen'));
-  await wait(1200);
-  await snap('6-settling');
-  await page.waitForFunction(() => !!window.__slana.useUi.getState().lastSettlement, null, { timeout: 15000 }).catch(() => problems.push('no settlement'));
-  await wait(1200);
-  const s = await page.locator('.g-cashout__slip').boundingBox().catch(() => null);
-  if (s) await moveTo(s.x + s.width * 0.6, s.y + s.height * 0.7);
-  await wait(2800);
-  await snap('6-paid');
-  await click('.g-cashout .kb-sheet__head .kb-iconbtn');
-  await page.waitForFunction(() => window.__slana.useUi.getState().screen === 'lobby', null, { timeout: 8000 }).catch(async () => {
-    problems.push('cash-out sheet close did not return to the lobby; screen=' + (await screen()));
-    await page.keyboard.press('Escape');
-  });
-  await wait(1800);
-  await snap('6-lobby');
 } else {
-  problems.push('eaten twice in the arena: no cash-out shown');
-  await wait(3000);
-  await page.keyboard.press('Escape');
+  await chapter('6 · The bell');
+  const deadline = Date.now() + ROUND_WAIT_MS;
+  let sc = await screen();
+  while (Date.now() < deadline && sc !== 'roundover') {
+    if (sc === 'playing') {
+      await autopilot(4000);
+    } else if (sc === 'dead') {
+      // eaten: buy back in while joins are open, else wait for the next round
+      await wait(3800);
+      await snap('6-eaten');
+      const again = page.locator('.g-death .kb-btn--pink:not([disabled])');
+      if ((await again.count()) > 0) {
+        await click('.g-death .kb-btn--pink');
+        await page.waitForFunction(() => window.__slana.useUi.getState().screen === 'lobby', null, { timeout: 8000 }).catch(() => {});
+        await page.waitForFunction(() => !document.querySelector('.kl-cta')?.disabled, null, { timeout: 15000 }).catch(() => {});
+        await wait(800);
+        await buyTicket(false).catch(() => problems.push('could not buy back in before the bell'));
+      } else {
+        await wait(1500);
+      }
+    } else {
+      await wait(500);
+    }
+    sc = await screen();
+  }
+  if (sc === 'roundover') {
+    await wait(1400);
+    await snap('6-bell');
+    await page.waitForFunction(() => !!window.__slana.useUi.getState().lastSettlement, null, { timeout: 15000 }).catch(() => problems.push('no settlement'));
+    await wait(1200);
+    const s = await page.locator('.g-roundover__slip').boundingBox().catch(() => null);
+    if (s) await moveTo(s.x + s.width * 0.6, s.y + s.height * 0.7);
+    await wait(2800);
+    await snap('6-paid');
+    await click('.g-roundover .kb-btn--paper');
+    await page.waitForFunction(() => window.__slana.useUi.getState().screen === 'lobby', null, { timeout: 8000 }).catch(async () => {
+      problems.push('round-over sheet close did not return to the lobby; screen=' + (await screen()));
+      await page.keyboard.press('Escape');
+    });
+    await wait(1800);
+    await snap('6-lobby');
+  } else {
+    problems.push(`no round-over sheet within ${ROUND_WAIT_MS / 1000} s (screen=${sc}); is ROUND_SECONDS set on the stack?`);
+    await wait(1000);
+    await page.keyboard.press('Escape');
+    await wait(500);
+    if ((await screen()) !== 'lobby') await ui(() => window.__slana.engine.backToLobby());
+    await wait(1500);
+  }
 }
 
 if (!QUICK) {
@@ -567,7 +605,7 @@ if (!QUICK) {
   for (let i = 0; i < 6; i++) { await wheel(260, 65, 70); await wait(900); }
   // scroll the fee-example receipts into view, by wheel
   for (let i = 0; i < 40; i++) {
-    const top = await ui(() => document.querySelector('#docs-cashout .dc-fee')?.getBoundingClientRect().top ?? null);
+    const top = await ui(() => document.querySelector('#docs-payout .dc-fee')?.getBoundingClientRect().top ?? null);
     if (top === null || top < 160) break;
     await wheel(Math.min(260, top - 120), 65, 60);
     await wait(250);
