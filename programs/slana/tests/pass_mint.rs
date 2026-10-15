@@ -575,19 +575,20 @@ fn capture_checks_the_slot_hashes_account() {
 
 #[test]
 fn capture_parses_litesvm_default_slot_hashes() {
-    // LiteSVM keeps its own SlotHashes sysvar (it does not follow `warp_to_slot`); the real
-    // account parses and the capture takes one of its defined outcomes, never `BadSlotHashes`.
+    // LiteSVM keeps its own SlotHashes sysvar (it does not follow `warp_to_slot`): its entries
+    // are all newer than this early target, so the real account parses to `Missed` and the
+    // capture re-targets (never `BadSlotHashes`).
     let (mut env, _) = mint_env();
     let anyone = env.funded_keypair(SOL);
     let target = reveal_at(&mut env, 50);
     env.warp_to_slot(target + 1);
-    match env.capture_entropy_as(&anyone) {
-        Ok(_) => {
-            let config = env.config();
-            assert!(config.pass_revealed || config.pass_entropy_target_slot > target);
-        }
-        Err(_) => assert!(!env.config().pass_revealed),
-    }
+    assert_ok(env.capture_entropy_as(&anyone));
+    let config = env.config();
+    assert!(!config.pass_revealed);
+    assert_eq!(
+        config.pass_entropy_target_slot,
+        target + 1 + ENTROPY_DELAY_SLOTS
+    );
 }
 
 #[test]

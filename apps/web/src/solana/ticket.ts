@@ -234,12 +234,13 @@ export function ticketGate(g: GateInput): TicketGate {
     const payout = owed.reduce((s, p) => s + p.payout, 0);
     return owed.some((p) => p.needsTokenAccount) && g.ataExists !== true ? { kind: 'needAta', payout } : { kind: 'settling', payout };
   }
-  // R20: the server keeps this arena closed; nothing is sold
-  if (t.blocked) return { kind: 'maintenance' };
+  // an open ticket keeps its paths (resume, or the 24 h self-refund) even in a blocked arena
   if (g.session) {
     if (g.nowS - g.session.openedAt >= SESSION_REFUND_TIMEOUT_SECS) return { kind: 'refund' };
     return g.verified ? { kind: 'resume' } : { kind: 'verify' };
   }
+  // R20: the server keeps this arena closed; nothing new is sold
+  if (t.blocked) return { kind: 'maintenance' };
   if (!g.verified) return { kind: 'verify' };
   if (t.requiresPass && g.freePasses === 0) return { kind: 'needPass' };
   if (g.balance !== null && g.balance < t.entryFee) return { kind: 'insufficient', missing: t.entryFee - g.balance };

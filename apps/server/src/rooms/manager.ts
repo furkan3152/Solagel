@@ -149,21 +149,40 @@ export class RoomManager {
       list.map((a) => [a.id, { buyIn: a.entryFee, maxPlayers: a.maxSessions, enabled: a.enabled, requiresPass: a.requiresPass, pot: a.pot }]),
     );
     this.arenaCache = { at: Date.now(), ids };
-    this.recheckVaults(ids);
+    await this.recheckVaults(ids);
     return ids;
   }
 
   /**
-   * Vault guard while the server runs (R20): on every arena refresh, re-check an arena that
-   * is disabled (an admin `sweep` empties the vault of a disabled arena), that was just
-   * re-enabled (disabled → enabled), or that is currently blocked (so a topped-up vault
-   * clears the stale entry). Live instances do not exempt it: a blocked arena sells no ticket.
+   * Vault guard while the server runs (R20): on every arena refresh, every arena's vault is
+   * compared with what the journal owes it, so a disable → sweep → re-enable sequence is
+   * caught even when it happens between two refreshes. A healthy vault clears a stale entry.
+   *
+   * The arena list is cached, so the pot of a running arena can trail joins that the journal
+   * already counts (live tickets). A shortfall of an arena that was enabled at the last read
+   * too is therefore confirmed with a fresh chain read before the arena is blocked; a
+   * disabled or just re-enabled arena is blocked at once (no joins can explain its shortfall).
+   * Live instances do not exempt an arena: a blocked arena sells no ticket.
    */
-  private recheckVaults(ids: Map<number, ArenaData>): void {
+  private async recheckVaults(ids: Map<number, ArenaData>): Promise<void> {
+    let fresh: Map<number, number | null> | null = null;
     for (const [id, a] of ids) {
       const before = this.lastEnabled.get(id);
       this.lastEnabled.set(id, a.enabled);
-      if (!a.enabled || before === false || this.underfunded.has(id)) this.vaultCovers(id, a);
+      if (a.pot === null) continue;
+      const owed = this.deps.journal.owedByArena(id);
+      if (a.pot >= owed || this.underfunded.has(id) || !a.enabled || before !== true) {
+        this.vaultCovers(id, a);
+        continue;
+      }
+      try {
+        fresh ??= new Map((await this.chain.listArenas(true)).map((x) => [x.id, x.pot]));
+      } catch {
+        continue;
+      }
+      const pot = fresh.get(id);
+      if (pot === undefined || pot === null) continue;
+      this.vaultCovers(id, { ...a, pot });
     }
   }
 

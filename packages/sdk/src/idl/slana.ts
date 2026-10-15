@@ -171,7 +171,7 @@ export type Slana = {
     {
       "name": "closePassMint",
       "docs": [
-        "Ends the Pass mint for good and sets the trait entropy target slot."
+        "Ends the Pass mint for good (no entropy target yet: `reveal_pass` sets it)."
       ],
       "discriminator": [
         227,

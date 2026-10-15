@@ -646,9 +646,9 @@ export class SolanaChain implements ChainGateway {
   }
 
   /** Cached 30 s. */
-  async listArenas(): Promise<ChainArena[]> {
+  async listArenas(fresh = false): Promise<ChainArena[]> {
     if (!this.enabled || !this.client) return [];
-    if (this.arenaCache && this.now() - this.arenaCache.at < ARENA_TTL_MS) return this.arenaCache.value;
+    if (!fresh && this.arenaCache && this.now() - this.arenaCache.at < ARENA_TTL_MS) return this.arenaCache.value;
     try {
       const value = (await this.client.fetchArenas()).map(
         (a): ChainArena => ({

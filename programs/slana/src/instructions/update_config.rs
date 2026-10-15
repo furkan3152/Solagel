@@ -108,16 +108,16 @@ pub fn handle_update_config(ctx: Context<UpdateConfig>, args: UpdateConfigArgs) 
     }
     if let Some(pass_mint_open) = args.pass_mint_open {
         if pass_mint_open {
-            // The trait seed is public after the reveal, so the mint must stay closed.
+            // The seed is public from `reveal_pass` on, so the mint must stay closed.
             require!(
                 !config.pass_revealed && !config.pass_seed_revealed,
                 SlanaError::AlreadyRevealed
             );
-            // The entropy is known once the mint ended: reopening would let anyone pick traits.
+            // An ended mint never reopens: its Pass set is final before the seed is revealed.
             require!(!config.pass_mint_ended, SlanaError::MintEnded);
             config.pass_mint_opened = true;
         } else if config.pass_mint_open {
-            // Closing a started mint must capture the entropy (`close_pass_mint`).
+            // A started mint ends for good, only through `close_pass_mint`.
             require!(config.pass_minted == 0, SlanaError::UseCloseMint);
         }
         config.pass_mint_open = pass_mint_open;

@@ -136,7 +136,7 @@ pub mod slana {
         instructions::mint_pass::handle_mint_pass(ctx)
     }
 
-    /// Ends the Pass mint for good and sets the trait entropy target slot.
+    /// Ends the Pass mint for good (no entropy target yet: `reveal_pass` sets it).
     pub fn close_pass_mint(ctx: Context<ClosePassMint>) -> Result<()> {
         instructions::close_pass_mint::handle_close_pass_mint(ctx)
     }
