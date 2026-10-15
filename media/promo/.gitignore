@@ -1,0 +1,3 @@
+# renders, footage frames, TTS models, audio stems, venvs
+cache/
+__pycache__/
