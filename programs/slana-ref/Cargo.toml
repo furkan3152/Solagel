@@ -1,7 +1,7 @@
 [package]
-name = "slana"
+name = "slana-ref"
 version = "0.1.0"
-description = "Slana: cute coin-themed on-chain Agar.io (identity, stakes, seasons, prizes)"
+description = "Slana Anchor reference (never deployed): IDL source and conformance oracle for programs/slana-lean"
 license = "MIT"
 edition.workspace = true
 rust-version.workspace = true
