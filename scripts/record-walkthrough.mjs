@@ -10,6 +10,12 @@
 //                  the stack is started for the recording (scripts/demo.mjs) and stopped afterwards
 //   --out <dir>    output folder (default out/videos, which is gitignored)
 //   --keep-frames  keep the raw screencast frames
+//   --no-audio     record without sound (the old silent videos)
+// Audio: the game's WebAudio output is captured through the dev-only master tap
+// (`window.__slanaAudioTap()`, a MediaStream after the limiter) with MediaRecorder (webm/opus),
+// pulled out of the page in one-second chunks, aligned to the first video frame and muxed as AAC.
+// The announcer is not in the capture: speechSynthesis plays through the OS, outside WebAudio
+// (headless Chromium usually has no speech voices at all, so it stays silent there anyway).
 // Needs: Chromium (Playwright's, or CHROME_PATH=<binary>) and ffmpeg on the PATH (FFMPEG=<binary> to override).
 // Writes <out>/slana-walkthrough.mp4 (or slana-quick.mp4), a highlights reel for full runs,
 // chapters.json and check-*.png screenshots.
@@ -23,6 +29,7 @@ const argv = process.argv.slice(2);
 const flag = (n) => argv.includes(n);
 const opt = (n, d) => (argv.includes(n) ? argv[argv.indexOf(n) + 1] : d);
 const QUICK = flag('--quick');
+const AUDIO = !flag('--no-audio');
 const EXTERNAL = flag('--url');
 const base = opt('--url', 'http://localhost:5173/');
 const out = resolve(ROOT, opt('--out', 'out/videos'));
@@ -91,14 +98,16 @@ const log = (...a) => console.log(`[${((Date.now() - T0) / 1000).toFixed(1)}s]`,
 
 const browser = await chromium.launch({
   executablePath: chrome.executablePath,
-  args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
+  // the audio tap runs from the start of the capture; the game itself still waits for a click
+  args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', ...(AUDIO ? ['--autoplay-policy=no-user-gesture-required'] : [])],
 });
 const ctx = await browser.newContext({ viewport: { width: W, height: H }, locale: 'en-US' });
 
-// ── settings: paper theme, sound off, name Daphne ──
-await ctx.addInitScript(() => {
-  localStorage.setItem('slana.settings.v1', JSON.stringify({ name: 'Daphne', skin: 4, theme: 'light', quality: 'high', sound: false, volume: 0, showNames: true, showMass: true, showFps: false, showMinimap: true, showChat: true }));
-});
+// ── settings: paper theme, default sound levels (or none with --no-audio), name Daphne ──
+await ctx.addInitScript((audio) => {
+  const sound = audio ? { sound: true } : { sound: false, volume: 0 };
+  localStorage.setItem('slana.settings.v1', JSON.stringify({ name: 'Daphne', skin: 4, theme: 'light', quality: 'high', ...sound, showNames: true, showMass: true, showFps: false, showMinimap: true, showChat: true }));
+}, AUDIO);
 
 // ── Dev Wallet: a Wallet Standard wallet whose key lives in this script (signs the free login message) ──
 await installDevWallet(ctx);
@@ -150,6 +159,8 @@ await ctx.addInitScript(() => {
 
 const page = await ctx.newPage();
 const problems = [];
+const audioChunks = [];
+if (AUDIO) await page.exposeFunction('__recAudioChunk', (b64) => void audioChunks.push(Buffer.from(b64, 'base64')));
 page.on('pageerror', (e) => problems.push(`[pageerror] ${e.message}`));
 page.on('console', (m) => m.type() === 'error' && problems.push(`[console.error] ${m.text()}`));
 
@@ -292,6 +303,29 @@ await page.waitForFunction(() => !!window.__slana && window.__slana.useUi.getSta
 await page.waitForFunction(() => !!window.__slanaChain, null, { timeout: 20000 }).catch(() => {});
 await wait(1200);
 await page.mouse.move(cur.x, cur.y);
+// game audio: MediaRecorder on the dev master tap; `audioStart` (wall clock) aligns it to the video
+let audioStart = null;
+if (AUDIO) {
+  audioStart = await ui(
+    () =>
+      new Promise((res) => {
+        const stream = window.__slanaAudioTap?.();
+        if (!stream || typeof MediaRecorder === 'undefined') return res(null);
+        const rec = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 160000 });
+        rec.ondataavailable = async (e) => {
+          if (!e.data.size) return;
+          const buf = new Uint8Array(await e.data.arrayBuffer());
+          let s = '';
+          for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+          await window.__recAudioChunk(btoa(s));
+        };
+        rec.onstart = () => res(Date.now() / 1000);
+        window.__recAudio = rec;
+        rec.start(1000);
+      }),
+  );
+  if (audioStart === null) problems.push('audio: no dev audio tap (window.__slanaAudioTap); recording without sound');
+}
 await cdp.send('Page.startScreencast', { format: 'jpeg', quality: 82, maxWidth: W, maxHeight: H, everyNthFrame: 1 });
 const recStart = Date.now() / 1000;
 await wait(600);
@@ -559,6 +593,14 @@ await snap('11-end');
 
 await cdp.send('Page.stopScreencast');
 const end = Date.now() / 1000;
+if (audioStart !== null) {
+  // the last chunk arrives after `stop`; give it a moment to cross into Node
+  await ui(() => new Promise((res) => {
+    const rec = window.__recAudio;
+    rec.onstop = () => setTimeout(res, 400);
+    rec.stop();
+  })).catch(() => {});
+}
 await wait(300);
 await ctx.close();
 await browser.close();
@@ -577,11 +619,24 @@ concat += `file 'frames/f${String(frames.length - 1).padStart(5, '0')}.jpg'\n`;
 writeFileSync(`${out}/frames.txt`, concat);
 const first = frames[0];
 const chaptersOut = chapters.map((c) => ({ ...c, t: +(c.at - first).toFixed(2) }));
-writeFileSync(`${out}/chapters.json`, JSON.stringify({ start: first, recStart, end, chapters: chaptersOut }, null, 2));
+writeFileSync(`${out}/chapters.json`, JSON.stringify({ start: first, recStart, audioStart, end, chapters: chaptersOut }, null, 2));
 log('frames', frames.length, 'duration', (end - first).toFixed(1));
 
 const video = `${out}/${QUICK ? 'slana-quick' : 'slana-walkthrough'}.mp4`;
-const enc = spawnSync(FFMPEG, ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', `${out}/frames.txt`, '-vf', 'fps=30,format=yuv420p', '-c:v', 'libx264', '-preset', 'medium', '-crf', '24', '-movflags', '+faststart', video], { stdio: 'inherit' });
+// audio: shift the capture onto the video's clock (positive: it started after the first frame)
+const audioFile = `${out}/audio.webm`;
+const hasAudio = audioStart !== null && audioChunks.length > 0;
+let audioArgs = [];
+if (hasAudio) {
+  writeFileSync(audioFile, Buffer.concat(audioChunks));
+  const offset = audioStart - first;
+  const shift = offset >= 0 ? `adelay=${Math.round(offset * 1000)}:all=1` : `atrim=start=${(-offset).toFixed(3)},asetpts=PTS-STARTPTS`;
+  audioArgs = ['-i', audioFile, '-map', '0:v', '-map', '1:a', '-af', `${shift},apad`, '-shortest', '-c:a', 'aac', '-b:a', '160k'];
+  log('audio', `${(Buffer.concat(audioChunks).length / 1024).toFixed(0)} KB`, `offset ${offset.toFixed(3)} s`);
+} else if (AUDIO) {
+  problems.push('audio: nothing was captured; the video is silent');
+}
+const enc = spawnSync(FFMPEG, ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', `${out}/frames.txt`, ...audioArgs, '-vf', 'fps=30,format=yuv420p', '-c:v', 'libx264', '-preset', 'medium', '-crf', '24', '-movflags', '+faststart', video], { stdio: 'inherit' });
 if (enc.status !== 0) {
   console.error('ffmpeg failed to encode the video.');
   process.exit(1);
@@ -591,15 +646,19 @@ console.log('video:', video);
 // Highlights reel (full runs): the first ~6.5 s of every chapter.
 if (!QUICK) {
   const segs = chaptersOut.filter((c) => c.t >= 0).map((c) => [Math.max(0, c.t + 1), c.t + 7.5]);
-  const f = segs.map(([a, b], i) => `[0:v]trim=start=${a.toFixed(2)}:end=${b.toFixed(2)},setpts=PTS-STARTPTS[v${i}];`).join('');
-  const l = segs.map((_, i) => `[v${i}]`).join('');
+  const range = (a, b) => `start=${a.toFixed(2)}:end=${b.toFixed(2)}`;
+  const f = segs.map(([a, b], i) => `[0:v]trim=${range(a, b)},setpts=PTS-STARTPTS[v${i}];` + (hasAudio ? `[0:a]atrim=${range(a, b)},asetpts=PTS-STARTPTS[a${i}];` : '')).join('');
+  const l = segs.map((_, i) => `[v${i}]` + (hasAudio ? `[a${i}]` : '')).join('');
   const hl = `${out}/slana-highlights.mp4`;
-  const r2 = spawnSync(FFMPEG, ['-y', '-loglevel', 'error', '-i', video, '-filter_complex', `${f}${l}concat=n=${segs.length}:v=1:a=0,fps=30,format=yuv420p[out]`, '-map', '[out]', '-c:v', 'libx264', '-preset', 'medium', '-crf', '26', '-movflags', '+faststart', hl], { stdio: 'inherit' });
+  const graph = hasAudio ? `${f}${l}concat=n=${segs.length}:v=1:a=1[cv][out_a];[cv]fps=30,format=yuv420p[out]` : `${f}${l}concat=n=${segs.length}:v=1:a=0,fps=30,format=yuv420p[out]`;
+  const maps = hasAudio ? ['-map', '[out]', '-map', '[out_a]', '-c:a', 'aac', '-b:a', '160k'] : ['-map', '[out]'];
+  const r2 = spawnSync(FFMPEG, ['-y', '-loglevel', 'error', '-i', video, '-filter_complex', graph, ...maps, '-c:v', 'libx264', '-preset', 'medium', '-crf', '26', '-movflags', '+faststart', hl], { stdio: 'inherit' });
   if (r2.status === 0) console.log('highlights:', hl);
 }
 if (!flag('--keep-frames')) {
   rmSync(`${out}/frames`, { recursive: true, force: true });
   rmSync(`${out}/frames.txt`, { force: true });
+  rmSync(audioFile, { force: true });
 }
 console.log(JSON.stringify(chaptersOut.map((c) => [c.label, c.t])));
 console.log('problems:\n' + (problems.slice(-40).join('\n') || 'none'));
