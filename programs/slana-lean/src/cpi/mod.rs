@@ -23,6 +23,12 @@ const MAX_CPI_ACCOUNTS: usize = 6;
 /// views than `MAX_CPI_ACCOUNTS` or than `metas` is `InvalidArgument` (a programming error,
 /// never silently truncated).
 ///
+/// The `views > metas` check is only a heuristic against programming errors. It does not prove
+/// that every meta has a matching view, or that the views are in meta order. Correctness
+/// relies on the runtime: it resolves each meta's account by pubkey among the passed views,
+/// and it fails the CPI when a meta names an account that was not passed, or asks for a
+/// signer/writable privilege the caller does not hold.
+///
 /// The program never takes `try_borrow*` guards on account data, so no borrow can be
 /// outstanding here and the unchecked invoke is sound.
 #[inline(never)]

@@ -585,7 +585,7 @@ async function main(): Promise<void> {
   const finalSeed = createHash('sha256').update(seed).update(entropy).digest('hex');
   assert(revealed.passFinalSeed === finalSeed, `final seed ${revealed.passFinalSeed} ≠ sha256(seed || entropy) ${finalSeed}`);
   assert(revealed.passEntropySlot >= target, `entropy slot ${revealed.passEntropySlot} is before the target ${target}`);
-  const captureSig = await findCapture(connection, pdas.config(programId), revealed.serverAuthority);
+  const captureSig = await findCapture(connection, programId, pdas.config(programId), revealed.serverAuthority);
   units.push({ label: 'capture_pass_entropy (sent by the game server)', used: await txUnits(captureSig), limit: CAPTURE_COMPUTE_UNITS });
   ok(`captured by the game server (${captureSig.slice(0, 16)}…) · hash of slot ${revealed.passEntropySlot} · final seed ${finalSeed.slice(0, 16)}… = sha256(seed || entropy) · now slot ${passedAt}`);
   const capture = units[units.length - 1];
@@ -679,14 +679,23 @@ async function main(): Promise<void> {
 }
 
 /** The `capture_pass_entropy` transaction among the config's recent ones, paid by the server authority. */
-async function findCapture(connection: Connection, configPda: PublicKey, server: string): Promise<string> {
+/**
+ * The capture transaction is found by its instruction discriminator, not by log text: the
+ * deployed (Pinocchio) program does not print Anchor's `Instruction: …` log lines.
+ */
+async function findCapture(connection: Connection, programId: PublicKey, configPda: PublicKey, server: string): Promise<string> {
+  const discriminator = createHash('sha256').update('global:capture_pass_entropy').digest().subarray(0, 8);
   const sigs = await connection.getSignaturesForAddress(configPda, { limit: 25 }, 'confirmed');
   for (const s of sigs) {
     if (s.err) continue;
     const tx = await connection.getTransaction(s.signature, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 });
-    const logs = tx?.meta?.logMessages ?? [];
-    if (!logs.some((l) => l.includes('Instruction: CapturePassEntropy'))) continue;
-    const payer = tx!.transaction.message.getAccountKeys().get(0)!.toBase58();
+    if (!tx) continue;
+    const keys = tx.transaction.message.getAccountKeys();
+    const isCapture = tx.transaction.message.compiledInstructions.some(
+      (ix) => keys.get(ix.programIdIndex)?.equals(programId) && discriminator.equals(Buffer.from(ix.data).subarray(0, 8)),
+    );
+    if (!isCapture) continue;
+    const payer = keys.get(0)!.toBase58();
     assert(payer === server, `capture_pass_entropy was sent by ${payer}, not the game server ${server}`);
     return s.signature;
   }

@@ -54,18 +54,34 @@ MAINNET_RPC=<url> scripts/fetch-programs.sh  # başka bir RPC ile
 Betik `solana program dump` ile `CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d` programını indirir; dosya varsa atlar.
 `target/` git'e girmez: üçüncü taraf `.so` dosyaları **asla commit edilmez**. Devnet ve mainnet'te Core zaten dağıtılmıştır.
 
-## 2. Program anahtarı ve derleme
+## 2. Program keypair and build
 
-Repodaki `declare_id!` geliştirme sırasında üretilmiş bir adrestir. **Kendi program anahtarınızı üretin**:
+Two crates build from this repository. Only one of them is deployed:
+
+| Crate | Output | Role |
+|---|---|---|
+| `programs/slana-lean` (Pinocchio, `no_std`) | `target/deploy/slana_lean.so`, 59,344 bytes, at most 71,000 (size gate) | **the deployed program** |
+| `programs/slana-ref` (Anchor 1.2.1) | `target/deploy/slana.so` (~679 KB) and the IDL | never deployed: it is the source of the IDL and TS types, and the conformance oracle in the tests |
+
+Both use the same program id. The `declare_id!` in the repo is a development address. **Generate your own program
+keypair**:
 
 ```bash
-solana-keygen new -o target/deploy/slana-keypair.json   # bu dosyayı güvenle yedekleyin
-anchor keys sync                                        # declare_id! ve Anchor.toml güncellenir
-anchor build                                            # Anchor reference (never deployed): IDL + target/deploy/slana.so
-pnpm -F @slana/sdk sync-idl                             # IDL'i SDK'ya kopyalar (istemci, sunucu ve admin bunu kullanır)
-scripts/build-lean.sh                                   # deployed program: target/deploy/slana_lean.so
+solana-keygen new -o target/deploy/slana-keypair.json   # back this file up safely; never commit it
+anchor keys sync                                        # updates declare_id! (slana-ref) and Anchor.toml
+# also put the new id into `ID` in programs/slana-lean/src/lib.rs (32 bytes;
+# `cargo test -p slana-lean` fails while it differs from the reference's declare_id!)
+anchor build --ignore-keys                              # Anchor reference: IDL + target/deploy/slana.so (never deployed)
+pnpm -F @slana/sdk sync-idl                             # copies the IDL into the SDK (client, server and admin use it)
+bash scripts/build-lean.sh                              # deployed program: target/deploy/slana_lean.so (prints size and rent)
 scripts/test-program.sh                                 # LiteSVM suite against both builds (needs the Core .so from step 1)
 ```
+
+`scripts/build-lean.sh` runs `cargo build-sbf --manifest-path programs/slana-lean/Cargo.toml`, deletes the random
+`target/deploy/slana_lean-keypair.json` that cargo-build-sbf writes, and prints the size and the ProgramData rent.
+
+> **Never use `anchor deploy`.** It deploys the Anchor reference `slana.so` (~◎4.73 of rent) instead of the lean
+> program. Always deploy with `solana program deploy target/deploy/slana_lean.so --program-id <keypair>`.
 
 ## 3. Anahtarlar
 
@@ -278,17 +294,39 @@ RPC'ye ihtiyaç duyar; aşağıdaki değerler bu formülle hesaplandı. Hesap bo
 (Config 507, Season 1289, Arena 74, PlayerProfile 135, Session 151, PassLock 73, MintCounter 10 bayt; SDK'daki
 `ACCOUNT_BYTES` ve bir SDK testi bunları IDL'den yeniden hesaplar).
 
-**Program dağıtımı.** `target/deploy/slana.so` = **676.696 bayt** (`anchor build`, bu commit'teki kaynakla).
+**Program deployment.** The deployed program is `target/deploy/slana_lean.so` = **59,344 bytes**
+(`bash scripts/build-lean.sh`; the size gate `tests/size.rs` and CI fail above 71,000 bytes or ◎0.5 of rent). Rent is
+`(len + 45 + 128) × 6960` lamports for the ProgramData.
 
-| Hesap | Bayt | Kira |
+| Account | Bytes | Rent |
 |---|---|---|
-| ProgramData (`.so` + 45) | 676.741 | 4.711.008.240 lamport ≈ **◎4,711** (program kapatılırsa geri alınır) |
-| Program hesabı | 36 | 1.141.440 lamport ≈ ◎0,0011 |
-| Dağıtım tamponu (`.so` + 37, geçici) | 676.733 | 4.710.952.560 lamport ≈ ◎4,711 (dağıtım bitince geri döner) |
+| ProgramData (`.so` + 45) | 59,389 | (59,344 + 45 + 128) × 6960 = **414,238,320 lamports ≈ ◎0.4142** (locked while the program exists; recovered with `solana program close`) |
+| Program account | 36 | 1,141,440 lamports ≈ ◎0.0011 (locked) |
+| Deploy buffer (`.so` + 37, temporary) | 59,381 | 414,182,640 lamports ≈ ◎0.4142 (returned to the payer when the deploy finishes) |
 
-Dağıtım sırasında cüzdanda yaklaşık **◎9,43 + işlem ücretleri** bulunmalı; ◎4,71 kalıcı olarak programda kalır.
-`solana program deploy`'un `--max-len` varsayılanı ilk programın boyudur; daha büyük bir sürüm yüklemek için
-`solana program extend` gerekir (ek bayt başına aynı kira).
+So the wallet needs about **◎0.83 + transaction fees** during the deploy (◎0.8296 of rent), and **◎0.4154** stays
+locked in the program afterwards. The localnet e2e reads the same ProgramData balance (◎0.41423832) from the validator.
+For comparison, the Anchor reference (679,256 bytes) would lock ◎4.73 and need ◎9.46 during a deploy: this is why it
+is never deployed.
+
+`solana program deploy` sizes the ProgramData to the program by default (`--max-len`), so a larger later version needs
+`solana program extend` first (same rent per extra byte). To reserve room up to the size gate at once, deploy with
+`--max-len 71000`: the ProgramData then holds 71,045 bytes, 495,364,080 lamports ≈ ◎0.4954, still under ◎0.5.
+
+**Account rents (exact, `(bytes + 128) × 6960` lamports).** These sizes are the same for the lean program and the
+reference (the layout tests compare them).
+
+| Account | Bytes | Rent | Paid by |
+|---|---|---|---|
+| Config | 507 | 4,419,600 ≈ ◎0.0044 | admin (`init`) |
+| Season | 1289 | 9,862,320 ≈ ◎0.0099 | admin (`init`, then each `end-season`) |
+| Arena | 74 | 1,405,920 ≈ ◎0.0014 | admin (`create-arena`) |
+| Vault / token account (SPL Token) | 165 | 2,039,280 ≈ ◎0.0020 | admin (treasury, season and arena vaults) |
+| Token account (Token-2022, with extensions, e.g.) | 170 | 2,074,080 ≈ ◎0.0021 | admin / player |
+| PlayerProfile | 135 | 1,830,480 ≈ ◎0.0018 | player (stays with the player) |
+| Session | 151 | 1,941,840 ≈ ◎0.0019 | player (returned when the ticket closes) |
+| PassLock | 73 | 1,398,960 ≈ ◎0.0014 | player (returned when the ticket closes) |
+| MintCounter | 10 | 960,480 ≈ ◎0.0010 | player (first Pass mint) |
 
 **Kurulum (yönetici öder, tek seferlik).**
 

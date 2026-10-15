@@ -539,6 +539,37 @@ mod tests {
             let bps = rng.next() as u16;
             same(mul_bps(amount, bps), r::mul_bps(amount, bps));
         }
+        // Exact overflow thresholds for bps > 10⁴. The result first exceeds u64 at
+        // `t = ceil(2⁶⁴·10⁴ / bps)`. Check `floor(2⁶⁴·10⁴ / bps) ± 1` and both sides of `t`
+        // against the reference.
+        for bps in [
+            10_001u16,
+            10_007,
+            12_345,
+            20_000,
+            30_000,
+            50_000,
+            65_534,
+            u16::MAX,
+        ] {
+            let scaled = (1u128 << 64) * 10_000;
+            let floor = scaled / u128::from(bps);
+            let first_overflow = scaled.div_ceil(u128::from(bps));
+            for amount in [
+                floor - 1,
+                floor,
+                floor + 1,
+                first_overflow - 1,
+                first_overflow,
+            ] {
+                let amount = u64::try_from(amount).unwrap();
+                same(mul_bps(amount, bps), r::mul_bps(amount, bps));
+            }
+            let below = u64::try_from(first_overflow - 1).unwrap();
+            let at = u64::try_from(first_overflow).unwrap();
+            assert!(mul_bps(below, bps).is_ok(), "bps {bps}: {below} must fit");
+            assert_eq!(mul_bps(at, bps), Err(err(MATH_OVERFLOW)), "bps {bps}: {at}");
+        }
         // An overflow is MathOverflow, as in the reference.
         assert_eq!(mul_bps(u64::MAX, 10_001), Err(err(MATH_OVERFLOW)));
         assert_ne!(mul_bps(u64::MAX, 10_001), Err(Error::ARITHMETIC_OVERFLOW));
