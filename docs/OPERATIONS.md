@@ -131,6 +131,8 @@ instruction `sweep_loot(amount)` (arena vault to the season vault, credited to t
 - `!!! chain: arena #N vault cannot cover the loot sweep ...` means the vault holds less than the journal says; the server
   retries with backoff. Do not force anything: check the arena with `pnpm admin status` first. `!!! chain: dropping
   malformed loot sweep` and `... without a recorded blockhash expiry; not resending` need a manual look at the journal.
+- On an existing deployment, upgrade the program to the build with `sweep_loot` before rolling out this server; against an
+  older program every sweep fails with "instruction not found" and retries (value stays conserved, the logs are noisy).
 - `sweep_loot` is bounded only by the vault balance (the same trust as `settle_session`). The server computes the amount
   from the floor loot it holds; only the server key can send it.
 - A short `ROUND_SECONDS` is for demos and tests (`ROUND_SECONDS=90 pnpm demo`; the localnet e2e uses 30). Keep the

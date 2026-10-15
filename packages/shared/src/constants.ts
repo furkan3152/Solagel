@@ -1,5 +1,5 @@
 /** Bumped whenever the wire format changes in an incompatible way. */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 /** Simulation + snapshot rate. */
 export const TICK_RATE = 30;

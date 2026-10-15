@@ -39,7 +39,7 @@ export async function createApp(
   const files = dataFileNames(cfg);
   const journal = new Journal(persist ? join(cfg.dataDir, files.journal) : null, log);
   const recovered = journal.recoverLive();
-  if (recovered > 0) log(`journal: ${recovered} stake player(s) were alive at last shutdown → queued auto cash-out`);
+  if (recovered > 0) log(`journal: ${recovered} stake player(s) were alive at last shutdown → queued automatic payout`);
   if (journal.pending.length > 0) log(`journal: ${journal.pending.length} settlement(s) pending`);
 
   const leaderboards = new Leaderboards(persist ? join(cfg.dataDir, files.leaderboards) : null);

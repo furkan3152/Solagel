@@ -207,7 +207,7 @@ describe('settled message (R16)', () => {
   it('names the session and arena so the client can match its receipt', () => {
     expect(settledMessage({ key: 'Sess1', player: 'P', arenaId: 2, signature: 'sig', payout: 300, fee: 10 })).toEqual({
       t: 'settled',
-      kind: 'cashout',
+      kind: 'payout',
       session: 'Sess1',
       arenaId: 2,
       signature: 'sig',

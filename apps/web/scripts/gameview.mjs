@@ -220,7 +220,7 @@ if (want('arena')) {
   await page.waitForTimeout(1500);
   await page.screenshot({ path: `${out}/t13-round-over.png` });
   // the payout lands (injected; a real stack sends `settled` after the bell)
-  await ev(page, (ses) => window.__slana.engine['onMessage']({ t: 'settled', kind: 'cashout', session: ses, signature: '5Kq9xRoundOverDemoSignature1111111111111111111111111111111111111111111', payout: 1_000_000_000, fee: 0, net: 1_000_000_000 }), ses);
+  await ev(page, (ses) => window.__slana.engine['onMessage']({ t: 'settled', kind: 'payout', session: ses, signature: '5Kq9xRoundOverDemoSignature1111111111111111111111111111111111111111111', payout: 1_000_000_000, fee: 0, net: 1_000_000_000 }), ses);
   await page.waitForTimeout(1800);
   await page.screenshot({ path: `${out}/t13-round-over-settled.png` });
   results.settlement = await ev(page, () => window.__slana.useUi.getState().lastSettlement);
