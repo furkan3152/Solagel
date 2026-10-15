@@ -54,7 +54,7 @@ describe('programErrorCode / describeError', () => {
     const anchorLog = {
       logs: [
         `Program ${PROGRAM} invoke [1]`,
-        'Program log: AnchorError thrown in programs/slana/src/instructions/settle_session.rs:72. Error Code: SessionMismatch. Error Number: 6019. Error Message: Settlement is for a different session.',
+        'Program log: AnchorError thrown in programs/slana-ref/src/instructions/settle_session.rs:72. Error Code: SessionMismatch. Error Number: 6019. Error Message: Settlement is for a different session.',
         `Program ${PROGRAM} failed: custom program error: 0x1783`,
       ],
     };

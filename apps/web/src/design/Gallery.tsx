@@ -250,15 +250,12 @@ function Palette({ t }: { t: T }) {
             <span className="g-swatch__ht halftone" />
           </span>
           <span className="g-swatch__name">{t(s.key)}</span>
-          <span className="g-swatch__hex mono" lang="en">
+          <span className="g-swatch__hex mono">
             {s.v} {vals[s.v]}
           </span>
           {s.text && (
             <span className="g-swatch__hex mono">
-              {t('ds.c.textInk')}{' '}
-              <span lang="en">
-                {s.text} {vals[s.text]}
-              </span>
+              {t('ds.c.textInk')} {s.text} {vals[s.text]}
             </span>
           )}
         </motion.li>
@@ -273,19 +270,19 @@ function TypeSpecimen({ t }: { t: T }) {
       <div className="g-typespec__row">
         <div className="g-typespec__display">{t('ds.type.sampleDisplay')}</div>
         <div className="g-cap mono">
-          {t('ds.type.display')} · <span lang="en">{t('ds.type.displaySpec')}</span>
+          {t('ds.type.display')} · {t('ds.type.displaySpec')}
         </div>
       </div>
       <div className="g-typespec__row">
         <p className="g-typespec__body">{t('ds.type.sampleBody')}</p>
         <div className="g-cap mono">
-          {t('ds.type.body')} · <span lang="en">{t('ds.type.bodySpec')}</span>
+          {t('ds.type.body')} · {t('ds.type.bodySpec')}
         </div>
       </div>
       <div className="g-typespec__row">
         <div className="g-typespec__mono mono">{t('ds.type.sampleMono')}</div>
         <div className="g-cap mono">
-          {t('ds.type.mono')} · <span lang="en">{t('ds.type.monoSpec')}</span>
+          {t('ds.type.mono')} · {t('ds.type.monoSpec')}
         </div>
       </div>
     </div>

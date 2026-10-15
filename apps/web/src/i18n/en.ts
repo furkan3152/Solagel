@@ -225,7 +225,7 @@ export const en = {
   'ds.sh.open': 'Open the ticket check',
   'ds.sh.kicker': 'Ticket check',
   'ds.sh.title': 'Buy this ticket?',
-  'ds.sh.body': 'The fee goes into the room\'s vault. Holding a Pass drops the house cut to 2%. Your deposit comes back when you cash out.',
+  'ds.sh.body': 'Your ticket goes into the room\'s vault. When you cash out, you get what your coin is worth; the house cut comes only out of profit, and a Pass lowers it.',
   'ds.sh.confirm': 'Buy ticket',
   'ds.to.info': 'Info toast',
   'ds.to.success': 'Success toast',
