@@ -15,8 +15,29 @@ English summary below.*
 
 ## Ekran görüntüleri
 
-v2 ("Kâğıt Bilet" tasarımı) ekran görüntüleri localnet uçtan uca testiyle birlikte eklenecek (plan, Task 17).
-`docs/images/` içindeki eski görseller v1 arayüzüne (SOL arenaları, skin mağazası) aittir ve burada kullanılmaz.
+v2, "Kâğıt Bilet" tasarımı: masaüstü ve telefon, TR / EN, kâğıt ve gece teması. Tüm görseller `docs/images/` içinde.
+
+| Lobi (masaüstü, kâğıt) | Lobi (masaüstü, gece) |
+| --- | --- |
+| ![Lobi](docs/images/lobby-desktop-tr-paper.webp) | ![Lobby, night](docs/images/lobby-desktop-en-night.webp) |
+| **Bilet kontrolü** | **Bilet kesildi** |
+| ![Bilet](docs/images/ticket-sheet-desktop-tr.webp) | ![Ticket stamp](docs/images/ticket-stamp-desktop-en.webp) |
+| **Arena** | **Gece teması** |
+| ![Oyun](docs/images/game-arena-desktop.webp) | ![Game, night](docs/images/game-night-desktop.webp) |
+| **Cash-out makbuzu** | **Yenildin** |
+| ![Makbuz](docs/images/cashout-receipt.webp) | ![Ölüm](docs/images/death-arena.webp) |
+| **Slana Pass** | **Mint** |
+| ![Pass](docs/images/pass-desktop-en-night.webp) | ![Mint](docs/images/mint-sheet-desktop.webp) |
+| **Sıralama** | **Kılavuz** |
+| ![Sıralama](docs/images/leaderboard-desktop-tr-paper.webp) | ![Docs](docs/images/docs-desktop-en-paper.webp) |
+
+| Telefon: lobi | Bilet | Oyun | Pass | Sıralama |
+| --- | --- | --- | --- | --- |
+| ![](docs/images/lobby-mobile-en-night.webp) | ![](docs/images/ticket-mobile-tr.webp) | ![](docs/images/game-mobile.webp) | ![](docs/images/pass-mobile-tr-paper.webp) | ![](docs/images/leaderboard-mobile-en-night.webp) |
+
+Ekran görüntüleri `apps/web/scripts/{lobby,gameview,pass,docs}.mjs` turlarıyla, `DEV_FAKE_CHAIN=1` geliştirme
+yığınında alınır (tarayıcıda işlem imzalatmak otomatikleştirilemediği için). Gerçek zincir yolunu localnet uçtan uca
+testi kanıtlar: `scripts/localnet.sh` + `pnpm -F @slana/server e2e` (bkz. [OPERATIONS](docs/OPERATIONS.md)).
 
 ## Nasıl oynanır
 
@@ -88,8 +109,28 @@ Adım adım (program, token, Pass koleksiyonu, mint, arenalar, sunucu, Docker, m
 **[docs/DEPLOY.md](docs/DEPLOY.md)**. Günlük işler (sezon, açılış, hazine, durdurma, anahtar değişimi, yedek):
 **[docs/OPERATIONS.md](docs/OPERATIONS.md)**. Bütün yönetici komutları: `pnpm admin help`.
 
-> Not: `scripts/localnet.sh` ve `pnpm -F @slana/server e2e` henüz v2 token akışına güncellenmedi (betik v1 `init`
-> parametrelerini kullanıyor). Güncellenene kadar devnet adımlarını izleyin.
+### Localnet ve uçtan uca test
+
+`scripts/localnet.sh` temiz bir yerel küme kurar: Slana programı ve Metaplex Core yüklü `solana-test-validator`,
+Token-2022 test mint'i (6 ondalık, dondurma yetkisi yok, 1 milyar token yöneticiye, sonra basım kapalı), `init`,
+Pass koleksiyonu, gizli tohum taahhüdü (`.localnet/pass-seed.json`), açık mint ve varsayılan arenalar; sunucu ortamını
+`.localnet/server.env` dosyasına yazar. Gerekenler: `anchor build`, Agave CLI (`spl-token` dahil) ve
+`target/programs/mpl_core.so` (yoksa `scripts/fetch-programs.sh` indirir). `.localnet/` asla commit edilmez.
+
+```bash
+anchor build && scripts/localnet.sh
+cd apps/server && env $(cat ../../.localnet/server.env | xargs) \
+  STALE_SESSION_AFTER_S=5 NO_ATA_RETRY_S=2 ARENA_BOT_TARGET=0 ARENA_BOT_MIN=0 ARENA_BOT_MAX=0 npx tsx src/index.ts
+pnpm -F @slana/server e2e          # başka bir terminalde; ~2 dk
+scripts/localnet.sh --stop
+```
+
+Test gerçek zinciri kullanır (sahte zincir değil): cüzdanlara SOL ve $SLANA, iki Pass mint'i, web'in bilet işlemiyle
+Pass odasına giriş, ücret artışında oturumun sabit kesintisi, oyunda bir oyuncuyu yiyip değerini alma, ölüm ve cash-out
+ödemeleri (kârın %2'si kesinti, yakımın arzdan düşmesi), sezon tablosu, mint kapanışı → açılış → sunucunun entropi
+yakalaması ve açılmış metadata, token hesabı kapalı oynanmamış biletin bekletilip iadesi (R10), sezon sonu ve ödül
+talebi. Sonunda her işlemin harcadığı compute unit'leri web limitleriyle, hesap boyutlarını web'in kira hesabıyla
+karşılaştırır. Pass mint'i ve sezon kalıcı olarak kapandığından her koşu temiz bir `scripts/localnet.sh` ister.
 
 ```bash
 docker build -t slana .

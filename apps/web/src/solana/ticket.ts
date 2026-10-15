@@ -290,8 +290,12 @@ export const ACCOUNT_BYTES = {
   ata2022: 170,
 } as const;
 
-/** Compute-unit limit of the ticket transaction (bounds the priority fee). */
-export const TICKET_COMPUTE_UNITS = 300_000;
+/**
+ * Compute-unit limit of the ticket transaction (bounds the priority fee). The localnet e2e
+ * measured 47k (register + join) to 63k (ATA idempotent + register + join with a Pass) on
+ * Token-2022; 150k keeps more than 2× headroom for longer names and bump searches.
+ */
+export const TICKET_COMPUTE_UNITS = 150_000;
 /** Priority fee the web client attaches, micro-lamports per compute unit. */
 export const PRIORITY_MICRO_LAMPORTS = 20_000;
 /** Base fee per signature. */

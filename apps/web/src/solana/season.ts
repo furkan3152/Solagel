@@ -9,6 +9,9 @@ import { buildAtaTx } from './ticket';
  * within 30 days (`CLAIM_WINDOW_SECS`, enforced by the program).
  */
 
+/** Compute-unit limit of the claim transaction (bounds the priority fee). The localnet e2e measured 28k, plus 16k when the token account is created. */
+export const CLAIM_COMPUTE_UNITS = 90_000;
+
 /** Program constant `CLAIM_WINDOW_SECS`. */
 export const CLAIM_WINDOW_S = 2_592_000;
 /** Prize ranks paid (`PRIZE_SHARES_BPS.length`). */
