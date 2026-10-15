@@ -59,7 +59,7 @@ export function startGallery(root: HTMLElement): void {
       ctx.fillStyle = '#3D2C5E';
       ctx.font = '600 14px Fredoka, system-ui, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(`${skin.id} · ${skin.name.en}`, cx, cy + r + 30);
+      ctx.fillText(`${skin.id} · ${skin.name}`, cx, cy + r + 30);
     });
 
     const ey = 80 + 3 * (cell + 34) + 40;

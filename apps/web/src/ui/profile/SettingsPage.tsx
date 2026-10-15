@@ -61,14 +61,6 @@ export function SettingsPage({ headings = true }: { headings?: boolean }) {
     <div className="st-page">
       {headings && <h3 className="st-h mono">{t('st.look')}</h3>}
       <div className="g-set">
-        <Row label={t('gs.lang')}>
-          <Chip selected={s.lang === 'tr'} onClick={() => set({ lang: 'tr' })} lang="tr">
-            Türkçe
-          </Chip>
-          <Chip selected={s.lang === 'en'} onClick={() => set({ lang: 'en' })} lang="en">
-            English
-          </Chip>
-        </Row>
         <Row label={t('gs.theme')}>
           <Chip icon="sun" selected={s.theme === 'light'} onClick={() => set({ theme: 'light' })}>
             {t('gs.paper')}

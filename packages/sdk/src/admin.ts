@@ -189,7 +189,7 @@ function tokens(opts: Opts, name: string, decimals: number): bigint | undefined 
   const v = str(opts, name);
   if (v === undefined) return undefined;
   try {
-    return parseToken(v.replace(/_/g, ''), decimals, 'en');
+    return parseToken(v.replace(/_/g, ''), decimals);
   } catch (err) {
     throw new UsageError(`--${name}: ${(err as Error).message}`);
   }
@@ -251,7 +251,7 @@ function inferCluster(url: string): string {
 const fmtSol = (lamports: number): string => `◎${lamportsToSol(lamports).toLocaleString('en-US', { maximumFractionDigits: 9 })}`;
 const fmtPct = (bps: number): string => `${(bps / 100).toFixed(2)} %`;
 const fmtTime = (unix: number): string => (unix > 0 ? new Date(unix * 1000).toISOString().replace('.000Z', 'Z') : '—');
-const fmtTok = (raw: bigint, decimals: number): string => formatToken(raw, decimals, 'en', { maxFrac: Math.min(decimals, 6) });
+const fmtTok = (raw: bigint, decimals: number): string => formatToken(raw, decimals, { maxFrac: Math.min(decimals, 6) });
 
 interface Ctx {
   url: string;
@@ -358,7 +358,7 @@ async function cmdStatus(ctx: Ctx): Promise<void> {
   for (const a of arenas) {
     const meta = arenaMeta(a.id);
     console.log(
-      `  #${a.id} ${meta.name.en.padEnd(14)} entry ${fmtTok(a.entryFee, d).padEnd(10)} ${a.requiresPass ? 'PASS ' : '     '}` +
+      `  #${a.id} ${meta.name.padEnd(14)} entry ${fmtTok(a.entryFee, d).padEnd(10)} ${a.requiresPass ? 'PASS ' : '     '}` +
         `open ${a.openSessions}/${a.maxSessions} · pot ${fmtTok(a.pot, d)} · ${a.enabled ? 'enabled' : 'DISABLED'}  ${a.address}`,
     );
   }
@@ -637,7 +637,7 @@ async function cmdReveal(ctx: Ctx, opts: Opts): Promise<void> {
 
 async function createArena(ctx: Ctx, config: ConfigView, id: number, entryFee: bigint, maxSessions: number, requiresPass: boolean): Promise<void> {
   const ix = await ctx.client.ix.createArena(ctx.signer().publicKey, { id, entryFee, maxSessions, requiresPass, tokenMint: config.tokenMint, tokenProgram: config.tokenProgram });
-  await send(ctx, `created arena #${id} (${arenaMeta(id).name.en}) · entry ${fmtTok(entryFee, config.tokenDecimals)} · max ${maxSessions}${requiresPass ? ' · Pass only' : ''}`, [ix]);
+  await send(ctx, `created arena #${id} (${arenaMeta(id).name}) · entry ${fmtTok(entryFee, config.tokenDecimals)} · max ${maxSessions}${requiresPass ? ' · Pass only' : ''}`, [ix]);
   console.log(`  arena ${explorerAddressUrl(pdas.arena(id, ctx.client.programId).toBase58(), ctx.cluster, ctx.url)}`);
 }
 

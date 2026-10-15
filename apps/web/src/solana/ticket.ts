@@ -180,7 +180,7 @@ export interface QuickPlayInput {
 }
 
 /**
- * Where "Hızlı oyna" goes: no wallet or no tokens → practice; otherwise an open
+ * Where "Quick play" goes: no wallet or no tokens → practice; otherwise an open
  * ticket, then the last arena if still affordable, else the cheapest affordable
  * arena, else practice.
  */
@@ -288,13 +288,12 @@ export function feeBps(config: { feeBps: number; passFeeBps: number } | null, wi
   return withPass ? config.passFeeBps : config.feeBps;
 }
 
-/** `500` → `5`, `250` → `2,5` / `2.5`. */
-export function bpsPercent(bps: number, lang: 'tr' | 'en'): string {
-  const s = (bps / 100).toFixed(2).replace(/\.?0+$/, '');
-  return lang === 'tr' ? s.replace('.', ',') : s;
+/** `500` → `5`, `250` → `2.5`. */
+export function bpsPercent(bps: number): string {
+  return (bps / 100).toFixed(2).replace(/\.?0+$/, '');
 }
 
-/** Pass power numbers for the perk line ("+%15 başlangıç · 2 sn cash-out"). */
+/** Pass power numbers for the perk line ("+15% start · 2 s cash-out"). */
 export interface PassPowerText {
   startPct: number;
   cashoutS: number;

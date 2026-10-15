@@ -36,7 +36,7 @@ const isAta = (ix: TransactionInstruction) => ix.programId.equals(ASSOCIATED_TOK
 
 describe('buildTicketTx', () => {
   it('includes ATA create when missing, register when no profile, joinArenaWithPass when pass selected', async () => {
-    const { steps, ixs } = await buildTicketTx(client.ix, { player, arenaId: 3, token, ataExists: false, register: { name: 'Defne', skin: 4 }, passAsset, maxFeeBps: 200, maxEntryFee: 50_000n * M, maxSettleFee: 20_000 });
+    const { steps, ixs } = await buildTicketTx(client.ix, { player, arenaId: 3, token, ataExists: false, register: { name: 'Daphne', skin: 4 }, passAsset, maxFeeBps: 200, maxEntryFee: 50_000n * M, maxSettleFee: 20_000 });
     expect(steps).toEqual(['ata', 'register', 'joinWithPass']);
     expect(ixs).toHaveLength(3);
     expect(isAta(ixs[0])).toBe(true);

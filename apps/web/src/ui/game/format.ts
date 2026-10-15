@@ -1,29 +1,26 @@
 import { TOKEN_SYMBOL_DEFAULT, arenaMeta, formatToken, type RoomInfo } from '@slana/shared';
-import { useUi, type Lang } from '../../store';
+import { useUi } from '../../store';
 
 export interface TokenFormat {
   symbol: string;
   decimals: number;
-  lang: Lang;
-  /** Raw base units → display text (`1.234,5` in tr). */
+  /** Raw base units → display text (`1,234.5`). */
   fmt: (raw: number, opts?: { maxFrac?: number; compact?: boolean }) => string;
   /** Signed, with a real minus sign: `+1.250` / `−1.250`. */
   signed: (raw: number, opts?: { maxFrac?: number; compact?: boolean }) => string;
 }
 
-/** Token formatting bound to the current language and the chain's mint. */
+/** Token formatting bound to the chain's mint. */
 export function useTokenFormat(): TokenFormat {
-  const lang = useUi((s) => s.settings.lang);
   const token = useUi((s) => s.chain?.token ?? null);
-  return tokenFormat(lang, token?.decimals ?? 6, token?.symbol ?? TOKEN_SYMBOL_DEFAULT);
+  return tokenFormat(token?.decimals ?? 6, token?.symbol ?? TOKEN_SYMBOL_DEFAULT);
 }
 
-export function tokenFormat(lang: Lang, decimals: number, symbol: string): TokenFormat {
-  const fmt = (raw: number, opts?: { maxFrac?: number; compact?: boolean }) => formatToken(raw, decimals, lang, opts);
+export function tokenFormat(decimals: number, symbol: string): TokenFormat {
+  const fmt = (raw: number, opts?: { maxFrac?: number; compact?: boolean }) => formatToken(raw, decimals, opts);
   return {
     symbol,
     decimals,
-    lang,
     fmt,
     signed: (raw, opts) => {
       const text = fmt(Math.abs(raw), opts);
@@ -36,20 +33,21 @@ export function tokenFormat(lang: Lang, decimals: number, symbol: string): Token
 /** Whole tokens for the counters (two decimals while the amount is under 100 tokens). */
 export const counterFrac = (raw: number, decimals: number): number => (Math.abs(raw) < 100 * 10 ** decimals ? 2 : 0);
 
+/** Practice rooms by league (Rookie, Pro). */
 const LEAGUES = {
-  rookie: { tr: 'Çaylak Gölü', en: 'Rookie Pond' },
-  pro: { tr: 'Usta Gölü', en: 'Pro Pond' },
+  rookie: 'Rookie Pond',
+  pro: 'Pro Pond',
 } as const;
 
-/** A room's display name in the current language. */
-export function roomName(room: RoomInfo | null, lang: Lang): string {
+/** A room's display name. */
+export function roomName(room: RoomInfo | null): string {
   if (!room) return '';
   if (room.mode === 'practice' && room.league && LEAGUES[room.league]) {
     const n = /-(\d+)$/.exec(room.id)?.[1];
-    return `${LEAGUES[room.league][lang]}${n ? ` #${n}` : ''}`;
+    return `${LEAGUES[room.league]}${n ? ` #${n}` : ''}`;
   }
   if (room.mode === 'arena' && room.arenaId !== undefined) {
-    const name = arenaMeta(room.arenaId).name[lang];
+    const name = arenaMeta(room.arenaId).name;
     return room.instance && room.instance > 1 ? `${name} · ${room.instance}` : name;
   }
   return room.name;

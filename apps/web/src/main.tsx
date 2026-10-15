@@ -1,5 +1,5 @@
 import './polyfills';
-// Kâğıt Bilet design system: fonts, tokens (on :root and every `.kb`) and paper.
+// Paper Ticket design system: fonts, tokens (on :root and every `.kb`) and paper.
 import '@fontsource-variable/bricolage-grotesque/standard.css';
 import '@fontsource/dm-mono/400.css';
 import '@fontsource/dm-mono/500.css';
@@ -10,7 +10,7 @@ const root = document.getElementById('root')!;
 const params = new URLSearchParams(location.search);
 
 if (params.has('gallery')) {
-  // Design-system proof sheet (every component, both themes, TR/EN).
+  // Design-system proof sheet (every component, both themes).
   void import('./design/Gallery').then((m) => m.startDesignGallery(root));
 } else if (params.has('coins')) {
   // Coin / world sprite sheet (was ?gallery before v2).

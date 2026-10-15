@@ -8,7 +8,7 @@ import { formatClock, roomName, useTokenFormat } from './format';
 import { useEffect } from 'react';
 
 /**
- * Death: a "YENİLDİN" verdict stamp, who ate us (or the bot line: our tokens
+ * Death: an "EATEN" verdict stamp, who ate us (or the bot line: our tokens
  * spilled across the map), the value lost and two ways on: a new ticket or
  * practice.
  */
@@ -18,7 +18,6 @@ export function DeathSheet() {
   const death = useUi((s) => s.death);
   const room = useUi((s) => s.room);
   const me = useUi((s) => s.me);
-  const lang = useUi((s) => s.settings.lang);
   const signedIn = useUi((s) => s.auth !== null);
   const open = useUi((s) => s.screen === 'dead' && s.death !== null);
 
@@ -51,7 +50,7 @@ export function DeathSheet() {
       open={open}
       onClose={() => engine()?.backToLobby()}
       closeLabel={t('gd.close')}
-      kicker={t('gd.kicker', { room: roomName(room, lang) })}
+      kicker={t('gd.kicker', { room: roomName(room) })}
       className="g-sheet g-death"
       title={<Stamp text={t('gd.stamp')} size="lg" tone="red" rotate={-7} animateIn delay={0.12} />}
       footer={
@@ -111,7 +110,7 @@ export function DeathSheet() {
             </div>
             <div>
               <dt className="mono">{t('gd.maxMass')}</dt>
-              <dd>{Math.floor(s.maxMass).toLocaleString(lang === 'tr' ? 'tr-TR' : 'en-US')}</dd>
+              <dd>{Math.floor(s.maxMass).toLocaleString('en-US')}</dd>
             </div>
             <div>
               <dt className="mono">{t('gd.rank')}</dt>

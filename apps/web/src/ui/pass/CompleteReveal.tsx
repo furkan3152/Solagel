@@ -24,7 +24,6 @@ const SLOT_POLL_MS = 5_000;
  */
 export function CompleteReveal({ status }: { status: PassStatus }) {
   const t = useT();
-  const lang = useUi((s) => s.settings.lang);
   const cluster = useUi((s) => s.chain?.cluster ?? 'devnet');
   const fake = useChainData((s) => s.fake);
   const client = useSlanaClient();
@@ -55,7 +54,7 @@ export function CompleteReveal({ status }: { status: PassStatus }) {
   const stage = revealStage(status, slot);
   if (stage.kind === 'sealed' || stage.kind === 'revealed') return null;
 
-  const fee = formatToken(captureFeeLamports(), SOL_DECIMALS, lang, { maxFrac: SOL_DECIMALS });
+  const fee = formatToken(captureFeeLamports(), SOL_DECIMALS, { maxFrac: SOL_DECIMALS });
   const busy = phase === 'preparing' || phase === 'signing' || phase === 'confirming';
   const owner = wallet.publicKey?.toBase58() ?? null;
 

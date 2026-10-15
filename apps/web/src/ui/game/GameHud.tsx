@@ -13,7 +13,7 @@ import { counterFrac, sectorOf, useTokenFormat } from './format';
 import { MobileControls, useIsTouch } from './MobileControls';
 import { SpectateBar } from './SpectateBar';
 
-/* ───────────────────────── KASA receipt (top left) ───────────────────────── */
+/* ───────────────────────── Till receipt (top left) ───────────────────────── */
 
 /** The till: a taped receipt slip with a mechanical counter (tokens in arenas, mass in practice). */
 function TillSlip() {
@@ -64,7 +64,7 @@ function TillSlip() {
           {arena ? (
             <Counter value={hud.value!} format={(n) => tf.fmt(n, { maxFrac: frac })} unit={tf.symbol} />
           ) : (
-            <Counter value={hud.mass} format={(n) => Math.floor(n).toLocaleString(tf.lang === 'tr' ? 'tr-TR' : 'en-US')} />
+            <Counter value={hud.mass} format={(n) => Math.floor(n).toLocaleString('en-US')} />
           )}
         </div>
         {arena && ticket && (
@@ -99,7 +99,7 @@ function Standings({ compact }: { compact: boolean }) {
   const playing = screen === 'playing';
   const inTop = rows.some((e) => e.pid === me?.pid);
   const score = (value: number | undefined, mass: number) =>
-    arena && value !== undefined ? tf.fmt(value, { compact: true, maxFrac: 1 }) : Math.floor(mass).toLocaleString(tf.lang === 'tr' ? 'tr-TR' : 'en-US');
+    arena && value !== undefined ? tf.fmt(value, { compact: true, maxFrac: 1 }) : Math.floor(mass).toLocaleString('en-US');
   return (
     <section className={`g-slip g-standings${compact ? ' is-compact' : ''}`} aria-label={t('g.standings')}>
       <Tape rotate={6} width={66} tone="pink" style={{ right: 18, top: -10 }} />

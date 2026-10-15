@@ -1,7 +1,6 @@
 import { InkButton, type IconName } from '../../design';
 import { useT } from '../../i18n';
 import type { TicketGate, TicketModel } from '../../solana/ticket';
-import { useUi } from '../../store';
 import { ticketName, useTokenText } from './useLobby';
 
 export interface CtaText {
@@ -15,10 +14,9 @@ export interface CtaText {
 /** What the big button says for a ticket and its gate. */
 export function useCtaText(ticket: TicketModel | undefined, gate: TicketGate | undefined): CtaText {
   const t = useT();
-  const lang = useUi((s) => s.settings.lang);
   const tok = useTokenText();
   if (!ticket || !gate) return { label: t('lo.cta.practice'), sub: t('lo.cta.practiceSub'), icon: 'play', inert: false };
-  const room = ticketName(ticket, lang, t('lo.practice'));
+  const room = ticketName(ticket, t('lo.practice'));
   const feeLine = t('lo.cta.fee', { room, fee: tok.fee(ticket.entryFee), sym: tok.symbol });
   switch (gate.kind) {
     case 'practice':

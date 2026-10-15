@@ -5,7 +5,7 @@ import { sound } from '../../game/sound';
 import { useT } from '../../i18n';
 
 /**
- * The two Pass moments (spec §7.2.6, "zarf açılma / mühür kırılma"):
+ * The two Pass moments (spec §7.2.6, "the envelope opens / the seal breaks"):
  *
  *  - `envelope`: after a mint, an airmail envelope from the Slana post opens,
  *    the sealed passport rises out of it, the envelope drops away and a
@@ -44,7 +44,7 @@ function Envelope({ number, play, to, onDone, className }: RevealAnimationProps)
   const reduced = useReducedMotion();
   useAfter(play, reduced ? 0.3 : ENV.done, onDone);
   useAfter(play && !reduced, ENV.stamp + 0.28, () => sound.stamp());
-  const date = new Date().toLocaleDateString(document.documentElement.lang === 'tr' ? 'tr-TR' : 'en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' });
+  const date = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
 
   const fade = { duration: 0.2, ease: 'linear' } as const;
   return (

@@ -419,7 +419,7 @@ async function main(): Promise<void> {
       const signature = bs58.encode(nacl.sign.detached(new TextEncoder().encode(nonce.message), w.kp.secretKey));
       const ws = await GameSocket.connect(wsUrl, w.name);
       sockets.set(wallet, ws);
-      ws.send({ t: 'hello', v: PROTOCOL_VERSION, lang: 'en' });
+      ws.send({ t: 'hello', v: PROTOCOL_VERSION });
       const welcome = await ws.wait('welcome', 10_000);
       assert(welcome.chain.enabled && welcome.chain.arenasEnabled && welcome.chain.pass, `welcome says chain=${j(welcome.chain)}`);
       assert(!(welcome.blocked ?? []).some((b) => b.arenaId === passArenaId), `arena #${passArenaId} is blocked (R20)`);

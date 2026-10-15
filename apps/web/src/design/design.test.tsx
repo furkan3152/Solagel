@@ -11,7 +11,7 @@ function SheetHarness() {
       <button type="button" onClick={() => setOpen(true)}>
         open
       </button>
-      <Sheet open={open} onClose={() => setOpen(false)} title="Cut the ticket?" closeLabel="Close">
+      <Sheet open={open} onClose={() => setOpen(false)} title="Buy this ticket?" closeLabel="Close">
         <button type="button">first action</button>
         <button type="button">last action</button>
       </Sheet>
@@ -25,7 +25,7 @@ async function exerciseSheet() {
   opener.focus();
   fireEvent.click(opener);
 
-  const dialog = await screen.findByRole('dialog', { name: 'Cut the ticket?' });
+  const dialog = await screen.findByRole('dialog', { name: 'Buy this ticket?' });
   await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
 
   // Tab from the last focusable wraps to the first; Shift+Tab from the first wraps to the last.

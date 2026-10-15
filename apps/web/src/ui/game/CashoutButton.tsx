@@ -33,7 +33,7 @@ export function CashoutButton() {
     setLeft(Math.ceil(ms / 100) / 10);
   }, channel);
 
-  const secs = (total / 1000).toLocaleString(tf.lang === 'tr' ? 'tr-TR' : 'en-US');
+  const secs = (total / 1000).toLocaleString('en-US');
   return (
     <div className={`g-cash${channel ? ' is-printing' : ''}`}>
       <div className="g-cash__printer" aria-hidden="true">
@@ -47,7 +47,7 @@ export function CashoutButton() {
             <span className="g-cash__line">
               <b>{t('g.printing')}</b>
               <i />
-              <span>{left.toLocaleString(tf.lang === 'tr' ? 'tr-TR' : 'en-US', { minimumFractionDigits: 1 })}</span>
+              <span>{left.toLocaleString('en-US', { minimumFractionDigits: 1 })}</span>
             </span>
           </div>
         </div>

@@ -2,7 +2,7 @@ import { ToastViewport, type ToastItem } from '../design';
 import { useT } from '../i18n';
 import { useUi } from '../store';
 
-/** Store toasts as Kâğıt Bilet slips (render inside a `<Kb>` root for the theme). */
+/** Store toasts as Paper Ticket slips (render inside a `<Kb>` root for the theme). */
 export function Toasts() {
   const t = useT();
   const toasts = useUi((s) => s.toasts);

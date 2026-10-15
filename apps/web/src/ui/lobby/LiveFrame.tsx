@@ -13,7 +13,6 @@ import { roomName } from '../game/format';
  */
 export function LiveFrame() {
   const t = useT();
-  const lang = useUi((s) => s.settings.lang);
   const watched = useUi((s) => s.room);
   // live counts come with the room list; the spectate message only carries a snapshot
   const room = useUi((s) => (watched ? (s.rooms.find((r) => r.id === watched.id) ?? watched) : null));
@@ -47,7 +46,7 @@ export function LiveFrame() {
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  const name = room ? roomName(room, lang) : '';
+  const name = room ? roomName(room) : '';
   const humans = room?.players ?? 0;
   const bots = room?.bots ?? 0;
   return (

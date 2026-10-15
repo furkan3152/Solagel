@@ -1,4 +1,4 @@
-// Player guide tour (Task 16): /docs on desktop 1440×900 and phone 390×844 (DPR 2), TR / EN, paper / night.
+// Player guide tour: /docs on desktop 1440×900 and phone 390×844 (DPR 2), paper / night.
 // Needs a dev server (pnpm dev). Usage: node scripts/docs.mjs <baseUrl> <outDir>  -> <outDir>/docs-*.png
 import { existsSync } from 'node:fs';
 import { chromium } from 'playwright';
@@ -8,15 +8,15 @@ const exe = process.env.CHROME_PATH;
 const browser = await chromium.launch({ executablePath: exe, args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
 const logs = [];
 
-async function shoot({ name, lang, theme, mobile, path = '/docs', after }) {
+async function shoot({ name, theme, mobile, path = '/docs', after }) {
   const ctx = await browser.newContext(
     mobile
       ? { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }
       : { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 },
   );
   await ctx.addInitScript(
-    ({ lang, theme }) => localStorage.setItem('slana.settings.v1', JSON.stringify({ lang, theme, sound: false })),
-    { lang, theme },
+    ({ theme }) => localStorage.setItem('slana.settings.v1', JSON.stringify({ theme, sound: false })),
+    { theme },
   );
   const page = await ctx.newPage();
   page.on('pageerror', (e) => logs.push(`[${name}] pageerror ${e.message}`));
@@ -39,23 +39,20 @@ const scrollTo = (sel) => async (page) => {
   await page.waitForTimeout(400);
 };
 
-for (const lang of ['tr', 'en']) {
-  for (const theme of ['light', 'dark']) {
-    const t = theme === 'light' ? 'paper' : 'night';
-    await shoot({ name: `desk-${lang}-${t}-top`, lang, theme, mobile: false });
-    await shoot({ name: `desk-${lang}-${t}-cashout`, lang, theme, mobile: false, after: scrollTo('#docs-cashout') });
-    await shoot({ name: `desk-${lang}-${t}-pass`, lang, theme, mobile: false, after: scrollTo('#docs-pass') });
-    await shoot({ name: `phone-${lang}-${t}-top`, lang, theme, mobile: true });
-    await shoot({ name: `phone-${lang}-${t}-cashout`, lang, theme, mobile: true, after: scrollTo('#docs-cashout .dc-fee') });
-  }
+for (const theme of ['light', 'dark']) {
+  const t = theme === 'light' ? 'paper' : 'night';
+  await shoot({ name: `desk-${t}-top`, theme, mobile: false });
+  await shoot({ name: `desk-${t}-cashout`, theme, mobile: false, after: scrollTo('#docs-cashout') });
+  await shoot({ name: `desk-${t}-pass`, theme, mobile: false, after: scrollTo('#docs-pass') });
+  await shoot({ name: `phone-${t}-top`, theme, mobile: true });
+  await shoot({ name: `phone-${t}-cashout`, theme, mobile: true, after: scrollTo('#docs-cashout .dc-fee') });
 }
-// more sections (TR paper) and the lobby links
-await shoot({ name: 'desk-tr-paper-value', lang: 'tr', theme: 'light', mobile: false, after: scrollTo('#docs-value') });
-await shoot({ name: 'desk-tr-paper-seasons', lang: 'tr', theme: 'light', mobile: false, after: scrollTo('#docs-seasons') });
-await shoot({ name: 'desk-tr-paper-fair', lang: 'tr', theme: 'light', mobile: false, after: scrollTo('#docs-fair') });
+// more sections (paper) and the lobby links
+await shoot({ name: 'desk-paper-value', theme: 'light', mobile: false, after: scrollTo('#docs-value') });
+await shoot({ name: 'desk-paper-seasons', theme: 'light', mobile: false, after: scrollTo('#docs-seasons') });
+await shoot({ name: 'desk-paper-fair', theme: 'light', mobile: false, after: scrollTo('#docs-fair') });
 await shoot({
-  name: 'desk-en-paper-faq',
-  lang: 'en',
+  name: 'desk-paper-faq',
   theme: 'light',
   mobile: false,
   after: async (page) => {
@@ -64,16 +61,15 @@ await shoot({
     await page.waitForTimeout(200);
   },
 });
-await shoot({ name: 'phone-tr-paper-pass', lang: 'tr', theme: 'light', mobile: true, after: scrollTo('#docs-pass') });
-await shoot({ name: 'phone-en-night-fair', lang: 'en', theme: 'dark', mobile: true, after: scrollTo('#docs-fair') });
-await shoot({ name: 'desk-tr-paper-hash', lang: 'tr', theme: 'light', mobile: false, path: '/#docs' });
-await shoot({ name: 'desk-tr-paper-lobby-index', lang: 'tr', theme: 'light', mobile: false, path: '/' });
-await shoot({ name: 'desk-en-paper-lobby-footer', lang: 'en', theme: 'light', mobile: false, path: '/', after: scrollTo('.kl-colophon') });
-await shoot({ name: 'phone-tr-paper-lobby-footer', lang: 'tr', theme: 'light', mobile: true, path: '/', after: scrollTo('.kl-colophon') });
+await shoot({ name: 'phone-paper-pass', theme: 'light', mobile: true, after: scrollTo('#docs-pass') });
+await shoot({ name: 'phone-night-fair', theme: 'dark', mobile: true, after: scrollTo('#docs-fair') });
+await shoot({ name: 'desk-paper-hash', theme: 'light', mobile: false, path: '/#docs' });
+await shoot({ name: 'desk-paper-lobby-index', theme: 'light', mobile: false, path: '/' });
+await shoot({ name: 'desk-paper-lobby-footer', theme: 'light', mobile: false, path: '/', after: scrollTo('.kl-colophon') });
+await shoot({ name: 'phone-paper-lobby-footer', theme: 'light', mobile: true, path: '/', after: scrollTo('.kl-colophon') });
 // clicking the footer link opens the guide
 await shoot({
-  name: 'phone-en-paper-footer-click',
-  lang: 'en',
+  name: 'phone-paper-footer-click',
   theme: 'light',
   mobile: true,
   path: '/',

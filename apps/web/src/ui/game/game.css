@@ -1,4 +1,4 @@
-/* ─────────────────────── Kâğıt Bilet · in-game view ───────────────────────
+/* ─────────────────────── Paper Ticket · in-game view ───────────────────────
  * HUD scraps taped over the riso world, phone controls and the game sheets
  * (death, cash-out receipt, settings). Everything lives under `.g-root`
  * (a `.kb` root without its own paper) or in a `.g-sheet` portalled panel.
@@ -58,7 +58,7 @@
   box-shadow: 0 0 0 1px var(--line-soft);
 }
 
-/* ── KASA (till) ──────────────────────────────────────────────────────── */
+/* ── Till ──────────────────────────────────────────────────────── */
 .g-till {
   top: 18px;
   left: 18px;
@@ -915,6 +915,11 @@
 .g-sheet .kb-sheet__title .kb-stamp {
   margin: 6px 0 4px 2px;
 }
+/* phones: a button label never breaks; two that do not fit side by side stack instead */
+.g-sheet.is-bottom .kb-sheet__foot > * {
+  flex: 1 1 auto;
+  white-space: nowrap;
+}
 .g-death__body,
 .g-cashout__body {
   display: flex;
@@ -943,6 +948,7 @@
   flex-wrap: wrap;
   align-items: baseline;
   gap: 8px;
+  text-wrap: balance;
   font-size: 21px;
   font-weight: 750;
   font-stretch: 90%;

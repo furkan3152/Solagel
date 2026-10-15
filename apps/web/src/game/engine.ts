@@ -66,7 +66,6 @@ export class GameEngine {
         onMessage: (m) => this.onMessage(m),
         onSnapshot: (s) => this.onSnapshot(s),
       },
-      () => useUi.getState().settings.lang,
     );
     this.input = new Input(
       canvas,
@@ -569,7 +568,7 @@ export class GameEngine {
     const ui = useUi.getState();
     const decimals = ui.chain?.token?.decimals ?? 6;
     for (const f of floats) {
-      const amount = formatToken(Math.abs(f.delta), decimals, ui.settings.lang, { compact: true, maxFrac: 1 });
+      const amount = formatToken(Math.abs(f.delta), decimals, { compact: true, maxFrac: 1 });
       // dust that rounds to nothing floats nothing (no "+0" / "−0")
       if (amount === '0') continue;
       const gain = f.delta > 0;

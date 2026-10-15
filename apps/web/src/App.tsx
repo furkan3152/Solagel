@@ -44,7 +44,7 @@ function Screens() {
   return (
     <>
       {screen === 'lobby' && <Lobby />}
-      {/* Kâğıt Bilet game view, sheets and toasts (portalled; themed from this root) */}
+      {/* Paper Ticket game view, sheets and toasts (portalled; themed from this root) */}
       <Kb theme={themeFromSettings(theme)} paper={false} className="g-root">
         {screen !== 'lobby' && <GameHud />}
         <DeathSheet />
@@ -60,11 +60,6 @@ function Screens() {
 
 export function App() {
   const theme = useUi((s) => s.settings.theme);
-  const lang = useUi((s) => s.settings.lang);
-  useEffect(() => {
-    // uppercase mono labels follow the language rules (Turkish i → İ)
-    document.documentElement.lang = lang;
-  }, [lang]);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#1B1924' : '#F1EADB');

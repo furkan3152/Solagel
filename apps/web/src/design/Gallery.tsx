@@ -2,7 +2,7 @@ import { motion } from 'motion/react';
 import { StrictMode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { translate, type TKey } from '../i18n';
-import { useUi, type Lang } from '../store';
+import { useUi } from '../store';
 import { ICON_NAMES, Icon } from './icons';
 import { Kb, themeFromSettings, useKbTheme, type KbTheme } from './Kb';
 import { STAGGER, useReducedMotion } from './motion';
@@ -49,25 +49,19 @@ export function startDesignGallery(root: HTMLElement): void {
 }
 
 export function Gallery() {
-  // `?gallery&theme=night&lang=en` pins the proof for screenshots.
-  const [lang, setLang] = useState<Lang>(() => {
-    const q = new URLSearchParams(location.search).get('lang');
-    return q === 'tr' || q === 'en' ? q : useUi.getState().settings.lang;
-  });
+  // `?gallery&theme=night` pins the proof for screenshots.
   const [theme, setTheme] = useState<Theme>(() => {
     const q = new URLSearchParams(location.search).get('theme');
     if (q === 'night' || q === 'paper') return q;
     return themeFromSettings(useUi.getState().settings.theme);
   });
-  const t: T = useCallback((key, vars) => translate(lang, key, vars), [lang]);
-  const locale = lang === 'tr' ? 'tr-TR' : 'en-US';
-  const fmt = useCallback((n: number) => Math.round(n).toLocaleString(locale), [locale]);
+  const t: T = translate;
+  const fmt = useCallback((n: number) => Math.round(n).toLocaleString('en-US'), []);
   const reduced = useReducedMotion();
 
   useEffect(() => {
-    document.documentElement.lang = lang;
     document.title = t('ds.docTitle');
-  }, [lang, t]);
+  }, [t]);
   const rootRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     // body sits outside the .kb root: paint it with the live --paper token.
@@ -78,7 +72,7 @@ export function Gallery() {
 
   return (
     <Kb ref={rootRef} theme={theme} className="g-root">
-      <Masthead t={t} lang={lang} setLang={setLang} theme={theme} setTheme={setTheme} reduced={reduced} fmt={fmt} />
+      <Masthead t={t} theme={theme} setTheme={setTheme} reduced={reduced} fmt={fmt} />
       <main className="g-main">
         <div className="g-band">
           <Section n="01" title={t('ds.s.palette')} note={t('ds.s.palette.note')} className="g-palette">
@@ -143,16 +137,12 @@ export function Gallery() {
 
 function Masthead({
   t,
-  lang,
-  setLang,
   theme,
   setTheme,
   reduced,
   fmt,
 }: {
   t: T;
-  lang: Lang;
-  setLang: (l: Lang) => void;
   theme: Theme;
   setTheme: (t: Theme) => void;
   reduced: boolean;
@@ -187,19 +177,6 @@ function Masthead({
               </Chip>
               <Chip selected={theme === 'night'} onClick={() => setTheme('night')} icon="moon">
                 {t('ds.theme.night')}
-              </Chip>
-            </div>
-          </div>
-          <div className="g-control">
-            <span className="g-control__label mono" id="g-lang-l">
-              {t('ds.lang')}
-            </span>
-            <div className="g-seg" role="group" aria-labelledby="g-lang-l">
-              <Chip selected={lang === 'tr'} onClick={() => setLang('tr')} aria-label={t('ds.lang.trName')}>
-                {t('ds.lang.tr')}
-              </Chip>
-              <Chip selected={lang === 'en'} onClick={() => setLang('en')} aria-label={t('ds.lang.enName')}>
-                {t('ds.lang.en')}
               </Chip>
             </div>
           </div>

@@ -16,7 +16,7 @@ export interface StampProps extends SpanAttrs {
   rotate?: number;
   /** Play the 420 ms stamp-in on mount (remount with a `key` to replay). */
   animateIn?: boolean;
-  /** `sm` sits on tickets, `md` is the default, `lg` is a verdict ("YENİLDİN"). */
+  /** `sm` sits on tickets, `md` is the default, `lg` is a verdict ("EATEN"). */
   size?: 'sm' | 'md' | 'lg';
   /** Round seal instead of the rectangular frame. */
   round?: boolean;

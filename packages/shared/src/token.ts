@@ -11,8 +11,6 @@
 /** Display symbol used when the server config does not set one. */
 export const TOKEN_SYMBOL_DEFAULT = '$SLANA';
 
-type Lang = 'tr' | 'en';
-
 const MAX_SAFE = BigInt(Number.MAX_SAFE_INTEGER);
 
 /**
@@ -32,15 +30,13 @@ export function toSafeAmount(raw: bigint | number): number {
   return raw === 0 ? 0 : raw; // normalises -0
 }
 
-const SEPARATORS = {
-  tr: { group: '.', decimal: ',' },
-  en: { group: ',', decimal: '.' },
-} as const;
+/** en-US separators: `1,234.5`. */
+const GROUP = ',';
+const DECIMAL = '.';
 
 /**
  * Compact tiers, ascending. `exp` is the power of ten of whole tokens the suffix
- * stands for. Ruling R15: K / M / B (thousand / million / billion) in every
- * language, the crypto convention; only the separators follow the language.
+ * stands for. R15: K / M / B (thousand / million / billion), the crypto convention.
  */
 const TIERS = [
   { exp: 0, suffix: '' },
@@ -48,7 +44,6 @@ const TIERS = [
   { exp: 6, suffix: 'M' },
   { exp: 9, suffix: 'B' },
 ] as const;
-const COMPACT = { tr: TIERS, en: TIERS } as const;
 
 const PLAIN = [{ exp: 0, suffix: '' }] as const;
 
@@ -70,21 +65,19 @@ function roundFixed(abs: bigint, decimals: number, maxFrac: number): { whole: bi
 }
 
 /**
- * Human-readable token amount.
+ * Human-readable token amount in en-US style.
  *
- * - tr groups thousands with `.` and uses `,` for decimals; en is the reverse.
+ * - Thousands are grouped with `,` and decimals use `.`.
  * - At most `maxFrac` decimals (default 2, never more than the token has),
- *   rounded half up, trailing zeros stripped: `1.234,5`, `1,234.5`.
- * - `compact` shortens amounts from one thousand tokens up with K / M / B
- *   in both languages: `12.4K` / `3.2M` in en, `12,4K` / `3,2M` in tr. Rounding that reaches
- *   1000 moves up a tier (999.999K prints as 1M).
+ *   rounded half up, trailing zeros stripped: `1,234.5`.
+ * - `compact` shortens amounts from one thousand tokens up with K / M / B:
+ *   `12.4K`, `3.2M`. Rounding that reaches 1000 moves up a tier (999.999K prints as 1M).
  * - Negative amounts (value deltas) get a leading `-`. A `number` input is
  *   rounded to whole base units; NaN and infinities throw `RangeError`.
  */
 export function formatToken(
   raw: number | bigint,
   decimals: number,
-  lang: Lang,
   opts: { maxFrac?: number; compact?: boolean } = {},
 ): string {
   checkDecimals(decimals);
@@ -97,7 +90,7 @@ export function formatToken(
   else throw new RangeError(`token amount must be finite, got ${raw}`);
   const abs = value < 0n ? -value : value;
 
-  const tiers = opts.compact ? COMPACT[lang] : PLAIN;
+  const tiers = opts.compact ? TIERS : PLAIN;
   let tier = 0;
   while (tier + 1 < tiers.length && abs >= 10n ** BigInt(decimals + tiers[tier + 1].exp)) tier++;
   let r = roundFixed(abs, decimals + tiers[tier].exp, maxFrac);
@@ -106,35 +99,32 @@ export function formatToken(
     r = roundFixed(abs, decimals + tiers[tier].exp, maxFrac);
   }
 
-  const sep = SEPARATORS[lang];
-  const whole = r.whole.toString().replace(/\B(?=(\d{3})+(?!\d))/g, sep.group);
+  const whole = r.whole.toString().replace(/\B(?=(\d{3})+(?!\d))/g, GROUP);
   // no sign when the amount rounds to zero (`formatToken(-1, 6)` is "0", not "-0")
   const negative = value < 0n && (r.whole > 0n || r.frac !== '');
-  return `${negative ? '-' : ''}${whole}${r.frac ? sep.decimal + r.frac : ''}${tiers[tier].suffix}`;
+  return `${negative ? '-' : ''}${whole}${r.frac ? DECIMAL + r.frac : ''}${tiers[tier].suffix}`;
 }
 
-/** Digits of a whole part that is plain or has well-formed thousands groups (`1.234` in tr, `1,234` in en). */
-function wholeDigits(text: string, group: string): string | null {
-  if (!text.includes(group)) return /^\d*$/.test(text) ? text : null;
-  const groups = text.split(group);
+/** Digits of a whole part that is plain or has well-formed thousands groups (`1,234`). */
+function wholeDigits(text: string): string | null {
+  if (!text.includes(GROUP)) return /^\d*$/.test(text) ? text : null;
+  const groups = text.split(GROUP);
   return /^\d{1,3}$/.test(groups[0]) && groups.slice(1).every((g) => /^\d{3}$/.test(g)) ? groups.join('') : null;
 }
 
 /**
- * Parses user-typed text such as `1.234,5` (tr) or `1,234.5` (en) into raw
- * base units. It refuses to guess: in tr `1.5` is a malformed thousands group
- * (not one and a half), so it throws `SyntaxError` instead of reading it as
- * 15 tokens. Extra decimal places beyond `decimals` throw `RangeError` unless
- * they are all zeros. Signs, exponents, symbols and inner spaces are rejected.
+ * Parses user-typed text such as `1,234.5` into raw base units. It refuses to
+ * guess: `1,5` is a malformed thousands group (not one and a half), so it
+ * throws `SyntaxError` instead of reading it as 15 tokens. Extra decimal places
+ * beyond `decimals` throw `RangeError` unless they are all zeros. Signs, exponents, symbols and inner spaces are rejected.
  */
-export function parseToken(text: string, decimals: number, lang: Lang): bigint {
+export function parseToken(text: string, decimals: number): bigint {
   checkDecimals(decimals);
-  const { group, decimal } = SEPARATORS[lang];
-  const parts = text.trim().split(decimal);
-  const whole = parts.length <= 2 ? wholeDigits(parts[0], group) : null;
+  const parts = text.trim().split(DECIMAL);
+  const whole = parts.length <= 2 ? wholeDigits(parts[0]) : null;
   const fracText = parts[1] ?? '';
   if (whole === null || !/^\d*$/.test(fracText) || (whole === '' && fracText === '')) {
-    throw new SyntaxError(`invalid ${lang} token amount ${JSON.stringify(text)}`);
+    throw new SyntaxError(`invalid token amount ${JSON.stringify(text)}`);
   }
   if (/[1-9]/.test(fracText.slice(decimals))) {
     throw new RangeError(`token amount ${JSON.stringify(text)} has more than ${decimals} decimal places`);

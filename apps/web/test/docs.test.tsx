@@ -7,10 +7,10 @@ import { Kb } from '../src/design';
 import { pageFromUrl, urlForPage, useUi } from '../src/store';
 import { DocsPage } from '../src/ui/docs/DocsPage';
 import { docsEn } from '../src/ui/docs/content.en';
-import { docsTr } from '../src/ui/docs/content.tr';
 import { FACTS, SERVER } from '../src/ui/docs/facts';
 
 const initial = useUi.getState();
+const en0 = docsEn();
 afterEach(() => {
   act(() => useUi.setState(initial, true));
 });
@@ -19,7 +19,7 @@ afterEach(() => {
 const SECTION_IDS = ['play', 'rooms', 'value', 'cashout', 'pass', 'mint', 'seasons', 'fair', 'wallet', 'faq'];
 
 describe('player guide facts', () => {
-  it('works the fee example through splitPayout: 1.000 in, 2.000 out → fee 50 (Pass 20), net 1.950 (Pass 1.980)', () => {
+  it('works the fee example through splitPayout: 1,000 in, 2,000 out → fee 50 (Pass 20), net 1,950 (Pass 1,980)', () => {
     const { normal, pass } = FACTS.example;
     expect(FACTS.example).toMatchObject({ entry: 1000, cashout: 2000 });
     expect(normal).toEqual({ fee: 50n, treasury: 25n, season: 15n, burn: 10n, player: 1950n });
@@ -60,80 +60,62 @@ describe('player guide facts', () => {
 });
 
 describe('player guide content', () => {
-  const tr = docsTr('$SLANA');
   const en = docsEn('$SLANA');
 
   it('I3: quotes the Pass power the server applies when it publishes one', () => {
-    const text = (c: typeof tr) => JSON.stringify(c.sections);
+    const text = (c: typeof en) => JSON.stringify(c.sections);
     const power = { startMassMul: 1.3, cashoutMs: 1_000 };
     expect(text(docsEn('$SLANA', power))).toContain('+30% mass and cash out in 1 s');
-    expect(text(docsTr('$SLANA', power))).toContain('1 sn');
     expect(text(en)).toContain('+15% mass and cash out in 2 s');
   });
 
   it('R24: describes collecting a settled payout, not a 24 h refund of the entry fee only', () => {
-    for (const c of [tr, en]) {
-      const t = JSON.stringify(c.sections);
-      expect(t).not.toMatch(/never includes winnings|kazancı hiçbir zaman içermez|create the token account rather|returns your entry fee only/);
-    }
-    expect(JSON.stringify(en.sections)).toContain('Collect payout');
-    expect(JSON.stringify(tr.sections)).toContain('Ödemeni al');
+    const t = JSON.stringify(en.sections);
+    expect(t).not.toMatch(/never includes winnings|create the token account rather|returns your entry fee only/);
+    expect(t).toContain('Collect payout');
   });
 
-  it('has the same sections and blocks in TR and EN, in the promised order', () => {
-    expect(tr.sections.map((s) => s.id)).toEqual(SECTION_IDS);
+  it('has every section in the promised order, each with a title and content', () => {
     expect(en.sections.map((s) => s.id)).toEqual(SECTION_IDS);
-    const shape = (c: typeof tr) => c.sections.map((s) => s.blocks.map((b) => b.kind + ('items' in b && Array.isArray(b.items) ? b.items.length : '')));
-    expect(shape(tr)).toEqual(shape(en));
-  });
-
-  it('uses no emoji and no SOL arenas', () => {
-    for (const c of [tr, en]) {
-      const text = JSON.stringify(c);
-      expect(text).not.toMatch(/\p{Extended_Pictographic}/u);
-      expect(text).not.toMatch(/SOL arena|SOL arenası/i);
-      expect(text).not.toMatch(/record_game/);
+    for (const s of en.sections) {
+      expect(s.title.length).toBeGreaterThan(0);
+      expect(s.blocks.length).toBeGreaterThan(0);
     }
   });
 
-  it('formats numbers per language', () => {
-    expect(tr.pct(500)).toBe('%5');
-    expect(tr.pct(450)).toBe('%4,5');
+  it('uses no emoji, no SOL arenas and no Turkish', () => {
+    const text = JSON.stringify(en);
+    expect(text).not.toMatch(/\p{Extended_Pictographic}/u);
+    expect(text).not.toMatch(/SOL arena/i);
+    expect(text).not.toMatch(/record_game/);
+    // the CI guard's Turkish letters, written as escapes so this file passes the guard itself
+    expect(text).not.toMatch(/[\u00e7\u011f\u0131\u00f6\u015f\u00fc\u00c7\u011e\u0130\u00d6\u015e\u00dc]/);
+  });
+
+  it('formats numbers in en-US', () => {
+    expect(en.pct(500)).toBe('5%');
     expect(en.pct(450)).toBe('4.5%');
-    expect(tr.num(1950)).toBe('1.950');
     expect(en.num(1950)).toBe('1,950');
+    expect(en.num(250000)).toBe('250,000');
   });
 });
 
 describe('player guide page', () => {
-  it('renders the ten sections and the worked fee example in Turkish', () => {
-    act(() => useUi.setState({ settings: { ...initial.settings, lang: 'tr' } }));
+  it('renders the ten sections and the worked fee example', () => {
     render(
       <Kb theme="paper">
         <DocsPage />
       </Kb>,
     );
-    const toc = screen.getByRole('navigation', { name: 'İçindekiler' });
+    const toc = screen.getByRole('navigation', { name: en0.tocLabel });
     expect(within(toc).getAllByRole('button')).toHaveLength(10);
-    for (const s of docsTr().sections) expect(screen.getByRole('heading', { level: 3, name: s.title })).toBeTruthy();
-    // Receipts: net 1.950 without a Pass, 1.980 with one; fee 50 / 20
-    expect(screen.getByText('1.950')).toBeTruthy();
-    expect(screen.getByText('1.980')).toBeTruthy();
-    expect(screen.getByText('−50')).toBeTruthy();
-    expect(screen.getByText('−20')).toBeTruthy();
-    expect(screen.getByRole('complementary', { name: 'Pass oyun içinde güç verir' })).toBeTruthy();
-  });
-
-  it('renders in English', () => {
-    act(() => useUi.setState({ settings: { ...initial.settings, lang: 'en' } }));
-    render(
-      <Kb theme="paper">
-        <DocsPage />
-      </Kb>,
-    );
+    for (const s of en0.sections) expect(screen.getByRole('heading', { level: 3, name: s.title })).toBeTruthy();
     expect(screen.getByRole('heading', { level: 3, name: 'Cash-out and fees' })).toBeTruthy();
+    // Receipts: net 1,950 without a Pass, 1,980 with one; fee 50 / 20
     expect(screen.getByText('1,950')).toBeTruthy();
     expect(screen.getByText('1,980')).toBeTruthy();
+    expect(screen.getByText('−50')).toBeTruthy();
+    expect(screen.getByText('−20')).toBeTruthy();
   });
 });
 

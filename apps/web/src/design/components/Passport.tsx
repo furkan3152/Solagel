@@ -25,9 +25,9 @@ export interface PassportProps extends Omit<HTMLAttributes<HTMLDivElement>, 'tit
   art?: ReactNode;
   /** Sealed: closed cover with a wax seal, page not shown. */
   sealed?: boolean;
-  /** Stamp text on the sealed cover, e.g. "MÜHÜRLÜ". */
+  /** Stamp text on the sealed cover, e.g. "SEALED". */
   sealedLabel?: string;
-  /** Visa stamp on the open page, e.g. "GEÇERLİ". */
+  /** Visa stamp on the open page, e.g. "VALID". */
   visa?: string;
 }
 
@@ -98,10 +98,10 @@ export function Passport({
                       <dd>{holder}</dd>
                     </div>
                   )}
-                  {traits.map((tr, i) => (
+                  {traits.map((row, i) => (
                     <div key={i} className="kb-passport__field">
-                      <dt className="mono">{tr.label}</dt>
-                      <dd>{tr.value}</dd>
+                      <dt className="mono">{row.label}</dt>
+                      <dd>{row.value}</dd>
                     </div>
                   ))}
                 </dl>

@@ -1,4 +1,4 @@
-/* ─────────────────────── Kâğıt Bilet · lobby & ticket flow ───────────────────────
+/* ─────────────────────── Paper Ticket · lobby & ticket flow ───────────────────────
  * Task 14. Phones follow artboard B (docs/design/kagit-bilet-lobby.html);
  * desktop is a newspaper front page whose photo is a window cut into the
  * paper (a CSS mask) onto the live game canvas. Everything lives under the
@@ -179,11 +179,6 @@
   align-items: center;
   gap: 10px;
   padding-right: 6px;
-}
-.kl-seg {
-  display: flex;
-  gap: 6px;
-  margin-right: 6px;
 }
 .kl-root.is-phone .kl-mast .kb-iconbtn {
   width: 44px;
@@ -375,7 +370,7 @@
   vertical-align: 1px;
 }
 .kl-ticket__perk {
-  /* verbatim sentence case ("Pass: +%15 başlangıç · …"), not a caps label */
+  /* verbatim sentence case ("Pass: +15% start · …"), not a caps label */
   text-transform: none;
   letter-spacing: 0.01em;
   font-size: 12px;
@@ -403,7 +398,7 @@
 
 /* ── Quick Play CTA ───────────────────────────────────────────────────── */
 .kl-cta .kb-btn__sub {
-  /* room for Turkish capital diacritics (Ö, Ü, İ) above the cap height */
+  /* room for accents and descenders above and below the cap height */
   line-height: 1.4;
   margin-bottom: -3px;
   white-space: nowrap;
@@ -508,7 +503,7 @@
   font-size: 30px;
 }
 
-/* "Pass başvurusu" */
+/* "Apply for a Pass" */
 .kl-apply {
   display: flex;
   align-items: center;

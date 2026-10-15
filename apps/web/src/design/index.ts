@@ -1,4 +1,4 @@
-// Kâğıt Bilet design system: one import for screens (Tasks 13–16).
+// Paper Ticket design system: one import for screens.
 // CSS (tokens.css, paper.css) and fonts are loaded globally by main.tsx.
 export { Kb, useKbTheme, themeFromSettings, type KbTheme, type KbProps } from './Kb';
 export { Icon, ICON_NAMES, type IconName, type IconProps } from './icons';
