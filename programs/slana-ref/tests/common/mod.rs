@@ -20,6 +20,9 @@ use {
         },
         AccountDeserialize, InstructionData, Space, ToAccountMetas,
     },
+    anchor_spl::token_2022_extensions::spl_token_metadata_interface::{
+        instruction::initialize as token_metadata_initialize, state::TokenMetadata,
+    },
     anchor_spl::{
         associated_token::{
             get_associated_token_address_with_program_id,
@@ -34,9 +37,6 @@ use {
             },
             state::{Account as TokenAccountState, Mint as MintState},
         },
-    },
-    anchor_spl::token_2022_extensions::spl_token_metadata_interface::{
-        instruction::initialize as token_metadata_initialize, state::TokenMetadata,
     },
     litesvm::{
         types::{FailedTransactionMetadata, TransactionMetadata},
@@ -745,7 +745,8 @@ pub enum MintKind {
 /// The TokenMetadata the `Token2022Metadata*` mints carry (pump.fun-style values).
 pub const META_NAME: &str = "Slana Test Coin";
 pub const META_SYMBOL: &str = "SLANA";
-pub const META_URI: &str = "https://ipfs.io/ipfs/QmSlanaTestCoinMetadataUriThatIsRatherLongLikePumpFun1234567890";
+pub const META_URI: &str =
+    "https://ipfs.io/ipfs/QmSlanaTestCoinMetadataUriThatIsRatherLongLikePumpFun1234567890";
 
 impl MintKind {
     /// Whether the mint carries the variable-length TokenMetadata extension.
