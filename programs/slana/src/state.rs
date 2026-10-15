@@ -172,6 +172,13 @@ pub struct Session {
     /// else `Config::fee_bps`): later fee changes never touch an open session.
     pub fee_bps: u16,
     pub bump: u8,
+    /// Settled without a player token account (ruling R24): the game result is final, the
+    /// fee is taken and the Pass lock is closed, but `owed` still sits in the arena vault
+    /// until the player collects it with `refund_session` (no waiting time). The session stays
+    /// open (it counts in `Arena::open_sessions`, so the vault cannot be swept meanwhile).
+    pub finalized: bool,
+    /// Game tokens the player is owed by a finalized session (0 otherwise).
+    pub owed: u64,
 }
 
 /// Lock of a Pass asset while it backs an open session, so one Pass backs at most one

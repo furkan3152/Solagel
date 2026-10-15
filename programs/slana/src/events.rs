@@ -33,6 +33,9 @@ pub struct SessionSettled {
     pub has_pass: bool,
     pub score: u32,
     pub kills: u16,
+    /// Player share left in the vault for the player to collect (finalized without a token
+    /// account); 0 when it was paid in the same transaction.
+    pub owed: u64,
 }
 
 #[event]
@@ -40,6 +43,8 @@ pub struct SessionRefunded {
     pub player: Pubkey,
     pub arena_id: u16,
     pub amount: u64,
+    /// The session was finalized: `amount` is its owed payout, not an entry-fee refund.
+    pub finalized: bool,
 }
 
 #[event]

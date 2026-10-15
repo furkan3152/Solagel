@@ -302,6 +302,8 @@ describe('account decoding', () => {
       settleFee: new BN(10_000),
       feeBps: 200,
       bump: 1,
+      finalized: true,
+      owed: new BN('123456789012'),
     };
     const session = toSessionView('SessionPda', coder.decode<RawSession>(ACCOUNT_NAMES.session, await encode(ACCOUNT_NAMES.session, rawSession)));
     expect(session).toEqual({
@@ -316,6 +318,8 @@ describe('account decoding', () => {
       passAsset: asset.toBase58(),
       settleFee: 10_000,
       feeBps: 200,
+      finalized: true,
+      owed: 123_456_789_012n,
     });
     expect(toSessionView('S', { ...rawSession, hasPass: false, passAsset: PublicKey.default }).passAsset).toBeNull();
   });

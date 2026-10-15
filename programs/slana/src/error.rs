@@ -108,4 +108,12 @@ pub enum SlanaError {
     SeedNotRevealed,
     #[msg("The fee rate is above the limit the player signed")]
     FeeAboveLimit,
+    #[msg("The entry fee is above the limit the player signed")]
+    EntryFeeAboveLimit,
+    #[msg("The settle deposit is above the limit the player signed")]
+    SettleFeeAboveLimit,
+    #[msg("Session is already settled; the player collects the payout with refund_session")]
+    SessionFinalized,
+    #[msg("Authority must not be the default public key")]
+    InvalidAuthority,
 }

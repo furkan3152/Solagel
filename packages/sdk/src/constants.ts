@@ -64,8 +64,8 @@ export const PASS_NAME_PREFIX = 'Slana Pass #';
 export const ACCOUNT_BYTES = {
   /** owner 32 + name 16 + len 1 + skin 1 + xp 8 + games 4 + kills 4 + best 4 + total 8 + season 4 + points 8 + stakeGames 4 + staked 8 + won 8 + created 8 + last 8 + bump 1 */
   playerProfile: 8 + 127,
-  /** id 8 + player 32 + arena 32 + arenaId 2 + entry 8 + opened 8 + hasPass 1 + passAsset 32 + settleFee 8 + feeBps 2 + bump 1 */
-  session: 8 + 134,
+  /** id 8 + player 32 + arena 32 + arenaId 2 + entry 8 + opened 8 + hasPass 1 + passAsset 32 + settleFee 8 + feeBps 2 + bump 1 + finalized 1 + owed 8 */
+  session: 8 + 143,
   /** session 32 + player 32 + bump 1 */
   passLock: 8 + 65,
   /** count 1 + bump 1 */

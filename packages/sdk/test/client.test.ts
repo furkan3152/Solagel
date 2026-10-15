@@ -38,7 +38,7 @@ const token = { tokenMint, tokenProgram: TOKEN_2022_PROGRAM_ID };
 
 describe('instruction builders (no RPC)', () => {
   it('joinArena passes every account explicitly', async () => {
-    const ix = await client.ix.joinArena(player, { arenaId: 2, ...token, maxFeeBps: 500 });
+    const ix = await client.ix.joinArena(player, { arenaId: 2, ...token, maxFeeBps: 500, maxEntryFee: 50_000_000_000n, maxSettleFee: 20_000 });
     const arena = pdas.arena(2);
     expect(keys(ix)).toEqual(
       b58([
@@ -55,15 +55,20 @@ describe('instruction builders (no RPC)', () => {
       ]),
     );
     expect(meta(ix, player)).toMatchObject({ isSigner: true, isWritable: true });
-    // discriminator + max_fee_bps (u16 LE)
-    expect(ix.data.length).toBe(10);
+    // discriminator + max_fee_bps (u16 LE) + max_entry_fee (u64) + max_settle_fee (u64)
+    expect(ix.data.length).toBe(8 + 2 + 8 + 8);
     expect(ix.data.readUInt16LE(8)).toBe(500);
-    expect(() => client.ix.joinArena(player, { arenaId: 2, ...token, maxFeeBps: 70_000 })).toThrow(RangeError);
+    expect(ix.data.readBigUInt64LE(10)).toBe(50_000_000_000n);
+    expect(ix.data.readBigUInt64LE(18)).toBe(20_000n);
+    expect(() => client.ix.joinArena(player, { arenaId: 2, ...token, maxFeeBps: 70_000, maxEntryFee: 1, maxSettleFee: 1 })).toThrow(RangeError);
+    expect(() => client.ix.joinArena(player, { arenaId: 2, ...token, maxFeeBps: 500, maxEntryFee: -1, maxSettleFee: 1 })).toThrow(RangeError);
   });
 
   it('joinArenaWithPass includes passLock = PDA(asset)', async () => {
-    const ix = await client.ix.joinArenaWithPass(player, { arenaId: 3, passAsset, ...token, maxFeeBps: 200 });
+    const ix = await client.ix.joinArenaWithPass(player, { arenaId: 3, passAsset, ...token, maxFeeBps: 200, maxEntryFee: 7n, maxSettleFee: 9n });
     expect(ix.data.readUInt16LE(8)).toBe(200);
+    expect(ix.data.readBigUInt64LE(10)).toBe(7n);
+    expect(ix.data.readBigUInt64LE(18)).toBe(9n);
     const k = keys(ix);
     expect(k[9]).toBe(passAsset.toBase58());
     expect(k[10]).toBe(pdas.passLock(passAsset).toBase58());
@@ -107,6 +112,11 @@ describe('instruction builders (no RPC)', () => {
     const withPass = await client.ix.settleSession(server, { ...params, hasPass: true, passAsset });
     expect(keys(withPass)[13]).toBe(pdas.passLock(passAsset).toBase58());
     expect(() => client.ix.settleSession(server, { ...params, hasPass: true })).toThrow(/passAsset/);
+
+    // R24: playerToken null settles without a token account (finalize with owed).
+    const finalize = await client.ix.settleSession(server, { ...params, hasPass: false, playerToken: null });
+    expect(keys(finalize)[6]).toBe(PROGRAM_ID.toBase58());
+    expect(keys(finalize)).not.toContain(ata(player, tokenMint, TOKEN_2022_PROGRAM_ID).toBase58());
   });
 
   it('refundSession takes the token accounts and the optional lock', async () => {
@@ -117,6 +127,9 @@ describe('instruction builders (no RPC)', () => {
     );
     const locked = await client.ix.refundSession(player, { arenaId: 1, tokenMint, tokenProgram: TOKEN_PROGRAM_ID, passAsset });
     expect(keys(locked)[8]).toBe(pdas.passLock(passAsset).toBase58());
+    // A finalized session's lock is already closed: collect passes none.
+    const collect = await client.ix.refundSession(player, { arenaId: 1, tokenMint, tokenProgram: TOKEN_PROGRAM_ID, passAsset, finalized: true });
+    expect(keys(collect)[8]).toBe(PROGRAM_ID.toBase58());
   });
 
   it('mintPass: asset co-signs, minter token is optional', async () => {
@@ -216,7 +229,7 @@ describe('instruction builders (no RPC)', () => {
   it('honours a custom program id', async () => {
     const other = Keypair.generate().publicKey;
     const c = new SlanaClient(connection, other.toBase58());
-    const ix = await c.ix.joinArena(player, { arenaId: 1, ...token, maxFeeBps: 500 });
+    const ix = await c.ix.joinArena(player, { arenaId: 1, ...token, maxFeeBps: 500, maxEntryFee: 1n, maxSettleFee: 1n });
     expect(ix.programId.equals(other)).toBe(true);
     expect(keys(ix)[3]).toBe(pdas.arena(1, other).toBase58());
     const settle = await c.ix.settleSession(server, { player, arenaId: 1, sessionId: 1, payout: 0, score: 0, kills: 0, xp: 0, currentSeason: 1, hasPass: false, ...token });

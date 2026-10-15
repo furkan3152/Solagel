@@ -43,7 +43,7 @@ use {
         constants::*,
         error::SlanaError,
         state::{Arena, Config, MintCounter, PassLock, PlayerProfile, Season, Session},
-        InitializeArgs, SettleArgs, UpdateConfigArgs,
+        InitializeArgs, JoinLimits, SettleArgs, UpdateConfigArgs,
     },
     solana_account::Account as SolanaAccount,
     solana_keypair::Keypair,
@@ -297,11 +297,16 @@ pub mod ix {
         arena_id: u16,
         mint: &Pubkey,
         token_program: &Pubkey,
-        max_fee_bps: u16,
+        limits: JoinLimits,
     ) -> Instruction {
         let arena = arena_pda(arena_id);
         build(
-            slana::instruction::JoinArena { max_fee_bps }.data(),
+            slana::instruction::JoinArena {
+                max_fee_bps: limits.max_fee_bps,
+                max_entry_fee: limits.max_entry_fee,
+                max_settle_fee: limits.max_settle_fee,
+            }
+            .data(),
             slana::accounts::JoinArena {
                 player: *player,
                 config: config_pda(),
@@ -323,11 +328,16 @@ pub mod ix {
         pass_asset: &Pubkey,
         mint: &Pubkey,
         token_program: &Pubkey,
-        max_fee_bps: u16,
+        limits: JoinLimits,
     ) -> Instruction {
         let arena = arena_pda(arena_id);
         build(
-            slana::instruction::JoinArenaWithPass { max_fee_bps }.data(),
+            slana::instruction::JoinArenaWithPass {
+                max_fee_bps: limits.max_fee_bps,
+                max_entry_fee: limits.max_entry_fee,
+                max_settle_fee: limits.max_settle_fee,
+            }
+            .data(),
             slana::accounts::JoinArenaWithPass {
                 player: *player,
                 config: config_pda(),
@@ -353,6 +363,7 @@ pub mod ix {
         season: u32,
         args: SettleArgs,
         pass_lock: Option<Pubkey>,
+        player_token: Option<Pubkey>,
         mint: &Pubkey,
         token_program: &Pubkey,
     ) -> Instruction {
@@ -366,7 +377,7 @@ pub mod ix {
                 vault: vault_pda(&arena),
                 session: session_pda(&arena, player),
                 player: *player,
-                player_token: ata(player, mint, token_program),
+                player_token,
                 profile: profile_pda(player),
                 season: season_pda(season),
                 treasury_vault: treasury_vault_pda(),
@@ -936,6 +947,15 @@ impl TestEnv {
         self.mint_state(&self.mint).0.supply
     }
 
+    /// Limits that accept whatever the arena and config currently charge (up to the caps).
+    pub fn loose_limits() -> JoinLimits {
+        JoinLimits {
+            max_fee_bps: MAX_FEE_BPS,
+            max_entry_fee: u64::MAX,
+            max_settle_fee: MAX_SETTLE_FEE_LAMPORTS,
+        }
+    }
+
     /// `join_arena` accepting any fee up to the program's cap (`MAX_FEE_BPS`).
     pub fn join(&mut self, player: &Keypair, arena_id: u16) -> TxResult {
         self.join_max(player, arena_id, MAX_FEE_BPS)
@@ -943,6 +963,18 @@ impl TestEnv {
 
     /// `join_arena` with the fee bound the player signed.
     pub fn join_max(&mut self, player: &Keypair, arena_id: u16, max_fee_bps: u16) -> TxResult {
+        self.join_limits(
+            player,
+            arena_id,
+            JoinLimits {
+                max_fee_bps,
+                ..Self::loose_limits()
+            },
+        )
+    }
+
+    /// `join_arena` with all three signed bounds.
+    pub fn join_limits(&mut self, player: &Keypair, arena_id: u16, limits: JoinLimits) -> TxResult {
         let (mint, program) = (self.mint, self.token_program);
         self.send(
             &[ix::join_arena(
@@ -950,7 +982,7 @@ impl TestEnv {
                 arena_id,
                 &mint,
                 &program,
-                max_fee_bps,
+                limits,
             )],
             &[player],
         )
@@ -967,6 +999,24 @@ impl TestEnv {
         asset: &Pubkey,
         max_fee_bps: u16,
     ) -> TxResult {
+        self.join_with_pass_limits(
+            player,
+            arena_id,
+            asset,
+            JoinLimits {
+                max_fee_bps,
+                ..Self::loose_limits()
+            },
+        )
+    }
+
+    pub fn join_with_pass_limits(
+        &mut self,
+        player: &Keypair,
+        arena_id: u16,
+        asset: &Pubkey,
+        limits: JoinLimits,
+    ) -> TxResult {
         let (mint, program) = (self.mint, self.token_program);
         self.send(
             &[ix::join_arena_with_pass(
@@ -975,13 +1025,14 @@ impl TestEnv {
                 asset,
                 &mint,
                 &program,
-                max_fee_bps,
+                limits,
             )],
             &[player],
         )
     }
 
-    /// `settle_session` signed by `signer` with explicit arguments and lock account.
+    /// `settle_session` signed by `signer` with explicit arguments and lock account, paying
+    /// into the player's associated token account.
     pub fn settle_as(
         &mut self,
         signer: &Keypair,
@@ -989,6 +1040,20 @@ impl TestEnv {
         arena_id: u16,
         args: SettleArgs,
         pass_lock: Option<Pubkey>,
+    ) -> TxResult {
+        let token = Some(self.player_ata(player));
+        self.settle_as_with(signer, player, arena_id, args, pass_lock, token)
+    }
+
+    /// `settle_session` with an explicit (optional) player token account.
+    pub fn settle_as_with(
+        &mut self,
+        signer: &Keypair,
+        player: &Pubkey,
+        arena_id: u16,
+        args: SettleArgs,
+        pass_lock: Option<Pubkey>,
+        player_token: Option<Pubkey>,
     ) -> TxResult {
         let (mint, program) = (self.mint, self.token_program);
         let season = self.config().current_season;
@@ -1000,6 +1065,7 @@ impl TestEnv {
                 season,
                 args,
                 pass_lock,
+                player_token,
                 &mint,
                 &program,
             )],
@@ -1017,12 +1083,32 @@ impl TestEnv {
         kills: u16,
         xp: u32,
     ) -> TxResult {
+        let token = Some(self.player_ata(player));
+        self.settle_to(player, arena_id, payout, score, kills, xp, token)
+    }
+
+    /// Server settlement without a player token account: finalizes the session with `owed`.
+    pub fn settle_finalize(&mut self, player: &Pubkey, arena_id: u16, payout: u64) -> TxResult {
+        self.settle_to(player, arena_id, payout, 0, 0, 0, None)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn settle_to(
+        &mut self,
+        player: &Pubkey,
+        arena_id: u16,
+        payout: u64,
+        score: u32,
+        kills: u16,
+        xp: u32,
+        player_token: Option<Pubkey>,
+    ) -> TxResult {
         let session = self
             .session(arena_id, player)
             .expect("open session to settle");
         let lock = session.has_pass.then(|| pass_lock_pda(&session.pass_asset));
         let server = self.server.insecure_clone();
-        self.settle_as(
+        self.settle_as_with(
             &server,
             player,
             arena_id,
@@ -1034,6 +1120,7 @@ impl TestEnv {
                 xp,
             },
             lock,
+            player_token,
         )
     }
 
@@ -1060,7 +1147,7 @@ impl TestEnv {
     pub fn refund(&mut self, player: &Keypair, arena_id: u16) -> TxResult {
         let lock = self
             .session(arena_id, &player.pubkey())
-            .filter(|s| s.has_pass)
+            .filter(|s| s.has_pass && !s.finalized)
             .map(|s| pass_lock_pda(&s.pass_asset));
         self.refund_with(player, arena_id, lock)
     }
