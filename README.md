@@ -122,7 +122,9 @@ The deployed program is the Pinocchio build `programs/slana-lean` (59,344 bytes,
 ```bash
 anchor build --ignore-keys && pnpm -F @slana/sdk sync-idl     # IDL (and the reference slana.so used by the tests)
 bash scripts/build-lean.sh                                    # target/deploy/slana_lean.so, prints size and rent
-scripts/deploy-lean.sh devnet target/deploy/slana-keypair.json   # refuses a keypair that is not the program id
+scripts/deploy-lean.sh devnet target/deploy/slana-keypair.json --keypair keys/deployer.json
+# refuses a keypair that is not the program id, then moves the upgrade authority to the admin wallet (scripts/admin.env)
+scripts/close-program.sh <cluster-url> <admin-keypair>   # emergency: permanently closes the program, see docs/OPERATIONS.md
 ```
 
 Never use `anchor deploy`: it would ship the ~679 KB reference. The lean program locks
