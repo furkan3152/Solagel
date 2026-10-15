@@ -25,7 +25,7 @@ pub struct SettleArgs {
     pub xp: u32,
 }
 
-/// Server-signed cash-out. Works while the program is paused: players must always be able to
+/// Server-signed settlement. Works while the program is paused: players must always be able to
 /// get paid.
 #[derive(Accounts)]
 pub struct SettleSession<'info> {

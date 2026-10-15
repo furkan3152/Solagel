@@ -1655,7 +1655,7 @@ export type Slana = {
     {
       "name": "settleSession",
       "docs": [
-        "Server-signed cash-out of a stake session. With the player's token account the payout",
+        "Server-signed settlement of a stake session (a death, the round bell, or an operator exit). With the player's token account the payout",
         "is paid and the session closed; without it (`player_token = None`) the session is",
         "finalized with `owed` for the player to collect via `refund_session` (ruling R24)."
       ],
