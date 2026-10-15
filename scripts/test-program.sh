@@ -3,8 +3,9 @@
 #   SLANA_IMPL=ref   → target/deploy/slana.so      (Anchor reference, never deployed)
 #   SLANA_IMPL=lean  → target/deploy/slana_lean.so (Pinocchio, the deployed program)
 # Both are loaded at the same program id; instructions and accounts always use the reference
-# crate's Anchor types. Also runs the lean crate's host tests (discriminators vs reference/IDL)
-# and the size gate (tests/size.rs). Runs every suite, then fails if any failed.
+# crate's Anchor types. Also runs clippy on the lean crate (warnings and unchecked arithmetic are
+# errors), the lean crate's host tests (discriminators vs reference/IDL) and the size gate
+# (tests/size.rs). Runs every suite, then fails if any failed.
 #
 #   scripts/test-program.sh [ref|lean|both]   (default both)
 #   SKIP_BUILD=1 scripts/test-program.sh      reuse existing target/deploy/*.so
@@ -31,6 +32,8 @@ if [[ -z "${SKIP_BUILD:-}" ]]; then
 fi
 
 status=0
+echo "=== clippy (slana-lean, -D warnings -D clippy::arithmetic_side_effects) ==="
+cargo clippy -p slana-lean --lib -- -D warnings -D clippy::arithmetic_side_effects || status=1
 cargo test -p slana-lean || status=1
 for impl in ref lean; do
   if [[ "$WHICH" == both || "$WHICH" == "$impl" ]]; then
