@@ -149,7 +149,7 @@ export interface RoundStanding {
 
 /**
  * An arena the server keeps closed although it is enabled on chain (R20: its vault
- * cannot cover the loot, cash-outs and tickets the server journaled). No ticket may be sold.
+ * cannot cover the loot, pending payouts and tickets the server journaled). No ticket may be sold.
  */
 export interface BlockedArena {
   arenaId: number;
@@ -201,13 +201,13 @@ export interface ChainStatus {
   /** Collection pages on the marketplaces (added by the server from its config; absent = none). */
   markets?: MarketUrls;
   /**
-   * The Pass power this server actually applies (`PASS_START_MASS_MUL`, `PASS_CASHOUT_MS`),
+   * The Pass power this server actually applies (`PASS_START_MASS_MUL`; `cashoutMs` is unused since arenas play rounds),
    * added from its config. Clients fall back to `RULES` when absent (older servers).
    */
   passPower?: PassPower;
 }
 
-/** Slana Pass power in play: start-mass multiplier and cash-out channel time. */
+/** Slana Pass power in play: start-mass multiplier (`cashoutMs` is unused since arenas play rounds). */
 export interface PassPower {
   startMassMul: number;
   cashoutMs: number;

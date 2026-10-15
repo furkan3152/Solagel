@@ -9,7 +9,6 @@ import {
   buildCloseTx,
   buildTicketTx,
   buildTickets,
-  cashoutMsOf,
   closeSolCost,
   passPowerOf,
   quickPlayTarget,
@@ -99,11 +98,8 @@ describe('buildTicketTx', () => {
   });
 
   it('I3: Pass power comes from the server status, RULES as fallback', () => {
-    expect(passPowerOf({ startMassMul: 1.25, cashoutMs: 1_500 })).toEqual({ startPct: 25, cashoutS: 1.5 });
-    expect(passPowerOf(null)).toEqual({ startPct: 15, cashoutS: 2 });
-    expect(cashoutMsOf({ passPower: { startMassMul: 1, cashoutMs: 900 } }, true)).toBe(900);
-    expect(cashoutMsOf({ passPower: { startMassMul: 1, cashoutMs: 900 } }, false)).toBe(3_000);
-    expect(cashoutMsOf(null, true)).toBe(2_000);
+    expect(passPowerOf({ startMassMul: 1.25, cashoutMs: 1_500 })).toEqual({ startPct: 25 });
+    expect(passPowerOf(null)).toEqual({ startPct: 15 });
   });
 });
 

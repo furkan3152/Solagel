@@ -293,10 +293,9 @@ export function bpsPercent(bps: number): string {
   return (bps / 100).toFixed(2).replace(/\.?0+$/, '');
 }
 
-/** Pass power numbers for the perk line ("+15% start · 2 s cash-out"). */
+/** Pass power numbers for the perk line ("+15% start mass"). */
 export interface PassPowerText {
   startPct: number;
-  cashoutS: number;
 }
 
 /**
@@ -305,16 +304,11 @@ export interface PassPowerText {
  */
 export function passPowerOf(power: PassPower | null | undefined): PassPowerText {
   const p = power ?? { startMassMul: RULES.passStartMassMul, cashoutMs: RULES.passCashoutMs };
-  return { startPct: Math.round((p.startMassMul - 1) * 100), cashoutS: p.cashoutMs / 1000 };
+  return { startPct: Math.round((p.startMassMul - 1) * 100) };
 }
 
 /** `RULES` defaults (use `passPowerOf(chain.passPower)` / `usePassPower()` for what the server applies). */
 export const PASS_POWER: PassPowerText = passPowerOf(null);
-
-/** The cash-out channel length of a ticket on this server (Pass tickets use the server's Pass power). */
-export function cashoutMsOf(chain: Pick<ChainStatus, 'passPower'> | null | undefined, hasPass: boolean): number {
-  return hasPass ? (chain?.passPower?.cashoutMs ?? RULES.passCashoutMs) : RULES.cashoutMs;
-}
 
 /** R24: arenas whose last game is settled with a payout waiting to be collected. */
 export function sessionsToCollect(sessions: Readonly<Record<number, OpenSession | null>>): { arenaId: number; owed: bigint }[] {

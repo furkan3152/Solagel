@@ -737,7 +737,7 @@ async function cmdSweep(ctx: Ctx, opts: Opts): Promise<void> {
   if (arena.enabled) throw new UsageError(`disable arena #${id} first: pnpm admin update-arena --id ${id} --enabled false`);
   console.log(
     `! sweep moves arena #${id}'s whole vault (${fmtTok(arena.pot, config.tokenDecimals)}) into the season pool. The game server may still hold\n` +
-      `  journaled loot or pending cash-outs for this arena that this CLI cannot see — check the server log / journal first.\n` +
+      `  journaled loot or pending payouts for this arena that this CLI cannot see — check the server log / journal first.\n` +
       `  A server that finds the vault short of its journal keeps the arena disabled. Never re-enable a swept arena.`,
   );
   if (opts.get('force') !== true) throw new UsageError(`sweep refuses without --force (re-run: pnpm admin sweep --id ${id} --force)`);

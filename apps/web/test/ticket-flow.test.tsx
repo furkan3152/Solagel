@@ -155,8 +155,8 @@ describe('ticket confirm sheet', () => {
     act(() => sw.click());
     expect(screen.getByText('2% · on profit only · fixed for this ticket')).toBeTruthy();
     expect(screen.getByText(/Buy the ticket with Pass No\. 0412 · Penny Pond/)).toBeTruthy();
-    // the Pass line discloses every perk, the faster cash-out included
-    expect(screen.getByText(new RegExp(`^No\\. 0412 · 2% fee, \\+\\d+% start, ${PASS_POWER.cashoutS} s cash-out$`))).toBeTruthy();
+    // the Pass line discloses every perk, no cash-out perk in arenas
+    expect(screen.getByText(new RegExp(`^No\\. 0412 · 2% fee, \\+${PASS_POWER.startPct}% start$`))).toBeTruthy();
   });
 
   it('I3: the Pass line discloses the Pass power the server applies, not the built-in default', () => {
@@ -164,7 +164,7 @@ describe('ticket confirm sheet', () => {
     useChainData.setState({ passes: [{ asset: 'A1', number: 412 }], profile: null });
     open(PENNY);
     act(() => screen.getByRole('switch', { name: /Enter with my Pass/ }).click());
-    expect(screen.getByText('No. 0412 · 2% fee, +30% start, 1 s cash-out')).toBeTruthy();
+    expect(screen.getByText('No. 0412 · 2% fee, +30% start')).toBeTruthy();
   });
 
   it('R8: a Pass room requires a Pass; locked Passes are explained and the ticket cannot be bought', () => {
