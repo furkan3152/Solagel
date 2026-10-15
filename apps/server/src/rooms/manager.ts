@@ -1,9 +1,10 @@
-import { TICK_MS, arenaMeta, roundAt, type BlockedArena, type League, type RoomInfo, type RoundWindow } from '@slana/shared';
+import { TICK_MS, arenaMeta, type BlockedArena, type League, type RoomInfo, type RoundWindow } from '@slana/shared';
 import type { ChainGateway } from '../chain/types';
 import type { ServerConfig } from '../config';
 import type { Conn } from '../net/conn';
 import type { ArenaEntry } from '../stake/ledger';
 import { Room, type RoomDeps } from './room';
+import { RoundClock } from './round-clock';
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 /** On-chain arena list is re-read at most this often. */
@@ -49,6 +50,8 @@ export class RoomManager {
       ...deps,
       pass: deps.pass ?? cfg.pass,
       round: deps.round ?? cfg.round,
+      // one clock for the gateway and every room
+      clock: deps.clock ?? new RoundClock(deps.now, deps.round ?? cfg.round),
       onGameOver: (e) => {
         this.onGameOver(e);
         deps.onGameOver?.(e);
@@ -60,13 +63,12 @@ export class RoomManager {
 
   /** The wall clock arena rounds run on (Unix ms; injectable through `RoomDeps.now`). */
   now(): number {
-    return this.deps.now ? this.deps.now() : Date.now();
+    return this.deps.clock!.now();
   }
 
   /** The arena round running at `now` (shared by every arena and instance). */
   roundWindow(now = this.now()): RoundWindow {
-    const r = this.deps.round;
-    return roundAt(now, r?.roundMs, r?.closeMs);
+    return this.deps.clock!.window(now);
   }
 
   /* ---------------------------------------------------------------- */

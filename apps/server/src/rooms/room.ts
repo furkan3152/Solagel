@@ -5,7 +5,6 @@ import {
   PlayerFlag,
   RULES,
   clamp,
-  roundAt,
   VIEW,
   WORLD_PRESETS,
   sanitizeChat,
@@ -33,6 +32,7 @@ import type { Leaderboards } from '../leaderboards';
 import type { Conn } from '../net/conn';
 import { sweepKey, type Journal, type JournalItem, type LiveStake, type SettleReason, type SettlementItem } from '../stake/journal';
 import { ArenaLedger, type ArenaEntry } from '../stake/ledger';
+import { RoundClock } from './round-clock';
 
 /** Stake players are force-cashed-out long before the on-chain 24 h refund window opens. */
 export const MAX_STAKE_SESSION_AGE_S = 6 * 3600;
@@ -52,6 +52,11 @@ export interface RoomDeps {
   now?: () => number;
   /** Arena round clock (defaults to `RULES.roundMs` / `RULES.roundJoinCloseMs`). */
   round?: { roundMs: number; closeMs: number };
+  /**
+   * The shared round clock (the room manager passes its own, so the gateway and every room
+   * agree on the round). Without it the room builds one from `now` and `round`.
+   */
+  clock?: RoundClock;
   /** A human's game ended (death, leave, round end or operator exit). */
   onGameOver?: (e: { room: Room; conn: Conn | null; player: Player; stats: DeathStats }) => void;
 }
@@ -115,6 +120,7 @@ export class Room {
   /** Arena rooms: the round this room is playing (its end triggers `endRound`). */
   private roundN = 0;
   private roundEndsAt = Infinity;
+  private readonly clock: RoundClock;
   lastActivity = Date.now();
 
   constructor(
@@ -126,10 +132,11 @@ export class Room {
     this.world = new World({ ...preset, powerUps: true, coinRain: opts.mode !== 'arena', seed });
     this.bots = opts.bots ? new BotManager(this.world, opts.bots, mulberry32(seed ^ 0xb07)) : null;
     this.ledger = opts.mode === 'arena' ? new ArenaLedger() : null;
+    this.clock = deps.clock ?? new RoundClock(deps.now, deps.round);
     // loot left on any of this arena's instances when the server last stopped: the first instance adopts it all
     if (this.ledger && opts.stake && (opts.instance ?? 1) === 1) this.world.restoreLoot(deps.journal.adoptLoot(opts.stake.arenaId, this.id));
     if (this.ledger) {
-      const r = this.roundWindow();
+      const r = this.clock.window();
       this.roundN = r.n;
       this.roundEndsAt = r.endsAt;
     }
@@ -137,19 +144,28 @@ export class Room {
 
   /** The wall clock rounds run on (Unix ms). */
   now(): number {
-    return this.deps.now ? this.deps.now() : Date.now();
-  }
-
-  private roundWindow(now = this.now()) {
-    const cfg = this.deps.round ?? { roundMs: RULES.roundMs, closeMs: RULES.roundJoinCloseMs };
-    return roundAt(now, cfg.roundMs, cfg.closeMs);
+    return this.clock.now();
   }
 
   /** Arena rooms: the round in play now (undefined elsewhere). */
   round(now = this.now()): RoundInfo | undefined {
     if (!this.ledger) return undefined;
-    const r = this.roundWindow(now);
+    const r = this.clock.window(now);
     return { n: r.n, endsAt: r.endsAt, joinsCloseAt: r.joinsCloseAt };
+  }
+
+  /**
+   * Arena rooms: rings the bell of the round in play when the clock has passed its end. Runs at
+   * the start of every tick and before a player is added (`join`, `reattach`), so a player
+   * joining right as a round opens never lands in the round that is ending.
+   */
+  syncRound(now = this.now()): void {
+    if (!this.ledger || now < this.roundEndsAt) return;
+    const ended = this.roundN;
+    const r = this.clock.window(now);
+    this.roundN = r.n;
+    this.roundEndsAt = r.endsAt;
+    this.endRound(ended);
   }
 
   get id(): string {
@@ -228,6 +244,7 @@ export class Room {
   /* ---------------------------------------------------------------- */
 
   join(conn: Conn, opts: JoinOptions): Player {
+    this.syncRound();
     this.attach(conn);
     // private rooms ignore the Pass entirely
     const practice = this.opts.mode === 'practice';
@@ -270,6 +287,7 @@ export class Room {
 
   /** A stake player reconnected: give them their AFK cells back. */
   reattach(conn: Conn, pid: number): boolean {
+    this.syncRound();
     const p = this.world.players.get(pid);
     if (!p || !p.alive || !this.humans.has(pid) || this.humans.get(pid)) return false;
     this.attach(conn);
@@ -608,9 +626,16 @@ export class Room {
     const amount = this.world.takeLoot();
     const now = Date.now();
     if (amount > 0 && this.opts.stake) {
+      // a key can repeat only if the wall clock stepped back across a round boundary while the
+      // earlier sweep is still pending: never drop the loot, queue it under a distinct key
+      let key = sweepKey(this.id, round);
+      for (let k = 2; this.deps.journal.pending.some((p) => p.key === key); k++) key = `${sweepKey(this.id, round)}:${k}`;
+      if (key !== sweepKey(this.id, round)) {
+        this.deps.log(`!!! room ${this.id}: loot sweep for round ${round} is already pending (wall clock stepped back?); queuing ${amount} as ${key}`);
+      }
       batch.push({
         kind: 'sweep',
-        key: sweepKey(this.id, round),
+        key,
         arenaId: this.opts.stake.arenaId,
         roomId: this.id,
         round,
@@ -650,17 +675,8 @@ export class Room {
 
   tick(dtMs: number): void {
     if (this.conns.size > 0 || this.humans.size > 0) this.lastActivity = Date.now();
-    if (this.ledger) {
-      // rounds end on the wall clock, even in a sleeping room (its floor loot goes to the season)
-      const now = this.now();
-      if (now >= this.roundEndsAt) {
-        const ended = this.roundN;
-        const r = this.roundWindow(now);
-        this.roundN = r.n;
-        this.roundEndsAt = r.endsAt;
-        this.endRound(ended);
-      }
-    }
+    // rounds end on the wall clock, even in a sleeping room (its floor loot goes to the season)
+    this.syncRound();
     if (this.sleeping) return;
     const world = this.world;
     const ev = world.tick(dtMs);
