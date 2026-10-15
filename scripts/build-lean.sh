@@ -12,8 +12,9 @@
 # target/deploy/slana.so. Never deploy the reference.
 #
 # The program id stays 5skf5Twyqr8M84dJ8RLGfz1NU6fR3zPDRLUvGd5y7472: deploy slana_lean.so with
-# target/deploy/slana-keypair.json (never committed). cargo-build-sbf also writes a random
-# target/deploy/slana_lean-keypair.json; it is removed below so nothing deploys to that id.
+# `scripts/deploy-lean.sh <cluster-url> <program-keypair>` (the keypair is never committed).
+# cargo-build-sbf also writes a random target/deploy/slana_lean-keypair.json; it is removed below
+# so nothing deploys to that id.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -25,20 +26,16 @@ for dir in /opt/solana/bin "$HOME/.local/share/solana/install/active_release/bin
 done
 export PATH
 
-# Cheap guard: a local deploy keypair must belong to the program id baked into the build
-# (the lean `ID` equals the reference's `declare_id!`, which a lean unit test enforces).
+# Advisory only: the build never uses the keypair. On a fresh checkout `anchor build --ignore-keys`
+# writes a RANDOM target/deploy/slana-keypair.json, so a mismatch here is normal (CI). The hard check
+# lives where a keypair is used to deploy: scripts/deploy-lean.sh and scripts/localnet.sh.
 KEYPAIR=target/deploy/slana-keypair.json
 if [[ -f "$KEYPAIR" ]]; then
   EXPECTED=$(sed -n 's/^declare_id!("\([1-9A-HJ-NP-Za-km-z]*\)");.*/\1/p' programs/slana-ref/src/lib.rs)
-  if [[ -z "$EXPECTED" ]]; then
-    echo "error: could not read the program id from programs/slana-ref/src/lib.rs" >&2
-    exit 1
-  fi
-  ACTUAL=$(solana-keygen pubkey "$KEYPAIR")
-  if [[ "$ACTUAL" != "$EXPECTED" ]]; then
-    echo "error: $KEYPAIR is $ACTUAL but the program id is $EXPECTED." >&2
-    echo "       Deploying with it would create a different program. Remove it or restore the right keypair." >&2
-    exit 1
+  ACTUAL=$(solana-keygen pubkey "$KEYPAIR" 2>/dev/null || echo unreadable)
+  if [[ -n "$EXPECTED" && "$ACTUAL" != "$EXPECTED" ]]; then
+    printf '\033[1;33mWARNING:\033[0m %s is %s but the program id is %s.\n' "$KEYPAIR" "$ACTUAL" "$EXPECTED" >&2
+    echo "         The build is unaffected, but do NOT deploy with it (scripts/deploy-lean.sh refuses it)." >&2
   fi
 fi
 
