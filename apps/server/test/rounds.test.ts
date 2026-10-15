@@ -25,6 +25,7 @@ function setup(opts: { bots?: number; journal?: Journal } = {}) {
   chain.kick = () => {
     kicks++;
   };
+  const logs: string[] = [];
   const bots = opts.bots ?? 0;
   const room = new Room(
     {
@@ -37,10 +38,10 @@ function setup(opts: { bots?: number; journal?: Journal } = {}) {
       stake: { arenaId: 1, buyIn: FEE },
       seed: 11,
     },
-    { ...roomDeps(chain, journal, () => clock.now), round: ROUND },
+    { ...roomDeps(chain, journal, () => clock.now), round: ROUND, log: (l: string) => logs.push(l) },
   );
   const round = roundAt(clock.now, ROUND.roundMs, ROUND.closeMs);
-  return { room, journal, clock, commits, round, kicks: () => kicks };
+  return { room, journal, clock, commits, round, logs, kicks: () => kicks };
 }
 
 const tick = (room: Room, n = 1) => {
@@ -57,6 +58,51 @@ describe('arena rounds (room)', () => {
     expect(room.info().round).toEqual(want);
     expect(of(conn, 'joined')[0].round).toEqual(want);
     expect(of(conn, 'joined')[0].room.round).toEqual(want);
+  });
+
+  it('a join at the bell, before the next tick, plays the new round (the bell rings first)', () => {
+    const { room, journal, clock, round } = setup();
+    const early = fakeConn('w-early');
+    const je = stakeJoin(1, FEE);
+    room.join(early, je);
+    clock.now = round.endsAt; // the round is over; the room has not ticked since
+    const conn = fakeConn('w-held');
+    const j = stakeJoin(1, FEE);
+    const p = room.join(conn, j);
+    // the old round's staker was settled at its bell, before the new player was added
+    expect(journal.settlements().map((i) => [i.key, i.reason])).toEqual([[je.stake.session, 'round']]);
+    expect(of(early, 'roundOver')).toHaveLength(1);
+    expect(of(conn, 'joined')[0].round?.n).toBe(round.n + 1);
+    tick(room, 3);
+    expect(p.alive).toBe(true);
+    expect(room.ledger!.has(p.id)).toBe(true);
+    expect(journal.settlements().some((i) => i.key === j.stake.session)).toBe(false);
+    expect(of(conn, 'roundOver')).toEqual([]);
+  });
+
+  it('an AFK reconnect at the bell, before the next tick, finds the round already settled', () => {
+    const { room, journal, clock, round } = setup();
+    const conn = fakeConn('w-afk');
+    const j = stakeJoin(1, FEE);
+    const p = room.join(conn, j);
+    room.leave(conn, 'disconnect');
+    clock.now = round.endsAt + 1;
+    expect(room.reattach(fakeConn('w-afk'), p.id)).toBe(false);
+    expect(journal.settlements()).toEqual([expect.objectContaining({ key: j.stake.session, reason: 'round', payout: FEE })]);
+  });
+
+  it('a sweep key already pending (clock stepped back) never drops loot: a distinct key, logged', () => {
+    const { room, journal, clock, round, logs } = setup();
+    journal.enqueue({ kind: 'sweep', key: `sweep:arena-1-1:${round.n}`, arenaId: 1, roomId: 'arena-1-1', round: round.n, amount: 500, attempts: 0, nextAttemptAt: 0, createdAt: 0 });
+    room.world.restoreLoot([{ x: 10, y: 10, value: 1234 }]);
+    clock.now = round.endsAt;
+    tick(room);
+    expect(journal.pending.map((i) => [i.key, itemAmount(i)])).toEqual([
+      [`sweep:arena-1-1:${round.n}`, 500],
+      [`sweep:arena-1-1:${round.n}:2`, 1234],
+    ]);
+    expect(journal.owedByArena(1)).toBe(500 + 1234);
+    expect(logs.some((l) => l.startsWith('!!!') && /already pending/.test(l))).toBe(true);
   });
 
   it('refuses cash-out in arenas', () => {
