@@ -14,6 +14,56 @@ export type Slana = {
   },
   "instructions": [
     {
+      "name": "capturePassEntropy",
+      "docs": [
+        "Permissionless: stores the trait entropy (hash of the first slot at or after the",
+        "target) once the target slot has passed, or re-targets if it left the window."
+      ],
+      "discriminator": [
+        187,
+        128,
+        145,
+        219,
+        72,
+        180,
+        205,
+        195
+      ],
+      "accounts": [
+        {
+          "name": "signer",
+          "docs": [
+            "Anyone; only pays the transaction fee."
+          ],
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "slotHashes",
+          "address": "SysvarS1otHashes111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "claimSeasonReward",
       "discriminator": [
         129,
@@ -120,7 +170,7 @@ export type Slana = {
     {
       "name": "closePassMint",
       "docs": [
-        "Ends the Pass mint for good and captures the trait entropy (SlotHashes sysvar)."
+        "Ends the Pass mint for good and sets the trait entropy target slot."
       ],
       "discriminator": [
         227,
@@ -158,10 +208,6 @@ export type Slana = {
               }
             ]
           }
-        },
-        {
-          "name": "slotHashes",
-          "address": "SysvarS1otHashes111111111111111111111111111"
         }
       ],
       "args": []
@@ -1064,10 +1110,6 @@ export type Slana = {
         {
           "name": "mplCoreProgram",
           "address": "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d"
-        },
-        {
-          "name": "slotHashes",
-          "address": "SysvarS1otHashes111111111111111111111111111"
         },
         {
           "name": "systemProgram",
@@ -2411,6 +2453,32 @@ export type Slana = {
       ]
     },
     {
+      "name": "passEntropyCaptured",
+      "discriminator": [
+        190,
+        90,
+        135,
+        238,
+        49,
+        72,
+        218,
+        122
+      ]
+    },
+    {
+      "name": "passEntropyRetargeted",
+      "discriminator": [
+        247,
+        163,
+        240,
+        184,
+        80,
+        73,
+        235,
+        214
+      ]
+    },
+    {
       "name": "passMintEnded",
       "discriminator": [
         62,
@@ -2794,6 +2862,16 @@ export type Slana = {
       "code": 6047,
       "name": "nothingMinted",
       "msg": "No Pass has been minted yet"
+    },
+    {
+      "code": 6048,
+      "name": "entropyNotReady",
+      "msg": "The Pass entropy target slot has not passed yet"
+    },
+    {
+      "code": 6049,
+      "name": "entropyNotCaptured",
+      "msg": "The Pass entropy is not captured yet"
     }
   ],
   "types": [
@@ -3098,8 +3176,8 @@ export type Slana = {
           {
             "name": "passMintEnded",
             "docs": [
-              "The mint ended for good (`close_pass_mint`, or the last Pass of the supply was minted)",
-              "and `pass_entropy` is captured. It never reopens."
+              "The mint ended for good (`close_pass_mint`, or the last Pass of the supply was minted).",
+              "It never reopens; `pass_entropy_target_slot` is set."
             ],
             "type": "bool"
           },
@@ -3132,10 +3210,26 @@ export type Slana = {
             "type": "bool"
           },
           {
+            "name": "passEntropyTargetSlot",
+            "docs": [
+              "Set when the mint ends: `slot + ENTROPY_DELAY_SLOTS` (moved forward again if nobody",
+              "captured it while it was in the SlotHashes window)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "passEntropyCaptured",
+            "docs": [
+              "`pass_entropy` holds the captured hash."
+            ],
+            "type": "bool"
+          },
+          {
             "name": "passEntropy",
             "docs": [
-              "Most recent SlotHashes entry when the mint ended (zero before): a chain value nobody,",
-              "the admin included, knows while Passes can still be minted."
+              "Hash of the first slot at or after the target slot, stored by the permissionless",
+              "`capture_pass_entropy` (zero before): a chain value nobody, the admin included, can",
+              "know or choose when the mint ends."
             ],
             "type": {
               "array": [
@@ -3310,6 +3404,52 @@ export type Slana = {
       }
     },
     {
+      "name": "passEntropyCaptured",
+      "docs": [
+        "`capture_pass_entropy` stored the trait entropy."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "slot",
+            "docs": [
+              "Slot whose hash is the entropy (the first slot with a block at or after the target)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "entropy",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "passEntropyRetargeted",
+      "docs": [
+        "The target slot left the SlotHashes window before anyone captured it: a new future target."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "missedTargetSlot",
+            "type": "u64"
+          },
+          {
+            "name": "entropyTargetSlot",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
       "name": "passLock",
       "docs": [
         "Lock of a Pass asset while it backs an open session, so one Pass backs at most one",
@@ -3337,8 +3477,8 @@ export type Slana = {
     {
       "name": "passMintEnded",
       "docs": [
-        "The Pass mint ended for good (closed by the admin or sold out) and the trait entropy was",
-        "captured from the SlotHashes sysvar."
+        "The Pass mint ended for good (closed by the admin or sold out). The trait entropy will be",
+        "the hash of the first slot at or after `entropy_target_slot` (`capture_pass_entropy`)."
       ],
       "type": {
         "kind": "struct",
@@ -3348,20 +3488,8 @@ export type Slana = {
             "type": "u32"
           },
           {
-            "name": "entropySlot",
-            "docs": [
-              "Slot whose hash is the entropy."
-            ],
+            "name": "entropyTargetSlot",
             "type": "u64"
-          },
-          {
-            "name": "entropy",
-            "type": {
-              "array": [
-                "u8",
-                32
-              ]
-            }
           }
         ]
       }
@@ -4062,6 +4190,15 @@ export type Slana = {
       ],
       "type": "u32",
       "value": "3333"
+    },
+    {
+      "name": "entropyDelaySlots",
+      "docs": [
+        "Slots between the end of the Pass mint and the slot whose hash becomes the trait entropy",
+        "(~1 minute at 400 ms). Whoever ends the mint cannot know that future hash."
+      ],
+      "type": "u64",
+      "value": "150"
     },
     {
       "name": "firstSeason",

@@ -45,7 +45,8 @@ export function TicketList({
         const gate = gates[tk.key];
         const practice = tk.arenaId === null;
         const name = ticketName(tk, lang, t('lo.practice'));
-        const closed = gate?.kind === 'offline';
+        const maintenance = gate?.kind === 'maintenance';
+        const closed = gate?.kind === 'offline' || maintenance;
         const status =
           gate?.kind === 'settling' || gate?.kind === 'needAta'
             ? t('lo.payoutChip')
@@ -82,7 +83,7 @@ export function TicketList({
             >
               <span className="kl-ticket__head">
                 <span className="kb-ticket__title">{name}</span>
-                {closed && <span className="kl-ticket__flag mono">{t('lo.closed')}</span>}
+                {closed && <span className="kl-ticket__flag mono">{maintenance ? t('lo.maintenance') : t('lo.closed')}</span>}
                 {status && <span className="kl-ticket__flag is-open mono">{status}</span>}
               </span>
               <span className="kb-ticket__meta mono">

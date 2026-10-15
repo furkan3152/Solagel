@@ -25,6 +25,8 @@ export function useCtaText(ticket: TicketModel | undefined, gate: TicketGate | u
       return { label: t('lo.cta.practice'), sub: t('lo.cta.practiceSub'), icon: 'play', inert: false };
     case 'offline':
       return { label: t('lo.cta.offline'), sub: t('lo.cta.offlineSub'), icon: 'lock', inert: true };
+    case 'maintenance':
+      return { label: t('lo.cta.maintenance'), sub: t('lo.cta.maintenanceSub'), icon: 'lock', inert: true };
     case 'connect':
       return { label: t('lo.cta.connect'), sub: feeLine, icon: 'wallet', inert: false };
     case 'verify':

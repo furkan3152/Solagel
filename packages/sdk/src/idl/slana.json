@@ -8,6 +8,56 @@
   },
   "instructions": [
     {
+      "name": "capture_pass_entropy",
+      "docs": [
+        "Permissionless: stores the trait entropy (hash of the first slot at or after the",
+        "target) once the target slot has passed, or re-targets if it left the window."
+      ],
+      "discriminator": [
+        187,
+        128,
+        145,
+        219,
+        72,
+        180,
+        205,
+        195
+      ],
+      "accounts": [
+        {
+          "name": "signer",
+          "docs": [
+            "Anyone; only pays the transaction fee."
+          ],
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "slot_hashes",
+          "address": "SysvarS1otHashes111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "claim_season_reward",
       "discriminator": [
         129,
@@ -114,7 +164,7 @@
     {
       "name": "close_pass_mint",
       "docs": [
-        "Ends the Pass mint for good and captures the trait entropy (SlotHashes sysvar)."
+        "Ends the Pass mint for good and sets the trait entropy target slot."
       ],
       "discriminator": [
         227,
@@ -152,10 +202,6 @@
               }
             ]
           }
-        },
-        {
-          "name": "slot_hashes",
-          "address": "SysvarS1otHashes111111111111111111111111111"
         }
       ],
       "args": []
@@ -1058,10 +1104,6 @@
         {
           "name": "mpl_core_program",
           "address": "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d"
-        },
-        {
-          "name": "slot_hashes",
-          "address": "SysvarS1otHashes111111111111111111111111111"
         },
         {
           "name": "system_program",
@@ -2405,6 +2447,32 @@
       ]
     },
     {
+      "name": "PassEntropyCaptured",
+      "discriminator": [
+        190,
+        90,
+        135,
+        238,
+        49,
+        72,
+        218,
+        122
+      ]
+    },
+    {
+      "name": "PassEntropyRetargeted",
+      "discriminator": [
+        247,
+        163,
+        240,
+        184,
+        80,
+        73,
+        235,
+        214
+      ]
+    },
+    {
       "name": "PassMintEnded",
       "discriminator": [
         62,
@@ -2788,6 +2856,16 @@
       "code": 6047,
       "name": "NothingMinted",
       "msg": "No Pass has been minted yet"
+    },
+    {
+      "code": 6048,
+      "name": "EntropyNotReady",
+      "msg": "The Pass entropy target slot has not passed yet"
+    },
+    {
+      "code": 6049,
+      "name": "EntropyNotCaptured",
+      "msg": "The Pass entropy is not captured yet"
     }
   ],
   "types": [
@@ -3092,8 +3170,8 @@
           {
             "name": "pass_mint_ended",
             "docs": [
-              "The mint ended for good (`close_pass_mint`, or the last Pass of the supply was minted)",
-              "and `pass_entropy` is captured. It never reopens."
+              "The mint ended for good (`close_pass_mint`, or the last Pass of the supply was minted).",
+              "It never reopens; `pass_entropy_target_slot` is set."
             ],
             "type": "bool"
           },
@@ -3126,10 +3204,26 @@
             "type": "bool"
           },
           {
+            "name": "pass_entropy_target_slot",
+            "docs": [
+              "Set when the mint ends: `slot + ENTROPY_DELAY_SLOTS` (moved forward again if nobody",
+              "captured it while it was in the SlotHashes window)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "pass_entropy_captured",
+            "docs": [
+              "`pass_entropy` holds the captured hash."
+            ],
+            "type": "bool"
+          },
+          {
             "name": "pass_entropy",
             "docs": [
-              "Most recent SlotHashes entry when the mint ended (zero before): a chain value nobody,",
-              "the admin included, knows while Passes can still be minted."
+              "Hash of the first slot at or after the target slot, stored by the permissionless",
+              "`capture_pass_entropy` (zero before): a chain value nobody, the admin included, can",
+              "know or choose when the mint ends."
             ],
             "type": {
               "array": [
@@ -3304,6 +3398,52 @@
       }
     },
     {
+      "name": "PassEntropyCaptured",
+      "docs": [
+        "`capture_pass_entropy` stored the trait entropy."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "slot",
+            "docs": [
+              "Slot whose hash is the entropy (the first slot with a block at or after the target)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "entropy",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "PassEntropyRetargeted",
+      "docs": [
+        "The target slot left the SlotHashes window before anyone captured it: a new future target."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "missed_target_slot",
+            "type": "u64"
+          },
+          {
+            "name": "entropy_target_slot",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
       "name": "PassLock",
       "docs": [
         "Lock of a Pass asset while it backs an open session, so one Pass backs at most one",
@@ -3331,8 +3471,8 @@
     {
       "name": "PassMintEnded",
       "docs": [
-        "The Pass mint ended for good (closed by the admin or sold out) and the trait entropy was",
-        "captured from the SlotHashes sysvar."
+        "The Pass mint ended for good (closed by the admin or sold out). The trait entropy will be",
+        "the hash of the first slot at or after `entropy_target_slot` (`capture_pass_entropy`)."
       ],
       "type": {
         "kind": "struct",
@@ -3342,20 +3482,8 @@
             "type": "u32"
           },
           {
-            "name": "entropy_slot",
-            "docs": [
-              "Slot whose hash is the entropy."
-            ],
+            "name": "entropy_target_slot",
             "type": "u64"
-          },
-          {
-            "name": "entropy",
-            "type": {
-              "array": [
-                "u8",
-                32
-              ]
-            }
           }
         ]
       }
@@ -4056,6 +4184,15 @@
       ],
       "type": "u32",
       "value": "3333"
+    },
+    {
+      "name": "ENTROPY_DELAY_SLOTS",
+      "docs": [
+        "Slots between the end of the Pass mint and the slot whose hash becomes the trait entropy",
+        "(~1 minute at 400 ms). Whoever ends the mint cannot know that future hash."
+      ],
+      "type": "u64",
+      "value": "150"
     },
     {
       "name": "FIRST_SEASON",

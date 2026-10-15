@@ -55,8 +55,8 @@ pub struct Config {
     pub pass_mint_start_ts: i64,
     /// The mint has been opened at least once: `pass_supply` is frozen from then on.
     pub pass_mint_opened: bool,
-    /// The mint ended for good (`close_pass_mint`, or the last Pass of the supply was minted)
-    /// and `pass_entropy` is captured. It never reopens.
+    /// The mint ended for good (`close_pass_mint`, or the last Pass of the supply was minted).
+    /// It never reopens; `pass_entropy_target_slot` is set.
     pub pass_mint_ended: bool,
 
     // ----- Pass trait reveal (commit / reveal) ---------------------------------------------
@@ -65,8 +65,14 @@ pub struct Config {
     /// The admin's revealed seed (zero until `pass_revealed`).
     pub pass_seed: [u8; 32],
     pub pass_revealed: bool,
-    /// Most recent SlotHashes entry when the mint ended (zero before): a chain value nobody,
-    /// the admin included, knows while Passes can still be minted.
+    /// Set when the mint ends: `slot + ENTROPY_DELAY_SLOTS` (moved forward again if nobody
+    /// captured it while it was in the SlotHashes window).
+    pub pass_entropy_target_slot: u64,
+    /// `pass_entropy` holds the captured hash.
+    pub pass_entropy_captured: bool,
+    /// Hash of the first slot at or after the target slot, stored by the permissionless
+    /// `capture_pass_entropy` (zero before): a chain value nobody, the admin included, can
+    /// know or choose when the mint ends.
     pub pass_entropy: [u8; 32],
     /// Slot of `pass_entropy`.
     pub pass_entropy_slot: u64,

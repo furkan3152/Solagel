@@ -12,7 +12,7 @@ use crate::{
 
 /// Free mint of a Slana Pass: creates a Metaplex Core asset owned by the minter in the Pass
 /// collection (signed by the `pass_authority` PDA). The minter pays rent and fees only.
-/// Minting the last Pass of the supply ends the mint and captures the trait entropy.
+/// Minting the last Pass of the supply ends the mint and sets the trait entropy target slot.
 #[derive(Accounts)]
 pub struct MintPass<'info> {
     #[account(mut)]
@@ -42,9 +42,6 @@ pub struct MintPass<'info> {
     /// CHECK: the Metaplex Core program.
     #[account(address = MPL_CORE_ID)]
     pub mpl_core_program: UncheckedAccount<'info>,
-    /// CHECK: the SlotHashes sysvar (address checked); read only by the sell-out mint.
-    #[account(address = SLOT_HASHES_ID @ SlanaError::BadSlotHashes)]
-    pub slot_hashes: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }
 
@@ -129,8 +126,8 @@ pub fn handle_mint_pass(ctx: Context<MintPass>) -> Result<()> {
 
     a.config.pass_minted = number;
     if number >= a.config.pass_supply {
-        // Sold out: the mint ends here and the trait entropy is fixed.
-        shared::end_pass_mint(&mut a.config, &a.slot_hashes.to_account_info())?;
+        // Sold out: the mint ends here and the entropy target slot is set.
+        shared::end_pass_mint(&mut a.config)?;
     }
     let counter = &mut a.mint_counter;
     counter.count = counter

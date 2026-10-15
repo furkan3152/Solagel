@@ -51,6 +51,7 @@ export interface LobbyModel {
 export function useLobbyModel(): LobbyModel {
   const wallet = useWallet();
   const rooms = useUi((s) => s.rooms);
+  const blocked = useUi((s) => s.blockedArenas);
   const chain = useUi((s) => s.chain);
   const auth = useUi((s) => s.auth);
   const lastArena = useUi((s) => s.settings.lastArena);
@@ -65,7 +66,7 @@ export function useLobbyModel(): LobbyModel {
   }, []);
 
   return useMemo(() => {
-    const tickets = buildTickets(rooms, data.arenas);
+    const tickets = buildTickets(rooms, data.arenas, blocked);
     const sessions: Record<number, OpenSession | null> = {};
     for (const [id, s] of Object.entries(data.sessions)) {
       sessions[Number(id)] = s ? { address: s.address, openedAt: s.openedAt, hasPass: s.hasPass, passAsset: s.passAsset } : null;
@@ -93,13 +94,13 @@ export function useLobbyModel(): LobbyModel {
     const quick = quickPlayTarget({
       walletConnected: connected,
       balance: arenasEnabled ? data.tokenBalance : null,
-      tickets: tickets.filter((t) => t.arenaId === null || gates[t.key].kind !== 'offline'),
+      tickets: tickets.filter((t) => t.arenaId === null || (gates[t.key].kind !== 'offline' && gates[t.key].kind !== 'maintenance')),
       hasFreePass: free > 0,
       lastArena,
       openSessions,
     });
     return { tickets, gates, sessions, quick, walletConnected: connected, verified, owner };
-  }, [rooms, data, chain, connected, verified, nowS, lastArena, owner]);
+  }, [rooms, blocked, data, chain, connected, verified, nowS, lastArena, owner]);
 }
 
 /** `(max-width: …)` as React state. */

@@ -322,15 +322,23 @@ function createInstructionBuilders(program: Program<Slana>, programId: PublicKey
       return program.methods.setPassSeedHash(h).accountsPartial({ admin: toPublicKey(admin), config: config() }).instruction();
     },
 
-    /** Ends the Pass mint for good and captures the trait entropy (needs ≥ 1 minted Pass). */
+    /** Ends the Pass mint for good and sets the entropy target slot (needs ≥ 1 minted Pass). */
     closePassMint(admin: Address): Promise<TransactionInstruction> {
+      return program.methods.closePassMint().accountsPartial({ admin: toPublicKey(admin), config: config() }).instruction();
+    },
+
+    /**
+     * Permissionless (any signer, e.g. the game server): stores the trait entropy once
+     * `passEntropyTargetSlot` has passed, or moves the target if it left the SlotHashes window.
+     */
+    capturePassEntropy(signer: Address): Promise<TransactionInstruction> {
       return program.methods
-        .closePassMint()
-        .accountsPartial({ admin: toPublicKey(admin), config: config(), slotHashes: SYSVAR_SLOT_HASHES_PUBKEY })
+        .capturePassEntropy()
+        .accountsPartial({ signer: toPublicKey(signer), config: config(), slotHashes: SYSVAR_SLOT_HASHES_PUBKEY })
         .instruction();
     },
 
-    /** Reveals the seed (only after the mint ended: `closePassMint` or sold out); stores the final seed. */
+    /** Reveals the seed (after the mint ended and the entropy was captured); stores the final seed. */
     revealPass(admin: Address, seed: Uint8Array | readonly number[]): Promise<TransactionInstruction> {
       const s = bytes32(seed, 'seed');
       return program.methods.revealPass(s).accountsPartial({ admin: toPublicKey(admin), config: config() }).instruction();
@@ -350,7 +358,6 @@ function createInstructionBuilders(program: Program<Slana>, programId: PublicKey
           minterToken: p.minterToken ? toPublicKey(p.minterToken) : null,
           mplCoreProgram: MPL_CORE_ID,
           systemProgram,
-          slotHashes: SYSVAR_SLOT_HASHES_PUBKEY,
         })
         .instruction();
     },

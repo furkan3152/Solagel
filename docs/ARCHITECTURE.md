@@ -133,8 +133,12 @@ On-chain (enforced by the program):
     the seed hash must be set before the first mint and is locked after it; `pass_base_uri` (≤ 96 bytes, ends with `/`) is
     frozen after the first mint. The mint **ends** for good with `close_pass_mint` (needs ≥ 1 minted Pass; before that
     `update_config` may still close and reopen it) or automatically when the last Pass of the supply is minted: the
-    program then records `pass_entropy` = the newest SlotHashes entry (and its slot), sets `pass_mint_ended`, and the mint
-    can never reopen (`MintEnded`). `reveal_pass` needs the mint ended and `sha256(seed) == pass_seed_hash`, and stores
+    program sets `pass_mint_ended` and `pass_entropy_target_slot = slot + ENTROPY_DELAY_SLOTS` (150), and the mint can
+    never reopen (`MintEnded`). The permissionless `capture_pass_entropy` (any signer; the server sends it automatically)
+    needs `slot > target` and stores as `pass_entropy` the SlotHashes hash of the first slot with a block at or after the
+    target (an exact lookup, not "the newest"); if the target already left the SlotHashes window (~512 slots) it sets a new
+    target `slot + 150` instead; once captured it is a no-op. `reveal_pass` needs the entropy captured
+    (`EntropyNotCaptured`) and `sha256(seed) == pass_seed_hash`, and stores
     `pass_final_seed = sha256(seed ‖ pass_entropy)`; every trait derives from that final seed.
 11. **Pause blocks joins only**: `paused` stops `join_arena`; settlements and refunds keep working.
 
@@ -172,10 +176,12 @@ Consequences, stated plainly in the player guide:
   the admin.
 - The admin knows the committed Pass seed during the mint and Pass numbers are sequential, but traits are
   `passTraits(pass_final_seed, n, pass_supply)` with `pass_final_seed = sha256(seed ‖ pass_entropy)`, and the entropy is
-  a SlotHashes entry recorded only when the mint ends, after which nobody can mint. So nobody, the team included, can
-  know a number's traits while it can still be minted. Residual: whoever triggers the end (the admin's `close_pass_mint`,
-  or the minter of the last Pass) chooses the slot, and could hold off until a slot hash favours Passes they own
-  (grinding); it cannot add Passes afterwards.
+  the hash of a slot ~150 slots **after** the mint ended, after which nobody can mint. Whoever ends the mint (the admin's
+  `close_pass_mint` or the last minter) fixes only the target slot, never a hash they have seen, so they cannot grind for
+  favourable traits; the capture reads that exact slot's entry, so the capturer cannot choose either. The only power left
+  to anyone is delaying the capture past the SlotHashes window, which moves the target to another unknown future slot.
+  So nobody, the team included, can know or steer a number's traits while it can still be minted. (As everywhere on
+  Solana, the leader producing the target slot influences its bank hash; that is outside the project's control.)
 - `pass_supply` is frozen once the mint opens, so the traits every server and generator computes cannot shift later.
 - The upgrade authority is the strongest key: keep it in a multisig or make the program immutable after an audit.
 - Collusion (feeding a second wallet) is not detected in this version.

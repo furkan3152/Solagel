@@ -99,6 +99,14 @@ describe('buildTickets', () => {
     expect(list[1].entryFee).toBe(1200n * M);
     expect(list[2].open).toBe(false);
   });
+
+  it('R20: marks arenas the server keeps closed (vault short of its journal)', () => {
+    const list = buildTickets(ROOMS, [{ id: 1, entryFee: 1000n * M, requiresPass: false, enabled: true }, { id: 2, entryFee: 5000n * M, requiresPass: false, enabled: true }], [2, 99]);
+    expect(list.find((t) => t.arenaId === 2)?.blocked).toBe(true);
+    expect(list.find((t) => t.arenaId === 1)?.blocked).toBeFalsy();
+    // Quick Play never picks a blocked arena, even the last one played
+    expect(quickPlayTarget({ tickets: list, hasFreePass: false, lastArena: 2, walletConnected: true, balance: 12_450n * M })).toBe('arena:1');
+  });
 });
 
 describe('quickPlay', () => {
@@ -149,6 +157,13 @@ describe('ticketGate', () => {
     expect(ticketGate(g({ ticket: { ...arena, requiresPass: true } })).kind).toBe('needPass');
     expect(ticketGate(g({ ticket: { ...arena, requiresPass: true }, freePasses: 1 })).kind).toBe('buy');
     expect(ticketGate(g({ arenasEnabled: false })).kind).toBe('offline');
+  });
+
+  it('R20: a blocked arena is "under maintenance" and sells nothing, whatever the wallet holds', () => {
+    const blocked = { ...arena, blocked: true };
+    expect(ticketGate(g({ ticket: blocked })).kind).toBe('maintenance');
+    expect(ticketGate(g({ ticket: blocked, walletConnected: false })).kind).toBe('maintenance');
+    expect(ticketGate(g({ ticket: blocked, arenasEnabled: false })).kind).toBe('offline');
   });
 
   it('resumes an open ticket without a transaction and offers a refund after 24 h', () => {

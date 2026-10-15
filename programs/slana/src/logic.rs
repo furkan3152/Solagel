@@ -226,26 +226,60 @@ pub fn upsert_leaderboard(
 // Pass trait entropy
 // ---------------------------------------------------------------------------
 
-/// Most recent `(slot, hash)` entry of the SlotHashes sysvar account data, or `None` when the
-/// data is too short or the list is empty.
+/// What the SlotHashes sysvar says about a target slot (see `find_slot_hash`).
+#[derive(Debug, PartialEq, Eq)]
+pub enum SlotHashLookup {
+    /// The first slot with a block at or after the target, and its hash.
+    Found(u64, [u8; 32]),
+    /// The newest entry is still before the target.
+    NotYet,
+    /// The window (oldest entry) has moved past the target: the answer can no longer be read.
+    Missed,
+}
+
+/// Looks up `target` in the SlotHashes sysvar account data; `None` when the data is malformed
+/// or empty.
 ///
 /// `SlotHashes::get()` has no syscall on-chain (the sysvar is ~20 KB), so the account is
 /// passed in and its bincode layout is read by hand:
 ///
 /// ```text
-/// [0..8)    len: u64 LE                       number of entries (≤ 512)
-/// [8..16)   entries[0].slot: u64 LE           newest entry first
-/// [16..48)  entries[0].hash: [u8; 32]
-/// [48..)    entries[1..len] ...
+/// [0..8)              len: u64 LE                   number of entries (≤ 512)
+/// [8 + 40 i .. +8)    entries[i].slot: u64 LE       newest entry first, strictly decreasing
+/// [16 + 40 i .. +32)  entries[i].hash: [u8; 32]
 /// ```
-pub fn parse_latest_slot_hash(data: &[u8]) -> Option<(u64, [u8; 32])> {
+///
+/// Slots without a block have no entry, so the answer is the smallest slot `≥ target`. It is
+/// only trusted while the oldest entry is `≤ target` (the window still covers the target);
+/// otherwise the result is `Missed`. A linear scan over at most 512 entries.
+pub fn find_slot_hash(data: &[u8], target: u64) -> Option<SlotHashLookup> {
     let len = u64::from_le_bytes(data.get(0..8)?.try_into().ok()?);
-    if len == 0 {
+    let len = usize::try_from(len).ok()?;
+    if len == 0 || data.len() < len.checked_mul(40)?.checked_add(8)? {
         return None;
     }
-    let slot = u64::from_le_bytes(data.get(8..16)?.try_into().ok()?);
-    let hash: [u8; 32] = data.get(16..48)?.try_into().ok()?;
-    Some((slot, hash))
+    let slot_at = |i: usize| -> u64 {
+        let o = 8 + 40 * i;
+        u64::from_le_bytes(data[o..o + 8].try_into().unwrap_or_default())
+    };
+    if slot_at(0) < target {
+        return Some(SlotHashLookup::NotYet);
+    }
+    if slot_at(len - 1) > target {
+        return Some(SlotHashLookup::Missed);
+    }
+    // Newest first: the last entry with slot ≥ target is the smallest one.
+    let mut best = 0;
+    for i in 0..len {
+        if slot_at(i) >= target {
+            best = i;
+        } else {
+            break;
+        }
+    }
+    let o = 8 + 40 * best;
+    let hash: [u8; 32] = data[o + 8..o + 40].try_into().ok()?;
+    Some(SlotHashLookup::Found(slot_at(best), hash))
 }
 
 /// `sha256(seed || entropy)`: the seed every Pass trait is derived from after the reveal.
@@ -257,18 +291,30 @@ pub fn pass_final_seed(seed: &[u8; 32], entropy: &[u8; 32]) -> [u8; 32] {
 mod tests {
     use super::*;
 
+    fn slot_hashes(entries: &[(u64, u8)]) -> Vec<u8> {
+        let mut data = (entries.len() as u64).to_le_bytes().to_vec();
+        for (slot, b) in entries {
+            data.extend_from_slice(&slot.to_le_bytes());
+            data.extend_from_slice(&[*b; 32]);
+        }
+        data
+    }
+
     #[test]
-    fn parses_the_newest_slot_hash() {
-        let mut data = 2u64.to_le_bytes().to_vec();
-        data.extend_from_slice(&41u64.to_le_bytes());
-        data.extend_from_slice(&[0xab; 32]);
-        data.extend_from_slice(&40u64.to_le_bytes());
-        data.extend_from_slice(&[0xcd; 32]);
-        assert_eq!(parse_latest_slot_hash(&data), Some((41, [0xab; 32])));
-        // Empty list, truncated data.
-        assert_eq!(parse_latest_slot_hash(&0u64.to_le_bytes()), None);
-        assert_eq!(parse_latest_slot_hash(&data[..47]), None);
-        assert_eq!(parse_latest_slot_hash(&[]), None);
+    fn finds_the_first_slot_hash_at_or_after_the_target() {
+        use SlotHashLookup::*;
+        // Slot 41 was skipped (no block, no entry).
+        let data = slot_hashes(&[(44, 4), (43, 3), (42, 2), (40, 0), (39, 9)]);
+        assert_eq!(find_slot_hash(&data, 43), Some(Found(43, [3; 32])));
+        assert_eq!(find_slot_hash(&data, 41), Some(Found(42, [2; 32])));
+        assert_eq!(find_slot_hash(&data, 39), Some(Found(39, [9; 32])));
+        assert_eq!(find_slot_hash(&data, 44), Some(Found(44, [4; 32])));
+        assert_eq!(find_slot_hash(&data, 45), Some(NotYet));
+        assert_eq!(find_slot_hash(&data, 38), Some(Missed));
+        // Malformed: empty list, truncated entries.
+        assert_eq!(find_slot_hash(&0u64.to_le_bytes(), 1), None);
+        assert_eq!(find_slot_hash(&data[..data.len() - 1], 43), None);
+        assert_eq!(find_slot_hash(&[], 1), None);
     }
 
     #[test]

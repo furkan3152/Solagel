@@ -82,6 +82,8 @@ export interface UiState {
   fps: number;
   online: number;
   rooms: RoomInfo[];
+  /** Arenas the server keeps closed (R20: vault short of its journal); their tickets are not sold. */
+  blockedArenas: number[];
   chain: ChainStatus | null;
   room: RoomInfo | null;
   me: { pid: number; name: string; skin: number } | null;
@@ -158,6 +160,7 @@ export const useUi = create<UiState>(() => ({
   fps: 0,
   online: 0,
   rooms: [],
+  blockedArenas: [],
   chain: null,
   room: null,
   me: null,

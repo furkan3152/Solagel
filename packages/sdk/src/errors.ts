@@ -62,6 +62,8 @@ export const SlanaErrorCode = {
   UseCloseMint: 6045,
   BadSlotHashes: 6046,
   NothingMinted: 6047,
+  EntropyNotReady: 6048,
+  EntropyNotCaptured: 6049,
 } as const;
 
 export type SlanaErrorName = keyof typeof SlanaErrorCode;
@@ -118,6 +120,8 @@ const FRIENDLY: Record<SlanaErrorName, string> = {
   UseCloseMint: 'Passes were minted: end the mint with close-mint (it fixes the trait entropy).',
   BadSlotHashes: 'The SlotHashes sysvar account is missing or invalid.',
   NothingMinted: 'No Pass has been minted yet.',
+  EntropyNotReady: 'The Pass entropy slot has not passed yet; try again in a minute.',
+  EntropyNotCaptured: 'The Pass entropy is not captured yet (capture-entropy).',
 };
 
 /** Program errors by code (6000–6042). */

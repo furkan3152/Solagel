@@ -103,7 +103,9 @@ export interface ChainClient {
   fetchCoreAsset(asset: string): Promise<CoreAsset | null>;
   /** Core assets of `collection` owned by `owner` (SDK `listOwnedPasses`). */
   listOwnedPasses(owner: string, collection: string): Promise<OwnedPass[]>;
-  readonly ix: Pick<SlanaClient['ix'], 'settleSession'>;
+  /** Current slot ('confirmed'). */
+  getSlot(): Promise<number>;
+  readonly ix: Pick<SlanaClient['ix'], 'settleSession' | 'capturePassEntropy'>;
 }
 
 /** `ChainClient` over a real `SlanaClient` + its connection. */
@@ -125,6 +127,7 @@ export function sdkChainClient(sdk: SlanaClient, connection: Connection): ChainC
       return info && info.owner.equals(MPL_CORE_ID) ? parseCoreAsset(info.data) : null;
     },
     listOwnedPasses: (owner, collection) => listOwnedPasses(connection, owner, collection),
+    getSlot: () => connection.getSlot('confirmed'),
   };
 }
 
@@ -259,6 +262,7 @@ export class SolanaChain implements ChainGateway {
   private readonly passes = new Map<string, { at: number; value: ChainPass | null }>();
   private readonly owned = new Map<string, { at: number; value: OwnedPassInfo[] }>();
   private probing: Promise<boolean> | null = null;
+  private capturing: Promise<void> | null = null;
 
   private timers: NodeJS.Timeout[] = [];
   private kickScheduled = false;
@@ -371,6 +375,41 @@ export class SolanaChain implements ChainGateway {
     await this.freshConfig();
     await this.checkSupply();
     await this.refreshSeason();
+    await this.captureEntropyIfDue();
+  }
+
+  /**
+   * Ruling R22: once the Pass mint has ended and its entropy target slot has passed, sends the
+   * permissionless `capture_pass_entropy` (the server pays only the network fee). Runs on every
+   * 30 s refresh until the config shows the entropy captured, so a failure simply retries. If
+   * the target left the SlotHashes window, the program re-targets and the next refresh tries
+   * the new slot. Never throws.
+   */
+  captureEntropyIfDue(): Promise<void> {
+    this.capturing ??= this.captureEntropyNow().finally(() => (this.capturing = null));
+    return this.capturing;
+  }
+
+  private async captureEntropyNow(): Promise<void> {
+    if (!this.enabled || !this.client || !this.keypair) return;
+    const config = this.config;
+    if (!config || !config.passMintEnded || config.passEntropyCaptured) return;
+    try {
+      const slot = await this.client.getSlot();
+      if (slot <= config.passEntropyTargetSlot) return;
+      const ix = await this.client.ix.capturePassEntropy(this.keypair.publicKey);
+      const signature = await this.send('pass-entropy', [ix]);
+      this.sentSignatures.delete('pass-entropy');
+      const after = await this.freshConfig();
+      if (after?.passEntropyCaptured) {
+        this.log(`chain: Pass entropy captured — hash of slot ${after.passEntropySlot} · ${signature}`);
+      } else if (after && after.passEntropyTargetSlot !== config.passEntropyTargetSlot) {
+        this.log(`chain: Pass entropy target ${config.passEntropyTargetSlot} was missed; new target slot ${after.passEntropyTargetSlot} · ${signature}`);
+      }
+    } catch (err) {
+      const d = describeError(err);
+      this.warn('pass-entropy', `chain: Pass entropy capture failed (${d.name ?? firstLine(err)}); retrying on the next refresh`);
+    }
   }
 
   /**

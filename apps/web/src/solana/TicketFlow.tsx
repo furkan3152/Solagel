@@ -60,6 +60,7 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
   const t = useT();
   const lang = useUi((s) => s.settings.lang);
   const settings = useUi((s) => s.settings);
+  const blockedArenas = useUi((s) => s.blockedArenas);
   const cluster = useUi((s) => s.chain?.cluster ?? 'devnet');
   const wallet = useWallet();
   const { connection } = useConnection();
@@ -207,6 +208,8 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
       return enterRoom(res.signature, pass);
     }
     if (!client) return fail(t('tf.err.NetworkError'));
+    // R20: the server keeps this arena closed (vault short of its journal): never sell a ticket
+    if (useUi.getState().blockedArenas.includes(arenaId)) return fail(t('tf.err.Maintenance'));
     try {
       // re-read the arena and the config: the price, Pass rule, fee rate (fixed into the ticket at join)
       // and deposit signed must be the ones shown
@@ -214,6 +217,7 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
       if (!fresh || !fresh.enabled || fresh.entryFee !== review.fee || fresh.requiresPass !== ticket.requiresPass) {
         return fail(t('tf.err.PriceChanged'));
       }
+      if (useUi.getState().blockedArenas.includes(arenaId)) return fail(t('tf.err.Maintenance'));
       if (!freshConfig || feeBps(freshConfig, pass !== null) !== review.bps || freshConfig.settleFeeLamports !== review.deposit) {
         return fail(t('tf.err.FeeChanged'));
       }
@@ -287,7 +291,8 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
   // the price shown must be the price signed: on a real chain the arena account itself must agree (re-read again at confirm)
   const chainArena = data.arenas.find((a) => a.id === arenaId);
   const priceOk = data.fake || (chainArena !== undefined && chainArena.entryFee === ticket.entryFee && chainArena.requiresPass === ticket.requiresPass);
-  const canConfirm = !!owner && !!config && !busy && (mode !== 'buy' || (priceOk && nameOk && (!passOn || !!chosenPass)));
+  const maintenance = mode === 'buy' && blockedArenas.includes(arenaId);
+  const canConfirm = !!owner && !!config && !busy && !maintenance && (mode !== 'buy' || (priceOk && nameOk && (!passOn || !!chosenPass)));
   const confirmLabel =
     mode === 'buy'
       ? t('tf.confirm', { fee: tok.exact(fee), sym: tok.symbol })
@@ -408,6 +413,7 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
             {t('tf.feeNote')} {t('tf.depositNote')}
           </p>
         )}
+        {maintenance && <p className="tf-warn">{t('tf.err.Maintenance')}</p>}
         {lowSol && !busy && data.balance !== null && <p className="tf-warn">{t('tf.lowSol', { sol: sol(data.balance) })}</p>}
 
         {mode === 'buy' && (passRequired || owned.length > 0) && (

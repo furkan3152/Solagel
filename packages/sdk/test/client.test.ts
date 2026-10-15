@@ -118,7 +118,7 @@ describe('instruction builders (no RPC)', () => {
   it('mintPass: asset co-signs, minter token is optional', async () => {
     const ix = await client.ix.mintPass(player, { asset: passAsset, collection });
     expect(keys(ix)).toEqual(
-      b58([player, passAsset, pdas.config(), collection, pdas.passAuthority(), pdas.passMinted(player), PROGRAM_ID, MPL_CORE_ID, SYSVAR_SLOT_HASHES_PUBKEY, SystemProgram.programId]),
+      b58([player, passAsset, pdas.config(), collection, pdas.passAuthority(), pdas.passMinted(player), PROGRAM_ID, MPL_CORE_ID, SystemProgram.programId]),
     );
     expect(meta(ix, passAsset)).toMatchObject({ isSigner: true, isWritable: true });
     const withToken = await client.ix.mintPass(player, { asset: passAsset, collection, minterToken: ata(player, tokenMint, TOKEN_PROGRAM_ID) });
@@ -188,8 +188,12 @@ describe('instruction builders (no RPC)', () => {
     const reveal = await client.ix.revealPass(admin, new Uint8Array(32).fill(1));
     expect(reveal.data.length).toBe(40);
     const close = await client.ix.closePassMint(admin);
-    expect(keys(close)).toEqual(b58([admin, pdas.config(), SYSVAR_SLOT_HASHES_PUBKEY]));
-    expect(meta(close, SYSVAR_SLOT_HASHES_PUBKEY)).toMatchObject({ isSigner: false, isWritable: false });
+    expect(keys(close)).toEqual(b58([admin, pdas.config()]));
+    // permissionless: any signer (here the player) captures the entropy
+    const capture = await client.ix.capturePassEntropy(player);
+    expect(keys(capture)).toEqual(b58([player, pdas.config(), SYSVAR_SLOT_HASHES_PUBKEY]));
+    expect(meta(capture, player)).toMatchObject({ isSigner: true, isWritable: false });
+    expect(meta(capture, SYSVAR_SLOT_HASHES_PUBKEY)).toMatchObject({ isSigner: false, isWritable: false });
     expect(() => client.ix.setPassSeedHash(admin, new Uint8Array(31))).toThrow(RangeError);
 
     const end = await client.ix.endSeason(admin, 5);
@@ -261,6 +265,7 @@ describe('constants', () => {
     expect(value('DEFAULT_PASS_PER_WALLET')).toBe(constants.DEFAULT_PASS_PER_WALLET);
     expect(value('SESSION_REFUND_TIMEOUT_SECS')).toBe(constants.SESSION_REFUND_TIMEOUT_SECS);
     expect(value('CLAIM_WINDOW_SECS')).toBe(constants.CLAIM_WINDOW_SECS);
+    expect(value('ENTROPY_DELAY_SLOTS')).toBe(constants.ENTROPY_DELAY_SLOTS);
     expect(value('MAX_XP_PER_GAME')).toBe(constants.MAX_XP_PER_GAME);
     expect(value('MAX_SCORE_PER_GAME')).toBe(constants.MAX_SCORE_PER_GAME);
     expect(value('FIRST_SEASON')).toBe(constants.FIRST_SEASON);
