@@ -2,7 +2,7 @@ import { PRIZE_SHARES_BPS, shortAddress } from '@slana/shared';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { motion } from 'motion/react';
 import { useEffect, useState, type ReactNode } from 'react';
-import { Chip, Counter, Icon, Rule, STAGGER, Tabs, tabPanelProps, useReducedMotion, type TabItem } from '../../design';
+import { Chip, Counter, Icon, Rule, STAGGER, Skeleton, StampSpinner, Tabs, tabPanelProps, useReducedMotion, type TabItem } from '../../design';
 import { SERVER } from '../../config';
 import { useT } from '../../i18n';
 import { useChainData, type PreviousSeasonInfo, type SeasonInfo } from '../../solana/chain';
@@ -216,7 +216,15 @@ function OffchainFront({ kind, boards }: { kind: 'today' | 'all'; boards: Boards
           )}
         </p>
         {boards.state === 'error' && <p className="nw-note">{t('nw.offline')}</p>}
-        {boards.state === 'loading' && <p className="nw-note">{t('lo.live.connecting')}</p>}
+        {boards.state === 'loading' && (
+          <>
+            <p className="nw-note kb-wait">
+              <StampSpinner size="sm" />
+              {t('lo.live.connecting')}
+            </p>
+            <Skeleton rows={6} />
+          </>
+        )}
         {boards.state === 'ok' && rows.length === 0 && <p className="nw-note">{t('nw.empty')}</p>}
         {rows.length > 0 && (
           <Standings

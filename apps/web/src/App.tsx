@@ -5,7 +5,8 @@ import { useChainSync } from './solana/chain';
 import { SolanaProvider } from './solana/provider';
 import { useWalletAuth } from './solana/useWalletAuth';
 import { useUi } from './store';
-import { Kb, themeFromSettings } from './design';
+import { AnimatePresence } from 'motion/react';
+import { Kb, ScreenTransition, themeFromSettings, type Box } from './design';
 import { Lobby } from './ui/lobby/Lobby';
 import { Toasts } from './ui/Toasts';
 import { WalletModal } from './solana/WalletModal';
@@ -38,15 +39,26 @@ function ChainSync() {
   return null;
 }
 
+/** The lobby's front-page photo (the window onto the live world), when the paper has one. */
+function lobbyWindow(): Box | null {
+  const el = document.querySelector('.kl-root.has-hole .kl-live__window');
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  return r.width > 0 && r.height > 0 ? { x: r.left, y: r.top, w: r.width, h: r.height } : null;
+}
+
 function Screens() {
   const screen = useUi((s) => s.screen);
   const theme = useUi((s) => s.settings.theme);
   return (
     <>
-      {screen === 'lobby' && <Lobby />}
+      {/* lobby ↔ game: the paper wipes open onto the world and closes around it on the way back */}
+      <ScreenTransition show={screen === 'lobby'} home={lobbyWindow}>
+        <Lobby />
+      </ScreenTransition>
       {/* Paper Ticket game view, sheets and toasts (portalled; themed from this root) */}
       <Kb theme={themeFromSettings(theme)} paper={false} className="g-root">
-        {screen !== 'lobby' && <GameHud />}
+        <AnimatePresence>{screen !== 'lobby' && <GameHud key="hud" />}</AnimatePresence>
         <DeathSheet />
         <CashoutSheet />
         <SettingsSheet />

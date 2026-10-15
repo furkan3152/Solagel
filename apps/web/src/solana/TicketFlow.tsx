@@ -3,7 +3,7 @@ import { TOKEN_2022_PROGRAM_ID, pdas, type OwnedPass } from '@slana/sdk';
 import { arenaMeta, formatToken, isBasicSkin, sanitizeName, truncateUtf8, utf8Length } from '@slana/shared';
 import { motion } from 'motion/react';
 import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { Field, Icon, InkButton, Sheet, Stamp, useReducedMotion } from '../design';
+import { Field, Icon, InkButton, Sheet, Stamp, StampSpinner, markTransitionOrigin, useReducedMotion } from '../design';
 import { engine } from '../game/instance';
 import { sound } from '../game/sound';
 import { useT } from '../i18n';
@@ -187,6 +187,8 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
     updateSettings({ lastArena: arenaId, ...(register ? { name: register.name } : {}) });
     refreshChain();
     later(reduced ? 700 : PLAY_AT_MS, () => {
+      // the paper opens onto the room from the VALID stamp
+      markTransitionOrigin(document.querySelector('.tf-ticket__stamp') ?? document.querySelector('.tf-ticket'));
       // (fake chain: its Pass ids are not addresses the server can verify; it applies the ticket's Pass itself)
       engine()?.play(`arena:${arenaId}`, { pass: data.fake ? null : (pass ?? undefined), awaitTicket: true });
       onClose();
@@ -196,6 +198,7 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
   const resume = () => {
     sound.click();
     updateSettings({ lastArena: arenaId });
+    markTransitionOrigin(document.querySelector('.tf-ticket'));
     engine()?.play(`arena:${arenaId}`, session?.hasPass && session.passAsset && !data.fake ? { pass: session.passAsset } : {});
     onClose();
   };
@@ -345,7 +348,7 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
       ) : (
         <>
           <span className="tf-status__line">
-            <span className="kl-dots" aria-hidden="true" />
+            <StampSpinner size="sm" />
             {phase === 'preparing' ? t('tf.preparing') : phase === 'signing' ? t('tf.signing') : t('tf.confirming')}
           </span>
           <span className="tf-status__note mono">
