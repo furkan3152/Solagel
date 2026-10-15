@@ -2,7 +2,7 @@ import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { formatToken, type PassStatus } from '@slana/shared';
 import { useEffect, useRef, useState } from 'react';
 import { Icon, InkButton } from '../../design';
-import { sound } from '../../game/sound';
+import { sound } from '../../audio';
 import { useT } from '../../i18n';
 import { toast, useUi } from '../../store';
 import { refreshChain, useChainData, useSlanaClient } from '../../solana/chain';

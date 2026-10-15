@@ -3,7 +3,7 @@ import { TOKEN_2022_PROGRAM_ID } from '@slana/sdk';
 import { PRIZE_SHARES_BPS, formatToken, shortAddress } from '@slana/shared';
 import { useEffect, useRef, useState } from 'react';
 import { Icon, InkButton, Sheet, Stamp } from '../../design';
-import { sound } from '../../game/sound';
+import { sound } from '../../audio';
 import { useT } from '../../i18n';
 import { refreshChain, useChainData, useSlanaClient } from '../../solana/chain';
 import { loadDevFake } from '../../solana/devFakeLoader';
@@ -204,6 +204,7 @@ function ClaimSheet({ open, prize, payee, onClose, onPaid }: { open: boolean; pr
   };
   const paid = (sig: string) => {
     setPhase('done');
+    sound.coinCascade();
     onPaid();
     const href = sig.startsWith('DevFake') ? undefined : { href: explorerTx(sig, cluster), label: t('tf.viewTx') };
     toast('success', t('sc.ok'), href, 7000);

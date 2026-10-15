@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
 import { DUR, Dateline, Icon, Kb, Rule, Tabs, presets, springs, themeFromSettings, useReducedMotion, type IconName, type TabItem } from '../../design';
 import { engine } from '../../game/instance';
-import { sound } from '../../game/sound';
+import { sound } from '../../audio';
 import { useT } from '../../i18n';
 import { useChainData } from '../../solana/chain';
 import { ProfileCard } from '../../solana/ProfileCard';
@@ -103,7 +103,7 @@ export function Lobby() {
     const id = ticket.arenaId;
     switch (gate.kind) {
       case 'practice':
-        sound.click();
+        sound.punch();
         setPunched(ticket.key);
         engine()?.play('practice');
         return;
@@ -114,7 +114,7 @@ export function Lobby() {
         void signInWithWallet(wallet, true);
         return;
       case 'resume': {
-        sound.click();
+        sound.punch();
         const s = id !== null ? model.sessions[id] : null;
         updateSettings({ lastArena: id });
         setPunched(ticket.key);

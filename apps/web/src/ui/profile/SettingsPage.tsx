@@ -1,5 +1,6 @@
 import { useId, type ReactNode } from 'react';
 import { Chip, Icon } from '../../design';
+import { sound } from '../../audio';
 import { APP_VERSION } from '../../config';
 import { useT, type TKey } from '../../i18n';
 import { openModal, updateSettings, useUi, type Settings } from '../../store';
@@ -29,6 +30,34 @@ export function Punch({ on, onChange, label, disabled = false }: { on: boolean; 
   );
 }
 
+/** A volume slider row (0..1). `onCommit`: a preview when the thumb is let go. */
+function Level({ label, value, disabled, onChange, onCommit }: { label: string; value: number; disabled: boolean; onChange: (v: number) => void; onCommit?: () => void }) {
+  const id = useId();
+  return (
+    <div className="g-set__row">
+      <label className="g-set__label" htmlFor={id}>
+        {label}
+      </label>
+      <div className="g-set__ctl">
+        <input
+          id={id}
+          className="g-range"
+          type="range"
+          min={0}
+          max={1}
+          step={0.05}
+          value={value}
+          disabled={disabled}
+          style={{ ['--v' as string]: value }}
+          onChange={(e) => onChange(Number(e.target.value))}
+          onPointerUp={onCommit}
+          onKeyUp={onCommit}
+        />
+      </div>
+    </div>
+  );
+}
+
 function Row({ label, note, children }: { label: string; note?: string; children: ReactNode }) {
   return (
     <div className="g-set__row">
@@ -43,13 +72,12 @@ function Row({ label, note, children }: { label: string; note?: string; children
 
 /**
  * Settings as a print order (spec §7.2.9): language, stock (paper / night),
- * sound, the map sheet and performance mode first, then the in-room
+ * sound (master, music, effects, announcer), the map sheet and performance mode first, then the in-room
  * overlays. Used on the profile page and inside the settings sheet.
  */
 export function SettingsPage({ headings = true }: { headings?: boolean }) {
   const t = useT();
   const s = useUi((st) => st.settings);
-  const volId = useId();
   const set = (patch: Partial<Settings>) => updateSettings(patch);
   const flags: [TKey, Flag][] = [
     ['gs.names', 'showNames'],
@@ -72,25 +100,19 @@ export function SettingsPage({ headings = true }: { headings?: boolean }) {
         <Row label={t('gs.sound')}>
           <Punch on={s.sound} onChange={(v) => set({ sound: v })} label={t('gs.sound')} />
         </Row>
-        <div className="g-set__row">
-          <label className="g-set__label" htmlFor={volId}>
-            {t('gs.volume')}
-          </label>
-          <div className="g-set__ctl">
-            <input
-              id={volId}
-              className="g-range"
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              value={s.volume}
-              disabled={!s.sound}
-              style={{ ['--v' as string]: s.volume }}
-              onChange={(e) => set({ volume: Number(e.target.value) })}
-            />
-          </div>
-        </div>
+        <Level label={t('gs.volume')} value={s.volume} disabled={!s.sound} onChange={(v) => set({ volume: v })} onCommit={() => sound.click()} />
+        <Row label={t('gs.music')} note={t('gs.musicNote')}>
+          <Punch on={s.musicOn} onChange={(v) => set({ musicOn: v })} label={t('gs.music')} disabled={!s.sound} />
+        </Row>
+        <Level label={t('gs.musicVol')} value={s.music} disabled={!s.sound || !s.musicOn} onChange={(v) => set({ music: v })} />
+        <Row label={t('gs.sfx')}>
+          <Punch on={s.sfxOn} onChange={(v) => set({ sfxOn: v })} label={t('gs.sfx')} disabled={!s.sound} />
+        </Row>
+        <Level label={t('gs.sfxVol')} value={s.sfx} disabled={!s.sound || !s.sfxOn} onChange={(v) => set({ sfx: v })} onCommit={() => sound.click()} />
+        <Row label={t('gs.announcer')} note={t('gs.announcerNote')}>
+          <Punch on={s.announcer} onChange={(v) => set({ announcer: v })} label={t('gs.announcer')} disabled={!s.sound} />
+        </Row>
+        <Level label={t('gs.voiceVol')} value={s.voice} disabled={!s.sound || !s.announcer} onChange={(v) => set({ voice: v })} />
         <Row label={t('st.perf')} note={t('st.perfNote')}>
           <Punch on={s.quality === 'low'} onChange={(v) => set({ quality: v ? 'low' : 'high' })} label={t('st.perf')} />
         </Row>

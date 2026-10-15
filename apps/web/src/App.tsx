@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { startAudio } from './audio';
 import { GameEngine } from './game/engine';
 import { setEngine } from './game/instance';
 import { useChainSync } from './solana/chain';
@@ -72,6 +73,8 @@ function Screens() {
 
 export function App() {
   const theme = useUi((s) => s.settings.theme);
+  // sound: levels from settings, music by screen, paper sounds on every control (silent until a gesture)
+  useEffect(() => startAudio(), []);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#1B1924' : '#F1EADB');

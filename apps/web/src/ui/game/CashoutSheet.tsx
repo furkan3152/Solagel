@@ -2,7 +2,7 @@ import { AnimatePresence, motion, type TargetAndTransition } from 'motion/react'
 import { useEffect, useMemo, useState } from 'react';
 import { Icon, InkButton, Receipt, Sheet, Stamp, useReducedMotion, type ReceiptLine } from '../../design';
 import { engine } from '../../game/instance';
-import { sound } from '../../game/sound';
+import { sound } from '../../audio';
 import { useT } from '../../i18n';
 import { explorerTx } from '../../solana/links';
 import { requestTicket, useUi } from '../../store';
@@ -63,11 +63,14 @@ export function CashoutSheet() {
     if (!open) return;
     setSince(Date.now());
     setPrinted(false);
+    // the slip feeds out of the till's printer
+    if (!reduced) sound.print(1300);
+    return () => sound.stopPrint();
   }, [open]);
 
   const settled = settlementFor(settledRaw, ticket?.session);
   useEffect(() => {
-    if (settled && printed) sound.stamp();
+    if (settled && printed) sound.stamp('paid');
   }, [settled, printed]);
 
   const payout = res?.value ?? 0;

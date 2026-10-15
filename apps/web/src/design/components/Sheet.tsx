@@ -76,6 +76,8 @@ export function Sheet({
 
   useEffect(() => {
     if (!open) return;
+    // the app's sound listens for this (the design system stays free of audio code)
+    window.dispatchEvent(new CustomEvent('kb:sheet', { detail: { open: true } }));
     const opener = document.activeElement as HTMLElement | null;
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -115,6 +117,7 @@ export function Sheet({
       document.removeEventListener('keydown', onKey, true);
       document.body.style.overflow = prevOverflow;
       opener?.focus?.();
+      window.dispatchEvent(new CustomEvent('kb:sheet', { detail: { open: false } }));
     };
   }, [open]);
 

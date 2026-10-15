@@ -7,6 +7,7 @@ import type {
   RoomInfo,
 } from '@slana/shared';
 import { create } from 'zustand';
+import { AUDIO_DEFAULTS } from './audio/mixer';
 
 export type Screen = 'lobby' | 'playing' | 'dead' | 'spectating' | 'cashedout';
 export type Quality = 'high' | 'low';
@@ -17,8 +18,17 @@ export interface Settings {
   skin: number;
   theme: Theme;
   quality: Quality;
+  /** Master switch (the header's mute) and master volume. */
   sound: boolean;
   volume: number;
+  /** Per-bus levels and switches (audio/mixer.ts). */
+  music: number;
+  musicOn: boolean;
+  sfx: number;
+  sfxOn: boolean;
+  voice: number;
+  /** The announcer's short spoken lines. */
+  announcer: boolean;
   showNames: boolean;
   showMass: boolean;
   showFps: boolean;
@@ -124,7 +134,13 @@ function loadSettings(): Settings {
     theme: 'light',
     quality: 'high',
     sound: true,
-    volume: 0.6,
+    volume: AUDIO_DEFAULTS.master,
+    music: AUDIO_DEFAULTS.music,
+    musicOn: true,
+    sfx: AUDIO_DEFAULTS.sfx,
+    sfxOn: true,
+    voice: AUDIO_DEFAULTS.voice,
+    announcer: true,
     showNames: true,
     showMass: true,
     showFps: false,

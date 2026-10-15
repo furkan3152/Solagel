@@ -1,6 +1,6 @@
 import { DUR, InkButton, Sheet, Stamp, useReducedMotion } from '../../design';
 import { engine } from '../../game/instance';
-import { sound } from '../../game/sound';
+import { sound } from '../../audio';
 import { useT } from '../../i18n';
 import { requestTicket, useUi } from '../../store';
 import { CoinPortrait } from './CoinPortrait';
@@ -42,7 +42,7 @@ export function DeathSheet() {
   useEffect(() => {
     if (!open) return;
     // the stamp lands ~290 ms in
-    const id = setTimeout(() => sound.stamp(), 290);
+    const id = setTimeout(() => sound.stamp('eaten'), 290);
     return () => clearTimeout(id);
   }, [open]);
 
@@ -52,7 +52,7 @@ export function DeathSheet() {
   const lost = arena ? (s?.valueLost ?? 0) : 0;
   const spilled = byBot ? (s?.lootSpilled ?? lost) : 0;
   const practice = () => {
-    sound.click();
+    sound.punch();
     engine()?.play(room?.mode === 'private' && room.code ? `private:${room.code}` : 'practice');
   };
   const newTicket = () => {

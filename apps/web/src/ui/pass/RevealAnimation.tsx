@@ -1,7 +1,7 @@
 import { motion } from 'motion/react';
 import { useEffect, useRef, type CSSProperties } from 'react';
 import { Crest, Stamp, WaxSeal, useReducedMotion } from '../../design';
-import { sound } from '../../game/sound';
+import { sound } from '../../audio';
 import { useT } from '../../i18n';
 
 /**
@@ -43,6 +43,7 @@ function Envelope({ number, play, to, onDone, className }: RevealAnimationProps)
   const t = useT();
   const reduced = useReducedMotion();
   useAfter(play, reduced ? 0.3 : ENV.done, onDone);
+  useAfter(play && !reduced, ENV.flap, () => sound.envelope());
   useAfter(play && !reduced, ENV.stamp + 0.28, () => sound.stamp());
   const date = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
 
@@ -142,7 +143,7 @@ function SealBreak({ play, onBreak, onDone, className, style }: RevealAnimationP
   const reduced = useReducedMotion();
   useAfter(play, reduced ? 0.12 : SEAL.split, onBreak);
   useAfter(play, reduced ? 0.3 : SEAL.done, onDone);
-  useAfter(play && !reduced, SEAL.shake, () => sound.stamp());
+  useAfter(play && !reduced, SEAL.shake, () => sound.seal());
 
   if (reduced) {
     return (
