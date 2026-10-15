@@ -4,6 +4,7 @@ import { extname, join, normalize, resolve, sep } from 'node:path';
 import { PROTOCOL_VERSION, siwsChainId } from '@slana/shared';
 import { serializePassJson } from '@slana/art';
 import { isValidPubkey, type Auth, type SiwsOrigin } from './auth';
+import type { DevFakePassActions } from './chain/dev-fake';
 import type { ChainGateway } from './chain/types';
 import { publicChainStatus, type ServerConfig } from './config';
 import type { Leaderboards } from './leaderboards';
@@ -207,6 +208,18 @@ export function createHttpServer(cfg: ServerConfig, ctx: Ctx): Server {
               .filter((p) => p.player === wallet)
               .map((p) => ({ key: p.key, arenaId: p.arenaId ?? null, payout: p.payout ?? 0 }));
             return json(res, 200, { pending });
+          }
+          case '/api/dev/pass/mint':
+          case '/api/dev/pass/reveal': {
+            // DEV ONLY: the fake chain's Pass mint and reveal (absent unless DEV_FAKE_CHAIN=1, which needs NODE_ENV=development)
+            const dev = cfg.devFakeChain ? (ctx.chain as Partial<DevFakePassActions>) : null;
+            if (!dev?.devMintPass || !dev.devRevealPasses) return json(res, 404, { error: 'not found' });
+            if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' });
+            if (url.pathname === '/api/dev/pass/reveal') return json(res, 200, { pass: dev.devRevealPasses() });
+            const wallet = url.searchParams.get('wallet');
+            if (!isValidPubkey(wallet)) return json(res, 400, { error: 'invalid wallet' });
+            const out = dev.devMintPass(wallet);
+            return json(res, out.ok ? 200 : 409, out);
           }
           case '/api/pass/owned': {
             const wallet = url.searchParams.get('wallet');

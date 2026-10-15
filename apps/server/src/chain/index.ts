@@ -33,8 +33,8 @@ export async function createChain(cfg: ServerConfig, journal: Journal, log: (m: 
   if (cfg.devFakeChain) {
     assertDevFakeChainAllowed(cfg);
     const { DevFakeChain } = await import('./dev-fake');
-    log('chain: DEV_FAKE_CHAIN=1 — in-memory fake chain (free arena tickets, simulated settlements). Development only!');
-    return new DevFakeChain(journal, log);
+    log(`chain: DEV_FAKE_CHAIN=1 — in-memory fake chain (free arena tickets, simulated settlements, Pass ${cfg.devFakePass === 'revealed' ? 'revealed' : 'mint open'}). Development only!`);
+    return new DevFakeChain(journal, log, undefined, cfg.devFakePass);
   }
   const { programId, rpcUrl, serverKeypair, cluster } = cfg.chain;
   if (!programId || !rpcUrl || !serverKeypair) {

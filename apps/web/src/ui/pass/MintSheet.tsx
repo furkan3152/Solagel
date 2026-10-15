@@ -169,7 +169,7 @@ export function MintSheet({ open, onClose }: { open: boolean; onClose: () => voi
       if (data.fake) {
         const dev = await loadDevFake();
         if (!dev || !chain) return fail(t('tf.err.NetworkError'));
-        const res = await dev.fakeMintPass(chain, data.passes, onPhase);
+        const res = await dev.fakeMintPass(chain, data.passes, owner, onPhase);
         if (!res.ok) return fail(txErrorText({ code: null, name: res.name, message: res.name }));
         setSignature(res.signature);
         return deliver(res.pass, res.signature);

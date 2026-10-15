@@ -20,6 +20,21 @@ const fakeAddress = (label: string) => bs58.encode(createHash('sha256').update(l
 
 /** Deterministic Pass number for a wallet (1..supply). */
 const passNumberOf = (wallet: string) => (createHash('sha256').update(wallet).digest().readUInt32LE(0) % PASS_SUPPLY) + 1;
+/** Passes "minted" before this server started (the collection is not empty). */
+const PRE_MINTED = 412;
+
+/**
+ * The fake collection: `mint` starts open and unrevealed with no Pass in any wallet
+ * (mint → envelope → sealed passport, then a dev-only reveal publishes the seed);
+ * `revealed` gives every wallet one revealed Pass.
+ */
+export type DevFakePassMode = 'mint' | 'revealed';
+
+/** Dev-only actions the HTTP server exposes under `/api/dev/` when the fake chain runs. */
+export interface DevFakePassActions {
+  devMintPass(wallet: string): { ok: true; pass: OwnedPassInfo } | { ok: false; error: string };
+  devRevealPasses(): PassStatus;
+}
 
 /**
  * DEV ONLY (`DEV_FAKE_CHAIN=1` with `NODE_ENV=development`, see `assertDevFakeChainAllowed`). An in-memory chain so
@@ -27,13 +42,16 @@ const passNumberOf = (wallet: string) => (createHash('sha256').update(wallet).di
  * locally without a validator:
  *  - every signed-in wallet has an open ticket in every default arena; tickets of
  *    Pass arenas are bought "with" the wallet's fake Pass;
- *  - every wallet owns one revealed Pass (number derived from the wallet);
+ *  - Pass collection (`DevFakePassMode`): by default the mint is open and unrevealed
+ *    and a wallet owns only what it minted here (`devMintPass`) until `devRevealPasses`
+ *    publishes the seed; `revealed` mode gives every wallet one revealed Pass
+ *    (number derived from the wallet);
  *  - settlements are simulated `settleMs` after the journal item appears: the
  *    item is removed, the ticket closes and a `settled` event with the fee fires.
  *    Only items for tickets this instance issued are ever touched; it also runs
  *    on its own journal file (`journal.dev-fake.json`).
  */
-export class DevFakeChain implements ChainGateway {
+export class DevFakeChain implements ChainGateway, DevFakePassActions {
   readonly enabled = true;
   readonly stakeEnabled = true;
   private readonly sessions = new Map<string, ChainSession>();
@@ -43,12 +61,24 @@ export class DevFakeChain implements ChainGateway {
   private readonly scheduled = new Set<string>();
   private nextId = 1;
   private stopped = false;
+  /** Mint mode: Pass numbers minted here, per wallet. */
+  private readonly mints = new Map<string, number[]>();
+  private minted = PRE_MINTED;
+  private revealed: boolean;
 
   constructor(
     private readonly journal: Journal,
     private readonly log: (m: string) => void,
     private readonly settleMs = 2600,
-  ) {}
+    readonly passMode: DevFakePassMode = 'mint',
+  ) {
+    this.revealed = passMode === 'revealed';
+  }
+
+  /** The wallet's Pass numbers (mint mode: minted here; revealed mode: one per wallet). */
+  private passNumbers(wallet: string): number[] {
+    return this.passMode === 'revealed' ? [passNumberOf(wallet)] : (this.mints.get(wallet) ?? []);
+  }
 
   status(): ChainStatus {
     return {
@@ -73,6 +103,9 @@ export class DevFakeChain implements ChainGateway {
     const key = `${arenaId}:${player}`;
     let s = this.sessions.get(key);
     if (!s) {
+      const owned = this.passNumbers(player);
+      // a Pass arena sells tickets only to a wallet with a Pass
+      if (arena.requiresPass && owned.length === 0) return null;
       const id = this.nextId++;
       const hasPass = arena.requiresPass;
       s = {
@@ -83,7 +116,7 @@ export class DevFakeChain implements ChainGateway {
         entryFee: arena.entryFee,
         openedAt: Math.floor(Date.now() / 1000),
         hasPass,
-        passAsset: hasPass ? `DevPass${passNumberOf(player)}x${player}` : null,
+        passAsset: hasPass ? `DevPass${owned[0]}x${player}` : null,
         finalized: false,
         owed: 0,
       };
@@ -138,25 +171,46 @@ export class DevFakeChain implements ChainGateway {
 
   async getPass(asset: string): Promise<ChainPass | null> {
     const m = /^DevPass(\d+)x(.+)$/.exec(asset);
-    return m ? { number: Number(m[1]), owner: m[2] } : null;
+    if (!m || !this.passNumbers(m[2]).includes(Number(m[1]))) return null;
+    return { number: Number(m[1]), owner: m[2] };
   }
 
   async ownedPasses(wallet: string): Promise<OwnedPassInfo[]> {
-    const number = passNumberOf(wallet);
-    return [{ asset: `DevPass${number}x${wallet}`, number }];
+    return this.passNumbers(wallet).map((number) => ({ asset: `DevPass${number}x${wallet}`, number }));
   }
 
   passStatus(): PassStatus {
     return {
       collection: 'DevFakeCollection11111111111111111111111111',
       supply: PASS_SUPPLY,
-      minted: 412,
+      minted: this.passMode === 'revealed' ? PRE_MINTED : this.minted,
       perWallet: 1,
-      mintOpen: true,
+      // revealed mode keeps the earlier answer (mint open and revealed); mint mode closes the mint at the reveal
+      mintOpen: this.passMode === 'revealed' || !this.revealed,
       mintStartTs: 0,
-      revealed: true,
-      seed: PASS_SEED,
+      revealed: this.revealed,
+      seed: this.revealed ? PASS_SEED : null,
     };
+  }
+
+  /** DEV ONLY: "mints" the next Pass into `wallet` (sealed until `devRevealPasses`). */
+  devMintPass(wallet: string): { ok: true; pass: OwnedPassInfo } | { ok: false; error: string } {
+    if (this.passMode === 'revealed') return { ok: false, error: 'DEV_FAKE_PASS=revealed: every wallet already has a Pass' };
+    if (this.revealed) return { ok: false, error: 'MintClosed' };
+    if (this.minted >= PASS_SUPPLY) return { ok: false, error: 'MintClosed' };
+    const mine = this.mints.get(wallet) ?? [];
+    if (mine.length >= 1) return { ok: false, error: 'MintLimit' };
+    const number = ++this.minted;
+    this.mints.set(wallet, [...mine, number]);
+    this.log(`chain(dev-fake): minted Pass #${number} to ${wallet}`);
+    return { ok: true, pass: { asset: `DevPass${number}x${wallet}`, number } };
+  }
+
+  /** DEV ONLY: closes the mint and publishes the trait seed (the reveal). */
+  devRevealPasses(): PassStatus {
+    if (!this.revealed) this.log('chain(dev-fake): Pass collection revealed');
+    this.revealed = true;
+    return this.passStatus();
   }
 
   kick(): void {

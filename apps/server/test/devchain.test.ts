@@ -1,9 +1,11 @@
+import type { AddressInfo } from 'node:net';
 import { Keypair } from '@solana/web3.js';
 import { describe, expect, it } from 'vitest';
 import { createChain, dataFileNames } from '../src/chain';
 import { DevFakeChain } from '../src/chain/dev-fake';
-import type { SettledEvent } from '../src/chain/types';
+import { NullChain, type SettledEvent } from '../src/chain/types';
 import { loadConfig } from '../src/config';
+import { createHttpServer } from '../src/http';
 import { settledMessage } from '../src/net/gateway';
 import { Journal, type SettlementItem } from '../src/stake/journal';
 
@@ -45,13 +47,50 @@ describe('DEV_FAKE_CHAIN', () => {
     const status = chain.status();
     expect(status.arenasEnabled).toBe(true);
     expect(status.token?.decimals).toBe(6);
-    expect(status.pass?.revealed).toBe(true);
-    expect(status.pass?.seed).toMatch(/^[0-9a-f]{64}$/);
+    // the default collection: mint open, unrevealed, no seed yet
+    expect(status.pass).toMatchObject({ mintOpen: true, revealed: false, seed: null });
     await chain.stop();
   });
 
-  it('issues a ticket per wallet and arena, Pass arenas with the wallet Pass', async () => {
+  it('DEV_FAKE_PASS=revealed keeps one revealed Pass per wallet', async () => {
+    const cfg = loadConfig(env({ DEV_FAKE_CHAIN: '1', NODE_ENV: 'development', DEV_FAKE_PASS: 'revealed' }));
+    expect(cfg.devFakePass).toBe('revealed');
+    expect(loadConfig(env({})).devFakePass).toBe('mint');
+    const chain = await createChain(cfg, new Journal(null), () => {});
+    const status = chain.status();
+    expect(status.pass?.revealed).toBe(true);
+    expect(status.pass?.seed).toMatch(/^[0-9a-f]{64}$/);
+    expect(await chain.ownedPasses(wallet())).toHaveLength(1);
+    await chain.stop();
+  });
+
+  it('mint mode: a fresh wallet has no Pass, mints one sealed Pass, then a dev reveal publishes the seed', async () => {
     const chain = new DevFakeChain(new Journal(null), () => {});
+    const w = wallet();
+    expect(await chain.ownedPasses(w)).toEqual([]);
+    // no Pass: no ticket for a Pass arena (free arenas still sell)
+    expect(await chain.getSession(3, w)).toBeNull();
+    expect(await chain.getSession(1, w)).not.toBeNull();
+    const before = chain.passStatus().minted;
+    const res = chain.devMintPass(w);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.pass.number).toBe(before + 1);
+    expect(chain.passStatus()).toMatchObject({ minted: before + 1, mintOpen: true, revealed: false, seed: null });
+    expect(await chain.ownedPasses(w)).toEqual([res.pass]);
+    expect(await chain.getPass(res.pass.asset)).toEqual({ number: res.pass.number, owner: w });
+    // one per wallet
+    expect(chain.devMintPass(w)).toEqual({ ok: false, error: 'MintLimit' });
+    // made-up assets are not Passes of the collection
+    expect(await chain.getPass(`DevPass7x${w}`)).toBeNull();
+    const revealed = chain.devRevealPasses();
+    expect(revealed).toMatchObject({ mintOpen: false, revealed: true });
+    expect(revealed.seed).toMatch(/^[0-9a-f]{64}$/);
+    expect(chain.devMintPass(wallet())).toEqual({ ok: false, error: 'MintClosed' });
+  });
+
+  it('issues a ticket per wallet and arena, Pass arenas with the wallet Pass', async () => {
+    const chain = new DevFakeChain(new Journal(null), () => {}, undefined, 'revealed');
     const w = wallet();
     const a = await chain.getSession(1, w);
     expect(a).not.toBeNull();
@@ -163,5 +202,45 @@ describe('settled message (R16)', () => {
     });
     // late confirmations without fee / arena stay well-formed
     expect(settledMessage({ key: 'Sess2', player: 'P', signature: 's', payout: 0 })).toEqual({ t: 'settled', kind: 'death', session: 'Sess2', signature: 's', payout: 0 });
+  });
+});
+
+describe('dev-only Pass routes', () => {
+  const start = async (devFakeChain: boolean): Promise<{ url: string; close: () => Promise<void> }> => {
+    const cfg = loadConfig((devFakeChain ? { DEV_FAKE_CHAIN: '1', NODE_ENV: 'development' } : {}) as unknown as NodeJS.ProcessEnv);
+    const chain = devFakeChain ? new DevFakeChain(new Journal(null), () => {}) : new NullChain();
+    const server = createHttpServer(cfg, { chain, rooms: {} as never, leaderboards: {} as never, auth: {} as never, startedAt: Date.now() });
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()));
+    const port = (server.address() as AddressInfo).port;
+    return { url: `http://127.0.0.1:${port}`, close: () => new Promise<void>((r) => server.close(() => r())) };
+  };
+
+  it('do not exist without the fake chain', async () => {
+    const s = await start(false);
+    try {
+      expect((await fetch(`${s.url}/api/dev/pass/reveal`, { method: 'POST' })).status).toBe(404);
+      expect((await fetch(`${s.url}/api/dev/pass/mint?wallet=${wallet()}`, { method: 'POST' })).status).toBe(404);
+    } finally {
+      await s.close();
+    }
+  });
+
+  it('mint into a wallet and reveal the fake collection', async () => {
+    const s = await start(true);
+    try {
+      const w = wallet();
+      expect((await fetch(`${s.url}/api/dev/pass/mint?wallet=${w}`)).status).toBe(405);
+      const mint = await fetch(`${s.url}/api/dev/pass/mint?wallet=${w}`, { method: 'POST' });
+      expect(mint.status).toBe(200);
+      const body = (await mint.json()) as { ok: boolean; pass: { asset: string; number: number } };
+      expect(body.ok).toBe(true);
+      const owned = (await (await fetch(`${s.url}/api/pass/owned?wallet=${w}`)).json()) as { passes: unknown[] };
+      expect(owned.passes).toEqual([body.pass]);
+      expect((await fetch(`${s.url}/api/dev/pass/mint?wallet=${w}`, { method: 'POST' })).status).toBe(409);
+      const reveal = (await (await fetch(`${s.url}/api/dev/pass/reveal`, { method: 'POST' })).json()) as { pass: { revealed: boolean } };
+      expect(reveal.pass.revealed).toBe(true);
+    } finally {
+      await s.close();
+    }
   });
 });

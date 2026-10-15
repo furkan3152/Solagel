@@ -37,6 +37,12 @@ export interface ServerConfig {
    */
   devFakeChain: boolean;
   /**
+   * Fake chain's Pass collection (`DEV_FAKE_PASS`): `mint` (default) starts with the
+   * mint open and unrevealed and no Pass in any wallet, so the mint can be shown;
+   * `revealed` gives every wallet one revealed Pass (the earlier behaviour).
+   */
+  devFakePass: 'mint' | 'revealed';
+  /**
    * Slana Pass collection pages on the marketplaces, shown on the Pass page
    * (`MARKET_URLS` JSON and/or `MARKET_URL_MAGICEDEN` / `_TENSOR` / `_OPENSEA`).
    * Only https URLs are kept; an empty object hides every link.
@@ -175,6 +181,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     authSecret: secret,
     nodeEnv: env.NODE_ENV?.trim() || null,
     devFakeChain: bool(env.DEV_FAKE_CHAIN, false),
+    devFakePass: env.DEV_FAKE_PASS?.trim() === 'revealed' ? 'revealed' : 'mint',
     markets: parseMarketUrls(env),
     chain: {
       cluster: env.SOLANA_CLUSTER ?? 'localnet',
