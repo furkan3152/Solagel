@@ -930,7 +930,9 @@ export class SolanaChain implements ChainGateway {
     try {
       if (this.deps.signatureLanded) return await this.deps.signatureLanded(signature);
       if (!this.connection) return null;
-      const status = (await this.connection.getSignatureStatuses([signature], { searchTransactionHistory: true })).value[0];
+      const status = (
+        await withTimeout(this.connection.getSignatureStatuses([signature], { searchTransactionHistory: true }), RPC_TIMEOUT_MS, 'getSignatureStatuses')
+      ).value[0];
       if (!status) return false;
       if (status.err) return false;
       return status.confirmationStatus === 'processed' ? null : true;
@@ -1069,7 +1071,9 @@ export class SolanaChain implements ChainGateway {
     try {
       if (this.deps.signatureLanded) return await this.deps.signatureLanded(signature);
       if (!this.connection) return false;
-      const status = (await this.connection.getSignatureStatuses([signature], { searchTransactionHistory: true })).value[0];
+      const status = (
+        await withTimeout(this.connection.getSignatureStatuses([signature], { searchTransactionHistory: true }), RPC_TIMEOUT_MS, 'getSignatureStatuses')
+      ).value[0];
       return !!status && !status.err && status.confirmationStatus !== 'processed';
     } catch {
       return false;

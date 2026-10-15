@@ -438,12 +438,18 @@ describe('server over websocket', () => {
     const back = await a2.wait('joined');
     expect(back.playerId).toBe(ja.playerId);
 
-    // the next round opens: the held ticket joins
+    // the next round opens: the held ticket joins at once, before the room's next tick
+    // (it plays round n+1; the join rings round n's bell first)
     jumpTo(r.endsAt);
-    await a2.wait('roundOver', 3000);
     b.send({ t: 'join', room: 'arena:1', name: 'Late', skin: 0 });
     const jb = await b.wait('joined');
     expect(jb.round?.n).toBe(r.n + 1);
+    const over = await a2.wait('roundOver', 3000);
+    expect(over.round).toBe(r.n);
+    await sleep(200);
+    expect(b.msgs.some((m) => m.t === 'roundOver')).toBe(false);
+    expect(app.journal.settlements().some((p) => p.player === late)).toBe(false);
+    expect(app.rooms.findArenaStake(1, late)).not.toBeNull();
     for (const w of [afk, late]) {
       for (const p of app.journal.pending.filter((x) => x.kind === 'settle' && x.player === w)) app.journal.remove(p.key);
       chain.sessions.delete(`1:${w}`);
