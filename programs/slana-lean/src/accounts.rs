@@ -8,7 +8,7 @@
 //! | `#[account(mut)]`                      | [`check_writable`]         | 2000 ConstraintMut          |
 //! | `Program<'info, T>` / `Interface<..>`  | [`check_program`]          | 3008 / 3009                 |
 //! | `Account<'info, T>` (owner, disc, len) | [`load`]                   | 3012 / 3007 / 3001 / 3002 / 3003 |
-//! | `seeds = [..], bump = stored`          | [`check_pda`]              | 2006 ConstraintSeeds        |
+//! | `seeds = [..], bump = stored` (+ `mut`) | [`check_pda_seeds`]        | 2006 / 2000                 |
 //! | `seeds = [..], bump` (canonical)       | [`find_pda`] + key compare | 2006 ConstraintSeeds        |
 //! | `init, payer, space, seeds, bump`      | [`init_pda`]               | system program / 4101       |
 //! | `Option<T>` (None = program id)        | `kind::OPT`, [`is_none`]   | as `T` when Some            |
@@ -341,6 +341,32 @@ pub fn check_pda(acc: &AccountView, seeds_with_bump: &[Seed]) -> Result {
     }
 }
 
+/// `seeds = [..], bump = <stored bump>` for up to three seeds, then `mut` when `mutable`
+/// (`ConstraintSeeds`, then `ConstraintMut`). The one seed check every handler shares: the
+/// bump is appended here. More than three seeds is `InvalidArgument` (never truncated).
+#[inline(never)]
+pub fn check_pda_seeds(acc: &AccountView, seeds: &[&[u8]], bump: u8, mutable: bool) -> Result {
+    let bump = [bump];
+    let mut all: [&[u8]; 4] = [&bump; 4];
+    // Slot `seeds.len()` keeps the bump.
+    let Some(head) = all.get_mut(..seeds.len()) else {
+        return Err(Error::INVALID_ARGUMENT);
+    };
+    head.copy_from_slice(seeds);
+    let Some(with_bump) = all.get(..=seeds.len()) else {
+        return Err(Error::INVALID_ARGUMENT);
+    };
+    // SAFETY: `Seed` is `#[repr(C)] { ptr, u64 len }`, the layout of `&[u8]` on SBF (and on
+    // 64-bit hosts); the slices outlive the call.
+    let with_bump =
+        unsafe { core::slice::from_raw_parts(with_bump.as_ptr() as *const Seed, with_bump.len()) };
+    check_pda(acc, with_bump)?;
+    if mutable {
+        check_writable(acc)?;
+    }
+    Ok(())
+}
+
 /// `seeds = [..], bump` without a stored bump: the address must be the canonical PDA of
 /// `seeds` under `program`, else `ConstraintSeeds`. Returns the bump.
 #[inline(never)]
@@ -431,14 +457,28 @@ pub fn close(acc: &AccountView, dest: &AccountView) -> Result {
     if !acc.owned_by(&ID) {
         return Err(err(ACCOUNT_OWNED_BY_WRONG_PROGRAM));
     }
-    let total = dest
-        .lamports()
-        .checked_add(acc.lamports())
-        .ok_or(Error::ARITHMETIC_OVERFLOW)?;
-    let mut dest = dest.clone();
-    dest.set_lamports(total);
+    move_lamports(acc, dest, acc.lamports())?;
     let mut acc = acc.clone();
     // SAFETY: no borrow of the account data is outstanding (see the module docs).
     unsafe { acc.close_unchecked() };
+    Ok(())
+}
+
+/// Moves `amount` lamports out of a program account into `to` (Anchor's `sub_lamports` /
+/// `add_lamports`, both `ArithmeticOverflow` on wrap).
+#[inline(never)]
+pub fn move_lamports(from: &AccountView, to: &AccountView, amount: u64) -> Result {
+    let left = from
+        .lamports()
+        .checked_sub(amount)
+        .ok_or(Error::ARITHMETIC_OVERFLOW)?;
+    let mut from = from.clone();
+    from.set_lamports(left);
+    let total = to
+        .lamports()
+        .checked_add(amount)
+        .ok_or(Error::ARITHMETIC_OVERFLOW)?;
+    let mut to = to.clone();
+    to.set_lamports(total);
     Ok(())
 }

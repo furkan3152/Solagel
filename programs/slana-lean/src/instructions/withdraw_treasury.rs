@@ -35,7 +35,7 @@ use {
     super::check_admin_config,
     crate::error::Result,
     crate::{
-        accounts::{check_pda, check_writable, data, keq, kind, parse},
+        accounts::{check_pda_seeds, check_writable, data, keq, kind, parse},
         borsh::{rd_key, rd_u64, rd_u8},
         constants::TREASURY_VAULT_SEED,
         cpi::token::transfer_checked,
@@ -87,12 +87,12 @@ pub fn process(accounts: &[AccountView], args: &[u8]) -> Result {
     let dest = unsafe { data::<{ ACCOUNT_LEN }>(destination) };
 
     check_admin_config(config_acc, c, admin, false)?;
-    let vault_bump = [rd_u8(c, config::TREASURY_VAULT_BUMP)];
-    check_pda(
+    check_pda_seeds(
         treasury_vault,
-        &[Seed::from(TREASURY_VAULT_SEED), Seed::from(&vault_bump)],
+        &[TREASURY_VAULT_SEED],
+        rd_u8(c, config::TREASURY_VAULT_BUMP),
+        true,
     )?;
-    check_writable(treasury_vault)?;
     check_token_account(
         treasury_vault,
         vault,

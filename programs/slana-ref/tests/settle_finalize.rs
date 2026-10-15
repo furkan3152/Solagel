@@ -392,3 +392,173 @@ fn settle_args_session_id_still_guards_finalized_sessions() {
         SlanaError::SessionMismatch,
     );
 }
+
+// ----- attack scenarios (security review): exact errors under both implementations --
+
+/// Arenas 1 and 2 with `a` joined to both; returns the env and `a`.
+fn two_arena_env() -> (TestEnv, solana_keypair::Keypair) {
+    let mut env = TestEnv::initialized();
+    assert_ok(env.create_arena(1, 1_000, 300, false));
+    assert_ok(env.create_arena(2, 1_000, 300, false));
+    let a = env.token_player("a", 2_000);
+    assert_ok(env.join(&a, 1));
+    assert_ok(env.join(&a, 2));
+    (env, a)
+}
+
+/// `settle_session` of `player`'s session in `arena_id` paying into `player_token`.
+fn settle_ix(
+    env: &TestEnv,
+    player: &Pubkey,
+    arena_id: u16,
+    payout: u64,
+    player_token: Option<Pubkey>,
+) -> anchor_lang::solana_program::instruction::Instruction {
+    let session_id = env.session(arena_id, player).map_or(0, |s| s.id);
+    ix::settle_session(
+        &env.server.pubkey(),
+        player,
+        arena_id,
+        env.config().current_season,
+        SettleArgs {
+            session_id,
+            payout,
+            score: 0,
+            kills: 0,
+            xp: 0,
+        },
+        None,
+        player_token,
+        &env.mint,
+        &env.token_program,
+    )
+}
+
+/// Settle/refund of arena 1's session with arena 2's vault, or of arena 2 with arena 1's
+/// session: the vault / session seeds fail (2006).
+#[test]
+fn settle_and_refund_reject_another_arenas_vault_or_session() {
+    let (mut env, a) = two_arena_env();
+    let server = env.server.insecure_clone();
+    let token = Some(env.player_ata(&a.pubkey()));
+    let seeds = AnchorErrorCode::ConstraintSeeds;
+
+    let mut settle = settle_ix(&env, &a.pubkey(), 1, 1_000, token);
+    settle.accounts[3].pubkey = vault_pda(&arena_pda(2));
+    assert_anchor_error(env.send(&[settle], &[&server]), seeds);
+    let mut settle = settle_ix(&env, &a.pubkey(), 2, 1_000, token);
+    settle.accounts[4].pubkey = session_pda(&arena_pda(1), &a.pubkey());
+    assert_anchor_error(env.send(&[settle], &[&server]), seeds);
+
+    env.warp(SESSION_REFUND_TIMEOUT_SECS + 1);
+    let (mint, program) = (env.mint, env.token_program);
+    let mut refund = ix::refund_session(&a.pubkey(), 1, None, &mint, &program);
+    refund.accounts[3].pubkey = vault_pda(&arena_pda(2));
+    assert_anchor_error(env.send(&[refund], &[&a]), seeds);
+    let mut refund = ix::refund_session(&a.pubkey(), 2, None, &mint, &program);
+    refund.accounts[4].pubkey = session_pda(&arena_pda(1), &a.pubkey());
+    assert_anchor_error(env.send(&[refund], &[&a]), seeds);
+
+    // Nothing moved: both sessions are still open and settle normally.
+    assert_eq!(env.arena(1).open_sessions, 1);
+    assert_eq!(env.arena(2).open_sessions, 1);
+    assert_ok(env.settle(&a.pubkey(), 1, 1_000, 0, 0, 0));
+    assert_ok(env.settle(&a.pubkey(), 2, 1_000, 0, 0, 0));
+}
+
+/// A session refunded before settlement is closed: the late settlement finds no account
+/// (3012) and pays nothing.
+#[test]
+fn settle_after_an_unsettled_refund_fails() {
+    let (mut env, a) = two_arena_env();
+    let server = env.server.insecure_clone();
+    let token = Some(env.player_ata(&a.pubkey()));
+    let settle = settle_ix(&env, &a.pubkey(), 1, 1_000, token);
+    env.warp(SESSION_REFUND_TIMEOUT_SECS + 1);
+    assert_ok(env.refund(&a, 1));
+    let before = env.tokens(&env.player_ata(&a.pubkey()));
+    assert_anchor_error(
+        env.send(&[settle], &[&server]),
+        AnchorErrorCode::AccountNotInitialized,
+    );
+    assert_eq!(env.tokens(&env.player_ata(&a.pubkey())), before);
+    assert_eq!(env.tokens(&vault_pda(&arena_pda(1))), 0);
+}
+
+/// The same instruction twice in one transaction: the first closes the session, the second
+/// finds no account (3012), and the transaction reverts as a whole.
+#[test]
+fn settle_and_refund_cannot_run_twice_in_one_transaction() {
+    let (mut env, a) = two_arena_env();
+    let server = env.server.insecure_clone();
+    let token = Some(env.player_ata(&a.pubkey()));
+    let (mint, program) = (env.mint, env.token_program);
+    let not_init = AnchorErrorCode::AccountNotInitialized;
+
+    let settle = settle_ix(&env, &a.pubkey(), 1, 1_000, token);
+    assert_anchor_error(
+        env.send(&[settle.clone(), settle.clone()], &[&server]),
+        not_init,
+    );
+    // settle (pay) then refund: the refund needs the player's signature too.
+    let refund = ix::refund_session(&a.pubkey(), 1, None, &mint, &program);
+    env.warp(SESSION_REFUND_TIMEOUT_SECS + 1);
+    assert_anchor_error(
+        env.send(&[settle, refund.clone()], &[&server, &a]),
+        not_init,
+    );
+    assert_anchor_error(env.send(&[refund.clone(), refund], &[&a]), not_init);
+
+    // All three reverted: the session is still open with its stake.
+    assert!(env.session(1, &a.pubkey()).is_some());
+    assert_eq!(env.tokens(&vault_pda(&arena_pda(1))), 1_000);
+    assert_ok(env.refund(&a, 1));
+}
+
+/// The arena vault as the refund's `player_token` → 2040.
+#[test]
+fn refund_rejects_the_vault_as_player_token() {
+    let (mut env, a) = two_arena_env();
+    env.warp(SESSION_REFUND_TIMEOUT_SECS + 1);
+    let (mint, program) = (env.mint, env.token_program);
+    let mut refund = ix::refund_session(&a.pubkey(), 1, None, &mint, &program);
+    refund.accounts[5].pubkey = vault_pda(&arena_pda(1));
+    assert_anchor_error(
+        env.send(&[refund], &[&a]),
+        AnchorErrorCode::ConstraintDuplicateMutableAccount,
+    );
+}
+
+/// A `player_token` of somebody else (2015) or of another mint (2014), for settle and refund.
+#[test]
+fn settle_and_refund_reject_a_foreign_player_token() {
+    let (mut env, a) = two_arena_env();
+    let server = env.server.insecure_clone();
+    let b = env.token_player("b", 0);
+    let others = env.player_ata(&b.pubkey());
+    let other_mint = env.create_mint(MintKind::Spl, None);
+    let saved = env.mint;
+    env.mint = other_mint;
+    let wrong_mint = env.create_ata(&a.pubkey());
+    env.mint = saved;
+    let (mint, program) = (env.mint, env.token_program);
+
+    for (token, err) in [
+        (others, AnchorErrorCode::ConstraintTokenOwner),
+        (wrong_mint, AnchorErrorCode::ConstraintTokenMint),
+    ] {
+        let settle = settle_ix(&env, &a.pubkey(), 1, 1_000, Some(token));
+        assert_anchor_error(env.send(&[settle], &[&server]), err);
+    }
+    env.warp(SESSION_REFUND_TIMEOUT_SECS + 1);
+    for (token, err) in [
+        (others, AnchorErrorCode::ConstraintTokenOwner),
+        (wrong_mint, AnchorErrorCode::ConstraintTokenMint),
+    ] {
+        let mut refund = ix::refund_session(&a.pubkey(), 1, None, &mint, &program);
+        refund.accounts[5].pubkey = token;
+        assert_anchor_error(env.send(&[refund], &[&a]), err);
+    }
+    assert_eq!(env.tokens(&others), 0);
+    assert_eq!(env.tokens(&wrong_mint), 0);
+}

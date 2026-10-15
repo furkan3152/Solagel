@@ -60,9 +60,15 @@ pub fn mul_bps(amount: u64, bps: u16) -> Result<u64> {
     // Bound: `base` is a non-zero constant; `r < 10⁴` and `bps < 2¹⁶`, so `r·bps < 2³⁰`.
     #[allow(clippy::arithmetic_side_effects)]
     let (q, rest) = (amount / base, (amount % base) * bps / base);
-    q.checked_mul(bps)
-        .and_then(|v| v.checked_add(rest))
-        .ok_or_else(|| err(MATH_OVERFLOW))
+    // `q·bps` overflow test by division: `checked_mul` would link the 128-bit `__multi3`.
+    // (`checked_div` is `None` only for `bps = 0`, where `q·bps = 0` cannot overflow.)
+    if matches!(u64::MAX.checked_div(bps), Some(max) if q > max) {
+        return Err(err(MATH_OVERFLOW));
+    }
+    // Bound: `q·bps ≤ u64::MAX` (checked just above; `bps = 0` gives 0).
+    #[allow(clippy::arithmetic_side_effects)]
+    let whole = q * bps;
+    whole.checked_add(rest).ok_or_else(|| err(MATH_OVERFLOW))
 }
 
 /// How a stake payout is split (base units of the game token).

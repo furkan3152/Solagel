@@ -10,12 +10,12 @@
 //! | `vault`, `season_vault: InterfaceAccount<TokenAccount>`                       | `token::load_token_account`    | 3012 / 3007 / ProgramError |
 //! | `token_mint: InterfaceAccount<Mint>`                                          | `token::load_mint`             | 3012 / 3007 / ProgramError |
 //! | `token_program: Interface<TokenInterface>`                                    | `token::check_token_program`   | 3008 / 3009 |
-//! | duplicate `mut` accounts (vault, season_vault)                                | `stake::check_distinct`        | 2040 |
+//! | duplicate `mut` accounts (vault, season_vault)                                | `stake::check_distinct2`       | 2040 |
 //! | `config: seeds = [CONFIG_SEED], bump = config.bump`, `has_one = admin @ Unauthorized` | `check_admin_config`   | 2006 / Unauthorized |
 //! | `arena: seeds = [ARENA_SEED, arena.id LE], bump = arena.bump` (not `mut`)     | `stake::check_arena`           | 2006 |
 //! | `vault: seeds = [VAULT_SEED, arena], bump = arena.vault_bump`, `mut`          | `stake::check_arena_vault`     | 2006 / 2000 |
 //! | `season: seeds = [SEASON_SEED, config.current_season LE], bump = season.bump`, `mut` | `stake::check_current_season` | 2006 / 2000 |
-//! | `season_vault: seeds = [SEASON_VAULT_SEED], bump = config.season_vault_bump`, `mut` | `stake::check_global_vault` | 2006 / 2000 |
+//! | `season_vault: seeds = [SEASON_VAULT_SEED], bump = config.season_vault_bump`, `mut` | `check_pda_seeds` | 2006 / 2000 |
 //! | `token_mint` / `token_program: address = config.*`                            | `stake::check_token_addresses` | 2012 |
 //! | `require!(!arena.enabled)`                                                    | same                           | ArenaBusy |
 //! | `require!(arena.open_sessions == 0)` (finalized sessions count as open)       | same                           | ArenaHasOpenSessions |
@@ -28,7 +28,7 @@ use {
     super::{check_admin_config, stake},
     crate::error::Result,
     crate::{
-        accounts::{data, kind, parse},
+        accounts::{check_pda_seeds, data, kind, parse},
         borsh::{rd_bool, rd_u16, rd_u32, rd_u64, rd_u8, wr_u64},
         constants::SEASON_VAULT_SEED,
         error::{require, ARENA_BUSY, ARENA_HAS_OPEN_SESSIONS},
@@ -55,7 +55,7 @@ pub fn process(accounts: &[AccountView], _args: &[u8]) -> Result {
                 kind::TOKEN_PROGRAM,
             ],
         )?;
-    stake::check_distinct(&[vault, season_vault])?;
+    stake::check_distinct2(vault, season_vault)?;
     // SAFETY: `parse` checked each type (and so each length); distinct program-account types,
     // and the vault (read only) differs from the season vault (above).
     let c = unsafe { data::<{ config::SPACE }>(config_acc) };
@@ -67,10 +67,11 @@ pub fn process(accounts: &[AccountView], _args: &[u8]) -> Result {
     stake::check_arena(arena_acc, r, false)?;
     stake::check_arena_vault(vault, arena_acc, r)?;
     stake::check_current_season(season_acc, sn, c)?;
-    stake::check_global_vault(
+    check_pda_seeds(
         season_vault,
-        SEASON_VAULT_SEED,
+        &[SEASON_VAULT_SEED],
         rd_u8(c, config::SEASON_VAULT_BUMP),
+        true,
     )?;
     stake::check_token_addresses(c, token_mint, token_program)?;
 

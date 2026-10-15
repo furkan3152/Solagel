@@ -168,14 +168,32 @@ fn chunk<const N: usize>(d: &[u8], off: usize) -> [u8; N] {
     }
 }
 
-/// Copies `src` to `d[off..]` when it fits (no panic path).
+/// Copies `src` to `d[off..]`. A write that does not fit aborts the program (it is never
+/// dropped silently): every caller writes a constant field offset into a fixed-size array,
+/// so the check folds away and the abort is unreachable (the layout tests pin each offset).
 #[inline(always)]
 fn put(d: &mut [u8], off: usize, src: &[u8]) {
-    if let Some(dst) = d.get_mut(off..off.wrapping_add(src.len())) {
+    match d.get_mut(off..off.wrapping_add(src.len())) {
         // SAFETY: `dst` is exactly `src.len()` bytes; the two cannot overlap (`src` is never
         // a part of `d` here).
-        unsafe { core::ptr::copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr(), src.len()) };
+        Some(dst) => unsafe {
+            core::ptr::copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr(), src.len())
+        },
+        None => write_out_of_range(),
     }
+}
+
+/// A field write past the end of its buffer: abort (`sol_panic_`-free, no message).
+#[cold]
+#[inline(never)]
+fn write_out_of_range() -> ! {
+    #[cfg(target_os = "solana")]
+    // SAFETY: `abort` ends the program; nothing runs after it.
+    unsafe {
+        pinocchio::syscalls::abort()
+    }
+    #[cfg(not(target_os = "solana"))]
+    panic!("borsh: field write out of range")
 }
 
 #[inline(always)]
@@ -387,6 +405,13 @@ mod tests {
                 .collect();
             check(text.as_bytes());
         }
+    }
+
+    #[test]
+    #[should_panic(expected = "field write out of range")]
+    fn out_of_range_write_aborts() {
+        let mut d = [0u8; 8];
+        wr_u64(&mut d, 1, 7);
     }
 
     #[test]
