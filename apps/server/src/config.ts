@@ -64,8 +64,12 @@ export interface ServerConfig {
      * when it is shorter (the localnet e2e uses 5 s to reach the refund path quickly).
      */
     staleSessionAfterS: number;
-    /** Re-check interval of a payout waiting for the player's token account (`NO_ATA_RETRY_S`, default 300). */
-    noAtaRetryS: number;
+    /**
+     * `STALE_SWEEP_ACK=1`: the operator reviewed a quarantined journal (`journal.json.corrupt-*`)
+     * and allows the stale-session sweeper to run again (M9). Without it the sweeper stays off
+     * after a quarantine, so it cannot refund sessions whose real result was in the lost journal.
+     */
+    staleSweepAck: boolean;
   };
 }
 
@@ -189,12 +193,19 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       priorityFeeMicroLamports: int(env.PRIORITY_FEE_MICROLAMPORTS, 5000),
       tokenSymbol: env.TOKEN_SYMBOL?.trim() || TOKEN_SYMBOL_DEFAULT,
       staleSessionAfterS: Math.max(1, int(env.STALE_SESSION_AFTER_S, 15 * 60)),
-      noAtaRetryS: Math.max(1, int(env.NO_ATA_RETRY_S, 5 * 60)),
+      staleSweepAck: bool(env.STALE_SWEEP_ACK, false),
     },
   };
 }
 
-/** The chain status sent to browsers (`welcome`, `/api/config`): the gateway's view plus the marketplace links. */
-export function publicChainStatus(status: ChainStatus, cfg: Pick<ServerConfig, 'markets'>): ChainStatus {
-  return Object.keys(cfg.markets).length > 0 ? { ...status, markets: { ...cfg.markets } } : status;
+/**
+ * The chain status sent to browsers (`welcome`, `/api/config`): the gateway's view plus the
+ * marketplace links and the Pass power this server applies (I3: the web discloses these
+ * numbers, not its built-in defaults).
+ */
+export function publicChainStatus(status: ChainStatus, cfg: Pick<ServerConfig, 'markets'> & Partial<Pick<ServerConfig, 'pass'>>): ChainStatus {
+  let out = status;
+  if (Object.keys(cfg.markets).length > 0) out = { ...out, markets: { ...cfg.markets } };
+  if (cfg.pass) out = { ...out, passPower: { startMassMul: cfg.pass.startMassMul, cashoutMs: cfg.pass.cashoutMs } };
+  return out;
 }

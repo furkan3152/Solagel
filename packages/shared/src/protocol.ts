@@ -179,6 +179,17 @@ export interface ChainStatus {
   pass: PassStatus | null;
   /** Collection pages on the marketplaces (added by the server from its config; absent = none). */
   markets?: MarketUrls;
+  /**
+   * The Pass power this server actually applies (`PASS_START_MASS_MUL`, `PASS_CASHOUT_MS`),
+   * added from its config. Clients fall back to `RULES` when absent (older servers).
+   */
+  passPower?: PassPower;
+}
+
+/** Slana Pass power in play: start-mass multiplier and cash-out channel time. */
+export interface PassPower {
+  startMassMul: number;
+  cashoutMs: number;
 }
 
 export interface ProfileSummary {
@@ -297,6 +308,11 @@ export type ServerMessage =
       payout: number;
       fee?: number;
       net?: number;
+      /**
+       * Ruling R24: settled without a usable token account. The result is final but `net`
+       * waits in the arena vault: the player collects it ("Collect payout").
+       */
+      collect?: boolean;
     }
   | { t: 'event'; kind: 'coinrain'; state: 'start' | 'end'; ms?: number }
   | { t: 'event'; kind: 'airdrop'; state: 'start'; x: number; y: number; powerUp: PowerUpType }
@@ -316,6 +332,7 @@ export type ErrorCode =
   | 'auth_failed'
   | 'no_session'
   | 'session_busy'
+  | 'payout_waiting'
   | 'skin_locked'
   | 'pass_required'
   | 'pass_invalid'

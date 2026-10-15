@@ -66,9 +66,19 @@ describe('MARKET_URLS', () => {
 });
 
 describe('sweeper tunables', () => {
-  it('default to 15 min / 5 min and read STALE_SESSION_AFTER_S / NO_ATA_RETRY_S', () => {
-    expect(loadConfig({}).chain).toMatchObject({ staleSessionAfterS: 900, noAtaRetryS: 300 });
-    expect(loadConfig({ STALE_SESSION_AFTER_S: '5', NO_ATA_RETRY_S: '2' }).chain).toMatchObject({ staleSessionAfterS: 5, noAtaRetryS: 2 });
-    expect(loadConfig({ STALE_SESSION_AFTER_S: '0', NO_ATA_RETRY_S: '-4' }).chain).toMatchObject({ staleSessionAfterS: 1, noAtaRetryS: 1 });
+  it('default to 15 min and read STALE_SESSION_AFTER_S / STALE_SWEEP_ACK', () => {
+    expect(loadConfig({}).chain).toMatchObject({ staleSessionAfterS: 900, staleSweepAck: false });
+    expect(loadConfig({ STALE_SESSION_AFTER_S: '5', STALE_SWEEP_ACK: '1' }).chain).toMatchObject({ staleSessionAfterS: 5, staleSweepAck: true });
+    expect(loadConfig({ STALE_SESSION_AFTER_S: '0' }).chain).toMatchObject({ staleSessionAfterS: 1 });
+  });
+});
+
+describe('Pass power in the public status (I3)', () => {
+  it('publishes the configured Pass power, not the RULES defaults', () => {
+    const cfg = loadConfig({ PASS_START_MASS_MUL: '1.3', PASS_CASHOUT_MS: '1500' });
+    expect(publicChainStatus(status, cfg).passPower).toEqual({ startMassMul: 1.3, cashoutMs: 1500 });
+    expect(publicChainStatus(status, loadConfig({})).passPower).toEqual({ startMassMul: 1.15, cashoutMs: 2000 });
+    // without a pass config (older callers) nothing is added
+    expect('passPower' in publicChainStatus(status, { markets: {} })).toBe(false);
   });
 });

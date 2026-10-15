@@ -10,6 +10,7 @@ import {
   type PassStatus,
   type ServerMessage,
   type SnapshotData,
+  siwsMessage,
 } from '@slana/shared';
 import bs58 from 'bs58';
 import nacl from 'tweetnacl';
@@ -44,7 +45,15 @@ class FakeChain implements ChainGateway {
   async season(): Promise<SeasonView | null> {
     return null;
   }
+  /** Runs inside `getPass` (lets a test act while a join awaits). */
+  onGetPass: (() => void) | null = null;
   async getPass(asset: string): Promise<ChainPass | null> {
+    const hook = this.onGetPass;
+    this.onGetPass = null;
+    if (hook) {
+      await sleep(20);
+      hook();
+    }
     return this.passes.get(asset) ?? null;
   }
   async ownedPasses(wallet: string): Promise<OwnedPassInfo[]> {
@@ -133,6 +142,8 @@ function session(player: string, opts: Partial<ChainSession> = {}): ChainSession
     openedAt: Math.floor(Date.now() / 1000),
     hasPass: false,
     passAsset: null,
+    finalized: false,
+    owed: 0,
     ...opts,
   };
 }
@@ -288,7 +299,14 @@ describe('server over websocket', () => {
     const kp = nacl.sign.keyPair();
     const pubkey = bs58.encode(kp.publicKey);
     const res = await fetch(`http://127.0.0.1:${port}/api/auth/nonce?pubkey=${pubkey}`);
-    const { message } = (await res.json()) as { message: string };
+    const body = (await res.json()) as { message: string; domain: string; uri: string; chainId: string; nonce: string; issuedAt: string };
+    const { message } = body;
+    // M1: SIWS domain = request host (no PUBLIC_URL here), with URI and Chain ID lines; the client can rebuild it
+    expect(body.domain).toBe(`127.0.0.1:${port}`);
+    expect(message.split('\n')[0]).toBe(`127.0.0.1:${port} wants you to sign in with your Solana account:`);
+    expect(message).toContain(`\nURI: http://127.0.0.1:${port}\n`);
+    expect(message).toContain('\nChain ID: solana:localnet\n');
+    expect(siwsMessage({ domain: body.domain, address: pubkey, uri: body.uri, chainId: body.chainId, nonce: body.nonce, issuedAt: body.issuedAt })).toBe(message);
     const c = await Client.connect(port);
     c.send({ t: 'hello', v: PROTOCOL_VERSION });
     await c.wait('welcome');
@@ -414,6 +432,38 @@ describe('server over websocket', () => {
     expect(bad.status).toBe(400);
     const config = (await (await fetch(`http://127.0.0.1:${port}/api/config`)).json()) as { chain: { markets?: Record<string, string> } };
     expect(config.chain.markets).toEqual({ tensor: 'https://www.tensor.trade/trade/slana_pass' });
+  });
+
+  it('R24: a finalized session cannot be played: collect the payout first', async () => {
+    const pubkey = newWallet();
+    const c = await signedIn(pubkey);
+    chain.sessions.set(`1:${pubkey}`, session(pubkey, { finalized: true, owed: 7_000_000 }));
+    c.send({ t: 'join', room: 'arena:1', name: 'Collector', skin: 0 });
+    const err = await c.wait('error', 2000, (m) => m.code === 'payout_waiting');
+    expect(err.message).toMatch(/Collect your payout/);
+    expect(c.msgs.some((m) => m.t === 'joined')).toBe(false);
+    chain.sessions.delete(`1:${pubkey}`);
+    c.close();
+  });
+
+  it('I1: a settlement queued while the join awaits blocks the join', async () => {
+    const pubkey = newWallet();
+    const c = await signedIn(pubkey);
+    const asset = newWallet();
+    chain.passes.set(asset, { owner: pubkey, number: 12 });
+    const s = session(pubkey, { hasPass: true, passAsset: asset });
+    chain.sessions.set(`1:${pubkey}`, s);
+    const now = Date.now();
+    // the stale sweeper queues a refund for this session while the join awaits the Pass lookup
+    chain.onGetPass = () =>
+      app.journal.enqueue({ kind: 'settle', key: s.address, player: pubkey, arenaId: 1, session: s.address, sessionId: s.id, payout: s.entryFee, score: 0, kills: 0, xp: 0, reason: 'stale', attempts: 0, nextAttemptAt: now + 60_000, createdAt: now });
+    c.send({ t: 'join', room: 'arena:1', name: 'Racer', skin: 0 });
+    const err = await c.wait('error', 2000, (m) => m.code === 'no_session');
+    expect(err.message).toMatch(/still being settled/);
+    expect(c.msgs.some((m) => m.t === 'joined')).toBe(false);
+    app.journal.remove(s.address);
+    chain.sessions.delete(`1:${pubkey}`);
+    c.close();
   });
 
   it('arena join requires session and applies hasPass power', async () => {
@@ -545,13 +595,12 @@ describe('server over websocket', () => {
     b.close();
   });
 
-  it('lists pending settlements with needsTokenAccount', async () => {
+  it('lists pending settlements', async () => {
     const pubkey = newWallet();
     const now = Date.now();
     app.journal.enqueue({ kind: 'settle', key: `Owed-${pubkey}`, player: pubkey, arenaId: 1, session: `Owed-${pubkey}`, sessionId: 9, payout: 12_000_000, score: 1, kills: 0, xp: 0, attempts: 0, nextAttemptAt: now + 60_000, createdAt: now });
-    app.journal.retryLater(`Owed-${pubkey}`, 'player token account missing', now, { delayMs: 300_000, needsTokenAccount: true });
     const res = (await (await fetch(`http://127.0.0.1:${port}/api/pending?wallet=${pubkey}`)).json()) as unknown;
-    expect(res).toEqual({ pending: [{ key: `Owed-${pubkey}`, arenaId: 1, payout: 12_000_000, needsTokenAccount: true }] });
+    expect(res).toEqual({ pending: [{ key: `Owed-${pubkey}`, arenaId: 1, payout: 12_000_000 }] });
     expect((await fetch(`http://127.0.0.1:${port}/api/pending?wallet=nope`)).status).toBe(400);
     app.journal.remove(`Owed-${pubkey}`);
   });

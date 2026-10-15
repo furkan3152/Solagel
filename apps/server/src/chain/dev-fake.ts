@@ -84,6 +84,8 @@ export class DevFakeChain implements ChainGateway {
         openedAt: Math.floor(Date.now() / 1000),
         hasPass,
         passAsset: hasPass ? `DevPass${passNumberOf(player)}x${player}` : null,
+        finalized: false,
+        owed: 0,
       };
       this.sessions.set(key, s);
       this.byAddress.set(s.address, s);
