@@ -151,6 +151,14 @@ export class Gateway {
    * New arena joins are refused from `joinsCloseAt` until the round ends (`round_closed` with
    * `opensAt` = the end). Returns true when refused. Reconnects of a live staker never come here.
    */
+  /**
+   * The returning player's ticket was settled at a bell while they were away: their till was paid.
+   * The memo stays (a reload asks again) until it expires or a newer ticket is seen.
+   */
+  private roundEnded(conn: Conn): void {
+    this.error(conn, 'round_ended', 'The round ended while you were away. Your ticket was settled at the bell.');
+  }
+
   private roundClosed(conn: Conn): boolean {
     const now = this.rooms.now();
     const r = this.rooms.roundWindow(now);
@@ -359,8 +367,26 @@ export class Gateway {
       const existing = this.rooms.findArenaStake(target.arenaId, conn.wallet);
       if (existing) {
         if (conn.player === null && existing.room.reattach(conn, existing.entry.pid)) return;
+        // `reattach` rings a due bell first: the ticket may have been settled at that bell just now
+        if (!this.rooms.findArenaStake(target.arenaId, conn.wallet) && this.rooms.bellSettled(target.arenaId, conn.wallet)) {
+          this.roundEnded(conn);
+          return;
+        }
         this.error(conn, 'session_busy', 'You are already playing in this arena.');
         return;
+      }
+      // a player back after a bell that settled their ticket while they were away (AFK)
+      const bell = this.rooms.bellSettled(target.arenaId, conn.wallet);
+      if (bell) {
+        const settling = this.journal.pending.some((p) => p.key === bell.session);
+        // undefined: the chain could not be read (or this connection is rate-limited); the normal path below decides then
+        const live = settling ? null : conn.allowChainOp() ? await this.chain.getSession(target.arenaId, conn.wallet).catch(() => undefined) : undefined;
+        if (settling || live === null || (live && live.id === bell.sessionId && !live.finalized)) {
+          this.roundEnded(conn);
+          return;
+        }
+        // a newer ticket (or a payout waiting to be collected): the usual checks apply
+        this.rooms.forgetBellSettled(target.arenaId, conn.wallet);
       }
       // a new join (not the AFK return above): only while the round's joins are open
       if (this.roundClosed(conn)) return;

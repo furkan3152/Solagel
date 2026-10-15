@@ -380,7 +380,9 @@ export type ErrorCode =
   /** Arena joins are closed for the rest of the round; `opensAt` says when the next one opens. */
   | 'round_closed'
   /** Paid arenas have no cash-out: everyone alive is paid at the round end. */
-  | 'no_cashout';
+  | 'no_cashout'
+  /** The ticket of a returning (AFK) player was settled at the bell while they were away: the till was paid. */
+  | 'round_ended';
 
 /** Parse a join target into its parts. Returns null for malformed input. */
 export function parseJoinTarget(

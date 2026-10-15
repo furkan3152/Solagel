@@ -458,6 +458,73 @@ describe('server over websocket', () => {
     b.close();
   }, 15_000);
 
+  it('an AFK staker back after the bell hears round_ended (not session_busy), until a new ticket opens', async () => {
+    const w = newWallet();
+    const first = session(w);
+    chain.sessions.set(`1:${w}`, first);
+    const a = await signedIn(w);
+    a.send({ t: 'join', room: 'arena:1', name: 'Away', skin: 0 });
+    await a.wait('joined');
+    a.close();
+    await sleep(150);
+
+    // back right at the bell, before the room's next tick: the reattach rings the bell first
+    const r = roundAt(serverNow());
+    jumpTo(r.endsAt);
+    const b = await signedIn(w);
+    b.send({ t: 'join', room: 'arena:1', name: 'Away', skin: 0 });
+    const err = await b.wait('error', 2000, (m) => m.code === 'round_ended' || m.code === 'session_busy');
+    expect(err.message).toMatch(/round ended while you were away/);
+    expect(err.code).toBe('round_ended');
+    expect(b.msgs.some((m) => m.t === 'roundOver' || m.t === 'joined')).toBe(false);
+    expect(app.journal.settlements().find((p) => p.key === first.address)).toMatchObject({ reason: 'round', player: w });
+
+    // a later return, while the settlement is pending: still round_ended (the bell's memo)
+    const c = await signedIn(w);
+    c.send({ t: 'join', room: 'arena:1', name: 'Away', skin: 0 });
+    expect((await c.wait('error', 2000, (m) => m.code === 'round_ended' || m.code === 'no_session')).code).toBe('round_ended');
+    c.close();
+
+    // a ticket played until a bell rung by the room's own tick while its player is away
+    const awayAtBell = async (sess: ChainSession) => {
+      chain.sessions.set(`1:${w}`, sess);
+      const d = await signedIn(w);
+      d.send({ t: 'join', room: 'arena:1', name: 'Away', skin: 0 });
+      await d.wait('joined');
+      d.close();
+      await sleep(150);
+      jumpTo(roundAt(serverNow()).endsAt);
+      await sleep(150);
+      expect(app.journal.settlements().some((p) => p.key === sess.address)).toBe(true);
+      app.journal.remove(sess.address); // the payout landed
+    };
+
+    // back after the payout landed and the session closed on chain: round_ended
+    app.journal.remove(first.address);
+    await awayAtBell(session(w));
+    chain.sessions.delete(`1:${w}`);
+    const e = await signedIn(w);
+    e.send({ t: 'join', room: 'arena:1', name: 'Away', skin: 0 });
+    expect((await e.wait('error', 2000, (m) => m.code === 'round_ended' || m.code === 'no_session')).code).toBe('round_ended');
+    e.close();
+
+    // a fresh ticket bought after an away bell plays normally
+    await awayAtBell(session(w));
+    const fresh = session(w);
+    chain.sessions.set(`1:${w}`, fresh);
+    const f = await signedIn(w);
+    f.send({ t: 'join', room: 'arena:1', name: 'Away', skin: 0 });
+    expect((await f.wait('joined', 2000)).session).toBe(fresh.address);
+    expect(app.rooms.bellSettled(1, w)).toBeNull();
+    f.close();
+    await sleep(150);
+    jumpTo(roundAt(serverNow()).endsAt);
+    await sleep(150);
+    for (const p of app.journal.pending.filter((x) => x.kind === 'settle' && x.player === w)) app.journal.remove(p.key);
+    chain.sessions.delete(`1:${w}`);
+    b.close();
+  }, 15_000);
+
   it('stake players who disconnect stay AFK and can reconnect', async () => {
     const kp = nacl.sign.keyPair();
     const pubkey = bs58.encode(kp.publicKey);
