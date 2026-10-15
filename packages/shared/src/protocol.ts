@@ -337,7 +337,7 @@ export type ServerMessage =
   // clients match a receipt by `session`. Both are optional so older servers stay readable (ruling R16).
   | {
       t: 'settled';
-      kind: 'cashout' | 'death' | 'refund';
+      kind: 'payout' | 'death' | 'refund';
       session?: string;
       arenaId?: number;
       signature: string;

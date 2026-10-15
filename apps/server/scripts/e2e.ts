@@ -548,7 +548,7 @@ async function main(): Promise<void> {
     const preview = splitPayout(payout, hSession.entryFee, true, { ...config, passFeeBps: snapshotBps });
     assert(split.fee === preview.fee, 'session split differs from the snapshot preview');
     assert(split.fee === (BigInt(payout) - hSession.entryFee) * BigInt(snapshotBps) / 10_000n, 'fee is not 2 % of the profit');
-    assert(settled.kind === 'cashout' && settled.session === hSession.address && settled.payout === payout, `settled ${j(settled)}`);
+    assert(settled.kind === 'payout' && settled.session === hSession.address && settled.payout === payout, `settled ${j(settled)}`);
     assert(settled.fee === Number(split.fee) && settled.net === Number(split.player), `settled fee ${settled.fee} / net ${settled.net}, expected ${split.fee} / ${split.player}`);
     units.push({ label: 'settle_session (server, round end, Pass)', used: await txUnits(settled.signature), limit: null });
     await waitUntil('the hunter session to close', 30_000, async () => !(await client.fetchSession(passArenaId, hunter.publicKey)));

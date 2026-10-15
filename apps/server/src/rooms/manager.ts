@@ -256,7 +256,7 @@ export class RoomManager {
   /**
    * Vault guard (ruling R20), checked when an arena is attached (no instance yet in this
    * process): its on-chain vault must hold at least what the journal says it owes (loot +
-   * pending cash-outs + live tickets). A vault swept or drained while loot was journaled
+   * pending payouts + loot sweeps + live tickets). A vault swept or drained while loot was journaled
    * would otherwise pay old loot with other players' entry fees, or fail `InsufficientPot`.
    * An underfunded arena stays disabled (re-checked on every attach attempt) and is logged
    * loudly once.
@@ -271,7 +271,7 @@ export class RoomManager {
     if (!this.underfunded.has(arenaId)) {
       const msg =
         `!!! arena #${arenaId} KEPT DISABLED: its vault holds ${arena.pot} raw units but the journal owes ${owed} ` +
-        `(loot + pending cash-outs + live tickets). Was the arena swept? Do not re-enable a swept arena; ` +
+        `(loot + pending payouts + loot sweeps + live tickets). Was the arena swept? Do not re-enable a swept arena; ` +
         `top up the vault or settle the journal by hand before attaching it.`;
       this.underfunded.set(arenaId, msg);
       this.deps.log(msg);

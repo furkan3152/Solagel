@@ -38,7 +38,7 @@ export interface DevFakePassActions {
 
 /**
  * DEV ONLY (`DEV_FAKE_CHAIN=1` with `NODE_ENV=development`, see `assertDevFakeChainAllowed`). An in-memory chain so
- * the arena flow (ticket → play → death / cash-out → settlement) can be driven
+ * the arena flow (ticket → play → death / round-end payout → settlement) can be driven
  * locally without a validator:
  *  - every signed-in wallet has an open ticket in every default arena; tickets of
  *    Pass arenas are bought "with" the wallet's fake Pass;

@@ -263,7 +263,7 @@ function Block({ block: b, c, live }: { block: DocBlock; c: DocsContent; live: s
   }
 }
 
-/** The worked example: a 1.000-token ticket cashed out at 2.000, without and with a Pass. */
+/** The worked example: a 1.000-token ticket paid out at 2.000, without and with a Pass. */
 function FeeExample({ c, live }: { c: DocsContent; live: string | null }) {
   const { entry, cashout, normal, pass } = FACTS.example;
   const r = c.receipt;

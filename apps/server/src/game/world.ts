@@ -475,7 +475,6 @@ export class World {
   }
 
   splitPlayer(p: Player): void {
-    if (p.cashoutUntil > 0) return;
     const sorted = [...p.cells].sort((a, b) => b.mass - a.mass);
     for (const c of sorted) {
       if (p.cells.length >= RULES.maxCells) break;
@@ -496,7 +495,6 @@ export class World {
   }
 
   private ejectFrom(p: Player): void {
-    if (p.cashoutUntil > 0) return;
     for (const c of p.cells) {
       if (c.mass < RULES.ejectMinMass) continue;
       const { dx, dy } = this.aimDir(p, c);
@@ -541,7 +539,7 @@ export class World {
     const decay = boostDecayFactor(dtMs);
     for (const p of this.players.values()) {
       if (p.cells.length === 0) continue;
-      const speedMul = (p.pumpUntil > this.now ? RULES.pumpSpeedMul : 1) * (p.cashoutUntil > 0 ? 0.65 : 1);
+      const speedMul = p.pumpUntil > this.now ? RULES.pumpSpeedMul : 1;
       for (const c of p.cells) {
         const ox = c.x;
         const oy = c.y;
@@ -941,7 +939,6 @@ export class World {
       if (!p.alive) continue;
       let flags = 0;
       if (p.shieldUntil > this.now) flags |= CellFlag.Shield;
-      if (p.cashoutUntil > 0) flags |= CellFlag.CashingOut;
       if (p.magnetUntil > this.now) flags |= CellFlag.Magnet;
       if (p.pumpUntil > this.now) flags |= CellFlag.Pump;
       if (p.afk) flags |= CellFlag.Afk;
