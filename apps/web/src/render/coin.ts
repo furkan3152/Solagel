@@ -12,8 +12,6 @@ export interface CoinOpts {
   flags?: number;
   seed?: number;
   alpha?: number;
-  /** Cash-out progress 0..1 (own cells while channelling). */
-  cashout?: number;
   /** Cached halftone shade provider (see `SpriteCache.halftone`). */
   halftone?: (r: number, spacing: number) => CanvasImageSource | null;
   /** Live-renderer speed-ups (see `CoinState` in @slana/art). */

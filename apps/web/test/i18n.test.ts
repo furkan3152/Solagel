@@ -26,7 +26,9 @@ const keys = new Set(Object.keys(en));
 /** The server's `ErrorCode` union, read from the shared protocol source (it is a type only). */
 function errorCodes(): string[] {
   const proto = readFileSync(resolve(process.cwd(), '../../packages/shared/src/protocol.ts'), 'utf8');
-  const union = /export type ErrorCode =([^;]+);/.exec(proto)?.[1] ?? '';
+  // comments inside the union may hold a ';' of their own: drop them first
+  const code = proto.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  const union = /export type ErrorCode =([^;]+);/.exec(code)?.[1] ?? '';
   return [...union.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
 }
 
@@ -47,7 +49,7 @@ describe('the English string table', () => {
       ...Object.values(PowerUpType).map((p) => `pu.${p}`),
       ...errorCodes().map((c) => `err.${c}`),
     ];
-    expect(errorCodes().length).toBeGreaterThan(5);
+    expect(errorCodes()).toEqual(expect.arrayContaining(['round_closed', 'no_cashout', 'round_ended']));
     expect(built.filter((k) => !keys.has(k))).toEqual([]);
   });
 

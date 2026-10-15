@@ -369,6 +369,20 @@
   margin-right: 6px;
   vertical-align: 1px;
 }
+.kl-ticket__round {
+  display: block;
+  text-transform: none;
+  letter-spacing: 0.01em;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+/* the final minute: joins closed until the next round (mustard-text: 5.26 on paper, 6.14 on card) */
+.kl-ticket__round.is-closed {
+  color: var(--mustard-text);
+  font-weight: 500;
+}
 .kl-ticket__perk {
   /* verbatim sentence case ("Pass: +15% start · …"), not a caps label */
   text-transform: none;
@@ -647,6 +661,17 @@
 }
 .kl-owed__note.mono {
   font-size: var(--t-label);
+}
+
+/* a ticket held for the next round (bought while joins were closed) */
+.kl-held .kl-owed__slip {
+  border-top: 5px solid var(--mustard);
+}
+.kl-held__kicker {
+  color: var(--mustard-text);
+}
+.kl-held .kl-owed__title {
+  font-variant-numeric: tabular-nums;
 }
 
 /* three printer dots */
