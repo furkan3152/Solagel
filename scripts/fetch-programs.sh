@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Downloads the external on-chain programs the Slana program tests load into LiteSVM.
+# Downloads the external on-chain programs the Slana LiteSVM suite (programs/slana-ref/tests, run
+# against both slana.so and slana_lean.so) and scripts/localnet.sh load.
 # Currently only Metaplex Core (Slana Pass collection and assets).
 #   MAINNET_RPC=<url> scripts/fetch-programs.sh
 set -euo pipefail

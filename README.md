@@ -83,7 +83,8 @@ kesinti, Pass, sezon ve ödüller Solana programında. Ayrıntı, para akışı 
 
 | Klasör | İçerik |
 |---|---|
-| `programs/slana` | Anchor 1.2.1 programı: token arenaları (SPL Token / Token-2022), oturumlar, kesinti/yakım, sezonlar, Slana Pass (Core CPI, commit–reveal) + LiteSVM testleri |
+| `programs/slana-ref` | Anchor 1.2.1 referansı (dağıtılmaz; IDL kaynağı ve uyum kahini): token arenaları (SPL Token / Token-2022), oturumlar, kesinti/yakım, sezonlar, Slana Pass (Core CPI, commit–reveal) + LiteSVM testleri |
+| `programs/slana-lean` | Dağıtılan Pinocchio programı (`target/deploy/slana_lean.so`, ≤ 71.000 bayt), referansla tel uyumlu; `scripts/build-lean.sh` |
 | `packages/shared` | Oyun kuralları, ikili protokol, arena verisi, token biçimlendirme |
 | `packages/sdk` | TypeScript istemci (PDA'lar, talimatlar, hesap okuma, kesinti matematiği) + **admin CLI** (`pnpm admin`) |
 | `packages/art` | Pass özellikleri `passTraits(finalSeed, n, supply)` (`finalSeed = sha256(tohum ‖ tohum açıklandıktan ~150 slot sonraki slotun hash'i)`), risograf coin/Pass çizimi, `pnpm pass:*` üretim aracı |
@@ -122,11 +123,11 @@ Adım adım (program, token, Pass koleksiyonu, mint, arenalar, sunucu, Docker, m
 `scripts/localnet.sh` temiz bir yerel küme kurar: Slana programı ve Metaplex Core yüklü `solana-test-validator`,
 Token-2022 test mint'i (6 ondalık, dondurma yetkisi yok, 1 milyar token yöneticiye, sonra basım kapalı), `init`,
 Pass koleksiyonu, gizli tohum taahhüdü (`.localnet/pass-seed.json`), açık mint ve varsayılan arenalar; sunucu ortamını
-`.localnet/server.env` dosyasına yazar. Gerekenler: `anchor build`, Agave CLI (`spl-token` dahil) ve
+`.localnet/server.env` dosyasına yazar. Gerekenler: `anchor build` + `scripts/build-lean.sh` (`slana_lean.so`), Agave CLI (`spl-token` dahil) ve
 `target/programs/mpl_core.so` (yoksa `scripts/fetch-programs.sh` indirir). `.localnet/` asla commit edilmez.
 
 ```bash
-anchor build && scripts/localnet.sh
+anchor build --ignore-keys && scripts/build-lean.sh && scripts/localnet.sh
 cd apps/server && env $(cat ../../.localnet/server.env | xargs) \
   STALE_SESSION_AFTER_S=5 ARENA_BOT_TARGET=0 ARENA_BOT_MIN=0 ARENA_BOT_MAX=0 npx tsx src/index.ts
 pnpm -F @slana/server e2e          # başka bir terminalde; ~2 dk
@@ -153,7 +154,7 @@ pnpm -r typecheck
 pnpm -r test                        # shared, sdk, art, server, web (Vitest)
 pnpm -F @slana/web build
 scripts/fetch-programs.sh           # Metaplex Core .so → target/programs (bir kez; repoya girmez)
-anchor build && cargo test -p slana # program (LiteSVM)
+scripts/test-program.sh             # program: LiteSVM suite against slana.so (ref) and slana_lean.so (lean)
 ```
 
 Ek araçlar: `pnpm -F @slana/server sim` (bot dengesi), `pnpm -F @slana/web shot <url> <png>` (ekran görüntüsü),

@@ -1,5 +1,5 @@
 /**
- * Program constants mirrored from `programs/slana/src/constants.rs`
+ * Program constants mirrored from `programs/slana-ref/src/constants.rs`
  * (a unit test checks them against the IDL so they cannot drift silently).
  */
 

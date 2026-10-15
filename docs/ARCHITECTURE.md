@@ -3,7 +3,7 @@
 *Türkçe özet: Slana hibrit bir oyundur. Fizik yetkili oyun sunucusunda, para kuralları Solana programında çalışır. Bu
 doküman para akışını, değişmezleri ve güven modelini anlatır. Ürün tasarımı: [tasarım dokümanı (TR)](superpowers/specs/2026-10-14-slana-design.md).*
 
-Every number below is quoted from the code: program constants from `programs/slana/src/constants.rs`, admin defaults
+Every number below is quoted from the code: program constants from `programs/slana-ref/src/constants.rs`, admin defaults
 from `packages/sdk/src/constants.ts` (`pnpm admin init`), game rules from `packages/shared/src/constants.ts` (`RULES`,
 `CAPACITY`) and server timings from `apps/server/src`.
 
@@ -11,7 +11,7 @@ from `packages/sdk/src/constants.ts` (`pnpm admin init`), game rules from `packa
 
 | Part | Runs | Holds |
 |---|---|---|
-| `programs/slana` (Anchor 1.2.1) | Solana | Config, arena vaults, sessions, fees, burn, season table and prize pool, Slana Pass collection, mint and reveal |
+| `programs/slana-ref` (Anchor 1.2.1 reference, never deployed) / `programs/slana-lean` (Pinocchio, deployed) | Solana | Config, arena vaults, sessions, fees, burn, season table and prize pool, Slana Pass collection, mint and reveal |
 | `apps/server` (Node 22) | your host | 30 Hz simulation, rooms and instances, bots, in-game value ledger, loot, journal, settlement queue, Pass metadata |
 | `apps/web` (Vite + React) | browser | lobby, ticket flow, HUD, Pass office, standings, player guide (`/docs`) |
 | `packages/sdk` | everywhere | PDAs, instruction builders, account views, fee math (`splitPayout`, mirrors `logic::split_payout`), admin CLI |

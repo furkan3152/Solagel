@@ -51,6 +51,7 @@ use {
     solana_signer::Signer,
     solana_transaction::versioned::VersionedTransaction,
     solana_transaction_error::TransactionError,
+    std::sync::LazyLock,
 };
 
 pub type TxResult = Result<TransactionMetadata, FailedTransactionMetadata>;
@@ -70,8 +71,44 @@ pub const BURN_BPS: u16 = 2_000;
 pub const SETTLE_FEE_LAMPORTS: u64 = 20_000;
 pub const ENTRY_FEE: u64 = 1_000 * TOKEN;
 
-static PROGRAM_SO: &[u8] =
-    include_bytes!(concat!(env!("CARGO_TARGET_TMPDIR"), "/../deploy/slana.so"));
+// ---------------------------------------------------------------------------------------
+// Program under test: `SLANA_IMPL=lean` (default) or `ref`
+// ---------------------------------------------------------------------------------------
+
+/// Which build of the program the suite runs against, both deployed at `slana::ID`:
+/// - `lean` (default): `target/deploy/slana_lean.so`, the Pinocchio program that is deployed
+///   (`scripts/build-lean.sh`);
+/// - `ref`: `target/deploy/slana.so`, the Anchor reference (`anchor build`), never deployed.
+///
+/// Instructions are always built, and accounts decoded, with the reference crate's Anchor
+/// types: that is the conformance contract between the two builds.
+pub fn program_impl() -> &'static str {
+    static IMPL: LazyLock<&'static str> =
+        LazyLock::new(|| match std::env::var("SLANA_IMPL").as_deref() {
+            Err(_) | Ok("") | Ok("lean") => "lean",
+            Ok("ref") => "ref",
+            Ok(other) => panic!("SLANA_IMPL must be `lean` or `ref`, not `{other}`"),
+        });
+    *IMPL
+}
+
+/// Path of the `.so` selected by `SLANA_IMPL`.
+pub fn program_so_path() -> String {
+    let file = match program_impl() {
+        "ref" => "slana.so",
+        _ => "slana_lean.so",
+    };
+    format!("{}/../deploy/{file}", env!("CARGO_TARGET_TMPDIR"))
+}
+
+static PROGRAM_SO: LazyLock<Vec<u8>> = LazyLock::new(|| {
+    let path = program_so_path();
+    let hint = match program_impl() {
+        "ref" => "run `anchor build --ignore-keys` at the repo root",
+        _ => "run scripts/build-lean.sh",
+    };
+    std::fs::read(&path).unwrap_or_else(|e| panic!("{path} is missing ({e}): {hint}"))
+});
 
 // ---------------------------------------------------------------------------------------
 // Addresses
@@ -1556,7 +1593,7 @@ impl TestEnv {
 /// authority. `LiteSVM::add_program` already creates the loader-v3 `Program` account and
 /// its `ProgramData` account (with no authority); the ProgramData header is rewritten here.
 pub fn deploy_upgradeable(svm: &mut LiteSVM, authority: &Pubkey) {
-    svm.add_program(slana::ID, PROGRAM_SO)
+    svm.add_program(slana::ID, &PROGRAM_SO)
         .expect("load program");
 
     let program_account = svm.get_account(&slana::ID).expect("program account");

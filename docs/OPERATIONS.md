@@ -199,8 +199,8 @@ upgrade authority için `solana program set-upgrade-authority`.
 ## Program güncellemesi
 
 ```bash
-anchor build && pnpm -F @slana/sdk sync-idl && cargo test -p slana
-solana program deploy target/deploy/slana.so --program-id target/deploy/slana-keypair.json   # upgrade authority ile
+anchor build --ignore-keys && pnpm -F @slana/sdk sync-idl && scripts/build-lean.sh && scripts/test-program.sh
+solana program deploy target/deploy/slana_lean.so --program-id target/deploy/slana-keypair.json   # upgrade authority ile
 ```
 
 Hesap düzenini (state.rs) geriye uyumlu tutun; yeni `.so` daha büyükse önce `solana program extend <PROGRAM_ID> <bayt>`.
