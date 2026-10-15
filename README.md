@@ -122,7 +122,7 @@ The deployed program is the Pinocchio build `programs/slana-lean` (59,344 bytes,
 ```bash
 anchor build --ignore-keys && pnpm -F @slana/sdk sync-idl     # IDL (and the reference slana.so used by the tests)
 bash scripts/build-lean.sh                                    # target/deploy/slana_lean.so, prints size and rent
-solana program deploy target/deploy/slana_lean.so --program-id target/deploy/slana-keypair.json
+scripts/deploy-lean.sh devnet target/deploy/slana-keypair.json   # refuses a keypair that is not the program id
 ```
 
 Never use `anchor deploy`: it would ship the ~679 KB reference. The lean program locks
@@ -211,7 +211,7 @@ Extra tools: `pnpm -F @slana/server sim` (bot balance), `pnpm -F @slana/web shot
   the Solana program holds the money rules. The deployed program is a Pinocchio build (`programs/slana-lean`, 59,344
   bytes, ≈ ◎0.414 of rent). It is wire-compatible with the Anchor reference (`programs/slana-ref`), which supplies the
   IDL and is checked against it by the same LiteSVM suite, but is never deployed. Build with
-  `bash scripts/build-lean.sh`, deploy with `solana program deploy target/deploy/slana_lean.so --program-id <keypair>`,
+  `bash scripts/build-lean.sh`, deploy with `scripts/deploy-lean.sh <cluster-url> <keypair>`,
   never `anchor deploy`. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ```bash

@@ -36,7 +36,8 @@ signer/writable flags, account discriminators, layouts and sizes, PDA seeds, err
 `Instruction: <Name>` log lines are not part of it, and the lean program does not print them. Clients identify
 instructions by discriminator, never by log text.
 
-Deploy only `slana_lean.so`, with `solana program deploy target/deploy/slana_lean.so --program-id <keypair>`. Never
+Deploy only `slana_lean.so`, with `scripts/deploy-lean.sh <cluster-url> <keypair>` (it refuses a keypair that is not
+the program id, then runs `solana program deploy target/deploy/slana_lean.so --program-id <keypair>`). Never
 use `anchor deploy`, because it would ship the reference. The lean crate keeps its own copy of the program id
 (`ID` in `programs/slana-lean/src/lib.rs`), and a unit test pins it to the reference's `declare_id!`.
 
