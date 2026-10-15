@@ -18,7 +18,7 @@
 //! | `system_program: Program<System>`                                            | `check_program(system)`        | 3008 / 3009 |
 //! | `session: init, payer = player, space = 151, seeds = [SESSION_SEED, arena, player], bump` | `init_program_pda` | 2006 / system program ("already in use") |
 //! | `pass_lock: init, payer = player, space, seeds = [PASS_LOCK_SEED, pass_asset], bump` (with pass) | `init_program_pda` | 2006 / system program ("already in use" = PassInUse) |
-//! | duplicate `mut` accounts (vault, player_token; the rest are distinct types)  | `stake::check_distinct`        | 2040 |
+//! | duplicate `mut` accounts (vault, player_token; the rest are distinct types)  | `stake::check_distinct2`       | 2040 |
 //! | `player: mut`                                                                | `check_writable`               | 2000 |
 //! | `config: seeds = [CONFIG_SEED], bump = config.bump`, `mut`                   | `stake::check_config`          | 2006 / 2000 |
 //! | `profile: seeds = [PROFILE_SEED, player], bump = profile.bump`, `mut`        | `stake::check_profile`         | 2006 / 2000 |
@@ -143,7 +143,7 @@ pub fn process(accounts: &[AccountView], args: &[u8], with_pass: bool) -> Result
     };
 
     // ----- duplicate mutable accounts, then the remaining constraints ---------------------
-    stake::check_distinct(&[vault, player_token])?;
+    stake::check_distinct2(vault, player_token)?;
     check_writable(player)?;
     // SAFETY: `parse` checked each type (and so each length); the accounts are distinct
     // (distinct program-account types; the vault and the player's token account differ, see

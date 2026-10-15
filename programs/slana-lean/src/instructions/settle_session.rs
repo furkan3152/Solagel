@@ -20,7 +20,7 @@
 //! | duplicate `mut` accounts (vault, player_token, treasury_vault, season_vault)    | `stake::check_distinct`        | 2040 |
 //! | `server: mut`                                                                   | `check_writable`               | 2000 |
 //! | `server: constraint = server == config.server_authority @ Unauthorized`         | key compare                    | Unauthorized |
-//! | `config: seeds = [CONFIG_SEED], bump = config.bump`, `mut`                      | `stake::check_config`          | 2006 / 2000 |
+//! | `config: seeds = [CONFIG_SEED], bump = config.bump`, `mut`                      | `stake::check_session_accounts` | 2006 / 2000 |
 //! | `arena: seeds = [ARENA_SEED, arena.id LE], bump = arena.bump`, `mut`            | `stake::check_arena`           | 2006 / 2000 |
 //! | `vault: seeds = [VAULT_SEED, arena], bump = arena.vault_bump`, `mut`            | `stake::check_arena_vault`     | 2006 / 2000 |
 //! | `session: seeds = [SESSION_SEED, arena, player], bump = session.bump`, `mut`, `has_one = player @ Unauthorized`, `has_one = arena @ Unauthorized` | `stake::check_session` | 2006 / 2000 / Unauthorized |
@@ -28,8 +28,8 @@
 //! | `player_token: mut, token::mint, token::authority = player, token::token_program` (when Some) | `stake::check_player_token` | 2000 / 2015 / 2014 / 2021 |
 //! | `profile: seeds = [PROFILE_SEED, player], bump = profile.bump`, `mut`           | `stake::check_profile`         | 2006 / 2000 |
 //! | `season: seeds = [SEASON_SEED, config.current_season LE], bump = season.bump`, `mut` | `stake::check_current_season` | 2006 / 2000 |
-//! | `treasury_vault: seeds = [TREASURY_VAULT_SEED], bump = config.treasury_vault_bump`, `mut` | `stake::check_global_vault` | 2006 / 2000 |
-//! | `season_vault: seeds = [SEASON_VAULT_SEED], bump = config.season_vault_bump`, `mut` | `stake::check_global_vault` | 2006 / 2000 |
+//! | `treasury_vault: seeds = [TREASURY_VAULT_SEED], bump = config.treasury_vault_bump`, `mut` | `check_pda_seeds` | 2006 / 2000 |
+//! | `season_vault: seeds = [SEASON_VAULT_SEED], bump = config.season_vault_bump`, `mut` | `check_pda_seeds` | 2006 / 2000 |
 //! | `token_mint: mut, address = config.token_mint`                                  | `check_writable` + `stake::check_token_addresses` | 2000 / 2012 |
 //! | `token_program: address = config.token_program`                                 | `stake::check_token_addresses` | 2012 |
 //! | `pass_lock: mut, close = player` (when Some)                                    | `check_writable`, key compare  | 2000 / 2011 |
@@ -51,13 +51,15 @@ use {
     super::{stake, unix_timestamp},
     crate::error::Result,
     crate::{
-        accounts::{check_kinds, check_writable, close, data, keq, kind},
+        accounts::{
+            check_kinds, check_pda_seeds, check_writable, close, data, keq, kind, move_lamports,
+        },
         borsh::{rd_bool, rd_key, rd_u16, rd_u32, rd_u64, rd_u8, wr_bool, wr_u16, wr_u64, Args},
         constants::{SEASON_VAULT_SEED, TREASURY_VAULT_SEED},
         cpi::token::burn,
         error::{
-            err, require, ACCOUNT_NOT_ENOUGH_KEYS, CONSTRAINT_CLOSE, INSUFFICIENT_POT,
-            MATH_OVERFLOW, SESSION_FINALIZED, SESSION_MISMATCH, UNAUTHORIZED,
+            err, require, ACCOUNT_NOT_ENOUGH_KEYS, INSUFFICIENT_POT, MATH_OVERFLOW,
+            SESSION_FINALIZED, SESSION_MISMATCH, UNAUTHORIZED,
         },
         events,
         logic::{apply_game, split_payout, upsert_leaderboard},
@@ -127,34 +129,29 @@ pub fn process(accounts: &[AccountView], args: &[u8]) -> Result {
         ),
         UNAUTHORIZED,
     )?;
-    stake::check_config(config_acc, c, true)?;
-    stake::check_arena(arena_acc, r, true)?;
-    stake::check_arena_vault(vault, arena_acc, r)?;
-    stake::check_session(session_acc, s, arena_acc, player)?;
+    stake::check_session_accounts(config_acc, c, arena_acc, r, vault, session_acc, s, player)?;
     check_writable(player)?;
     if let Some(pt) = player_token {
         stake::check_player_token(pt, player, token_mint, token_program)?;
     }
     stake::check_profile(profile_acc, p, player)?;
     stake::check_current_season(season_acc, sn, c)?;
-    stake::check_global_vault(
+    check_pda_seeds(
         treasury_vault,
-        TREASURY_VAULT_SEED,
+        &[TREASURY_VAULT_SEED],
         rd_u8(c, config::TREASURY_VAULT_BUMP),
+        true,
     )?;
-    stake::check_global_vault(
+    check_pda_seeds(
         season_vault,
-        SEASON_VAULT_SEED,
+        &[SEASON_VAULT_SEED],
         rd_u8(c, config::SEASON_VAULT_BUMP),
+        true,
     )?;
     check_writable(token_mint)?;
     stake::check_token_addresses(c, token_mint, token_program)?;
     if let Some(lock) = pass_lock {
-        check_writable(lock)?;
-        require(
-            !keq(lock.address().as_array(), player.address().as_array()),
-            CONSTRAINT_CLOSE,
-        )?;
+        stake::check_close_to(lock, player)?;
     }
 
     // ----- handler ---------------------------------------------------------------------------
@@ -212,7 +209,7 @@ pub fn process(accounts: &[AccountView], args: &[u8]) -> Result {
     wr_u64(sn, season::POOL, pool);
 
     // The settle deposit pays the server either way.
-    stake::move_lamports(session_acc, server, rd_u64(s, session::SETTLE_FEE))?;
+    move_lamports(session_acc, server, rd_u64(s, session::SETTLE_FEE))?;
 
     // What actually left the vault; the owed share counts when the player collects it.
     let left_vault = payout.checked_sub(owed).ok_or_else(|| err(MATH_OVERFLOW))?;

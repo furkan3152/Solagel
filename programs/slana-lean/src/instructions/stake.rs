@@ -3,15 +3,15 @@
 //! is one reference constraint (or one reference helper) with its Anchor error code.
 
 use {
-    crate::error::{Error, Result},
+    crate::error::Result,
     crate::{
-        accounts::{check_pda, check_writable, data, keq},
+        accounts::{check_pda_seeds, check_writable, data, keq},
         borsh::{rd_bool, rd_key, rd_u16, rd_u32, rd_u8},
         constants::*,
         cpi::token::transfer_checked,
         error::{
-            err, require, CONSTRAINT_ADDRESS, CONSTRAINT_DUPLICATE_MUTABLE_ACCOUNT, MATH_OVERFLOW,
-            PASS_IN_USE, UNAUTHORIZED,
+            err, require, CONSTRAINT_ADDRESS, CONSTRAINT_CLOSE,
+            CONSTRAINT_DUPLICATE_MUTABLE_ACCOUNT, MATH_OVERFLOW, PASS_IN_USE, UNAUTHORIZED,
         },
         instructions::withdraw_treasury::check_token_account,
         state::{arena, config, pass_lock, profile, season, session},
@@ -24,23 +24,17 @@ use {
     },
 };
 
-/// `seeds = [CONFIG_SEED], bump = config.bump` (`ConstraintSeeds`), then `mut` when asked
-/// (`ConstraintMut`).
+/// `config: seeds = [CONFIG_SEED], bump = config.bump` (2006), then `mut` when asked (2000).
 #[inline(never)]
 pub(crate) fn check_config(
     config_acc: &AccountView,
     c: &[u8; config::SPACE],
     mutable: bool,
 ) -> Result {
-    let bump = [rd_u8(c, config::BUMP)];
-    check_pda(config_acc, &[Seed::from(CONFIG_SEED), Seed::from(&bump)])?;
-    if mutable {
-        check_writable(config_acc)?;
-    }
-    Ok(())
+    check_pda_seeds(config_acc, &[CONFIG_SEED], rd_u8(c, config::BUMP), mutable)
 }
 
-/// `seeds = [ARENA_SEED, arena.id LE], bump = arena.bump`, then `mut` when asked.
+/// `arena: seeds = [ARENA_SEED, arena.id LE], bump = arena.bump`, then `mut` when asked.
 #[inline(never)]
 pub(crate) fn check_arena(
     arena_acc: &AccountView,
@@ -48,15 +42,12 @@ pub(crate) fn check_arena(
     mutable: bool,
 ) -> Result {
     let id = rd_u16(a, arena::ID).to_le_bytes();
-    let bump = [rd_u8(a, arena::BUMP)];
-    check_pda(
+    check_pda_seeds(
         arena_acc,
-        &[Seed::from(ARENA_SEED), Seed::from(&id), Seed::from(&bump)],
-    )?;
-    if mutable {
-        check_writable(arena_acc)?;
-    }
-    Ok(())
+        &[ARENA_SEED, &id],
+        rd_u8(a, arena::BUMP),
+        mutable,
+    )
 }
 
 /// The arena vault: `seeds = [VAULT_SEED, arena], bump = arena.vault_bump`, `mut`.
@@ -66,46 +57,30 @@ pub(crate) fn check_arena_vault(
     arena_acc: &AccountView,
     a: &[u8; arena::SPACE],
 ) -> Result {
-    let bump = [rd_u8(a, arena::VAULT_BUMP)];
-    check_pda(
+    check_pda_seeds(
         vault,
-        &[
-            Seed::from(VAULT_SEED),
-            Seed::from(arena_acc.address().as_ref()),
-            Seed::from(&bump),
-        ],
-    )?;
-    check_writable(vault)
+        &[VAULT_SEED, arena_acc.address().as_ref()],
+        rd_u8(a, arena::VAULT_BUMP),
+        true,
+    )
 }
 
-/// A config-level vault: `seeds = [seed], bump = <config bump field>`, `mut`.
-#[inline(never)]
-pub(crate) fn check_global_vault(vault: &AccountView, seed: &[u8], bump: u8) -> Result {
-    let bump = [bump];
-    check_pda(vault, &[Seed::from(seed), Seed::from(&bump)])?;
-    check_writable(vault)
-}
-
-/// `seeds = [PROFILE_SEED, owner], bump = profile.bump`, `mut`.
+/// `profile: seeds = [PROFILE_SEED, owner], bump = profile.bump`, `mut`.
 #[inline(never)]
 pub(crate) fn check_profile(
     profile_acc: &AccountView,
     p: &[u8; profile::SPACE],
     owner: &AccountView,
 ) -> Result {
-    let bump = [rd_u8(p, profile::BUMP)];
-    check_pda(
+    check_pda_seeds(
         profile_acc,
-        &[
-            Seed::from(PROFILE_SEED),
-            Seed::from(owner.address().as_ref()),
-            Seed::from(&bump),
-        ],
-    )?;
-    check_writable(profile_acc)
+        &[PROFILE_SEED, owner.address().as_ref()],
+        rd_u8(p, profile::BUMP),
+        true,
+    )
 }
 
-/// `seeds = [SEASON_SEED, config.current_season LE], bump = season.bump`, `mut`.
+/// `season: seeds = [SEASON_SEED, config.current_season LE], bump = season.bump`, `mut`.
 #[inline(never)]
 pub(crate) fn check_current_season(
     season_acc: &AccountView,
@@ -113,12 +88,12 @@ pub(crate) fn check_current_season(
     c: &[u8; config::SPACE],
 ) -> Result {
     let id = rd_u32(c, config::CURRENT_SEASON).to_le_bytes();
-    let bump = [rd_u8(s, season::BUMP)];
-    check_pda(
+    check_pda_seeds(
         season_acc,
-        &[Seed::from(SEASON_SEED), Seed::from(&id), Seed::from(&bump)],
-    )?;
-    check_writable(season_acc)
+        &[SEASON_SEED, &id],
+        rd_u8(s, season::BUMP),
+        true,
+    )
 }
 
 /// The session of settle/refund: `seeds = [SESSION_SEED, arena, player], bump =
@@ -131,17 +106,16 @@ pub(crate) fn check_session(
     arena_acc: &AccountView,
     player: &AccountView,
 ) -> Result {
-    let bump = [rd_u8(s, session::BUMP)];
-    check_pda(
+    check_pda_seeds(
         session_acc,
         &[
-            Seed::from(SESSION_SEED),
-            Seed::from(arena_acc.address().as_ref()),
-            Seed::from(player.address().as_ref()),
-            Seed::from(&bump),
+            SESSION_SEED,
+            arena_acc.address().as_ref(),
+            player.address().as_ref(),
         ],
+        rd_u8(s, session::BUMP),
+        true,
     )?;
-    check_writable(session_acc)?;
     require(
         keq(&rd_key(s, session::PLAYER), player.address().as_array()),
         UNAUTHORIZED,
@@ -207,6 +181,47 @@ pub(crate) fn check_distinct(accs: &[&AccountView]) -> Result {
     Ok(())
 }
 
+/// [`check_distinct`] for exactly two accounts: one key compare.
+#[inline(never)]
+pub(crate) fn check_distinct2(a: &AccountView, b: &AccountView) -> Result {
+    require(
+        !keq(a.address().as_array(), b.address().as_array()),
+        CONSTRAINT_DUPLICATE_MUTABLE_ACCOUNT,
+    )
+}
+
+/// `close = dest` on an account that must be `mut`: `ConstraintMut`, then the account may not
+/// be `dest` itself (`ConstraintClose`). Settle's and refund's Pass lock, and refund's session.
+#[inline(never)]
+pub(crate) fn check_close_to(acc: &AccountView, dest: &AccountView) -> Result {
+    check_writable(acc)?;
+    require(
+        !keq(acc.address().as_array(), dest.address().as_array()),
+        CONSTRAINT_CLOSE,
+    )
+}
+
+/// The constraints settle and refund share, in their (common) declaration order after the
+/// first account: `config` (seeds, `mut`), `arena` (seeds, `mut`), `vault` (seeds, `mut`) and
+/// `session` ([`check_session`]).
+#[allow(clippy::too_many_arguments)]
+#[inline(never)]
+pub(crate) fn check_session_accounts(
+    config_acc: &AccountView,
+    c: &[u8; config::SPACE],
+    arena_acc: &AccountView,
+    r: &[u8; arena::SPACE],
+    vault: &AccountView,
+    session_acc: &AccountView,
+    s: &[u8; session::SPACE],
+    player: &AccountView,
+) -> Result {
+    check_config(config_acc, c, true)?;
+    check_arena(arena_acc, r, true)?;
+    check_arena_vault(vault, arena_acc, r)?;
+    check_session(session_acc, s, arena_acc, player)
+}
+
 /// Reference `shared::check_pass_lock`: a Pass session must come with exactly its own lock
 /// (`["pass_lock", session.pass_asset]` with the lock's stored bump, recorded for this session
 /// and its player); a session without a Pass must come with none. Else `PassInUse`.
@@ -222,14 +237,11 @@ pub(crate) fn check_pass_lock(
             // SAFETY: the caller's `parse` checked the lock holds a `PassLock`; read only.
             let l = unsafe { data::<{ pass_lock::SPACE }>(lock) };
             let asset = rd_key(s, session::PASS_ASSET);
-            let bump = [rd_u8(l, pass_lock::BUMP)];
-            check_pda(
+            check_pda_seeds(
                 lock,
-                &[
-                    Seed::from(PASS_LOCK_SEED),
-                    Seed::from(&asset),
-                    Seed::from(&bump),
-                ],
+                &[PASS_LOCK_SEED, &asset],
+                rd_u8(l, pass_lock::BUMP),
+                false,
             )
             .map_err(|_| err(PASS_IN_USE))?;
             require(
@@ -294,23 +306,4 @@ pub(crate) fn add(a: u64, b: u64) -> Result<u64> {
 #[inline(always)]
 pub(crate) fn opt(acc: &AccountView) -> Option<&AccountView> {
     (acc.address() != &ID).then_some(acc)
-}
-
-/// Moves `amount` lamports out of a program account into `to` (Anchor's `sub_lamports` /
-/// `add_lamports`, both `ArithmeticOverflow` on wrap).
-#[inline(never)]
-pub(crate) fn move_lamports(from: &AccountView, to: &AccountView, amount: u64) -> Result {
-    let left = from
-        .lamports()
-        .checked_sub(amount)
-        .ok_or(Error::ARITHMETIC_OVERFLOW)?;
-    let mut from = from.clone();
-    from.set_lamports(left);
-    let total = to
-        .lamports()
-        .checked_add(amount)
-        .ok_or(Error::ARITHMETIC_OVERFLOW)?;
-    let mut to = to.clone();
-    to.set_lamports(total);
-    Ok(())
 }

@@ -18,13 +18,13 @@ use {
     super::{check_admin_config, check_entry_fee, check_max_sessions},
     crate::error::Result,
     crate::{
-        accounts::{check_pda, check_writable, data, kind, parse},
+        accounts::{check_pda_seeds, data, kind, parse},
         borsh::{rd_u16, rd_u8, wr_bool, wr_u16, wr_u64, Args},
         constants::ARENA_SEED,
         error::{require, ARENA_BUSY},
         state::{arena, config},
     },
-    pinocchio::{cpi::Seed, AccountView},
+    pinocchio::AccountView,
 };
 
 #[inline(never)]
@@ -45,12 +45,7 @@ pub fn process(accounts: &[AccountView], args: &[u8]) -> Result {
 
     check_admin_config(config_acc, c, admin, false)?;
     let id = rd_u16(r, arena::ID).to_le_bytes();
-    let bump = [rd_u8(r, arena::BUMP)];
-    check_pda(
-        arena_acc,
-        &[Seed::from(ARENA_SEED), Seed::from(&id), Seed::from(&bump)],
-    )?;
-    check_writable(arena_acc)?;
+    check_pda_seeds(arena_acc, &[ARENA_SEED, &id], rd_u8(r, arena::BUMP), true)?;
 
     if entry_fee.is_some() || requires_pass.is_some() {
         require(rd_u16(r, arena::OPEN_SESSIONS) == 0, ARENA_BUSY)?;

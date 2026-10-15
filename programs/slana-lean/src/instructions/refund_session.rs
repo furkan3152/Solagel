@@ -11,13 +11,13 @@
 //! | `token_mint: InterfaceAccount<Mint>`                                           | `token::load_mint`             | 3012 / 3007 / ProgramError |
 //! | `token_program: Interface<TokenInterface>`                                     | `token::check_token_program`   | 3008 / 3009 |
 //! | `pass_lock: Option<Account<PassLock>>`                                         | `kind::OPT` + `check_account`  | as above when Some |
-//! | duplicate `mut` accounts (vault, player_token)                                 | `stake::check_distinct`        | 2040 |
+//! | duplicate `mut` accounts (vault, player_token)                                 | `stake::check_distinct2`       | 2040 |
 //! | `player: mut`                                                                  | `check_writable`               | 2000 |
 //! | `config: seeds = [CONFIG_SEED], bump = config.bump`, `mut`                     | `stake::check_config`          | 2006 / 2000 |
 //! | `arena: seeds = [ARENA_SEED, arena.id LE], bump = arena.bump`, `mut`           | `stake::check_arena`           | 2006 / 2000 |
 //! | `vault: seeds = [VAULT_SEED, arena], bump = arena.vault_bump`, `mut`           | `stake::check_arena_vault`     | 2006 / 2000 |
 //! | `session: seeds = [SESSION_SEED, arena, player], bump = session.bump`, `mut`, `has_one = player`, `has_one = arena` (@ Unauthorized) | `stake::check_session` | 2006 / 2000 / Unauthorized |
-//! | `session: close = player`                                                      | key compare (`session != player`) | 2011 |
+//! | `session: close = player`                                                      | `stake::check_close_to` | 2011 |
 //! | `player_token: mut, token::mint, token::authority = player, token::token_program` | `stake::check_player_token` | 2000 / 2015 / 2014 / 2021 |
 //! | `token_mint: address = config.token_mint`                                      | `stake::check_token_addresses` | 2012 |
 //! | `token_program: address = config.token_program`                                | `stake::check_token_addresses` | 2012 |
@@ -36,12 +36,11 @@ use {
     super::{stake, unix_timestamp},
     crate::error::Result,
     crate::{
-        accounts::{check_kinds, check_writable, close, data, keq, kind},
+        accounts::{check_kinds, check_writable, close, data, kind},
         borsh::{rd_bool, rd_i64, rd_u16, rd_u64, wr_u16, wr_u64},
         constants::SESSION_REFUND_TIMEOUT_SECS,
         error::{
-            err, require, ACCOUNT_NOT_ENOUGH_KEYS, CONSTRAINT_CLOSE, MATH_OVERFLOW, PASS_IN_USE,
-            REFUND_TOO_EARLY,
+            err, require, ACCOUNT_NOT_ENOUGH_KEYS, MATH_OVERFLOW, PASS_IN_USE, REFUND_TOO_EARLY,
         },
         events,
         state::{arena, config, session},
@@ -73,7 +72,7 @@ pub fn process(accounts: &[AccountView], _args: &[u8]) -> Result {
     };
     let pass_lock = stake::opt(pass_lock);
 
-    stake::check_distinct(&[vault, player_token])?;
+    stake::check_distinct2(vault, player_token)?;
     // SAFETY: `parse` checked each type (and so each length); distinct program-account types,
     // and the vault (read only) differs from the player's token account (above).
     let c = unsafe { data::<{ config::SPACE }>(config_acc) };
@@ -82,25 +81,12 @@ pub fn process(accounts: &[AccountView], _args: &[u8]) -> Result {
     let vault_amount = rd_u64(unsafe { data::<ACCOUNT_LEN>(vault) }, ACCOUNT_AMOUNT);
 
     check_writable(player)?;
-    stake::check_config(config_acc, c, true)?;
-    stake::check_arena(arena_acc, r, true)?;
-    stake::check_arena_vault(vault, arena_acc, r)?;
-    stake::check_session(session_acc, s, arena_acc, player)?;
-    require(
-        !keq(
-            session_acc.address().as_array(),
-            player.address().as_array(),
-        ),
-        CONSTRAINT_CLOSE,
-    )?;
+    stake::check_session_accounts(config_acc, c, arena_acc, r, vault, session_acc, s, player)?;
+    stake::check_close_to(session_acc, player)?;
     stake::check_player_token(player_token, player, token_mint, token_program)?;
     stake::check_token_addresses(c, token_mint, token_program)?;
     if let Some(lock) = pass_lock {
-        check_writable(lock)?;
-        require(
-            !keq(lock.address().as_array(), player.address().as_array()),
-            CONSTRAINT_CLOSE,
-        )?;
+        stake::check_close_to(lock, player)?;
     }
 
     // ----- handler ---------------------------------------------------------------------------
