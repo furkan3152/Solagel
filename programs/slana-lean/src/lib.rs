@@ -8,9 +8,21 @@
 //! `no_std`, no allocator, no `core::fmt`, no floats.
 
 #![cfg_attr(not(test), no_std)]
+// `RangeInclusive::contains` is not inlined at `opt-level = "z"` (an out-of-line call per
+// type); the explicit comparisons are smaller.
+#![allow(clippy::manual_range_contains)]
 
+pub mod accounts;
+pub mod borsh;
+pub mod constants;
+pub mod core_asset;
+pub mod cpi;
 pub mod discriminator;
 pub mod error;
+pub mod events;
+pub mod instructions;
+pub mod state;
+pub mod token;
 
 #[cfg(not(test))]
 mod entrypoint;

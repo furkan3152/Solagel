@@ -23,6 +23,11 @@ codegen-units = 1
 # (programs/slana-ref) is unaffected: none of these packages are in its dependency graph.
 [profile.release.package.slana-lean]
 opt-level = "z"
+# The lean program does its value arithmetic with explicit `checked_*` (returning the
+# reference's `MathOverflow`/`ArithmeticOverflow`); implicit overflow checks would only add
+# panic paths (with file-name strings) to offset arithmetic that cannot overflow. Host tests
+# (`cargo test`, dev profile) keep overflow checks on.
+overflow-checks = false
 
 [profile.release.package.pinocchio]
 opt-level = "z"

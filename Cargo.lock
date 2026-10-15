@@ -2458,6 +2458,7 @@ name = "slana-lean"
 version = "0.1.0"
 dependencies = [
  "anchor-lang",
+ "anchor-spl",
  "pinocchio",
  "pinocchio-log",
  "pinocchio-system",
