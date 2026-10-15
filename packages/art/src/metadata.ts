@@ -21,7 +21,7 @@ export interface PassMetadata {
 
 export const REVEALED_DESCRIPTION =
   'A Slana Pass: a hand-printed risograph coin for Slana, the on-chain coin-eating arena on Solana. ' +
-  'Holders play Pass rooms, pay a lower arena fee, start bigger and cash out faster.';
+  'Holders play Pass rooms, pay a lower arena fee, start with more mass and earn season prizes.';
 
 const title = (s: string): string => (s.length === 0 ? s : s[0].toUpperCase() + s.slice(1));
 

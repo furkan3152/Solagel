@@ -1,5 +1,7 @@
 # Slana — Design Document (v2)
 
+> Superseded in part by rounds: paid arenas now play 5-minute timed rounds with no cash-out (see `2026-10-15-slana-rounds-design.md`).
+
 Date: 2026-10-14 · Status: Approved by the user (in chat, section by section) · Previous: `2026-10-09-solagel-design.md` (this document supersedes it)
 
 ---

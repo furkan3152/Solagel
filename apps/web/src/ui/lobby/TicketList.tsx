@@ -58,7 +58,7 @@ export function TicketList({
   const reduced = useReducedMotion();
   const power = usePassPower();
   const held = useUi((s) => s.held);
-  const perk = t('lo.perk', { start: power.startPct, s: power.cashoutS, fee: bpsPercent(feeBps(config, true)) });
+  const perk = t('lo.perk', { start: power.startPct, fee: bpsPercent(feeBps(config, true)) });
 
   const count = (n: number, one: 'lo.humans1' | 'lo.bots1', many: 'lo.humans' | 'lo.bots') => (n === 1 ? t(one) : t(many, { n }));
 

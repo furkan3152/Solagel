@@ -425,7 +425,7 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
             {mode === 'buy' && v.pass && (
               <Line
                 label={t('tf.passLine')}
-                value={t('tf.passLineV', { n: passNo(v.pass.number), fee: bpsPercent(v.bps), start: power.startPct, s: power.cashoutS })}
+                value={t('tf.passLineV', { n: passNo(v.pass.number), fee: bpsPercent(v.bps), start: power.startPct })}
               />
             )}
             <Line label={t('tf.deposit')} value={t('tf.depositV', { sol: sol(v.deposit) })} />
@@ -578,7 +578,7 @@ function PassChoice({
         </button>
       )}
       <p className="tf-pass__note">
-        {required ? t('tf.pass.requiredNote') : t('tf.pass.toggleNote', { fee: feeText, start: power.startPct, s: power.cashoutS })}
+        {required ? t('tf.pass.requiredNote') : t('tf.pass.toggleNote', { fee: feeText, start: power.startPct })}
       </p>
       {allBusy && <p className="tf-warn">{t('tf.pass.allBusy')}</p>}
       {on && owned.length > 1 && (

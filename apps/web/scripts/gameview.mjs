@@ -1,4 +1,4 @@
-// In-game view tour (Task 13): screenshots of the game, the death and cash-out sheets, and fps.
+// In-game view tour (Task 13): screenshots of the game, the death and round-over sheets, and fps.
 // Needs a dev server (pnpm dev) whose game server runs with NODE_ENV=development DEV_FAKE_CHAIN=1 (arena steps).
 // Usage: node scripts/gameview.mjs <baseUrl> <outDir> [desktop|mobile|night|arena|mobiledeath|fps|fps2|reduced ...]
 // Shots are saved as <outDir>/t13-*.png; results (fps, settlement) are printed as JSON.
@@ -149,7 +149,7 @@ if (want('night')) {
   await ctx.close();
 }
 
-// ── arena: cash-out (DEV_FAKE_CHAIN) ──
+// ── arena: the round-over sheet (DEV_FAKE_CHAIN) ──
 if (want('arena')) {
   const { ctx, page } = await newPage({ width: 1440, height: 900 }, false);
   await signIn(page);
@@ -187,20 +187,7 @@ if (want('arena')) {
     window.__slana.engine['onMessage']({ t: 'value', value: 1_000_000_000, delta: -1_450_000_000, reason: 'eaten' });
   });
   await page.waitForTimeout(600);
-  await page.keyboard.press('KeyC');
-  await page.waitForTimeout(1500);
-  await page.screenshot({ path: `${out}/t13-cashout-printing.png` });
-  await waitScreen(page, 'cashedout', 8000);
-  await page.waitForTimeout(1300);
-  await page.screenshot({ path: `${out}/t13-cashout-settling.png` });
-  await page.waitForFunction(() => !!window.__slana.useUi.getState().lastSettlement, null, { timeout: 10000 });
-  await page.waitForTimeout(1400);
-  await page.screenshot({ path: `${out}/t13-cashout-settled.png` });
-  results.settlement = await ev(page, () => window.__slana.useUi.getState().lastSettlement);
   // arena death by a bot (injected): tokens spilled
-  await play(page, 'arena:1');
-  await waitScreen(page, 'playing');
-  await page.waitForTimeout(1200);
   await ev(page, () =>
     window.__slana.engine['onMessage']({
       t: 'death',
@@ -211,6 +198,27 @@ if (want('arena')) {
   );
   await page.waitForTimeout(1400);
   await page.screenshot({ path: `${out}/t13-death-arena.png` });
+  // paid arenas have no cash-out: the round ends at the bell and everyone alive is paid.
+  // The roundOver message is injected here; against a stack with a short ROUND_SECONDS a real bell works too.
+  await ev(page, () =>
+    window.__slana.engine['onMessage']({
+      t: 'roundOver',
+      round: Math.floor(Date.now() / 300_000),
+      payout: 1_000_000_000,
+      stats: { aliveMs: 212_000, finalMass: 520, maxMass: 640, foodEaten: 88, cellsEaten: 1, playersEaten: 1, bestRank: 2, payout: 1_000_000_000 },
+      standings: [
+        { name: 'Nakamoto', value: 2_100_000_000 },
+        { name: 'Daphne', value: 1_000_000_000, you: true },
+        { name: 'Rocky', value: 640_000_000 },
+        { name: 'Pixel', value: 420_000_000 },
+        { name: 'Moss', value: 310_000_000 },
+      ],
+    }),
+  );
+  await waitScreen(page, 'roundover', 8000);
+  await page.waitForTimeout(1500);
+  await page.screenshot({ path: `${out}/t13-round-over.png` });
+  results.settlement = await ev(page, () => window.__slana.useUi.getState().lastSettlement);
   await ctx.close();
 }
 

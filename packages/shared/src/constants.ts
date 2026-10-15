@@ -85,7 +85,7 @@ export const RULES = {
 
   /** Slana Pass holders start with this multiple of `startMass`… */
   passStartMassMul: 1.15,
-  /** …and cash out faster than `cashoutMs`. */
+  /** Unused since paid arenas play timed rounds (the Pass no longer cashes out faster; kept for old clients). */
   passCashoutMs: 2_000,
 
   /**

@@ -118,6 +118,24 @@ pnpm admin withdraw-treasury --amount <token> --to <owner wallet>
 account does not exist it is created in the same transaction (the admin pays its rent). The amount is written in whole
 tokens and cannot exceed the vault.
 
+## Arena rounds and the loot sweep
+
+Paid arenas play wall-clock rounds: `ROUND_SECONDS` (default 300) and `ROUND_JOIN_CLOSE_SECONDS` (default 60, capped at half
+a round) in the server environment. Round *n* covers `[n × ROUND_SECONDS, (n + 1) × ROUND_SECONDS)` of Unix time, so keep
+the server clock synced (NTP). There is no cash-out: at the bell every live ticket is paid its value, and the loot left
+on the floor is journaled as a `sweep` item (`sweep:<roomId>:<round>`) and sent with the server-signed program
+instruction `sweep_loot(amount)` (arena vault to the season vault, credited to the current season's pool).
+
+- A sweep is journaled like a payout. After a crash it is resumed; it is resent only once its blockhash has provably
+  expired, so it is never applied twice. It belongs to no wallet, so `GET /api/pending?wallet=` does not list it; the journal (`DATA_DIR/journal.json`, kind `sweep`) and the log do.
+- `!!! chain: arena #N vault cannot cover the loot sweep ...` means the vault holds less than the journal says; the server
+  retries with backoff. Do not force anything: check the arena with `pnpm admin status` first. `!!! chain: dropping
+  malformed loot sweep` and `... without a recorded blockhash expiry; not resending` need a manual look at the journal.
+- `sweep_loot` is bounded only by the vault balance (the same trust as `settle_session`). The server computes the amount
+  from the floor loot it holds; only the server key can send it.
+- A short `ROUND_SECONDS` is for demos and tests (`ROUND_SECONDS=90 pnpm demo`; the localnet e2e uses 30). Keep the
+  default in production so players see the same 5-minute rounds the guide describes.
+
 ## Pausing and emergencies
 
 | What | Command | Effect |
@@ -126,25 +144,25 @@ tokens and cannot exceed the vault.
 | Close one arena | `pnpm admin update-arena --id N --enabled false` | no tickets can be bought for that arena; open tickets are played and close |
 | Close the arenas on the server | `STAKE_ENABLED=false` in the server environment, restart | the arenas leave the lobby; the payout queue keeps running |
 | Change the fee or the deposit | `pnpm admin update-config --fee-bps N --pass-fee-bps N --split T/S/B --settle-fee-lamports N` | the fee rate and the deposit apply to tickets **bought from now on** (an open ticket keeps the rate of the moment it was bought: `Session.fee_bps`); the split applies to later payouts; the fee is at most 1000 (10 %) |
-| Turn off the Pass power | `PASS_START_MASS_MUL=1` and `PASS_CASHOUT_MS=3000` on the server, restart | Pass tickets start and cash out like the others |
+| Turn off the Pass power | `PASS_START_MASS_MUL=1` on the server, restart | Pass tickets start with the same mass as the others (`PASS_CASHOUT_MS` is unused: arenas have no cash-out) |
 
-On `SIGTERM`/`SIGINT` the server cashes out the players in the arenas and saves its state; use it for restarts (Docker
+On `SIGTERM`/`SIGINT` the server settles the players in the arenas at their current value (an operator exit, not a cash-out they chose) and saves its state; use it for restarts (Docker
 `stop` sends SIGTERM).
 
 ### Shutting an arena down for good (sweep)
 
 1. `pnpm admin update-arena --id N --enabled false`
-2. Wait for the open tickets to close: `status` → `open 0/…`. The server cashes tickets out automatically within 6 hours
-   at the latest; those that do not close can be refunded by the player after 24 hours. Settled sessions whose payout
+2. Wait for the open tickets to close: `status` → `open 0/…`. Live tickets are paid at the next round bell (at most
+   `ROUND_SECONDS`, 5 minutes by default); those that do not close can be refunded by the player after 24 hours. Settled sessions whose payout
    has not been collected (`finalized`) also count as open: `sweep` is refused (`ArenaHasOpenSessions`) until the player
    presses "Collect payout"; that amount belongs to the player, you have to wait.
 3. Make sure no loot is left in that arena's rooms in `/api/rooms`, and that `GET /api/pending` / the server log shows no
-   pending payout for that arena (the CLI cannot see the server's journal).
+   pending payout or loot sweep for that arena (the CLI cannot see the server's journal).
 4. ```bash
    pnpm admin sweep --id N --force
    ```
    Without `--force` the command only prints the warning and stops. The whole vault moves to the current season's pool
-   (it goes back to the players). The program only sweeps a disabled arena with no open tickets. Do not re-enable a swept
+   (it goes back to the players). `sweep_arena` only works on a disabled arena with no open tickets (the per-round `sweep_loot` is separate, see Arena rounds). Do not re-enable a swept
    arena: loot left in the server's journal is no longer in the vault. The server checks this too: when it binds an arena
    whose vault does not cover the journal's debt (loot + pending payouts + live tickets), it keeps the arena disabled and
    logs `!!! arena #N KEPT DISABLED`.
@@ -190,7 +208,7 @@ Contents of `DATA_DIR`:
   appears in the log. Stop the server and put the last good backup back.
 - **After a quarantine the stale-ticket sweeper is off (M9).** While a `journal.json.corrupt-*` file is in `DATA_DIR`, the
   server does not refund tickets that look unplayed from their entry fee: the lost journal may hold those tickets' real
-  outcome (e.g. a winning cash-out). Every 30 minutes the log says `!!! chain: stale-session sweeper is OFF`. Inspect the
+  outcome (e.g. a winning round-end payout). Every 30 minutes the log says `!!! chain: stale-session sweeper is OFF`. Inspect the
   quarantined file, settle the owed payouts by hand (or put the good backup back), then restart with
   `STALE_SWEEP_ACK=1` or move the file out of `DATA_DIR`.
 - Restore: stop the server, put the file in place as `DATA_DIR/journal.json`, start it. The records of tickets already
@@ -245,7 +263,7 @@ scripts/close-program.sh <cluster-url> <admin-keypair> --force  # no confirmatio
 
 The script prints the on-chain state first (`pnpm admin status`: the paused flag, each arena's open sessions and vault,
 the treasury and season vaults, the Pass mint), then a warning, then runs `solana program close <PROGRAM_ID>
---bypass-warning --recipient <admin> --keypair <admin>` and prints the reclaimed SOL (about 0.414 SOL of ProgramData
+--bypass-warning --recipient <admin> --keypair <admin>` and prints the reclaimed SOL (about 0.418 SOL of ProgramData
 rent).
 
 > **Warning.** Once the program is closed, every token left in a program-owned vault (arenas, treasury, season pool) is

@@ -20,7 +20,7 @@ v2, the "Paper Ticket" design: desktop and phone, paper and night themes. All im
 | ![Ticket](docs/images/ticket-sheet-desktop.webp) | ![Ticket stamp](docs/images/ticket-stamp-desktop.webp) |
 | **Arena** | **Night theme** |
 | ![Game](docs/images/game-arena-desktop.webp) | ![Game, night](docs/images/game-night-desktop.webp) |
-| **Cash-out receipt** | **Eaten** |
+| **Payout receipt** | **Eaten** |
 | ![Receipt](docs/images/cashout-receipt.webp) | ![Death](docs/images/death-arena.webp) |
 | **Slana Pass** | **Mint** |
 | ![Pass](docs/images/pass-desktop-night.webp) | ![Mint](docs/images/mint-sheet-desktop.webp) |
@@ -50,11 +50,15 @@ chain path: `scripts/localnet.sh` + `pnpm -F @slana/server e2e` (see [OPERATIONS
 - **Arenas:** each is an account on-chain. Ticket = a fixed entry fee that goes to the arena's vault (a program account).
   In the game your value starts at the entry fee; when you eat someone, the mass share of their value moves to you. Bots
   are worth 0; when a bot eats a player, the value spills across the map as **loot** that only real players can collect.
-- **Cash-out:** survive 3 s with `C` (2 s on a Pass ticket); the server sends the payout on-chain. **The fee is taken
-  only from profit**: 5 % by default, 2 % with a Pass; 50 % treasury, 30 % season pool, 20 % burned.
+- **Rounds, no cash-out:** paid arenas play 5-minute rounds on the wall clock (round *n* is `[n*300 s, (n+1)*300 s)` of
+  Unix time, the same for every arena). Nobody leaves with money before the bell: when it rings, everyone alive is paid
+  their value on-chain and a new round opens at once. Joins (including a bought-back ticket after being eaten) close in
+  the last 60 s; a ticket bought then is held and joins the next round. Floor loot left at the bell moves to the season
+  pool. **The fee is taken only from profit**: 5 % by default, 2 % with a Pass; 50 % treasury, 30 % season pool, 20 %
+  burned. Practice has no rounds.
 - **Slana Pass:** a Metaplex Core NFT, free mint (rent and network fee only), supply 3,333, 1 per wallet, a fair reveal
-  through commit–reveal. Perks: Pass rooms, the 2 % fee, season points/prizes and **in-game power** (+15 % start mass,
-  2 s cash-out). This power is stated plainly on the tickets and in the guide.
+  through commit–reveal. Perks: Pass rooms, the 2 % fee, season points/prizes and **in-game power** (+15 % start mass).
+  This power is stated plainly on the tickets and in the guide.
 - **Seasons:** points come only from Pass tickets; the top 20 table is kept on-chain, the top 10 share the pool
   30 % / 20 % / 14 % / 10 % / 8 % / 6 % / 4.5 % / 3 % / 2.5 % / 2 %; the claim window is 30 days.
 
@@ -67,7 +71,6 @@ The player guide is inside the game: **`/docs`** (or the **Guide** tab in the lo
 | Move | Mouse | Joystick |
 | Split | `Space` | Split button |
 | Drop mass | `W` (can be held) | Tip button |
-| Cash-out (in an arena) | `C` | Cash-out button |
 | Chat / sticker | `Enter` / `1`–`8` | Chat / sticker buttons |
 | Next player while spectating | `Q` | |
 
@@ -115,7 +118,7 @@ starts from a fresh journal (`out/demo-data/`).
   are needed. With no wallet extension, `pnpm demo --browser` opens a Chromium with a built-in Dev Wallet (a local keypair,
   `out/dev-wallet.json`; needs a display).
 - **Name.** Set a player name in the lobby before buying a ticket.
-- **Buying a ticket and playing.** Pick Penny Pond in the lobby, buy the ticket, play, cash out; the payout is simulated.
+- **Buying a ticket and playing.** Pick Penny Pond in the lobby, buy the ticket and play until the round bell (5 minutes; `ROUND_SECONDS=90 pnpm demo` shortens it); the payout is simulated.
 - **Pass.** Mint one (sealed) Pass from the Pass page, then publish the seed with
   `curl -X POST localhost:8787/api/dev/pass/reveal` (or `__slanaChain.revealPasses()` in the browser console).
   `DEV_FAKE_PASS=revealed pnpm demo` gives every wallet one revealed Pass instead. See `apps/server/.env.example`.
@@ -161,7 +164,7 @@ Pass mints are done in the UI (Pass page) with a funded wallet. Admin commands w
 
 ### `pnpm demo:record`
 
-Records the walkthrough (lobby, wallet, practice, a Penny Pond ticket, arena, cash-out, Pass, standings, profile, guide)
+Records the walkthrough (lobby, wallet, practice, a Penny Pond ticket, arena, the round bell and receipt, Pass, standings, profile, guide)
 with a visible cursor and chapter captions, and encodes it to **`out/videos/slana-walkthrough.mp4`** plus a highlights
 reel (`out/videos/` is gitignored). It starts the fake-chain stack by itself and stops it afterwards; to record a stack you
 already run, add `--url http://localhost:5173/`. Needs ffmpeg on the PATH (`FFMPEG=<binary>` overrides) and Chromium:
@@ -178,7 +181,7 @@ backups): **[docs/OPERATIONS.md](docs/OPERATIONS.md)**. Every admin command: `pn
 
 ### Program build and deploy
 
-The deployed program is the Pinocchio build `programs/slana-lean` (59,344 bytes, size gate 71,000). The Anchor crate
+The deployed program is the Pinocchio build `programs/slana-lean` (59,896 bytes, size gate 71,000). The Anchor crate
 `programs/slana-ref` is only the IDL source and the conformance oracle in the tests, and is **never deployed**.
 
 ```bash
@@ -190,7 +193,7 @@ scripts/close-program.sh <cluster-url> <admin-keypair>   # emergency: permanentl
 ```
 
 Never use `anchor deploy`: it would ship the ~679 KB reference. The lean program locks
-414,238,320 lamports (≈ ◎0.414) of ProgramData rent, and the deploy briefly needs about ◎0.83 because of the temporary
+418,080,240 lamports (≈ ◎0.418) of ProgramData rent, and the deploy briefly needs about ◎0.84 because of the temporary
 buffer. The full cost table is in [docs/DEPLOY.md](docs/DEPLOY.md#13-mainnet-costs).
 
 ### Localnet and end-to-end test
@@ -213,7 +216,7 @@ scripts/localnet.sh --stop
 
 The test uses the real chain (not the fake chain): SOL and $SLANA for the wallets, two Pass mints, entering a Pass room
 with the web's ticket transaction, the session's fixed fee when the fee is raised, eating a player in the game and taking
-their value, death and cash-out payouts (2 % of the profit as the fee, the burn leaving the supply), the season table,
+their value, death and round-end payouts (2 % of the profit as the fee, the burn leaving the supply), the season table,
 mint close → reveal → the server's entropy capture and the revealed metadata, a never-played ticket whose token account
 was closed being settled without the account (`owed`) and collected by the player's "Collect payout" transaction with no
 waiting time (R24), the season end and the prize claim. At the end it compares the compute units each transaction used
@@ -247,10 +250,11 @@ Extra tools: `pnpm -F @slana/server sim` (bot balance), `pnpm -F @slana/web shot
   the account refuses the payout, the amount stays in the vault as `owed`, and the player takes exactly that amount at
   any time with "Collect payout". A losing player cannot spoil the outcome by closing their token account, nor get the
   entry fee back. A ticket the server never settled can be refunded by the player themselves after 24 hours.
-- The game's outcome (who ate whom, the value at cash-out, the score) **trusts the authoritative server**. The server key
-  can only close open tickets; it cannot touch the treasury, the season vault or the settings. Since the admin can
+- The game's outcome (who ate whom, the value at the bell, the score) **trusts the authoritative server**. The server key
+  can only close open tickets and, through `sweep_loot`, move round-end floor loot from an arena vault to the season vault
+  (never more than the vault holds, the same trust as a payout); it cannot touch the treasury or the settings. Since the admin can
   replace the server key, this trust is in the end trust in the admin.
-- The Pass's in-game power is a server setting (`PASS_START_MASS_MUL`, `PASS_CASHOUT_MS`) and is disclosed openly.
+- The Pass's in-game power is a server setting (`PASS_START_MASS_MUL`) and is disclosed openly.
 
 ---
 
@@ -262,19 +266,20 @@ Extra tools: `pnpm -F @slana/server sim` (bot balance), `pnpm -F @slana/web shot
 - **Arenas** are on-chain accounts with a fixed entry fee in **$SLANA**. Your in-game value starts at the entry fee;
   eating a player moves their value to you. Bots are worth 0; when a bot eats a player, the value spills as loot that only
   real players can collect. Rooms are sharded into instances of 50 players and run 24/7.
-- **Cash-out** (`C`, 3 s, 2 s with a Pass) sends the payout on-chain. The fee is charged **on profit only**: 5 % by
+- **Rounds** (5 minutes, wall-clock, no cash-out) end with the payout of everyone alive on-chain; floor loot goes to the
+  season pool through the server-signed `sweep_loot`. The fee is charged **on profit only**: 5 % by
   default, 2 % with a Pass, split 50 % treasury / 30 % season pool / 20 % burned. The rate is fixed on-chain when the
   ticket is bought.
 - **Slana Pass** is a Metaplex Core NFT with a free mint (rent and network fee only), supply 3,333, one per wallet and a
   commit–reveal trait seed: after the mint closes the seed is published, then the hash of a slot ~150 slots later is
   captured by anyone (server, web, CLI) and mixed in. Nobody, the team included, can know traits while Passes can be
   minted, and everyone learns them at the same moment; the supply is fixed once the mint opens. Perks: Pass rooms, the 2 % fee, season points and prizes, and **in-game power** (+15 % start
-  mass, 2 s cash-out), disclosed on every ticket and in the guide.
+  mass), disclosed on every ticket and in the guide.
 - **Seasons:** points come only from Pass tickets; the on-chain top 20 is kept and the top 10 share the pool; 30 days to
   claim.
 - **Architecture:** a hybrid model. The authoritative Node server runs the 30 Hz simulation and settles tickets on-chain;
-  the Solana program holds the money rules. The deployed program is a Pinocchio build (`programs/slana-lean`, 59,344
-  bytes, ≈ ◎0.414 of rent). It is wire-compatible with the Anchor reference (`programs/slana-ref`), which supplies the
+  the Solana program holds the money rules. The deployed program is a Pinocchio build (`programs/slana-lean`, 59,896
+  bytes, ≈ ◎0.418 of rent). It is wire-compatible with the Anchor reference (`programs/slana-ref`), which supplies the
   IDL and is checked against it by the same LiteSVM suite, but is never deployed. Build with
   `bash scripts/build-lean.sh`, deploy with `scripts/deploy-lean.sh <cluster-url> <keypair>`,
   never `anchor deploy`. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

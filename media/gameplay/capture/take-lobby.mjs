@@ -143,7 +143,7 @@ try {
     await scrollTo('#docs-value .dc-flow', 180);
     await hero.wait(3000);
     rec.mark('guide-fee');
-    await scrollTo('#docs-cashout .dc-fee', 140);
+    await scrollTo('#docs-payout .dc-fee', 140);
     await hero.wait(3800);
     rec.mark('guide-pass');
     await scrollTo('#docs-pass .dc-perks', 160);

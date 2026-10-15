@@ -29,7 +29,7 @@ The money rules exist twice, as two crates that must behave identically on the w
 | Crate | Built by | Output | Role |
 |---|---|---|---|
 | `programs/slana-ref` (Anchor 1.2.1, lib name `slana`) | `anchor build --ignore-keys` | `target/deploy/slana.so` (~679 KB) and the IDL | **Reference, never deployed.** The IDL (`pnpm -F @slana/sdk sync-idl` → `packages/sdk/src/idl`) and so every TS type come from it. In the tests it is the conformance oracle. |
-| `programs/slana-lean` (Pinocchio 0.11, `no_std`, no allocator, no `core::fmt`, no floats) | `bash scripts/build-lean.sh` (`cargo build-sbf`) | `target/deploy/slana_lean.so` (59,344 bytes) | **The deployed program**, at the same program id. It dispatches on the 8-byte Anchor discriminators and reads/writes accounts at fixed offsets. It reproduces the reference's account checks, error codes (6000+ and the Anchor built-ins it raises), events and the `Pass entropy: slot … hash …` log line. |
+| `programs/slana-lean` (Pinocchio 0.11, `no_std`, no allocator, no `core::fmt`, no floats) | `bash scripts/build-lean.sh` (`cargo build-sbf`) | `target/deploy/slana_lean.so` (59,896 bytes) | **The deployed program**, at the same program id. It dispatches on the 8-byte Anchor discriminators and reads/writes accounts at fixed offsets. It reproduces the reference's account checks, error codes (6000+ and the Anchor built-ins it raises), events and the `Pass entropy: slot … hash …` log line. |
 
 Wire compatibility means the following match: instruction discriminators and Borsh arguments, account order and
 signer/writable flags, account discriminators, layouts and sizes, PDA seeds, error codes and event bytes. Anchor's
@@ -67,7 +67,7 @@ with the game server and the web's own transaction builders.
 
 **Size gate.** `programs/slana-ref/tests/size.rs` fails when `slana_lean.so` exceeds 71,000 bytes, or when its
 ProgramData rent, `(len + 45 + 128) × 6960` lamports, exceeds ◎0.5. CI runs it on every push. Today the program is
-59,344 bytes, which is 414,238,320 lamports ≈ ◎0.414. The reference would lock ◎4.73. The size settings are
+59,896 bytes, which is 418,080,240 lamports ≈ ◎0.418. The reference would lock ◎4.73. The size settings are
 per-package overrides in the root `Cargo.toml`:
 
 - `opt-level = "z"` for the lean crate and the Pinocchio crates;
@@ -101,7 +101,8 @@ flowchart LR
   SES -- "settle / refund: rent" --> P
   AV -- "settle without a token account: owed stays in the vault" --> AV
   AV -- "refund_session: finalized → min(owed, vault) at once; unsettled → min(entry fee, vault) after 24 h" --> P
-  AV -- "sweep_arena: disabled and idle" --> SV
+  AV -- "sweep_arena: disabled and idle (admin)" --> SV
+  AV -- "sweep_loot: floor loot at each round end (server key, up to the vault balance)" --> SV
   SV -- "claim_season_reward: top 10" --> P
   TV -- "withdraw_treasury" --> ADM
 ```
@@ -114,9 +115,16 @@ Inside a room the value moves between players without touching the chain:
 - Bots are worth 0. When a bot eats (part of) a player, the same share leaves the player as loot
   (`ArenaLedger.spill`), split into `clamp(ceil(V / (entry_fee × 0.25)), 3, 24)` pieces that add up exactly
   (`RULES.lootPieces*`). Loot never despawns and only real players collect it.
-- Cash-out (3 s, `RULES.cashoutMs`; 2 s with a Pass, `PASS_CASHOUT_MS`), death, AFK (45 s, `RULES.afkGraceMs`) and the
-  6 h age limit (`MAX_STAKE_SESSION_AGE_S`) all end in one `settle_session` with `payout` = the ledger value (0 after a
-  death).
+- Paid arenas play timed rounds on the wall clock (`RULES.roundMs` 300 s, `RULES.roundJoinCloseMs` 60 s; the server's
+  `ROUND_SECONDS` / `ROUND_JOIN_CLOSE_SECONDS`, the close window capped at half a round). There is no cash-out: the
+  `cashout` message is refused (`no_cashout`) and an AFK player stays in the arena until eaten or until the bell. At the
+  bell every live ticket (connected or AFK) ends in one `settle_session` with `payout` = the ledger value (reason
+  `round`), a death ends in one with payout 0, and an admin kick or a server shutdown settle at the current value. The
+  6 h age limit (`MAX_STAKE_SESSION_AGE_S`) and the crash-recovery path remain as safety nets.
+- At the bell the floor loot is collected, cleared, and journaled as one `sweep` item (`sweep:<roomId>:<round>`) in the
+  same atomic write that queues the settlements. The chain worker executes it with `sweep_loot(amount)` (vault to season
+  vault, `season.pool += amount`, `LootSwept` event). A sweep is resent only after its blockhash has provably expired, so
+  it cannot be paid twice.
 
 ### Ticket lifecycle
 
@@ -130,7 +138,7 @@ sequenceDiagram
   W->>S: join arena (signed-in WebSocket)
   S->>P: read Session (id, entry fee, has_pass, pass asset)
   Note over S: value = entry fee, kept in the ledger and journaled
-  W->>S: cash-out
+  Note over S: the round bell rings (or the player dies)
   S->>S: journal the settlement (atomic write)
   S->>P: settle_session(session_id, payout, score, kills, xp)
   P-->>W: payout minus fee to the token account, Session and PassLock rent
@@ -156,7 +164,7 @@ Defaults (`pnpm admin init`): `fee_bps` 500, `pass_fee_bps` 200, split 5000 / 30
 `settle_fee_lamports ≤ MAX_SETTLE_FEE_LAMPORTS` (1 000 000). A fee change in `update_config` applies to tickets bought
 after it; open sessions keep their `fee_bps` (the treasury / season / burn split is read from the config at settlement).
 
-Worked example (the player guide shows it as receipts): entry 1 000, cash-out 2 000 → profit 1 000 → fee 50
+Worked example (the player guide shows it as receipts): entry 1 000, value at the bell 2 000 → profit 1 000 → fee 50
 (treasury 25, season 15, burn 10), player 1 950. With a Pass: fee 20 (10 / 6 / 4), player 1 980.
 
 ## Invariants
@@ -189,7 +197,7 @@ On-chain (enforced by the program):
    fails ("already in use") until the payout is collected; the server refuses to seat a finalized session
    (`payout_waiting`).
 7. **Season pools**: every transfer into or out of the season vault changes exactly one season's `pool` (settle fee share,
-   sweep and rollover add; claims subtract), so the vault balance equals the sum of the pools. `end_season` freezes
+   sweep, loot sweep and rollover add; claims subtract), so the vault balance equals the sum of the pools. `end_season` freezes
    `prize_pool`; rank `r` (0-based) of the top `PRIZE_RANKS` (10) claims `prize_pool × PRIZE_SHARES_BPS[r] / 10 000`
    once (`claimed_mask`) within `CLAIM_WINDOW_SECS` (30 days); `rollover_season` only after the window.
 8. **Season points only from Pass tickets**: `record_result` adds the score to `season_points` and the leaderboard only
@@ -226,10 +234,10 @@ Off-chain (enforced by the server, covered by tests in `apps/server/test`):
     also holds the entry fees of tickets that were bought but not yet played.
 13. **Bots carry no value**: they never enter the ledger, eating one gives mass only, and they never pick up loot
     (`loot.test.ts` "bots never pick loot", `bots.test.ts` "bots ignore loot").
-14. **Crash recovery**: live tickets found in the journal at start are queued for automatic cash-out; loot is restored into
+14. **Crash recovery**: live tickets found in the journal at start are queued for automatic settlement at their last journaled value; loot is restored into
     the arena's first instance.
     Before an arena is attached (its first instance created), its vault must hold at least what the journal owes it
-    (loot + pending cash-outs + live tickets); otherwise the server keeps it disabled and logs `!!! arena #N KEPT
+    (loot + pending payouts + live tickets); otherwise the server keeps it disabled and logs `!!! arena #N KEPT
     DISABLED` (`RoomManager.vaultCovers`, `matchmaking.test.ts`). This catches an arena swept while loot was journaled.
 15. **No server-paid player rent; settle never waits for the player** (ruling R24, replaces the R10 wait queue): when the
     player's token account is missing the worker settles at once **without** it (the session is finalized with `owed`);
@@ -247,15 +255,16 @@ Off-chain (enforced by the server, covered by tests in `apps/server/test`):
 | Actor | Can | Cannot |
 |---|---|---|
 | Player | buy tickets, collect a finalized payout (any time, exactly `owed`), refund a ticket the server never settled (after 24 h), mint Passes, claim prizes, edit the profile | settle a ticket, undo a settled result (a closed or blocked token account only delays their own payout), move other players' tokens |
-| Server key (`Config.server_authority`) | close any open ticket with any `payout ≤ vault` and any score / kills / XP (clamped) | touch the treasury or season vault, change the config, open tickets, mint |
-| Admin (`Config.admin`) | change fees (≤ 10 %), split, deposit, pause; replace the server key or the admin; create, update, disable and sweep arenas (into the season pool); end and roll over seasons; withdraw the treasury; set the Pass collection (once), seed hash, mint window and (before the mint opens) supply; end the mint; reveal | change the token mint; take an arena vault directly; set a fee above 10 % or change an open ticket's fee; change the supply after the mint opened; reveal a seed that does not match the hash; reopen the mint after it ended |
+| Server key (`Config.server_authority`) | close any open ticket with any `payout ≤ vault` and any score / kills / XP (clamped); move up to the vault balance from an arena vault to the season pool with `sweep_loot` (the same trust as a payout; no other destination) | touch the treasury, take tokens out of the season vault, change the config, open tickets, mint |
+| Admin (`Config.admin`) | change fees (≤ 10 %), split, deposit, pause; replace the server key or the admin; create, update, disable and sweep arenas (`sweep_arena`: only when disabled and idle; into the season pool); end and roll over seasons; withdraw the treasury; set the Pass collection (once), seed hash, mint window and (before the mint opens) supply; end the mint; reveal | change the token mint; take an arena vault directly; set a fee above 10 % or change an open ticket's fee; change the supply after the mint opened; reveal a seed that does not match the hash; reopen the mint after it ended |
 | Upgrade authority | replace the program code | (nothing is out of reach) |
-| Server operator | rooms, bots, matchmaking, Pass power (`PASS_START_MASS_MUL`, `PASS_CASHOUT_MS`), Pass metadata and images | anything on-chain except through the server key |
+| Server operator | rooms, bots, matchmaking, round length (`ROUND_SECONDS`, `ROUND_JOIN_CLOSE_SECONDS`), Pass power (`PASS_START_MASS_MUL`), Pass metadata and images | anything on-chain except through the server key |
 
 Consequences, stated plainly in the player guide:
 
 - The game outcome is trusted. A buggy or malicious server can split an arena's vault wrongly between that arena's
-  players (never more than the vault). Because the admin can replace the server key, trusting the server means trusting
+  players, or sweep the wrong amount of an arena vault to the season pool with `sweep_loot` (never more than the vault; owed
+  or live-ticket tokens are not protected on-chain from a malicious server key, exactly as with payouts). Because the admin can replace the server key, trusting the server means trusting
   the admin.
 - The admin knows the committed Pass seed during the mint and Pass numbers are sequential, but traits are
   `passTraits(pass_final_seed, n, pass_supply)` with `pass_final_seed = sha256(seed ‖ pass_entropy)`, and the entropy is
@@ -296,6 +305,6 @@ Consequences, stated plainly in the player guide:
   (else the request host), with `URI:` and `Chain ID: solana:<cluster>` lines. The server checks every line against the
   issued nonce; the web rebuilds the message from the fields and signs only that, and only for its own host or the game
   server's. Outstanding nonces are capped (`MAX_NONCES`, oldest evicted).
-- **Pass power disclosure** (I3): `welcome.chain.passPower` / `/api/config` publish the `PASS_START_MASS_MUL` and
-  `PASS_CASHOUT_MS` the server applies; the ticket sheet, Pass page, guide and the cash-out countdown use them
-  (`RULES` only as the fallback for older servers).
+- **Pass power disclosure** (I3): `welcome.chain.passPower` / `/api/config` publish the `PASS_START_MASS_MUL` the
+  server applies (`cashoutMs` is still sent but unused since arenas play rounds); the ticket sheet, Pass page and guide
+  use it (`RULES` only as the fallback for older servers).
