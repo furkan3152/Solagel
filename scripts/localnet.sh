@@ -193,4 +193,4 @@ echo "The admin ($ADMIN) holds the $TOKEN_SUPPLY test tokens. Pass seed: $SEED_F
 echo "(after the mint ends: pnpm admin reveal --seed-file $SEED_FILE)."
 echo
 echo "e.g.  cd apps/server && env \$(cat ../../.localnet/server.env | xargs) npx tsx src/index.ts"
-echo "      pnpm -F @slana/server e2e        (needs STALE_SESSION_AFTER_S=5 NO_ATA_RETRY_S=2 on the server)"
+echo "      pnpm -F @slana/server e2e        (needs STALE_SESSION_AFTER_S=5 on the server)"
