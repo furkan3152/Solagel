@@ -75,12 +75,8 @@ const TOKEN_ACCOUNT_CODES: readonly number[] = [2014, 2015, 2021];
 /** SPL Token and Token-2022 program ids (a failure inside them on settle is the player's account). */
 const TOKEN_PROGRAM_FAILED = /Program (TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA|TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb) failed/;
 const STOP_GRACE_MS = 5_000;
-/**
- * A sweep transaction that has not landed this long after it was sent never will (its blockhash
- * expired), so the worker may send the sweep again. Before that it only re-checks the signature:
- * a sweep has no on-chain marker and must never move the same loot twice.
- */
-export const SWEEP_RESEND_AFTER_MS = 120_000;
+/** How long the worker waits before re-checking a sent sweep that may still land. */
+export const SWEEP_RECHECK_MS = 5_000;
 
 const ERR = {
   unauthorized: SlanaErrorCode.Unauthorized,
@@ -152,11 +148,17 @@ export interface SolanaChainDeps {
   keypair?: Keypair;
   /**
    * Signs `ixs` with the server key, sends and waits for 'confirmed'; returns the signature.
-   * `onSignature` must be called before sending (lets the worker find a lost confirmation later).
+   * `onSignature` must be called before sending (lets the worker find a lost confirmation later),
+   * with the `lastValidBlockHeight` of the transaction's blockhash.
    */
-  send?: (ixs: TransactionInstruction[], onSignature: (signature: string) => void) => Promise<string>;
-  /** Whether a previously sent transaction landed successfully. */
+  send?: (ixs: TransactionInstruction[], onSignature: (signature: string, lastValidBlockHeight?: number) => void) => Promise<string>;
+  /**
+   * Whether a previously sent transaction landed successfully (false: not found, or landed with
+   * an error). Throws when the status cannot be read.
+   */
   signatureLanded?: (signature: string) => Promise<boolean>;
+  /** Current block height ('confirmed', the blockhash commitment). */
+  blockHeight?: () => Promise<number>;
   /** Server wallet balance in lamports. */
   balance?: () => Promise<number>;
   now?: () => number;
@@ -834,8 +836,9 @@ export class SolanaChain implements ChainGateway {
    * Round end: moves exactly the journaled floor-loot value of one arena instance from the arena
    * vault to the current season's pool (`sweep_loot`, server-signed). The program caps it only
    * by the vault balance, so the amount is never anything but what the room computed, and the
-   * same item is never executed twice: its last signature is persisted before each send and
-   * checked before any resend (`SWEEP_RESEND_AFTER_MS`).
+   * same item is never executed twice: its last signature and blockhash `lastValidBlockHeight`
+   * are persisted before each send, and it is sent again only when the block height is past that
+   * height (the transaction can never land) and the signature did not land.
    */
   private async processSweep(item: SweepItem): Promise<void> {
     const { key } = item;
@@ -845,21 +848,37 @@ export class SolanaChain implements ChainGateway {
       return;
     }
     if (item.sentSignature) {
-      const landed = await this.sweepLanded(item.sentSignature);
+      // Resend only once the earlier transaction provably cannot land: block height first (a
+      // blockhash past its lastValidBlockHeight can never land), then its status.
+      const sig = item.sentSignature;
+      const wait = (why: string) => this.journal.retryLater(key, `sweep ${short(sig)}: ${why}`, this.now(), { delayMs: SWEEP_RECHECK_MS });
+      let height: number;
+      try {
+        height = await this.currentBlockHeight();
+      } catch (err) {
+        wait(`block height unavailable (${firstLine(err)})`);
+        return;
+      }
+      const landed = await this.sweepLanded(sig);
       if (landed === null) {
-        this.journal.retryLater(key, `sweep ${short(item.sentSignature)} status unknown`, this.now());
+        wait('status unknown');
         return;
       }
       if (landed) {
         this.journal.remove(key);
         this.seasonCache = null;
         this.arenaCache = null;
-        this.log(`chain: swept ${this.units(item.amount)} loot of ${item.roomId} (round ${item.round}) → season (confirmation arrived late) · ${item.sentSignature}`);
+        this.log(`chain: swept ${this.units(item.amount)} loot of ${item.roomId} (round ${item.round}) → season (confirmation arrived late) · ${sig}`);
         return;
       }
-      const age = this.now() - (item.sentAt ?? 0);
-      if (age < SWEEP_RESEND_AFTER_MS) {
-        this.journal.retryLater(key, `sweep ${short(item.sentSignature)} not confirmed yet`, this.now(), { delayMs: Math.min(15_000, SWEEP_RESEND_AFTER_MS - age) });
+      const lvbh = item.sentLastValidBlockHeight;
+      if (lvbh === undefined) {
+        this.warn(`sweep-lvbh-${key}`, `!!! chain: loot sweep ${key} was sent as ${sig} without a recorded blockhash expiry; not resending (needs manual review)`);
+        wait('no recorded blockhash expiry');
+        return;
+      }
+      if (!(height > lvbh)) {
+        wait(`not landed yet, blockhash valid until height ${lvbh} (now ${height})`);
         return;
       }
     }
@@ -880,7 +899,7 @@ export class SolanaChain implements ChainGateway {
       tokenProgram: config.tokenProgram,
     });
     try {
-      const signature = await this.send(key, [ix], (sig) => this.journal.markSent(key, sig, this.now()));
+      const signature = await this.send(key, [ix], (sig, lvbh) => this.journal.markSent(key, sig, this.now(), lvbh));
       this.journal.remove(key);
       this.sentSignatures.delete(key);
       this.seasonCache = null;
@@ -890,7 +909,8 @@ export class SolanaChain implements ChainGateway {
       const code = programErrorCode(err);
       const d = describeError(err);
       const label = `${d.name ?? 'error'}${code !== null ? ` ${code}` : ''}: ${firstLine(err)}`;
-      // a program error is a definitive failure (nothing moved): the next attempt may send at once
+      // a program error is final (rejected in preflight, or landed with an error): nothing moved,
+      // so the next attempt may send at once
       if (code !== null) this.journal.markSent(key, '', 0);
       if (code === ERR.constraintSeeds || code === ERR.constraintAddress) this.configAt = 0;
       if (code === ERR.unauthorized) await this.freshConfig();
@@ -902,16 +922,28 @@ export class SolanaChain implements ChainGateway {
     }
   }
 
-  /** Whether a sent sweep landed: true / false, or null when the status cannot be read now. */
+  /**
+   * Whether a sent sweep landed: true (landed, err null), false (not found, or landed with an
+   * error), null when the status cannot be read now or is not final yet ('processed').
+   */
   private async sweepLanded(signature: string): Promise<boolean | null> {
     try {
       if (this.deps.signatureLanded) return await this.deps.signatureLanded(signature);
       if (!this.connection) return null;
       const status = (await this.connection.getSignatureStatuses([signature], { searchTransactionHistory: true })).value[0];
-      return !!status && !status.err && status.confirmationStatus !== 'processed';
+      if (!status) return false;
+      if (status.err) return false;
+      return status.confirmationStatus === 'processed' ? null : true;
     } catch {
       return null;
     }
+  }
+
+  /** Block height at the blockhash commitment ('confirmed'). Throws on RPC failure. */
+  private async currentBlockHeight(): Promise<number> {
+    if (this.deps.blockHeight) return this.deps.blockHeight();
+    if (!this.connection) throw new Error('no connection');
+    return withTimeout(this.connection.getBlockHeight('confirmed'), RPC_TIMEOUT_MS, 'getBlockHeight');
   }
 
   private async processSettle(item: SettlementItem): Promise<void> {
@@ -1119,10 +1151,10 @@ export class SolanaChain implements ChainGateway {
     return logs.some((l) => TOKEN_PROGRAM_FAILED.test(l));
   }
 
-  private send(key: string, ixs: TransactionInstruction[], onSent?: (signature: string) => void): Promise<string> {
-    const onSignature = (signature: string) => {
+  private send(key: string, ixs: TransactionInstruction[], onSent?: (signature: string, lastValidBlockHeight?: number) => void): Promise<string> {
+    const onSignature = (signature: string, lastValidBlockHeight?: number) => {
       this.sentSignatures.set(key, signature);
-      onSent?.(signature);
+      onSent?.(signature, lastValidBlockHeight);
     };
     if (this.deps.send) return withTimeout(this.deps.send(ixs, onSignature), SEND_TIMEOUT_MS, 'send');
     return withTimeout(
