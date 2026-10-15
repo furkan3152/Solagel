@@ -702,3 +702,19 @@ fn sweep_loot_only_pays_the_current_season() {
     assert_eq!(env.season(FIRST_SEASON).pool, old);
     assert_eq!(env.season(FIRST_SEASON + 1).pool, new + 100);
 }
+
+#[test]
+fn sweep_arena_is_not_open_to_the_server() {
+    let mut env = TestEnv::initialized();
+    assert_ok(env.create_arena(1, 1_000, 300, false));
+    assert_ok(env.update_arena(1, Some(false), None, None, None));
+    env.mint_to(&vault_pda(&arena_pda(1)), 500);
+
+    // The server signs `sweep_loot`, never the admin-only `sweep_arena`.
+    let server = env.server.insecure_clone();
+    assert_error(env.sweep_as(&server, 1), SlanaError::Unauthorized);
+    assert_eq!(env.tokens(&vault_pda(&arena_pda(1))), 500);
+    assert_eq!(env.season(FIRST_SEASON).pool, 0);
+    assert_ok(env.sweep(1));
+    assert_eq!(env.season(FIRST_SEASON).pool, 500);
+}
