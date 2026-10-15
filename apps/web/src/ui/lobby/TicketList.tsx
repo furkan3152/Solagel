@@ -2,15 +2,35 @@ import { arenaMeta } from '@slana/shared';
 import { motion } from 'motion/react';
 import type { CSSProperties } from 'react';
 import { STAGGER, Ticket, TicketGroup, TicketStub, useReducedMotion } from '../../design';
+import { formatCountdown, useRound } from '../../game/round';
 import { useT } from '../../i18n';
+import { useUi } from '../../store';
 import { useChainData, usePassPower } from '../../solana/chain';
 import { bpsPercent, feeBps, type TicketGate, type TicketKey, type TicketModel } from '../../solana/ticket';
 import { ticketName, useTokenText } from './useLobby';
 
 /**
+ * Where an arena's round stands: "Round ends in 3:12", or in the final minute "Joins closed ·
+ * next round in 0:42". Its own component, so only this line re-renders every second.
+ */
+export function RoundLine({ arenaId }: { arenaId: number }) {
+  const t = useT();
+  const round = useRound(arenaId);
+  if (!round) return null;
+  const time = formatCountdown(round.msLeft);
+  const closed = round.phase === 'closing';
+  return (
+    <span className={`kl-ticket__round mono${closed ? ' is-closed' : ''}`} data-phase={round.phase}>
+      {closed ? t('lo.round.closed', { time }) : t('lo.round.ends', { time })}
+    </span>
+  );
+}
+
+/**
  * The tickets: practice first, then one per arena (instances summed), each
- * with its price on the stub, live counts, the loot on the floor, a PASS stamp
- * when a Pass is required and the Pass perk line where it is optional.
+ * with its price on the stub, live counts, the loot on the floor, the round's
+ * state, a PASS stamp when a Pass is required and the Pass perk line where it
+ * is optional.
  */
 export function TicketList({
   tickets,
@@ -37,6 +57,7 @@ export function TicketList({
   const tok = useTokenText();
   const reduced = useReducedMotion();
   const power = usePassPower();
+  const held = useUi((s) => s.held);
   const perk = t('lo.perk', { start: power.startPct, s: power.cashoutS, fee: bpsPercent(feeBps(config, true)) });
 
   const count = (n: number, one: 'lo.humans1' | 'lo.bots1', many: 'lo.humans' | 'lo.bots') => (n === 1 ? t(one) : t(many, { n }));
@@ -50,7 +71,9 @@ export function TicketList({
         const maintenance = gate?.kind === 'maintenance';
         const closed = gate?.kind === 'offline' || maintenance;
         const status =
-          gate?.kind === 'settling'
+          !practice && held?.arenaId === tk.arenaId
+            ? t('lo.held')
+            : gate?.kind === 'settling'
             ? t('lo.payoutChip')
             : gate?.kind === 'collect'
               ? t('lo.collectChip')
@@ -95,6 +118,7 @@ export function TicketList({
                 {tk.humans > 0 && <span className="kl-live-dot" aria-hidden="true" />}
                 {meta}
               </span>
+              {!practice && !closed && <RoundLine arenaId={tk.arenaId!} />}
               {!practice && !tk.requiresPass && <span className="kl-ticket__perk mono">{perk}</span>}
             </Ticket>
           </motion.div>

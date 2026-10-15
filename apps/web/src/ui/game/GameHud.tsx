@@ -6,11 +6,11 @@ import { engine } from '../../game/instance';
 import { useT } from '../../i18n';
 import { openModal, useUi } from '../../store';
 import { useTicker } from '../ticker';
-import { CashoutButton } from './CashoutButton';
 import { EmoteBar } from './EmoteBar';
 import { Feed } from './Feed';
 import { counterFrac, sectorOf, useTokenFormat } from './format';
 import { MobileControls, useIsTouch } from './MobileControls';
+import { RoundChip, RoundCountdown } from './RoundChip';
 import { SpectateBar } from './SpectateBar';
 
 /* ───────────────────────── Till receipt (top left) ───────────────────────── */
@@ -285,10 +285,11 @@ function NetStats() {
 /** The in-game HUD: paper scraps taped over the riso world. */
 export function GameHud() {
   const screen = useUi((s) => s.screen);
-  const room = useUi((s) => s.room);
   const touch = useIsTouch();
   const narrow = useNarrow();
   const playing = screen === 'playing';
+  // the round's receipt prints out of the till: it stays on the frozen world under the sheet
+  const roundOver = screen === 'roundover';
   const reduced = useReducedMotion();
   return (
     // the scraps are taped on once the paper has opened onto the world, and lifted off before it closes
@@ -298,9 +299,11 @@ export function GameHud() {
       animate={{ opacity: 1, transition: reduced ? { duration: DUR.fade } : { delay: HUD_IN_DELAY, duration: 0.2 } }}
       exit={{ opacity: 0, transition: { duration: reduced ? DUR.fade : 0.14 } }}
     >
-      {playing && <TillSlip />}
+      {(playing || roundOver) && <TillSlip />}
       <Standings compact={narrow} />
+      {!roundOver && <RoundCountdown />}
       <div className="g-center">
+        {!roundOver && <RoundChip />}
         <TopBar />
         <Banner />
         <PowerUps />
@@ -310,7 +313,6 @@ export function GameHud() {
       <Feed narrow={narrow} />
       {playing && !touch && (
         <div className="g-dock">
-          {room?.mode === 'arena' && <CashoutButton />}
           <EmoteBar />
         </div>
       )}

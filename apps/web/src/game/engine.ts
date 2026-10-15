@@ -9,6 +9,8 @@ import {
   encodeTarget,
   getSkin,
   levelFromXp,
+  type DeathStats,
+  type RoundStanding,
   type ServerMessage,
   type SnapshotData,
 } from '@slana/shared';
@@ -18,17 +20,22 @@ import { t } from '../i18n';
 import { Renderer } from '../render/renderer';
 import { FOOD_COLORS } from '../render/sprites';
 import { useChainData } from '../solana/chain';
-import { cashoutMsOf } from '../solana/ticket';
 import { toast, useUi, type Screen } from '../store';
 import { Camera } from './camera';
+import { serverClock } from './clock';
+import { HeldTicket } from './held';
 import { Input } from './input';
 import { Net } from './net';
 import { Particles } from './particles';
 import { announce, sound, unlockAudio } from '../audio';
+import { currentRound } from './round';
+import { RoundCues } from './roundCues';
 import { ClientWorld } from './state';
 
 /** "Whale alert." once a life reaches this mass (25 times the start mass). */
 const WHALE_MASS = 500;
+/** The world stands still this long on the bell (the receipt prints over it), then catches up. */
+export const BELL_FREEZE_MS = 2500;
 
 const TOKEN_KEY = 'slana.auth.v1';
 const REDUCED_QUERY = '(prefers-reduced-motion: reduce)';
@@ -64,6 +71,29 @@ export class GameEngine {
   private life = { bites: 0, streak: 0, streakAt: -Infinity, whale: false };
   /** Death slow motion start (performance.now()), renderer time only. */
   private slowmoAt = -Infinity;
+  /** The bell rang on my game: the world stands still until then (performance.now()). */
+  private frozenUntil = -Infinity;
+  /** Snapshots held back while frozen (they are deltas: applied in order on the thaw). */
+  private snapQueue: SnapshotData[] = [];
+  /** The last join asked for (a held ticket repeats it when the next round opens). */
+  private lastJoin: { room: string; pass: string | null } | null = null;
+  /** A ticket held through the closed window; it joins when the next round opens. */
+  private readonly heldTicket = new HeldTicket(
+    (room, pass) => {
+      this.ticketRetry = { room, pass, left: 2 };
+      this.sendJoin(room, pass);
+    },
+    () => {
+      const s = useUi.getState();
+      return !(s.screen === 'playing' && s.room?.mode === 'arena');
+    },
+  );
+  /** Round clock cues: last-seconds ticks, the bell and the announcer lines. */
+  private readonly cues = new RoundCues({
+    tick: (s) => sound.roundTick(s),
+    bell: () => sound.bell(),
+    say: (line) => announce(line),
+  });
   private readonly unsub: () => void;
   private readonly reducedQuery: MediaQueryList | null;
 
@@ -84,7 +114,6 @@ export class GameEngine {
         split: () => this.split(),
         eject: () => this.eject(),
         emote: (id) => this.emote(id),
-        cashout: () => this.cashout(),
         openChat: () => {
           const s = useUi.getState();
           if (s.screen === 'playing' && s.settings.showChat) useUi.setState({ chatOpen: true });
@@ -126,6 +155,7 @@ export class GameEngine {
 
   destroy(): void {
     cancelAnimationFrame(this.raf);
+    this.clearHeld();
     this.reducedQuery?.removeEventListener?.('change', this.onReducedChange);
     window.removeEventListener('resize', this.resize);
     this.input.destroy();
@@ -174,6 +204,7 @@ export class GameEngine {
 
   private sendJoin(room: string, pass: string | null): void {
     const { settings } = useUi.getState();
+    this.lastJoin = { room, pass };
     this.net.send({ t: 'join', room, name: settings.name || 'Coinie', skin: settings.skin, ...(pass ? { pass } : {}) });
   }
 
@@ -191,13 +222,13 @@ export class GameEngine {
     if (s.screen === 'playing') this.net.send({ t: 'leave' });
     this.world.myPid = null;
     this.world.value = null;
+    this.thaw();
     useUi.setState({
       screen: 'lobby',
       death: null,
-      cashoutResult: null,
+      roundResult: null,
       chatOpen: false,
       powerups: [],
-      cashout: { state: 'idle', until: 0, total: 0 },
       ticket: null,
       valueDelta: null,
     });
@@ -205,7 +236,8 @@ export class GameEngine {
   }
 
   watch(): void {
-    useUi.setState({ screen: 'spectating', death: null, cashoutResult: null });
+    this.thaw();
+    useUi.setState({ screen: 'spectating', death: null, roundResult: null });
     this.net.send({ t: 'spectate', room: useUi.getState().room?.id });
   }
 
@@ -229,18 +261,35 @@ export class GameEngine {
     this.net.send({ t: 'emote', id });
   }
 
-  cashout(): void {
-    const s = useUi.getState();
-    if (s.screen !== 'playing' || s.room?.mode !== 'arena' || s.cashout.state !== 'idle') return;
-    this.net.send({ t: 'cashout' });
-    sound.click();
+  /* ---------------------------------------------------------------- */
+  /* Rounds                                                           */
+  /* ---------------------------------------------------------------- */
+
+  /** Drops a held ticket's automatic join (it joined, or the player left it). */
+  clearHeld(): void {
+    this.heldTicket.clear();
   }
 
-  /** Cash-out channel length for the current ticket (Pass tickets print faster). */
-  cashoutMs(): number {
-    const s = useUi.getState();
-    // I3: the server's Pass power (its welcome status), RULES for older servers
-    return cashoutMsOf(s.chain, s.ticket?.hasPass === true);
+  /** My paid game ended with a payout: the bell (`round`) or an operator exit (`exit`). */
+  private endGame(kind: 'round' | 'exit', round: number | null, payout: number, stats: DeathStats | null, standings: RoundStanding[]): void {
+    const me = this.world.myStats();
+    if (kind === 'round' && round !== null) {
+      // the world stops on the bell; the receipt prints over it
+      this.frozenUntil = performance.now() + BELL_FREEZE_MS;
+      this.cues.ring(round);
+    } else {
+      this.world.myPid = null;
+      sound.cashout();
+      announce('paid');
+    }
+    if (me && !this.reduced) this.particles.coinBurst(me.x, me.y, Math.max(60, me.maxR), 36);
+    this.wasArena = null;
+    useUi.setState({
+      screen: 'roundover',
+      roundResult: { kind, round, payout, stats, standings },
+      powerups: [],
+      chatOpen: false,
+    });
   }
 
   chat(text: string): void {
@@ -276,7 +325,24 @@ export class GameEngine {
   /* Network                                                          */
   /* ---------------------------------------------------------------- */
 
+  private get frozen(): boolean {
+    return performance.now() < this.frozenUntil;
+  }
+
+  /** Ends the bell's freeze: the world catches up with what the server sent meanwhile. */
+  private thaw(): void {
+    this.frozenUntil = -Infinity;
+    const now = performance.now();
+    for (const s of this.snapQueue) this.world.apply(s, now);
+    this.snapQueue = [];
+  }
+
   private onSnapshot(s: SnapshotData): void {
+    // the bell froze the world: the next round's snapshots wait (in order) until the thaw
+    if (this.frozen) {
+      this.snapQueue.push(s);
+      return;
+    }
     this.world.apply(s, performance.now());
   }
 
@@ -288,6 +354,7 @@ export class GameEngine {
     const now = performance.now();
     switch (m.t) {
       case 'welcome': {
+        serverClock.sync(m.serverNow);
         useUi.setState({ connected: true, connecting: false, rooms: m.rooms, chain: m.chain, online: m.online, blockedArenas: (m.blocked ?? []).map((b) => b.arenaId) });
         const auth = useUi.getState().auth;
         if (auth) this.authToken(auth.token);
@@ -330,6 +397,8 @@ export class GameEngine {
           this.camera.zoomIntro(fromPaper ? DUR.zoomIn : 0);
         }
         this.slowmoAt = -Infinity;
+        this.thaw();
+        this.clearHeld();
         this.life = { bites: 0, streak: 0, streakAt: -Infinity, whale: false };
         if (this.world.myPid !== m.playerId) {
           const where = m.room.mode === 'arena' && m.room.arenaId !== undefined ? arenaMeta(m.room.arenaId).name : t('an.practice');
@@ -346,9 +415,8 @@ export class GameEngine {
           room: m.room,
           me: { pid: m.playerId, name: m.name, skin: m.skin },
           death: null,
-          cashoutResult: null,
+          roundResult: null,
           powerups: [],
-          cashout: { state: 'idle', until: 0, total: 0 },
           hud: { ...useUi.getState().hud, value: m.value ?? null },
           valueDelta: null,
           // a new ticket: any earlier settlement belongs to an earlier ticket (the server only lets us
@@ -367,6 +435,7 @@ export class GameEngine {
         return;
       }
       case 'spectating': {
+        this.thaw();
         const prev = useUi.getState().room;
         if (prev?.id !== m.room.id) this.world.reset();
         this.world.width = m.room.width;
@@ -377,6 +446,8 @@ export class GameEngine {
       case 'left':
         return;
       case 'lb': {
+        // the bell's freeze keeps the final standings on the slip
+        if (this.frozen) return;
         const s = useUi.getState();
         useUi.setState({
           lb: m.top,
@@ -417,39 +488,17 @@ export class GameEngine {
           screen: 'dead',
           death: { stats: m.stats, killer: m.killer, killerSkin: m.killerSkin },
           powerups: [],
-          cashout: { state: 'idle', until: 0, total: 0 },
           chatOpen: false,
         });
         return;
       }
-      case 'cashout': {
-        if (m.state === 'started') {
-          const total = m.ms ?? this.cashoutMs();
-          useUi.setState({ cashout: { state: 'channel', until: now + total, total } });
-          sound.print(total);
-          announce('cashingOut');
-          return;
-        }
-        if (m.state === 'canceled') {
-          useUi.setState({ cashout: { state: 'idle', until: 0, total: 0 } });
-          sound.stopPrint();
-          toast('warn', t('hud.cashoutCanceled'));
-          return;
-        }
-        sound.cashout();
-        announce('paid');
-        const me = this.world.myStats();
-        if (me) this.particles.coinBurst(me.x, me.y, Math.max(60, me.maxR), 36);
-        this.world.myPid = null;
-        this.wasArena = null;
-        useUi.setState({
-          screen: 'cashedout',
-          cashoutResult: { value: m.value ?? 0, stats: m.stats ?? null },
-          cashout: { state: 'idle', until: 0, total: 0 },
-          chatOpen: false,
-        });
+      case 'cashout':
+        // paid arenas have no cash-out; a `done` is an operator exit (admin kick, shutdown) paid at value
+        if (m.state === 'done') this.endGame('exit', null, m.value ?? 0, m.stats ?? null, []);
         return;
-      }
+      case 'roundOver':
+        this.endGame('round', m.round, m.payout, m.stats, m.standings);
+        return;
       case 'value': {
         this.world.applyValue(m, now);
         useUi.setState((s) => ({
@@ -495,6 +544,24 @@ export class GameEngine {
         return;
       }
       case 'error': {
+        if (m.code === 'round_closed') {
+          // joins are closed until the next round: hold the ticket and join when it opens
+          const join = this.lastJoin;
+          this.ticketRetry = null;
+          if (join?.room.startsWith('arena:')) {
+            const arenaId = Number(join.room.slice('arena:'.length));
+            this.heldTicket.hold(join.room, join.pass, m.opensAt ?? currentRound(arenaId)?.endsAt ?? serverClock.now());
+          }
+          return;
+        }
+        if (m.code === 'round_ended') {
+          // back after a bell that settled our ticket while we were away: the till was paid
+          this.ticketRetry = null;
+          this.wasArena = null;
+          if (useUi.getState().screen !== 'lobby') this.backToLobby();
+          toast('info', t('err.round_ended'), undefined, 9000);
+          return;
+        }
         const retry = this.ticketRetry;
         if (m.code === 'no_session' && retry && retry.left > 0) {
           retry.left--;
@@ -510,6 +577,7 @@ export class GameEngine {
         return;
       }
       case 'pong':
+        serverClock.sync(m.serverNow, this.net.rtt);
         useUi.setState({ ping: Math.round(this.net.rtt) });
         return;
     }
@@ -631,14 +699,19 @@ export class GameEngine {
     const rdt = dt * ts;
     this.camera.push = 1 + 0.1 * ((1 - ts) / 0.7);
 
-    world.update(now, dt);
-    if (now - this.lastExpr > 150) {
-      this.lastExpr = now;
-      world.computeExpressions(now);
+    if (this.snapQueue.length > 0 && !this.frozen) this.thaw();
+    if (!this.frozen) {
+      world.update(now, dt);
+      if (now - this.lastExpr > 150) {
+        this.lastExpr = now;
+        world.computeExpressions(now);
+      }
+      this.handleEats();
+      this.handleFloats();
     }
-    this.handleEats();
-    this.handleFloats();
     this.particles.update(rdt);
+    // the round clock's sounds, while an arena is on screen (playing, eaten or watching it)
+    this.cues.update(ui.room?.mode === 'arena' && ui.screen !== 'lobby' ? currentRound(ui.room.arenaId ?? null) : null);
 
     // camera
     const me = world.myStats();
@@ -679,7 +752,6 @@ export class GameEngine {
       pass: ui.chain?.pass ?? null,
       reduced: this.reduced,
       aim: ui.screen === 'playing' ? this.aimPoint() : null,
-      cashout: ui.cashout.state === 'channel' ? { until: ui.cashout.until, total: ui.cashout.total || this.cashoutMs() } : null,
       coinRain: !!ui.banner && ui.banner.kind === 'coinrain' && ui.banner.until > Date.now(),
       rand: this.rand,
     });

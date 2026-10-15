@@ -19,6 +19,7 @@ import { ProfilePage } from '../profile/ProfilePage';
 import { LiveFrame } from './LiveFrame';
 import './lobby.css';
 import { PassCard } from './PassCard';
+import { HeldBanner } from './HeldBanner';
 import { PendingBanner } from './PendingBanner';
 import { QuickPlay } from './QuickPlay';
 import { SeasonColumn } from './SeasonColumn';
@@ -81,6 +82,12 @@ export function Lobby() {
   const selectedKey: TicketKey = has(picked) ? picked : model.quick;
   const ticket = model.tickets.find((x) => x.key === selectedKey);
   const gate = model.gates[selectedKey];
+
+  // a ticket held for the next round: show it selected (its button says it is held)
+  const heldArena = useUi((s) => s.held?.arenaId ?? null);
+  useEffect(() => {
+    if (heldArena !== null) setPicked(`arena:${heldArena}`);
+  }, [heldArena]);
 
   // "New ticket" from the death / receipt sheets: select that ticket, open its confirm sheet
   useEffect(() => {
@@ -151,6 +158,7 @@ export function Lobby() {
   const tickets = (
     <section className="kl-col kl-col--tickets" aria-labelledby="kl-tickets-h">
       {mid && <PendingBanner onCollect={collect} />}
+      <HeldBanner />
       <div className="kl-section-head">
         <h2 id="kl-tickets-h" className="kl-h2">
           {t('lo.tickets')}

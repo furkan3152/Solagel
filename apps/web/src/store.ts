@@ -5,11 +5,12 @@ import type {
   PowerUpType,
   ProfileSummary,
   RoomInfo,
+  RoundStanding,
 } from '@slana/shared';
 import { create } from 'zustand';
 import { AUDIO_DEFAULTS } from './audio/mixer';
 
-export type Screen = 'lobby' | 'playing' | 'dead' | 'spectating' | 'cashedout';
+export type Screen = 'lobby' | 'playing' | 'dead' | 'spectating' | 'roundover';
 export type Quality = 'high' | 'low';
 export type Theme = 'light' | 'dark';
 
@@ -60,6 +61,17 @@ export interface ChatItem {
   at: number;
 }
 
+export interface RoundResult {
+  kind: 'round' | 'exit';
+  /** Round number (`round` only). */
+  round: number | null;
+  /** The till at the end, before the fee (raw token units). */
+  payout: number;
+  stats: DeathStats | null;
+  /** Top stakers at the bell (`round` only); `you` marks this player. */
+  standings: RoundStanding[];
+}
+
 export interface Toast {
   id: number;
   kind: 'info' | 'success' | 'error' | 'warn';
@@ -107,10 +119,18 @@ export interface UiState {
   chatOpen: boolean;
   powerups: { type: PowerUpType; until: number }[];
   banner: { kind: 'coinrain' | 'airdrop'; until: number; text?: string } | null;
-  /** Cash-out channel: `until` is a performance.now() time, `total` the channel length in ms. */
-  cashout: { state: 'idle' | 'channel'; until: number; total: number };
   death: { stats: DeathStats; killer: string | null; killerSkin: number | null } | null;
-  cashoutResult: { value: number; stats: DeathStats | null } | null;
+  /**
+   * A paid game that ended with a payout: `round` at the bell (`roundOver`, with the room's
+   * standings), `exit` when the operator ended it (an admin kick or a server shutdown pays
+   * the current value).
+   */
+  roundResult: RoundResult | null;
+  /**
+   * A ticket bought (or resumed) while the round's joins were closed: it is held, and joins by
+   * itself when the next round opens (`opensAt`, server clock).
+   */
+  held: { arenaId: number; opensAt: number } | null;
   /** Last `settled` message; `session` matches it to a ticket (R16). */
   /** `collect`: R24, settled without a usable token account; the net waits in the vault for "Collect payout". */
   lastSettlement: { session: string | null; arenaId: number | null; signature: string; payout: number; fee?: number; net?: number; collect?: boolean; at: number } | null;
@@ -184,9 +204,9 @@ export const useUi = create<UiState>(() => ({
   chatOpen: false,
   powerups: [],
   banner: null,
-  cashout: { state: 'idle', until: 0, total: 0 },
   death: null,
-  cashoutResult: null,
+  roundResult: null,
+  held: null,
   lastSettlement: null,
   spectateTarget: null,
   toasts: [],
