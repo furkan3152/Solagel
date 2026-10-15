@@ -95,21 +95,51 @@ pub mod slana {
 
     /// Pays the entry fee into the arena vault and opens a session (no Pass). Fails with
     /// `FeeAboveLimit` if the fee rate fixed into the session exceeds `max_fee_bps` (the rate
-    /// the player was shown).
-    pub fn join_arena(ctx: Context<JoinArena>, max_fee_bps: u16) -> Result<()> {
-        instructions::join_arena::handle_join_arena(ctx, max_fee_bps)
+    /// the player was shown), the arena's entry fee exceeds `max_entry_fee`
+    /// (`EntryFeeAboveLimit`) or the settle deposit exceeds `max_settle_fee`
+    /// (`SettleFeeAboveLimit`).
+    pub fn join_arena(
+        ctx: Context<JoinArena>,
+        max_fee_bps: u16,
+        max_entry_fee: u64,
+        max_settle_fee: u64,
+    ) -> Result<()> {
+        instructions::join_arena::handle_join_arena(
+            ctx,
+            JoinLimits {
+                max_fee_bps,
+                max_entry_fee,
+                max_settle_fee,
+            },
+        )
     }
 
     /// Like `join_arena`, backed by a Slana Pass that is locked until the session closes.
-    pub fn join_arena_with_pass(ctx: Context<JoinArenaWithPass>, max_fee_bps: u16) -> Result<()> {
-        instructions::join_arena::handle_join_arena_with_pass(ctx, max_fee_bps)
+    pub fn join_arena_with_pass(
+        ctx: Context<JoinArenaWithPass>,
+        max_fee_bps: u16,
+        max_entry_fee: u64,
+        max_settle_fee: u64,
+    ) -> Result<()> {
+        instructions::join_arena::handle_join_arena_with_pass(
+            ctx,
+            JoinLimits {
+                max_fee_bps,
+                max_entry_fee,
+                max_settle_fee,
+            },
+        )
     }
 
-    /// Server-signed cash-out of a stake session.
+    /// Server-signed cash-out of a stake session. With the player's token account the payout
+    /// is paid and the session closed; without it (`player_token = None`) the session is
+    /// finalized with `owed` for the player to collect via `refund_session` (ruling R24).
     pub fn settle_session(ctx: Context<SettleSession>, args: SettleArgs) -> Result<()> {
         instructions::settle_session::handle_settle_session(ctx, args)
     }
 
+    /// Player-signed. A finalized session pays its `owed` payout at once; an unsettled one
+    /// returns the entry fee after `SESSION_REFUND_TIMEOUT_SECS`.
     pub fn refund_session(ctx: Context<RefundSession>) -> Result<()> {
         instructions::refund_session::handle_refund_session(ctx)
     }

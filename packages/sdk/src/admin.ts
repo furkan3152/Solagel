@@ -6,7 +6,7 @@
  * Run `pnpm admin help` for the command list.
  */
 import { createHash, randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { DEFAULT_ARENAS, arenaMeta, formatToken, parseToken } from '@slana/shared';
@@ -31,7 +31,6 @@ import {
   TOKEN_2022_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
   assertSafeSupply,
-  ata,
   checkBaseUri,
   createAtaIdempotentIx,
   createCollectionIx,
@@ -44,6 +43,7 @@ import {
   type ConfigView,
   type UpdateConfigParams,
 } from './index';
+import { resolveWithdrawDestination } from './admin-destination';
 
 /** Defaults from the v2 plan (all configurable; also quoted by the player docs page). */
 const DEFAULTS = { feeBps: DEFAULT_FEE_BPS, passFeeBps: DEFAULT_PASS_FEE_BPS, split: DEFAULT_FEE_SPLIT_BPS, settleFeeLamports: DEFAULT_SETTLE_FEE_LAMPORTS };
@@ -92,8 +92,10 @@ Arenas
                                            still waiting there is no longer backed afterwards)
 
 Treasury & seasons
-  withdraw-treasury --amount <tokens> --to <owner>
-                          pay the owner's token account (created if missing)
+  withdraw-treasury --amount <tokens> --to <owner|token account> [--allow-off-curve]
+                          a token account of the game mint is paid directly; an owner's associated
+                          token account is created if missing; other token accounts and mints are
+                          refused, and so is an off-curve (PDA) owner unless --allow-off-curve
   end-season                               freeze the current season and open the next one
   rollover --season N                      move unclaimed prizes of season N into the current season
 
@@ -541,6 +543,8 @@ function cmdPassSeed(opts: Opts): void {
   const seed = randomBytes(32);
   mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
   writeFileSync(file, JSON.stringify([...seed]), { mode: 0o600 });
+  // `mode` applies only when the file is created: an overwritten (--force) file keeps its old mode
+  chmodSync(file, 0o600);
   console.log(`✓ wrote 32 random bytes to ${file} — keep it secret and backed up, never commit it`);
   console.log(`  sha256 ${sha256Hex(seed)}`);
   console.log(`  next: pnpm admin set-seed-hash --seed-file ${str(opts, 'seed-file') ?? DEFAULT_SEED_FILE}`);
@@ -686,17 +690,25 @@ async function cmdWithdrawTreasury(ctx: Ctx, opts: Opts): Promise<void> {
   const config = await requireConfig(ctx);
   const amount = tokens(opts, 'amount', config.tokenDecimals);
   const to = pubkey(opts, 'to');
-  if (amount === undefined || !to) throw new UsageError('withdraw-treasury needs --amount <tokens> --to <owner>');
+  if (amount === undefined || !to) throw new UsageError('withdraw-treasury needs --amount <tokens> --to <owner|token account>');
   if (amount === 0n) throw new UsageError('--amount must be greater than zero');
   const { treasury } = await ctx.client.fetchVaultBalances();
   if (amount > treasury) throw new UsageError(`the treasury holds only ${fmtTok(treasury, config.tokenDecimals)}`);
   const admin = ctx.signer();
-  const destination = ata(to, config.tokenMint, config.tokenProgram);
+  const info = await ctx.client.connection.getAccountInfo(to, 'confirmed');
+  const resolved = resolveWithdrawDestination(
+    to,
+    info ? { owner: info.owner, data: info.data } : null,
+    { tokenMint: new PublicKey(config.tokenMint), tokenProgram: new PublicKey(config.tokenProgram) },
+    opts.get('allow-off-curve') === true,
+  );
+  if (!resolved.ok) throw new UsageError(resolved.error);
+  const { destination, createAta } = resolved;
   const ixs = [
-    createAtaIdempotentIx(admin.publicKey, to, config.tokenMint, config.tokenProgram),
+    ...(createAta ? [createAtaIdempotentIx(admin.publicKey, createAta.owner, config.tokenMint, config.tokenProgram)] : []),
     await ctx.client.ix.withdrawTreasury(admin.publicKey, { amount, destination, tokenMint: config.tokenMint, tokenProgram: config.tokenProgram }),
   ];
-  await send(ctx, `withdrew ${fmtTok(amount, config.tokenDecimals)} from the treasury to ${to.toBase58()} (${destination.toBase58()})`, ixs);
+  await send(ctx, `withdrew ${fmtTok(amount, config.tokenDecimals)} from the treasury to ${destination.toBase58()} (${resolved.note})`, ixs);
 }
 
 async function cmdEndSeason(ctx: Ctx): Promise<void> {

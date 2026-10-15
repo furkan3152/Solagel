@@ -67,12 +67,20 @@ export const SlanaErrorCode = {
   EntropyNotCaptured: 6049,
   SeedNotRevealed: 6050,
   FeeAboveLimit: 6051,
+  EntryFeeAboveLimit: 6052,
+  SettleFeeAboveLimit: 6053,
+  SessionFinalized: 6054,
+  InvalidAuthority: 6055,
 } as const;
 
 export type SlanaErrorName = keyof typeof SlanaErrorCode;
 
 /** Player-facing message for an "already in use" failure on a Pass lock. */
-export const PASS_IN_USE_MESSAGE = 'Bu Pass şu an başka bir oturumda';
+export const PASS_IN_USE_MESSAGE = 'This Pass is already backing another open session.';
+
+/** Player-facing message for an "already in use" failure on the arena session PDA. */
+export const SESSION_IN_USE_MESSAGE =
+  'You still have a session in this arena. Collect your payout (or resume your ticket) first.';
 
 const FRIENDLY: Record<SlanaErrorName, string> = {
   Unauthorized: 'You are not allowed to do that (wrong wallet or account).',
@@ -127,9 +135,13 @@ const FRIENDLY: Record<SlanaErrorName, string> = {
   EntropyNotCaptured: 'The Pass entropy is not captured yet (capture-entropy).',
   SeedNotRevealed: 'The Pass seed is not revealed yet; the reveal completes after it.',
   FeeAboveLimit: 'The fee changed a moment ago and is now higher than shown. Nothing was charged; check the ticket again.',
+  EntryFeeAboveLimit: 'The entry fee changed a moment ago and is now higher than shown. Nothing was charged; check the ticket again.',
+  SettleFeeAboveLimit: 'The settle deposit changed a moment ago and is now higher than shown. Nothing was charged; check the ticket again.',
+  SessionFinalized: 'This game is already settled. Collect your payout.',
+  InvalidAuthority: 'The admin or server key must not be the default (all zero) key.',
 };
 
-/** Program errors by code (6000–6042). */
+/** Program errors by code (6000–6055). */
 export const SLANA_ERRORS: Readonly<Record<number, ErrorInfo>> = Object.fromEntries(
   (Object.keys(SlanaErrorCode) as SlanaErrorName[]).map((name) => [
     SlanaErrorCode[name],
@@ -354,6 +366,8 @@ function plainMessage(err: unknown): string {
 export interface DescribeContext {
   /** `pass_lock` PDA of the transaction: "already in use" on it means the Pass is busy. */
   passLock?: Address | null;
+  /** Session PDA of a join: "already in use" on it means a session (maybe finalized) is still open. */
+  session?: Address | null;
 }
 
 /** Maps any error to `{ code, name, message }` with a friendly message. */
@@ -368,6 +382,10 @@ export function describeError(err: unknown, ctx: DescribeContext = {}): Describe
     const lock = ctx.passLock ? toBase58(ctx.passLock) : null;
     if (/\bpass_lock\b/.test(text) || (lock !== null && text.includes(lock))) {
       return { code: SlanaErrorCode.PassInUse, name: 'PassInUse', message: PASS_IN_USE_MESSAGE };
+    }
+    const session = ctx.session ? toBase58(ctx.session) : null;
+    if (session !== null && text.includes(session)) {
+      return { code: null, name: 'SessionInUse', message: SESSION_IN_USE_MESSAGE };
     }
   }
   if (walletCode(err) === 4001) return { code: null, name: 'UserRejected', message: 'You cancelled the request in your wallet.' };
