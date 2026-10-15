@@ -34,3 +34,4 @@ test-results/
 *.log
 .vite/
 out/
+out/videos/

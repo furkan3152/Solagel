@@ -11,6 +11,9 @@ OUT_DIR=target/programs
 MPL_CORE_ID=CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d
 
 ATTEMPTS="${FETCH_ATTEMPTS:-5}"
+# a blocked or offline network must fail, not hang: each attempt is cut off after FETCH_TIMEOUT seconds
+TIMEOUT=()
+if command -v timeout >/dev/null; then TIMEOUT=(timeout "${FETCH_TIMEOUT:-60}"); fi
 
 mkdir -p "$OUT_DIR"
 if [ -s "$OUT_DIR/mpl_core.so" ]; then
@@ -19,7 +22,7 @@ if [ -s "$OUT_DIR/mpl_core.so" ]; then
 fi
 # public RPCs rate-limit and drop connections: retry with a growing pause
 for i in $(seq 1 "$ATTEMPTS"); do
-  if solana program dump -u "$RPC" "$MPL_CORE_ID" "$OUT_DIR/mpl_core.so.tmp" && [ -s "$OUT_DIR/mpl_core.so.tmp" ]; then
+  if "${TIMEOUT[@]+"${TIMEOUT[@]}"}" solana program dump -u "$RPC" "$MPL_CORE_ID" "$OUT_DIR/mpl_core.so.tmp" && [ -s "$OUT_DIR/mpl_core.so.tmp" ]; then
     mv "$OUT_DIR/mpl_core.so.tmp" "$OUT_DIR/mpl_core.so"
     echo "fetched $OUT_DIR/mpl_core.so"
     exit 0
