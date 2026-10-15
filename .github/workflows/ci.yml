@@ -75,12 +75,16 @@ jobs:
           key: external-programs-mpl-core-v1
       - name: Fetch external programs (Metaplex Core, retried)
         run: scripts/fetch-programs.sh
-      - name: Lean crate host tests (discriminators vs reference and IDL)
+      - name: Lean crate host tests (discriminators, errors, layouts vs reference and IDL)
         run: cargo test -p slana-lean
       - name: LiteSVM suite against the reference + size gate (SLANA_IMPL=ref)
         run: cargo test -p slana-ref --no-fail-fast
         env:
           SLANA_IMPL: ref
+      - name: Ported instructions against the lean program (admin, layout, size; hard gate)
+        run: cargo test -p slana-ref --test admin --test layout --test size
+        env:
+          SLANA_IMPL: lean
       - name: LiteSVM suite against the lean program (SLANA_IMPL=lean)
         # TODO(v3 Task 5): remove continue-on-error once the lean program passes the full suite.
         continue-on-error: true
