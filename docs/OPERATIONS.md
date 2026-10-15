@@ -4,8 +4,10 @@ What comes after the setup: the season cycle, the Pass reveal, the treasury, pau
 rotation and the journal backup. Setup: [DEPLOY.md](DEPLOY.md). Money flow and trust model:
 [ARCHITECTURE.md](ARCHITECTURE.md). Every command below exists in `pnpm admin help`.
 
-The commands take `--url`, `--keypair` (default `~/.config/solana/id.json`, i.e. the admin) and `--program`; see
-[DEPLOY.md](DEPLOY.md). Before and after every operation:
+The commands take `--url`, `--keypair` (default `~/.config/solana/id.json`; it must be the **admin wallet**
+`D2Ts7yCiVjedo6uwqpkM44QA8J45NdVU1J3k5m6iWtvm`, `SLANA_ADMIN` in `scripts/admin.env`) and `--program`; see
+[DEPLOY.md](DEPLOY.md). Every admin command is run by this wallet; the server key is a separate hot key that only
+settles sessions. `pnpm admin` reads a keypair file only (no `usb://ledger`), see the hardware wallet note in DEPLOY.md. Before and after every operation:
 
 ```bash
 pnpm admin status
@@ -206,5 +208,47 @@ scripts/deploy-lean.sh <cluster-url> target/deploy/slana-keypair.json   # with t
 > **Never `anchor deploy`.** It deploys `target/deploy/slana.so`, the ~679 KB Anchor reference, instead of the lean
 > program, and its rent would lock ≈ ◎4.7. Upgrades always go through `scripts/deploy-lean.sh` (`solana program deploy target/deploy/slana_lean.so`).
 
+The upgrade authority is the admin wallet: `deploy-lean.sh` moves it there after a deploy, so an upgrade is signed by the
+admin (`--keypair <admin keypair> --upgrade-authority <admin keypair>`); it skips the move when the admin already is the
+authority. Never pass `--final`: the program must stay upgradeable and closable.
+
 Keep the account layout (state.rs) backward compatible; if the new `.so` is larger, first run
-`solana program extend <PROGRAM_ID> <bytes>`. On mainnet, do the upgrade through a multisig and try it on devnet first.
+`solana program extend <PROGRAM_ID> <bytes>`. On mainnet, try the upgrade on devnet first; a multisig is optional later.
+
+## Emergency stop / close
+
+The program is deliberately kept upgradeable (never `--final`), so the admin wallet can stop or close it at any time.
+Three steps, from gentle to final. Run every command with the admin wallet.
+
+**(a) Instant pause.** Stops new tickets at once; payouts, refunds and collections keep working.
+
+```bash
+pnpm admin update-config --paused true --keypair <admin keypair>     # undo: --paused false
+```
+
+**(b) Optional graceful wind-down.** Do this when there is time, so no player or token is stranded:
+
+1. Pause (a) and set `STAKE_ENABLED=false` on the server, so the arenas leave the lobby.
+2. Disable the arenas (`pnpm admin update-arena --id N --enabled false`) and let the open sessions settle. Players
+   collect their payouts and, after 24 hours, refund any ticket that did not settle. `pnpm admin status` must show
+   `open 0` for every arena.
+3. Withdraw the treasury: `pnpm admin withdraw-treasury --amount <tokens> --to <wallet>`.
+4. Sweep each idle arena into the season pool: `pnpm admin sweep --id N --force`.
+5. End the season (`pnpm admin end-season`) and let the players claim their share of the pool.
+
+**(c) Instant close.** Irreversible.
+
+```bash
+scripts/close-program.sh <cluster-url> <admin-keypair>          # prints the state, asks you to type the program id
+scripts/close-program.sh <cluster-url> <admin-keypair> --force  # no confirmation
+```
+
+The script prints the on-chain state first (`pnpm admin status`: the paused flag, each arena's open sessions and vault,
+the treasury and season vaults, the Pass mint), then a warning, then runs `solana program close <PROGRAM_ID>
+--bypass-warning --recipient <admin> --keypair <admin>` and prints the reclaimed SOL (about 0.414 SOL of ProgramData
+rent).
+
+> **Warning.** Once the program is closed, every token left in a program-owned vault (arenas, treasury, season pool) is
+> **permanently inaccessible**, open sessions can no longer settle or refund, and nothing can be recovered. A closed
+> program id can **never be reused**: redeploying means a new program id, a new Config and a new token setup. Prefer
+> (a) and (b) unless it is a real emergency.
