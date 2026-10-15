@@ -14,7 +14,7 @@ use {
 };
 
 /// Most accounts any CPI of this program passes.
-const MAX_CPI_ACCOUNTS: usize = 4;
+const MAX_CPI_ACCOUNTS: usize = 6;
 
 /// Invokes `program` with `metas` / `views` (same order, same length) and `data`, signed by
 /// `signers`. A failing callee aborts the whole transaction, so there is nothing to return.

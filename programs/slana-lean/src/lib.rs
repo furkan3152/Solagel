@@ -19,6 +19,7 @@ pub mod accounts;
 pub mod borsh;
 pub mod constants;
 pub mod core_asset;
+pub mod core_cpi;
 pub mod cpi;
 pub mod discriminator;
 pub mod error;

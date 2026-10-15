@@ -2,9 +2,11 @@
 //! account bytes in place (the layouts of `state.rs`).
 //!
 //! Ported: `check_skin`, `validate_name`, `mul_bps`, `split_payout`, `apply_game`,
-//! `leader_entry` + `upsert_leaderboard` (as [`upsert_leaderboard`]). The season-claim helpers
-//! (`prize_amount`, `prize_rank`) and the entropy helpers come with their instructions. The
-//! unit tests run the reference functions and these side by side.
+//! `leader_entry` + `upsert_leaderboard` (as [`upsert_leaderboard`]), and the Pass entropy
+//! helpers `find_slot_hash`, `hex32`, `pass_final_seed` (plus the decimal writer and the capture
+//! log line the reference builds with `format!`). The season-claim helpers (`prize_amount`,
+//! `prize_rank`) come with their instructions. The unit tests run the reference functions and
+//! these side by side.
 
 use {
     crate::error::Result,
@@ -230,6 +232,169 @@ pub fn upsert_leaderboard(
         idx -= 1;
     }
     Some(idx)
+}
+
+// ----- Pass trait entropy -------------------------------------------------------------------
+
+/// Reference `SlotHashLookup`: what the SlotHashes sysvar says about a target slot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SlotHashLookup {
+    /// The first slot with a block at or after the target, and its hash.
+    Found(u64, [u8; 32]),
+    /// The newest entry is still before the target.
+    NotYet,
+    /// The window (oldest entry) has moved past the target.
+    Missed,
+}
+
+/// Bytes of one SlotHashes entry (`slot: u64`, `hash: [u8; 32]`).
+const SLOT_HASH_ENTRY: usize = 40;
+
+/// Reference `find_slot_hash` over the SlotHashes sysvar data (bincode: `len: u64`, then
+/// `len` entries of `slot u64 | hash [u8; 32]`, newest first). `None` when the data is empty
+/// (`len = 0`) or shorter than `8 + 40·len`. Otherwise `NotYet` when the newest slot is below
+/// `target`, `Missed` when the oldest slot is above it, else the smallest slot `≥ target`
+/// found by the same linear scan from the newest entry (it stops at the first entry below the
+/// target). Every read is bounds-checked; the scan visits at most `len` entries.
+#[inline(never)]
+pub fn find_slot_hash(data: &[u8], target: u64) -> Option<SlotHashLookup> {
+    let (len, rest) = data.split_first_chunk::<8>()?;
+    let len = usize::try_from(u64::from_le_bytes(*len)).ok()?;
+    let (entries, _) = rest
+        .get(..len.checked_mul(SLOT_HASH_ENTRY)?)?
+        .as_chunks::<SLOT_HASH_ENTRY>();
+    let slot = |e: &[u8; SLOT_HASH_ENTRY]| rd_u64(e, 0);
+    let (newest, oldest) = (entries.first()?, entries.last()?);
+    if slot(newest) < target {
+        return Some(SlotHashLookup::NotYet);
+    }
+    if slot(oldest) > target {
+        return Some(SlotHashLookup::Missed);
+    }
+    // Newest first: the last entry of the leading run with slot ≥ target is the smallest.
+    let mut best = newest;
+    for e in entries {
+        if slot(e) < target {
+            break;
+        }
+        best = e;
+    }
+    Some(SlotHashLookup::Found(slot(best), rd_key(best, 8)))
+}
+
+/// `sha256(parts[0] ‖ parts[1] ‖ …)` with the `sol_sha256` syscall.
+#[inline(never)]
+pub fn sha256(parts: &[&[u8]]) -> [u8; 32] {
+    #[cfg(target_os = "solana")]
+    {
+        let mut out = [0u8; 32];
+        // SAFETY: `&[u8]` has the `(ptr, len)` layout the syscall expects; `out` is 32 bytes.
+        unsafe {
+            pinocchio::syscalls::sol_sha256(
+                parts.as_ptr() as *const u8,
+                parts.len() as u64,
+                out.as_mut_ptr(),
+            );
+        }
+        out
+    }
+    #[cfg(all(not(target_os = "solana"), test))]
+    {
+        solana_sha256_hasher::hashv(parts).to_bytes()
+    }
+    #[cfg(all(not(target_os = "solana"), not(test)))]
+    {
+        core::hint::black_box(parts);
+        [0u8; 32]
+    }
+}
+
+/// Reference `pass_final_seed`: `sha256(seed ‖ entropy)`.
+pub fn pass_final_seed(seed: &[u8; 32], entropy: &[u8; 32]) -> [u8; 32] {
+    sha256(&[seed, entropy])
+}
+
+/// Reference `hex32`: lowercase hex of 32 bytes.
+#[inline(never)]
+pub fn hex32(bytes: &[u8; 32]) -> [u8; 64] {
+    const DIGITS: &[u8; 16] = b"0123456789abcdef";
+    let mut out = [0u8; 64];
+    for (pair, b) in out.chunks_exact_mut(2).zip(bytes) {
+        if let [hi, lo] = pair {
+            *hi = DIGITS[usize::from(b >> 4)];
+            *lo = DIGITS[usize::from(b & 0x0f)];
+        }
+    }
+    out
+}
+
+/// Decimal digits of `v` (what `format!("{v}")` prints), written at the end of `out`.
+#[inline(never)]
+pub fn dec(mut v: u64, out: &mut [u8; 20]) -> &[u8] {
+    let mut start = out.len();
+    loop {
+        // Bound: `start` counts down from 20 and a u64 has at most 20 digits; `v % 10 < 10`.
+        #[allow(clippy::arithmetic_side_effects)]
+        {
+            start -= 1;
+            if let Some(d) = out.get_mut(start) {
+                *d = b'0' + (v % 10) as u8;
+            }
+            v /= 10;
+        }
+        if v == 0 {
+            break;
+        }
+    }
+    out.get(start..).unwrap_or(&[])
+}
+
+/// Bytes appended one slice after the other into a fixed buffer (`borsh::wr_bytes` aborts
+/// rather than drop a write past the end).
+pub struct Cursor<const N: usize> {
+    pub buf: [u8; N],
+    pub len: usize,
+}
+
+impl<const N: usize> Cursor<N> {
+    pub fn new() -> Self {
+        Self {
+            buf: [0u8; N],
+            len: 0,
+        }
+    }
+
+    #[inline(never)]
+    pub fn push(&mut self, bytes: &[u8]) -> &mut Self {
+        wr_bytes(&mut self.buf, self.len, bytes);
+        // Bound: `wr_bytes` just checked `len + bytes.len() <= N`.
+        #[allow(clippy::arithmetic_side_effects)]
+        {
+            self.len += bytes.len();
+        }
+        self
+    }
+
+    pub fn bytes(&self) -> &[u8] {
+        self.buf.get(..self.len).unwrap_or(&[])
+    }
+}
+
+impl<const N: usize> Default for Cursor<N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// The capture log line `Pass entropy: slot {slot} hash {hex32(hash)}` (reference `msg!`).
+pub fn entropy_log_line(slot: u64, hash: &[u8; 32]) -> Cursor<112> {
+    let mut digits = [0u8; 20];
+    let mut line = Cursor::new();
+    line.push(b"Pass entropy: slot ")
+        .push(dec(slot, &mut digits))
+        .push(b" hash ")
+        .push(&hex32(hash));
+    line
 }
 
 #[cfg(test)]
@@ -528,5 +693,155 @@ mod tests {
             let back = rs::Season::try_deserialize(&mut &lean[..]).unwrap();
             assert_eq!(back.count, season.count);
         }
+    }
+
+    // ----- Pass entropy ------------------------------------------------------------------
+
+    fn lookup(l: Option<r::SlotHashLookup>) -> Option<SlotHashLookup> {
+        l.map(|l| match l {
+            r::SlotHashLookup::Found(slot, hash) => SlotHashLookup::Found(slot, hash),
+            r::SlotHashLookup::NotYet => SlotHashLookup::NotYet,
+            r::SlotHashLookup::Missed => SlotHashLookup::Missed,
+        })
+    }
+
+    fn slot_hashes(entries: &[(u64, u8)]) -> Vec<u8> {
+        let mut data = (entries.len() as u64).to_le_bytes().to_vec();
+        for (slot, b) in entries {
+            data.extend_from_slice(&slot.to_le_bytes());
+            data.extend_from_slice(&[*b; 32]);
+        }
+        data
+    }
+
+    /// The reference's own cases (`finds_the_first_slot_hash_at_or_after_the_target`,
+    /// `skipped_target_edges`), lean and reference side by side.
+    #[test]
+    fn find_slot_hash_reference_cases() {
+        use SlotHashLookup::*;
+        let both = |data: &[u8], target: u64, want: Option<SlotHashLookup>| {
+            assert_eq!(find_slot_hash(data, target), want, "lean, target {target}");
+            assert_eq!(
+                lookup(r::find_slot_hash(data, target)),
+                want,
+                "reference, target {target}"
+            );
+        };
+        let data = slot_hashes(&[(44, 4), (43, 3), (42, 2), (40, 0), (39, 9)]);
+        both(&data, 43, Some(Found(43, [3; 32])));
+        both(&data, 41, Some(Found(42, [2; 32])));
+        both(&data, 39, Some(Found(39, [9; 32])));
+        both(&data, 44, Some(Found(44, [4; 32])));
+        both(&data, 45, Some(NotYet));
+        both(&data, 38, Some(Missed));
+        both(&0u64.to_le_bytes(), 1, None);
+        both(&data[..data.len() - 1], 43, None);
+        both(&[], 1, None);
+        let data = slot_hashes(&[(50, 5), (48, 8)]);
+        both(&data, 49, Some(Found(50, [5; 32])));
+        let data = slot_hashes(&[(60, 6), (59, 9), (40, 4)]);
+        both(&data, 41, Some(Found(59, [9; 32])));
+        let data = slot_hashes(&[(60, 6), (59, 9)]);
+        both(&data, 58, Some(Missed));
+        both(&data, 61, Some(NotYet));
+        // Huge lengths and a short header.
+        both(&u64::MAX.to_le_bytes(), 1, None);
+        both(&(u64::MAX / 40 + 1).to_le_bytes(), 1, None);
+        both(&[1, 0, 0], 1, None);
+    }
+
+    /// Random windows (monotonic like the real sysvar, and arbitrary bytes), trailing
+    /// padding (the real account is sized for 512 entries) and truncations.
+    #[test]
+    fn find_slot_hash_matches_the_reference() {
+        let mut rng = Rng(0x5107_4a54_0000_0001);
+        for round in 0..20_000 {
+            let n = rng.below(20) as usize;
+            let mut slot = rng.below(1 << 20) + 600;
+            let mut entries = Vec::new();
+            for i in 0..n {
+                entries.push((slot, i as u8));
+                slot = slot.saturating_sub(1 + rng.below(3));
+            }
+            if round % 5 == 0 && n > 1 {
+                // Not monotonic: the scan must still agree.
+                let i = rng.below(n as u64) as usize;
+                entries[i].0 = rng.below(1 << 21);
+            }
+            let mut data = slot_hashes(&entries);
+            match rng.below(4) {
+                0 => data.resize(data.len() + rng.below(100) as usize, 0),
+                1 if !data.is_empty() => {
+                    let cut = rng.below(data.len() as u64) as usize;
+                    data.truncate(cut);
+                }
+                _ => {}
+            }
+            let first = entries.first().map_or(0, |e| e.0);
+            for target in [
+                0,
+                1,
+                first,
+                first.saturating_sub(rng.below(25)),
+                first + 1,
+                rng.below(1 << 21),
+            ] {
+                assert_eq!(
+                    find_slot_hash(&data, target),
+                    lookup(r::find_slot_hash(&data, target)),
+                    "entries {entries:?} target {target}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn hex32_dec_and_the_log_line_match_format() {
+        let mut rng = Rng(77);
+        for _ in 0..2_000 {
+            let mut b = [0u8; 32];
+            b.iter_mut().for_each(|x| *x = rng.next() as u8);
+            assert_eq!(&hex32(&b)[..], r::hex32(&b).as_bytes());
+            let slot = match rng.below(3) {
+                0 => rng.below(1_000),
+                1 => u64::MAX - rng.below(1_000),
+                _ => rng.next(),
+            };
+            let mut digits = [0u8; 20];
+            assert_eq!(dec(slot, &mut digits), format!("{slot}").as_bytes());
+            assert_eq!(
+                entropy_log_line(slot, &b).bytes(),
+                format!("Pass entropy: slot {} hash {}", slot, r::hex32(&b)).as_bytes()
+            );
+        }
+        let mut digits = [0u8; 20];
+        assert_eq!(dec(0, &mut digits), b"0");
+        assert_eq!(dec(u64::MAX, &mut digits), b"18446744073709551615");
+        // The reference test's vector.
+        let mut b = [0u8; 32];
+        b[0] = 0xab;
+        b[31] = 0x0f;
+        let h = hex32(&b);
+        assert!(h.starts_with(b"ab00") && h.ends_with(b"000f"));
+    }
+
+    #[test]
+    fn final_seed_is_sha256_of_seed_then_entropy() {
+        assert_eq!(
+            pass_final_seed(&[7; 32], &[9; 32]),
+            r::pass_final_seed(&[7; 32], &[9; 32])
+        );
+        assert_ne!(
+            pass_final_seed(&[7; 32], &[9; 32]),
+            pass_final_seed(&[9; 32], &[7; 32])
+        );
+        assert_eq!(
+            &hex32(&pass_final_seed(&[0; 32], &[0; 32]))[..],
+            b"f5a5fd42d16a20302798ef6ed309979b43003d2320d9f0e8ea9831a92759fb4b"
+        );
+        assert_eq!(
+            sha256(&[&[7; 32]]),
+            solana_sha256_hasher::hash(&[7; 32]).to_bytes()
+        );
     }
 }
