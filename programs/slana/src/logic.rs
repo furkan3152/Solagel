@@ -222,9 +222,75 @@ pub fn upsert_leaderboard(
     Some(idx)
 }
 
+// ---------------------------------------------------------------------------
+// Pass trait entropy
+// ---------------------------------------------------------------------------
+
+/// Most recent `(slot, hash)` entry of the SlotHashes sysvar account data, or `None` when the
+/// data is too short or the list is empty.
+///
+/// `SlotHashes::get()` has no syscall on-chain (the sysvar is ~20 KB), so the account is
+/// passed in and its bincode layout is read by hand:
+///
+/// ```text
+/// [0..8)    len: u64 LE                       number of entries (≤ 512)
+/// [8..16)   entries[0].slot: u64 LE           newest entry first
+/// [16..48)  entries[0].hash: [u8; 32]
+/// [48..)    entries[1..len] ...
+/// ```
+pub fn parse_latest_slot_hash(data: &[u8]) -> Option<(u64, [u8; 32])> {
+    let len = u64::from_le_bytes(data.get(0..8)?.try_into().ok()?);
+    if len == 0 {
+        return None;
+    }
+    let slot = u64::from_le_bytes(data.get(8..16)?.try_into().ok()?);
+    let hash: [u8; 32] = data.get(16..48)?.try_into().ok()?;
+    Some((slot, hash))
+}
+
+/// `sha256(seed || entropy)`: the seed every Pass trait is derived from after the reveal.
+pub fn pass_final_seed(seed: &[u8; 32], entropy: &[u8; 32]) -> [u8; 32] {
+    solana_sha256_hasher::hashv(&[seed, entropy]).to_bytes()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_the_newest_slot_hash() {
+        let mut data = 2u64.to_le_bytes().to_vec();
+        data.extend_from_slice(&41u64.to_le_bytes());
+        data.extend_from_slice(&[0xab; 32]);
+        data.extend_from_slice(&40u64.to_le_bytes());
+        data.extend_from_slice(&[0xcd; 32]);
+        assert_eq!(parse_latest_slot_hash(&data), Some((41, [0xab; 32])));
+        // Empty list, truncated data.
+        assert_eq!(parse_latest_slot_hash(&0u64.to_le_bytes()), None);
+        assert_eq!(parse_latest_slot_hash(&data[..47]), None);
+        assert_eq!(parse_latest_slot_hash(&[]), None);
+    }
+
+    #[test]
+    fn final_seed_is_sha256_of_seed_then_entropy() {
+        let mut both = [7u8; 32].to_vec();
+        both.extend_from_slice(&[9u8; 32]);
+        assert_eq!(
+            pass_final_seed(&[7; 32], &[9; 32]),
+            solana_sha256_hasher::hash(&both).to_bytes()
+        );
+        assert_ne!(
+            pass_final_seed(&[7; 32], &[9; 32]),
+            pass_final_seed(&[9; 32], &[7; 32])
+        );
+        // Same vector as the TypeScript `finalSeedHex` test (sha256 of 64 zero bytes).
+        let zero = pass_final_seed(&[0; 32], &[0; 32]);
+        let hex: String = zero.iter().map(|b| format!("{b:02x}")).collect();
+        assert_eq!(
+            hex,
+            "f5a5fd42d16a20302798ef6ed309979b43003d2320d9f0e8ea9831a92759fb4b"
+        );
+    }
 
     fn pk(n: u8) -> Pubkey {
         Pubkey::new_from_array([n; 32])

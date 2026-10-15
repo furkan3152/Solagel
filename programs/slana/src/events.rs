@@ -97,7 +97,21 @@ pub struct PassMinted {
     pub number: u32,
 }
 
+/// The Pass mint ended for good (closed by the admin or sold out) and the trait entropy was
+/// captured from the SlotHashes sysvar.
+#[event]
+pub struct PassMintEnded {
+    pub minted: u32,
+    /// Slot whose hash is the entropy.
+    pub entropy_slot: u64,
+    pub entropy: [u8; 32],
+}
+
 #[event]
 pub struct PassRevealed {
+    /// The admin's committed seed (`sha256(seed) == pass_seed_hash`).
     pub seed: [u8; 32],
+    pub entropy: [u8; 32],
+    /// `sha256(seed || entropy)`: the seed every Pass trait is derived from.
+    pub final_seed: [u8; 32],
 }

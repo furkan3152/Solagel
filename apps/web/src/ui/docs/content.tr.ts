@@ -43,7 +43,7 @@ export const docsTr = (symbol: string = sym): DocsContent => ({
   },
   perkWhere: { chain: 'Zincirde', server: 'Sunucuda' },
   rank: (n) => `${n}.`,
-  live: (fee, passFee) => `Bu sunucunun zincir ayarı şu an: kesinti ${fee}, Pass ${passFee}.`,
+  live: (fee, passFee) => `Bu sunucunun zincir ayarı şu an: kesinti ${fee}, Pass ${passFee}. Bilet, satın alındığı andaki oranı korur.`,
   colophon: `Bu sayfa oyunun kodundaki değerleri kullanır. Akıllı kontrat bağımsız bir denetimden geçmedi; kaybetmeyi göze alabileceğin kadarıyla oyna.`,
   backToTop: 'Başa dön',
   sections: [
@@ -115,7 +115,7 @@ export const docsTr = (symbol: string = sym): DocsContent => ({
         },
         {
           kind: 'p',
-          text: 'Yönetici bedelleri değiştirebilir, yeni arena açabilir ya da bir arenayı kapatabilir; güncel bedel lobideki bilette yazar. Bir arenanın bedeli ve Pass şartı, o arenada açık bilet varken değiştirilemez (zincir kuralı).',
+          text: 'Yönetici bedelleri değiştirebilir, yeni arena açabilir ya da bir arenayı kapatabilir; güncel bedel lobideki bilette yazar. Kesinti oranı bileti kestiğin anda zincire yazılır: sonraki bir değişiklik yalnızca ondan sonra kesilen biletlere uygulanır. Bir arenanın giriş bedeli ve Pass şartı, o arenada açık bilet varken değiştirilemez (zincir kuralı).',
         },
         {
           kind: 'p',
@@ -172,7 +172,7 @@ export const docsTr = (symbol: string = sym): DocsContent => ({
         },
         {
           kind: 'p',
-          text: `Kesinti yalnızca kârdan alınır: kâr = cash-out değeri − giriş bedeli. Zarardaysan ya da başabaşsan kesinti yoktur. Varsayılan oran ${pct(F.fee.bps)}, Pass’li bilette ${pct(F.fee.passBps)}; programın üst sınırı ${pct(F.fee.maxBps)}.`,
+          text: `Kesinti yalnızca kârdan alınır: kâr = cash-out değeri − giriş bedeli. Zarardaysan ya da başabaşsan kesinti yoktur. Varsayılan oran ${pct(F.fee.bps)}, Pass’li bilette ${pct(F.fee.passBps)}; programın üst sınırı ${pct(F.fee.maxBps)}. Oran bileti kestiğinde biletine yazılır; yönetici ayarı bu arada değiştirse bile cash-out o oranla yapılır.`,
         },
         { kind: 'fee-example' },
         {
@@ -198,7 +198,7 @@ export const docsTr = (symbol: string = sym): DocsContent => ({
           tone: 'warn',
           stamp: 'Token hesabı',
           title: 'Ödemen için token hesabın olmalı',
-          text: `Sunucu oyuncu hesaplarının kirasını hiçbir zaman ödemez. ${symbol} token hesabın yoksa ödeme kaybolmaz, bekler: lobide “token hesabını oluştur” çağrısı çıkar (kirası ≈◎0,002, senden çıkar, hesap senin). Hesabı açınca ödeme ${S.noAtaRetryMinutes} dakika içinde gelir. Sunucu biletini hiç kapatmazsa, açılışından ${F.refundHours} saat sonra kendin iade alabilirsin: giriş bedelin (kasada yeterliyse) ve depozito dahil tüm SOL sana döner.`,
+          text: `Sunucu oyuncu hesaplarının kirasını hiçbir zaman ödemez. ${symbol} token hesabın yoksa ödeme kaybolmaz, bekler: lobide “token hesabını oluştur” çağrısı çıkar (kirası ≈◎0,002, senden çıkar, hesap senin). Hesabı açınca ödeme ${S.noAtaRetryMinutes} dakika içinde gelir. Sunucu biletini hiç kapatmazsa, açılışından ${F.refundHours} saat sonra kendin iade alabilirsin: giriş bedelin (kasada yeterliyse) ve depozito dahil tüm SOL sana döner. İade kazancı hiçbir zaman içermez; beklemek yerine token hesabını oluştur.`,
         },
       ],
     },
@@ -226,7 +226,7 @@ export const docsTr = (symbol: string = sym): DocsContent => ({
           tone: 'warn',
           stamp: 'Açık beyan',
           title: 'Pass oyun içinde güç verir',
-          text: `Pass’li bir bilet +${pct(R.passStartPct * 100)} kütleyle başlar ve ${R.passCashoutS} sn’de (normalde ${R.cashoutS} sn) cash-out yapar. Bu, aynı odadaki Pass’siz oyunculara karşı gerçek bir avantajdır. Pass ücretsiz mint edilir ama pazar yerlerinde parayla alınıp satılabilir, yani bu avantaj satın alınabilir: “pay-to-win”e yakındır. Biletlerde açıkça yazar. Değerler sunucu ayarıdır; yönetici değiştirebilir ya da kapatabilir.`,
+          text: `Pass’li bir bilet +${pct(R.passStartPct * 100)} kütleyle başlar ve ${R.passCashoutS} sn’de (normalde ${R.cashoutS} sn) cash-out yapar. Bu, aynı odadaki Pass’siz oyunculara karşı gerçek bir avantajdır. Pass ücretsiz mint edilir ama pazar yerlerinde parayla alınıp satılabilir, yani bu avantaj satın alınabilir: “pay-to-win”e yakındır. Bilet onayındaki Pass satırı bu avantajları tek tek yazar. Değerler sunucu ayarıdır; yönetici değiştirebilir ya da kapatabilir.`,
         },
         {
           kind: 'list',
@@ -236,7 +236,7 @@ export const docsTr = (symbol: string = sym): DocsContent => ({
               term: 'Kilit:',
               text: 'Bir Pass aynı anda tek bir bilete bağlanır. Kilit, bilet kapanınca (cash-out, ölüm ya da iade) kalkar ve kirası sana döner. Pass’i oyun sırasında devretsen bile yeni sahip kilit kalkana kadar onu bilete bağlayamaz.',
             },
-            { term: 'Bilet anında:', text: 'Pass avantajları bilet kesilirken zincire yazılır; sonradan Pass almak ya da satmak açık bileti değiştirmez.' },
+            { term: 'Bilet anında:', text: 'Pass ve kesinti oranı (Pass’li ya da normal) bilet kesilirken zincire yazılır; sonradan kesinti değişikliği ya da Pass almak/satmak açık bileti değiştirmez.' },
           ],
         },
       ],
@@ -251,7 +251,7 @@ export const docsTr = (symbol: string = sym): DocsContent => ({
           items: [
             'Pass sekmesinde başvuru formunu aç. Mint açıksa kalan arz ve sayaç görünür.',
             `Cüzdanınla imzala. İşlem yeni bir NFT varlığı oluşturur; numaran sıralıdır (#1, #2, …). Cüzdanından ${symbol} çıkmamalı, yalnızca SOL (kira ve ağ ücreti). Mint ekranı kesin tutarı imzadan önce gösterir; bu kira NFT’de kalır, geri dönmez.`,
-            'Pass zarfta, mühürlü gelir. Görünümü ve özellikleri mint kapanınca bütün koleksiyon için aynı anda açılır.',
+            'Pass zarfta, mühürlü gelir. Görünümü ve özellikleri mint kapandıktan sonra bütün koleksiyon için aynı anda açılır.',
           ],
         },
         {
@@ -260,8 +260,8 @@ export const docsTr = (symbol: string = sym): DocsContent => ({
             { term: 'Arz:', text: `Varsayılan ${num(F.pass.supply)} Pass; cüzdan başına ${F.pass.perWallet}.` },
             { term: 'Şartlar:', text: `Yönetici mint için bir başlangıç saati ve isteğe bağlı olarak cüzdanda en az şu kadar ${symbol} şartı koyabilir (varsayılan: şart yok).` },
             {
-              term: 'Adil açılış (commit–reveal):',
-              text: 'Mint başlamadan önce yönetici gizli bir tohumun özetini (sha256) zincire yazar. Mint kapanınca ya da arz bitince tohumu açıklar; program özeti doğrular. Her Pass’in özellikleri bu tohumdan ve numarasından hesaplanır, bu yüzden açılıştan sonra herkes özellikleri doğrulayabilir ve tohum değiştirilemez. Açılıştan sonra mint bir daha açılamaz.',
+              term: 'Adil açılış (commit–reveal + zincir entropisi):',
+              text: 'Mint başlamadan önce yönetici gizli bir tohumun özetini (sha256) zincire yazar. Mint kapanınca ya da arz bitince program, daha önce kimsenin bilemeyeceği taze bir Solana slot hash’ini (entropi) kaydeder ve mint bir daha açılamaz. Sonra yönetici tohumu açıklar, program özeti doğrular ve son tohumu = sha256(tohum + entropi) saklar. Her Pass’in özellikleri bu son tohumdan ve numarasından hesaplanır: Pass basılabildiği sürece hangi numaranın nadir olacağını kimse, ekip dahil, bilemez; açılıştan sonra herkes her Pass’i doğrulayabilir.',
             },
             { term: 'Görünüm:', text: 'Açılıştan önce bütün Pass’ler oyunda ve pazar yerlerinde “mühürlü pasaport” olarak görünür. Pass sayfasında, yönetici eklediyse, pazar yeri bağlantıları bulunur.' },
           ],
@@ -306,7 +306,8 @@ export const docsTr = (symbol: string = sym): DocsContent => ({
               `Kesinti yalnızca kârdan; oran üst sınırı ${pct(F.fee.maxBps)}. Bölüşüm, yakım ve sezon havuzu.`,
               'Her biletin benzersiz bir numarası vardır; eski bir ödeme yeni bilete uygulanamaz.',
               `${F.refundHours} saat sonra kendi kendine iade.`,
-              'Pass kapısı, Pass kilidi, mint limitleri ve commit–reveal.',
+              'Pass kapısı, Pass kilidi, mint limitleri, mint açılınca sabitlenen arz ve zincir entropili commit–reveal.',
+              'Her biletin kesinti oranı, kesildiği anda sabitlenir.',
               `Sezon tablosu, ödül payları ve ${F.season.claimDays} günlük talep süresi.`,
             ],
           },
@@ -327,7 +328,7 @@ export const docsTr = (symbol: string = sym): DocsContent => ({
         },
         {
           kind: 'p',
-          text: `Yönetici ayarları değiştirebilir (kesinti en fazla ${pct(F.fee.maxBps)}), yeni bilet satışını durdurabilir (ödemeler ve iadeler durmaz), arenaları kapatabilir, sezonu bitirebilir, hazineyi çekebilir ve sunucu anahtarını değiştirebilir; bu yüzden sunucuya güven, sonuçta yöneticiye güvendir. Arena kasalarını kendine aktaramaz: kapatılan bir arenanın artığı yalnızca sezon havuzuna süpürülebilir. Pass tohumu açılıştan önce yalnızca yöneticidedir. İki cüzdanla birbirini besleme (takımlaşma) bu sürümde tespit edilmez.`,
+          text: `Yönetici ayarları değiştirebilir (kesinti en fazla ${pct(F.fee.maxBps)}), yeni bilet satışını durdurabilir (ödemeler ve iadeler durmaz), arenaları kapatabilir, sezonu bitirebilir, hazineyi çekebilir ve sunucu anahtarını değiştirebilir; bu yüzden sunucuya güven, sonuçta yöneticiye güvendir. Arena kasalarını kendine aktaramaz: kapatılan bir arenanın artığı yalnızca sezon havuzuna süpürülebilir. Yönetici taahhüt edilen Pass tohumunu bilir, ama özellikler mint kapanınca kaydedilen slot hash’ine de bağlıdır; bu yüzden Pass basılabildiği sürece yönetici bile onları bilemez. İki cüzdanla birbirini besleme (takımlaşma) bu sürümde tespit edilmez.`,
         },
         {
           kind: 'note',
@@ -377,7 +378,7 @@ export const docsTr = (symbol: string = sym): DocsContent => ({
             },
             {
               q: 'Ödemem gelmedi.',
-              a: `Lobideki bekleyen ödeme bandına bak. Token hesabın yoksa oluştur; ödeme ${S.noAtaRetryMinutes} dakika içinde gelir. Ağ sorunlarında sunucu ödemeyi kendisi yeniden dener. Hiç gelmezse ${F.refundHours} saat sonra iade alabilirsin.`,
+              a: `Lobideki bekleyen ödeme bandına bak. Token hesabın yoksa önce onu oluştur: kazancın dahil ödeme ${S.noAtaRetryMinutes} dakika içinde gelir. Ağ sorunlarında sunucu ödemeyi kendisi yeniden dener. ${F.refundHours} saatlik kendi kendine iade son çaredir: yalnızca giriş bedelini geri verir, kazancını asla; bu yüzden beklemek yerine token hesabını oluştur.`,
             },
             { q: 'Sezon puanım neden artmıyor?', a: 'Puan yalnızca Pass’li biletlerle oynanan arena oyunlarından gelir. Antrenman ve Pass’siz biletler puan vermez.' },
             { q: 'Pass’imi satarsam ne olur?', a: 'Açık bir bilete kilitliyse kilit kalkana kadar yeni sahip onu kullanamaz. Avantajlar bilet kesilirken yazıldığı için açık biletin Pass’li kalır.' },

@@ -173,6 +173,18 @@ export class Journal {
     return all.map((l) => ({ ...l }));
   }
 
+  /**
+   * What the journal says arena `arenaId`'s vault owes: Σ pending payouts + Σ loot on its
+   * floors + Σ live ticket values (raw token units). The vault must hold at least this.
+   */
+  owedByArena(arenaId: number): number {
+    let sum = 0;
+    for (const p of this.pendingItems) if (p.arenaId === arenaId) sum += p.payout ?? 0;
+    for (const list of this.lootByRoom.values()) for (const l of list) if (l.arenaId === arenaId) sum += l.value;
+    for (const list of this.liveByRoom.values()) for (const l of list) if (l.arenaId === arenaId) sum += l.value;
+    return sum;
+  }
+
   /** Σ loot value over every arena. */
   lootTotal(): number {
     let sum = 0;

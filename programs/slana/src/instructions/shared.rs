@@ -8,9 +8,36 @@ use anchor_lang::{
 use crate::{
     constants::*,
     error::SlanaError,
+    events::PassMintEnded,
     logic::{self, GameResult},
-    state::{PassLock, PlayerProfile, Season, Session},
+    state::{Config, PassLock, PlayerProfile, Season, Session},
 };
+
+// ---------------------------------------------------------------------------------------
+// Pass mint end
+// ---------------------------------------------------------------------------------------
+
+/// Ends the Pass mint for good and captures the trait entropy: the most recent entry of the
+/// SlotHashes sysvar (`slot_hashes` must be that account; its address is checked by the
+/// caller's account constraint). Called by `close_pass_mint` and by `mint_pass` when the last
+/// Pass of the supply is minted. The entropy is a chain value fixed only now, so nobody (the
+/// admin with the committed seed included) can know a Pass number's traits while Passes can
+/// still be minted.
+pub(crate) fn end_pass_mint(config: &mut Config, slot_hashes: &AccountInfo) -> Result<()> {
+    require!(!config.pass_mint_ended, SlanaError::MintEnded);
+    let data = slot_hashes.try_borrow_data()?;
+    let (slot, hash) = logic::parse_latest_slot_hash(&data).ok_or(SlanaError::BadSlotHashes)?;
+    config.pass_entropy = hash;
+    config.pass_entropy_slot = slot;
+    config.pass_mint_ended = true;
+    config.pass_mint_open = false;
+    emit!(PassMintEnded {
+        minted: config.pass_minted,
+        entropy_slot: slot,
+        entropy: hash,
+    });
+    Ok(())
+}
 
 // ---------------------------------------------------------------------------------------
 // Parameter validation

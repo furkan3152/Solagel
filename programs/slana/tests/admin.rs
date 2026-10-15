@@ -39,7 +39,10 @@ fn assert_initialized(env: &TestEnv, kind: MintKind) {
     assert_eq!(config.pass_min_tokens, 0);
     assert!(!config.pass_mint_open);
     assert!(!config.pass_revealed);
+    assert!(!config.pass_mint_opened && !config.pass_mint_ended);
     assert_eq!(config.pass_seed_hash, [0; 32]);
+    assert_eq!(config.pass_entropy, [0; 32]);
+    assert_eq!(config.pass_final_seed, [0; 32]);
 
     // Both vaults are token accounts of the game mint, owned by the token program, with the
     // config PDA as authority.
@@ -335,13 +338,15 @@ fn update_config_validates() {
     assert_eq!(usize::from(env.config().pass_base_uri_len), max_uri.len());
 
     // Pass mint parameters.
-    assert_error(
-        env.update_config(UpdateConfigArgs {
-            pass_supply: Some(MAX_PASS_SUPPLY + 1),
-            ..Default::default()
-        }),
-        SlanaError::InvalidAmount,
-    );
+    for bad in [0, MAX_PASS_SUPPLY + 1] {
+        assert_error(
+            env.update_config(UpdateConfigArgs {
+                pass_supply: Some(bad),
+                ..Default::default()
+            }),
+            SlanaError::InvalidAmount,
+        );
+    }
     assert_error(
         env.update_config(UpdateConfigArgs {
             pass_per_wallet: Some(MAX_PASS_PER_WALLET + 1),
@@ -349,6 +354,11 @@ fn update_config_validates() {
         }),
         SlanaError::InvalidAmount,
     );
+    // Before the mint has ever opened the supply may change.
+    assert_ok(env.update_config(UpdateConfigArgs {
+        pass_supply: Some(MAX_PASS_SUPPLY - 1),
+        ..Default::default()
+    }));
     assert_ok(env.update_config(UpdateConfigArgs {
         pass_supply: Some(MAX_PASS_SUPPLY),
         pass_per_wallet: Some(MAX_PASS_PER_WALLET),
@@ -362,12 +372,38 @@ fn update_config_validates() {
     assert_eq!(config.pass_per_wallet, MAX_PASS_PER_WALLET);
     assert_eq!(config.pass_min_tokens, 5 * TOKEN);
     assert!(config.pass_mint_open);
+    assert!(config.pass_mint_opened);
     assert_eq!(config.pass_mint_start_ts, START_TS + 60);
 
-    // After a Pass is minted (test-only state write) the base URI is frozen and the supply
-    // cannot drop below the minted count.
+    // R17: once the mint has opened, the supply is frozen (even after closing it again
+    // before any mint, and even when the value would not change).
+    for supply in [MAX_PASS_SUPPLY, 5] {
+        assert_error(
+            env.update_config(UpdateConfigArgs {
+                pass_supply: Some(supply),
+                ..Default::default()
+            }),
+            SlanaError::SupplyLocked,
+        );
+    }
+    assert_ok(env.update_config(UpdateConfigArgs {
+        pass_mint_open: Some(false),
+        ..Default::default()
+    }));
+    assert_error(
+        env.update_config(UpdateConfigArgs {
+            pass_supply: Some(5),
+            ..Default::default()
+        }),
+        SlanaError::SupplyLocked,
+    );
+    assert_eq!(env.config().pass_supply, MAX_PASS_SUPPLY);
+
+    // After a Pass is minted (test-only state write) the base URI is frozen and closing the
+    // mint needs `close_pass_mint` (it captures the trait entropy).
     let mut config = env.config();
     config.pass_minted = 5;
+    config.pass_mint_open = true;
     env.write_account(&config_pda(), &config);
     assert_error(
         env.update_config(UpdateConfigArgs {
@@ -378,16 +414,17 @@ fn update_config_validates() {
     );
     assert_error(
         env.update_config(UpdateConfigArgs {
-            pass_supply: Some(4),
+            pass_mint_open: Some(false),
             ..Default::default()
         }),
-        SlanaError::InvalidAmount,
+        SlanaError::UseCloseMint,
     );
+    assert!(env.config().pass_mint_open);
+    // Re-sending `true` to an open mint is harmless.
     assert_ok(env.update_config(UpdateConfigArgs {
-        pass_supply: Some(5),
+        pass_mint_open: Some(true),
         ..Default::default()
     }));
-    assert_eq!(env.config().pass_supply, 5);
 
     // Handing over the roles; the token mint never changes.
     let new_admin = env.funded_keypair(SOL);

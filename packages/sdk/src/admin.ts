@@ -60,6 +60,8 @@ Setup
                 [--split T/S/B] [--settle-fee-lamports N] [--paused true|false]
                 [--base-uri <url>/] [--supply N] [--per-wallet N] [--min-tokens X]
                 [--mint-open true|false] [--start <unix>]
+                          --supply only before the mint first opens (then it is fixed for good);
+                          --mint-open false only before the first mint (then use close-mint)
   status                  config, mint, vault balances, arenas, season top 10, Pass mint progress
 
 Slana Pass
@@ -71,15 +73,20 @@ Slana Pass
   set-seed-hash [--seed-file ${DEFAULT_SEED_FILE}]
                           commit sha256(seed) on-chain (before the first mint)
   open-mint --base-uri <url>/ [--start <unix>] [--supply N] [--per-wallet N] [--min-tokens X]
-  close-mint
+                          the supply is fixed for good once the mint opens
+  close-mint              end the mint for good: the program captures the trait entropy (latest
+                          SlotHashes entry); it never reopens. Selling out does the same.
   reveal [--seed-file ${DEFAULT_SEED_FILE}]
-                          reveal the seed (after the mint is closed or sold out)
+                          reveal the seed (after the mint ended); the program stores the final
+                          seed sha256(seed || entropy) that every Pass trait derives from
 
 Arenas
   create-arena --defaults                  create the default tiers (skips existing ones)
   create-arena --id N --entry <tokens> --max N [--pass]
   update-arena --id N [--enabled true|false] [--max N] [--entry <tokens>] [--pass true|false]
-  sweep --id N                             move a disabled, idle arena's vault into the season pool
+  sweep --id N --force                     move a disabled, idle arena's vault into the season pool
+                                           (check the server journal first: loot of that arena
+                                           still waiting there is no longer backed afterwards)
 
 Treasury & seasons
   withdraw-treasury --amount <tokens> --to <owner>
@@ -227,6 +234,8 @@ function loadSeed(opts: Opts): { file: string; seed: Uint8Array; hash: string } 
 }
 
 const sha256Hex = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex');
+/** `sha256(seed || entropy)` as hex: the program's `pass_final_seed`. */
+const finalSeedHex = (seed: Uint8Array, entropy: Uint8Array): string => createHash('sha256').update(seed).update(entropy).digest('hex');
 const hexBytes = (hex: string): Uint8Array => Uint8Array.from(Buffer.from(hex, 'hex'));
 
 function inferCluster(url: string): string {
@@ -377,14 +386,22 @@ async function cmdStatus(ctx: Ctx): Promise<void> {
   const now = Math.floor(Date.now() / 1000);
   const state = !config.passMintOpen ? 'closed' : config.passMintStartTs > now ? `opens ${fmtTime(config.passMintStartTs)}` : 'OPEN';
   console.log(`  mint              ${state}${config.passMintOpen && config.passMintStartTs <= now ? ` since ${fmtTime(config.passMintStartTs)}` : ''}`);
+  console.log(`  supply lock       ${config.passMintOpened || config.passMinted > 0 ? 'fixed (the mint has opened)' : 'changeable until the mint opens'}`);
   console.log(`  seed hash         ${config.passSeedHash ?? '✗ not set (pass-seed --new, then set-seed-hash)'}`);
-  console.log(`  revealed          ${config.passRevealed ? `yes · seed ${config.passSeed}` : 'no'}`);
+  console.log(
+    `  entropy           ${config.passMintEnded ? `${config.passEntropy} (SlotHashes, slot ${config.passEntropySlot})` : 'not yet — fixed when the mint ends (close-mint or sell-out)'}`,
+  );
+  console.log(`  revealed          ${config.passRevealed ? `yes · admin seed ${config.passSeed}` : 'no'}`);
+  if (config.passRevealed) console.log(`  final seed        ${config.passFinalSeed}  (sha256(seed || entropy); every trait derives from it)`);
 }
 
 async function cmdInit(ctx: Ctx, opts: Opts): Promise<void> {
   const mintKey = pubkey(opts, 'mint');
   const server = pubkey(opts, 'server');
   if (!mintKey || !server) throw new UsageError('init needs --mint <M> and --server <pubkey>');
+  if (opts.has('supply')) {
+    throw new UsageError('init does not set the Pass supply: run `pnpm admin update-config --supply N` before `open-mint` (it is fixed for good once the mint opens)');
+  }
   const feeBps = int(opts, 'fee-bps', 0, MAX_FEE_BPS) ?? DEFAULTS.feeBps;
   const passFeeBps = int(opts, 'pass-fee-bps', 0, MAX_FEE_BPS) ?? DEFAULTS.passFeeBps;
   if (passFeeBps > feeBps) throw new UsageError('--pass-fee-bps must not exceed --fee-bps');
@@ -437,7 +454,25 @@ async function cmdUpdateConfig(ctx: Ctx, opts: Opts): Promise<void> {
   };
   const given = Object.entries(changes).filter(([, v]) => v !== undefined);
   if (given.length === 0) throw new UsageError('update-config: nothing to change (see `pnpm admin help`)');
+  checkPassMintChanges(config, changes);
   await sendUpdate(ctx, changes, `updated config (${given.map(([k]) => k).join(', ')})`);
+}
+
+/** Client-side mirror of the program's Pass mint rules (R17/R18), with clear messages. */
+function checkPassMintChanges(config: ConfigView, changes: UpdateConfigParams): void {
+  if (changes.passSupply !== undefined && (config.passMintOpened || config.passMinted > 0)) {
+    throw new UsageError(
+      `the Pass supply is fixed at ${config.passSupply}: it cannot change once the mint has opened (trait rarity depends on it)`,
+    );
+  }
+  if (changes.passSupply !== undefined && changes.passSupply < 1) throw new UsageError('--supply must be at least 1');
+  if (changes.passMintOpen === true && config.passMintEnded) {
+    throw new UsageError('the Pass mint has ended for good (its trait entropy is fixed); it cannot reopen');
+  }
+  if (changes.passMintOpen === true && config.passRevealed) throw new UsageError('the Pass seed is revealed; the mint cannot reopen');
+  if (changes.passMintOpen === false && config.passMintOpen && config.passMinted > 0) {
+    throw new UsageError(`${config.passMinted} Passes are minted: end the mint with \`pnpm admin close-mint\` (it fixes the trait entropy; the mint never reopens)`);
+  }
 }
 
 async function sendUpdate(ctx: Ctx, changes: UpdateConfigParams, label: string): Promise<void> {
@@ -516,7 +551,6 @@ async function cmdOpenMint(ctx: Ctx, opts: Opts): Promise<void> {
   if (!baseUri) throw new UsageError('open-mint needs --base-uri <url>/');
   if (!config.passCollection) throw new UsageError('set the Pass collection first (create-collection, set-pass-collection)');
   if (!config.passSeedHash) throw new UsageError('commit the seed hash first (pass-seed --new, set-seed-hash)');
-  if (config.passRevealed) throw new UsageError('the Pass seed is revealed; the mint cannot reopen');
   const startTs = int(opts, 'start', 0, Number.MAX_SAFE_INTEGER);
   const changes: UpdateConfigParams = {
     passMintOpen: true,
@@ -526,13 +560,26 @@ async function cmdOpenMint(ctx: Ctx, opts: Opts): Promise<void> {
     passPerWallet: int(opts, 'per-wallet', 1, MAX_PASS_PER_WALLET),
     passMinTokens: tokens(opts, 'min-tokens', config.tokenDecimals),
   };
+  checkPassMintChanges(config, changes);
   const start = startTs ?? config.passMintStartTs;
+  const supply = changes.passSupply ?? config.passSupply;
+  console.log(`! the supply (${supply}) is fixed for good once the mint opens`);
   await sendUpdate(ctx, changes, `Pass mint open${start > Date.now() / 1000 ? ` from ${fmtTime(start)}` : ''} · base uri ${baseUri}`);
 }
 
 async function cmdCloseMint(ctx: Ctx): Promise<void> {
   const config = await requireConfig(ctx);
-  await sendUpdate(ctx, { passMintOpen: false }, `Pass mint closed at ${config.passMinted} / ${config.passSupply}`);
+  if (config.passMintEnded) throw new UsageError(`the Pass mint already ended (entropy ${config.passEntropy}, slot ${config.passEntropySlot})`);
+  if (config.passMinted === 0) {
+    // Nothing minted: just switch the flag off (no entropy; the mint may reopen).
+    await sendUpdate(ctx, { passMintOpen: false }, 'Pass mint closed before any mint (it may reopen; nothing is fixed yet)');
+    return;
+  }
+  const ix = await ctx.client.ix.closePassMint(ctx.signer().publicKey);
+  await send(ctx, `Pass mint ended for good at ${config.passMinted} / ${config.passSupply}`, [ix]);
+  const after = await ctx.client.fetchConfig();
+  if (after?.passMintEnded) console.log(`  trait entropy ${after.passEntropy} (SlotHashes, slot ${after.passEntropySlot})`);
+  console.log('  next: pnpm admin reveal');
 }
 
 async function cmdReveal(ctx: Ctx, opts: Opts): Promise<void> {
@@ -541,11 +588,15 @@ async function cmdReveal(ctx: Ctx, opts: Opts): Promise<void> {
   if (config.passRevealed) throw new UsageError('already revealed');
   if (!config.passSeedHash) throw new UsageError('no seed hash is committed on-chain');
   if (config.passSeedHash !== hash) throw new UsageError(`seed hash mismatch: on-chain ${config.passSeedHash}, file ${hash}`);
-  if (config.passMintOpen && config.passMinted < config.passSupply) {
-    throw new UsageError(`the mint is still open (${config.passMinted} / ${config.passSupply}); run \`pnpm admin close-mint\` first`);
+  if (!config.passMintEnded || !config.passEntropy) {
+    throw new UsageError(`the mint has not ended (${config.passMinted} / ${config.passSupply}); run \`pnpm admin close-mint\` first (it fixes the trait entropy)`);
   }
+  const finalSeed = finalSeedHex(seed, hexBytes(config.passEntropy));
   const ix = await ctx.client.ix.revealPass(ctx.signer().publicKey, seed);
   await send(ctx, `revealed Pass seed ${Buffer.from(seed).toString('hex')}`, [ix]);
+  console.log(`  entropy    ${config.passEntropy} (SlotHashes, slot ${config.passEntropySlot})`);
+  console.log(`  final seed ${finalSeed}  = sha256(seed || entropy); every Pass trait derives from it`);
+  console.log(`  images:    pnpm pass:generate --seed-file <file> --entropy ${config.passEntropy}`);
 }
 
 async function createArena(ctx: Ctx, config: ConfigView, id: number, entryFee: bigint, maxSessions: number, requiresPass: boolean): Promise<void> {
@@ -640,6 +691,12 @@ async function cmdSweep(ctx: Ctx, opts: Opts): Promise<void> {
   const arena = await ctx.client.fetchArena(id);
   if (!arena) throw new UsageError(`arena #${id} does not exist`);
   if (arena.enabled) throw new UsageError(`disable arena #${id} first: pnpm admin update-arena --id ${id} --enabled false`);
+  console.log(
+    `! sweep moves arena #${id}'s whole vault (${fmtTok(arena.pot, config.tokenDecimals)}) into the season pool. The game server may still hold\n` +
+      `  journaled loot or pending cash-outs for this arena that this CLI cannot see — check the server log / journal first.\n` +
+      `  A server that finds the vault short of its journal keeps the arena disabled. Never re-enable a swept arena.`,
+  );
+  if (opts.get('force') !== true) throw new UsageError(`sweep refuses without --force (re-run: pnpm admin sweep --id ${id} --force)`);
   const ix = await ctx.client.ix.sweepArena(ctx.signer().publicKey, { id, currentSeason: config.currentSeason, tokenMint: config.tokenMint, tokenProgram: config.tokenProgram });
   await send(ctx, `swept ${fmtTok(arena.pot, config.tokenDecimals)} from arena #${id} into season ${config.currentSeason}`, [ix]);
 }

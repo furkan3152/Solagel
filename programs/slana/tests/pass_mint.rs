@@ -157,21 +157,12 @@ fn mint_pass_creates_core_asset_in_collection() {
     let (res, _) = env.mint_pass(&a);
     assert_error(res, SlanaError::MintLimit);
 
-    // 4. Sold out.
-    assert_ok(env.update_config(UpdateConfigArgs {
-        pass_supply: Some(1),
-        ..Default::default()
-    }));
-    let b = env.funded_keypair(10 * SOL);
-    let (res, _) = env.mint_pass(&b);
-    assert_error(res, SlanaError::MintSoldOut);
-
     // 6. Minimum token balance.
     assert_ok(env.update_config(UpdateConfigArgs {
-        pass_supply: Some(10),
         pass_min_tokens: Some(100 * TOKEN),
         ..Default::default()
     }));
+    let b = env.funded_keypair(10 * SOL);
     let (res, _) = env.mint_pass_with(&b, None);
     assert_error(res, SlanaError::MintMinTokens);
     let poor = env.token_player("poor", 99 * TOKEN);
@@ -242,23 +233,128 @@ fn minted_pass_unlocks_pass_arena() {
 }
 
 #[test]
-fn reveal_checks_hash_once() {
+fn slot_hashes_id_is_the_sysvar() {
+    use anchor_lang::{prelude::SlotHashes, solana_program::sysvar::SysvarId};
+    assert_eq!(SLOT_HASHES_ID, SlotHashes::id());
+}
+
+/// `mint_env()` with a supply of `supply` (set before the mint opens).
+fn mint_env_with_supply(supply: u32) -> TestEnv {
     let mut env = core_env();
     let admin = env.admin.insecure_clone();
-    let not_admin = env.funded_keypair(SOL);
+    let collection = env.create_core_collection(&pass_authority_pda());
+    assert_ok(env.set_collection_as(&admin, &collection));
+    assert_ok(env.set_seed_hash_as(&admin, hash(&SEED).to_bytes()));
+    assert_ok(env.update_config(UpdateConfigArgs {
+        pass_base_uri: Some(BASE_URI.to_string()),
+        pass_supply: Some(supply),
+        pass_per_wallet: Some(MAX_PASS_PER_WALLET),
+        pass_mint_open: Some(true),
+        ..Default::default()
+    }));
+    env
+}
 
-    // Nothing committed yet.
-    assert_error(env.reveal_as(&admin, SEED), SlanaError::SeedNotSet);
+#[test]
+fn sell_out_ends_the_mint_and_captures_entropy() {
+    let mut env = mint_env_with_supply(2);
+    let a = env.funded_keypair(10 * SOL);
+    // LiteSVM starts with a one-entry SlotHashes (slot 0, genesis blockhash); use our own.
+    env.set_slot_hashes(&[(77, [0x5a; 32]), (76, [0x11; 32])]);
 
-    let commitment = hash(&SEED).to_bytes();
+    assert_ok(env.mint_pass(&a).0);
+    let config = env.config();
+    assert!(config.pass_mint_open && !config.pass_mint_ended);
+    assert_eq!(config.pass_entropy, [0; 32]);
+
+    // The last Pass of the supply ends the mint and records the newest slot hash.
+    assert_ok(env.mint_pass(&a).0);
+    let config = env.config();
+    assert_eq!(config.pass_minted, 2);
+    assert!(!config.pass_mint_open);
+    assert!(config.pass_mint_ended);
+    assert_eq!(config.pass_entropy, [0x5a; 32]);
+    assert_eq!(config.pass_entropy_slot, 77);
+
+    // Nothing reopens it.
+    let b = env.funded_keypair(10 * SOL);
+    assert_error(env.mint_pass(&b).0, SlanaError::MintClosed);
     assert_error(
-        env.set_seed_hash_as(&not_admin, commitment),
-        SlanaError::Unauthorized,
+        env.update_config(UpdateConfigArgs {
+            pass_mint_open: Some(true),
+            ..Default::default()
+        }),
+        SlanaError::MintEnded,
     );
-    // The commitment may change until the first mint.
-    assert_ok(env.set_seed_hash_as(&admin, [9; 32]));
-    assert_ok(env.set_seed_hash_as(&admin, commitment));
-    assert_eq!(env.config().pass_seed_hash, commitment);
+    assert_error(env.close_mint(), SlanaError::MintEnded);
+}
+
+#[test]
+fn sell_out_mint_with_default_slot_hashes() {
+    // LiteSVM's own SlotHashes sysvar (one entry) parses too.
+    let mut env = mint_env_with_supply(1);
+    let a = env.funded_keypair(10 * SOL);
+    assert_ok(env.mint_pass(&a).0);
+    let config = env.config();
+    assert!(config.pass_mint_ended);
+    assert_ne!(config.pass_entropy, [0; 32]);
+}
+
+#[test]
+fn close_mint_captures_entropy_and_needs_a_mint() {
+    let (mut env, _) = mint_env();
+    let admin = env.admin.insecure_clone();
+    let not_admin = env.funded_keypair(SOL);
+    env.set_slot_hashes(&[(1234, [0xc3; 32])]);
+
+    // Nothing minted yet: there is nothing to fix.
+    assert_error(env.close_mint(), SlanaError::NothingMinted);
+    let a = env.funded_keypair(10 * SOL);
+    assert_ok(env.mint_pass(&a).0);
+
+    assert_error(env.close_mint_as(&not_admin), SlanaError::Unauthorized);
+    // The SlotHashes account is checked.
+    let fake = anchor_lang::prelude::Pubkey::new_unique();
+    let mut ix = ix::close_pass_mint(&admin.pubkey());
+    ix.accounts[2].pubkey = fake;
+    assert_error(env.send(&[ix], &[&admin]), SlanaError::BadSlotHashes);
+    // An empty SlotHashes list is refused.
+    env.set_slot_hashes(&[]);
+    assert_error(env.close_mint(), SlanaError::BadSlotHashes);
+    env.set_slot_hashes(&[(1234, [0xc3; 32])]);
+
+    assert_ok(env.close_mint());
+    let config = env.config();
+    assert!(!config.pass_mint_open);
+    assert!(config.pass_mint_ended);
+    assert_eq!(config.pass_entropy, [0xc3; 32]);
+    assert_eq!(config.pass_entropy_slot, 1234);
+
+    // Reopening after the entropy is captured is refused; so is a second close.
+    assert_error(
+        env.update_config(UpdateConfigArgs {
+            pass_mint_open: Some(true),
+            ..Default::default()
+        }),
+        SlanaError::MintEnded,
+    );
+    assert_error(env.close_mint(), SlanaError::MintEnded);
+    let b = env.funded_keypair(10 * SOL);
+    assert_error(env.mint_pass(&b).0, SlanaError::MintClosed);
+    // A later slot hash does not change the captured entropy.
+    env.set_slot_hashes(&[(9999, [0xee; 32])]);
+    assert_eq!(env.config().pass_entropy, [0xc3; 32]);
+}
+
+#[test]
+fn reveal_checks_hash_once() {
+    let (mut env, _) = mint_env();
+    let admin = env.admin.insecure_clone();
+    let not_admin = env.funded_keypair(SOL);
+    env.set_slot_hashes(&[(500, [0x42; 32])]);
+    let a = env.funded_keypair(10 * SOL);
+    assert_ok(env.mint_pass(&a).0);
+    assert_ok(env.close_mint());
 
     assert_error(env.reveal_as(&not_admin, SEED), SlanaError::Unauthorized);
     assert_error(env.reveal_as(&admin, [8; 32]), SlanaError::SeedMismatch);
@@ -268,47 +364,18 @@ fn reveal_checks_hash_once() {
     let config = env.config();
     assert!(config.pass_revealed);
     assert_eq!(config.pass_seed, SEED);
+    // final seed = sha256(seed || entropy)
+    let mut both = SEED.to_vec();
+    both.extend_from_slice(&[0x42; 32]);
+    assert_eq!(config.pass_final_seed, hash(&both).to_bytes());
+    assert_ne!(config.pass_final_seed, SEED);
 
     // Once.
     assert_error(env.reveal_as(&admin, SEED), SlanaError::AlreadyRevealed);
     assert_error(
-        env.set_seed_hash_as(&admin, commitment),
+        env.set_seed_hash_as(&admin, hash(&SEED).to_bytes()),
         SlanaError::AlreadyRevealed,
     );
-}
-
-#[test]
-fn reveal_only_after_mint_ends_and_closes_it_for_good() {
-    let (mut env, _) = mint_env();
-    let admin = env.admin.insecure_clone();
-    let a = env.funded_keypair(10 * SOL);
-    assert_ok(env.mint_pass(&a).0);
-
-    // Mint open and not sold out: the seed stays secret.
-    assert_error(env.reveal_as(&admin, SEED), SlanaError::MintStillOpen);
-    assert!(!env.config().pass_revealed);
-
-    // Sold out (still flagged open): reveal is allowed.
-    assert_ok(env.update_config(UpdateConfigArgs {
-        pass_supply: Some(1),
-        ..Default::default()
-    }));
-    assert_ok(env.reveal_as(&admin, SEED));
-
-    // Even with supply left and the flag still open, minting after the reveal fails.
-    assert_ok(env.update_config(UpdateConfigArgs {
-        pass_supply: Some(10),
-        ..Default::default()
-    }));
-    assert!(env.config().pass_mint_open);
-    let b = env.funded_keypair(10 * SOL);
-    assert_error(env.mint_pass(&b).0, SlanaError::MintClosed);
-
-    // The mint cannot be reopened after the reveal (closing it is fine).
-    assert_ok(env.update_config(UpdateConfigArgs {
-        pass_mint_open: Some(false),
-        ..Default::default()
-    }));
     assert_error(
         env.update_config(UpdateConfigArgs {
             pass_mint_open: Some(true),
@@ -316,18 +383,81 @@ fn reveal_only_after_mint_ends_and_closes_it_for_good() {
         }),
         SlanaError::AlreadyRevealed,
     );
+}
+
+#[test]
+fn reveal_needs_a_committed_seed() {
+    let mut env = core_env();
+    let admin = env.admin.insecure_clone();
+    assert_error(env.reveal_as(&admin, SEED), SlanaError::SeedNotSet);
+    // The commitment may change until the first mint.
+    let commitment = hash(&SEED).to_bytes();
+    assert_ok(env.set_seed_hash_as(&admin, [9; 32]));
+    assert_ok(env.set_seed_hash_as(&admin, commitment));
+    assert_eq!(env.config().pass_seed_hash, commitment);
+    let not_admin = env.funded_keypair(SOL);
+    assert_error(
+        env.set_seed_hash_as(&not_admin, commitment),
+        SlanaError::Unauthorized,
+    );
+    // Committed, but the mint never ended: no entropy, no reveal.
+    assert_error(env.reveal_as(&admin, SEED), SlanaError::MintStillOpen);
+}
+
+#[test]
+fn reveal_only_after_the_mint_ended() {
+    let (mut env, _) = mint_env();
+    let admin = env.admin.insecure_clone();
+    let a = env.funded_keypair(10 * SOL);
+    assert_ok(env.mint_pass(&a).0);
+
+    // Mint open and not sold out: no entropy yet, the seed stays secret.
+    assert_error(env.reveal_as(&admin, SEED), SlanaError::MintStillOpen);
+    // A paused start time does not end the mint either.
+    let later = env.now() + 1_000;
+    assert_ok(env.update_config(UpdateConfigArgs {
+        pass_mint_start_ts: Some(later),
+        ..Default::default()
+    }));
+    assert_error(env.reveal_as(&admin, SEED), SlanaError::MintStillOpen);
+    assert!(!env.config().pass_revealed);
+
+    assert_ok(env.close_mint());
+    assert_ok(env.reveal_as(&admin, SEED));
+    let config = env.config();
+    assert_eq!(
+        config.pass_final_seed,
+        slana::logic::pass_final_seed(&SEED, &config.pass_entropy)
+    );
+    let b = env.funded_keypair(10 * SOL);
     assert_error(env.mint_pass(&b).0, SlanaError::MintClosed);
 }
 
 #[test]
-fn reveal_after_mint_closed() {
+fn mint_open_and_close_before_any_mint_keeps_no_entropy() {
     let (mut env, _) = mint_env();
-    let admin = env.admin.insecure_clone();
+    // Nothing minted: closing via update_config is fine and can be undone.
     assert_ok(env.update_config(UpdateConfigArgs {
         pass_mint_open: Some(false),
         ..Default::default()
     }));
-    assert_ok(env.reveal_as(&admin, SEED));
+    let config = env.config();
+    assert!(!config.pass_mint_ended);
+    assert_eq!(config.pass_entropy, [0; 32]);
+    assert_ok(env.update_config(UpdateConfigArgs {
+        pass_mint_open: Some(true),
+        ..Default::default()
+    }));
+    let a = env.funded_keypair(10 * SOL);
+    assert_ok(env.mint_pass(&a).0);
+    // The supply stayed frozen throughout (R17).
+    assert_error(
+        env.update_config(UpdateConfigArgs {
+            pass_supply: Some(10),
+            ..Default::default()
+        }),
+        SlanaError::SupplyLocked,
+    );
 }
 
 #[test]

@@ -257,6 +257,12 @@ fn open_session(a: JoinAccounts, session_bump: u8, pass_asset: Option<Pubkey>) -
     session.has_pass = pass_asset.is_some();
     session.pass_asset = pass_asset.unwrap_or_default();
     session.settle_fee = settle_fee;
+    // The fee on profit is fixed now; `settle_session` uses this snapshot, not the config.
+    session.fee_bps = if pass_asset.is_some() {
+        config.pass_fee_bps
+    } else {
+        config.fee_bps
+    };
     session.bump = session_bump;
 
     emit!(ArenaJoined {

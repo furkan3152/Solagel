@@ -128,7 +128,10 @@ describe('matchmaking', () => {
     const j2 = new Journal(path);
     j2.recoverLive();
     expect(j2.lootTotal()).toBe(4 * FEE);
-    const m2 = manager({ ARENA_INSTANCE_CAP: '1' }, undefined, j2);
+    // the vault still holds what the journal owes (loot + recovered cash-outs): attach
+    const owed = j2.owedByArena(1);
+    expect(owed).toBeGreaterThanOrEqual(4 * FEE);
+    const m2 = manager({ ARENA_INSTANCE_CAP: '1' }, new ArenaChain([{ ...arena(1, FEE), pot: owed }, arena(3, 5 * FEE, true)]), j2);
     await m2.ensureArenaRooms();
     const b1 = m2.rooms.get('arena-1-1')!;
     expect(lootSum(b1)).toBe(4 * FEE);
@@ -138,6 +141,38 @@ describe('matchmaking', () => {
     const j3 = new Journal(path);
     expect(j3.lootTotal()).toBe(4 * FEE);
     expect(j3.recoverLoot(1).every((l) => l.roomId === 'arena-1-1')).toBe(true);
+  });
+
+  it('keeps an arena disabled while its vault cannot cover the journal (sweep guard)', async () => {
+    const journal = new Journal(null);
+    journal.commit({ loot: { roomId: 'arena-1-1', arenaId: 1, items: [{ x: 1, y: 1, value: 3 * FEE }] } });
+    journal.commit({ roomId: 'arena-1-2', live: [{ roomId: 'arena-1-2', session: 'S1', sessionId: 1, player: 'w1', arenaId: 1, value: FEE, score: 0, kills: 0, hasPass: false }] });
+    journal.enqueue({ kind: 'settle', key: 'S2', player: 'w2', arenaId: 1, payout: 2 * FEE, score: 0, kills: 0, xp: 0, attempts: 0, nextAttemptAt: 0, createdAt: 0 });
+    // another arena's debts do not count
+    journal.enqueue({ kind: 'settle', key: 'S3', player: 'w3', arenaId: 3, payout: 50 * FEE, score: 0, kills: 0, xp: 0, attempts: 0, nextAttemptAt: 0, createdAt: 0 });
+    expect(journal.owedByArena(1)).toBe(6 * FEE);
+
+    const logs: string[] = [];
+    const swept = new ArenaChain([{ ...arena(1, FEE), pot: 5 * FEE }, { ...arena(3, 5 * FEE, true), pot: 50 * FEE }]);
+    const cfg = loadConfig({ DATA_DIR: mkdtempSync(join(tmpdir(), 'slana-mm-')) });
+    const m = new RoomManager(cfg, { ...roomDeps(swept, journal), log: (l) => logs.push(l) }, swept);
+    await m.ensureArenaRooms();
+    expect(m.rooms.has('arena-1-1')).toBe(false);
+    expect(m.rooms.has('arena-3-1')).toBe(true);
+    expect(await m.arenaRoom(1)).toBeNull();
+    expect(m.underfundedArenas().has(1)).toBe(true);
+    // logged loudly, once
+    expect(logs.filter((l) => /arena #1 KEPT DISABLED/.test(l))).toHaveLength(1);
+    expect(logs[0]).toMatch(/vault holds 5000000 .* journal owes 6000000/);
+    // the loot was not adopted by a room, so it is still journaled
+    expect(journal.owedByArena(1)).toBe(6 * FEE);
+
+    // a vault that covers the journal attaches (fresh process / re-read)
+    const covered = new ArenaChain([{ ...arena(1, FEE), pot: 6 * FEE }]);
+    const m2 = new RoomManager(cfg, { ...roomDeps(covered, journal), log: () => {} }, covered);
+    await m2.ensureArenaRooms();
+    expect(m2.rooms.has('arena-1-1')).toBe(true);
+    expect(m2.underfundedArenas().size).toBe(0);
   });
 
   it('an instance closed during a join is replaced by a live, mapped room', async () => {

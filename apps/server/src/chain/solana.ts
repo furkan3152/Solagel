@@ -14,7 +14,7 @@ import {
   parseCoreAsset,
   passNumberFromName,
   programErrorCode,
-  splitPayout,
+  splitSessionPayout,
   type ArenaView,
   type ConfigView,
   type CoreAsset,
@@ -507,8 +507,9 @@ export class SolanaChain implements ChainGateway {
       perWallet: c.passPerWallet,
       mintOpen: c.passMintOpen,
       mintStartTs: c.passMintStartTs,
-      revealed: c.passRevealed && !!c.passSeed,
-      seed: c.passRevealed ? c.passSeed : null,
+      revealed: c.passRevealed && !!c.passFinalSeed,
+      // traits derive from the final seed sha256(seed || entropy), never the admin seed
+      seed: c.passRevealed ? c.passFinalSeed : null,
     };
   }
 
@@ -843,7 +844,8 @@ export class SolanaChain implements ChainGateway {
     ixs.push(ix);
     let fee: number | undefined;
     try {
-      fee = toSafeAmount(splitPayout(payout, session.entryFee, session.hasPass, config).fee);
+      // the fee fixed in the session at join: exactly what `settle_session` charges
+      fee = toSafeAmount(splitSessionPayout(payout, session, config).fee);
     } catch {
       fee = undefined;
     }

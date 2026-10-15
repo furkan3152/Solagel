@@ -496,6 +496,18 @@ pub mod ix {
                 minter_token,
                 mpl_core_program: MPL_CORE_ID,
                 system_program: system_program::ID,
+                slot_hashes: SLOT_HASHES_ID,
+            },
+        )
+    }
+
+    pub fn close_pass_mint(admin: &Pubkey) -> Instruction {
+        build(
+            slana::instruction::ClosePassMint {}.data(),
+            slana::accounts::ClosePassMint {
+                admin: *admin,
+                config: config_pda(),
+                slot_hashes: SLOT_HASHES_ID,
             },
         )
     }
@@ -1129,6 +1141,36 @@ impl TestEnv {
 
     pub fn set_seed_hash_as(&mut self, signer: &Keypair, hash: [u8; 32]) -> TxResult {
         self.send(&[ix::set_pass_seed_hash(&signer.pubkey(), hash)], &[signer])
+    }
+
+    pub fn close_mint_as(&mut self, signer: &Keypair) -> TxResult {
+        self.send(&[ix::close_pass_mint(&signer.pubkey())], &[signer])
+    }
+
+    pub fn close_mint(&mut self) -> TxResult {
+        let admin = self.admin.insecure_clone();
+        self.close_mint_as(&admin)
+    }
+
+    /// Replaces the SlotHashes sysvar with `entries` (newest first), in its bincode layout.
+    pub fn set_slot_hashes(&mut self, entries: &[(u64, [u8; 32])]) {
+        let mut data = (entries.len() as u64).to_le_bytes().to_vec();
+        for (slot, hash) in entries {
+            data.extend_from_slice(&slot.to_le_bytes());
+            data.extend_from_slice(hash);
+        }
+        // The real account is always sized for 512 entries.
+        data.resize(data.len().max(8 + 512 * 40), 0);
+        let account = SolanaAccount {
+            lamports: self.rent(data.len()),
+            data,
+            owner: anchor_lang::prelude::pubkey!("Sysvar1111111111111111111111111111111111111"),
+            executable: false,
+            rent_epoch: 0,
+        };
+        self.svm
+            .set_account(SLOT_HASHES_ID, account)
+            .expect("set slot hashes");
     }
 
     pub fn reveal_as(&mut self, signer: &Keypair, seed: [u8; 32]) -> TxResult {

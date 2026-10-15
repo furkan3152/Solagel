@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from '@solana/spl-token';
-import { ComputeBudgetProgram, Connection, Keypair, SystemProgram, type PublicKey, type TransactionInstruction } from '@solana/web3.js';
+import { ComputeBudgetProgram, Connection, Keypair, SYSVAR_SLOT_HASHES_PUBKEY, SystemProgram, type PublicKey, type TransactionInstruction } from '@solana/web3.js';
 import { describe, expect, it } from 'vitest';
 import * as constants from '../src/constants';
 import { MPL_CORE_ID, PROGRAM_ID, SlanaClient, ata, pdas } from '../src';
@@ -118,7 +118,7 @@ describe('instruction builders (no RPC)', () => {
   it('mintPass: asset co-signs, minter token is optional', async () => {
     const ix = await client.ix.mintPass(player, { asset: passAsset, collection });
     expect(keys(ix)).toEqual(
-      b58([player, passAsset, pdas.config(), collection, pdas.passAuthority(), pdas.passMinted(player), PROGRAM_ID, MPL_CORE_ID, SystemProgram.programId]),
+      b58([player, passAsset, pdas.config(), collection, pdas.passAuthority(), pdas.passMinted(player), PROGRAM_ID, MPL_CORE_ID, SYSVAR_SLOT_HASHES_PUBKEY, SystemProgram.programId]),
     );
     expect(meta(ix, passAsset)).toMatchObject({ isSigner: true, isWritable: true });
     const withToken = await client.ix.mintPass(player, { asset: passAsset, collection, minterToken: ata(player, tokenMint, TOKEN_PROGRAM_ID) });
@@ -187,6 +187,9 @@ describe('instruction builders (no RPC)', () => {
     expect([...setHash.data.subarray(8)]).toEqual([...hash]);
     const reveal = await client.ix.revealPass(admin, new Uint8Array(32).fill(1));
     expect(reveal.data.length).toBe(40);
+    const close = await client.ix.closePassMint(admin);
+    expect(keys(close)).toEqual(b58([admin, pdas.config(), SYSVAR_SLOT_HASHES_PUBKEY]));
+    expect(meta(close, SYSVAR_SLOT_HASHES_PUBKEY)).toMatchObject({ isSigner: false, isWritable: false });
     expect(() => client.ix.setPassSeedHash(admin, new Uint8Array(31))).toThrow(RangeError);
 
     const end = await client.ix.endSeason(admin, 5);

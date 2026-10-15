@@ -57,7 +57,7 @@ kesinti, Pass, sezon ve ödüller Solana programında. Ayrıntı, para akışı 
 | `programs/slana` | Anchor 1.2.1 programı: token arenaları (SPL Token / Token-2022), oturumlar, kesinti/yakım, sezonlar, Slana Pass (Core CPI, commit–reveal) + LiteSVM testleri |
 | `packages/shared` | Oyun kuralları, ikili protokol, arena verisi, token biçimlendirme |
 | `packages/sdk` | TypeScript istemci (PDA'lar, talimatlar, hesap okuma, kesinti matematiği) + **admin CLI** (`pnpm admin`) |
-| `packages/art` | Pass özellikleri `passTraits(seed, n, supply)`, risograf coin/Pass çizimi, `pnpm pass:*` üretim aracı |
+| `packages/art` | Pass özellikleri `passTraits(finalSeed, n, supply)` (`finalSeed = sha256(tohum ‖ mint kapanış entropisi)`), risograf coin/Pass çizimi, `pnpm pass:*` üretim aracı |
 | `apps/server` | Oyun sunucusu: odalar ve örnekler, botlar, ganimet, günlük (journal), ödeme kuyruğu, Pass metadata uç noktaları |
 | `apps/web` | Oyun istemcisi: "Kâğıt Bilet" tasarım sistemi, lobi, bilet akışı, Pass ofisi, sıralama, oyuncu kılavuzu |
 
@@ -129,9 +129,11 @@ Ek araçlar: `pnpm -F @slana/server sim` (bot dengesi), `pnpm -F @slana/web shot
   eating a player moves their value to you. Bots are worth 0; when a bot eats a player, the value spills as loot that only
   real players can collect. Rooms are sharded into instances of 50 players and run 24/7.
 - **Cash-out** (`C`, 3 s, 2 s with a Pass) sends the payout on-chain. The fee is charged **on profit only**: 5 % by
-  default, 2 % with a Pass, split 50 % treasury / 30 % season pool / 20 % burned.
+  default, 2 % with a Pass, split 50 % treasury / 30 % season pool / 20 % burned. The rate is fixed on-chain when the
+  ticket is bought.
 - **Slana Pass** is a Metaplex Core NFT with a free mint (rent and network fee only), supply 3,333, one per wallet and a
-  commit–reveal trait seed. Perks: Pass rooms, the 2 % fee, season points and prizes, and **in-game power** (+15 % start
+  commit–reveal trait seed mixed with a slot hash the program records when the mint closes (nobody, the team included,
+  can know traits while Passes can be minted; the supply is fixed once the mint opens). Perks: Pass rooms, the 2 % fee, season points and prizes, and **in-game power** (+15 % start
   mass, 2 s cash-out), disclosed on every ticket and in the guide.
 - **Seasons:** points come only from Pass tickets; the on-chain top 20 is kept and the top 10 share the pool; 30 days to
   claim.

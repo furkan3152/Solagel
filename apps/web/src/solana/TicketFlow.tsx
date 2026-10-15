@@ -208,10 +208,14 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
     }
     if (!client) return fail(t('tf.err.NetworkError'));
     try {
-      // re-read the arena: the price and Pass rule signed must be the ones shown
-      const fresh = await client.fetchArena(arenaId);
+      // re-read the arena and the config: the price, Pass rule, fee rate (fixed into the ticket at join)
+      // and deposit signed must be the ones shown
+      const [fresh, freshConfig] = await Promise.all([client.fetchArena(arenaId), client.fetchConfig()]);
       if (!fresh || !fresh.enabled || fresh.entryFee !== review.fee || fresh.requiresPass !== ticket.requiresPass) {
         return fail(t('tf.err.PriceChanged'));
+      }
+      if (!freshConfig || feeBps(freshConfig, pass !== null) !== review.bps || freshConfig.settleFeeLamports !== review.deposit) {
+        return fail(t('tf.err.FeeChanged'));
       }
       const { ixs } = await buildTicketTx(client.ix, {
         player: owner,
@@ -385,6 +389,12 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
           <dl className="tf-lines">
             <Line label={t('tf.entry')} value={`${tok.exact(v.fee)} ${tok.symbol}`} strong />
             {mode === 'buy' && <Line label={t('tf.fee')} value={t('tf.feeV', { n: bpsPercent(v.bps, lang) })} />}
+            {mode === 'buy' && v.pass && (
+              <Line
+                label={t('tf.passLine')}
+                value={t('tf.passLineV', { n: passNo(v.pass.number), fee: bpsPercent(v.bps, lang), start: PASS_POWER.startPct, s: PASS_POWER.cashoutS })}
+              />
+            )}
             <Line label={t('tf.deposit')} value={t('tf.depositV', { sol: sol(v.deposit) })} />
             {mode === 'buy' && <Line label={t('tf.sol')} value={t('tf.solV', { total: sol(v.sol.total), back: sol(v.sol.refundable) })} />}
             {mode === 'buy' && v.balance !== null && (
