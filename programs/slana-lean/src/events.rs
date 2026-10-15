@@ -313,7 +313,7 @@ mod tests {
             e.data()
         );
         let k = Pubkey::new_from_array([5; 32]);
-        for name in ["", "a", "abcdefghijklmnop", "Çağrı🚀"] {
+        for name in ["", "a", "abcdefghijklmnop", "Renée🚀"] {
             let e = r::PlayerRegistered {
                 owner: k,
                 name: name.to_string(),

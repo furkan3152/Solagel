@@ -20,7 +20,7 @@ const sample: SnapshotData = {
   view: { x: 1500.5, y: 2200.25, h: 1150 },
   players: [
     { id: 1, skin: 0, flags: 0, pass: 0, name: 'gm_gummy' },
-    { id: 65000, skin: 23, flags: 3, pass: 3333, name: 'Çağrı🚀' },
+    { id: 65000, skin: 23, flags: 3, pass: 3333, name: 'Renée🚀' },
   ],
   upserts: [
     { id: 1, kind: EntityKind.Cell, x: 10.5, y: 20.25, r: 44.72, playerId: 65000, flags: 5 },
@@ -91,7 +91,7 @@ describe('snapshot codec', () => {
       { id: 1, skin: 0, flags: 0, pass: 0, name: 'no pass' },
       { id: 2, skin: 3, flags: PlayerFlag.Verified | PlayerFlag.Pass, pass: 3333, name: 'Pass #3333' },
       { id: 3, skin: 7, flags: PlayerFlag.Staker | PlayerFlag.Pass, pass: 1, name: '' },
-      { id: 65535, skin: 255, flags: 255, pass: 65535, name: 'Çağrı🚀' },
+      { id: 65535, skin: 255, flags: 255, pass: 65535, name: 'Renée🚀' },
     ];
     const decoded = decodeSnapshot(encodeSnapshot({ tick: 9, view: { x: 1, y: 2, h: 3 }, players, upserts: [], removals: [] }));
     expect(decoded.players).toEqual(players);

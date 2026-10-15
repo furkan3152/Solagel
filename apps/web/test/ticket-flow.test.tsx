@@ -130,7 +130,7 @@ describe('ticket confirm sheet', () => {
     expect(within(dialog).getByText('12.450 → 11.450 $SLANA')).toBeTruthy();
     const steps = within(within(dialog).getByRole('region', { name: 'Bu işlemde' })).getAllByRole('listitem');
     // no profile yet: it is created in the same transaction
-    expect(steps.map((s) => s.textContent)).toEqual(['1Zincir üstü profilini oluştur · Defne', '2Bileti kes · Kuruş Gölü']);
+    expect(steps.map((s) => s.textContent)).toEqual(['1Zincir üstü profilini oluştur · Defne', '2Bileti kes · Penny Pond']);
     expect((within(dialog).getByRole('button', { name: /Bileti kes · 1\.000 \$SLANA/ }) as HTMLButtonElement).disabled).toBe(false);
   });
 
@@ -154,7 +154,7 @@ describe('ticket confirm sheet', () => {
     expect(sw.getAttribute('aria-checked')).toBe('false');
     act(() => sw.click());
     expect(screen.getByText('%2 · yalnızca kârdan · bu bilet için sabit')).toBeTruthy();
-    expect(screen.getByText(/Bileti Pass No\. 0412 ile kes · Kuruş Gölü/)).toBeTruthy();
+    expect(screen.getByText(/Bileti Pass No\. 0412 ile kes · Penny Pond/)).toBeTruthy();
     // the Pass line discloses every perk, the faster cash-out included
     expect(screen.getByText(new RegExp(`^No\\. 0412 · %2 kesinti, \\+%\\d+ başlangıç, ${PASS_POWER.cashoutS} sn cash-out$`))).toBeTruthy();
   });

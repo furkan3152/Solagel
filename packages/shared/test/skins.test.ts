@@ -61,8 +61,8 @@ describe('text sanitizing', () => {
   });
 
   it('truncates utf8 safely', () => {
-    expect(utf8Length('ğ')).toBe(2);
-    expect(truncateUtf8('ğğğğğğğğğ', 16)).toBe('ğğğğğğğğ');
+    expect(utf8Length('é')).toBe(2);
+    expect(truncateUtf8('ééééééééé', 16)).toBe('éééééééé');
     expect(truncateUtf8('🚀🚀🚀🚀🚀', 16)).toBe('🚀🚀🚀🚀');
   });
 });

@@ -34,7 +34,7 @@ fn register_player_validates_name_and_skin() {
     assert_error(env.register(&alice, "bogus", 255), SlanaError::InvalidSkin);
     assert_eq!(env.config().total_players, 0);
 
-    let name = "Çağrı🚀";
+    let name = "Renée🚀";
     assert_ok(env.register(&alice, name, 7));
     let profile = env.profile(&alice.pubkey());
     assert_eq!(profile.owner, alice.pubkey());

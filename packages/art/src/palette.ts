@@ -1,4 +1,4 @@
-/** Risograph inks of the "Kâğıt Bilet" design system. */
+/** Risograph inks of the "Paper Ticket" design system. */
 export const RISO = {
   fluoPink: '#FF4F87',
   teal: '#0E9C9A',
