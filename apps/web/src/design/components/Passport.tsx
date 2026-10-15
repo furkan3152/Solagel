@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react';
 import type { HTMLAttributes, ReactNode } from 'react';
-import { usePreset, useReducedMotion } from '../motion';
+import { staggerIn, usePreset, useReducedMotion } from '../motion';
 import { Stamp } from './Stamp';
 
 export interface PassportTrait {
@@ -99,10 +99,11 @@ export function Passport({
                     </div>
                   )}
                   {traits.map((row, i) => (
-                    <div key={i} className="kb-passport__field">
+                    // the clerk types the fields in, one after another, once the page is open
+                    <motion.div key={i} className="kb-passport__field" {...staggerIn(i, reduced, { delay: 0.16, x: -6, y: 0, step: 0.05 })}>
                       <dt className="mono">{row.label}</dt>
                       <dd>{row.value}</dd>
-                    </div>
+                    </motion.div>
                   ))}
                 </dl>
               </div>
