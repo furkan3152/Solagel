@@ -128,6 +128,10 @@ export interface JoinArenaParams extends TokenAccounts {
    * if the rate it fixes into the session (`passFeeBps` with a Pass, else `feeBps`) is higher.
    */
   maxFeeBps: number;
+  /** The entry fee (token base units) the player was shown: a higher one fails with `EntryFeeAboveLimit`. */
+  maxEntryFee: IntLike;
+  /** The settle deposit (lamports) the player was shown: a higher one fails with `SettleFeeAboveLimit`. */
+  maxSettleFee: IntLike;
   /** Player's game-token account (default: their ATA). */
   playerToken?: Address;
 }
@@ -153,13 +157,22 @@ export interface SettleSessionParams extends TokenAccounts {
   hasPass: boolean;
   /** `Session.passAsset`; required when `hasPass`. */
   passAsset?: Address | null;
-  /** Player's game-token account (default: their ATA). */
-  playerToken?: Address;
+  /**
+   * Player's game-token account (default: their ATA). `null` settles without one (ruling
+   * R24): the fee split and stats happen, and the session is finalized with `owed` for the
+   * player to collect via `refundSession`.
+   */
+  playerToken?: Address | null;
 }
 
 export interface RefundSessionParams extends TokenAccounts {
   arenaId: number;
-  /** `Session.passAsset` of a Pass session (its lock is closed too). */
+  /**
+   * `Session.finalized`: collecting a finalized session's `owed` payout (no waiting time, no
+   * Pass lock: settlement already closed it).
+   */
+  finalized?: boolean;
+  /** `Session.passAsset` of an unsettled Pass session (its lock is closed too). Ignored when `finalized`. */
   passAsset?: Address | null;
   playerToken?: Address;
 }
@@ -404,7 +417,7 @@ function createInstructionBuilders(program: Program<Slana>, programId: PublicKey
     /** Pays `entryFee` tokens into the arena vault (and the settle deposit in lamports). */
     joinArena(player: Address, p: JoinArenaParams): Promise<TransactionInstruction> {
       return program.methods
-        .joinArena(checkBps(p.maxFeeBps))
+        .joinArena(checkBps(p.maxFeeBps), toBN(p.maxEntryFee), toBN(p.maxSettleFee))
         .accountsPartial({
           player: toPublicKey(player),
           config: config(),
@@ -422,7 +435,7 @@ function createInstructionBuilders(program: Program<Slana>, programId: PublicKey
     /** Like `joinArena`, backed by a Slana Pass (lower fee, season points); locks `passLock(asset)`. */
     joinArenaWithPass(player: Address, p: JoinArenaWithPassParams): Promise<TransactionInstruction> {
       return program.methods
-        .joinArenaWithPass(checkBps(p.maxFeeBps))
+        .joinArenaWithPass(checkBps(p.maxFeeBps), toBN(p.maxEntryFee), toBN(p.maxSettleFee))
         .accountsPartial({
           player: toPublicKey(player),
           config: config(),
@@ -450,7 +463,7 @@ function createInstructionBuilders(program: Program<Slana>, programId: PublicKey
           vault: vault(p.arenaId),
           session: session(p.arenaId, p.player),
           player: toPublicKey(p.player),
-          playerToken: tokenAccount(p.playerToken, p.player, p),
+          playerToken: p.playerToken === null ? null : tokenAccount(p.playerToken, p.player, p),
           profile: profile(p.player),
           season: season(p.currentSeason),
           treasuryVault: pdas.treasuryVault(programId),
@@ -461,7 +474,10 @@ function createInstructionBuilders(program: Program<Slana>, programId: PublicKey
         .instruction();
     },
 
-    /** The player's own refund, 24 h after joining. */
+    /**
+     * The player's own close of a session: collects a finalized session's `owed` payout at
+     * once, or refunds an unsettled one's entry fee 24 h after joining.
+     */
     refundSession(player: Address, p: RefundSessionParams): Promise<TransactionInstruction> {
       return program.methods
         .refundSession()
@@ -473,7 +489,7 @@ function createInstructionBuilders(program: Program<Slana>, programId: PublicKey
           session: session(p.arenaId, player),
           playerToken: tokenAccount(p.playerToken, player, p),
           ...tokens(p),
-          passLock: passLock(p.passAsset),
+          passLock: p.finalized ? null : passLock(p.passAsset),
         })
         .instruction();
     },

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { SendTransactionError } from '@solana/web3.js';
 import { describe, expect, it } from 'vitest';
-import { SLANA_ERRORS, SlanaErrorCode, TransactionFailedError, describeError, programErrorCode } from '../src';
+import { SESSION_IN_USE_MESSAGE, SLANA_ERRORS, SlanaErrorCode, TransactionFailedError, describeError, programErrorCode } from '../src';
 
 const PROGRAM = '5skf5Twyqr8M84dJ8RLGfz1NU6fR3zPDRLUvGd5y7472';
 
@@ -23,6 +23,7 @@ describe('programErrorCode / describeError', () => {
     expect(SlanaErrorCode.MintStillOpen).toBe(6042);
     expect(describeError({ code: 6042, msg: 'Pass mint is still open' }).name).toBe('MintStillOpen');
     expect([SlanaErrorCode.MintEnded, SlanaErrorCode.SupplyLocked, SlanaErrorCode.UseCloseMint, SlanaErrorCode.BadSlotHashes, SlanaErrorCode.NothingMinted, SlanaErrorCode.EntropyNotReady, SlanaErrorCode.EntropyNotCaptured, SlanaErrorCode.SeedNotRevealed, SlanaErrorCode.FeeAboveLimit]).toEqual([6043, 6044, 6045, 6046, 6047, 6048, 6049, 6050, 6051]);
+    expect([SlanaErrorCode.EntryFeeAboveLimit, SlanaErrorCode.SettleFeeAboveLimit, SlanaErrorCode.SessionFinalized, SlanaErrorCode.InvalidAuthority]).toEqual([6052, 6053, 6054, 6055]);
     // deprecated but kept: later codes keep their numbers
     expect(SlanaErrorCode.MintSoldOut).toBe(6027);
     expect(describeError({ code: 6022, msg: 'x' }).name).toBe('PassRequired');
@@ -39,10 +40,12 @@ describe('programErrorCode / describeError', () => {
         'Program 11111111111111111111111111111111 failed: custom program error: 0x0',
       ],
     });
-    expect(describeError(inUse(lock), { passLock: lock })).toEqual({ code: SlanaErrorCode.PassInUse, name: 'PassInUse', message: 'Bu Pass şu an başka bir oturumda' });
+    expect(describeError(inUse(lock), { passLock: lock })).toEqual({ code: SlanaErrorCode.PassInUse, name: 'PassInUse', message: 'This Pass is already backing another open session.' });
     // another account already in use stays generic
     expect(describeError(inUse(session), { passLock: lock }).name).toBe('AccountAlreadyInUse');
     expect(describeError(inUse(lock)).name).toBe('AccountAlreadyInUse');
+    // "already in use" on the join's session PDA: a (maybe finalized) session is still open
+    expect(describeError(inUse(session), { passLock: lock, session })).toMatchObject({ name: 'SessionInUse', message: SESSION_IN_USE_MESSAGE });
     // Anchor names the account in its log
     expect(describeError({ message: 'AnchorError caused by account: pass_lock. already in use' }).name).toBe('PassInUse');
   });

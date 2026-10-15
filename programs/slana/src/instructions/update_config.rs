@@ -61,9 +61,15 @@ pub fn handle_update_config(ctx: Context<UpdateConfig>, args: UpdateConfigArgs) 
         config.settle_fee_lamports = settle_fee_lamports;
     }
     if let Some(admin) = args.admin {
+        require_keys_neq!(admin, Pubkey::default(), SlanaError::InvalidAuthority);
         config.admin = admin;
     }
     if let Some(server_authority) = args.server_authority {
+        require_keys_neq!(
+            server_authority,
+            Pubkey::default(),
+            SlanaError::InvalidAuthority
+        );
         config.server_authority = server_authority;
     }
     if let Some(paused) = args.paused {

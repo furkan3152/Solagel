@@ -144,6 +144,14 @@ export interface SessionView {
   settleFee: number;
   /** Fee on profit in basis points, fixed at join (settlement uses it, not the config). */
   feeBps: number;
+  /**
+   * Settled without a player token account (ruling R24): the game result is final and the
+   * Pass lock is already closed; `owed` waits in the arena vault until the player collects it
+   * with `refund_session` (no waiting time).
+   */
+  finalized: boolean;
+  /** Token base units the player can collect from a finalized session (0 otherwise). */
+  owed: bigint;
 }
 
 export interface LeaderEntryView {
@@ -292,6 +300,8 @@ export function toSessionView(address: Address, raw: RawSession): SessionView {
     passAsset: raw.hasPass ? pkOrNull(raw.passAsset) : null,
     settleFee: toNumber(raw.settleFee),
     feeBps: raw.feeBps,
+    finalized: raw.finalized,
+    owed: toBigInt(raw.owed),
   };
 }
 

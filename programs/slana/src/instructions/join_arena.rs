@@ -35,7 +35,8 @@ pub struct JoinArena<'info> {
         bump = arena.vault_bump
     )]
     pub vault: Box<InterfaceAccount<'info, TokenAccount>>,
-    /// One open session per player per arena: a second join fails because the PDA exists.
+    /// One open session per player per arena: a second join fails because the PDA exists
+    /// (also while a finalized session waits for its payout to be collected).
     #[account(
         init,
         payer = player,
@@ -119,7 +120,18 @@ pub struct JoinArenaWithPass<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handle_join_arena(ctx: Context<JoinArena>, max_fee_bps: u16) -> Result<()> {
+/// What the player was shown and signed: the join fails rather than charge more.
+#[derive(Clone, Copy)]
+pub struct JoinLimits {
+    /// Fee on profit, basis points (`FeeAboveLimit`).
+    pub max_fee_bps: u16,
+    /// Entry fee in game-token base units (`EntryFeeAboveLimit`).
+    pub max_entry_fee: u64,
+    /// Settle deposit in lamports (`SettleFeeAboveLimit`).
+    pub max_settle_fee: u64,
+}
+
+pub fn handle_join_arena(ctx: Context<JoinArena>, limits: JoinLimits) -> Result<()> {
     require!(!ctx.accounts.arena.requires_pass, SlanaError::PassRequired);
     let a = ctx.accounts;
     open_session(
@@ -136,13 +148,13 @@ pub fn handle_join_arena(ctx: Context<JoinArena>, max_fee_bps: u16) -> Result<()
         },
         ctx.bumps.session,
         None,
-        max_fee_bps,
+        limits,
     )
 }
 
 pub fn handle_join_arena_with_pass(
     ctx: Context<JoinArenaWithPass>,
-    max_fee_bps: u16,
+    limits: JoinLimits,
 ) -> Result<()> {
     let a = ctx.accounts;
     let asset = core_asset::read_core_asset(&a.pass_asset.to_account_info())?;
@@ -173,7 +185,7 @@ pub fn handle_join_arena_with_pass(
         },
         ctx.bumps.session,
         Some(pass_asset),
-        max_fee_bps,
+        limits,
     )
 }
 
@@ -196,7 +208,7 @@ fn open_session(
     a: JoinAccounts,
     session_bump: u8,
     pass_asset: Option<Pubkey>,
-    max_fee_bps: u16,
+    limits: JoinLimits,
 ) -> Result<()> {
     require!(!a.config.paused, SlanaError::Paused);
     // The fee on profit fixed into the session: never above what the player was shown.
@@ -205,7 +217,15 @@ fn open_session(
     } else {
         a.config.fee_bps
     };
-    require!(fee_bps <= max_fee_bps, SlanaError::FeeAboveLimit);
+    require!(fee_bps <= limits.max_fee_bps, SlanaError::FeeAboveLimit);
+    require!(
+        a.arena.entry_fee <= limits.max_entry_fee,
+        SlanaError::EntryFeeAboveLimit
+    );
+    require!(
+        a.config.settle_fee_lamports <= limits.max_settle_fee,
+        SlanaError::SettleFeeAboveLimit
+    );
     require!(a.arena.enabled, SlanaError::ArenaDisabled);
     require!(
         a.arena.open_sessions < a.arena.max_sessions,
@@ -277,6 +297,8 @@ fn open_session(
     // The fee on profit is fixed now; `settle_session` uses this snapshot, not the config.
     session.fee_bps = fee_bps;
     session.bump = session_bump;
+    session.finalized = false;
+    session.owed = 0;
 
     emit!(ArenaJoined {
         player,

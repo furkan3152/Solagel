@@ -650,7 +650,9 @@ export type Slana = {
       "docs": [
         "Pays the entry fee into the arena vault and opens a session (no Pass). Fails with",
         "`FeeAboveLimit` if the fee rate fixed into the session exceeds `max_fee_bps` (the rate",
-        "the player was shown)."
+        "the player was shown), the arena's entry fee exceeds `max_entry_fee`",
+        "(`EntryFeeAboveLimit`) or the settle deposit exceeds `max_settle_fee`",
+        "(`SettleFeeAboveLimit`)."
       ],
       "discriminator": [
         135,
@@ -759,7 +761,8 @@ export type Slana = {
         {
           "name": "session",
           "docs": [
-            "One open session per player per arena: a second join fails because the PDA exists."
+            "One open session per player per arena: a second join fails because the PDA exists",
+            "(also while a finalized session waits for its payout to be collected)."
           ],
           "writable": true,
           "pda": {
@@ -806,6 +809,14 @@ export type Slana = {
         {
           "name": "maxFeeBps",
           "type": "u16"
+        },
+        {
+          "name": "maxEntryFee",
+          "type": "u64"
+        },
+        {
+          "name": "maxSettleFee",
+          "type": "u64"
         }
       ]
     },
@@ -1001,6 +1012,14 @@ export type Slana = {
         {
           "name": "maxFeeBps",
           "type": "u16"
+        },
+        {
+          "name": "maxEntryFee",
+          "type": "u64"
+        },
+        {
+          "name": "maxSettleFee",
+          "type": "u64"
         }
       ]
     },
@@ -1133,6 +1152,10 @@ export type Slana = {
     },
     {
       "name": "refundSession",
+      "docs": [
+        "Player-signed. A finalized session pays its `owed` payout at once; an unsettled one",
+        "returns the entry fee after `SESSION_REFUND_TIMEOUT_SECS`."
+      ],
       "discriminator": [
         168,
         87,
@@ -1154,6 +1177,7 @@ export type Slana = {
         },
         {
           "name": "config",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -1259,7 +1283,8 @@ export type Slana = {
         {
           "name": "passLock",
           "docs": [
-            "Required iff the session has a Pass: its lock, closed back to the player."
+            "Required iff the session has a Pass and is not finalized (settlement already closed the",
+            "lock of a finalized session): its lock, closed back to the player."
           ],
           "writable": true,
           "optional": true
@@ -1630,7 +1655,9 @@ export type Slana = {
     {
       "name": "settleSession",
       "docs": [
-        "Server-signed cash-out of a stake session."
+        "Server-signed cash-out of a stake session. With the player's token account the payout",
+        "is paid and the session closed; without it (`player_token = None`) the session is",
+        "finalized with `owed` for the player to collect via `refund_session` (ruling R24)."
       ],
       "discriminator": [
         156,
@@ -1720,6 +1747,10 @@ export type Slana = {
         },
         {
           "name": "session",
+          "docs": [
+            "Closed back to the player when the payout is paid in this transaction; kept open",
+            "(finalized, with `owed`) when `player_token` is absent."
+          ],
           "writable": true,
           "pda": {
             "seeds": [
@@ -1759,11 +1790,14 @@ export type Slana = {
         {
           "name": "playerToken",
           "docs": [
-            "Any token account of the game mint owned by the player. The player creates and pays",
-            "for it (ruling R10: the server never pays a player's token account); without one the",
-            "server waits, and the 24 h self-refund returns the entry fee only."
+            "Any token account of the game mint owned by the player (the player creates and pays",
+            "for it; the server never does). Optional (ruling R24): without it, or when the player",
+            "made it unable to receive, the server settles anyway and the session is finalized with",
+            "`owed`, which the player collects with `refund_session`. So a player can delay their",
+            "own payout but never block the game result."
           ],
-          "writable": true
+          "writable": true,
+          "optional": true
         },
         {
           "name": "profile",
@@ -2908,6 +2942,26 @@ export type Slana = {
       "code": 6051,
       "name": "feeAboveLimit",
       "msg": "The fee rate is above the limit the player signed"
+    },
+    {
+      "code": 6052,
+      "name": "entryFeeAboveLimit",
+      "msg": "The entry fee is above the limit the player signed"
+    },
+    {
+      "code": 6053,
+      "name": "settleFeeAboveLimit",
+      "msg": "The settle deposit is above the limit the player signed"
+    },
+    {
+      "code": 6054,
+      "name": "sessionFinalized",
+      "msg": "Session is already settled; the player collects the payout with refund_session"
+    },
+    {
+      "code": 6055,
+      "name": "invalidAuthority",
+      "msg": "Authority must not be the default public key"
     }
   ],
   "types": [
@@ -3966,6 +4020,23 @@ export type Slana = {
           {
             "name": "bump",
             "type": "u8"
+          },
+          {
+            "name": "finalized",
+            "docs": [
+              "Settled without a player token account (ruling R24): the game result is final, the",
+              "fee is taken and the Pass lock is closed, but `owed` still sits in the arena vault",
+              "until the player collects it with `refund_session` (no waiting time). The session stays",
+              "open (it counts in `Arena::open_sessions`, so the vault cannot be swept meanwhile)."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "owed",
+            "docs": [
+              "Game tokens the player is owed by a finalized session (0 otherwise)."
+            ],
+            "type": "u64"
           }
         ]
       }
@@ -3986,6 +4057,13 @@ export type Slana = {
           {
             "name": "amount",
             "type": "u64"
+          },
+          {
+            "name": "finalized",
+            "docs": [
+              "The session was finalized: `amount` is its owed payout, not an entry-fee refund."
+            ],
+            "type": "bool"
           }
         ]
       }
@@ -4033,6 +4111,14 @@ export type Slana = {
           {
             "name": "kills",
             "type": "u16"
+          },
+          {
+            "name": "owed",
+            "docs": [
+              "Player share left in the vault for the player to collect (finalized without a token",
+              "account); 0 when it was paid in the same transaction."
+            ],
+            "type": "u64"
           }
         ]
       }
