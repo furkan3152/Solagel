@@ -9,6 +9,9 @@
     "node": ">=22"
   },
   "scripts": {
+    "demo": "node scripts/demo.mjs",
+    "demo:localnet": "node scripts/demo.mjs --localnet",
+    "demo:record": "node scripts/record-walkthrough.mjs",
     "dev": "pnpm -r --parallel --filter @slana/server --filter @slana/web dev",
     "dev:server": "pnpm -F @slana/server dev",
     "dev:web": "pnpm -F @slana/web dev",
