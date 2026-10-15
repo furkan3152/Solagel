@@ -29,11 +29,14 @@ use {
         token_2022::spl_token_2022::{
             self,
             extension::{
-                metadata_pointer, transfer_fee, BaseStateWithExtensions, ExtensionType,
-                StateWithExtensions,
+                group_pointer, interest_bearing_mint, metadata_pointer, scaled_ui_amount,
+                transfer_fee, BaseStateWithExtensions, ExtensionType, StateWithExtensions,
             },
             state::{Account as TokenAccountState, Mint as MintState},
         },
+    },
+    anchor_spl::token_2022_extensions::spl_token_metadata_interface::{
+        instruction::initialize as token_metadata_initialize, state::TokenMetadata,
     },
     litesvm::{
         types::{FailedTransactionMetadata, TransactionMetadata},
@@ -729,15 +732,41 @@ pub enum MintKind {
     Token2022TransferFee,
     /// Token-2022 mint with a MintCloseAuthority extension (denied).
     Token2022CloseAuthority,
+    /// Token-2022 mint like a pump.fun Token-2022 token: MetadataPointer (to itself) plus the
+    /// variable-length TokenMetadata extension (name / symbol / uri) after it (allowed).
+    Token2022Metadata,
+    /// `Token2022Metadata` plus GroupPointer and InterestBearingConfig (allowed).
+    Token2022MetadataGroupInterest,
+    /// `Token2022Metadata` plus ScaledUiAmount (allowed). Token-2022 refuses ScaledUiAmount
+    /// together with InterestBearingConfig, so it gets its own mint.
+    Token2022MetadataScaledUi,
 }
 
+/// The TokenMetadata the `Token2022Metadata*` mints carry (pump.fun-style values).
+pub const META_NAME: &str = "Slana Test Coin";
+pub const META_SYMBOL: &str = "SLANA";
+pub const META_URI: &str = "https://ipfs.io/ipfs/QmSlanaTestCoinMetadataUriThatIsRatherLongLikePumpFun1234567890";
+
 impl MintKind {
+    /// Whether the mint carries the variable-length TokenMetadata extension.
+    pub fn has_token_metadata(self) -> bool {
+        matches!(
+            self,
+            MintKind::Token2022Metadata
+                | MintKind::Token2022MetadataGroupInterest
+                | MintKind::Token2022MetadataScaledUi
+        )
+    }
+
     pub fn program(self) -> Pubkey {
         match self {
             MintKind::Spl => spl_token::ID,
             MintKind::Token2022
             | MintKind::Token2022TransferFee
-            | MintKind::Token2022CloseAuthority => spl_token_2022::ID,
+            | MintKind::Token2022CloseAuthority
+            | MintKind::Token2022Metadata
+            | MintKind::Token2022MetadataGroupInterest
+            | MintKind::Token2022MetadataScaledUi => spl_token_2022::ID,
         }
     }
 }
@@ -1436,10 +1465,35 @@ impl TestEnv {
             MintKind::Token2022 => &[ExtensionType::MetadataPointer],
             MintKind::Token2022TransferFee => &[ExtensionType::TransferFeeConfig],
             MintKind::Token2022CloseAuthority => &[ExtensionType::MintCloseAuthority],
+            MintKind::Token2022Metadata => &[ExtensionType::MetadataPointer],
+            MintKind::Token2022MetadataGroupInterest => &[
+                ExtensionType::MetadataPointer,
+                ExtensionType::GroupPointer,
+                ExtensionType::InterestBearingConfig,
+            ],
+            MintKind::Token2022MetadataScaledUi => &[
+                ExtensionType::MetadataPointer,
+                ExtensionType::ScaledUiAmount,
+            ],
         };
         let space =
             ExtensionType::try_calculate_account_len::<MintState>(extensions).expect("mint length");
-        let lamports = self.svm.minimum_balance_for_rent_exemption(space);
+        // TokenMetadata is variable-length: Token-2022 reallocs the mint when it is initialized
+        // (after InitializeMint), so the account is created at the fixed size but funded for
+        // the final one.
+        let metadata = kind.has_token_metadata().then(|| TokenMetadata {
+            update_authority: Some(authority).try_into().expect("update authority"),
+            mint: mint.pubkey(),
+            name: META_NAME.into(),
+            symbol: META_SYMBOL.into(),
+            uri: META_URI.into(),
+            additional_metadata: vec![],
+        });
+        let final_space = space
+            + metadata
+                .as_ref()
+                .map_or(0, |m| m.tlv_size_of().expect("metadata length"));
+        let lamports = self.svm.minimum_balance_for_rent_exemption(final_space);
 
         let mut ixs = vec![system_instruction::create_account(
             &payer,
@@ -1450,7 +1504,7 @@ impl TestEnv {
         )];
         match kind {
             MintKind::Spl => {}
-            MintKind::Token2022 => ixs.push(
+            MintKind::Token2022 | MintKind::Token2022Metadata => ixs.push(
                 metadata_pointer::instruction::initialize(
                     &program,
                     &mint.pubkey(),
@@ -1478,6 +1532,55 @@ impl TestEnv {
                 )
                 .expect("mint close authority ix"),
             ),
+            MintKind::Token2022MetadataGroupInterest => {
+                ixs.push(
+                    metadata_pointer::instruction::initialize(
+                        &program,
+                        &mint.pubkey(),
+                        Some(authority),
+                        Some(mint.pubkey()),
+                    )
+                    .expect("metadata pointer ix"),
+                );
+                ixs.push(
+                    group_pointer::instruction::initialize(
+                        &program,
+                        &mint.pubkey(),
+                        Some(authority),
+                        Some(mint.pubkey()),
+                    )
+                    .expect("group pointer ix"),
+                );
+                ixs.push(
+                    interest_bearing_mint::instruction::initialize(
+                        &program,
+                        &mint.pubkey(),
+                        Some(authority),
+                        500,
+                    )
+                    .expect("interest bearing ix"),
+                );
+            }
+            MintKind::Token2022MetadataScaledUi => {
+                ixs.push(
+                    metadata_pointer::instruction::initialize(
+                        &program,
+                        &mint.pubkey(),
+                        Some(authority),
+                        Some(mint.pubkey()),
+                    )
+                    .expect("metadata pointer ix"),
+                );
+                ixs.push(
+                    scaled_ui_amount::instruction::initialize(
+                        &program,
+                        &mint.pubkey(),
+                        Some(authority),
+                        2.5,
+                    )
+                    .expect("scaled ui amount ix"),
+                );
+            }
         }
         ixs.push(
             spl_token_2022::instruction::initialize_mint2(
@@ -1489,7 +1592,22 @@ impl TestEnv {
             )
             .expect("initialize mint ix"),
         );
-        assert_ok(self.send(&ixs, &[&mint]));
+        let mint_authority = self.mint_authority.insecure_clone();
+        let mut signers = vec![&mint];
+        if let Some(m) = metadata {
+            ixs.push(token_metadata_initialize(
+                &program,
+                &mint.pubkey(),
+                &authority,
+                &mint.pubkey(),
+                &authority,
+                m.name,
+                m.symbol,
+                m.uri,
+            ));
+            signers.push(&mint_authority);
+        }
+        assert_ok(self.send(&ixs, &signers));
         mint.pubkey()
     }
 
