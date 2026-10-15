@@ -200,11 +200,11 @@ Contents of `DATA_DIR`:
 
 ```bash
 anchor build --ignore-keys && pnpm -F @slana/sdk sync-idl && scripts/build-lean.sh && scripts/test-program.sh
-solana program deploy target/deploy/slana_lean.so --program-id target/deploy/slana-keypair.json   # with the upgrade authority
+scripts/deploy-lean.sh <cluster-url> target/deploy/slana-keypair.json   # with the upgrade authority
 ```
 
 > **Never `anchor deploy`.** It deploys `target/deploy/slana.so`, the ~679 KB Anchor reference, instead of the lean
-> program, and its rent would lock ≈ ◎4.7. Upgrades always go through `solana program deploy target/deploy/slana_lean.so`.
+> program, and its rent would lock ≈ ◎4.7. Upgrades always go through `scripts/deploy-lean.sh` (`solana program deploy target/deploy/slana_lean.so`).
 
 Keep the account layout (state.rs) backward compatible; if the new `.so` is larger, first run
 `solana program extend <PROGRAM_ID> <bytes>`. On mainnet, do the upgrade through a multisig and try it on devnet first.

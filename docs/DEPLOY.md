@@ -77,10 +77,14 @@ scripts/test-program.sh                                 # LiteSVM suite against 
 ```
 
 `scripts/build-lean.sh` runs `cargo build-sbf --manifest-path programs/slana-lean/Cargo.toml`, deletes the random
-`target/deploy/slana_lean-keypair.json` that cargo-build-sbf writes, and prints the size and the ProgramData rent.
+`target/deploy/slana_lean-keypair.json` that cargo-build-sbf writes, and prints the size and the ProgramData rent. It only
+warns when `target/deploy/slana-keypair.json` is not the program id (on a fresh checkout `anchor build --ignore-keys`
+writes a random one); the hard check is in `scripts/deploy-lean.sh` (and `scripts/localnet.sh`), where the keypair is
+used.
 
 > **Never use `anchor deploy`.** It deploys the Anchor reference `slana.so` (~◎4.73 of rent) instead of the lean
-> program. Always deploy with `solana program deploy target/deploy/slana_lean.so --program-id <keypair>`.
+> program. Always deploy with `scripts/deploy-lean.sh <cluster-url> <keypair>`: it checks that the keypair is the lean
+> program id, then runs `solana program deploy target/deploy/slana_lean.so --program-id <keypair>`.
 
 ## 3. Keys
 
@@ -103,7 +107,7 @@ solana-keygen new -o keys/server.json --no-bip39-passphrase
 ```bash
 solana config set --url devnet
 solana airdrop 5                                  # if needed, https://faucet.solana.com
-solana program deploy target/deploy/slana_lean.so --program-id target/deploy/slana-keypair.json   # never `anchor deploy` (it deploys the reference)
+scripts/deploy-lean.sh devnet target/deploy/slana-keypair.json   # never `anchor deploy` (it deploys the reference)
 solana transfer $(solana-keygen pubkey keys/server.json) 0.5 --allow-unfunded-recipient
 ```
 
@@ -279,7 +283,7 @@ To end the mint (`close-mint`), publish the seed (`reveal`, records the target s
 1. Do the program keypair and the build (step 2) for mainnet; complete the whole flow (ticket → game → cash-out → payout →
    season) on devnet first.
 2. `solana config set --url mainnet-beta` (or a paid RPC), and put as much SOL as the costs below into the admin wallet.
-3. `bash scripts/build-lean.sh && solana program deploy target/deploy/slana_lean.so --program-id target/deploy/slana-keypair.json` (never `anchor deploy`: it ships the Anchor reference).
+3. `bash scripts/build-lean.sh && scripts/deploy-lean.sh mainnet-beta target/deploy/slana-keypair.json` (never `anchor deploy`: it ships the Anchor reference).
 4. Repeat steps 6–11 with the mainnet RPC. `SOLANA_CLUSTER=mainnet-beta`, a paid `SOLANA_RPC_URL`, a secret-free
    `PUBLIC_RPC_URL`.
 5. Hand the upgrade authority and the `admin` over to a multisig (`solana program set-upgrade-authority`,
