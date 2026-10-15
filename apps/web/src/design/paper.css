@@ -1262,7 +1262,8 @@
   border: 2px solid var(--ink);
   border-radius: 18px;
   color: var(--ink);
-  box-shadow: 8px 8px 0 var(--ink);
+  /* --lift (0…1) is animated by Sheet: the shadow grows as the paper rises */
+  box-shadow: calc(var(--lift, 1) * 8px) calc(var(--lift, 1) * 8px) 0 var(--ink);
   outline: none;
 }
 .kb-sheet.is-bottom {
@@ -1274,7 +1275,7 @@
   max-height: 88vh;
   border-width: 2px 0 0;
   border-radius: 20px 20px 0 0;
-  box-shadow: 0 -4px 0 var(--pink);
+  box-shadow: 0 calc(var(--lift, 1) * -4px) 0 var(--pink);
   padding-bottom: env(safe-area-inset-bottom, 0);
 }
 .kb-sheet__grip {
@@ -1333,4 +1334,196 @@
   .kb-btn:active {
     transform: none;
   }
+}
+
+/* ── ScreenTransition (paper ↔ world) ─────────────────────────────────── */
+.kb-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+}
+.kb-screen[data-screen-state='leaving'] {
+  pointer-events: none;
+}
+/* the wipe's printed edge: the ink pass and a pink pass a hair off register */
+.kb-screen__ink {
+  position: fixed;
+  inset: 0;
+  z-index: 7;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+.kb-screen__ink path {
+  fill: none;
+  stroke-width: 3px;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.kb-screen__ink path:first-child {
+  stroke: var(--pink, #ff48b0);
+}
+.kb-screen__ink path:last-child {
+  stroke: var(--ink, #1e1b2e);
+  stroke-width: 2.25px;
+}
+
+/* ticket punch: a hole through the stub (the page shows through) and its chads */
+.kb-ticket__punch {
+  position: absolute;
+  top: 9px;
+  right: calc(var(--stub-w) / 2);
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+.kb-ticket__hole,
+.kb-ticket__chad {
+  position: absolute;
+  left: -6px;
+  top: 0;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+.kb-ticket__hole {
+  background: var(--paper);
+  /* the hole's far wall: a crescent of shadow at the top left, the ink-cut rim */
+  box-shadow:
+    inset 1.5px 2px 0 rgba(0, 0, 0, 0.28),
+    0 0 0 1px var(--line);
+}
+.kb-ticket__chad {
+  background: var(--card);
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+/* ── Loading: the stamp spinner and halftone skeleton rows ──────────────── */
+.kb-spinner {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  vertical-align: middle;
+}
+.kb-spinner svg {
+  overflow: visible;
+}
+.kb-spinner__ink {
+  fill: none;
+  stroke: var(--pink);
+  stroke-width: 2.6;
+  opacity: 0.55;
+  transform-origin: 21.5px 21.5px;
+  animation: kb-spinner-ink 1.2s ease-out infinite;
+}
+.kb-spinner__stamp {
+  transform-origin: 20px 20px;
+  animation: kb-spinner-press 1.2s cubic-bezier(0.5, 0, 0.3, 1) infinite;
+}
+.kb-spinner__rim {
+  fill: var(--card);
+  stroke: var(--ink);
+  stroke-width: 2.4;
+}
+.kb-spinner__band {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 3.2;
+  stroke-dasharray: 1.2 1.8;
+  transform-origin: 20px 20px;
+  /* the date band ticks round one notch per beat */
+  animation: kb-spinner-band 4.8s steps(16) infinite;
+}
+.kb-spinner__hub {
+  fill: var(--pink);
+}
+@keyframes kb-spinner-press {
+  0%,
+  55%,
+  100% {
+    transform: scale(1);
+  }
+  70% {
+    transform: scale(0.86) rotate(-6deg);
+  }
+  82% {
+    transform: scale(1.03);
+  }
+}
+@keyframes kb-spinner-ink {
+  0%,
+  68% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  74% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.18);
+  }
+}
+@keyframes kb-spinner-band {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.kb-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 6px 0;
+}
+.kb-skeleton__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 18px;
+  animation: kb-skeleton-ink 2.4s ease-in-out infinite;
+  animation-delay: calc(var(--i, 0) * 120ms);
+}
+.kb-skeleton__row > span {
+  height: 12px;
+  border-radius: 3px;
+}
+.kb-skeleton__chip {
+  flex: none;
+  width: 22px;
+}
+.kb-skeleton__bar {
+  flex: none;
+  width: calc(var(--w, 70%) - 120px);
+}
+.kb-skeleton__fig {
+  flex: none;
+  width: 52px;
+  margin-left: auto;
+}
+@keyframes kb-skeleton-ink {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kb-spinner__ink,
+  .kb-spinner__stamp,
+  .kb-spinner__band,
+  .kb-skeleton__row {
+    animation: none;
+  }
+}
+.kb-wait {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
 }

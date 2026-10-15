@@ -10,7 +10,9 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from 'react';
+import { DUR } from '../curves';
 import { usePreset, useReducedMotion } from '../motion';
+import { markTransitionOrigin } from './ScreenTransition';
 import { Stamp } from './Stamp';
 
 export interface TicketProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'title' | 'value' | 'onClick'> {
@@ -29,6 +31,11 @@ export interface TicketProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement
   onClick?: () => void;
   /** Replaces title/meta when you need a custom body. */
   children?: ReactNode;
+  /**
+   * The conductor's punch went through the stub: a hole and a few paper chads.
+   * The hole marks where the next screen wipe opens (`markTransitionOrigin`).
+   */
+  punched?: boolean;
 }
 
 interface GroupCtx {
@@ -57,6 +64,7 @@ export function Ticket({
   onClick,
   children,
   className,
+  punched = false,
   ...rest
 }: TicketProps) {
   const group = useContext(TicketGroupContext);
@@ -107,7 +115,52 @@ export function Ticket({
           <Stamp text={stamp} tone="pink" size="sm" rotate={-11} />
         </span>
       )}
+      {punched && <TicketPunch reduced={reduced} />}
     </motion.div>
+  );
+}
+
+/** Chads knocked out by the punch: direction (deg), distance (px), spin (deg). Fixed, so every punch reads the same. */
+const CHADS: readonly [number, number, number][] = [
+  [-150, 30, -220],
+  [-110, 38, 160],
+  [-60, 34, -140],
+  [-20, 26, 260],
+  [35, 32, -180],
+  [80, 22, 120],
+];
+
+/** The punch hole in the stub and its chads (the hole is the next wipe's origin). */
+export function TicketPunch({ reduced }: { reduced: boolean }) {
+  const hole = useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => {
+    markTransitionOrigin(hole.current);
+  }, []);
+  return (
+    <span className="kb-ticket__punch" aria-hidden="true">
+      <motion.span
+        ref={hole}
+        className="kb-ticket__hole"
+        initial={reduced ? { opacity: 0 } : { scale: 0 }}
+        animate={reduced ? { opacity: 1 } : { scale: [0, 1.25, 1] }}
+        transition={reduced ? { duration: 0.1 } : { duration: DUR.punch, times: [0, 0.55, 1], ease: 'easeOut' }}
+      />
+      {!reduced &&
+        CHADS.map(([deg, dist, spin], i) => {
+          const a = (deg * Math.PI) / 180;
+          const dx = Math.cos(a) * dist;
+          return (
+            <motion.span
+              key={i}
+              className="kb-ticket__chad"
+              initial={{ x: 0, y: 0, opacity: 1, rotate: 0, scale: 1 }}
+              // out along the angle, then they fall onto the page (gravity in the last keyframe)
+              animate={{ x: [0, dx * 0.8, dx], y: [0, Math.sin(a) * dist * 0.8, Math.sin(a) * dist + 26], rotate: spin, opacity: [1, 1, 0], scale: [1, 1, 0.8] }}
+              transition={{ duration: 0.52, times: [0, 0.4, 1], ease: ['easeOut', 'easeIn'], delay: 0.04 + i * 0.012 }}
+            />
+          );
+        })}
+    </span>
   );
 }
 

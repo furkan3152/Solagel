@@ -3,7 +3,8 @@ import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useKbTheme, type KbTheme } from '../Kb';
 import { Icon, type IconName } from '../icons';
-import { usePreset, useReducedMotion } from '../motion';
+import { DUR, EASE } from '../curves';
+import { springs, usePreset, useReducedMotion } from '../motion';
 import { Tape } from './Tape';
 
 export type ToastTone = 'info' | 'success' | 'error';
@@ -84,10 +85,17 @@ export function ToastViewport({
           <motion.div
             key={t.id}
             layout={!reduced}
-            initial={reduced ? { opacity: 0 } : { opacity: 0, y: -24, rotate: -4, scale: 0.96 }}
+            // a note pinned by its tape: it drops on, swings about the pin and hangs still;
+            // dismissed, it is flicked off up and to the side
+            style={{ transformOrigin: '42px 0px' }}
+            initial={reduced ? { opacity: 0 } : { opacity: 0, y: -30, rotate: -10, scale: 1.02 }}
             animate={reduced ? { opacity: 1 } : { opacity: 1, y: 0, rotate: 0, scale: 1 }}
-            exit={reduced ? { opacity: 0 } : { opacity: 0, x: 40, rotate: 6, transition: { duration: 0.2 } }}
-            transition={spring}
+            exit={
+              reduced
+                ? { opacity: 0, transition: { duration: DUR.fade } }
+                : { opacity: 0, x: 150, y: -46, rotate: 24, transition: { duration: 0.26, ease: EASE.flick, opacity: { duration: 0.26, ease: 'easeIn' } } }
+            }
+            transition={reduced ? spring : { ...spring, rotate: springs.pin, opacity: { duration: 0.12 } }}
           >
             <Toast {...t} tilt={t.tilt ?? (i % 2 ? 0.8 : -0.6)} onClose={() => onDismiss(t.id)} closeLabel={closeLabel} />
           </motion.div>

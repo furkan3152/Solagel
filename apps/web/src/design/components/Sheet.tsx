@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, motion, type TargetAndTransition } from 'motion/react';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../icons';
@@ -23,6 +23,12 @@ export interface SheetProps {
   footer?: ReactNode;
   /** Override the stock. Defaults to the surrounding `<Kb>` theme (the sheet is portalled). */
   theme?: KbTheme;
+  /**
+   * Where the panel comes from instead of rising from below (e.g. the receipt
+   * printed out of the HUD till): a motion target it animates in from. Ignored
+   * with reduced motion.
+   */
+  enterFrom?: TargetAndTransition | null;
 }
 
 const FOCUSABLE =
@@ -56,6 +62,7 @@ export function Sheet({
   children,
   footer,
   theme: themeProp,
+  enterFrom = null,
 }: SheetProps) {
   const ctxTheme = useKbTheme();
   const theme = themeProp ?? ctxTheme;
@@ -111,8 +118,15 @@ export function Sheet({
     };
   }, [open]);
 
-  const from = reduced ? { opacity: 0 } : narrow ? { y: '104%' } : { opacity: 0, y: 28, rotate: -1.2, scale: 0.98 };
-  const to = reduced ? { opacity: 1 } : narrow ? { y: '0%' } : { opacity: 1, y: 0, rotate: 0, scale: 1 };
+  // the panel rises on a spring and its paper shadow grows as it lifts off the table (`--lift`)
+  const rise: TargetAndTransition = narrow ? { y: '104%', '--lift': 0 } : { opacity: 0, y: 40, rotate: -1.6, scale: 0.97, '--lift': 0 };
+  const from: TargetAndTransition = reduced ? { opacity: 0 } : (enterFrom ?? rise);
+  const leave: TargetAndTransition = reduced ? { opacity: 0 } : rise;
+  const to: TargetAndTransition = reduced
+    ? { opacity: 1 }
+    : narrow
+      ? { y: '0%', x: 0, scale: 1, scaleX: 1, scaleY: 1, rotate: 0, opacity: 1, '--lift': 1 }
+      : { opacity: 1, x: 0, y: 0, rotate: 0, scale: 1, scaleX: 1, scaleY: 1, '--lift': 1 };
 
   return createPortal(
     <AnimatePresence>
@@ -137,7 +151,7 @@ export function Sheet({
             tabIndex={-1}
             initial={from}
             animate={to}
-            exit={from}
+            exit={leave}
             transition={spring}
           >
             {!narrow && (
