@@ -24,15 +24,16 @@
 //! Then `old_season.{pool = 0, claimed_mask = all ranks}`, `current_season.pool`, and
 //! `SeasonRolledOver { from: season_id, to: current_season.id, amount }`.
 //!
-//! Aliasing: with `season_id == current_season` both accounts may be the same; that case
-//! fails with `InvalidSeason` before anything is written. Otherwise the two seed checks put
-//! them at PDAs of different seeds, so they are distinct accounts when the handler writes.
+//! Aliasing: the two season accounts may be the same account until both seed checks passed
+//! (with `season_id == current_season` that case fails with `InvalidSeason`), so both are
+//! only viewed read only until then. After the checks they are PDAs of different seeds, hence
+//! distinct accounts, and only then are they viewed mutably.
 
 use {
     super::{check_admin_config, stake, unix_timestamp},
     crate::error::Result,
     crate::{
-        accounts::{check_pda_seeds, data, kind, parse},
+        accounts::{check_pda_seeds, data, data_ref, kind, parse},
         borsh::{rd_bool, rd_i64, rd_u32, rd_u64, rd_u8, wr_u16, wr_u64, Args},
         constants::{CLAIM_WINDOW_SECS, PRIZE_RANKS, SEASON_SEED},
         error::{
@@ -61,17 +62,26 @@ pub fn process(accounts: &[AccountView], args: &[u8]) -> Result {
 
     // ----- constraints (no duplicate-mutable candidates) -------------------------------------
     // SAFETY: `parse` checked the types (and so the lengths). The config is a distinct
-    // account; the two seasons may alias until the checks below, and are only read until then.
+    // account (its own discriminator). The two seasons may be the same account until both
+    // seed checks passed, so they are viewed read only (shared views may alias) until then.
     let c = unsafe { data::<{ config::SPACE }>(config_acc) };
-    let old = unsafe { data::<{ season::SPACE }>(old_acc) };
     check_admin_config(config_acc, c, admin, false)?;
     let id = season_id.to_le_bytes();
+    // SAFETY: as above; no mutable view of either season exists yet.
+    let old = unsafe { data_ref::<{ season::SPACE }>(old_acc) };
     check_pda_seeds(old_acc, &[SEASON_SEED, &id], rd_u8(old, season::BUMP), true)?;
     let current_id = rd_u32(c, config::CURRENT_SEASON);
     require(season_id != current_id, INVALID_SEASON)?;
-    // SAFETY: as above; distinct from `old` once both seed checks passed (different seeds).
+    // SAFETY: as above; still no mutable view of either season.
+    stake::check_current_season(
+        current_acc,
+        unsafe { data_ref::<{ season::SPACE }>(current_acc) },
+        c,
+    )?;
+    // SAFETY: both seed checks passed with different seeds (`season_id != current_id`), so
+    // the two seasons are distinct accounts; the read-only views above are no longer used.
+    let old = unsafe { data::<{ season::SPACE }>(old_acc) };
     let cur = unsafe { data::<{ season::SPACE }>(current_acc) };
-    stake::check_current_season(current_acc, cur, c)?;
 
     // ----- handler ---------------------------------------------------------------------------
     require(rd_bool(old, season::FINALIZED), SEASON_NOT_FINALIZED)?;

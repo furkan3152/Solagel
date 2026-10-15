@@ -48,7 +48,7 @@ use {
     super::{initialize::init_program_pda, stake, unix_timestamp},
     crate::error::Result,
     crate::{
-        accounts::{check_kinds, check_writable, data, keq, kind},
+        accounts::{check_kinds, check_writable, data, data_ref, keq, kind},
         borsh::{
             rd_bool, rd_key, rd_u16, rd_u32, rd_u64, wr_bool, wr_bytes, wr_i64, wr_u16, wr_u32,
             wr_u64, wr_u8, Args,
@@ -203,7 +203,7 @@ pub fn process(accounts: &[AccountView], args: &[u8], with_pass: bool) -> Result
     require(open < rd_u16(r, arena::MAX_SESSIONS), ARENA_FULL)?;
 
     // SAFETY: `parse` checked the mint (≥ 82 bytes); read only.
-    let decimals = unsafe { data::<MINT_LEN>(token_mint) }[MINT_DECIMALS];
+    let decimals = unsafe { data_ref::<MINT_LEN>(token_mint) }[MINT_DECIMALS];
     transfer_checked(
         token_program.address(),
         player_token,

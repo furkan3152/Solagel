@@ -45,8 +45,8 @@ use {
     crate::error::{Error, Result},
     crate::{
         accounts::{
-            check_account, check_canonical_pda, check_kinds, check_writable, data, init_pda,
-            is_none, keq, kind, rent_minimum,
+            check_account, check_canonical_pda, check_kinds, check_writable, data, data_ref,
+            init_pda, is_none, keq, kind, rent_minimum,
         },
         borsh::{rd_arr, rd_bool, rd_i64, rd_key, rd_u32, rd_u64, rd_u8, wr_bytes, wr_u32, wr_u8},
         constants::{
@@ -170,7 +170,7 @@ pub fn process(accounts: &[AccountView], _args: &[u8]) -> Result {
     if min_tokens > 0 {
         let holds_enough = !is_none(minter_token) && {
             // SAFETY: `check_kinds` checked it is a token account (≥ 165 bytes); read only.
-            let t = unsafe { data::<ACCOUNT_LEN>(minter_token) };
+            let t = unsafe { data_ref::<ACCOUNT_LEN>(minter_token) };
             keq(&rd_key(t, ACCOUNT_OWNER), minter.address().as_array())
                 && keq(&rd_key(t, ACCOUNT_MINT), &rd_key(c, config::TOKEN_MINT))
                 && rd_u64(t, ACCOUNT_AMOUNT) >= min_tokens
