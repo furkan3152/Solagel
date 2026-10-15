@@ -57,8 +57,12 @@ export interface BuildTransactionOptions {
 }
 
 export interface SendOptions extends BuildTransactionOptions {
-  /** Called with the signature right after signing, before the transaction is sent. */
-  onSignature?: (signature: string) => void;
+  /**
+   * Called with the signature right after signing, before the transaction is sent, and the
+   * `lastValidBlockHeight` of its blockhash ('confirmed'): once the block height passes it, the
+   * transaction can never land.
+   */
+  onSignature?: (signature: string, lastValidBlockHeight: number) => void;
 }
 
 export interface BuiltTransaction {
@@ -781,7 +785,7 @@ export class SlanaClient {
     const { tx, lastValidBlockHeight } = await this.buildTransaction(ixs, signers[0].publicKey, opts);
     tx.sign(...signers);
     const signature = utils.bytes.bs58.encode(tx.signature!);
-    opts.onSignature?.(signature);
+    opts.onSignature?.(signature, lastValidBlockHeight);
     await this.connection.sendRawTransaction(tx.serialize(), { preflightCommitment: COMMITMENT, maxRetries: 5 });
     await confirmSignature(this.connection, signature, lastValidBlockHeight);
     return signature;

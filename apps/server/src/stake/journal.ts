@@ -57,12 +57,15 @@ export interface SweepItem {
   createdAt: number;
   lastError?: string;
   /**
-   * The last transaction sent for this sweep and when (Unix ms). A sweep has no on-chain
-   * marker, so before sending again the worker checks this signature: it must never move the
-   * same loot twice (persisted, so a restart does not lose it).
+   * The last transaction sent for this sweep, when (Unix ms) and the `lastValidBlockHeight` of
+   * its blockhash. A sweep has no on-chain marker, so it is sent again only once that
+   * transaction provably cannot land: the block height ('confirmed') is past
+   * `sentLastValidBlockHeight` AND its signature did not land. Persisted before each send, so
+   * a restart keeps the guard.
    */
   sentSignature?: string;
   sentAt?: number;
+  sentLastValidBlockHeight?: number;
 }
 
 /** Everything the chain worker executes: ticket settlements and loot sweeps. */
@@ -306,18 +309,22 @@ export class Journal {
   }
 
   /**
-   * Records the transaction just sent for a sweep item (persisted before the send is awaited);
-   * an empty `signature` clears it (the send failed for certain, nothing moved).
+   * Records the transaction just sent for a sweep item with its blockhash's
+   * `lastValidBlockHeight` (persisted before the send is awaited); an empty `signature` clears
+   * it (the program rejected it: nothing moved).
    */
-  markSent(key: string, signature: string, at = Date.now()): void {
+  markSent(key: string, signature: string, at = Date.now(), lastValidBlockHeight?: number): void {
     const item = this.pendingItems.find((p) => p.key === key);
     if (!item || item.kind !== 'sweep') return;
     if (signature) {
       item.sentSignature = signature;
       item.sentAt = at;
+      if (lastValidBlockHeight === undefined) delete item.sentLastValidBlockHeight;
+      else item.sentLastValidBlockHeight = lastValidBlockHeight;
     } else {
       delete item.sentSignature;
       delete item.sentAt;
+      delete item.sentLastValidBlockHeight;
     }
     this.persist();
   }
