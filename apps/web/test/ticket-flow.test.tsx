@@ -6,16 +6,17 @@ import { Kb } from '../src/design';
 import { useChainData } from '../src/solana/chain';
 import { fakeConfig } from '../src/solana/devFake';
 import { TicketFlow } from '../src/solana/TicketFlow';
-import type { TicketModel } from '../src/solana/ticket';
+import { PASS_POWER, type TicketModel } from '../src/solana/ticket';
 import { useUi } from '../src/store';
 
 const spies = vi.hoisted(() => ({
   buildTicketTx: vi.fn(async () => ({ steps: ['join'], ixs: [] })),
   sendTx: vi.fn(async () => ({ ok: true as const, signature: 'sig' })),
   fetchArena: vi.fn(),
+  fetchConfig: vi.fn(),
   client: null as unknown,
 }));
-spies.client = { ix: {}, programId: null, fetchArena: (id: number) => spies.fetchArena(id), rentExemptMinimum: async (b: number) => (b + 128) * 6960 };
+spies.client = { ix: {}, programId: null, fetchArena: (id: number) => spies.fetchArena(id), fetchConfig: () => spies.fetchConfig(), rentExemptMinimum: async (b: number) => (b + 128) * 6960 };
 // the money path's network edges: the arena re-read, the build and the wallet send
 vi.mock('../src/solana/chain', async (orig) => ({
   ...(await orig<typeof import('../src/solana/chain')>()),
@@ -57,6 +58,8 @@ beforeEach(() => {
   spies.sendTx.mockClear();
   spies.fetchArena.mockReset();
   spies.fetchArena.mockImplementation(async (id: number) => (id === 1 ? arena(1, 1000n * M, false) : arena(3, 50_000n * M, true)));
+  spies.fetchConfig.mockReset();
+  spies.fetchConfig.mockImplementation(async () => useChainData.getState().config);
   useUi.setState({ settings: { ...ui0.settings, lang: 'tr', name: 'Defne', skin: 4 }, chain: CHAIN });
   useChainData.setState({
     config: { ...fakeConfig(CHAIN), settleFeeLamports: 50_000 },
@@ -94,7 +97,7 @@ describe('ticket confirm sheet', () => {
     open(PENNY);
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getAllByText('1.000 $SLANA').length).toBeGreaterThan(0);
-    expect(within(dialog).getByText('%5 · yalnızca kârdan')).toBeTruthy();
+    expect(within(dialog).getByText('%5 · yalnızca kârdan · bu bilet için sabit')).toBeTruthy();
     expect(within(dialog).getByText('0,00005 SOL')).toBeTruthy();
     expect(within(dialog).getByText('12.450 → 11.450 $SLANA')).toBeTruthy();
     const steps = within(within(dialog).getByRole('region', { name: 'Bu işlemde' })).getAllByRole('listitem');
@@ -122,8 +125,10 @@ describe('ticket confirm sheet', () => {
     const sw = screen.getByRole('switch', { name: /Pass’imle gir/ });
     expect(sw.getAttribute('aria-checked')).toBe('false');
     act(() => sw.click());
-    expect(screen.getByText('%2 · yalnızca kârdan')).toBeTruthy();
+    expect(screen.getByText('%2 · yalnızca kârdan · bu bilet için sabit')).toBeTruthy();
     expect(screen.getByText(/Bileti Pass No\. 0412 ile kes · Kuruş Gölü/)).toBeTruthy();
+    // the Pass line discloses every perk, the faster cash-out included
+    expect(screen.getByText(new RegExp(`^No\\. 0412 · %2 kesinti, \\+%\\d+ başlangıç, ${PASS_POWER.cashoutS} sn cash-out$`))).toBeTruthy();
   });
 
   it('R8: a Pass room requires a Pass; locked Passes are explained and the ticket cannot be cut', () => {
@@ -188,6 +193,17 @@ describe('ticket flow races', () => {
     expect(screen.getByRole('dialog').contains(document.activeElement)).toBe(true);
   });
 
+  it('re-reads the config right before building and refuses a changed fee rate (it is fixed into the ticket)', async () => {
+    spies.fetchConfig.mockImplementation(async () => ({ ...useChainData.getState().config!, feeBps: 1_000 }));
+    open(PENNY);
+    act(() => screen.getByRole('button', { name: /Bileti kes/ }).click());
+    await settle();
+    expect(spies.fetchConfig).toHaveBeenCalledTimes(1);
+    expect(spies.buildTicketTx).not.toHaveBeenCalled();
+    expect(spies.sendTx).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert').textContent).toMatch(/Kesinti ya da depozito az önce değişti/);
+  });
+
   it('re-reads the arena right before building and refuses a changed price', async () => {
     spies.fetchArena.mockImplementation(async () => arena(1, 1500n * M, false));
     open(PENNY);
@@ -201,7 +217,7 @@ describe('ticket flow races', () => {
   it('offers "Devam et" instead of paying again when the ticket turns out to be open', () => {
     useChainData.setState({
       sessions: {
-        1: { address: 'S', id: 1, player: 'P', arena: 'A1', arenaId: 1, entryFee: 1000n * M, openedAt: 1, hasPass: false, passAsset: null, settleFee: 20_000 },
+        1: { address: 'S', id: 1, player: 'P', arena: 'A1', arenaId: 1, entryFee: 1000n * M, openedAt: 1, hasPass: false, passAsset: null, settleFee: 20_000, feeBps: 500 },
       },
     });
     open(PENNY);

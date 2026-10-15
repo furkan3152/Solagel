@@ -91,10 +91,16 @@ export function fakeConfig(chain: ChainStatus, pass: PassStatus | null = chain.p
     passMinTokens: 0n,
     passMintOpen: pass?.mintOpen ?? false,
     passMintStartTs: pass?.mintStartTs ?? 0,
+    passMintOpened: true,
+    passMintEnded: pass ? !pass.mintOpen && pass.minted > 0 : false,
     // a committed seed (its hash), as on a live collection
     passSeedHash: 'c0'.repeat(32),
+    // the fake publishes only a trait seed: it stands for the final seed
     passSeed: pass?.seed ?? null,
     passRevealed: pass?.revealed ?? false,
+    passEntropy: pass && !pass.mintOpen && pass.minted > 0 ? 'e0'.repeat(32) : null,
+    passEntropySlot: 0,
+    passFinalSeed: pass?.revealed ? pass.seed : null,
     totals: { players: 0, games: 0, sessions: 0, staked: 0n, paidOut: 0n },
   };
 }
@@ -154,6 +160,7 @@ export async function fakeSendTicket(
     hasPass: passAsset !== null,
     passAsset,
     settleFee: 20_000,
+    feeBps: passAsset !== null ? 200 : 500,
   };
   return { ok: true, signature };
 }

@@ -67,7 +67,8 @@ export const arena = (id: number, entryFee: number, requiresPass = false): Chain
   maxSessions: 300,
   enabled: true,
   openSessions: 0,
-  pot: 0,
+  // no vault tracking unless a test sets it (the vault-vs-journal guard is skipped)
+  pot: null,
   requiresPass,
 });
 

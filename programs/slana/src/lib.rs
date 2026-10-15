@@ -5,7 +5,7 @@
 //! arena has a token vault), session settlement with a fee on profit split between the
 //! treasury vault, the season vault and a burn, seasons with a top-20 leaderboard and a token
 //! prize pool for the top 10, and the Slana Pass (a free-mint Metaplex Core collection with a
-//! commit–reveal trait seed).
+//! commit–reveal trait seed mixed with chain entropy captured when the mint ends).
 
 pub mod constants;
 pub mod core_asset;
@@ -134,7 +134,13 @@ pub mod slana {
         instructions::mint_pass::handle_mint_pass(ctx)
     }
 
-    /// Publishes the Pass trait seed (checked against the committed hash), once.
+    /// Ends the Pass mint for good and captures the trait entropy (SlotHashes sysvar).
+    pub fn close_pass_mint(ctx: Context<ClosePassMint>) -> Result<()> {
+        instructions::close_pass_mint::handle_close_pass_mint(ctx)
+    }
+
+    /// Publishes the Pass trait seed (checked against the committed hash), once, after the
+    /// mint ended; stores the final seed `sha256(seed || entropy)`.
     pub fn reveal_pass(ctx: Context<RevealPass>, seed: [u8; 32]) -> Result<()> {
         instructions::reveal_pass::handle_reveal_pass(ctx, seed)
     }

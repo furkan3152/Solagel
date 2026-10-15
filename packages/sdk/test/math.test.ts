@@ -1,6 +1,6 @@
 import BN from 'bn.js';
 import { describe, expect, it } from 'vitest';
-import { levelFromXp, mulBps, prizeAmount, splitPayout } from '../src';
+import { levelFromXp, mulBps, prizeAmount, splitPayout, splitSessionPayout } from '../src';
 
 const cfg = (feeBps: number, treasuryBps: number, burnBps: number, passFeeBps = 200) => ({ feeBps, passFeeBps, treasuryBps, burnBps });
 const tuple = (s: ReturnType<typeof splitPayout>) => [s.fee, s.treasury, s.season, s.burn, s.player];
@@ -74,5 +74,15 @@ describe('math', () => {
     expect(prizeAmount(1_000_000n, 0)).toBe(300_000n);
     expect(prizeAmount(1_000_000, 9)).toBe(20_000n);
     expect(prizeAmount(1_000_000n, 10)).toBe(0n);
+  });
+});
+
+describe('splitSessionPayout uses the fee fixed at join', () => {
+  it('ignores the config fee, keeps the config shares', () => {
+    const now = { feeBps: 1_000, passFeeBps: 1_000, treasuryBps: 5_000, burnBps: 2_000 };
+    // joined at 5 %: profit 1000 → fee 50 even though the config now says 10 %
+    expect(splitSessionPayout(2_000n, { entryFee: 1_000n, feeBps: 500 }, now)).toEqual(splitPayout(2_000n, 1_000n, false, { ...now, feeBps: 500 }));
+    expect(splitSessionPayout(2_000n, { entryFee: 1_000n, feeBps: 500 }, now).fee).toBe(50n);
+    expect(splitSessionPayout(2_000n, { entryFee: 1_000n, feeBps: 200 }, now)).toMatchObject({ fee: 20n, treasury: 10n, season: 6n, burn: 4n, player: 1_980n });
   });
 });

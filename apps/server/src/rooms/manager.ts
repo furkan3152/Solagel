@@ -22,6 +22,8 @@ interface ArenaData {
   maxPlayers: number;
   enabled: boolean;
   requiresPass: boolean;
+  /** Vault balance (raw units); null = not tracked (dev-fake). */
+  pot: number | null;
 }
 
 export class RoomManager {
@@ -33,6 +35,8 @@ export class RoomManager {
   /** IP → time of the promotion to the pro league. */
   private readonly promotions = new Map<string, number>();
   private readonly deps: RoomDeps;
+  /** Arenas kept disabled because their vault cannot cover the journal (id → message). */
+  private readonly underfunded = new Map<number, string>();
 
   constructor(
     private readonly cfg: ServerConfig,
@@ -140,7 +144,7 @@ export class RoomManager {
     if (this.arenaCache && Date.now() - this.arenaCache.at < ARENA_CACHE_MS) return this.arenaCache.ids;
     const list = await this.chain.listArenas();
     const ids = new Map(
-      list.map((a) => [a.id, { buyIn: a.entryFee, maxPlayers: a.maxSessions, enabled: a.enabled, requiresPass: a.requiresPass }]),
+      list.map((a) => [a.id, { buyIn: a.entryFee, maxPlayers: a.maxSessions, enabled: a.enabled, requiresPass: a.requiresPass, pot: a.pot }]),
     );
     this.arenaCache = { at: Date.now(), ids };
     return ids;
@@ -174,6 +178,37 @@ export class RoomManager {
     return room;
   }
 
+  /**
+   * Vault guard (R20), checked when an arena is attached (no instance yet in this
+   * process): its on-chain vault must hold at least what the journal says it owes (loot +
+   * pending cash-outs + live tickets). A vault swept or drained while loot was journaled
+   * would otherwise pay old loot with other players' entry fees, or fail `InsufficientPot`.
+   * An underfunded arena stays disabled (re-checked on every attach attempt) and is logged
+   * loudly once.
+   */
+  private vaultCovers(arenaId: number, arena: ArenaData): boolean {
+    if (arena.pot === null) return true;
+    const owed = this.deps.journal.owedByArena(arenaId);
+    if (arena.pot >= owed) {
+      if (this.underfunded.delete(arenaId)) this.deps.log(`arena #${arenaId}: vault ${arena.pot} now covers the journal (${owed}) — enabled again`);
+      return true;
+    }
+    if (!this.underfunded.has(arenaId)) {
+      const msg =
+        `!!! arena #${arenaId} KEPT DISABLED: its vault holds ${arena.pot} raw units but the journal owes ${owed} ` +
+        `(loot + pending cash-outs + live tickets). Was the arena swept? Do not re-enable a swept arena; ` +
+        `top up the vault or settle the journal by hand before attaching it.`;
+      this.underfunded.set(arenaId, msg);
+      this.deps.log(msg);
+    }
+    return false;
+  }
+
+  /** Arenas the vault guard keeps disabled (id → reason). */
+  underfundedArenas(): ReadonlyMap<number, string> {
+    return this.underfunded;
+  }
+
   private arenaAllowed(arenaId: number): boolean {
     return this.chain.stakeEnabled && (this.cfg.chain.arenaIds.length === 0 || this.cfg.chain.arenaIds.includes(arenaId));
   }
@@ -187,6 +222,7 @@ export class RoomManager {
     if (!this.arenaAllowed(arenaId)) return null;
     const arena = (await this.arenas()).get(arenaId);
     if (!arena || !arena.enabled) return null;
+    if (this.arenaInstances(arenaId).length === 0 && !this.vaultCovers(arenaId, arena)) return null;
     let best: Room | null = null;
     for (const r of this.arenaInstances(arenaId)) {
       if (r.humans.size >= this.cfg.arenaInstanceCap) continue;
@@ -231,6 +267,7 @@ export class RoomManager {
     try {
       for (const [id, a] of await this.arenas()) {
         if (!a.enabled || !this.arenaAllowed(id)) continue;
+        if (this.arenaInstances(id).length === 0 && !this.vaultCovers(id, a)) continue;
         if (!this.rooms.has(`arena-${id}-1`)) this.createArenaInstance(id, a);
       }
     } catch (err) {

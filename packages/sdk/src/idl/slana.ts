@@ -118,6 +118,55 @@ export type Slana = {
       ]
     },
     {
+      "name": "closePassMint",
+      "docs": [
+        "Ends the Pass mint for good and captures the trait entropy (SlotHashes sysvar)."
+      ],
+      "discriminator": [
+        227,
+        254,
+        103,
+        66,
+        121,
+        84,
+        65,
+        218
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "slotHashes",
+          "address": "SysvarS1otHashes111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "createArena",
       "discriminator": [
         174,
@@ -1017,6 +1066,10 @@ export type Slana = {
           "address": "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d"
         },
         {
+          "name": "slotHashes",
+          "address": "SysvarS1otHashes111111111111111111111111111"
+        },
+        {
           "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
@@ -1239,7 +1292,8 @@ export type Slana = {
     {
       "name": "revealPass",
       "docs": [
-        "Publishes the Pass trait seed (checked against the committed hash), once."
+        "Publishes the Pass trait seed (checked against the committed hash), once, after the",
+        "mint ended; stores the final seed `sha256(seed || entropy)`."
       ],
       "discriminator": [
         233,
@@ -1650,8 +1704,9 @@ export type Slana = {
         {
           "name": "playerToken",
           "docs": [
-            "Any token account of the game mint owned by the player (the server can always",
-            "(re)create the player's ATA)."
+            "Any token account of the game mint owned by the player. The player creates and pays",
+            "for it (ruling R10: the server never pays a player's token account); without one the",
+            "server waits, and the 24 h self-refund returns the entry fee only."
           ],
           "writable": true
         },
@@ -2356,6 +2411,19 @@ export type Slana = {
       ]
     },
     {
+      "name": "passMintEnded",
+      "discriminator": [
+        62,
+        149,
+        116,
+        122,
+        113,
+        242,
+        93,
+        181
+      ]
+    },
+    {
       "name": "passMinted",
       "discriminator": [
         41,
@@ -2701,6 +2769,31 @@ export type Slana = {
       "code": 6042,
       "name": "mintStillOpen",
       "msg": "Pass mint is still open"
+    },
+    {
+      "code": 6043,
+      "name": "mintEnded",
+      "msg": "Pass mint has ended for good; it cannot reopen"
+    },
+    {
+      "code": 6044,
+      "name": "supplyLocked",
+      "msg": "Pass supply cannot change once the mint has opened"
+    },
+    {
+      "code": 6045,
+      "name": "useCloseMint",
+      "msg": "A Pass mint with minted Passes is closed with close_pass_mint"
+    },
+    {
+      "code": 6046,
+      "name": "badSlotHashes",
+      "msg": "Invalid SlotHashes sysvar account"
+    },
+    {
+      "code": 6047,
+      "name": "nothingMinted",
+      "msg": "No Pass has been minted yet"
     }
   ],
   "types": [
@@ -2996,6 +3089,21 @@ export type Slana = {
             "type": "i64"
           },
           {
+            "name": "passMintOpened",
+            "docs": [
+              "The mint has been opened at least once: `pass_supply` is frozen from then on."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "passMintEnded",
+            "docs": [
+              "The mint ended for good (`close_pass_mint`, or the last Pass of the supply was minted)",
+              "and `pass_entropy` is captured. It never reopens."
+            ],
+            "type": "bool"
+          },
+          {
             "name": "passSeedHash",
             "docs": [
               "`sha256(pass_seed)` committed before the first mint."
@@ -3010,7 +3118,7 @@ export type Slana = {
           {
             "name": "passSeed",
             "docs": [
-              "The revealed seed (zero until `pass_revealed`)."
+              "The admin's revealed seed (zero until `pass_revealed`)."
             ],
             "type": {
               "array": [
@@ -3022,6 +3130,39 @@ export type Slana = {
           {
             "name": "passRevealed",
             "type": "bool"
+          },
+          {
+            "name": "passEntropy",
+            "docs": [
+              "Most recent SlotHashes entry when the mint ended (zero before): a chain value nobody,",
+              "the admin included, knows while Passes can still be minted."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "passEntropySlot",
+            "docs": [
+              "Slot of `pass_entropy`."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "passFinalSeed",
+            "docs": [
+              "`sha256(pass_seed || pass_entropy)`, set by the reveal (zero before). The single seed",
+              "every Pass trait is derived from (`passTraits(final_seed, n, supply)`)."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
           },
           {
             "name": "bump",
@@ -3194,6 +3335,38 @@ export type Slana = {
       }
     },
     {
+      "name": "passMintEnded",
+      "docs": [
+        "The Pass mint ended for good (closed by the admin or sold out) and the trait entropy was",
+        "captured from the SlotHashes sysvar."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "minted",
+            "type": "u32"
+          },
+          {
+            "name": "entropySlot",
+            "docs": [
+              "Slot whose hash is the entropy."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "entropy",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "passMinted",
       "type": {
         "kind": "struct",
@@ -3223,6 +3396,30 @@ export type Slana = {
         "fields": [
           {
             "name": "seed",
+            "docs": [
+              "The admin's committed seed (`sha256(seed) == pass_seed_hash`)."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "entropy",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "finalSeed",
+            "docs": [
+              "`sha256(seed || entropy)`: the seed every Pass trait is derived from."
+            ],
             "type": {
               "array": [
                 "u8",
@@ -3562,6 +3759,14 @@ export type Slana = {
             "type": "u64"
           },
           {
+            "name": "feeBps",
+            "docs": [
+              "Fee on profit in basis points, fixed at join (`Config::pass_fee_bps` with a Pass,",
+              "else `Config::fee_bps`): later fee changes never touch an open session."
+            ],
+            "type": "u16"
+          },
+          {
             "name": "bump",
             "type": "u8"
           }
@@ -3760,7 +3965,7 @@ export type Slana = {
           {
             "name": "passSupply",
             "docs": [
-              "`pass_minted..=MAX_PASS_SUPPLY`."
+              "`1..=MAX_PASS_SUPPLY`; frozen once the mint has opened (`SupplyLocked`)."
             ],
             "type": {
               "option": "u32"
@@ -3783,6 +3988,10 @@ export type Slana = {
           },
           {
             "name": "passMintOpen",
+            "docs": [
+              "`true` opens the mint (never after it ended). `false` closes it only while no Pass is",
+              "minted; a started mint ends with `close_pass_mint` (`UseCloseMint`)."
+            ],
             "type": {
               "option": "bool"
             }

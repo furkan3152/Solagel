@@ -79,11 +79,28 @@ export interface SplitConfig {
  * fails with `MathOverflow` (shares above 100 %, or a value outside u64).
  */
 export function splitPayout(payout: IntLike, entryFee: IntLike, hasPass: boolean, cfg: SplitConfig): PayoutSplit {
+  return splitWithFeeBps(payout, entryFee, hasPass ? cfg.passFeeBps : cfg.feeBps, cfg);
+}
+
+/**
+ * What `settle_session` actually charges an open session: the fee in `session.feeBps` was
+ * fixed at join (a `SessionView` fits), only the treasury/burn shares come from the config.
+ * Use this for settlements; `splitPayout` is for previews of a ticket not bought yet.
+ */
+export function splitSessionPayout(
+  payout: IntLike,
+  session: { entryFee: IntLike; feeBps: number },
+  cfg: Pick<SplitConfig, 'treasuryBps' | 'burnBps'>,
+): PayoutSplit {
+  return splitWithFeeBps(payout, session.entryFee, session.feeBps, cfg);
+}
+
+function splitWithFeeBps(payout: IntLike, entryFee: IntLike, feeBps: number, cfg: Pick<SplitConfig, 'treasuryBps' | 'burnBps'>): PayoutSplit {
   const p = toBigInt(payout);
   const e = toBigInt(entryFee);
   if (p < 0n || e < 0n || p > U64_MAX || e > U64_MAX) throw new RangeError('payout and entry fee must be u64 values');
   const profit = p > e ? p - e : 0n;
-  const fee = mulBps(profit, hasPass ? cfg.passFeeBps : cfg.feeBps);
+  const fee = mulBps(profit, feeBps);
   const treasury = mulBps(fee, cfg.treasuryBps);
   const burn = mulBps(fee, cfg.burnBps);
   const season = fee - treasury - burn;

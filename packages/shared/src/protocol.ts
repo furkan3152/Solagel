@@ -137,7 +137,7 @@ export interface PassStatus {
   /** Unix seconds; the mint opens at this time. */
   mintStartTs: number;
   revealed: boolean;
-  /** Trait seed, published at reveal (null before). */
+  /** Final trait seed `Config.pass_final_seed` = sha256(admin seed || entropy), hex, published at reveal (null before). `passTraits(seed, n, supply)`. */
   seed: string | null;
 }
 

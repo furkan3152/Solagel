@@ -1,5 +1,5 @@
 import { passCollection, passTraits, type PassTraits } from '@slana/art';
-import { ata, type ConfigView, type OwnedPass, type SlanaInstructions } from '@slana/sdk';
+import { ACCOUNT_BYTES, ata, type ConfigView, type OwnedPass, type SlanaInstructions } from '@slana/sdk';
 import type { PassStatus } from '@slana/shared';
 import type { PublicKey, TransactionInstruction } from '@solana/web3.js';
 import { BASE_FEE_LAMPORTS, PRIORITY_MICRO_LAMPORTS } from './ticket';
@@ -13,8 +13,8 @@ import { BASE_FEE_LAMPORTS, PRIORITY_MICRO_LAMPORTS } from './ticket';
 
 /** Compute-unit limit of the mint transaction (Core `CreateV2` CPI + counter init). */
 export const MINT_COMPUTE_UNITS = 160_000;
-/** `MintCounter`: discriminator 8 + count 1 + bump 1. */
-export const MINT_COUNTER_BYTES = 8 + 2;
+/** `MintCounter`: discriminator 8 + count 1 + bump 1 (from the SDK, checked against the IDL). */
+export const MINT_COUNTER_BYTES = ACCOUNT_BYTES.mintCounter;
 /** The minter and the fresh asset keypair both sign. */
 export const MINT_SIGNATURES = 2;
 
@@ -71,8 +71,9 @@ export function passStatusOf(config: ConfigView | null, server: PassStatus | nul
     perWallet: config.passPerWallet,
     mintOpen: config.passMintOpen,
     mintStartTs: config.passMintStartTs,
-    revealed: config.passRevealed,
-    seed: config.passRevealed ? config.passSeed : null,
+    revealed: config.passRevealed && !!config.passFinalSeed,
+    // traits derive from the final seed sha256(seed || entropy), never the admin seed
+    seed: config.passRevealed ? config.passFinalSeed : null,
   };
 }
 
@@ -107,9 +108,11 @@ export interface MintGateInput {
 /** What the mint button does for this wallet right now. Mirrors the program's checks, in its order. */
 export function mintGate(i: MintGateInput): MintGate {
   const s = i.status;
-  // program order: CollectionNotSet, SeedNotSet, MintClosed (open, started, not revealed), MintSoldOut, MintLimit, MintMinTokens
+  // program order: CollectionNotSet, SeedNotSet, MintClosed (open, started, not ended/revealed), MintSoldOut, MintLimit, MintMinTokens.
+  // Selling out ends the mint on chain (mintOpen turns false); it is still shown as sold out.
   if (!s || !s.collection) return { kind: 'unavailable' };
   if (i.seedCommitted === false) return { kind: 'unavailable' };
+  if (!s.revealed && !s.mintOpen && s.minted >= s.supply) return { kind: 'soldOut' };
   if (s.revealed || !s.mintOpen) return { kind: 'closed' };
   if (s.mintStartTs > i.nowS) return { kind: 'notStarted', startsAt: s.mintStartTs };
   if (s.minted >= s.supply) return { kind: 'soldOut' };

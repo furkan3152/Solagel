@@ -6,11 +6,13 @@ use crate::{
     core_cpi,
     error::SlanaError,
     events::PassMinted,
+    instructions::shared,
     state::{Config, MintCounter},
 };
 
 /// Free mint of a Slana Pass: creates a Metaplex Core asset owned by the minter in the Pass
 /// collection (signed by the `pass_authority` PDA). The minter pays rent and fees only.
+/// Minting the last Pass of the supply ends the mint and captures the trait entropy.
 #[derive(Accounts)]
 pub struct MintPass<'info> {
     #[account(mut)]
@@ -40,6 +42,9 @@ pub struct MintPass<'info> {
     /// CHECK: the Metaplex Core program.
     #[account(address = MPL_CORE_ID)]
     pub mpl_core_program: UncheckedAccount<'info>,
+    /// CHECK: the SlotHashes sysvar (address checked); read only by the sell-out mint.
+    #[account(address = SLOT_HASHES_ID @ SlanaError::BadSlotHashes)]
+    pub slot_hashes: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }
 
@@ -60,10 +65,13 @@ pub fn handle_mint_pass(ctx: Context<MintPass>) -> Result<()> {
     );
     // 2. Trait seed committed.
     require!(config.pass_seed_hash != [0u8; 32], SlanaError::SeedNotSet);
-    // 3. Mint open (and never again after the trait seed is revealed).
+    // 3. Mint open (and never again once it ended or the trait seed is revealed).
     let now = Clock::get()?.unix_timestamp;
     require!(
-        config.pass_mint_open && now >= config.pass_mint_start_ts && !config.pass_revealed,
+        config.pass_mint_open
+            && now >= config.pass_mint_start_ts
+            && !config.pass_mint_ended
+            && !config.pass_revealed,
         SlanaError::MintClosed
     );
     // 4. Supply left.
@@ -120,6 +128,10 @@ pub fn handle_mint_pass(ctx: Context<MintPass>) -> Result<()> {
     )?;
 
     a.config.pass_minted = number;
+    if number >= a.config.pass_supply {
+        // Sold out: the mint ends here and the trait entropy is fixed.
+        shared::end_pass_mint(&mut a.config, &a.slot_hashes.to_account_info())?;
+    }
     let counter = &mut a.mint_counter;
     counter.count = counter
         .count

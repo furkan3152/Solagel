@@ -4,6 +4,7 @@ import { Connection, Keypair, PublicKey } from '@solana/web3.js';
 import { describe, expect, it } from 'vitest';
 import {
   ACCOUNT_NAMES,
+  ACCOUNT_BYTES,
   IDL,
   LEADERBOARD_SIZE,
   SlanaClient,
@@ -175,9 +176,14 @@ describe('account decoding', () => {
       passMinTokens: new BN('100000000000'),
       passMintOpen: true,
       passMintStartTs: new BN(1_760_000_000),
+      passMintOpened: true,
+      passMintEnded: false,
       passSeedHash: new Array(32).fill(0xab),
       passSeed: new Array(32).fill(0),
       passRevealed: false,
+      passEntropy: new Array(32).fill(0),
+      passEntropySlot: new BN(0),
+      passFinalSeed: new Array(32).fill(0),
       bump: 255,
       treasuryVaultBump: 254,
       seasonVaultBump: 253,
@@ -210,15 +216,35 @@ describe('account decoding', () => {
       passMinTokens: 100_000_000_000n,
       passMintOpen: true,
       passMintStartTs: 1_760_000_000,
+      passMintOpened: true,
+      passMintEnded: false,
       passSeedHash: 'ab'.repeat(32),
       passSeed: null,
       passRevealed: false,
+      passEntropy: null,
+      passEntropySlot: 0,
+      passFinalSeed: null,
       totals: { players: 7, games: 70, sessions: 42, staked: 9_000_000_000_000_000n, paidOut: 5n },
     });
     const unset = toConfigView({ ...raw, passCollection: PublicKey.default, passSeedHash: new Array(32).fill(0), passSeed: new Array(32).fill(1), passRevealed: true });
     expect(unset.passCollection).toBeNull();
     expect(unset.passSeedHash).toBeNull();
     expect(unset.passSeed).toBe('01'.repeat(32));
+    // After the reveal the final seed (what traits derive from) is separate from the admin seed.
+    const revealed = toConfigView({
+      ...raw,
+      passMintOpen: false,
+      passMintEnded: true,
+      passEntropy: new Array(32).fill(0x5a),
+      passEntropySlot: new BN(77),
+      passSeed: new Array(32).fill(7),
+      passFinalSeed: new Array(32).fill(0xfe),
+      passRevealed: true,
+    });
+    expect(revealed).toMatchObject({ passMintEnded: true, passEntropy: '5a'.repeat(32), passEntropySlot: 77, passSeed: '07'.repeat(32), passFinalSeed: 'fe'.repeat(32) });
+    // Ended but not revealed: the entropy is public, the final seed is not.
+    const ended = toConfigView({ ...raw, passMintEnded: true, passEntropy: new Array(32).fill(1), passFinalSeed: new Array(32).fill(9) });
+    expect([ended.passEntropy, ended.passFinalSeed]).toEqual(['01'.repeat(32), null]);
   });
 
   it('arena and session views', async () => {
@@ -261,6 +287,7 @@ describe('account decoding', () => {
       hasPass: true,
       passAsset: asset,
       settleFee: new BN(10_000),
+      feeBps: 200,
       bump: 1,
     };
     const session = toSessionView('SessionPda', coder.decode<RawSession>(ACCOUNT_NAMES.session, await encode(ACCOUNT_NAMES.session, rawSession)));
@@ -275,8 +302,28 @@ describe('account decoding', () => {
       hasPass: true,
       passAsset: asset.toBase58(),
       settleFee: 10_000,
+      feeBps: 200,
     });
     expect(toSessionView('S', { ...rawSession, hasPass: false, passAsset: PublicKey.default }).passAsset).toBeNull();
+  });
+
+  it('ACCOUNT_BYTES match the IDL account layouts', () => {
+    type Ty = string | { array?: [Ty, number]; defined?: { name: string }; option?: Ty };
+    const types = new Map((IDL as unknown as { types: { name: string; type: { kind: string; fields?: { type: Ty }[] } }[] }).types.map((t) => [t.name, t.type]));
+    const prim: Record<string, number> = { u8: 1, bool: 1, u16: 2, u32: 4, u64: 8, i64: 8, pubkey: 32 };
+    const size = (t: Ty): number => {
+      if (typeof t === 'string') return prim[t] ?? NaN;
+      if (t.array) return size(t.array[0]) * t.array[1];
+      if (t.defined) return (types.get(t.defined.name)!.fields ?? []).reduce((n, f) => n + size(f.type), 0);
+      return NaN;
+    };
+    const bytes = (name: string) => 8 + size({ defined: { name } });
+    expect(ACCOUNT_BYTES).toEqual({
+      playerProfile: bytes('PlayerProfile'),
+      session: bytes('Session'),
+      passLock: bytes('PassLock'),
+      mintCounter: bytes('MintCounter'),
+    });
   });
 
   it('IDL account names match the coder', () => {

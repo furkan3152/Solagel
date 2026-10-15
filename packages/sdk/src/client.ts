@@ -4,6 +4,7 @@ import type { Buffer } from 'buffer';
 import {
   ComputeBudgetProgram,
   PublicKey,
+  SYSVAR_SLOT_HASHES_PUBKEY,
   SystemProgram,
   Transaction,
   TransactionExpiredBlockheightExceededError,
@@ -93,10 +94,12 @@ export interface UpdateConfigParams {
   paused?: boolean;
   /** At most 96 bytes and must end with `/` (the program appends `<n>.json`). */
   passBaseUri?: string;
+  /** `1..=MAX_PASS_SUPPLY`; frozen once the mint has opened (`SupplyLocked`). */
   passSupply?: number;
   passPerWallet?: number;
   /** Token base units. */
   passMinTokens?: IntLike;
+  /** `true` opens the mint (never after it ended); `false` only before the first mint — use `closePassMint` after. */
   passMintOpen?: boolean;
   /** Unix seconds. */
   passMintStartTs?: IntLike;
@@ -319,7 +322,15 @@ function createInstructionBuilders(program: Program<Slana>, programId: PublicKey
       return program.methods.setPassSeedHash(h).accountsPartial({ admin: toPublicKey(admin), config: config() }).instruction();
     },
 
-    /** Reveals the seed (only after the mint closed or sold out). */
+    /** Ends the Pass mint for good and captures the trait entropy (needs ≥ 1 minted Pass). */
+    closePassMint(admin: Address): Promise<TransactionInstruction> {
+      return program.methods
+        .closePassMint()
+        .accountsPartial({ admin: toPublicKey(admin), config: config(), slotHashes: SYSVAR_SLOT_HASHES_PUBKEY })
+        .instruction();
+    },
+
+    /** Reveals the seed (only after the mint ended: `closePassMint` or sold out); stores the final seed. */
     revealPass(admin: Address, seed: Uint8Array | readonly number[]): Promise<TransactionInstruction> {
       const s = bytes32(seed, 'seed');
       return program.methods.revealPass(s).accountsPartial({ admin: toPublicKey(admin), config: config() }).instruction();
@@ -339,6 +350,7 @@ function createInstructionBuilders(program: Program<Slana>, programId: PublicKey
           minterToken: p.minterToken ? toPublicKey(p.minterToken) : null,
           mplCoreProgram: MPL_CORE_ID,
           systemProgram,
+          slotHashes: SYSVAR_SLOT_HASHES_PUBKEY,
         })
         .instruction();
     },

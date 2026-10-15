@@ -38,8 +38,11 @@ export interface ChainArena {
   maxSessions: number;
   openSessions: number;
   enabled: boolean;
-  /** Raw token units held by the arena vault. */
-  pot: number;
+  /**
+   * Raw token units held by the arena vault; null when the gateway has no real vault
+   * (dev-fake), which skips the vault-vs-journal guard.
+   */
+  pot: number | null;
 }
 
 /** A verified Slana Pass (Core asset of our collection). */

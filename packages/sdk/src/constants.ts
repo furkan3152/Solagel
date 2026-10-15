@@ -52,3 +52,18 @@ export const DEFAULT_FEE_SPLIT_BPS: readonly [number, number, number] = [5_000, 
 export const DEFAULT_SETTLE_FEE_LAMPORTS = 20_000;
 /** Name of Pass number `n` (`mint_pass` names assets `Slana Pass #<n>`). */
 export const PASS_NAME_PREFIX = 'Slana Pass #';
+
+/**
+ * Account sizes in bytes (8-byte Anchor discriminator + `INIT_SPACE`), for rent estimates.
+ * A unit test recomputes them from the IDL types, so a layout change cannot leave them stale.
+ */
+export const ACCOUNT_BYTES = {
+  /** owner 32 + name 16 + len 1 + skin 1 + xp 8 + games 4 + kills 4 + best 4 + total 8 + season 4 + points 8 + stakeGames 4 + staked 8 + won 8 + created 8 + last 8 + bump 1 */
+  playerProfile: 8 + 127,
+  /** id 8 + player 32 + arena 32 + arenaId 2 + entry 8 + opened 8 + hasPass 1 + passAsset 32 + settleFee 8 + feeBps 2 + bump 1 */
+  session: 8 + 134,
+  /** session 32 + player 32 + bump 1 */
+  passLock: 8 + 65,
+  /** count 1 + bump 1 */
+  mintCounter: 8 + 2,
+} as const;

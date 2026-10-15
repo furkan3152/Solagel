@@ -63,9 +63,14 @@ function configView(server: Keypair, overrides: Partial<ConfigView> = {}): Confi
     passMinTokens: 0n,
     passMintOpen: false,
     passMintStartTs: 0,
+    passMintOpened: false,
+    passMintEnded: false,
     passSeedHash: null,
     passSeed: null,
     passRevealed: false,
+    passEntropy: null,
+    passEntropySlot: 0,
+    passFinalSeed: null,
     totals: { players: 0, games: 0, sessions: 0, staked: 0n, paidOut: 0n },
     ...overrides,
   };
@@ -182,6 +187,8 @@ class FakeClient implements ChainClient {
       hasPass: false,
       passAsset: null,
       settleFee: 20_000,
+      // the fee fixed at join (Pass 2 %, else 5 %)
+      feeBps: opts.hasPass ? 200 : 500,
       ...opts,
     };
     this.sessions.set(`${s.arenaId}:${player}`, s);
@@ -350,6 +357,10 @@ describe('SolanaChain status & reads', () => {
       seed: null,
     });
     expect(h.chain.status().pass).toEqual(h.chain.passStatus());
+    // after the reveal the trait seed is the final seed sha256(seed || entropy), never the admin seed
+    h.client.config = { ...h.client.config!, passMintOpen: false, passMintEnded: true, passRevealed: true, passSeed: '07'.repeat(32), passEntropy: '5a'.repeat(32), passFinalSeed: 'fe'.repeat(32) };
+    await (h.chain as unknown as { freshConfig(): Promise<unknown> }).freshConfig();
+    expect(h.chain.passStatus()).toMatchObject({ revealed: true, seed: 'fe'.repeat(32) });
     const h2 = await harness({ cfg: { publicRpcUrl: 'https://rpc.example', stakeEnabled: false } });
     expect(h2.chain.status()).toMatchObject({ rpcUrl: 'https://rpc.example', arenasEnabled: false });
   });
@@ -472,6 +483,17 @@ describe('settlement worker', () => {
     expect(h.settled.map((e) => e.fee)).toEqual([117_283, 46_913]);
   });
 
+  it('the settled fee is the one fixed at join, not the current config', async () => {
+    const h = await harness();
+    // joined at 5 % / 2 %; the admin has since raised both fees to 10 %
+    h.client.config = { ...h.client.config!, feeBps: 1_000, passFeeBps: 1_000 };
+    const plain = h.client.addSession(wallet(), { id: 1 });
+    const withPass = h.client.addSession(wallet(), { id: 2, arenaId: 2, hasPass: true, passAsset: wallet() });
+    h.journal.commit({ enqueue: [settleItem(plain), settleItem(withPass, { createdAt: T0 + 1 })] });
+    await h.chain.processPending();
+    expect(h.settled.map((e) => e.fee)).toEqual([117_283, 46_913]);
+  });
+
   it('missing player ATA keeps the settle queued without server-paid rent', async () => {
     const h = await harness();
     const s = h.client.addSession(wallet());
@@ -516,7 +538,7 @@ describe('settlement worker', () => {
 
   it('drops items whose session is gone or belongs to a newer join', async () => {
     const h = await harness();
-    const gone = settleItem({ address: wallet(), player: wallet(), arena: wallet(), arenaId: 1, entryFee: 1n, openedAt: 1, id: 3, hasPass: false, passAsset: null, settleFee: 0 });
+    const gone = settleItem({ address: wallet(), player: wallet(), arena: wallet(), arenaId: 1, entryFee: 1n, openedAt: 1, id: 3, hasPass: false, passAsset: null, settleFee: 0, feeBps: 500 });
     const s = h.client.addSession(wallet(), { id: 9 });
     const old = settleItem(s, { sessionId: 8 });
     h.journal.commit({ enqueue: [gone, old] });

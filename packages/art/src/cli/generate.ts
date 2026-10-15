@@ -2,10 +2,16 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { collectionJson, passCollection, passJson, serializePassJson, type PassTraits, type PassUrlOptions } from '../index';
-import { CliError, createCanvas, DEFAULT_SEED_FILE, drawPassCard, int, main, parseArgs, readSeedHex, renderCard, str, userPath } from './common';
+import { CliError, createCanvas, DEFAULT_SEED_FILE, drawPassCard, int, main, parseArgs, renderCard, str, traitSeedHex, userPath } from './common';
 
-const USAGE = `pnpm pass:generate [--seed-file ${DEFAULT_SEED_FILE}] [--supply 3333] [--out out/pass]
-                   [--site-url https://host] [--base-url https://ipfs/dir/] [--from 1] [--to <supply>]`;
+const USAGE = `pnpm pass:generate (--seed-file ${DEFAULT_SEED_FILE} --entropy <hex> | --final-seed <hex>)
+                   [--supply 3333] [--out out/pass] [--site-url https://host] [--base-url https://ipfs/dir/]
+                   [--from 1] [--to <supply>]
+
+Traits derive from the final seed sha256(seed || entropy), where entropy is Config.pass_entropy:
+the SlotHashes entry the program captured when the mint ended (\`pnpm admin status\` prints it).
+After the reveal the final seed is public (Config.pass_final_seed), so anyone can regenerate with
+--final-seed.`;
 
 const title = (s: string): string => s[0].toUpperCase() + s.slice(1);
 
@@ -50,7 +56,7 @@ async function banner(col: PassTraits[]): Promise<Buffer> {
 export async function runGenerate(argv: string[]): Promise<void> {
   const opts = parseArgs(argv);
   if (opts.has('help')) return console.log(USAGE);
-  const seedHex = readSeedHex(userPath(str(opts, 'seed-file') ?? DEFAULT_SEED_FILE));
+  const seedHex = traitSeedHex(opts);
   const supply = int(opts, 'supply', 3333);
   const from = int(opts, 'from', 1);
   const to = int(opts, 'to', supply);

@@ -4,15 +4,16 @@ import type { PassStatus } from '@slana/shared';
 export { PASS_SYMBOL, PASS_COLLECTION_NAME, passAttributes } from '@slana/art';
 export type { PassAttribute, PassMetadata } from '@slana/art';
 
-const SEALED_DESCRIPTION =
-  'A sealed Slana Pass. Its risograph coin and traits are revealed on-chain once the mint ends ' +
-  '(commit–reveal: nobody, the team included, knows which number is rare before then). ' +
+export const SEALED_DESCRIPTION =
+  'A sealed Slana Pass. Its risograph coin and traits are revealed on-chain after the mint ends. ' +
+  'Traits come from a committed seed mixed with a Solana slot hash that the program records when the mint closes, ' +
+  'so nobody, the team included, can know which number is rare while Passes can still be minted. ' +
   'In Slana the Pass opens the Pass rooms, lowers the arena fee and gives a head start.';
 
 /** Pass number `n` is within `1..supply`. */
 export const passInRange = (n: number, pass: PassStatus): boolean => Number.isInteger(n) && n >= 1 && n <= pass.supply;
 
-/** The reveal seed when traits are public, else null (sealed). */
+/** The final reveal seed (`Config.pass_final_seed` = sha256(seed || entropy)) when traits are public, else null (sealed). */
 export const revealedSeed = (pass: PassStatus): string | null => (pass.revealed && pass.seed ? pass.seed : null);
 
 /**
