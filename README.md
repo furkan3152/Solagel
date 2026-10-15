@@ -91,24 +91,82 @@ Docs: [design document (v2)](docs/superpowers/specs/2026-10-14-slana-design.md) 
 [setup and deployment](docs/DEPLOY.md) · [operations](docs/OPERATIONS.md) · [architecture](docs/ARCHITECTURE.md) ·
 [Pass art](docs/PASS-ART.md)
 
-## Quick start (no chain)
+## Run it
 
-Needs Node 22+ and pnpm 10.
+Needs Node 22+ and pnpm 10 (`corepack enable`). Three commands cover everything; each one checks Node, pnpm, the
+installed dependencies and the ports (8787, 5173; localnet also 8899/8900) first and says what to fix. Ctrl+C stops every
+process it started.
 
 ```bash
-corepack enable
 pnpm install
-pnpm dev          # game server :8787 + web :5173
+pnpm demo            # the stack from the walkthrough videos: http://localhost:5173
+pnpm demo:localnet   # the same UI on a real local validator (real transactions)
+pnpm demo:record     # re-records the walkthrough video (add --quick for a short smoke run)
 ```
 
-**http://localhost:5173**: no wallet needed, play practice with bots right away. Without `PROGRAM_ID`, `SOLANA_RPC_URL`
-and `SERVER_KEYPAIR` the server runs without a chain (practice only).
+### `pnpm demo`
 
-Fake chain for UI work: `NODE_ENV=development DEV_FAKE_CHAIN=1 pnpm dev:server` gives every wallet free arena tickets
-and simulates the payouts. Its Pass mint is open and unrevealed, so a wallet can mint one (sealed) Pass; publish the
-seed with `curl -X POST localhost:8787/api/dev/pass/reveal` (or `__slanaChain.revealPasses()` in the browser console).
-`DEV_FAKE_PASS=revealed` instead gives every wallet one revealed Pass (the `pass.mjs` screenshot tour expects it).
-Development only; it refuses to start while `PROGRAM_ID` or `SERVER_KEYPAIR` is set.
+Starts the game server with `NODE_ENV=development DEV_FAKE_CHAIN=1` (an in-memory fake chain: free arena tickets, simulated
+settlements, seeded standings, a Pass mint that is open and unrevealed) and the web dev server, then prints
+**http://localhost:5173**. Sign-in works with no extra environment: the dev proxy keeps the browser's host. Each run
+starts from a fresh journal (`out/demo-data/`).
+
+- **Wallet.** Any Wallet Standard wallet (Phantom, Solflare, Backpack) can sign in; the login message is free and no funds
+  are needed. With no wallet extension, `pnpm demo --browser` opens a Chromium with a built-in Dev Wallet (a local keypair,
+  `out/dev-wallet.json`; needs a display).
+- **Name.** Set a player name in the lobby before buying a ticket.
+- **Buying a ticket and playing.** Pick Penny Pond in the lobby, buy the ticket, play, cash out; the payout is simulated.
+- **Pass.** Mint one (sealed) Pass from the Pass page, then publish the seed with
+  `curl -X POST localhost:8787/api/dev/pass/reveal` (or `__slanaChain.revealPasses()` in the browser console).
+  `DEV_FAKE_PASS=revealed pnpm demo` gives every wallet one revealed Pass instead. See `apps/server/.env.example`.
+- **Practice only.** `pnpm dev` runs the server without any chain (practice rooms with bots, no wallet needed).
+
+The fake chain is development only: it needs an explicit `NODE_ENV=development` and refuses to start while `PROGRAM_ID`
+or `SERVER_KEYPAIR` is set.
+
+### `pnpm demo:localnet`
+
+Same UI against a real `solana-test-validator`: real tickets, settlements, burns and Pass mints. It builds what is
+missing, then starts everything:
+
+1. `target/deploy/slana_lean.so`, via `scripts/build-lean.sh` (needs the Agave/Solana build tools: `cargo-build-sbf`).
+2. `target/programs/mpl_core.so` (Metaplex Core), via `scripts/fetch-programs.sh`. This downloads from a mainnet RPC; with
+   no network access it stops with a clear message. Use `MAINNET_RPC=<url> pnpm demo:localnet`, or copy a dumped
+   `mpl_core.so` to that path (`solana program dump -u mainnet-beta CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d mpl_core.so`).
+3. The production build of the game server (`pnpm -F @slana/server build`).
+4. `scripts/localnet.sh`: validator, program, test token, Pass collection and seed, open mint, default arenas, and
+   `.localnet/server.env`. The program keypair is not needed (the address comes from the SDK IDL).
+5. The server with that env file and the web dev server. `PUBLIC_URL` is set to the web origin so the sign-in message
+   names `localhost:5173`.
+
+It needs the Agave CLI (`solana`, `solana-test-validator`, `solana-keygen`, `spl-token`) on the PATH or in `/opt/solana/bin`.
+Ctrl+C also stops the validator (`scripts/localnet.sh --stop`). A localnet run keeps no state between runs: the Pass mint
+and the season close for good, so every run starts from a fresh ledger.
+
+**Wallet and funds.** Either:
+
+- **Phantom on localhost.** Settings, Developer Settings, turn on Testnet Mode and choose Solana Localnet (RPC
+  `http://127.0.0.1:8899`). Then fund the address.
+- **A local keypair (Dev Wallet).** `pnpm demo:localnet --browser` opens a Chromium with a Dev Wallet whose key is
+  `.localnet/dev-wallet.json`, and funds it automatically.
+
+Fund any address with SOL and `$SLANA` (the test mint is capped, so tokens are sent from the admin wallet):
+
+```bash
+scripts/localnet-fund.sh <WALLET_ADDRESS> [sol=10] [slana=1000]
+# SOL only:  solana airdrop 10 <WALLET_ADDRESS> --url http://127.0.0.1:8899
+```
+
+Pass mints are done in the UI (Pass page) with a funded wallet. Admin commands work as usual (`pnpm admin status`).
+
+### `pnpm demo:record`
+
+Records the walkthrough (lobby, wallet, practice, a Penny Pond ticket, arena, cash-out, Pass, standings, profile, guide)
+with a visible cursor and chapter captions, and encodes it to **`out/videos/slana-walkthrough.mp4`** plus a highlights
+reel (`out/videos/` is gitignored). It starts the fake-chain stack by itself and stops it afterwards; to record a stack you
+already run, add `--url http://localhost:5173/`. Needs ffmpeg on the PATH (`FFMPEG=<binary>` overrides) and Chromium:
+Playwright's own (`pnpm -F @slana/web exec playwright install chromium`) or `CHROME_PATH=<binary>`. A full run takes a
+few minutes; `pnpm demo:record --quick` records a shorter clip (lobby, wallet, ticket, arena) as `slana-quick.mp4`.
 
 ## Running with the chain
 
@@ -143,7 +201,7 @@ arenas; it writes the server environment to `.localnet/server.env`. Requirements
 (`scripts/fetch-programs.sh` downloads it if missing). `.localnet/` is never committed.
 
 ```bash
-anchor build --ignore-keys && scripts/build-lean.sh && scripts/localnet.sh
+scripts/build-lean.sh && scripts/localnet.sh        # or just: pnpm demo:localnet
 cd apps/server && env $(cat ../../.localnet/server.env | xargs) \
   STALE_SESSION_AFTER_S=5 ARENA_BOT_TARGET=0 ARENA_BOT_MIN=0 ARENA_BOT_MAX=0 npx tsx src/index.ts
 pnpm -F @slana/server e2e          # in another terminal; ~2 min
