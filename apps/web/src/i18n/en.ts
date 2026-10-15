@@ -356,6 +356,7 @@ export const en = {
   'lo.closed': 'Closed',
   'lo.yourTicket': 'Your ticket is open',
   'lo.payoutChip': 'Payout on the way',
+  'lo.collectChip': 'Payout waiting',
   'lo.cta.buy': 'Buy ticket, play',
   'lo.cta.practice': 'Start practice',
   'lo.cta.practiceSub': 'Practice · free',
