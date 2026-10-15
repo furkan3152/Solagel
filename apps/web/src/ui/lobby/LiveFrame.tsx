@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef } from 'react';
-import { Icon, Tape } from '../../design';
+import { Icon, StampSpinner, Tape } from '../../design';
 import { engine } from '../../game/instance';
 import { useT } from '../../i18n';
 import { useUi } from '../../store';
@@ -55,7 +55,12 @@ export function LiveFrame() {
         <Tape rotate={-6} width={96} style={{ left: -18, top: -10 }} />
         <Tape rotate={8} width={84} tone="pink" style={{ right: -16, bottom: -8 }} />
         <div ref={windowRef} className="kl-live__window" role="img" aria-label={room ? t('lo.live.label', { room: name }) : t('lo.live.connecting')}>
-          {!connected && <span className="kl-live__wait mono">{t('lo.live.connecting')}</span>}
+          {!connected && (
+            <span className="kl-live__wait mono kb-wait">
+              <StampSpinner size="md" />
+              {t('lo.live.connecting')}
+            </span>
+          )}
         </div>
         <span className="kl-live__badge mono" aria-hidden="true">
           <span className="kl-live__rec" />

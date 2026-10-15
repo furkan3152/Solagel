@@ -3,6 +3,7 @@ import { act, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Kb } from '../src/design';
 import { useUi } from '../src/store';
+import { setReducedMotion } from '../src/test/media';
 import { CashoutSheet, DeathSheet, receiptNumbers, settlementFor, stickerSvg } from '../src/ui/game';
 import { roomName, tokenFormat } from '../src/ui/game/format';
 
@@ -67,7 +68,7 @@ describe('emote stickers', () => {
 });
 
 describe('death sheet', () => {
-  it('stamps EATEN, names the bot line and shows the value lost', () => {
+  it('stamps EATEN, names the bot line and shows the value lost', async () => {
     useUi.setState({
       screen: 'dead',
       room: ARENA,
@@ -78,14 +79,17 @@ describe('death sheet', () => {
         <DeathSheet />
       </Kb>,
     );
-    expect(screen.getByRole('dialog', { name: 'Eaten' })).toBeTruthy();
+    // the sheet waits out the death slow motion
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(await screen.findByRole('dialog', { name: 'Eaten' })).toBeTruthy();
     expect(screen.getByText('Bot · your tokens spilled across the map')).toBeTruthy();
     expect(screen.getByText('−1,450')).toBeTruthy();
     expect(screen.getByRole('button', { name: /New ticket/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /Practice/ })).toBeTruthy();
   });
 
-  it('names the player who ate us', () => {
+  it('names the player who ate us (reduced motion: no slow-motion wait)', () => {
+    setReducedMotion(true);
     useUi.setState({ screen: 'dead', room: ARENA, death: { stats: { ...STATS, valueLost: 10 * M }, killer: 'Nakamoto', killerSkin: 1 } });
     render(
       <Kb>

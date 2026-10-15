@@ -1,4 +1,5 @@
 import { VIEW, clamp, viewSize } from '@slana/shared';
+import { zoomIn } from '../design/curves';
 
 export class Camera {
   x = 2800;
@@ -9,6 +10,22 @@ export class Camera {
   w = 1;
   h = 1;
   private initialized = false;
+  /** Zoom without the transition multipliers (the follow target). */
+  private base = 0.6;
+  /** Entering a room: the camera falls from far to normal (`zoomIn` curve), seconds elapsed / length. */
+  private intro: { t: number; dur: number; from: number } | null = null;
+  /** Death slow motion: a slight push in (multiplier, eased back by the engine). */
+  push = 1;
+
+  /** Starts the fall into the world (lobby → game). `dur` in seconds; 0 cancels. */
+  zoomIntro(dur: number, from = 0.42): void {
+    this.intro = dur > 0 ? { t: 0, dur, from } : null;
+  }
+
+  /** True while the entering zoom runs. */
+  get introducing(): boolean {
+    return this.intro !== null;
+  }
 
   resize(w: number, h: number): void {
     this.w = w;
@@ -22,15 +39,23 @@ export class Camera {
     if (snap || !this.initialized) {
       this.x = tx;
       this.y = ty;
-      this.zoom = targetZoom;
+      this.base = targetZoom;
       this.initialized = true;
-      return;
+    } else {
+      const k = 1 - Math.exp(-dt * 9);
+      this.x += (tx - this.x) * k;
+      this.y += (ty - this.y) * k;
+      const kz = 1 - Math.exp(-dt * 4.5);
+      this.base += (targetZoom - this.base) * kz;
     }
-    const k = 1 - Math.exp(-dt * 9);
-    this.x += (tx - this.x) * k;
-    this.y += (ty - this.y) * k;
-    const kz = 1 - Math.exp(-dt * 4.5);
-    this.zoom += (targetZoom - this.zoom) * kz;
+    let mul = this.push;
+    if (this.intro) {
+      this.intro.t += dt;
+      const p = this.intro.t / this.intro.dur;
+      mul *= zoomIn(p, this.intro.from);
+      if (p >= 1) this.intro = null;
+    }
+    this.zoom = this.base * mul;
   }
 
   /** Visible short side (world units) for a mass, honouring the screen aspect. */

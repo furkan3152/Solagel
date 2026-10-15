@@ -1565,7 +1565,36 @@
   }
 }
 
+/* boot: the wordmark prints in two passes, ink first, then the pink pass lands off
+   register and snaps into its (slightly off) place */
+.kb-screen[data-entrance='boot'] .kl-wordmark__ink {
+  animation: kl-print-ink 0.2s linear 0.12s both;
+}
+.kb-screen[data-entrance='boot'] .kl-wordmark__pink {
+  animation: kl-print-pink 0.46s cubic-bezier(0.3, 0.7, 0.2, 1.25) 0.3s both;
+}
+@keyframes kl-print-ink {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes kl-print-pink {
+  0% {
+    opacity: 0;
+    transform: translate(0.22em, -0.1em);
+  }
+  35% {
+    opacity: 1;
+    transform: translate(0.12em, -0.04em);
+  }
+  100% {
+    transform: translate(0.035em, 0.03em);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .kb-screen[data-entrance='boot'] .kl-wordmark__ink,
+  .kb-screen[data-entrance='boot'] .kl-wordmark__pink,
   .kl-wordmark__coin,
   .kl-pass__seal,
   .kl-live-dot,

@@ -1,7 +1,7 @@
 import { useWallet } from '@solana/wallet-adapter-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
-import { Dateline, Icon, Kb, Rule, Tabs, springs, themeFromSettings, useReducedMotion, type IconName, type TabItem } from '../../design';
+import { DUR, Dateline, Icon, Kb, Rule, Tabs, presets, springs, themeFromSettings, useReducedMotion, type IconName, type TabItem } from '../../design';
 import { engine } from '../../game/instance';
 import { sound } from '../../game/sound';
 import { useT } from '../../i18n';
@@ -47,10 +47,35 @@ export function Lobby() {
   const [flow, setFlow] = useState<{ mode: FlowMode; key: TicketKey; open: boolean } | null>(null);
   const reduced = useReducedMotion();
   const root = useRef<HTMLDivElement>(null);
+  /** The ticket punched on the way into its room (the screen wipe opens from its hole). */
+  const [punched, setPunched] = useState<TicketKey | null>(null);
+  useEffect(() => {
+    if (!punched) return;
+    // the room did not open (no answer, refused): the ticket is whole again
+    const id = setTimeout(() => setPunched(null), 2500);
+    return () => clearTimeout(id);
+  }, [punched]);
   // a new page starts at its top
   useEffect(() => {
     root.current?.scrollTo({ top: 0 });
   }, [tab]);
+  // page turn direction: a section to the right turns in from the right
+  const order = PAGE_ORDER.indexOf(tab);
+  const lastOrder = useRef(order);
+  const dir = order === lastOrder.current ? 1 : order > lastOrder.current ? 1 : -1;
+  useEffect(() => {
+    lastOrder.current = order;
+  }, [order]);
+  const turn = reduced ? presets.fade : presets.page;
+  const pageMotion = {
+    custom: dir,
+    variants: { enter: turn.enter, center: turn.center, exit: turn.exit },
+    initial: 'enter',
+    animate: 'center',
+    exit: 'exit',
+    transition: reduced ? { duration: DUR.fade, ease: 'linear' as const } : { ...springs.page, opacity: { duration: 0.18, ease: 'linear' as const } },
+    style: { transformOrigin: dir > 0 ? '100% 0%' : '0% 0%' },
+  };
 
   const has = (k: TicketKey | null | undefined): k is TicketKey => !!k && model.tickets.some((x) => x.key === k);
   const selectedKey: TicketKey = has(picked) ? picked : model.quick;
@@ -79,6 +104,7 @@ export function Lobby() {
     switch (gate.kind) {
       case 'practice':
         sound.click();
+        setPunched(ticket.key);
         engine()?.play('practice');
         return;
       case 'connect':
@@ -91,6 +117,7 @@ export function Lobby() {
         sound.click();
         const s = id !== null ? model.sessions[id] : null;
         updateSettings({ lastArena: id });
+        setPunched(ticket.key);
         // no transaction: the ticket is already open on chain
         engine()?.play(`arena:${id}`, s?.hasPass && s.passAsset ? { pass: s.passAsset } : {});
         return;
@@ -139,6 +166,7 @@ export function Lobby() {
         value={selectedKey}
         onChange={setPicked}
         onActivate={act}
+        punched={punched}
       />
       {mid && (
         <div className="kl-cta-slot">
@@ -164,15 +192,12 @@ export function Lobby() {
         <Masthead full={mid} wide={wide} />
         {mid && <SectionNav page={tab} onChange={setTab} />}
 
-        <AnimatePresence mode="wait" initial={false}>
+        <AnimatePresence mode="wait" initial={false} custom={dir}>
         {mid && tab !== 'play' ? (
           <motion.main
             key={tab}
             className="kl-section"
-            initial={reduced ? { opacity: 0 } : { opacity: 0, y: 14 }}
-            animate={reduced ? { opacity: 1 } : { opacity: 1, y: 0 }}
-            exit={reduced ? { opacity: 0 } : { opacity: 0, y: -8 }}
-            transition={reduced ? { duration: 0.12 } : { ...springs.sheet, opacity: { duration: 0.16 } }}
+            {...pageMotion}
           >
             <SectionPage page={tab} />
           </motion.main>
@@ -180,10 +205,7 @@ export function Lobby() {
           <motion.main
             key="play"
             className={`kl-front${wide ? ' has-photo' : ''}`}
-            initial={reduced ? { opacity: 0 } : { opacity: 0, y: 14 }}
-            animate={reduced ? { opacity: 1 } : { opacity: 1, y: 0 }}
-            exit={reduced ? { opacity: 0 } : { opacity: 0, y: -8 }}
-            transition={reduced ? { duration: 0.12 } : { ...springs.sheet, opacity: { duration: 0.16 } }}
+            {...pageMotion}
           >
             {tickets}
             {wide && (
@@ -202,10 +224,7 @@ export function Lobby() {
           <motion.main
             key={tab}
             className="kl-phone-main"
-            initial={reduced ? { opacity: 0 } : { opacity: 0, x: 18 }}
-            animate={reduced ? { opacity: 1 } : { opacity: 1, x: 0 }}
-            exit={reduced ? { opacity: 0 } : { opacity: 0, x: -12 }}
-            transition={reduced ? { duration: 0.12 } : { ...springs.sheet, opacity: { duration: 0.14 } }}
+            {...pageMotion}
           >
             {tab === 'play' ? (
               <>
@@ -245,6 +264,9 @@ function SectionPage({ page }: { page: LobbyPage }) {
   if (page === 'docs') return <DocsPage />;
   return null;
 }
+
+/** Left-to-right order of the lobby's pages (the page turn's direction). */
+const PAGE_ORDER: readonly LobbyPage[] = ['play', 'ranks', 'pass', 'profile', 'docs'];
 
 const SECTIONS: { id: LobbyPage; key: 'lo.tickets' | 'lo.tab.ranks' | 'lo.tab.pass' | 'lo.tab.profile' | 'lo.tab.docs'; icon: IconName }[] = [
   { id: 'play', key: 'lo.tickets', icon: 'ticket' },

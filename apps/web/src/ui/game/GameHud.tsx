@@ -1,7 +1,7 @@
 import { PowerUpType, RULES } from '@slana/shared';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
-import { Counter, Icon, Stamp, Tape, springs, useReducedMotion } from '../../design';
+import { Counter, DUR, Icon, Stamp, Tape, springs, useReducedMotion } from '../../design';
 import { engine } from '../../game/instance';
 import { useT } from '../../i18n';
 import { openModal, useUi } from '../../store';
@@ -289,8 +289,15 @@ export function GameHud() {
   const touch = useIsTouch();
   const narrow = useNarrow();
   const playing = screen === 'playing';
+  const reduced = useReducedMotion();
   return (
-    <div className={`g-hud${touch ? ' is-touch' : ''}${narrow ? ' is-narrow' : ''}`}>
+    // the scraps are taped on once the paper has opened onto the world, and lifted off before it closes
+    <motion.div
+      className={`g-hud${touch ? ' is-touch' : ''}${narrow ? ' is-narrow' : ''}`}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1, transition: reduced ? { duration: DUR.fade } : { delay: HUD_IN_DELAY, duration: 0.2 } }}
+      exit={{ opacity: 0, transition: { duration: reduced ? DUR.fade : 0.14 } }}
+    >
       {playing && <TillSlip />}
       <Standings compact={narrow} />
       <div className="g-center">
@@ -309,9 +316,12 @@ export function GameHud() {
       )}
       {playing && touch && <MobileControls />}
       {screen === 'spectating' && <SpectateBar />}
-    </div>
+    </motion.div>
   );
 }
+
+/** The HUD waits for the paper wipe to open (s). */
+const HUD_IN_DELAY = 0.34;
 
 function useNarrow(): boolean {
   const q = '(max-width: 720px)';

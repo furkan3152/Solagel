@@ -50,7 +50,8 @@ export function CoinPortrait({
       c.width = px;
       c.height = px;
     }
-    const ctx = c.getContext('2d')!;
+    const ctx = c.getContext('2d');
+    if (!ctx) return;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, px, px);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
