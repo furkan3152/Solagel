@@ -33,7 +33,7 @@ const isAta = (ix: TransactionInstruction) => ix.programId.equals(ASSOCIATED_TOK
 
 describe('buildTicketTx', () => {
   it('includes ATA create when missing, register when no profile, joinArenaWithPass when pass selected', async () => {
-    const { steps, ixs } = await buildTicketTx(client.ix, { player, arenaId: 3, token, ataExists: false, register: { name: 'Defne', skin: 4 }, passAsset });
+    const { steps, ixs } = await buildTicketTx(client.ix, { player, arenaId: 3, token, ataExists: false, register: { name: 'Defne', skin: 4 }, passAsset, maxFeeBps: 200 });
     expect(steps).toEqual(['ata', 'register', 'joinWithPass']);
     expect(ixs).toHaveLength(3);
     expect(isAta(ixs[0])).toBe(true);
@@ -48,11 +48,14 @@ describe('buildTicketTx', () => {
     expect(keys).toContain(pdas.passLock(passAsset, PROGRAM_ID).toBase58());
     // the session belongs to this arena
     expect(keys).toContain(pdas.session(pdas.arena(3, PROGRAM_ID), player, PROGRAM_ID).toBase58());
+    // the fee bound the player was shown rides in the instruction (u16 after the discriminator)
+    expect(ixs[2].data.readUInt16LE(8)).toBe(200);
   });
 
   it('is a plain joinArena when the account and profile exist and no Pass is used', async () => {
-    const { steps, ixs } = await buildTicketTx(client.ix, { player, arenaId: 1, token, ataExists: true, register: null, passAsset: null });
+    const { steps, ixs } = await buildTicketTx(client.ix, { player, arenaId: 1, token, ataExists: true, register: null, passAsset: null, maxFeeBps: 500 });
     expect(steps).toEqual(['join']);
+    expect(ixs[0].data.readUInt16LE(8)).toBe(500);
     expect(ixs).toHaveLength(1);
     expect(isIx(ixs[0], 'join_arena')).toBe(true);
     expect(ixs.some(isAta)).toBe(false);
@@ -164,6 +167,10 @@ describe('ticketGate', () => {
     expect(ticketGate(g({ ticket: blocked })).kind).toBe('maintenance');
     expect(ticketGate(g({ ticket: blocked, walletConnected: false })).kind).toBe('maintenance');
     expect(ticketGate(g({ ticket: blocked, arenasEnabled: false })).kind).toBe('offline');
+    // a payout owed in that arena takes priority (settling, or the R10 token-account CTA)
+    const owed = [{ key: 'S', arenaId: 1, payout: 5, needsTokenAccount: false }];
+    expect(ticketGate(g({ ticket: blocked, pending: owed }))).toEqual({ kind: 'settling', payout: 5 });
+    expect(ticketGate(g({ ticket: blocked, pending: [{ ...owed[0], needsTokenAccount: true }], ataExists: false }))).toEqual({ kind: 'needAta', payout: 5 });
   });
 
   it('resumes an open ticket without a transaction and offers a refund after 24 h', () => {

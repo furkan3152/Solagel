@@ -60,10 +60,13 @@ export interface ConfigView {
   passMintEnded: boolean;
   /** Hex sha256 of the seed, null while unset. */
   passSeedHash: string | null;
-  /** The admin's committed seed (hex), null until revealed. Traits do NOT derive from it: use `passFinalSeed`. */
+  /** The admin's committed seed (hex), public from `reveal_pass` on (null before). Traits do NOT derive from it: use `passFinalSeed`. */
   passSeed: string | null;
+  /** `reveal_pass` published the seed and set `passEntropyTargetSlot`; the reveal completes with `capture_pass_entropy`. */
+  passSeedRevealed: boolean;
+  /** The traits are public: `capture_pass_entropy` stored `passFinalSeed`. */
   passRevealed: boolean;
-  /** Slot whose hash becomes the entropy (first block at or after it); 0 before the mint ended. */
+  /** Slot whose hash becomes the entropy (first block at or after it), set by `reveal_pass`; 0 before. */
   passEntropyTargetSlot: number;
   /** `capture_pass_entropy` stored `passEntropy`. */
   passEntropyCaptured: boolean;
@@ -220,7 +223,8 @@ export function toConfigView(raw: RawConfig): ConfigView {
     passMintOpened: raw.passMintOpened,
     passMintEnded: raw.passMintEnded,
     passSeedHash: hexOrNull(raw.passSeedHash),
-    passSeed: raw.passRevealed ? (hexOrNull(raw.passSeed) ?? '00'.repeat(32)) : null,
+    passSeed: raw.passSeedRevealed ? (hexOrNull(raw.passSeed) ?? '00'.repeat(32)) : null,
+    passSeedRevealed: raw.passSeedRevealed,
     passRevealed: raw.passRevealed,
     passEntropyTargetSlot: toNumber(raw.passEntropyTargetSlot),
     passEntropyCaptured: raw.passEntropyCaptured,

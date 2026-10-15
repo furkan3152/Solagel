@@ -37,6 +37,8 @@ export class RoomManager {
   private readonly deps: RoomDeps;
   /** Arenas kept disabled because their vault cannot cover the journal (id → message). */
   private readonly underfunded = new Map<number, string>();
+  /** `enabled` of each arena at the last chain read (detects a disabled → enabled flip). */
+  private readonly lastEnabled = new Map<number, boolean>();
 
   constructor(
     private readonly cfg: ServerConfig,
@@ -143,11 +145,26 @@ export class RoomManager {
   private async arenas(): Promise<Map<number, ArenaData>> {
     if (this.arenaCache && Date.now() - this.arenaCache.at < ARENA_CACHE_MS) return this.arenaCache.ids;
     const list = await this.chain.listArenas();
-    const ids = new Map(
+    const ids = new Map<number, ArenaData>(
       list.map((a) => [a.id, { buyIn: a.entryFee, maxPlayers: a.maxSessions, enabled: a.enabled, requiresPass: a.requiresPass, pot: a.pot }]),
     );
     this.arenaCache = { at: Date.now(), ids };
+    this.recheckVaults(ids);
     return ids;
+  }
+
+  /**
+   * Vault guard while the server runs (R20): on every arena refresh, re-check an arena that
+   * is disabled (an admin `sweep` empties the vault of a disabled arena), that was just
+   * re-enabled (disabled → enabled), or that is currently blocked (so a topped-up vault
+   * clears the stale entry). Live instances do not exempt it: a blocked arena sells no ticket.
+   */
+  private recheckVaults(ids: Map<number, ArenaData>): void {
+    for (const [id, a] of ids) {
+      const before = this.lastEnabled.get(id);
+      this.lastEnabled.set(id, a.enabled);
+      if (!a.enabled || before === false || this.underfunded.has(id)) this.vaultCovers(id, a);
+    }
   }
 
   /** Every open instance of an arena, by instance number. */
@@ -227,6 +244,7 @@ export class RoomManager {
     if (!this.arenaAllowed(arenaId)) return null;
     const arena = (await this.arenas()).get(arenaId);
     if (!arena || !arena.enabled) return null;
+    if (this.underfunded.has(arenaId)) return null;
     if (this.arenaInstances(arenaId).length === 0 && !this.vaultCovers(arenaId, arena)) return null;
     let best: Room | null = null;
     for (const r of this.arenaInstances(arenaId)) {
@@ -272,6 +290,7 @@ export class RoomManager {
     try {
       for (const [id, a] of await this.arenas()) {
         if (!a.enabled || !this.arenaAllowed(id)) continue;
+        if (this.underfunded.has(id)) continue;
         if (this.arenaInstances(id).length === 0 && !this.vaultCovers(id, a)) continue;
         if (!this.rooms.has(`arena-${id}-1`)) this.createArenaInstance(id, a);
       }

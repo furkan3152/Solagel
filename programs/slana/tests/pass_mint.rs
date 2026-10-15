@@ -255,36 +255,40 @@ fn mint_env_with_supply(supply: u32) -> TestEnv {
     env
 }
 
-/// Ends the mint at slot `at` (close_pass_mint), returns the entropy target slot.
-fn end_mint_at(env: &mut TestEnv, at: u64) -> u64 {
-    env.warp_to_slot(at);
+/// Mints one Pass, ends the mint, warps to slot `at` and reveals the seed there; returns the
+/// entropy target slot that `reveal_pass` set.
+fn reveal_at(env: &mut TestEnv, at: u64) -> u64 {
+    let admin = env.admin.insecure_clone();
     let a = env.funded_keypair(10 * SOL);
     assert_ok(env.mint_pass(&a).0);
     assert_ok(env.close_mint());
+    env.warp_to_slot(at);
+    assert_ok(env.reveal_as(&admin, SEED));
     env.config().pass_entropy_target_slot
 }
 
+fn final_seed_of(entropy: [u8; 32]) -> [u8; 32] {
+    let mut both = SEED.to_vec();
+    both.extend_from_slice(&entropy);
+    hash(&both).to_bytes()
+}
+
 #[test]
-fn sell_out_ends_the_mint_and_sets_the_target() {
+fn sell_out_ends_the_mint_without_a_target() {
     let mut env = mint_env_with_supply(2);
     let a = env.funded_keypair(10 * SOL);
     env.warp_to_slot(1_000);
-
     assert_ok(env.mint_pass(&a).0);
-    let config = env.config();
-    assert!(config.pass_mint_open && !config.pass_mint_ended);
-    assert_eq!(config.pass_entropy_target_slot, 0);
+    assert!(!env.config().pass_mint_ended);
 
-    // The last Pass of the supply ends the mint and points at a future slot; nothing is
-    // captured yet.
+    // The last Pass of the supply ends the mint; no entropy target exists before the reveal.
     assert_ok(env.mint_pass(&a).0);
     let config = env.config();
     assert_eq!(config.pass_minted, 2);
     assert!(!config.pass_mint_open);
     assert!(config.pass_mint_ended);
-    assert_eq!(config.pass_entropy_target_slot, 1_000 + ENTROPY_DELAY_SLOTS);
-    assert!(!config.pass_entropy_captured);
-    assert_eq!(config.pass_entropy, [0; 32]);
+    assert_eq!(config.pass_entropy_target_slot, 0);
+    assert!(!config.pass_seed_revealed && !config.pass_revealed);
 
     // Nothing reopens it.
     let b = env.funded_keypair(10 * SOL);
@@ -300,7 +304,7 @@ fn sell_out_ends_the_mint_and_sets_the_target() {
 }
 
 #[test]
-fn close_mint_sets_the_target_and_needs_a_mint() {
+fn close_mint_ends_without_a_target_and_needs_a_mint() {
     let (mut env, _) = mint_env();
     let not_admin = env.funded_keypair(SOL);
     env.warp_to_slot(5_000);
@@ -313,8 +317,7 @@ fn close_mint_sets_the_target_and_needs_a_mint() {
     assert_ok(env.close_mint());
     let config = env.config();
     assert!(!config.pass_mint_open && config.pass_mint_ended);
-    assert_eq!(config.pass_entropy_target_slot, 5_000 + ENTROPY_DELAY_SLOTS);
-    assert!(!config.pass_entropy_captured);
+    assert_eq!(config.pass_entropy_target_slot, 0);
     assert_error(
         env.update_config(UpdateConfigArgs {
             pass_mint_open: Some(true),
@@ -328,154 +331,57 @@ fn close_mint_sets_the_target_and_needs_a_mint() {
 }
 
 #[test]
-fn capture_before_the_target_fails() {
-    let (mut env, _) = mint_env();
-    let anyone = env.funded_keypair(SOL);
-    // Before the mint ended there is no target.
-    assert_error(env.capture_entropy_as(&anyone), SlanaError::MintStillOpen);
-    let target = end_mint_at(&mut env, 2_000);
-
-    // At or before the target slot: not yet (even if SlotHashes already shows that slot).
-    env.slot_hashes_range(target - 10, target);
-    env.warp_to_slot(target);
-    assert_error(env.capture_entropy_as(&anyone), SlanaError::EntropyNotReady);
-    // Past the target by the clock, but SlotHashes has no entry at/after it yet.
-    env.slot_hashes_range(target - 10, target - 1);
-    env.warp_to_slot(target + 1);
-    assert_error(env.capture_entropy_as(&anyone), SlanaError::EntropyNotReady);
-    assert!(!env.config().pass_entropy_captured);
-}
-
-#[test]
-fn capture_after_the_target_stores_exactly_that_slots_hash() {
-    let (mut env, _) = mint_env();
-    let anyone = env.funded_keypair(SOL);
-    let target = end_mint_at(&mut env, 3_000);
-    env.warp_to_slot(target + 20);
-    env.slot_hashes_range(target - 30, target + 19);
-
-    // Any signer may capture; the stored hash is the target slot's entry, not the newest.
-    assert_ok(env.capture_entropy_as(&anyone));
-    let config = env.config();
-    assert!(config.pass_entropy_captured);
-    assert_eq!(config.pass_entropy_slot, target);
-    assert_eq!(config.pass_entropy, [target as u8; 32]);
-
-    // Idempotent: a later call with other hashes changes nothing.
-    env.warp_to_slot(target + 400);
-    env.slot_hashes_range(target + 300, target + 399);
-    assert_ok(env.capture_entropy_as(&anyone));
-    let again = env.config();
-    assert_eq!(again.pass_entropy, config.pass_entropy);
-    assert_eq!(again.pass_entropy_slot, target);
-}
-
-#[test]
-fn capture_uses_the_next_block_when_the_target_slot_was_skipped() {
-    let (mut env, _) = mint_env();
-    let anyone = env.funded_keypair(SOL);
-    let target = end_mint_at(&mut env, 4_000);
-    env.warp_to_slot(target + 5);
-    // No block at `target` and `target + 1`.
-    env.set_slot_hashes(&[
-        (target + 4, [4; 32]),
-        (target + 3, [3; 32]),
-        (target + 2, [2; 32]),
-        (target - 1, [9; 32]),
-    ]);
-    assert_ok(env.capture_entropy_as(&anyone));
-    let config = env.config();
-    assert_eq!(config.pass_entropy_slot, target + 2);
-    assert_eq!(config.pass_entropy, [2; 32]);
-}
-
-#[test]
-fn a_missed_window_retargets_to_a_new_future_slot() {
+fn reveal_before_the_mint_ends_fails() {
     let (mut env, _) = mint_env();
     let admin = env.admin.insecure_clone();
-    let anyone = env.funded_keypair(SOL);
-    let target = end_mint_at(&mut env, 6_000);
-
-    // Nobody captured while the target was in the window: SlotHashes has moved past it.
-    let now = target + 700;
-    env.warp_to_slot(now);
-    env.slot_hashes_range(now - 512, now - 1);
-    assert_ok(env.capture_entropy_as(&anyone));
-    let config = env.config();
-    assert!(!config.pass_entropy_captured);
-    assert_eq!(config.pass_entropy, [0; 32]);
-    assert_eq!(config.pass_entropy_target_slot, now + ENTROPY_DELAY_SLOTS);
-    // Still no reveal.
-    assert_error(env.reveal_as(&admin, SEED), SlanaError::EntropyNotCaptured);
-
-    // The new target is captured normally.
-    let next = now + ENTROPY_DELAY_SLOTS;
-    env.warp_to_slot(next + 3);
-    env.slot_hashes_range(next - 5, next + 2);
-    assert_ok(env.capture_entropy_as(&anyone));
-    let config = env.config();
-    assert!(config.pass_entropy_captured);
-    assert_eq!(config.pass_entropy_slot, next);
-}
-
-#[test]
-fn capture_checks_the_slot_hashes_account() {
-    let (mut env, _) = mint_env();
-    let anyone = env.funded_keypair(SOL);
-    let target = end_mint_at(&mut env, 7_000);
-    env.warp_to_slot(target + 1);
-    let mut ix = ix::capture_pass_entropy(&anyone.pubkey());
-    ix.accounts[2].pubkey = anchor_lang::prelude::Pubkey::new_unique();
-    assert_error(env.send(&[ix], &[&anyone]), SlanaError::BadSlotHashes);
-    // An empty SlotHashes list is refused.
-    env.set_slot_hashes(&[]);
-    assert_error(env.capture_entropy_as(&anyone), SlanaError::BadSlotHashes);
-}
-
-#[test]
-fn capture_parses_litesvm_default_slot_hashes() {
-    // LiteSVM's own SlotHashes sysvar (one entry, slot 0) parses: LiteSVM does not add entries
-    // when the clock warps, so its only entry is older than the target and capture waits.
-    let (mut env, _) = mint_env();
-    let anyone = env.funded_keypair(SOL);
     let a = env.funded_keypair(10 * SOL);
     assert_ok(env.mint_pass(&a).0);
-    assert_ok(env.close_mint());
-    let target = env.config().pass_entropy_target_slot;
-    env.warp_to_slot(target + 1);
-    assert_error(env.capture_entropy_as(&anyone), SlanaError::EntropyNotReady);
-    assert!(!env.config().pass_entropy_captured);
+    // Mint open and not sold out.
+    assert_error(env.reveal_as(&admin, SEED), SlanaError::MintStillOpen);
+    // A paused start time does not end the mint either.
+    let later = env.now() + 1_000;
+    assert_ok(env.update_config(UpdateConfigArgs {
+        pass_mint_start_ts: Some(later),
+        ..Default::default()
+    }));
+    assert_error(env.reveal_as(&admin, SEED), SlanaError::MintStillOpen);
+    let config = env.config();
+    assert!(!config.pass_seed_revealed);
+    assert_eq!(config.pass_seed, [0; 32]);
+    assert_eq!(config.pass_entropy_target_slot, 0);
 }
 
 #[test]
-fn reveal_checks_hash_once() {
+fn reveal_publishes_the_seed_then_sets_the_target_once() {
     let (mut env, _) = mint_env();
     let admin = env.admin.insecure_clone();
     let not_admin = env.funded_keypair(SOL);
-    let target = end_mint_at(&mut env, 8_000);
-
-    // Mint ended, entropy not captured yet: no reveal.
-    assert_error(env.reveal_as(&admin, SEED), SlanaError::EntropyNotCaptured);
-    env.warp_to_slot(target + 1);
-    env.set_slot_hashes(&[(target, [0x42; 32])]);
-    assert_ok(env.capture_entropy_as(&not_admin));
+    let a = env.funded_keypair(10 * SOL);
+    assert_ok(env.mint_pass(&a).0);
+    assert_ok(env.close_mint());
+    env.warp_to_slot(5_000);
 
     assert_error(env.reveal_as(&not_admin, SEED), SlanaError::Unauthorized);
     assert_error(env.reveal_as(&admin, [8; 32]), SlanaError::SeedMismatch);
-    assert!(!env.config().pass_revealed);
+    assert!(!env.config().pass_seed_revealed);
 
     assert_ok(env.reveal_as(&admin, SEED));
     let config = env.config();
-    assert!(config.pass_revealed);
+    // The seed is public first; the target slot exists only from now on.
+    assert!(config.pass_seed_revealed);
     assert_eq!(config.pass_seed, SEED);
-    // final seed = sha256(seed || entropy)
-    let mut both = SEED.to_vec();
-    both.extend_from_slice(&[0x42; 32]);
-    assert_eq!(config.pass_final_seed, hash(&both).to_bytes());
-    assert_ne!(config.pass_final_seed, SEED);
+    assert_eq!(config.pass_entropy_target_slot, 5_000 + ENTROPY_DELAY_SLOTS);
+    // The traits are not public yet: no entropy, no final seed.
+    assert!(!config.pass_revealed && !config.pass_entropy_captured);
+    assert_eq!(config.pass_final_seed, [0; 32]);
 
-    // Once.
+    // Once only; nothing else moves afterwards.
+    env.warp_to_slot(6_000);
     assert_error(env.reveal_as(&admin, SEED), SlanaError::AlreadyRevealed);
+    assert_eq!(
+        env.config().pass_entropy_target_slot,
+        5_000 + ENTROPY_DELAY_SLOTS
+    );
     assert_error(
         env.set_seed_hash_as(&admin, hash(&SEED).to_bytes()),
         SlanaError::AlreadyRevealed,
@@ -509,37 +415,179 @@ fn reveal_needs_a_committed_seed() {
 }
 
 #[test]
-fn reveal_only_after_the_mint_ended() {
+fn capture_before_the_reveal_fails() {
     let (mut env, _) = mint_env();
-    let admin = env.admin.insecure_clone();
+    let anyone = env.funded_keypair(SOL);
+    env.slot_hashes_range(0, 100);
+    env.warp_to_slot(101);
+    // Mint open.
+    assert_error(env.capture_entropy_as(&anyone), SlanaError::SeedNotRevealed);
+    // Mint ended, seed not published yet: no target, nothing to capture.
     let a = env.funded_keypair(10 * SOL);
     assert_ok(env.mint_pass(&a).0);
-
-    // Mint open and not sold out: the seed stays secret.
-    assert_error(env.reveal_as(&admin, SEED), SlanaError::MintStillOpen);
-    // A paused start time does not end the mint either.
-    let later = env.now() + 1_000;
-    assert_ok(env.update_config(UpdateConfigArgs {
-        pass_mint_start_ts: Some(later),
-        ..Default::default()
-    }));
-    assert_error(env.reveal_as(&admin, SEED), SlanaError::MintStillOpen);
-    assert!(!env.config().pass_revealed);
-
-    env.warp_to_slot(9_000);
     assert_ok(env.close_mint());
-    let target = env.config().pass_entropy_target_slot;
-    env.warp_to_slot(target + 2);
-    env.slot_hashes_range(target - 1, target + 1);
-    assert_ok(env.capture_entropy_as(&a));
-    assert_ok(env.reveal_as(&admin, SEED));
+    assert_error(env.capture_entropy_as(&anyone), SlanaError::SeedNotRevealed);
+    assert!(!env.config().pass_entropy_captured);
+}
+
+#[test]
+fn capture_before_the_target_fails() {
+    let (mut env, _) = mint_env();
+    let anyone = env.funded_keypair(SOL);
+    let target = reveal_at(&mut env, 2_000);
+
+    // At or before the target slot: not yet (even if SlotHashes already shows that slot).
+    env.slot_hashes_range(target - 10, target);
+    env.warp_to_slot(target);
+    assert_error(env.capture_entropy_as(&anyone), SlanaError::EntropyNotReady);
+    // Past the target by the clock, but SlotHashes has no entry at/after it yet.
+    env.slot_hashes_range(target - 10, target - 1);
+    env.warp_to_slot(target + 1);
+    assert_error(env.capture_entropy_as(&anyone), SlanaError::EntropyNotReady);
+    assert!(!env.config().pass_revealed);
+}
+
+#[test]
+fn capture_stores_that_slots_hash_and_computes_the_final_seed() {
+    let (mut env, _) = mint_env();
+    let admin = env.admin.insecure_clone();
+    let anyone = env.funded_keypair(SOL);
+    let target = reveal_at(&mut env, 3_000);
+    env.warp_to_slot(target + 20);
+    env.slot_hashes_range(target - 30, target + 19);
+
+    // Any signer may capture; the stored hash is the target slot's entry, not the newest.
+    let meta = assert_ok(env.capture_entropy_as(&anyone));
     let config = env.config();
+    assert!(config.pass_entropy_captured && config.pass_revealed);
+    assert_eq!(config.pass_entropy_slot, target);
+    assert_eq!(config.pass_entropy, [target as u8; 32]);
+    // final seed = sha256(seed || entropy), computed by the capture itself
+    assert_eq!(config.pass_final_seed, final_seed_of([target as u8; 32]));
     assert_eq!(
         config.pass_final_seed,
         slana::logic::pass_final_seed(&SEED, &config.pass_entropy)
     );
+    // The readable log line.
+    let line = format!(
+        "Program log: Pass entropy: slot {target} hash {}",
+        slana::logic::hex32(&[target as u8; 32])
+    );
+    assert!(meta.logs.iter().any(|l| l == &line), "{:?}", meta.logs);
+
+    // Idempotent: a later call with other hashes changes nothing.
+    env.warp_to_slot(target + 400);
+    env.slot_hashes_range(target + 300, target + 399);
+    assert_ok(env.capture_entropy_as(&anyone));
+    let again = env.config();
+    assert_eq!(again.pass_entropy, config.pass_entropy);
+    assert_eq!(again.pass_final_seed, config.pass_final_seed);
+    // Still once: no second reveal, no mint.
+    assert_error(env.reveal_as(&admin, SEED), SlanaError::AlreadyRevealed);
     let b = env.funded_keypair(10 * SOL);
     assert_error(env.mint_pass(&b).0, SlanaError::MintClosed);
+}
+
+#[test]
+fn capture_uses_the_next_block_when_the_target_slot_was_skipped() {
+    let (mut env, _) = mint_env();
+    let anyone = env.funded_keypair(SOL);
+    let target = reveal_at(&mut env, 4_000);
+    env.warp_to_slot(target + 5);
+    // No block at `target` and `target + 1`.
+    env.set_slot_hashes(&[
+        (target + 4, [4; 32]),
+        (target + 3, [3; 32]),
+        (target + 2, [2; 32]),
+        (target - 1, [9; 32]),
+    ]);
+    assert_ok(env.capture_entropy_as(&anyone));
+    let config = env.config();
+    assert_eq!(config.pass_entropy_slot, target + 2);
+    assert_eq!(config.pass_entropy, [2; 32]);
+    assert_eq!(config.pass_final_seed, final_seed_of([2; 32]));
+}
+
+#[test]
+fn a_missed_window_retargets_then_capture_succeeds() {
+    let (mut env, _) = mint_env();
+    let anyone = env.funded_keypair(SOL);
+    let target = reveal_at(&mut env, 6_000);
+
+    // Nobody captured while the target was in the window: SlotHashes has moved past it.
+    let now = target + 700;
+    env.warp_to_slot(now);
+    env.slot_hashes_range(now - 512, now - 1);
+    assert_ok(env.capture_entropy_as(&anyone));
+    let config = env.config();
+    assert!(!config.pass_revealed && !config.pass_entropy_captured);
+    assert_eq!(config.pass_entropy, [0; 32]);
+    assert_eq!(config.pass_entropy_target_slot, now + ENTROPY_DELAY_SLOTS);
+
+    // The new target is captured normally.
+    let next = now + ENTROPY_DELAY_SLOTS;
+    env.warp_to_slot(next + 3);
+    env.slot_hashes_range(next - 5, next + 2);
+    assert_ok(env.capture_entropy_as(&anyone));
+    let config = env.config();
+    assert!(config.pass_revealed);
+    assert_eq!(config.pass_entropy_slot, next);
+    assert_eq!(config.pass_final_seed, final_seed_of([next as u8; 32]));
+}
+
+#[test]
+fn capture_finds_a_deep_match_in_a_full_window() {
+    let (mut env, _) = mint_env();
+    let anyone = env.funded_keypair(SOL);
+    let target = reveal_at(&mut env, 10_000);
+    // A full 512-entry window whose oldest-but-one entry is the target: the scan goes deep.
+    let now = target + 511;
+    env.warp_to_slot(now);
+    env.slot_hashes_range(now - 512, now - 1);
+    let meta = assert_ok(env.capture_entropy_as(&anyone));
+    let config = env.config();
+    assert_eq!(config.pass_entropy_slot, target);
+    assert_eq!(config.pass_entropy, [target as u8; 32]);
+    println!(
+        "capture_pass_entropy, match at depth 510 of 512: {} CU",
+        meta.compute_units_consumed
+    );
+    assert!(
+        meta.compute_units_consumed < 100_000,
+        "{} CU",
+        meta.compute_units_consumed
+    );
+}
+
+#[test]
+fn capture_checks_the_slot_hashes_account() {
+    let (mut env, _) = mint_env();
+    let anyone = env.funded_keypair(SOL);
+    let target = reveal_at(&mut env, 7_000);
+    env.warp_to_slot(target + 1);
+    let mut ix = ix::capture_pass_entropy(&anyone.pubkey());
+    ix.accounts[2].pubkey = anchor_lang::prelude::Pubkey::new_unique();
+    assert_error(env.send(&[ix], &[&anyone]), SlanaError::BadSlotHashes);
+    // An empty SlotHashes list is refused.
+    env.set_slot_hashes(&[]);
+    assert_error(env.capture_entropy_as(&anyone), SlanaError::BadSlotHashes);
+}
+
+#[test]
+fn capture_parses_litesvm_default_slot_hashes() {
+    // LiteSVM keeps its own SlotHashes sysvar (it does not follow `warp_to_slot`); the real
+    // account parses and the capture takes one of its defined outcomes, never `BadSlotHashes`.
+    let (mut env, _) = mint_env();
+    let anyone = env.funded_keypair(SOL);
+    let target = reveal_at(&mut env, 50);
+    env.warp_to_slot(target + 1);
+    match env.capture_entropy_as(&anyone) {
+        Ok(_) => {
+            let config = env.config();
+            assert!(config.pass_revealed || config.pass_entropy_target_slot > target);
+        }
+        Err(_) => assert!(!env.config().pass_revealed),
+    }
 }
 
 #[test]

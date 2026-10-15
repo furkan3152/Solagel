@@ -123,6 +123,11 @@ export interface UpdateArenaParams {
 
 export interface JoinArenaParams extends TokenAccounts {
   arenaId: number;
+  /**
+   * The fee rate (bps) the player was shown: the program refuses the join (`FeeAboveLimit`)
+   * if the rate it fixes into the session (`passFeeBps` with a Pass, else `feeBps`) is higher.
+   */
+  maxFeeBps: number;
   /** Player's game-token account (default: their ATA). */
   playerToken?: Address;
 }
@@ -229,6 +234,12 @@ function readOnlyWallet(): ProviderWallet {
 }
 
 export type SlanaInstructions = ReturnType<typeof createInstructionBuilders>;
+
+/** A u16 basis-point bound (`maxFeeBps`). */
+function checkBps(value: number): number {
+  if (!Number.isInteger(value) || value < 0 || value > 0xffff) throw new RangeError(`maxFeeBps must be a u16, got ${value}`);
+  return value;
+}
 
 function bytes32(value: Uint8Array | readonly number[], what: string): number[] {
   if (value.length !== 32) throw new RangeError(`${what} must be 32 bytes, got ${value.length}`);
@@ -393,7 +404,7 @@ function createInstructionBuilders(program: Program<Slana>, programId: PublicKey
     /** Pays `entryFee` tokens into the arena vault (and the settle deposit in lamports). */
     joinArena(player: Address, p: JoinArenaParams): Promise<TransactionInstruction> {
       return program.methods
-        .joinArena()
+        .joinArena(checkBps(p.maxFeeBps))
         .accountsPartial({
           player: toPublicKey(player),
           config: config(),
@@ -411,7 +422,7 @@ function createInstructionBuilders(program: Program<Slana>, programId: PublicKey
     /** Like `joinArena`, backed by a Slana Pass (lower fee, season points); locks `passLock(asset)`. */
     joinArenaWithPass(player: Address, p: JoinArenaWithPassParams): Promise<TransactionInstruction> {
       return program.methods
-        .joinArenaWithPass()
+        .joinArenaWithPass(checkBps(p.maxFeeBps))
         .accountsPartial({
           player: toPublicKey(player),
           config: config(),

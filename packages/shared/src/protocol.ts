@@ -146,7 +146,15 @@ export interface PassStatus {
   mintOpen: boolean;
   /** Unix seconds; the mint opens at this time. */
   mintStartTs: number;
+  /** The traits are public (`capture_pass_entropy` stored the final seed). */
   revealed: boolean;
+  /**
+   * The admin published the seed (`reveal_pass`) and the entropy target slot is set; the
+   * reveal completes when anyone captures that slot's hash. Absent on old servers.
+   */
+  seedRevealed?: boolean;
+  /** Slot whose hash completes the reveal (0 before `reveal_pass`). */
+  entropyTargetSlot?: number;
   /** Final trait seed `Config.pass_final_seed` = sha256(admin seed || entropy), hex, published at reveal (null before). `passTraits(seed, n, supply)`. */
   seed: string | null;
 }

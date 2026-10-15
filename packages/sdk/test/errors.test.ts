@@ -22,7 +22,9 @@ describe('programErrorCode / describeError', () => {
     expect(SlanaErrorCode.SeedLocked).toBe(6041);
     expect(SlanaErrorCode.MintStillOpen).toBe(6042);
     expect(describeError({ code: 6042, msg: 'Pass mint is still open' }).name).toBe('MintStillOpen');
-    expect([SlanaErrorCode.MintEnded, SlanaErrorCode.SupplyLocked, SlanaErrorCode.UseCloseMint, SlanaErrorCode.BadSlotHashes, SlanaErrorCode.NothingMinted, SlanaErrorCode.EntropyNotReady, SlanaErrorCode.EntropyNotCaptured]).toEqual([6043, 6044, 6045, 6046, 6047, 6048, 6049]);
+    expect([SlanaErrorCode.MintEnded, SlanaErrorCode.SupplyLocked, SlanaErrorCode.UseCloseMint, SlanaErrorCode.BadSlotHashes, SlanaErrorCode.NothingMinted, SlanaErrorCode.EntropyNotReady, SlanaErrorCode.EntropyNotCaptured, SlanaErrorCode.SeedNotRevealed, SlanaErrorCode.FeeAboveLimit]).toEqual([6043, 6044, 6045, 6046, 6047, 6048, 6049, 6050, 6051]);
+    // deprecated but kept: later codes keep their numbers
+    expect(SlanaErrorCode.MintSoldOut).toBe(6027);
     expect(describeError({ code: 6022, msg: 'x' }).name).toBe('PassRequired');
   });
 

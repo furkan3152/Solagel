@@ -98,6 +98,7 @@ export function fakeConfig(chain: ChainStatus, pass: PassStatus | null = chain.p
     // the fake publishes only a trait seed: it stands for the final seed
     passSeed: pass?.seed ?? null,
     passRevealed: pass?.revealed ?? false,
+    passSeedRevealed: pass?.revealed ?? false,
     passEntropyTargetSlot: 0,
     passEntropyCaptured: !!pass && !pass.mintOpen && pass.minted > 0,
     passEntropy: pass && !pass.mintOpen && pass.minted > 0 ? 'e0'.repeat(32) : null,

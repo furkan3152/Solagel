@@ -93,14 +93,16 @@ pub mod slana {
 
     // ----- stake arenas -------------------------------------------------------------------
 
-    /// Pays the entry fee into the arena vault and opens a session (no Pass).
-    pub fn join_arena(ctx: Context<JoinArena>) -> Result<()> {
-        instructions::join_arena::handle_join_arena(ctx)
+    /// Pays the entry fee into the arena vault and opens a session (no Pass). Fails with
+    /// `FeeAboveLimit` if the fee rate fixed into the session exceeds `max_fee_bps` (the rate
+    /// the player was shown).
+    pub fn join_arena(ctx: Context<JoinArena>, max_fee_bps: u16) -> Result<()> {
+        instructions::join_arena::handle_join_arena(ctx, max_fee_bps)
     }
 
     /// Like `join_arena`, backed by a Slana Pass that is locked until the session closes.
-    pub fn join_arena_with_pass(ctx: Context<JoinArenaWithPass>) -> Result<()> {
-        instructions::join_arena::handle_join_arena_with_pass(ctx)
+    pub fn join_arena_with_pass(ctx: Context<JoinArenaWithPass>, max_fee_bps: u16) -> Result<()> {
+        instructions::join_arena::handle_join_arena_with_pass(ctx, max_fee_bps)
     }
 
     /// Server-signed cash-out of a stake session.
@@ -139,14 +141,15 @@ pub mod slana {
         instructions::close_pass_mint::handle_close_pass_mint(ctx)
     }
 
-    /// Permissionless: stores the trait entropy (hash of the first slot at or after the
-    /// target) once the target slot has passed, or re-targets if it left the window.
+    /// Permissionless: once the seed is public and the target slot has passed, stores the
+    /// entropy (hash of the first slot at or after the target) and the final seed, which
+    /// reveals the traits; re-targets if the target left the SlotHashes window.
     pub fn capture_pass_entropy(ctx: Context<CapturePassEntropy>) -> Result<()> {
         instructions::capture_pass_entropy::handle_capture_pass_entropy(ctx)
     }
 
     /// Publishes the Pass trait seed (checked against the committed hash), once, after the
-    /// mint ended; stores the final seed `sha256(seed || entropy)`.
+    /// mint ended, then sets the entropy target slot.
     pub fn reveal_pass(ctx: Context<RevealPass>, seed: [u8; 32]) -> Result<()> {
         instructions::reveal_pass::handle_reveal_pass(ctx, seed)
     }

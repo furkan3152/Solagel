@@ -15,6 +15,7 @@ import { CoinPortrait } from '../game/CoinPortrait';
 import { useTokenText } from '../lobby/useLobby';
 import { PageHead } from '../PageHead';
 import { Punch } from '../profile/SettingsPage';
+import { CompleteReveal } from './CompleteReveal';
 import { MintSheet } from './MintSheet';
 import { RevealAnimation } from './RevealAnimation';
 import { lookLine, rarityKey, traitRows } from './traitNames';
@@ -87,6 +88,7 @@ export function PassPage() {
       />
       <div className="pp-grid">
         <div className="pp-main">
+          {status?.collection && status.seedRevealed && !status.revealed && <CompleteReveal status={status} />}
           {!status?.collection ? (
             <p className="pp-empty">
               <Icon name="passport" size={28} />

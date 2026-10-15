@@ -41,6 +41,7 @@ export const SlanaErrorCode = {
   PassWrongCollection: 6024,
   PassInUse: 6025,
   MintClosed: 6026,
+  /** @deprecated Unreachable: selling out ends the mint, later mints fail with `MintClosed`. Kept for its code. */
   MintSoldOut: 6027,
   MintLimit: 6028,
   MintMinTokens: 6029,
@@ -64,6 +65,8 @@ export const SlanaErrorCode = {
   NothingMinted: 6047,
   EntropyNotReady: 6048,
   EntropyNotCaptured: 6049,
+  SeedNotRevealed: 6050,
+  FeeAboveLimit: 6051,
 } as const;
 
 export type SlanaErrorName = keyof typeof SlanaErrorCode;
@@ -122,6 +125,8 @@ const FRIENDLY: Record<SlanaErrorName, string> = {
   NothingMinted: 'No Pass has been minted yet.',
   EntropyNotReady: 'The Pass entropy slot has not passed yet; try again in a minute.',
   EntropyNotCaptured: 'The Pass entropy is not captured yet (capture-entropy).',
+  SeedNotRevealed: 'The Pass seed is not revealed yet; the reveal completes after it.',
+  FeeAboveLimit: 'The fee changed a moment ago and is now higher than shown. Nothing was charged; check the ticket again.',
 };
 
 /** Program errors by code (6000–6042). */

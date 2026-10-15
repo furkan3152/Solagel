@@ -119,7 +119,7 @@ pub struct JoinArenaWithPass<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handle_join_arena(ctx: Context<JoinArena>) -> Result<()> {
+pub fn handle_join_arena(ctx: Context<JoinArena>, max_fee_bps: u16) -> Result<()> {
     require!(!ctx.accounts.arena.requires_pass, SlanaError::PassRequired);
     let a = ctx.accounts;
     open_session(
@@ -136,10 +136,14 @@ pub fn handle_join_arena(ctx: Context<JoinArena>) -> Result<()> {
         },
         ctx.bumps.session,
         None,
+        max_fee_bps,
     )
 }
 
-pub fn handle_join_arena_with_pass(ctx: Context<JoinArenaWithPass>) -> Result<()> {
+pub fn handle_join_arena_with_pass(
+    ctx: Context<JoinArenaWithPass>,
+    max_fee_bps: u16,
+) -> Result<()> {
     let a = ctx.accounts;
     let asset = core_asset::read_core_asset(&a.pass_asset.to_account_info())?;
     require_keys_eq!(asset.owner, a.player.key(), SlanaError::PassNotOwned);
@@ -169,6 +173,7 @@ pub fn handle_join_arena_with_pass(ctx: Context<JoinArenaWithPass>) -> Result<()
         },
         ctx.bumps.session,
         Some(pass_asset),
+        max_fee_bps,
     )
 }
 
@@ -187,8 +192,20 @@ struct JoinAccounts<'a, 'info> {
 
 /// Checks the arena, takes the entry fee (tokens → vault) and the settle deposit
 /// (lamports → session), and fills in the session.
-fn open_session(a: JoinAccounts, session_bump: u8, pass_asset: Option<Pubkey>) -> Result<()> {
+fn open_session(
+    a: JoinAccounts,
+    session_bump: u8,
+    pass_asset: Option<Pubkey>,
+    max_fee_bps: u16,
+) -> Result<()> {
     require!(!a.config.paused, SlanaError::Paused);
+    // The fee on profit fixed into the session: never above what the player was shown.
+    let fee_bps = if pass_asset.is_some() {
+        a.config.pass_fee_bps
+    } else {
+        a.config.fee_bps
+    };
+    require!(fee_bps <= max_fee_bps, SlanaError::FeeAboveLimit);
     require!(a.arena.enabled, SlanaError::ArenaDisabled);
     require!(
         a.arena.open_sessions < a.arena.max_sessions,
@@ -258,11 +275,7 @@ fn open_session(a: JoinAccounts, session_bump: u8, pass_asset: Option<Pubkey>) -
     session.pass_asset = pass_asset.unwrap_or_default();
     session.settle_fee = settle_fee;
     // The fee on profit is fixed now; `settle_session` uses this snapshot, not the config.
-    session.fee_bps = if pass_asset.is_some() {
-        config.pass_fee_bps
-    } else {
-        config.fee_bps
-    };
+    session.fee_bps = fee_bps;
     session.bump = session_bump;
 
     emit!(ArenaJoined {
