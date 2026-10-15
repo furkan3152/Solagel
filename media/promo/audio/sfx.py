@@ -275,6 +275,24 @@ def book(gain=1.0):
     return x * gain
 
 
+def round_bell(gain=1.0):
+    """The round bell, after the game's own (apps/web/src/audio/sfx.ts): two strikes of a small
+    brass bell, inharmonic partials over a 659 Hz fundamental with a long ring."""
+    partials = ((1, 0.09, 2.2), (2.01, 0.05, 1.6), (2.42, 0.035, 1.2), (3.03, 0.025, 0.9), (4.17, 0.015, 0.6))
+    out = np.zeros(int(2.8 * SR))
+    for i, at in enumerate((0.0, 0.34)):
+        soft = 1.0 if i == 0 else 0.8
+        o = int(at * SR)
+        hit = bp(noise(0.03), 1800, 5400) * np.exp(-tvec(0.03) / 0.008) * 0.05 * soft
+        out[o:o + len(hit)] += hit
+        for ratio, g, dur in partials:
+            t = tvec(dur)
+            env = np.minimum(1, t / 0.004) * np.exp(-t / (dur * 0.28))
+            x = np.sin(2 * np.pi * 659 * ratio * t) * env * g * soft
+            out[o:o + len(x)] += x
+    return out / max(1e-9, np.max(np.abs(out))) * gain
+
+
 def make(cue):
     ty = cue["type"]
     d = cue.get("dur", 0)
@@ -342,6 +360,8 @@ def make(cue):
         return fire(d)
     if ty == "boing":
         return boing()
+    if ty == "bell":
+        return round_bell()
     raise ValueError(ty)
 
 
