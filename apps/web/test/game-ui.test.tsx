@@ -48,7 +48,7 @@ describe('format helpers', () => {
   });
 
   it('names rooms in the player language', () => {
-    expect(roomName(ARENA, 'tr')).toBe('Kuruş Gölü');
+    expect(roomName(ARENA, 'tr')).toBe('Penny Pond');
     expect(roomName({ ...ARENA, id: 'practice-rookie-2', mode: 'practice', league: 'rookie', arenaId: undefined }, 'tr')).toBe('Çaylak Gölü #2');
   });
 });

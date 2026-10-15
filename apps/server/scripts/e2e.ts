@@ -678,7 +678,6 @@ async function main(): Promise<void> {
   );
 }
 
-/** The `capture_pass_entropy` transaction among the config's recent ones, paid by the server authority. */
 /**
  * The capture transaction is found by its instruction discriminator, not by log text: the
  * deployed (Pinocchio) program does not print Anchor's `Instruction: …` log lines.

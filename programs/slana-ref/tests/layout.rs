@@ -796,12 +796,12 @@ fn stake_flow_writes_reference_layouts_and_events() {
 
     let alice = env.funded_keypair(10 * SOL);
     let player = alice.pubkey();
-    let meta = assert_ok(env.register(&alice, "Çağrı🚀", 5));
+    let meta = assert_ok(env.register(&alice, "Renée🚀", 5));
     assert_event(
         &meta,
         &PlayerRegistered {
             owner: player,
-            name: "Çağrı🚀".into(),
+            name: "Renée🚀".into(),
         },
     );
     let profile_key = profile_pda(&player);

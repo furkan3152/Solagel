@@ -1,4 +1,4 @@
-// A deliberately small, friendly filter: masks common slurs/profanity (EN/TR).
+// A deliberately small, friendly filter: masks common slurs/profanity.
 const WORDS = [
   'fuck',
   'shit',
@@ -10,19 +10,6 @@ const WORDS = [
   'retard',
   'whore',
   'slut',
-  'amk',
-  'aq',
-  'orospu',
-  'piç',
-  'sik',
-  'yarrak',
-  'yarak',
-  'göt',
-  'pezevenk',
-  'kahpe',
-  'ibne',
-  'amcık',
-  'gavat',
 ];
 
 const PATTERN = new RegExp(`(^|[^\\p{L}])(${WORDS.join('|')})(?=$|[^\\p{L}])`, 'giu');
