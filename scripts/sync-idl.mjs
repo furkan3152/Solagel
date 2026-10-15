@@ -76,7 +76,9 @@ if (existsSync(keypairPath)) {
     if (pubkey !== idl.address) {
       console.warn(
         `⚠ target/deploy/slana-keypair.json is ${pubkey} but the IDL says ${idl.address}.\n` +
-          '  Run `anchor keys sync && anchor build` and then this script again (this changes the program address).',
+          '  Normal on a fresh checkout (anchor build writes a random keypair); do not deploy with it\n' +
+          '  (scripts/deploy-lean.sh refuses it). Only to move Slana to a NEW program address: `anchor keys sync`,\n' +
+          '  update ID in programs/slana-lean/src/lib.rs, `anchor build`, then run this script again.',
       );
     }
   } catch {
