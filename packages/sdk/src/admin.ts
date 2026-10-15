@@ -15,6 +15,10 @@ import { Connection, Keypair, PublicKey, type Signer, type TransactionInstructio
 import {
   BPF_LOADER_UPGRADEABLE_ID,
   BPS,
+  DEFAULT_FEE_BPS,
+  DEFAULT_FEE_SPLIT_BPS,
+  DEFAULT_PASS_FEE_BPS,
+  DEFAULT_SETTLE_FEE_LAMPORTS,
   MAX_ARENA_SESSIONS,
   MAX_FEE_BPS,
   MAX_PASS_PER_WALLET,
@@ -40,8 +44,8 @@ import {
   type UpdateConfigParams,
 } from './index';
 
-/** Defaults from the v2 plan (all configurable). */
-const DEFAULTS = { feeBps: 500, passFeeBps: 200, split: [5_000, 3_000, 2_000] as const, settleFeeLamports: 20_000 };
+/** Defaults from the v2 plan (all configurable; also quoted by the player docs page). */
+const DEFAULTS = { feeBps: DEFAULT_FEE_BPS, passFeeBps: DEFAULT_PASS_FEE_BPS, split: DEFAULT_FEE_SPLIT_BPS, settleFeeLamports: DEFAULT_SETTLE_FEE_LAMPORTS };
 const DEFAULT_SEED_FILE = 'keys/pass-seed.json';
 
 const USAGE = `Slana admin CLI

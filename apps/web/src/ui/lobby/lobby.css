@@ -1804,3 +1804,51 @@
     transform: none;
   }
 }
+
+/* ── colophon: page footer with the player guide link ───────────────── */
+.kl-colophon {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 28px 0 22px;
+}
+.kl-colophon__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 24px;
+}
+.kl-colophon__name {
+  font-size: var(--t-label);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+.kl-colophon__link {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  min-height: 44px;
+  padding: 6px 2px;
+  color: var(--ink);
+  text-decoration: none;
+}
+.kl-colophon__label {
+  font-weight: 750;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+  text-decoration-color: var(--pink);
+}
+.kl-colophon__link:hover .kl-colophon__label {
+  color: var(--pink-text);
+}
+.kl-colophon__sub {
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.kl-root.is-phone .kl-colophon {
+  padding: 18px 0 16px;
+}
