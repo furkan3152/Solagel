@@ -13,15 +13,19 @@
  },
  {
   "id": "ticket",
-  "text": "Buy a ticket, and drop into a live room. It never closes."
+  "text": "Buy a ticket, and drop into a live round."
  },
  {
   "id": "play",
   "text": "Eat smaller players... Take what they carry... and grow."
  },
  {
-  "id": "cashout",
-  "text": "Cash out whenever you like. The fee only touches your profit."
+  "id": "rounds_a",
+  "text": "Five-minute rounds."
+ },
+ {
+  "id": "rounds_b",
+  "text": "Everyone still standing at the bell gets paid."
  },
  {
   "id": "bots",
@@ -41,6 +45,6 @@
  },
  {
   "id": "end",
-  "text": "Slana... Eat... Grow... Cash out."
+  "text": "Slana... Eat... Grow... Last the round."
  }
 ]
