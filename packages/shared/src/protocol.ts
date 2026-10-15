@@ -203,7 +203,7 @@ export interface ProfileSummary {
 export type JoinTarget = 'practice' | `private:${string}` | `arena:${number}`;
 
 export type ClientMessage =
-  | { t: 'hello'; v: number; lang?: string }
+  | { t: 'hello'; v: number }
   | { t: 'auth'; token: string }
   | { t: 'auth'; pubkey: string; message: string; signature: string }
   | { t: 'logout' }

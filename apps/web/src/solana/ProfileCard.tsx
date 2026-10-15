@@ -16,7 +16,7 @@ export function ProfileCard({ onEdit }: { onEdit?: () => void }) {
   const profile = useChainData((s) => s.profile);
   const passes = useChainData((s) => s.passes);
   const tok = useTokenText();
-  const nf = new Intl.NumberFormat(settings.lang === 'tr' ? 'tr-TR' : 'en-US');
+  const nf = new Intl.NumberFormat('en-US');
   const passNumber = passes.find((p) => p.asset === settings.passSkin)?.number ?? 0;
   const connected = wallet.connected && !!wallet.publicKey;
   const name = profile?.name ?? auth?.profile?.name ?? (settings.name || t('pf.guest'));

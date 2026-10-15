@@ -22,28 +22,17 @@ function Cta() {
 }
 
 describe('R20: lobby shows a server-blocked arena as under maintenance', () => {
-  it('flags the ticket and disables it (TR)', () => {
-    act(() => useUi.setState({ settings: { ...initial.settings, lang: 'tr' } }));
+  it('flags the ticket and disables it', () => {
     render(
       <Kb>
         <TicketList tickets={[practice, penny]} gates={gates} openTickets={[]} value="practice" onChange={() => {}} onActivate={() => {}} />
         <Cta />
       </Kb>,
     );
-    expect(screen.getByText('Bakımda')).toBeTruthy();
-    const ticket = screen.getAllByRole('radio').find((el) => el.textContent?.includes('Bakımda'))!;
+    expect(screen.getByText('Under maintenance')).toBeTruthy();
+    const ticket = screen.getAllByRole('radio').find((el) => el.textContent?.includes('Under maintenance'))!;
     expect(ticket.getAttribute('aria-disabled') === 'true' || (ticket as HTMLInputElement).disabled).toBe(true);
     // the big button cannot buy it
-    expect(screen.getByTestId('cta').textContent).toBe('Bakımda|Oda kontrol için kapalı; bilet satılmıyor|true');
-  });
-
-  it('uses the English label', () => {
-    act(() => useUi.setState({ settings: { ...initial.settings, lang: 'en' } }));
-    render(
-      <Kb>
-        <Cta />
-      </Kb>,
-    );
-    expect(screen.getByTestId('cta').textContent).toMatch(/^Under maintenance\|.*\|true$/);
+    expect(screen.getByTestId('cta').textContent).toBe('Under maintenance|This room is closed for a check; no tickets are sold|true');
   });
 });

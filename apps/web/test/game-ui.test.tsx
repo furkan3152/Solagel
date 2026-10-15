@@ -12,7 +12,7 @@ const STATS: DeathStats = { aliveMs: 94_000, finalMass: 0, maxMass: 640, foodEat
 const initial = useUi.getState();
 
 beforeEach(() => {
-  useUi.setState({ settings: { ...initial.settings, lang: 'tr' }, chain: { enabled: true, cluster: 'devnet', programId: null, rpcUrl: null, arenasEnabled: true, currentSeason: 1, token: { mint: 'M', symbol: '$SLANA', decimals: 6 }, pass: null } });
+  useUi.setState({ chain: { enabled: true, cluster: 'devnet', programId: null, rpcUrl: null, arenasEnabled: true, currentSeason: 1, token: { mint: 'M', symbol: '$SLANA', decimals: 6 }, pass: null } });
 });
 afterEach(() => {
   act(() => useUi.setState(initial, true));
@@ -41,15 +41,18 @@ describe('cash-out receipt numbers', () => {
 
 describe('format helpers', () => {
   it('signs token deltas with a real minus and no sign on zero', () => {
-    const tf = tokenFormat('tr', 6, '$SLANA');
-    expect(tf.signed(1250 * M)).toBe('+1.250');
-    expect(tf.signed(-1250 * M)).toBe('−1.250');
+    const tf = tokenFormat(6, '$SLANA');
+    expect(tf.signed(1250 * M)).toBe('+1,250');
+    expect(tf.signed(-1250 * M)).toBe('−1,250');
+    expect(tf.fmt(1500 * M, { compact: true })).toBe('1.5K');
     expect(tf.signed(-1)).toBe('0');
   });
 
-  it('names rooms in the player language', () => {
-    expect(roomName(ARENA, 'tr')).toBe('Penny Pond');
-    expect(roomName({ ...ARENA, id: 'practice-rookie-2', mode: 'practice', league: 'rookie', arenaId: undefined }, 'tr')).toBe('Çaylak Gölü #2');
+  it('names arenas and practice rooms', () => {
+    expect(roomName(ARENA)).toBe('Penny Pond');
+    expect(roomName({ ...ARENA, arenaId: 4, instance: 2 })).toBe('Whale Bay · 2');
+    expect(roomName({ ...ARENA, id: 'practice-rookie-2', mode: 'practice', league: 'rookie', arenaId: undefined })).toBe('Rookie Pond #2');
+    expect(roomName({ ...ARENA, id: 'practice-pro-1', mode: 'practice', league: 'pro', arenaId: undefined })).toBe('Pro Pond #1');
   });
 });
 
@@ -64,22 +67,22 @@ describe('emote stickers', () => {
 });
 
 describe('death sheet', () => {
-  it('stamps YENİLDİN, names the bot line and shows the value lost', () => {
+  it('stamps EATEN, names the bot line and shows the value lost', () => {
     useUi.setState({
       screen: 'dead',
       room: ARENA,
-      death: { stats: { ...STATS, valueLost: 1450 * M, byBot: true, lootSpilled: 1450 * M }, killer: 'Bot Kaya', killerSkin: 6 },
+      death: { stats: { ...STATS, valueLost: 1450 * M, byBot: true, lootSpilled: 1450 * M }, killer: 'Bot Rocky', killerSkin: 6 },
     });
     render(
       <Kb>
         <DeathSheet />
       </Kb>,
     );
-    expect(screen.getByRole('dialog', { name: 'Yenildin' })).toBeTruthy();
-    expect(screen.getByText('Bot · tokenlerin haritaya saçıldı')).toBeTruthy();
-    expect(screen.getByText('−1.450')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Yeni bilet/ })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Antrenman/ })).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: 'Eaten' })).toBeTruthy();
+    expect(screen.getByText('Bot · your tokens spilled across the map')).toBeTruthy();
+    expect(screen.getByText('−1,450')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /New ticket/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Practice/ })).toBeTruthy();
   });
 
   it('names the player who ate us', () => {
@@ -89,7 +92,7 @@ describe('death sheet', () => {
         <DeathSheet />
       </Kb>,
     );
-    expect(screen.getByText('Nakamoto seni yedi')).toBeTruthy();
+    expect(screen.getByText('Nakamoto ate you')).toBeTruthy();
   });
 });
 
@@ -107,21 +110,21 @@ describe('cash-out sheet', () => {
         <CashoutSheet />
       </Kb>,
     );
-    expect(screen.getByText('Giriş bedeli')).toBeTruthy();
-    expect(screen.getByText('+2.000')).toBeTruthy();
-    expect(screen.getByText('Kesinti %5')).toBeTruthy();
+    expect(screen.getByText('Entry fee')).toBeTruthy();
+    expect(screen.getByText('+2,000')).toBeTruthy();
+    expect(screen.getByText('Fee 5%')).toBeTruthy();
     expect(screen.getByText('≈ −100')).toBeTruthy();
-    expect(screen.getByRole('status').textContent).toContain("Solana'da ödeniyor");
+    expect(screen.getByRole('status').textContent).toContain('Settling on Solana');
     expect(screen.queryByRole('link')).toBeNull();
 
     // a settlement of another ticket (another arena / an earlier session) is ignored
     act(() => useUi.setState({ lastSettlement: { session: 'SessOther', arenaId: 2, signature: 'otherSig'.padEnd(88, 'y'), payout: 50 * M, fee: 0, net: 50 * M, at: Date.now() } }));
     expect(screen.queryByRole('link')).toBeNull();
-    expect(screen.getByRole('status').textContent).toContain("Solana'da ödeniyor");
+    expect(screen.getByRole('status').textContent).toContain('Settling on Solana');
 
     act(() => useUi.setState({ lastSettlement: { session: 'SessMine', arenaId: 1, signature: '5igSig'.padEnd(88, 'x'), payout: 3000 * M, fee: 100 * M, net: 2900 * M, at: Date.now() } }));
     expect(screen.getByText('−100')).toBeTruthy();
-    expect(screen.getByRole('link', { name: /İşlemi gör/ })).toBeTruthy();
-    expect(screen.queryByText("Solana'da ödeniyor")).toBeNull();
+    expect(screen.getByRole('link', { name: /View transaction/ })).toBeTruthy();
+    expect(screen.queryByText('Settling on Solana')).toBeNull();
   });
 });

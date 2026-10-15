@@ -1,4 +1,4 @@
-// Lobby and ticket-flow tour (Task 14): screenshots of the lobby (desktop / mobile, TR / EN,
+// Lobby and ticket-flow tour (Task 14): screenshots of the lobby (desktop / mobile,
 // paper / night), the ticket confirm sheet, the stamp-and-tear frame, the R10 payout CTA,
 // the PassInUse error, and the wallet / profile sheets.
 // Needs a dev server (pnpm dev) whose game server runs NODE_ENV=development DEV_FAKE_CHAIN=1:
@@ -27,13 +27,13 @@ const SEASON = {
   finalized: false,
   prizePool: 84_200 * M,
   entries: [
-    { player: 'P1', name: 'kuruşavcısı', skin: 3, points: 4210, bestScore: 9000 },
+    { player: 'P1', name: 'pennyhunter', skin: 3, points: 4210, bestScore: 9000 },
     { player: 'P2', name: 'Nakamoto', skin: 1, points: 3980, bestScore: 8800 },
-    { player: 'P3', name: 'Defne', skin: 4, points: 3120, bestScore: 7000 },
-    { player: 'P4', name: 'balina_koyu', skin: 6, points: 2400, bestScore: 6400 },
-    { player: 'P5', name: 'mürekkep', skin: 2, points: 1985, bestScore: 5000 },
+    { player: 'P3', name: 'Daphne', skin: 4, points: 3120, bestScore: 7000 },
+    { player: 'P4', name: 'whale_bay', skin: 6, points: 2400, bestScore: 6400 },
+    { player: 'P5', name: 'inkwell', skin: 2, points: 1985, bestScore: 5000 },
     { player: 'P6', name: 'riso', skin: 5, points: 1530, bestScore: 4100 },
-    { player: 'P7', name: 'gece pazarı', skin: 7, points: 990, bestScore: 2500 },
+    { player: 'P7', name: 'night market', skin: 7, points: 990, bestScore: 2500 },
   ],
   previous: null,
 };
@@ -113,21 +113,20 @@ async function installWallet(ctx, kp, autoConnect) {
   return address;
 }
 
-async function newPage({ viewport, mobile = false, lang = 'tr', theme = 'light', wallet = true, verified = true, pending = null, reduced = false }) {
+async function newPage({ viewport, mobile = false, theme = 'light', wallet = true, verified = true, pending = null, reduced = false }) {
   const ctx = await browser.newContext({
     viewport,
     deviceScaleFactor: mobile ? 2 : 1,
     isMobile: mobile,
     hasTouch: mobile,
-    locale: lang === 'en' ? 'en-US' : 'tr-TR',
+    locale: 'en-US',
     reducedMotion: reduced ? 'reduce' : 'no-preference',
   });
   await ctx.addInitScript(
     (s) => {
       const def = {
-        name: 'Defne',
+        name: 'Daphne',
         skin: 4,
-        lang: 'tr',
         theme: 'light',
         quality: 'high',
         sound: false,
@@ -140,7 +139,7 @@ async function newPage({ viewport, mobile = false, lang = 'tr', theme = 'light',
       };
       localStorage.setItem('slana.settings.v1', JSON.stringify({ ...def, ...s }));
     },
-    { lang, theme },
+    { theme },
   );
   await ctx.route('**/api/season', (r) => r.fulfill({ json: SEASON }));
   if (pending) await ctx.route('**/api/pending*', (r) => r.fulfill({ json: { pending } }));
@@ -180,18 +179,14 @@ async function pickTicket(page, key) {
 const cta = (page) => page.locator('.kl-cta').first();
 
 // ── lobby, all four prints ──
-for (const [k, viewport, mobile, lang, theme] of [
-  ['desktop-tr-paper', D, false, 'tr', 'light'],
-  ['desktop-en-night', D, false, 'en', 'dark'],
-  ['desktop-en-paper', D, false, 'en', 'light'],
-  ['desktop-tr-night', D, false, 'tr', 'dark'],
-  ['mobile-tr-paper', P, true, 'tr', 'light'],
-  ['mobile-en-night', P, true, 'en', 'dark'],
-  ['mobile-en-paper', P, true, 'en', 'light'],
-  ['mobile-tr-night', P, true, 'tr', 'dark'],
+for (const [k, viewport, mobile, theme] of [
+  ['desktop-paper', D, false, 'light'],
+  ['desktop-night', D, false, 'dark'],
+  ['mobile-paper', P, true, 'light'],
+  ['mobile-night', P, true, 'dark'],
 ]) {
   if (!want(`lobby-${k}`) && !want('lobby')) continue;
-  const { ctx, page } = await newPage({ viewport, mobile, lang, theme });
+  const { ctx, page } = await newPage({ viewport, mobile, theme });
   await shot(page, `lobby-${k}`);
   await ctx.close();
 }
@@ -209,14 +204,15 @@ if (want('guest')) {
 }
 
 // ── confirm sheet → stamp and tear → into the room ──
-for (const [k, viewport, mobile, lang, reduced] of [
-  ['desktop', D, false, 'tr', false],
-  ['mobile', P, true, 'tr', false],
-  ['desktop-en', D, false, 'en', false],
-  ['reduced', D, false, 'tr', true],
+for (const [k, viewport, mobile, theme, reduced] of [
+  ['desktop', D, false, 'light', false],
+  ['mobile', P, true, 'light', false],
+  ['desktop-night', D, false, 'dark', false],
+  ['mobile-night', P, true, 'dark', false],
+  ['reduced', D, false, 'light', true],
 ]) {
   if (!want(`ticket-${k}`) && !want('ticket')) continue;
-  const { ctx, page } = await newPage({ viewport, mobile, lang, reduced });
+  const { ctx, page } = await newPage({ viewport, mobile, theme, reduced });
   await pickTicket(page, 'arena:1');
   await cta(page).click();
   await page.waitForSelector('.tf-sheet', { timeout: 5000 });
@@ -263,7 +259,7 @@ if (want('frames')) {
   await ctx.close();
 }
 
-// ── death → "Yeni bilet" routes back into this arena's ticket ──
+// ── death → "New ticket" routes back into this arena's ticket ──
 if (want('newticket')) {
   const { ctx, page } = await newPage({ viewport: P, mobile: true });
   await pickTicket(page, 'arena:2');
@@ -344,13 +340,13 @@ if (want('sheets')) {
   await shot(page, 'wallet-sheet');
   await page.keyboard.press('Escape');
   await page.waitForTimeout(500);
-  await page.locator('.kl-tabs button', { hasText: 'Profil' }).click();
+  await page.locator('.kl-tabs button', { hasText: 'Profile' }).click();
   await page.waitForTimeout(500);
   await shot(page, 'tab-profile');
   await page.locator('.kl-tabs button', { hasText: 'Pass' }).click();
   await page.waitForTimeout(500);
   await shot(page, 'tab-pass');
-  await page.locator('.kl-tabs button', { hasText: 'Sıralama' }).click();
+  await page.locator('.kl-tabs button', { hasText: 'Ranks' }).click();
   await page.waitForTimeout(500);
   await shot(page, 'tab-ranks');
   await ctx.close();

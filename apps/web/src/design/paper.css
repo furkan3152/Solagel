@@ -1,4 +1,4 @@
-/* ─────────────────────────── Kâğıt Bilet · paper ───────────────────────────
+/* ─────────────────────────── Paper Ticket · paper ───────────────────────────
  * Base, utilities and component styles. Everything is scoped under `.kb` or a
  * `kb-` class so the legacy stylesheet and its markup are untouched (R3).
  * Utilities named by the spec (.paper, .halftone, .mono) are plain classes.

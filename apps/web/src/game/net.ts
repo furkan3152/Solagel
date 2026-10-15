@@ -18,7 +18,6 @@ export class Net {
   constructor(
     private readonly url: string,
     private readonly handlers: NetHandlers,
-    private readonly lang: () => string,
   ) {}
 
   connect(): void {
@@ -28,7 +27,7 @@ export class Net {
     this.ws = ws;
     ws.onopen = () => {
       this.retry = 0;
-      this.send({ t: 'hello', v: PROTOCOL_VERSION, lang: this.lang() });
+      this.send({ t: 'hello', v: PROTOCOL_VERSION });
       this.handlers.onOpen();
       this.pingTimer = window.setInterval(() => this.send({ t: 'ping', ts: performance.now() }), 2000);
     };

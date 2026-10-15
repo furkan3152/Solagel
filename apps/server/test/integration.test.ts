@@ -198,7 +198,7 @@ afterAll(async () => {
 describe('server over websocket', () => {
   it('handshake lists rooms and chain status', async () => {
     const c = await Client.connect(port);
-    c.send({ t: 'hello', v: PROTOCOL_VERSION, lang: 'tr' });
+    c.send({ t: 'hello', v: PROTOCOL_VERSION });
     const welcome = await c.wait('welcome');
     expect(welcome.rooms.some((r) => r.id === 'practice-rookie-1')).toBe(true);
     expect(welcome.rooms.some((r) => r.mode === 'arena' && r.arenaId === 1)).toBe(true);

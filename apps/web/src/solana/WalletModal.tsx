@@ -25,7 +25,6 @@ export function WalletModal() {
   const tokens = useChainData((s) => s.tokenBalance);
   const ataExists = useChainData((s) => s.ataExists);
   const auth = useUi((s) => s.auth);
-  const lang = useUi((s) => s.settings.lang);
   const cluster = useUi((s) => s.chain?.cluster ?? 'devnet');
   const tok = useTokenText();
   const [busy, setBusy] = useState(false);
@@ -89,7 +88,7 @@ export function WalletModal() {
             <div>
               <dt className="mono wl-cap">{t('wl.sol')}</dt>
               <dd>
-                <span className="wl-bal__mid">{lamports === null ? '…' : formatToken(lamports, 9, lang, { maxFrac: 4 })}</span>{' '}
+                <span className="wl-bal__mid">{lamports === null ? '…' : formatToken(lamports, 9, { maxFrac: 4 })}</span>{' '}
                 <span className="mono">SOL</span>
               </dd>
             </div>

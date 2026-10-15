@@ -15,13 +15,13 @@ describe('arena catalog', () => {
     expect(Object.keys(ARENA_META).map(Number)).toEqual(DEFAULT_ARENAS.map((a) => a.id));
     for (const a of DEFAULT_ARENAS) {
       const meta = arenaMeta(a.id);
-      expect(meta.name.en.length).toBeGreaterThan(0);
+      expect(meta.name.length).toBeGreaterThan(0);
       expect(meta.ink).toMatch(/^#[0-9A-F]{6}$/);
     }
   });
 
   it('names the tiers as in the design spec', () => {
-    expect(DEFAULT_ARENAS.map((a) => arenaMeta(a.id).name.en)).toEqual(['Penny Pond', 'Silver Creek', 'Gold Lake', 'Whale Bay']);
+    expect(DEFAULT_ARENAS.map((a) => arenaMeta(a.id).name)).toEqual(['Penny Pond', 'Silver Creek', 'Gold Lake', 'Whale Bay']);
   });
 
   it('gives every tier its own ink and keeps entry fees ascending', () => {
@@ -32,7 +32,7 @@ describe('arena catalog', () => {
 
   it('falls back to a generic ticket for unknown arena ids', () => {
     const meta = arenaMeta(77);
-    expect(meta.name).toEqual({ en: 'Arena #77', tr: 'Arena #77' });
+    expect(meta.name).toBe('Arena #77');
     expect(meta.ink).toMatch(/^#[0-9A-F]{6}$/);
   });
 });

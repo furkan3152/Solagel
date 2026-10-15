@@ -1,7 +1,7 @@
 // Pass office, newspaper standings and profile tour (Task 15): the Pass page (owned sealed / revealed,
 // the application form, a countdown, sold out), the mint sheet and its envelope, the seal break, the
 // standings (season with a claimable prize cheque, today, all time), the claim sheet, the profile and
-// settings, on desktop and mobile, TR / EN, paper / night.
+// settings, on desktop and mobile, paper / night.
 // Needs a dev server (pnpm dev) whose game server runs NODE_ENV=development DEV_FAKE_CHAIN=1 (and,
 // for the marketplace links, MARKET_URL_*): the web dev build then uses its fake chain stand-in
 // (src/solana/devFake.ts), so nothing is signed. A Wallet Standard test wallet is injected.
@@ -20,18 +20,18 @@ const exe = ['/opt/pw-browsers/chromium-1194/chrome-linux/chrome', process.env.C
 const browser = await chromium.launch({ executablePath: exe, args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const logs = [];
 const M = 1_000_000;
-const NAMES = ['kuruşavcısı', 'Nakamoto', 'Selin', 'balina_koyu', 'mürekkep', 'riso', 'gece pazarı', 'Ayşe', 'tokyo_drift', 'hardal', 'Mert'];
+const NAMES = ['pennyhunter', 'Nakamoto', 'Selene', 'whale_bay', 'inkwell', 'riso', 'night market', 'Alice', 'tokyo_drift', 'mustard', 'Matt'];
 const fakeKey = (i) => bs58.encode(Uint8Array.from({ length: 32 }, (_, j) => (i * 37 + j * 11) % 256));
 const now = () => Math.floor(Date.now() / 1000);
 
 /** A season where the test wallet is 5th now and finished 2nd last season (prize claimable). */
 function seasonFor(me, { claimed = false } = {}) {
   const entries = NAMES.map((name, i) => ({ player: fakeKey(i + 1), name, skin: i % 8, points: Math.round(4210 * Math.pow(0.86, i)), bestScore: 9000 - i * 500 }));
-  entries.splice(4, 0, { player: me, name: 'Defne', skin: 4, points: 2290, bestScore: 6100 });
+  entries.splice(4, 0, { player: me, name: 'Daphne', skin: 4, points: 2290, bestScore: 6100 });
   entries.splice(3, 1);
   entries.sort((a, b) => b.points - a.points);
   const prev = NAMES.slice(3).concat(NAMES.slice(0, 2)).map((name, i) => ({ player: fakeKey(i + 40), name, skin: (i + 3) % 8, points: 5120 - i * 420, bestScore: 9900 - i * 400 }));
-  prev.splice(1, 0, { player: me, name: 'Defne', skin: 4, points: 4800, bestScore: 9700 });
+  prev.splice(1, 0, { player: me, name: 'Daphne', skin: 4, points: 4800, bestScore: 9700 });
   return {
     id: 2,
     startedAt: now() - 11 * 86_400 - 3600,
@@ -122,21 +122,21 @@ async function installWallet(ctx, kp, autoConnect) {
   return address;
 }
 
-async function newPage({ viewport, mobile = false, lang = 'tr', theme = 'light', wallet = true, reduced = false, hash = '', season = 'mine', setup = null }) {
+async function newPage({ viewport, mobile = false, theme = 'light', wallet = true, reduced = false, hash = '', season = 'mine', setup = null }) {
   const ctx = await browser.newContext({
     viewport,
     deviceScaleFactor: mobile ? 2 : 1,
     isMobile: mobile,
     hasTouch: mobile,
-    locale: lang === 'en' ? 'en-US' : 'tr-TR',
+    locale: 'en-US',
     reducedMotion: reduced ? 'reduce' : 'no-preference',
   });
   await ctx.addInitScript(
     (s) => {
-      const def = { name: 'Defne', skin: 4, lang: 'tr', theme: 'light', quality: 'high', sound: false, volume: 0.6, showNames: true, showMass: true, showFps: false, showMinimap: true, showChat: true };
+      const def = { name: 'Daphne', skin: 4, theme: 'light', quality: 'high', sound: false, volume: 0.6, showNames: true, showMass: true, showFps: false, showMinimap: true, showChat: true };
       localStorage.setItem('slana.settings.v1', JSON.stringify({ ...def, ...s }));
     },
-    { lang, theme },
+    { theme },
   );
   const kp = nacl.sign.keyPair();
   const me = bs58.encode(kp.publicKey);
@@ -163,7 +163,7 @@ const P = { width: 390, height: 844 };
 const PROFILE = (owner) => ({
   address: 'DevProfile',
   owner,
-  name: 'Defne',
+  name: 'Daphne',
   skin: 4,
   xp: 1840,
   level: 7,
@@ -188,14 +188,14 @@ const applySetup = () => {
 };
 
 // ── Pass page: revealed passport (seal broken), desktop + mobile, all prints ──
-for (const [k, viewport, mobile, lang, theme] of [
-  ['desktop-tr-paper', D, false, 'tr', 'light'],
-  ['desktop-en-night', D, false, 'en', 'dark'],
-  ['mobile-tr-paper', P, true, 'tr', 'light'],
-  ['mobile-en-night', P, true, 'en', 'dark'],
+for (const [k, viewport, mobile, theme] of [
+  ['desktop-paper', D, false, 'light'],
+  ['desktop-night', D, false, 'dark'],
+  ['mobile-paper', P, true, 'light'],
+  ['mobile-night', P, true, 'dark'],
 ]) {
   if (!want('owned') && !want(`owned-${k}`)) continue;
-  const { ctx, page } = await newPage({ viewport, mobile, lang, theme, hash: '#pass' });
+  const { ctx, page } = await newPage({ viewport, mobile, theme, hash: '#pass' });
   await page.waitForSelector('.pp-card');
   await page.evaluate(() => {
     const p = window.__slanaChain.useChainData.getState().passes[0];
@@ -205,7 +205,7 @@ for (const [k, viewport, mobile, lang, theme] of [
   await page.waitForSelector('.pp-card:not(.is-sealed)', { timeout: 15000 });
   await page.waitForTimeout(1500);
   await shot(page, `pass-owned-${k}`);
-  if (k === 'desktop-tr-paper') {
+  if (k === 'desktop-paper') {
     await page.evaluate(() => document.querySelector('.kl-root').scrollTo({ top: 900 }));
     await page.waitForTimeout(400);
     await shot(page, `pass-owned-${k}-scrolled`);
@@ -245,15 +245,15 @@ if (want('sealed')) {
   }
 }
 
-// ── application form: open mint, mobile, EN night, countdown, sold out ──
+// ── application form: open mint, mobile, night, countdown, sold out ──
 if (want('apply')) {
-  for (const [k, viewport, mobile, lang, theme, extra] of [
-    ['desktop-tr-paper', D, false, 'tr', 'light', null],
-    ['mobile-tr-paper', P, true, 'tr', 'light', null],
-    ['desktop-en-night', D, false, 'en', 'dark', null],
-    ['countdown', D, false, 'tr', 'light', 'countdown'],
-    ['soldout-mobile', P, true, 'en', 'light', 'soldout'],
-    ['guest', D, false, 'tr', 'light', 'guest'],
+  for (const [k, viewport, mobile, theme, extra] of [
+    ['desktop-paper', D, false, 'light', null],
+    ['mobile-paper', P, true, 'light', null],
+    ['desktop-night', D, false, 'dark', null],
+    ['countdown', D, false, 'light', 'countdown'],
+    ['soldout-mobile', P, true, 'light', 'soldout'],
+    ['guest', D, false, 'light', 'guest'],
   ]) {
     const setup =
       extra === 'countdown'
@@ -267,7 +267,7 @@ if (want('apply')) {
               window.__slanaChain.fakeWallet.pass = { revealed: false, mintOpen: true, minted: 3333 };
             }
           : applySetup;
-    const { ctx, page } = await newPage({ viewport, mobile, lang, theme, hash: '#pass', setup, wallet: extra !== 'guest' });
+    const { ctx, page } = await newPage({ viewport, mobile, theme, hash: '#pass', setup, wallet: extra !== 'guest' });
     if (extra === 'guest') {
       await page.evaluate(applySetup);
       await page.evaluate(() => window.__slanaChain.refresh());
@@ -276,7 +276,7 @@ if (want('apply')) {
     await page.waitForSelector('.pp-form');
     await page.waitForTimeout(1200);
     await shot(page, `pass-apply-${k}`);
-    if (k === 'mobile-tr-paper') {
+    if (k === 'mobile-paper') {
       await page.evaluate(() => document.querySelector('.kl-root').scrollTo({ top: 700 }));
       await page.waitForTimeout(400);
       await shot(page, `pass-apply-${k}-scrolled`);
@@ -320,14 +320,14 @@ for (const [k, viewport, mobile, reduced] of [
 }
 
 // ── standings ──
-for (const [k, viewport, mobile, lang, theme] of [
-  ['desktop-tr-paper', D, false, 'tr', 'light'],
-  ['desktop-en-night', D, false, 'en', 'dark'],
-  ['mobile-tr-paper', P, true, 'tr', 'light'],
-  ['mobile-en-night', P, true, 'en', 'dark'],
+for (const [k, viewport, mobile, theme] of [
+  ['desktop-paper', D, false, 'light'],
+  ['desktop-night', D, false, 'dark'],
+  ['mobile-paper', P, true, 'light'],
+  ['mobile-night', P, true, 'dark'],
 ]) {
   if (!want('news') && !want(`news-${k}`)) continue;
-  const { ctx, page } = await newPage({ viewport, mobile, lang, theme, hash: '#ranks' });
+  const { ctx, page } = await newPage({ viewport, mobile, theme, hash: '#ranks' });
   await page.waitForSelector('.nw-table');
   await page.waitForTimeout(1400);
   await shot(page, `news-season-${k}`);
@@ -340,7 +340,7 @@ for (const [k, viewport, mobile, lang, theme] of [
   await page.locator('.nw-tabs [role="tab"]').nth(1).click();
   await page.waitForTimeout(900);
   await shot(page, `news-today-${k}`);
-  if (k === 'desktop-tr-paper') {
+  if (k === 'desktop-paper') {
     await page.locator('.nw-tabs [role="tab"]').nth(2).click();
     await page.waitForTimeout(900);
     await shot(page, `news-all-${k}`);
@@ -372,14 +372,14 @@ if (want('claim')) {
 }
 
 // ── profile and settings ──
-for (const [k, viewport, mobile, lang, theme] of [
-  ['desktop-tr-paper', D, false, 'tr', 'light'],
-  ['desktop-en-night', D, false, 'en', 'dark'],
-  ['mobile-tr-paper', P, true, 'tr', 'light'],
-  ['mobile-en-night', P, true, 'en', 'dark'],
+for (const [k, viewport, mobile, theme] of [
+  ['desktop-paper', D, false, 'light'],
+  ['desktop-night', D, false, 'dark'],
+  ['mobile-paper', P, true, 'light'],
+  ['mobile-night', P, true, 'dark'],
 ]) {
   if (!want('profile') && !want(`profile-${k}`)) continue;
-  const { ctx, page, address } = await newPage({ viewport, mobile, lang, theme, hash: '#profile' });
+  const { ctx, page, address } = await newPage({ viewport, mobile, theme, hash: '#profile' });
   await page.evaluate((p) => {
     window.__slanaChain.fakeWallet.profile = { ...p, totalStaked: BigInt(p.totalStaked), totalWon: BigInt(p.totalWon) };
     window.__slanaChain.refresh();
@@ -392,11 +392,11 @@ for (const [k, viewport, mobile, lang, theme] of [
     await page.waitForTimeout(500);
     await shot(page, `profile-${k}-scrolled`);
   }
-  if (k === 'desktop-tr-paper') {
-    await page.locator('.pf-box .kb-field__input').fill('Defne K');
+  if (k === 'desktop-paper') {
+    await page.locator('.pf-box .kb-field__input').fill('Daphne K');
     await page.waitForTimeout(300);
     await shot(page, 'profile-dirty');
-    await page.locator('.kl-mast .kb-iconbtn[aria-label="Ayarlar"]').click();
+    await page.locator('.kl-mast .kb-iconbtn[aria-label="Settings"]').click();
     await page.waitForTimeout(700);
     await shot(page, 'settings-sheet');
     await page.locator('.g-settings .kl-link').click();

@@ -1,4 +1,4 @@
-/* ─────────────────────── Kâğıt Bilet · the standings page ───────────────────────
+/* ─────────────────────── Paper Ticket · the standings page ───────────────────────
  * Task 15. A newspaper results page: section tabs, a headline on the leader,
  * a results table with dotted leaders, the pool box, the winner's prize
  * cheque and last season's final table.
@@ -359,6 +359,7 @@
   font-stretch: 88%;
   line-height: 1.02;
   letter-spacing: -0.02em;
+  text-wrap: balance;
 }
 .sc-cheque__pay {
   display: flex;

@@ -1,4 +1,4 @@
-/* ─────────────────────────── Kâğıt Bilet · page base ───────────────────────────
+/* ─────────────────────────── Paper Ticket · page base ───────────────────────────
  * The app shell: a fixed full-screen stage for the game canvas, paper behind
  * it, and no page scroll (each screen scrolls inside its own Kb root).
  * Tokens live in design/tokens.css (on :root and on every `.kb`).

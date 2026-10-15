@@ -47,7 +47,6 @@ export function CashoutSheet() {
   const ticket = useUi((s) => s.ticket);
   const chain = useUi((s) => s.chain);
   const settledRaw = useUi((s) => s.lastSettlement);
-  const lang = useUi((s) => s.settings.lang);
   const open = useUi((s) => s.screen === 'cashedout' && s.cashoutResult !== null);
   const newTicket = () => {
     if (room?.arenaId !== undefined) requestTicket(room.arenaId);
@@ -80,7 +79,7 @@ export function CashoutSheet() {
     {
       label: (
         <>
-          {t('gc.fee', { pct: n.pct.toLocaleString(lang === 'tr' ? 'tr-TR' : 'en-US', { maximumFractionDigits: 1 }) })}
+          {t('gc.fee', { pct: n.pct.toLocaleString('en-US', { maximumFractionDigits: 1 }) })}
           {ticket?.hasPass && <span className="g-receipt__pass">PASS</span>}
         </>
       ),
@@ -99,7 +98,7 @@ export function CashoutSheet() {
       strong: true,
     },
   ];
-  const date = new Date(since).toLocaleString(lang === 'tr' ? 'tr-TR' : 'en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const date = new Date(since).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
   const footer = settled ? (
     <a className="g-receipt__tx" href={explorerTx(settled.signature, chain?.cluster ?? 'devnet')} target="_blank" rel="noreferrer">
       {t('gc.viewTx')} · {settled.signature.slice(0, 4)}…{settled.signature.slice(-4)}
@@ -121,7 +120,7 @@ export function CashoutSheet() {
       open={open}
       onClose={() => engine()?.backToLobby()}
       closeLabel={t('gc.close')}
-      kicker={t('gc.kicker', { room: roomName(room, lang) })}
+      kicker={t('gc.kicker', { room: roomName(room) })}
       title={t('gc.title')}
       className="g-sheet g-cashout"
       footer={

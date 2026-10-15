@@ -19,7 +19,6 @@ export class Conn {
   aspect = 16 / 9;
   wallet: string | null = null;
   profile: ChainProfile | null = null;
-  lang = 'en';
   helloed = false;
   joining = false;
   /** Name used for chat while dead/spectating after having played. */

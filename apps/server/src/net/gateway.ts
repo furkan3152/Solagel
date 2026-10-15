@@ -178,7 +178,6 @@ export class Gateway {
           return;
         }
         conn.helloed = true;
-        conn.lang = msg.lang === 'tr' ? 'tr' : 'en';
         conn.send({
           t: 'welcome',
           v: PROTOCOL_VERSION,

@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactElement } from 'react';
 
 /**
- * Kâğıt Bilet icon set. Hand-drawn on a 24×24 grid, 2.2 px stroke, round caps
+ * Paper Ticket icon set. Hand-drawn on a 24×24 grid, 2.2 px stroke, round caps
  * and joins, `currentColor` only. Optical rules: the main silhouette sits inside
  * a 3..21 live area, interior details stay >= 2 px from outlines, and "dots"
  * are zero-length segments so they print as round ink drops.

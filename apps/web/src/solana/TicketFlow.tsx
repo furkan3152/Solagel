@@ -60,7 +60,6 @@ const RENT_SIZES = [ACCOUNT_BYTES.session, ACCOUNT_BYTES.passLock, ACCOUNT_BYTES
  */
 export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mode: FlowMode; ticket: TicketModel | null; onClose: () => void }) {
   const t = useT();
-  const lang = useUi((s) => s.settings.lang);
   const settings = useUi((s) => s.settings);
   const blockedArenas = useUi((s) => s.blockedArenas);
   const cluster = useUi((s) => s.chain?.cluster ?? 'devnet');
@@ -134,7 +133,7 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
 
   if (!ticket || arenaId === null) return null;
 
-  const room = ticketName(ticket, lang, t('lo.practice'));
+  const room = ticketName(ticket, t('lo.practice'));
   const owner = wallet.publicKey?.toBase58() ?? null;
   const config = data.config;
   const register = data.profile ? null : { name: truncateUtf8(sanitizeName(name, ''), 16), skin: isBasicSkin(settings.skin) ? settings.skin : 0 };
@@ -157,7 +156,7 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
     rent: (b) => rents?.[b] ?? defaultRent(b),
   });
   const busy = phase === 'preparing' || phase === 'signing' || phase === 'confirming' || phase === 'stamped';
-  const sol = (lamports: number) => formatToken(lamports, SOL_DECIMALS, lang, { maxFrac: 6 });
+  const sol = (lamports: number) => formatToken(lamports, SOL_DECIMALS, { maxFrac: 6 });
   const owed = session?.finalized ? session.owed : 0n;
   const live: Review = { steps, fee, bps, deposit, balance: data.tokenBalance, register, pass: chosenPass, owed, sol: solCost, close: closeCost, sessionId: session?.id ?? null };
   const v = frozen ?? live;
@@ -418,11 +417,11 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
         {mode !== 'collect' && (
           <dl className="tf-lines">
             <Line label={t('tf.entry')} value={`${tok.exact(v.fee)} ${tok.symbol}`} strong />
-            {mode === 'buy' && <Line label={t('tf.fee')} value={t('tf.feeV', { n: bpsPercent(v.bps, lang) })} />}
+            {mode === 'buy' && <Line label={t('tf.fee')} value={t('tf.feeV', { n: bpsPercent(v.bps) })} />}
             {mode === 'buy' && v.pass && (
               <Line
                 label={t('tf.passLine')}
-                value={t('tf.passLineV', { n: passNo(v.pass.number), fee: bpsPercent(v.bps, lang), start: power.startPct, s: power.cashoutS })}
+                value={t('tf.passLineV', { n: passNo(v.pass.number), fee: bpsPercent(v.bps), start: power.startPct, s: power.cashoutS })}
               />
             )}
             <Line label={t('tf.deposit')} value={t('tf.depositV', { sol: sol(v.deposit) })} />
@@ -451,7 +450,7 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
             chosen={chosenPass}
             choose={setPassAsset}
             disabled={busy}
-            feeText={bpsPercent(feeBps(config, true), lang)}
+            feeText={bpsPercent(feeBps(config, true))}
           />
         )}
 
@@ -598,7 +597,7 @@ function PassChoice({
   );
 }
 
-/** The ticket itself: stamped "GEÇERLİ" on confirmation, then its stub tears off. */
+/** The ticket itself: stamped "VALID" on confirmation, then its stub tears off. */
 function TicketPreview({
   ticket,
   room,
@@ -617,7 +616,6 @@ function TicketPreview({
   reduced: boolean;
 }) {
   const t = useT();
-  const lang = useUi((s) => s.settings.lang);
   const [torn, setTorn] = useState(false);
   useEffect(() => {
     if (!stamped) {
@@ -628,8 +626,8 @@ function TicketPreview({
     return () => clearTimeout(id);
   }, [stamped, reduced]);
   const now = new Date();
-  const date = now.toLocaleDateString(lang === 'tr' ? 'tr-TR' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  const time = now.toLocaleTimeString(lang === 'tr' ? 'tr-TR' : 'en-GB', { hour: '2-digit', minute: '2-digit' });
+  const date = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  const time = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
   const serial = `${String(ticket.arenaId).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
   const style = { '--kl-ink': arenaMeta(ticket.arenaId ?? 0).ink } as CSSProperties;
   const tearTo = reduced ? { opacity: 0 } : { x: [0, 6, 30], y: [0, 4, 46], rotate: [0, 4, 14], opacity: [1, 1, 0] };

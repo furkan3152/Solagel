@@ -20,9 +20,9 @@ const logs = [];
 const results = {};
 
 async function newPage(viewport, mobile, settings = {}, extra = {}) {
-  const ctx = await browser.newContext({ ...extra, viewport, deviceScaleFactor: mobile ? 2 : 1, isMobile: mobile, hasTouch: mobile, locale: settings.lang === 'en' ? 'en-US' : 'tr-TR' });
+  const ctx = await browser.newContext({ ...extra, viewport, deviceScaleFactor: mobile ? 2 : 1, isMobile: mobile, hasTouch: mobile, locale: 'en-US' });
   await ctx.addInitScript((s) => {
-    const def = { name: 'Defne', skin: 4, lang: 'tr', theme: 'light', quality: 'high', sound: false, volume: 0.6, showNames: true, showMass: true, showFps: false, showMinimap: true, showChat: true };
+    const def = { name: 'Daphne', skin: 4, theme: 'light', quality: 'high', sound: false, volume: 0.6, showNames: true, showMass: true, showFps: false, showMinimap: true, showChat: true };
     localStorage.setItem('slana.settings.v1', JSON.stringify({ ...def, ...s }));
   }, settings);
   const page = await ctx.newPage();
@@ -141,7 +141,7 @@ if (want('mobile')) {
 
 // ── night theme ──
 if (want('night')) {
-  const { ctx, page } = await newPage({ width: 1440, height: 900 }, false, { theme: 'dark', lang: 'en' });
+  const { ctx, page } = await newPage({ width: 1440, height: 900 }, false, { theme: 'dark' });
   await play(page, 'practice');
   await waitScreen(page, 'playing');
   await wander(page, 5000, 1440, 900);
@@ -205,7 +205,7 @@ if (want('arena')) {
     window.__slana.engine['onMessage']({
       t: 'death',
       stats: { aliveMs: 94_000, finalMass: 0, maxMass: 640, foodEaten: 88, cellsEaten: 1, playersEaten: 1, bestRank: 5, payout: 0, valueLost: 1_450_000_000, byBot: true, lootSpilled: 1_450_000_000 },
-      killer: 'Bot Kaya',
+      killer: 'Bot Rocky',
       killerSkin: 6,
     }),
   );

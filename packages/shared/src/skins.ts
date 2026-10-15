@@ -1,4 +1,3 @@
-import { english, type Localized } from './localized';
 
 export type SkinTier = 'free' | 'level' | 'premium';
 
@@ -73,8 +72,8 @@ export interface SkinColors {
 export interface SkinDef {
   id: number;
   key: string;
-  name: Localized;
-  desc: Localized;
+  name: string;
+  desc: string;
   tier: SkinTier;
   /** Required level for 'level' tier skins. */
   level?: number;
@@ -104,8 +103,8 @@ export const SKINS: readonly SkinDef[] = [
   {
     id: 0,
     key: 'solly',
-    name: english('Solly'),
-    desc: english('The OG jelly coin. Fast, cheap, adorable.'),
+    name: 'Solly',
+    desc: 'The OG jelly coin. Fast, cheap, adorable.',
     tier: 'free',
     colors: c('#6FF7C8', '#A46BFF', '#7B3FE4', '#4B1FA8', '#FFFFFF', '#FF8FCB'),
     symbol: 'solbars',
@@ -115,8 +114,8 @@ export const SKINS: readonly SkinDef[] = [
   {
     id: 1,
     key: 'goldie',
-    name: english('Goldie'),
-    desc: english('Shiny, chunky and always smiling.'),
+    name: 'Goldie',
+    desc: 'Shiny, chunky and always smiling.',
     tier: 'free',
     colors: c('#FFF4B8', '#FFC93C', '#EDA31A', '#B5760C', '#FFF7D6', '#FF9F8A'),
     symbol: 'star',
@@ -126,8 +125,8 @@ export const SKINS: readonly SkinDef[] = [
   {
     id: 2,
     key: 'penny',
-    name: english('Penny'),
-    desc: english('Every lamport counts.'),
+    name: 'Penny',
+    desc: 'Every lamport counts.',
     tier: 'free',
     colors: c('#FFD2B3', '#E8875A', '#C9653A', '#8E3F22', '#FFE6D6', '#FF8F8F'),
     symbol: 'cent',
@@ -137,8 +136,8 @@ export const SKINS: readonly SkinDef[] = [
   {
     id: 3,
     key: 'minty',
-    name: english('Minty'),
-    desc: english('Fresh from the mint.'),
+    name: 'Minty',
+    desc: 'Fresh from the mint.',
     tier: 'free',
     colors: c('#D2FFEE', '#4FE0A8', '#25B47F', '#14805A', '#F0FFF8', '#FF9FB0'),
     symbol: 'dollar',
@@ -148,8 +147,8 @@ export const SKINS: readonly SkinDef[] = [
   {
     id: 4,
     key: 'bubbles',
-    name: english('Bubbles'),
-    desc: english('Pink, bouncy and dangerously cute.'),
+    name: 'Bubbles',
+    desc: 'Pink, bouncy and dangerously cute.',
     tier: 'free',
     colors: c('#FFE0EE', '#FF8FB8', '#EA6496', '#B83D6A', '#FFF0F6', '#FF5C93'),
     symbol: 'heart',
@@ -159,8 +158,8 @@ export const SKINS: readonly SkinDef[] = [
   {
     id: 5,
     key: 'skye',
-    name: english('Skye'),
-    desc: english('Pure liquidity, chill vibes.'),
+    name: 'Skye',
+    desc: 'Pure liquidity, chill vibes.',
     tier: 'free',
     colors: c('#DDF2FF', '#7CC8FF', '#4DA1E6', '#2D72B0', '#F2FAFF', '#FF9FC2'),
     symbol: 'drop',
@@ -170,8 +169,8 @@ export const SKINS: readonly SkinDef[] = [
   {
     id: 6,
     key: 'zesty',
-    name: english('Zesty'),
-    desc: english('Sub-second finality, sub-second snacking.'),
+    name: 'Zesty',
+    desc: 'Sub-second finality, sub-second snacking.',
     tier: 'free',
     colors: c('#FFFCD9', '#FFE873', '#F4C93F', '#C49516', '#FFFBE6', '#FF9F8A'),
     symbol: 'bolt',
@@ -181,8 +180,8 @@ export const SKINS: readonly SkinDef[] = [
   {
     id: 7,
     key: 'grape',
-    name: english('Grape'),
-    desc: english('A tiny gem with a big appetite.'),
+    name: 'Grape',
+    desc: 'A tiny gem with a big appetite.',
     tier: 'free',
     colors: c('#F1EAFF', '#C9B6FF', '#A08AF0', '#6E56C4', '#FBF8FF', '#FF9FD0'),
     symbol: 'gem',
@@ -194,8 +193,8 @@ export const SKINS: readonly SkinDef[] = [
   {
     id: 8,
     key: 'bitsy',
-    name: english('Bitsy'),
-    desc: english('Grandpa of all coins, still cool.'),
+    name: 'Bitsy',
+    desc: 'Grandpa of all coins, still cool.',
     tier: 'level',
     level: 2,
     colors: c('#FFDDB0', '#FF9F2E', '#E37E10', '#A85A05', '#FFF1DC', '#FF8F8F'),
@@ -206,8 +205,8 @@ export const SKINS: readonly SkinDef[] = [
   {
     id: 9,
     key: 'ethy',
-    name: english('Ethy'),
-    desc: english('Thinks in octahedrons.'),
+    name: 'Ethy',
+    desc: 'Thinks in octahedrons.',
     tier: 'level',
     level: 3,
     colors: c('#F4F2FF', '#B9B4E6', '#8E88C8', '#5D578F', '#FFFFFF', '#FF9FC8'),
@@ -218,8 +217,8 @@ export const SKINS: readonly SkinDef[] = [
   {
     id: 10,
     key: 'doggo',
-    name: english('Doggo'),
-    desc: english('Much coin. Very jelly. Wow.'),
+    name: 'Doggo',
+    desc: 'Much coin. Very jelly. Wow.',
     tier: 'level',
     level: 5,
     colors: c('#FFEACB', '#F2B66B', '#D9923F', '#9E6420', '#FFF4E3', '#FF9F8A'),
@@ -230,8 +229,8 @@ export const SKINS: readonly SkinDef[] = [
   {
     id: 11,
     key: 'froggy',
-    name: english('Froggy'),
-    desc: english('Feels good, man.'),
+    name: 'Froggy',
+    desc: 'Feels good, man.',
     tier: 'level',
     level: 7,
     colors: c('#DDF8BA', '#8BD45A', '#64B236', '#3D7E1C', '#F1FFE3', '#FF9FA8'),
@@ -242,8 +241,8 @@ export const SKINS: readonly SkinDef[] = [
   {
     id: 12,
     key: 'hattie',
-    name: english('Hattie'),
-    desc: english('Never takes the hat off. Ever.'),
+    name: 'Hattie',
+    desc: 'Never takes the hat off. Ever.',
     tier: 'level',
     level: 10,
     colors: c('#FFF0DB', '#E9C79B', '#CDA470', '#8F6A3A', '#FFF8EE', '#FF9F9F'),
@@ -254,8 +253,8 @@ export const SKINS: readonly SkinDef[] = [
   {
     id: 13,
     key: 'moonie',
-    name: english('Moonie'),
-    desc: english('Already on the way to the moon.'),
+    name: 'Moonie',
+    desc: 'Already on the way to the moon.',
     tier: 'level',
     level: 13,
     colors: c('#FFFFFF', '#DCE1EE', '#AEB7CC', '#6F7A94', '#FFFFFF', '#FFB0C8'),
@@ -266,8 +265,8 @@ export const SKINS: readonly SkinDef[] = [
   {
     id: 14,
     key: 'rocket',
-    name: english('Rocket'),
-    desc: english('Only goes up. Mostly.'),
+    name: 'Rocket',
+    desc: 'Only goes up. Mostly.',
     tier: 'level',
     level: 16,
     colors: c('#FFD9D9', '#FF6B6B', '#E14646', '#A82525', '#FFF0F0', '#FFB0B0'),
@@ -278,8 +277,8 @@ export const SKINS: readonly SkinDef[] = [
   {
     id: 15,
     key: 'whale',
-    name: english('Whale'),
-    desc: english('Moves markets by blinking.'),
+    name: 'Whale',
+    desc: 'Moves markets by blinking.',
     tier: 'level',
     level: 20,
     colors: c('#C7E6FF', '#3D8BFF', '#2468D6', '#123C8A', '#E9F4FF', '#FF9FC8'),
@@ -292,8 +291,8 @@ export const SKINS: readonly SkinDef[] = [
   {
     id: 16,
     key: 'diamond',
-    name: english('Diamond Hands'),
-    desc: english('Never sells. Never melts.'),
+    name: 'Diamond Hands',
+    desc: 'Never sells. Never melts.',
     tier: 'premium',
     colors: c('#EAFFFF', '#82F0FF', '#3FC6E2', '#1E8AA6', '#FFFFFF', '#FF9FD8'),
     symbol: 'diamond',
@@ -304,8 +303,8 @@ export const SKINS: readonly SkinDef[] = [
   {
     id: 17,
     key: 'laser',
-    name: english('Laser Eyes'),
-    desc: english('Locked in. Target acquired.'),
+    name: 'Laser Eyes',
+    desc: 'Locked in. Target acquired.',
     tier: 'premium',
     colors: c('#FFEDB0', '#FFB627', '#E39200', '#9C5F00', '#FFF6D9', '#FF8F6F'),
     symbol: 'star',
@@ -315,8 +314,8 @@ export const SKINS: readonly SkinDef[] = [
   {
     id: 18,
     key: 'king',
-    name: english('King Coin'),
-    desc: english('Heavy is the head that wears the bag.'),
+    name: 'King Coin',
+    desc: 'Heavy is the head that wears the bag.',
     tier: 'premium',
     colors: c('#FFF6C2', '#FFD54A', '#E6AD00', '#7A3FB8', '#FFFBE6', '#FF9F9F'),
     symbol: 'crown',
@@ -326,8 +325,8 @@ export const SKINS: readonly SkinDef[] = [
   {
     id: 19,
     key: 'ninja',
-    name: english('Ninja'),
-    desc: english('You never see the split coming.'),
+    name: 'Ninja',
+    desc: 'You never see the split coming.',
     tier: 'premium',
     colors: c('#8A8EA6', '#43465C', '#2C2E3E', '#16171F', '#E8E9F2', '#FF8FB8'),
     symbol: 'shuriken',
@@ -337,8 +336,8 @@ export const SKINS: readonly SkinDef[] = [
   {
     id: 20,
     key: 'rainbow',
-    name: english('Rainbow'),
-    desc: english('Every color of the bull run.'),
+    name: 'Rainbow',
+    desc: 'Every color of the bull run.',
     tier: 'premium',
     colors: c('#FFFFFF', '#FF8FB8', '#C77DFF', '#5B3FA8', '#FFFFFF', '#FF5C93'),
     symbol: 'heart',
@@ -349,8 +348,8 @@ export const SKINS: readonly SkinDef[] = [
   {
     id: 21,
     key: 'ghosty',
-    name: english('Ghosty'),
-    desc: english('Rugged once, came back cuter.'),
+    name: 'Ghosty',
+    desc: 'Rugged once, came back cuter.',
     tier: 'premium',
     colors: c('#FFFFFF', '#EEEBFF', '#CBC4F4', '#9C94D6', '#FFFFFF', '#FFB0D0'),
     symbol: 'none',
@@ -361,8 +360,8 @@ export const SKINS: readonly SkinDef[] = [
   {
     id: 22,
     key: 'bull',
-    name: english('Bull'),
-    desc: english('Green candles only.'),
+    name: 'Bull',
+    desc: 'Green candles only.',
     tier: 'premium',
     colors: c('#D3FFE0', '#3DDC84', '#1FB062', '#0E7A3E', '#F0FFF5', '#FF9FA0'),
     symbol: 'chartUp',
@@ -372,8 +371,8 @@ export const SKINS: readonly SkinDef[] = [
   {
     id: 23,
     key: 'bear',
-    name: english('Bear'),
-    desc: english('Hibernates through dips, wakes up hungry.'),
+    name: 'Bear',
+    desc: 'Hibernates through dips, wakes up hungry.',
     tier: 'premium',
     colors: c('#FFD8CB', '#D9785B', '#B8573B', '#7E3420', '#FFEDE6', '#FF9F9F'),
     symbol: 'chartDown',
