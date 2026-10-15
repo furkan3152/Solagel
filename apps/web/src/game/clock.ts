@@ -25,8 +25,10 @@ export class ServerClock {
   /** A server timestamp received now; `rttMs` = the round trip of the message (null if unknown). */
   sync(serverNow: number, rttMs: number | null = null): void {
     if (!Number.isFinite(serverNow)) return;
-    const rtt = rttMs !== null && Number.isFinite(rttMs) && rttMs >= 0 ? rttMs : UNKNOWN_RTT;
-    const offset = serverNow + (rttMs !== null ? rtt / 2 : 0) - this.local();
+    const measured = rttMs !== null && Number.isFinite(rttMs) && rttMs >= 0;
+    const rtt = measured ? rttMs : UNKNOWN_RTT;
+    // half the trip only when it was really measured (a bad one must not skew the offset)
+    const offset = serverNow + (measured ? rtt / 2 : 0) - this.local();
     this.samples.push({ offset, rtt });
     if (this.samples.length > KEEP) this.samples.shift();
     this.best = this.samples.reduce((a, b) => (b.rtt <= a.rtt ? b : a));
