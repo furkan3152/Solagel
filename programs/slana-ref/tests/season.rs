@@ -185,6 +185,29 @@ fn rollover_moves_unclaimed_after_window() {
     assert_eq!(env.season(2).prize_pool, unclaimed);
 }
 
+/// The claim window is inclusive at its end. At exactly `ended_at + CLAIM_WINDOW_SECS`, a
+/// claim still succeeds and a rollover still fails with `ClaimWindowOpen`. One second later,
+/// both flip.
+#[test]
+fn claim_window_boundary_is_inclusive() {
+    let mut env = TestEnv::initialized();
+    let players = pass_season(&mut env);
+    assert_ok(env.end_season());
+
+    let closes_at = env.season(1).ended_at + CLAIM_WINDOW_SECS;
+    env.warp(closes_at - env.now());
+    assert_eq!(env.now(), closes_at);
+    assert_error(env.rollover(1), SlanaError::ClaimWindowOpen);
+    assert_ok(env.claim(&players[0], 1));
+    assert_eq!(env.season(1).claimed_mask, 0b1);
+    assert_error(env.rollover(1), SlanaError::ClaimWindowOpen);
+
+    env.warp(1);
+    assert_error(env.claim(&players[1], 1), SlanaError::ClaimWindowClosed);
+    assert_ok(env.rollover(1));
+    assert_eq!(env.season(2).pool, POOL - prize(0));
+}
+
 #[test]
 fn ending_twice_and_unknown_seasons_fail() {
     let mut env = TestEnv::initialized();

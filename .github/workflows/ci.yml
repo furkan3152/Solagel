@@ -39,6 +39,8 @@ jobs:
     env:
       # public endpoint; scripts/fetch-programs.sh dumps Metaplex Core from it (no secrets)
       MAINNET_RPC: https://api.mainnet-beta.solana.com
+      # Agave CLI version: platform-tools and cargo-build-sbf come with it, so it is part of the cache key.
+      AGAVE_VERSION: v4.3.0
     steps:
       - uses: actions/checkout@v4
       - uses: actions/cache@v4
@@ -48,12 +50,12 @@ jobs:
             ~/.cargo/git
             ~/.cache/solana
             target
-          key: program-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          key: program-${{ runner.os }}-agave-${{ env.AGAVE_VERSION }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
       - name: Install Rust toolchain from rust-toolchain.toml
         run: rustup toolchain install
       - name: Install Solana (Agave) CLI
         run: |
-          sh -c "$(curl -sSfL https://release.anza.xyz/v4.3.0/install)"
+          sh -c "$(curl -sSfL https://release.anza.xyz/${AGAVE_VERSION}/install)"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
       - uses: actions/setup-node@v4
         with:
