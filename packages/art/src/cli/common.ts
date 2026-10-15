@@ -1,6 +1,7 @@
 // Node-only helpers of the Pass CLI. Never imported by the core art code, so
 // the browser bundle of @slana/art does not pull in @napi-rs/canvas.
 import { createCanvas } from '@napi-rs/canvas';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
@@ -58,6 +59,40 @@ export function readSeedHex(file: string): string {
     throw new CliError(`${file} must hold a JSON array of 32 bytes (create it with \`pnpm admin pass-seed --new\`)`);
   }
   return Buffer.from(bytes).toString('hex');
+}
+
+const HEX32 = /^[0-9a-fA-F]{64}$/;
+
+/**
+ * The revealed seed every trait derives from: `sha256(seed || entropy)` (hex), exactly the
+ * program's `Config.pass_final_seed` after `reveal_pass`. `entropy` is `Config.pass_entropy`,
+ * the SlotHashes entry the program captured when the mint ended (`pnpm admin status`).
+ */
+export function finalSeedHex(seedHex: string, entropyHex: string): string {
+  if (!HEX32.test(seedHex)) throw new CliError('the seed must be 32 bytes (64 hex chars)');
+  if (!HEX32.test(entropyHex)) throw new CliError('--entropy must be 32 bytes (64 hex chars): Config.pass_entropy from `pnpm admin status`');
+  return createHash('sha256').update(Buffer.from(seedHex, 'hex')).update(Buffer.from(entropyHex, 'hex')).digest('hex');
+}
+
+/**
+ * The trait seed for the generator: `--final-seed <hex>` (public after the reveal), or
+ * `--seed-file` + `--entropy <hex>` (the admin, before the reveal transaction lands).
+ */
+export function traitSeedHex(opts: Opts): string {
+  const finalSeed = str(opts, 'final-seed');
+  const entropy = str(opts, 'entropy');
+  if (finalSeed !== undefined) {
+    if (entropy !== undefined || opts.has('seed-file')) throw new CliError('--final-seed replaces --seed-file/--entropy; pass one or the other');
+    if (!HEX32.test(finalSeed)) throw new CliError('--final-seed must be 32 bytes (64 hex chars): Config.pass_final_seed');
+    return finalSeed.toLowerCase();
+  }
+  const seedHex = readSeedHex(userPath(str(opts, 'seed-file') ?? DEFAULT_SEED_FILE));
+  if (entropy === undefined) {
+    throw new CliError(
+      'traits derive from sha256(seed || entropy): pass --entropy <hex> (Config.pass_entropy, fixed when the mint ended; see `pnpm admin status`) or --final-seed <hex>',
+    );
+  }
+  return finalSeedHex(seedHex, entropy.toLowerCase());
 }
 
 /** Renders one Pass card (or the sealed one for `traits === null`) as a square PNG. */

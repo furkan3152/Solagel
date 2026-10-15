@@ -15,7 +15,7 @@ from `packages/sdk/src/constants.ts` (`pnpm admin init`), game rules from `packa
 | `apps/server` (Node 22) | your host | 30 Hz simulation, rooms and instances, bots, in-game value ledger, loot, journal, settlement queue, Pass metadata |
 | `apps/web` (Vite + React) | browser | lobby, ticket flow, HUD, Pass office, standings, player guide (`/docs`) |
 | `packages/sdk` | everywhere | PDAs, instruction builders, account views, fee math (`splitPayout`, mirrors `logic::split_payout`), admin CLI |
-| `packages/art` | everywhere | `passTraits(seed, n, supply)`, coin and Pass drawing, `pnpm pass:*` CLI |
+| `packages/art` | everywhere | `passTraits(finalSeed, n, supply)` (`finalSeed = Config.pass_final_seed`), coin and Pass drawing, `pnpm pass:*` CLI |
 | `packages/shared` | everywhere | rules, binary protocol, arena metadata, token formatting |
 
 The browser talks to the server over a WebSocket (binary snapshots, 30 ticks per second) and signs its own transactions
@@ -83,11 +83,12 @@ sequenceDiagram
 
 ## Fees
 
-`logic::split_payout` (mirrored by `splitPayout` in the SDK, tested to agree):
+`logic::split_payout` (mirrored by `splitPayout` / `splitSessionPayout` in the SDK, tested to agree):
 
 ```
 profit   = max(0, payout − entry_fee)
-fee      = floor(profit × bps / 10 000)        bps = pass_fee_bps on a Pass session, else fee_bps
+fee      = floor(profit × bps / 10 000)        bps = Session.fee_bps, fixed at join (pass_fee_bps on a
+                                               Pass session, else fee_bps, as configured at that moment)
 treasury = floor(fee × treasury_bps / 10 000)
 burn     = floor(fee × burn_bps / 10 000)
 season   = fee − treasury − burn               (gets the rounding remainder)
@@ -96,7 +97,8 @@ player   = payout − fee
 
 Defaults (`pnpm admin init`): `fee_bps` 500, `pass_fee_bps` 200, split 5000 / 3000 / 2000, `settle_fee_lamports`
 20 000. Bounds: `fee_bps ≤ MAX_FEE_BPS` (1000), `pass_fee_bps ≤ fee_bps`, split sums to 10 000,
-`settle_fee_lamports ≤ MAX_SETTLE_FEE_LAMPORTS` (1 000 000).
+`settle_fee_lamports ≤ MAX_SETTLE_FEE_LAMPORTS` (1 000 000). A fee change in `update_config` applies to tickets bought
+after it; open sessions keep their `fee_bps` (the treasury / season / burn split is read from the config at settlement).
 
 Worked example (the player guide shows it as receipts): entry 1 000, cash-out 2 000 → profit 1 000 → fee 50
 (treasury 25, season 15, burn 10), player 1 950. With a Pass: fee 20 (10 / 6 / 4), player 1 980.
@@ -112,7 +114,8 @@ On-chain (enforced by the program):
    fails, even after a transfer. Settle and refund close it back to the player.
 4. **No replayed payouts**: `settle_session` requires `session_id == Session.id` (ids come from `Config.total_sessions`,
    PDAs are reused).
-5. **Fees only on profit and bounded** (see Fees). The burn lowers the mint supply.
+5. **Fees only on profit, bounded and fixed at purchase** (see Fees): `Session.fee_bps` is written by the join and is the
+   only rate `settle_session` uses. The burn lowers the mint supply.
 6. **The deposit pays the settler**: a Session holds rent + `settle_fee`; settle moves `settle_fee` to the server and closes
    the rest to the player; refund returns everything to the player after `SESSION_REFUND_TIMEOUT_SECS` (24 h).
 7. **Season pools**: every transfer into or out of the season vault changes exactly one season's `pool` (settle fee share,
@@ -125,10 +128,14 @@ On-chain (enforced by the program):
 9. **The token is fixed**: `token_mint` is written once by `initialize`. Mints with a freeze authority and Token-2022 mints
    with any of `DENIED_MINT_EXTENSIONS` (transfer fee, transfer hook, permanent delegate, non-transferable, default
    account state, confidential transfer and its fee / mint-burn variants, pausable, mint close authority) are refused.
-10. **Pass mint rules**: `pass_minted ≤ pass_supply ≤ MAX_PASS_SUPPLY` (10 000); a per-wallet counter
-    `["pass_minted", wallet]` ≤ `pass_per_wallet`; the seed hash must be set before the first mint and is locked after it;
-    `reveal_pass` needs `sha256(seed) == pass_seed_hash` and a closed or sold-out mint; after the reveal the mint cannot
-    reopen; `pass_base_uri` (≤ 96 bytes, ends with `/`) is frozen after the first mint.
+10. **Pass mint rules**: `pass_minted ≤ pass_supply ≤ MAX_PASS_SUPPLY` (10 000); `pass_supply` is frozen once the mint has
+    ever opened (`pass_mint_opened`, `SupplyLocked`); a per-wallet counter `["pass_minted", wallet]` ≤ `pass_per_wallet`;
+    the seed hash must be set before the first mint and is locked after it; `pass_base_uri` (≤ 96 bytes, ends with `/`) is
+    frozen after the first mint. The mint **ends** for good with `close_pass_mint` (needs ≥ 1 minted Pass; before that
+    `update_config` may still close and reopen it) or automatically when the last Pass of the supply is minted: the
+    program then records `pass_entropy` = the newest SlotHashes entry (and its slot), sets `pass_mint_ended`, and the mint
+    can never reopen (`MintEnded`). `reveal_pass` needs the mint ended and `sha256(seed) == pass_seed_hash`, and stores
+    `pass_final_seed = sha256(seed ‖ pass_entropy)`; every trait derives from that final seed.
 11. **Pause blocks joins only**: `paused` stops `join_arena`; settlements and refunds keep working.
 
 Off-chain (enforced by the server, covered by tests in `apps/server/test`):
@@ -142,6 +149,9 @@ Off-chain (enforced by the server, covered by tests in `apps/server/test`):
     (`loot.test.ts` "bots never pick loot", `bots.test.ts` "bots ignore loot").
 14. **Crash recovery**: live tickets found in the journal at start are queued for automatic cash-out; loot is restored into
     the arena's first instance.
+    Before an arena is attached (its first instance created), its vault must hold at least what the journal owes it
+    (loot + pending cash-outs + live tickets); otherwise the server keeps it disabled and logs `!!! arena #N KEPT
+    DISABLED` (`RoomManager.vaultCovers`, `matchmaking.test.ts`). This catches an arena swept while loot was journaled.
 15. **No server-paid player rent** (ruling R10): a settlement whose player has no token account waits (`needsTokenAccount`
     in `GET /api/pending`) and is retried every 5 min (`NO_ATA_RETRY_MS`); the player can always self-refund after 24 h.
 
@@ -151,7 +161,7 @@ Off-chain (enforced by the server, covered by tests in `apps/server/test`):
 |---|---|---|
 | Player | buy and refund tickets (refund after 24 h), mint Passes, claim prizes, edit the profile | settle a ticket, move other players' tokens |
 | Server key (`Config.server_authority`) | close any open ticket with any `payout ≤ vault` and any score / kills / XP (clamped) | touch the treasury or season vault, change the config, open tickets, mint |
-| Admin (`Config.admin`) | change fees (≤ 10 %), split, deposit, pause; replace the server key or the admin; create, update, disable and sweep arenas (into the season pool); end and roll over seasons; withdraw the treasury; set the Pass collection (once), seed hash, mint window and supply; reveal | change the token mint; take an arena vault directly; set a fee above 10 %; reveal a seed that does not match the hash; reopen the mint after the reveal |
+| Admin (`Config.admin`) | change fees (≤ 10 %), split, deposit, pause; replace the server key or the admin; create, update, disable and sweep arenas (into the season pool); end and roll over seasons; withdraw the treasury; set the Pass collection (once), seed hash, mint window and (before the mint opens) supply; end the mint; reveal | change the token mint; take an arena vault directly; set a fee above 10 % or change an open ticket's fee; change the supply after the mint opened; reveal a seed that does not match the hash; reopen the mint after it ended |
 | Upgrade authority | replace the program code | (nothing is out of reach) |
 | Server operator | rooms, bots, matchmaking, Pass power (`PASS_START_MASS_MUL`, `PASS_CASHOUT_MS`), Pass metadata and images | anything on-chain except through the server key |
 
@@ -160,10 +170,13 @@ Consequences, stated plainly in the player guide:
 - The game outcome is trusted. A buggy or malicious server can split an arena's vault wrongly between that arena's
   players (never more than the vault). Because the admin can replace the server key, trusting the server means trusting
   the admin.
-- Until the reveal, only the admin knows the Pass seed, and Pass numbers are sequential.
-- Pass traits are `passTraits(seed, n, supply)` with the on-chain `pass_supply`; `pass_supply` stays changeable
-  (≥ minted), so changing it after the reveal would change the traits every server and generator computes. Never change
-  it after the mint opens (see [OPERATIONS.md](OPERATIONS.md)).
+- The admin knows the committed Pass seed during the mint and Pass numbers are sequential, but traits are
+  `passTraits(pass_final_seed, n, pass_supply)` with `pass_final_seed = sha256(seed ‖ pass_entropy)`, and the entropy is
+  a SlotHashes entry recorded only when the mint ends, after which nobody can mint. So nobody, the team included, can
+  know a number's traits while it can still be minted. Residual: whoever triggers the end (the admin's `close_pass_mint`,
+  or the minter of the last Pass) chooses the slot, and could hold off until a slot hash favours Passes they own
+  (grinding); it cannot add Passes afterwards.
+- `pass_supply` is frozen once the mint opens, so the traits every server and generator computes cannot shift later.
 - The upgrade authority is the strongest key: keep it in a multisig or make the program immutable after an audit.
 - Collusion (feeding a second wallet) is not detected in this version.
 

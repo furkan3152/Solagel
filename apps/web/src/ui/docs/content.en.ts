@@ -43,7 +43,7 @@ export const docsEn = (symbol: string = sym): DocsContent => ({
   },
   perkWhere: { chain: 'On-chain', server: 'Server' },
   rank: (n) => `#${n}`,
-  live: (fee, passFee) => `This server's on-chain setting right now: fee ${fee}, Pass ${passFee}.`,
+  live: (fee, passFee) => `This server's on-chain setting right now: fee ${fee}, Pass ${passFee}. A ticket keeps the rate it was bought at.`,
   colophon: `This page uses the values in the game's code. The smart contract has not been independently audited; only play with what you can afford to lose.`,
   backToTop: 'Back to top',
   sections: [
@@ -112,7 +112,7 @@ export const docsEn = (symbol: string = sym): DocsContent => ({
         },
         {
           kind: 'p',
-          text: "The admin can change fees, open new arenas or close one; the current fee is printed on the ticket in the lobby. An arena's fee and Pass rule cannot change while it has open tickets (an on-chain rule).",
+          text: "The admin can change fees, open new arenas or close one; the current fee is printed on the ticket in the lobby. The fee rate is fixed on-chain when you buy a ticket: a later change only applies to tickets bought after it. An arena's entry fee and Pass rule cannot change while it has open tickets (an on-chain rule).",
         },
         {
           kind: 'p',
@@ -169,7 +169,7 @@ export const docsEn = (symbol: string = sym): DocsContent => ({
         },
         {
           kind: 'p',
-          text: `The fee is charged on profit only: profit = cash-out value − entry fee. At a loss or break-even there is no fee. The default rate is ${pct(F.fee.bps)}, ${pct(F.fee.passBps)} on a Pass ticket; the program caps it at ${pct(F.fee.maxBps)}.`,
+          text: `The fee is charged on profit only: profit = cash-out value − entry fee. At a loss or break-even there is no fee. The default rate is ${pct(F.fee.bps)}, ${pct(F.fee.passBps)} on a Pass ticket; the program caps it at ${pct(F.fee.maxBps)}. The rate is written into your ticket when you buy it, and the cash-out uses that rate even if the admin changes the setting meanwhile.`,
         },
         { kind: 'fee-example' },
         {
@@ -192,7 +192,7 @@ export const docsEn = (symbol: string = sym): DocsContent => ({
           tone: 'warn',
           stamp: 'Token account',
           title: 'Your payout needs a token account',
-          text: `The server never pays rent for player accounts. If you have no ${symbol} token account, the payout is not lost, it waits: the lobby shows a "create token account" prompt (≈◎0.002 rent, paid by you, the account is yours). Once it exists the payout arrives within ${S.noAtaRetryMinutes} minutes. If the server never closes your ticket, you can refund it yourself ${F.refundHours} hours after it opened: your entry fee (if the vault holds it) and all the SOL, deposit included, come back.`,
+          text: `The server never pays rent for player accounts. If you have no ${symbol} token account, the payout is not lost, it waits: the lobby shows a "create token account" prompt (≈◎0.002 rent, paid by you, the account is yours). Once it exists the payout arrives within ${S.noAtaRetryMinutes} minutes. If the server never closes your ticket, you can refund it yourself ${F.refundHours} hours after it opened: your entry fee (if the vault holds it) and all the SOL, deposit included, come back. A refund never includes winnings, so create the token account rather than waiting for it.`,
         },
       ],
     },
@@ -220,7 +220,7 @@ export const docsEn = (symbol: string = sym): DocsContent => ({
           tone: 'warn',
           stamp: 'Disclosure',
           title: 'The Pass gives in-game power',
-          text: `A Pass ticket starts with +${pct(R.passStartPct * 100)} mass and cashes out in ${R.passCashoutS} s (normally ${R.cashoutS} s). That is a real edge over players without a Pass in the same room. The mint is free, but Passes trade for money on marketplaces, so the edge can be bought: it is close to pay-to-win. Tickets say so plainly. The values are server settings; the admin can change or switch them off.`,
+          text: `A Pass ticket starts with +${pct(R.passStartPct * 100)} mass and cashes out in ${R.passCashoutS} s (normally ${R.cashoutS} s). That is a real edge over players without a Pass in the same room. The mint is free, but Passes trade for money on marketplaces, so the edge can be bought: it is close to pay-to-win. The ticket confirmation lists these perks on its Pass line. The values are server settings; the admin can change or switch them off.`,
         },
         {
           kind: 'list',
@@ -230,7 +230,7 @@ export const docsEn = (symbol: string = sym): DocsContent => ({
               term: 'Lock:',
               text: 'A Pass backs one ticket at a time. The lock lifts when the ticket closes (cash-out, death or refund) and its rent comes back to you. Even if you transfer the Pass mid-game, the new owner cannot use it until the lock lifts.',
             },
-            { term: 'Fixed at purchase:', text: 'The Pass perks are written on-chain when you buy the ticket; buying or selling a Pass later does not change an open ticket.' },
+            { term: 'Fixed at purchase:', text: 'The Pass and the fee rate (Pass or normal) are written on-chain when you buy the ticket; a later fee change, or buying or selling a Pass, does not change an open ticket.' },
           ],
         },
       ],
@@ -245,7 +245,7 @@ export const docsEn = (symbol: string = sym): DocsContent => ({
           items: [
             'Open the application form on the Pass tab. While the mint is open you see the supply left and a counter.',
             `Sign with your wallet. The transaction creates a new NFT; numbers are sequential (#1, #2, …). No ${symbol} should leave your wallet, only SOL (rent and network fee). The mint sheet shows the exact amount before you sign; the rent stays with the NFT and does not come back.`,
-            'Your Pass arrives sealed in an envelope. Its look and traits are revealed for the whole collection at once when the mint closes.',
+            'Your Pass arrives sealed in an envelope. Its look and traits are revealed for the whole collection at once after the mint closes.',
           ],
         },
         {
@@ -254,8 +254,8 @@ export const docsEn = (symbol: string = sym): DocsContent => ({
             { term: 'Supply:', text: `${num(F.pass.supply)} Passes by default; ${F.pass.perWallet} per wallet.` },
             { term: 'Conditions:', text: `The admin may set a start time and, optionally, a minimum ${symbol} balance to mint (default: none).` },
             {
-              term: 'Fair reveal (commit–reveal):',
-              text: "Before the mint starts, the admin writes the hash (sha256) of a secret seed on-chain. When the mint closes or sells out, the admin reveals the seed and the program checks it against the hash. Every Pass's traits are computed from that seed and its number, so after the reveal anyone can verify them and the seed cannot be swapped. After the reveal the mint can never reopen.",
+              term: 'Fair reveal (commit–reveal + chain entropy):',
+              text: "Before the mint starts, the admin writes the hash (sha256) of a secret seed on-chain. When the mint closes or sells out, the program records a fresh Solana slot hash (entropy) that nobody could know earlier, and the mint can never reopen. Then the admin reveals the seed, the program checks it against the hash and stores the final seed = sha256(seed + entropy). Every Pass's traits come from that final seed and its number: while Passes can still be minted nobody, the team included, can know which number will be rare, and after the reveal anyone can verify every Pass.",
             },
             { term: 'Look:', text: 'Until the reveal every Pass shows as a "sealed passport" in the game and on marketplaces. The Pass page links the marketplaces when the admin has set them.' },
           ],
@@ -300,7 +300,8 @@ export const docsEn = (symbol: string = sym): DocsContent => ({
               `Fees only on profit, capped at ${pct(F.fee.maxBps)}. The split, the burn and the season pool.`,
               'Every ticket has a unique id, so an old payout cannot be applied to a new ticket.',
               `Self-refund after ${F.refundHours} hours.`,
-              'The Pass gate, the Pass lock, mint limits and commit–reveal.',
+              'The Pass gate, the Pass lock, mint limits, a supply fixed once the mint opens, and commit–reveal with chain entropy.',
+              'The fee rate of each ticket, fixed when it is bought.',
               `The season table, prize shares and the ${F.season.claimDays}-day claim window.`,
             ],
           },
@@ -321,7 +322,7 @@ export const docsEn = (symbol: string = sym): DocsContent => ({
         },
         {
           kind: 'p',
-          text: `The admin can change settings (fee at most ${pct(F.fee.maxBps)}), stop new ticket sales (payouts and refunds keep working), close arenas, end seasons, withdraw the treasury and replace the server key, so trusting the server ultimately means trusting the admin. The admin cannot move arena vaults to themselves: a closed arena's leftover can only be swept into the season pool. Before the reveal only the admin knows the Pass seed. Feeding each other from two wallets (collusion) is not detected in this version.`,
+          text: `The admin can change settings (fee at most ${pct(F.fee.maxBps)}), stop new ticket sales (payouts and refunds keep working), close arenas, end seasons, withdraw the treasury and replace the server key, so trusting the server ultimately means trusting the admin. The admin cannot move arena vaults to themselves: a closed arena's leftover can only be swept into the season pool. The admin knows the committed Pass seed, but traits also depend on the slot hash recorded when the mint closes, so not even the admin can know them while Passes can be minted. Feeding each other from two wallets (collusion) is not detected in this version.`,
         },
         {
           kind: 'note',
@@ -368,7 +369,7 @@ export const docsEn = (symbol: string = sym): DocsContent => ({
             { q: 'I bought a ticket but never played.', a: `The server closes it at its entry fee after about ${S.staleTicketMinutes} minutes. If it does not, refund it yourself after ${F.refundHours} hours.` },
             {
               q: 'My payout has not arrived.',
-              a: `Check the pending payout banner in the lobby. If you have no token account, create one; the payout follows within ${S.noAtaRetryMinutes} minutes. On network trouble the server retries by itself. If it never arrives, refund the ticket after ${F.refundHours} hours.`,
+              a: `Check the pending payout banner in the lobby. If you have no token account, create one first: the payout, winnings included, follows within ${S.noAtaRetryMinutes} minutes. On network trouble the server retries by itself. The ${F.refundHours}-hour self-refund is a last resort: it returns your entry fee only, never your winnings, so create the token account instead.`,
             },
             { q: 'Why are my season points not growing?', a: 'Points only come from arena games played with a Pass ticket. Practice and tickets without a Pass score nothing.' },
             { q: 'What if I sell my Pass?', a: 'If it is locked to an open ticket, the new owner cannot use it until the lock lifts. Your open ticket keeps its Pass perks, which were written when you bought it.' },

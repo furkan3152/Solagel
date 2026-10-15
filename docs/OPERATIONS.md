@@ -16,7 +16,8 @@ pnpm admin status
 `status` şunları yazar: admin ve sunucu anahtarı (SOL bakiyesiyle), token mint'i ve arzı, kesinti ve bölüşüm, depozito,
 güncel sezon, `paused`, toplamlar, hazine ve sezon kasası bakiyeleri, arenalar (açık bilet / sınır, kasa, açık mı),
 sezonun ilk 10'u ve havuzu, bir önceki sezonun dondurulan havuzu, talep edilmeyen kısmı ve talep maskesi, Pass
-koleksiyonu, base URI, basılan / arz, mint durumu, tohum özeti ve açılış.
+koleksiyonu, base URI, basılan / arz, arz kilidi, mint durumu, tohum özeti, entropi (mint bitince) ve açılış (yönetici
+tohumu ve özelliklerin türediği son tohum).
 
 ## İzleme
 
@@ -49,13 +50,21 @@ duyurursunuz.
 
 ## Pass açılışı (reveal)
 
-Açılış commit–reveal'in ikinci yarısıdır: tohum açıklanınca bütün Pass'lerin özellikleri `passTraits(seed, n, supply)`
-ile herkesçe hesaplanabilir. Açılıştan sonra mint **bir daha açılamaz**.
+Açılış commit–reveal'in ikinci yarısıdır. Mint **bittiğinde** (`close-mint` ya da son Pass'in basılması) program
+SlotHashes sysvar'ının en yeni girdisini `pass_entropy` olarak kaydeder; mint bundan sonra **bir daha açılamaz**. Açılışta
+program son tohumu `pass_final_seed = sha256(tohum ‖ pass_entropy)` olarak saklar ve bütün Pass'lerin özellikleri
+`passTraits(pass_final_seed, n, pass_supply)` ile herkesçe hesaplanabilir. Yönetici tohumu mint boyunca bilir ama
+entropiyi bilemez: Pass basılabildiği sürece hangi numaranın nadir olduğunu kimse, ekip dahil, bilemez.
 
-1. Mint'i kapatın (arz bittiyse gerekmez):
+1. Mint'i bitirin (arz bittiyse program zaten bitirmiştir):
    ```bash
    pnpm admin close-mint
    ```
+   Komut `close_pass_mint` gönderir ve kaydedilen entropiyi yazar. Hiç Pass basılmadıysa yalnızca bayrağı kapatır
+   (entropi yok, mint yeniden açılabilir). Basım başladıysa `update-config --mint-open false` reddedilir (`UseCloseMint`):
+   mint'i yalnızca `close-mint` bitirir.
+   Not: mint'i bitiren işlem slotu seçer. Yalnızca bir kez, açılış öncesi bir zamanda kapatın; "uygun" bir slot hash'i
+   için beklemek (grinding) mümkün olsa da yasaktır ve oyunculara karşı dürüstlük taahhüdümüzü bozar.
 2. Tohum dosyasının özetini zincirdekiyle karşılaştırın:
    ```bash
    pnpm admin pass-seed                       # keys/pass-seed.json'un sha256'sını yazar
@@ -65,17 +74,18 @@ ile herkesçe hesaplanabilir. Açılıştan sonra mint **bir daha açılamaz**.
    ```bash
    pnpm admin reveal [--seed-file keys/pass-seed.json]
    ```
-   Program `sha256(seed) == pass_seed_hash` şartını ve mint'in kapalı ya da tükenmiş olmasını kontrol eder.
+   Program `sha256(seed) == pass_seed_hash` şartını ve mint'in bitmiş olmasını (entropi kayıtlı) kontrol eder; son tohumu
+   kaydeder. Komut entropiyi, son tohumu ve görselleri üretme komutunu yazar.
 4. Oyun sunucusu açılışı zincirden okur (yapılandırma önbelleği 30 sn) ve `/pass/<n>.json` ile `/pass/<n>.png` mühürlü
    içerik yerine özellikleri döndürür. Önbellek süreleri: JSON mühürlüyken 60 sn, açılıştan sonra 1 saat (`PUBLIC_URL`
    boşsa JSON hiç önbelleğe alınmaz); PNG mühürlüyken 300 sn, açılıştan sonra 1 gün. Pazar yerlerinden metadata
    yenilemesi isteyin.
 5. İsteğe bağlı: koleksiyonu çevrimdışı üretip arşivleyin ya da Arweave'e yükleyin ([PASS-ART.md](PASS-ART.md)).
 
-> **Arzı değiştirmeyin.** Özellikler `pass_supply`'a bağlıdır (1/1 yerleşimi ve tekrar ayıklama bütün koleksiyon
-> üzerinden yapılır). Program `pass_supply`'ı (basılandan küçük olmamak şartıyla) değiştirmeye izin verir; mint açıldıktan
-> sonra `update-config --supply` ya da `open-mint --supply` kullanmak, sunucunun ve üreticinin hesapladığı özellikleri
-> değiştirir. Mint'i erken kapatmak sorun değildir: arz aynı kaldıkça özellikler aynıdır.
+> **Arz sabittir.** Özellikler `pass_supply`'a bağlıdır (1/1 yerleşimi ve tekrar ayıklama bütün koleksiyon üzerinden
+> yapılır). Program arzı mint bir kez açıldıktan sonra değiştirmez (`SupplyLocked`); CLI de `update-config --supply` ve
+> `open-mint --supply`'ı o andan sonra reddeder. Arzı `open-mint`'ten önce ayarlayın. Mint'i erken bitirmek sorun değildir:
+> arz aynı kalır, basılmayan numaralar hiç basılmaz.
 
 ## Hazine
 
@@ -95,7 +105,7 @@ işlemde oluşturulur (kirasını yönetici öder). Tutar tam token olarak yazı
 | Yeni biletleri durdur | `pnpm admin update-config --paused true` | `join_arena` reddedilir; **ödemeler ve iadeler sürer**. Geri almak: `--paused false` |
 | Tek arenayı kapat | `pnpm admin update-arena --id N --enabled false` | o arenaya bilet kesilemez; açık biletler oynanıp kapanır |
 | Arenaları sunucuda kapat | sunucu ortamında `STAKE_ENABLED=false`, yeniden başlat | arenalar lobiden kalkar; ödeme kuyruğu çalışmaya devam eder |
-| Kesintiyi ya da depozitoyu değiştir | `pnpm admin update-config --fee-bps N --pass-fee-bps N --split T/S/B --settle-fee-lamports N` | yeni değerler sonraki ödemelerde geçerli; kesinti en fazla 1000 (%10) |
+| Kesintiyi ya da depozitoyu değiştir | `pnpm admin update-config --fee-bps N --pass-fee-bps N --split T/S/B --settle-fee-lamports N` | kesinti oranı ve depozito bundan sonra **kesilen biletlere** uygulanır (açık bilet, kesildiği andaki oranı korur: `Session.fee_bps`); bölüşüm sonraki ödemelerde geçerli; kesinti en fazla 1000 (%10) |
 | Pass gücünü kapat | sunucuda `PASS_START_MASS_MUL=1` ve `PASS_CASHOUT_MS=3000`, yeniden başlat | Pass'li biletler normal başlar ve çıkar |
 
 Sunucu `SIGTERM`/`SIGINT` alınca arenadaki oyuncuları cash-out'a alır ve durumu kaydeder; yeniden başlatmalar için bunu
@@ -106,12 +116,16 @@ kullanın (Docker `stop` SIGTERM gönderir).
 1. `pnpm admin update-arena --id N --enabled false`
 2. Açık biletlerin kapanmasını bekleyin: `status` → `open 0/…`. Sunucu biletleri en geç 6 saatte otomatik cash-out yapar;
    kapanmayanlar oyuncu tarafından 24 saat sonra iade alınabilir.
-3. `/api/rooms`'ta o arenanın odalarında ganimet kalmadığından emin olun.
+3. `/api/rooms`'ta o arenanın odalarında ganimet kalmadığından ve `GET /api/pending` / sunucu günlüğünde o arenaya ait
+   bekleyen ödeme olmadığından emin olun (CLI sunucunun journal'ını göremez).
 4. ```bash
-   pnpm admin sweep --id N
+   pnpm admin sweep --id N --force
    ```
-   Kasanın tamamı güncel sezonun havuzuna aktarılır (oyunculara döner). Program yalnızca kapalı ve açık bileti olmayan
-   arenayı süpürür. Süpürülmüş bir arenayı yeniden açmayın: sunucunun journal'ında kalmış ganimet artık kasada değildir.
+   `--force` olmadan komut yalnızca uyarıyı yazar ve durur. Kasanın tamamı güncel sezonun havuzuna aktarılır (oyunculara
+   döner). Program yalnızca kapalı ve açık bileti olmayan arenayı süpürür. Süpürülmüş bir arenayı yeniden açmayın:
+   sunucunun journal'ında kalmış ganimet artık kasada değildir. Sunucu da bunu denetler: bir arenayı bağlarken kasası
+   journal'daki borcu (ganimet + bekleyen ödemeler + canlı biletler) karşılamıyorsa arenayı kapalı tutar ve günlüğe
+   `!!! arena #N KEPT DISABLED` yazar.
 
 ## Sunucu anahtarını değiştirme
 

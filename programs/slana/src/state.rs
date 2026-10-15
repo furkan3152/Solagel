@@ -53,13 +53,26 @@ pub struct Config {
     pub pass_min_tokens: u64,
     pub pass_mint_open: bool,
     pub pass_mint_start_ts: i64,
+    /// The mint has been opened at least once: `pass_supply` is frozen from then on.
+    pub pass_mint_opened: bool,
+    /// The mint ended for good (`close_pass_mint`, or the last Pass of the supply was minted)
+    /// and `pass_entropy` is captured. It never reopens.
+    pub pass_mint_ended: bool,
 
     // ----- Pass trait reveal (commit / reveal) ---------------------------------------------
     /// `sha256(pass_seed)` committed before the first mint.
     pub pass_seed_hash: [u8; 32],
-    /// The revealed seed (zero until `pass_revealed`).
+    /// The admin's revealed seed (zero until `pass_revealed`).
     pub pass_seed: [u8; 32],
     pub pass_revealed: bool,
+    /// Most recent SlotHashes entry when the mint ended (zero before): a chain value nobody,
+    /// the admin included, knows while Passes can still be minted.
+    pub pass_entropy: [u8; 32],
+    /// Slot of `pass_entropy`.
+    pub pass_entropy_slot: u64,
+    /// `sha256(pass_seed || pass_entropy)`, set by the reveal (zero before). The single seed
+    /// every Pass trait is derived from (`passTraits(final_seed, n, supply)`).
+    pub pass_final_seed: [u8; 32],
 
     // ----- bumps -------------------------------------------------------------------------
     pub bump: u8,
@@ -145,6 +158,9 @@ pub struct Session {
     pub pass_asset: Pubkey,
     /// Settle deposit in lamports (`Config::settle_fee_lamports` at join).
     pub settle_fee: u64,
+    /// Fee on profit in basis points, fixed at join (`Config::pass_fee_bps` with a Pass,
+    /// else `Config::fee_bps`): later fee changes never touch an open session.
+    pub fee_bps: u16,
     pub bump: u8,
 }
 

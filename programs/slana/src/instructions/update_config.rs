@@ -17,11 +17,13 @@ pub struct UpdateConfigArgs {
     pub paused: Option<bool>,
     /// At most `MAX_BASE_URI_LEN` bytes, ends with `/`; frozen once the first Pass is minted.
     pub pass_base_uri: Option<String>,
-    /// `pass_minted..=MAX_PASS_SUPPLY`.
+    /// `1..=MAX_PASS_SUPPLY`; frozen once the mint has opened (`SupplyLocked`).
     pub pass_supply: Option<u32>,
     /// `1..=MAX_PASS_PER_WALLET`.
     pub pass_per_wallet: Option<u8>,
     pub pass_min_tokens: Option<u64>,
+    /// `true` opens the mint (never after it ended). `false` closes it only while no Pass is
+    /// minted; a started mint ends with `close_pass_mint` (`UseCloseMint`).
     pub pass_mint_open: Option<bool>,
     pub pass_mint_start_ts: Option<i64>,
 }
@@ -83,8 +85,13 @@ pub fn handle_update_config(ctx: Context<UpdateConfig>, args: UpdateConfigArgs) 
         config.pass_base_uri_len = bytes.len() as u8;
     }
     if let Some(pass_supply) = args.pass_supply {
+        // Trait rarity depends on the supply: it is fixed for good once anyone could mint.
         require!(
-            (config.pass_minted..=MAX_PASS_SUPPLY).contains(&pass_supply),
+            !config.pass_mint_opened && config.pass_minted == 0,
+            SlanaError::SupplyLocked
+        );
+        require!(
+            (1..=MAX_PASS_SUPPLY).contains(&pass_supply),
             SlanaError::InvalidAmount
         );
         config.pass_supply = pass_supply;
@@ -100,11 +107,16 @@ pub fn handle_update_config(ctx: Context<UpdateConfig>, args: UpdateConfigArgs) 
         config.pass_min_tokens = pass_min_tokens;
     }
     if let Some(pass_mint_open) = args.pass_mint_open {
-        // The trait seed is public after the reveal, so the mint must stay closed.
-        require!(
-            !(pass_mint_open && config.pass_revealed),
-            SlanaError::AlreadyRevealed
-        );
+        if pass_mint_open {
+            // The trait seed is public after the reveal, so the mint must stay closed.
+            require!(!config.pass_revealed, SlanaError::AlreadyRevealed);
+            // The entropy is known once the mint ended: reopening would let anyone pick traits.
+            require!(!config.pass_mint_ended, SlanaError::MintEnded);
+            config.pass_mint_opened = true;
+        } else if config.pass_mint_open {
+            // Closing a started mint must capture the entropy (`close_pass_mint`).
+            require!(config.pass_minted == 0, SlanaError::UseCloseMint);
+        }
         config.pass_mint_open = pass_mint_open;
     }
     if let Some(pass_mint_start_ts) = args.pass_mint_start_ts {

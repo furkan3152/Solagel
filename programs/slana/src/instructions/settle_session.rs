@@ -62,8 +62,9 @@ pub struct SettleSession<'info> {
     /// Pass lock rent).
     #[account(mut)]
     pub player: UncheckedAccount<'info>,
-    /// Any token account of the game mint owned by the player (the server can always
-    /// (re)create the player's ATA).
+    /// Any token account of the game mint owned by the player. The player creates and pays
+    /// for it (ruling R10: the server never pays a player's token account); without one the
+    /// server waits, and the 24 h self-refund returns the entry fee only.
     #[account(
         mut,
         token::mint = token_mint,
@@ -113,15 +114,11 @@ pub fn handle_settle_session(ctx: Context<SettleSession>, args: SettleArgs) -> R
     let now = Clock::get()?.unix_timestamp;
 
     let has_pass = a.session.has_pass;
-    let fee_bps = if has_pass {
-        a.config.pass_fee_bps
-    } else {
-        a.config.fee_bps
-    };
+    // The fee fixed at join (a later `update_config` never changes an open session's fee).
     let split = logic::split_payout(
         args.payout,
         a.session.entry_fee,
-        fee_bps,
+        a.session.fee_bps,
         a.config.treasury_bps,
         a.config.burn_bps,
     )?;

@@ -29,7 +29,7 @@ const SEED = 'ab'.repeat(32);
 const disc = (name: string) =>
   Buffer.from((IDL as unknown as { instructions: { name: string; discriminator: number[] }[] }).instructions.find((i) => i.name === name)!.discriminator);
 /** Account order of `mint_pass` in the IDL. */
-const MINT_ACCOUNTS = ['minter', 'asset', 'config', 'collection', 'pass_authority', 'mint_counter', 'minter_token', 'mpl_core_program', 'system_program'];
+const MINT_ACCOUNTS = ['minter', 'asset', 'config', 'collection', 'pass_authority', 'mint_counter', 'minter_token', 'mpl_core_program', 'slot_hashes', 'system_program'];
 
 const status = (over: Partial<PassStatus> = {}): PassStatus => ({
   collection,
@@ -118,8 +118,9 @@ describe('mintGate', () => {
     expect(mintGate({ ...base, status: status({ revealed: true, seed: SEED }) }).kind).toBe('closed');
     expect(mintGate({ ...base, status: status({ minted: 3333 }) }).kind).toBe('soldOut');
     expect(mintGate({ ...base, status: status({ mintOpen: false }) }).kind).toBe('closed');
-    // MintClosed before MintSoldOut, as the program checks them
-    expect(mintGate({ ...base, status: status({ mintOpen: false, minted: 3333 }) }).kind).toBe('closed');
+    // selling out ends the mint on chain (mintOpen false): shown as sold out, not closed
+    expect(mintGate({ ...base, status: status({ mintOpen: false, minted: 3333 }) }).kind).toBe('soldOut');
+    expect(mintGate({ ...base, status: status({ mintOpen: false, minted: 3333, revealed: true, seed: SEED }) }).kind).toBe('closed');
     expect(mintGate({ ...base, status: status({ minted: 3333, mintStartTs: 5_000 }) }).kind).toBe('notStarted');
     expect(mintGate({ ...base, status: status({ mintStartTs: 5_000 }) })).toEqual({ kind: 'notStarted', startsAt: 5_000 });
     expect(mintGate({ ...base, walletConnected: false }).kind).toBe('connect');

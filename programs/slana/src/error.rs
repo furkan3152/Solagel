@@ -88,4 +88,14 @@ pub enum SlanaError {
     SeedLocked,
     #[msg("Pass mint is still open")]
     MintStillOpen,
+    #[msg("Pass mint has ended for good; it cannot reopen")]
+    MintEnded,
+    #[msg("Pass supply cannot change once the mint has opened")]
+    SupplyLocked,
+    #[msg("A Pass mint with minted Passes is closed with close_pass_mint")]
+    UseCloseMint,
+    #[msg("Invalid SlotHashes sysvar account")]
+    BadSlotHashes,
+    #[msg("No Pass has been minted yet")]
+    NothingMinted,
 }

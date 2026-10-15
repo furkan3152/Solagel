@@ -57,6 +57,11 @@ export const SlanaErrorCode = {
   EntryFeeZero: 6040,
   SeedLocked: 6041,
   MintStillOpen: 6042,
+  MintEnded: 6043,
+  SupplyLocked: 6044,
+  UseCloseMint: 6045,
+  BadSlotHashes: 6046,
+  NothingMinted: 6047,
 } as const;
 
 export type SlanaErrorName = keyof typeof SlanaErrorCode;
@@ -108,6 +113,11 @@ const FRIENDLY: Record<SlanaErrorName, string> = {
   EntryFeeZero: 'The entry fee must be greater than zero.',
   SeedLocked: 'The Pass seed hash cannot change after the first mint.',
   MintStillOpen: 'Close the Pass mint (or sell out) before revealing.',
+  MintEnded: 'The Pass mint has ended for good and cannot reopen.',
+  SupplyLocked: 'The Pass supply cannot change once the mint has opened.',
+  UseCloseMint: 'Passes were minted: end the mint with close-mint (it fixes the trait entropy).',
+  BadSlotHashes: 'The SlotHashes sysvar account is missing or invalid.',
+  NothingMinted: 'No Pass has been minted yet.',
 };
 
 /** Program errors by code (6000–6042). */

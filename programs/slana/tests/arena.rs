@@ -206,6 +206,7 @@ fn join_moves_entry_fee_and_deposit() {
         assert!(!session.has_pass);
         assert_eq!(session.pass_asset, anchor_lang::prelude::Pubkey::default());
         assert_eq!(session.settle_fee, SETTLE_FEE_LAMPORTS);
+        assert_eq!(session.fee_bps, FEE_BPS);
 
         let arena = env.arena(1);
         assert_eq!(arena.open_sessions, 1);
@@ -337,6 +338,46 @@ fn settle_with_pass_charges_the_pass_fee() {
     assert_eq!(env.mint_supply(), supply - 4);
     assert_eq!(env.season(FIRST_SEASON).pool, 6);
     assert!(env.pass_lock(&asset).is_none());
+}
+
+#[test]
+fn settle_uses_the_fee_fixed_at_join() {
+    let mut env = TestEnv::initialized();
+    assert_ok(env.create_arena(1, 1_000, 300, false));
+    let a = env.token_player("a", 1_000);
+    let b = env.token_player("b", 1_000);
+    let c = env.token_player("c", 2_000);
+    let (_, asset) = env.give_pass(&b.pubkey());
+    assert_ok(env.join(&a, 1));
+    assert_ok(env.join_with_pass(&b, 1, &asset));
+    assert_eq!(env.session(1, &a.pubkey()).unwrap().fee_bps, FEE_BPS);
+    assert_eq!(env.session(1, &b.pubkey()).unwrap().fee_bps, PASS_FEE_BPS);
+
+    // The admin raises both fees while the sessions are open.
+    assert_ok(env.update_config(UpdateConfigArgs {
+        fee_bps: Some(MAX_FEE_BPS),
+        pass_fee_bps: Some(MAX_FEE_BPS),
+        ..Default::default()
+    }));
+    assert_ok(env.join(&c, 1));
+    assert_eq!(env.session(1, &c.pubkey()).unwrap().fee_bps, MAX_FEE_BPS);
+
+    // profit 1000 each: A pays 5 % (50), B 2 % (20), both fixed at join; C, who joined
+    // after the change, pays 10 % (100) on a 1000 profit.
+    assert_ok(env.settle(&a.pubkey(), 1, 2_000, 0, 0, 0));
+    assert_eq!(env.tokens(&env.player_ata(&a.pubkey())), 1_950);
+    assert_ok(env.settle(&b.pubkey(), 1, 1_000, 0, 0, 0));
+    assert_eq!(env.tokens(&env.player_ata(&b.pubkey())), 1_000);
+    assert_ok(env.settle(&c.pubkey(), 1, 0, 0, 0, 0));
+    assert_eq!(env.tokens(&treasury_vault_pda()), 25);
+    // A new session of C after the change charges the new fee.
+    let d = env.token_player("d", 1_000);
+    assert_ok(env.join(&c, 1));
+    assert_ok(env.join(&d, 1));
+    let before = env.tokens(&treasury_vault_pda());
+    assert_ok(env.settle(&c.pubkey(), 1, 2_000, 0, 0, 0));
+    // fee 100: treasury 50.
+    assert_eq!(env.tokens(&treasury_vault_pda()), before + 50);
 }
 
 #[test]

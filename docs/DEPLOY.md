@@ -141,6 +141,11 @@ pnpm admin set-pass-collection --collection <C>   # create-collection çıktıs�
   Pass'leri yalnızca program basabilir. Royalties eklentisi `--royalty-to` adresine `--royalty-bps` telif yazar.
 - `pass-seed --new` var olan dosyanın üstüne yazmaz (`--force` gerekir; eski tohum kaybolur). Tohumu **yedekleyin** ve
   **commit etmeyin**.
+- Tohum tek başına özellikleri belirlemez: mint bittiğinde (`close-mint` ya da son Pass) program SlotHashes'ten bir
+  entropi kaydeder ve özellikler `passTraits(sha256(tohum ‖ entropi), n, arz)` ile hesaplanır. Böylece yönetici de mint
+  sürerken hangi numaranın nadir olacağını bilemez.
+- Arzı (`update-config --supply N`, varsayılan 3333) **mint'i açmadan önce** ayarlayın: mint bir kez açılınca program
+  arzı kilitler (`SupplyLocked`).
 - Koleksiyon görselleri ve metadata varsayılan olarak oyun sunucusundan servis edilir (`/pass/...`); `<alan-adı>`
   sunucunun `PUBLIC_URL`'üdür. Arweave ve görsel üretimi: [PASS-ART.md](PASS-ART.md).
 
@@ -238,12 +243,14 @@ pnpm admin status                          # "mint OPEN", basılan / arz
 
 - `--base-uri` `/` ile bitmeli ve en fazla 96 bayt olmalı. Program her Pass'e `<base-uri><n>.json` yazar ve **ilk
   mint'ten sonra base URI değiştirilemez**.
-- `open-mint` koleksiyon ve tohum özeti ayarlanmadan çalışmaz; açılıştan sonra mint yeniden açılamaz.
+- `open-mint` koleksiyon ve tohum özeti ayarlanmadan çalışmaz; mint bittikten (`close-mint` ya da arzın tükenmesi) sonra
+  yeniden açılamaz.
 - Mint ücretsizdir: mint eden yalnızca Core varlığının ve cüzdan sayacının kirasını ve ağ ücretini öder.
-- Pass özellikleri `passTraits(seed, n, supply)` ile hesaplanır: mint açıldıktan sonra **`--supply` değiştirmeyin**
-  (bkz. [OPERATIONS.md](OPERATIONS.md)).
+- Pass özellikleri `passTraits(son tohum, n, arz)` ile hesaplanır; son tohum = `sha256(tohum ‖ entropi)`. Arz, mint ilk
+  açıldığında kilitlenir: `open-mint --supply` yalnızca ilk açılışta işe yarar, sonra program da CLI de reddeder.
 
-Mint kapanınca açılış (reveal) için: [OPERATIONS.md](OPERATIONS.md#pass-açılışı-reveal).
+Mint'i bitirmek (`close-mint`, entropiyi kaydeder) ve açılış (reveal) için:
+[OPERATIONS.md](OPERATIONS.md#pass-açılışı-reveal).
 
 ## 12. Mainnet
 
@@ -261,18 +268,18 @@ Mint kapanınca açılış (reveal) için: [OPERATIONS.md](OPERATIONS.md#pass-a�
 
 Kira = `(bayt + 128) × 6960` lamport (varsayılan kira: 3480 lamport/bayt-yıl × 2 yıl muafiyet). `solana rent <bayt>` bir
 RPC'ye ihtiyaç duyar; aşağıdaki değerler bu formülle hesaplandı. Hesap boyutları programdaki `INIT_SPACE` değerleridir
-(geçici bir testle yazdırıldı: Config 423, Season 1289, Arena 74, PlayerProfile 135, Session 140, PassLock 73,
-MintCounter 10 bayt).
+(Config 497, Season 1289, Arena 74, PlayerProfile 135, Session 142, PassLock 73, MintCounter 10 bayt; SDK'daki
+`ACCOUNT_BYTES` ve bir SDK testi bunları IDL'den yeniden hesaplar).
 
-**Program dağıtımı.** `target/deploy/slana.so` = **654.568 bayt** (`anchor build`, bu commit'teki kaynakla).
+**Program dağıtımı.** `target/deploy/slana.so` = **668.888 bayt** (`anchor build`, bu commit'teki kaynakla).
 
 | Hesap | Bayt | Kira |
 |---|---|---|
-| ProgramData (`.so` + 45) | 654.613 | 4.556.997.360 lamport ≈ **◎4,557** (program kapatılırsa geri alınır) |
+| ProgramData (`.so` + 45) | 668.933 | 4.656.664.560 lamport ≈ **◎4,657** (program kapatılırsa geri alınır) |
 | Program hesabı | 36 | 1.141.440 lamport ≈ ◎0,0011 |
-| Dağıtım tamponu (`.so` + 37, geçici) | 654.605 | 4.556.941.680 lamport ≈ ◎4,557 (dağıtım bitince geri döner) |
+| Dağıtım tamponu (`.so` + 37, geçici) | 668.925 | 4.656.608.880 lamport ≈ ◎4,657 (dağıtım bitince geri döner) |
 
-Dağıtım sırasında cüzdanda yaklaşık **◎9,12 + işlem ücretleri** bulunmalı; ◎4,56 kalıcı olarak programda kalır.
+Dağıtım sırasında cüzdanda yaklaşık **◎9,32 + işlem ücretleri** bulunmalı; ◎4,66 kalıcı olarak programda kalır.
 `solana program deploy`'un `--max-len` varsayılanı ilk programın boyudur; daha büyük bir sürüm yüklemek için
 `solana program extend` gerekir (ek bayt başına aynı kira).
 
@@ -280,10 +287,10 @@ Dağıtım sırasında cüzdanda yaklaşık **◎9,12 + işlem ücretleri** bulu
 
 | İşlem | Hesaplar | Kira |
 |---|---|---|
-| `init` | Config (423) + Season 1 (1289) + hazine ve sezon kasası (token hesabı, SPL'de 165 bayt) | ≈ ◎0,0137 + 2 × ◎0,0020 ≈ ◎0,018 |
+| `init` | Config (497) + Season 1 (1289) + hazine ve sezon kasası (token hesabı, SPL'de 165 bayt) | ≈ ◎0,0142 + 2 × ◎0,0020 ≈ ◎0,018 |
 | `create-arena` (her biri) | Arena (74) + kasa (165) | 1.405.920 + 2.039.280 lamport ≈ ◎0,0034; 4 varsayılan arena ≈ ◎0,0138 |
 | `end-season` (her sezon) | yeni Season (1289) | ≈ ◎0,0099 |
-| `create-collection` | Core koleksiyonu + Royalties eklentisi | ad ve URI uzunluğuna bağlı, birkaç binde bir SOL |
+| `create-collection` | Core koleksiyonu + Royalties eklentisi (tek alıcı) | **tahmin**: ≈ 49 + ad + URI + ~69 eklenti baytı; `Slana Pass` ve 42 baytlık bir URI ile ≈ 170 bayt ≈ ◎0,0021 (bayt başına 6960 lamport; kesin tutar Core'un hesap düzenine bağlıdır, `solana rent <bayt>` ya da işlemden sonra hesabın bakiyesiyle doğrulayın) |
 
 Token-2022 token hesapları uzantılar nedeniyle biraz daha büyüktür (ör. 170 bayt ≈ ◎0,0021).
 
@@ -291,7 +298,7 @@ Token-2022 token hesapları uzantılar nedeniyle biraz daha büyüktür (ör. 17
 20.000 lamport depozitoyla bunu karşılar (taban ücret 5.000 lamport/imza + `PRIORITY_FEE_MICROLAMPORTS` × işlem
 birimi). Anahtarda bir miktar SOL tampon tutun (sunucu ◎0,05 altında uyarır).
 
-**Oyuncunun ödedikleri (bilgi için).** Oturum kirası 140 bayt ≈ ◎0,00187 ve Pass kilidi 73 bayt ≈ ◎0,0014 (bilet
+**Oyuncunun ödedikleri (bilgi için).** Oturum kirası 142 bayt ≈ ◎0,00188 ve Pass kilidi 73 bayt ≈ ◎0,0014 (bilet
 kapanınca geri döner); profil 135 bayt ≈ ◎0,0018 ve token hesabı ≈ ◎0,0020 (oyuncuda kalır); depozito ◎0,00002;
 Pass mint: Core varlığı (ör. `https://slana.example/pass/` ile ≈ 127 bayt ≈ ◎0,0018) + ilk mint'te sayaç (10 bayt
 ≈ ◎0,00096).

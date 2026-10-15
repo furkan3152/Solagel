@@ -35,6 +35,9 @@ describe('pass metadata', () => {
     expect(before).toMatchObject({ name: 'Slana Pass #42', symbol: 'SLANA', image: `${BASE}/pass/42.png` });
     expect(before.attributes).toEqual([{ trait_type: 'Status', value: 'Sealed' }]);
     expect(before.description).toMatch(/sealed/i);
+    // fairness claim (R18): traits depend on a chain value fixed when the mint closes
+    expect(before.description).toMatch(/slot hash/i);
+    expect(before.description).toMatch(/nobody, the team included, can know which number is rare while Passes can still be minted/);
     expect(JSON.stringify(before)).not.toMatch(/Rarity/);
 
     const after = passMetadata(42, revealed, BASE)!;

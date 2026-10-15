@@ -1,4 +1,5 @@
 pub mod claim_season_reward;
+pub mod close_pass_mint;
 pub mod create_arena;
 pub mod end_season;
 pub mod initialize;
@@ -20,6 +21,7 @@ pub mod withdraw_treasury;
 pub(crate) mod shared;
 
 pub use claim_season_reward::*;
+pub use close_pass_mint::*;
 pub use create_arena::*;
 pub use end_season::*;
 pub use initialize::*;

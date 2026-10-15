@@ -100,7 +100,8 @@ export class DevFakeChain implements ChainGateway {
       maxSessions: a.maxSessions,
       openSessions: 0,
       enabled: true,
-      pot: 0,
+      // no real vault: the server's vault-vs-journal guard does not apply
+      pot: null,
     }));
   }
 
