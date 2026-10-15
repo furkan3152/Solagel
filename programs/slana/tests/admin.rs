@@ -42,6 +42,8 @@ fn assert_initialized(env: &TestEnv, kind: MintKind) {
     assert!(!config.pass_mint_opened && !config.pass_mint_ended);
     assert_eq!(config.pass_seed_hash, [0; 32]);
     assert_eq!(config.pass_entropy, [0; 32]);
+    assert!(!config.pass_entropy_captured);
+    assert_eq!(config.pass_entropy_target_slot, 0);
     assert_eq!(config.pass_final_seed, [0; 32]);
 
     // Both vaults are token accounts of the game mint, owned by the token program, with the

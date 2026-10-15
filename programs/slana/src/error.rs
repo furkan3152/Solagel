@@ -98,4 +98,8 @@ pub enum SlanaError {
     BadSlotHashes,
     #[msg("No Pass has been minted yet")]
     NothingMinted,
+    #[msg("The Pass entropy target slot has not passed yet")]
+    EntropyNotReady,
+    #[msg("The Pass entropy is not captured yet")]
+    EntropyNotCaptured,
 }

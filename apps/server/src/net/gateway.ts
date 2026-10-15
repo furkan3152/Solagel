@@ -110,7 +110,7 @@ export class Gateway {
         }
       }, 25_000),
       setInterval(() => {
-        const msg = { t: 'rooms', rooms: this.rooms.list(), online: this.rooms.online() } as const;
+        const msg = { t: 'rooms', rooms: this.rooms.list(), online: this.rooms.online(), blocked: this.rooms.blockedArenas() } as const;
         for (const c of this.rooms.conns) if (c.helloed && !c.player?.alive) c.send(msg);
       }, 5000),
     );
@@ -185,6 +185,7 @@ export class Gateway {
           rooms: this.rooms.list(),
           chain: publicChainStatus(this.chain.status(), this.cfg),
           online: this.rooms.online(),
+          blocked: this.rooms.blockedArenas(),
         });
         return;
       }

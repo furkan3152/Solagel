@@ -1,3 +1,4 @@
+pub mod capture_pass_entropy;
 pub mod claim_season_reward;
 pub mod close_pass_mint;
 pub mod create_arena;
@@ -20,6 +21,7 @@ pub mod withdraw_treasury;
 
 pub(crate) mod shared;
 
+pub use capture_pass_entropy::*;
 pub use claim_season_reward::*;
 pub use close_pass_mint::*;
 pub use create_arena::*;

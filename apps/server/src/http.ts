@@ -176,7 +176,7 @@ export function createHttpServer(cfg: ServerConfig, ctx: Ctx): Server {
               rooms: ctx.rooms.rooms.size,
             });
           case '/api/rooms':
-            return json(res, 200, { rooms: ctx.rooms.list(), online: ctx.rooms.online() });
+            return json(res, 200, { rooms: ctx.rooms.list(), online: ctx.rooms.online(), blocked: ctx.rooms.blockedArenas() });
           case '/api/leaderboard':
             return json(res, 200, ctx.leaderboards.snapshot());
           case '/api/season':

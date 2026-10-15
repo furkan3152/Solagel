@@ -141,8 +141,9 @@ pnpm admin set-pass-collection --collection <C>   # create-collection çıktıs�
   Pass'leri yalnızca program basabilir. Royalties eklentisi `--royalty-to` adresine `--royalty-bps` telif yazar.
 - `pass-seed --new` var olan dosyanın üstüne yazmaz (`--force` gerekir; eski tohum kaybolur). Tohumu **yedekleyin** ve
   **commit etmeyin**.
-- Tohum tek başına özellikleri belirlemez: mint bittiğinde (`close-mint` ya da son Pass) program SlotHashes'ten bir
-  entropi kaydeder ve özellikler `passTraits(sha256(tohum ‖ entropi), n, arz)` ile hesaplanır. Böylece yönetici de mint
+- Tohum tek başına özellikleri belirlemez: mint bittiğinde (`close-mint` ya da son Pass) program ~150 slot sonrası için
+  bir hedef slot kaydeder; o slotun hash'i (oyun sunucusunun otomatik gönderdiği `capture_pass_entropy` ile) entropi olur
+  ve özellikler `passTraits(sha256(tohum ‖ entropi), n, arz)` ile hesaplanır. Böylece yönetici de mint
   sürerken hangi numaranın nadir olacağını bilemez.
 - Arzı (`update-config --supply N`, varsayılan 3333) **mint'i açmadan önce** ayarlayın: mint bir kez açılınca program
   arzı kilitler (`SupplyLocked`).
@@ -249,7 +250,7 @@ pnpm admin status                          # "mint OPEN", basılan / arz
 - Pass özellikleri `passTraits(son tohum, n, arz)` ile hesaplanır; son tohum = `sha256(tohum ‖ entropi)`. Arz, mint ilk
   açıldığında kilitlenir: `open-mint --supply` yalnızca ilk açılışta işe yarar, sonra program da CLI de reddeder.
 
-Mint'i bitirmek (`close-mint`, entropiyi kaydeder) ve açılış (reveal) için:
+Mint'i bitirmek (`close-mint`, hedef slotu kaydeder), entropiyi yakalamak (`capture-entropy`) ve açılış (reveal) için:
 [OPERATIONS.md](OPERATIONS.md#pass-açılışı-reveal).
 
 ## 12. Mainnet
@@ -268,18 +269,18 @@ Mint'i bitirmek (`close-mint`, entropiyi kaydeder) ve açılış (reveal) için:
 
 Kira = `(bayt + 128) × 6960` lamport (varsayılan kira: 3480 lamport/bayt-yıl × 2 yıl muafiyet). `solana rent <bayt>` bir
 RPC'ye ihtiyaç duyar; aşağıdaki değerler bu formülle hesaplandı. Hesap boyutları programdaki `INIT_SPACE` değerleridir
-(Config 497, Season 1289, Arena 74, PlayerProfile 135, Session 142, PassLock 73, MintCounter 10 bayt; SDK'daki
+(Config 506, Season 1289, Arena 74, PlayerProfile 135, Session 142, PassLock 73, MintCounter 10 bayt; SDK'daki
 `ACCOUNT_BYTES` ve bir SDK testi bunları IDL'den yeniden hesaplar).
 
-**Program dağıtımı.** `target/deploy/slana.so` = **668.888 bayt** (`anchor build`, bu commit'teki kaynakla).
+**Program dağıtımı.** `target/deploy/slana.so` = **672.176 bayt** (`anchor build`, bu commit'teki kaynakla).
 
 | Hesap | Bayt | Kira |
 |---|---|---|
-| ProgramData (`.so` + 45) | 668.933 | 4.656.664.560 lamport ≈ **◎4,657** (program kapatılırsa geri alınır) |
+| ProgramData (`.so` + 45) | 672.221 | 4.679.549.040 lamport ≈ **◎4,680** (program kapatılırsa geri alınır) |
 | Program hesabı | 36 | 1.141.440 lamport ≈ ◎0,0011 |
-| Dağıtım tamponu (`.so` + 37, geçici) | 668.925 | 4.656.608.880 lamport ≈ ◎4,657 (dağıtım bitince geri döner) |
+| Dağıtım tamponu (`.so` + 37, geçici) | 672.213 | 4.679.493.360 lamport ≈ ◎4,679 (dağıtım bitince geri döner) |
 
-Dağıtım sırasında cüzdanda yaklaşık **◎9,32 + işlem ücretleri** bulunmalı; ◎4,66 kalıcı olarak programda kalır.
+Dağıtım sırasında cüzdanda yaklaşık **◎9,36 + işlem ücretleri** bulunmalı; ◎4,68 kalıcı olarak programda kalır.
 `solana program deploy`'un `--max-len` varsayılanı ilk programın boyudur; daha büyük bir sürüm yüklemek için
 `solana program extend` gerekir (ek bayt başına aynı kira).
 
@@ -287,7 +288,7 @@ Dağıtım sırasında cüzdanda yaklaşık **◎9,32 + işlem ücretleri** bulu
 
 | İşlem | Hesaplar | Kira |
 |---|---|---|
-| `init` | Config (497) + Season 1 (1289) + hazine ve sezon kasası (token hesabı, SPL'de 165 bayt) | ≈ ◎0,0142 + 2 × ◎0,0020 ≈ ◎0,018 |
+| `init` | Config (506) + Season 1 (1289) + hazine ve sezon kasası (token hesabı, SPL'de 165 bayt) | ≈ ◎0,0143 + 2 × ◎0,0020 ≈ ◎0,018 |
 | `create-arena` (her biri) | Arena (74) + kasa (165) | 1.405.920 + 2.039.280 lamport ≈ ◎0,0034; 4 varsayılan arena ≈ ◎0,0138 |
 | `end-season` (her sezon) | yeni Season (1289) | ≈ ◎0,0099 |
 | `create-collection` | Core koleksiyonu + Royalties eklentisi (tek alıcı) | **tahmin**: ≈ 49 + ad + URI + ~69 eklenti baytı; `Slana Pass` ve 42 baytlık bir URI ile ≈ 170 bayt ≈ ◎0,0021 (bayt başına 6960 lamport; kesin tutar Core'un hesap düzenine bağlıdır, `solana rent <bayt>` ya da işlemden sonra hesabın bakiyesiyle doğrulayın) |

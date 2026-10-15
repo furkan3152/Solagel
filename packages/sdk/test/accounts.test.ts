@@ -181,6 +181,8 @@ describe('account decoding', () => {
       passSeedHash: new Array(32).fill(0xab),
       passSeed: new Array(32).fill(0),
       passRevealed: false,
+      passEntropyTargetSlot: new BN(0),
+      passEntropyCaptured: false,
       passEntropy: new Array(32).fill(0),
       passEntropySlot: new BN(0),
       passFinalSeed: new Array(32).fill(0),
@@ -221,6 +223,8 @@ describe('account decoding', () => {
       passSeedHash: 'ab'.repeat(32),
       passSeed: null,
       passRevealed: false,
+      passEntropyTargetSlot: 0,
+      passEntropyCaptured: false,
       passEntropy: null,
       passEntropySlot: 0,
       passFinalSeed: null,
@@ -235,16 +239,20 @@ describe('account decoding', () => {
       ...raw,
       passMintOpen: false,
       passMintEnded: true,
+      passEntropyTargetSlot: new BN(70),
+      passEntropyCaptured: true,
       passEntropy: new Array(32).fill(0x5a),
       passEntropySlot: new BN(77),
       passSeed: new Array(32).fill(7),
       passFinalSeed: new Array(32).fill(0xfe),
       passRevealed: true,
     });
-    expect(revealed).toMatchObject({ passMintEnded: true, passEntropy: '5a'.repeat(32), passEntropySlot: 77, passSeed: '07'.repeat(32), passFinalSeed: 'fe'.repeat(32) });
-    // Ended but not revealed: the entropy is public, the final seed is not.
-    const ended = toConfigView({ ...raw, passMintEnded: true, passEntropy: new Array(32).fill(1), passFinalSeed: new Array(32).fill(9) });
-    expect([ended.passEntropy, ended.passFinalSeed]).toEqual(['01'.repeat(32), null]);
+    expect(revealed).toMatchObject({ passMintEnded: true, passEntropyTargetSlot: 70, passEntropyCaptured: true, passEntropy: '5a'.repeat(32), passEntropySlot: 77, passSeed: '07'.repeat(32), passFinalSeed: 'fe'.repeat(32) });
+    // Ended, not captured: no entropy yet. Captured, not revealed: the entropy is public, the final seed is not.
+    const ended = toConfigView({ ...raw, passMintEnded: true, passEntropyTargetSlot: new BN(9), passEntropy: new Array(32).fill(1) });
+    expect([ended.passEntropyTargetSlot, ended.passEntropy]).toEqual([9, null]);
+    const captured = toConfigView({ ...raw, passMintEnded: true, passEntropyCaptured: true, passEntropy: new Array(32).fill(1), passFinalSeed: new Array(32).fill(9) });
+    expect([captured.passEntropy, captured.passFinalSeed]).toEqual(['01'.repeat(32), null]);
   });
 
   it('arena and session views', async () => {

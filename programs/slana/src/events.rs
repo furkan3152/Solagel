@@ -97,14 +97,27 @@ pub struct PassMinted {
     pub number: u32,
 }
 
-/// The Pass mint ended for good (closed by the admin or sold out) and the trait entropy was
-/// captured from the SlotHashes sysvar.
+/// The Pass mint ended for good (closed by the admin or sold out). The trait entropy will be
+/// the hash of the first slot at or after `entropy_target_slot` (`capture_pass_entropy`).
 #[event]
 pub struct PassMintEnded {
     pub minted: u32,
-    /// Slot whose hash is the entropy.
-    pub entropy_slot: u64,
+    pub entropy_target_slot: u64,
+}
+
+/// `capture_pass_entropy` stored the trait entropy.
+#[event]
+pub struct PassEntropyCaptured {
+    /// Slot whose hash is the entropy (the first slot with a block at or after the target).
+    pub slot: u64,
     pub entropy: [u8; 32],
+}
+
+/// The target slot left the SlotHashes window before anyone captured it: a new future target.
+#[event]
+pub struct PassEntropyRetargeted {
+    pub missed_target_slot: u64,
+    pub entropy_target_slot: u64,
 }
 
 #[event]

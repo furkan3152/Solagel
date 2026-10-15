@@ -161,6 +161,8 @@ describe('matchmaking', () => {
     expect(m.rooms.has('arena-3-1')).toBe(true);
     expect(await m.arenaRoom(1)).toBeNull();
     expect(m.underfundedArenas().has(1)).toBe(true);
+    // the lobby payload marks it so no ticket is sold
+    expect(m.blockedArenas()).toEqual([{ arenaId: 1, reason: 'vault_short' }]);
     // logged loudly, once
     expect(logs.filter((l) => /arena #1 KEPT DISABLED/.test(l))).toHaveLength(1);
     expect(logs[0]).toMatch(/vault holds 5000000 .* journal owes 6000000/);
@@ -173,6 +175,7 @@ describe('matchmaking', () => {
     await m2.ensureArenaRooms();
     expect(m2.rooms.has('arena-1-1')).toBe(true);
     expect(m2.underfundedArenas().size).toBe(0);
+    expect(m2.blockedArenas()).toEqual([]);
   });
 
   it('an instance closed during a join is replaced by a live, mapped room', async () => {
