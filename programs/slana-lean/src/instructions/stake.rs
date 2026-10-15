@@ -5,7 +5,7 @@
 use {
     crate::error::Result,
     crate::{
-        accounts::{check_pda_seeds, check_writable, data, keq},
+        accounts::{check_pda_seeds, check_writable, data, data_ref, keq},
         borsh::{rd_bool, rd_key, rd_u16, rd_u32, rd_u8},
         constants::*,
         cpi::token::transfer_checked,
@@ -137,7 +137,7 @@ pub(crate) fn check_player_token(
 ) -> Result {
     check_writable(player_token)?;
     // SAFETY: the caller's `parse` checked it is a token account (≥ 165 bytes); read only.
-    let d = unsafe { data::<ACCOUNT_LEN>(player_token) };
+    let d = unsafe { data_ref::<ACCOUNT_LEN>(player_token) };
     check_token_account(player_token, d, Some(player), token_mint, token_program)
 }
 

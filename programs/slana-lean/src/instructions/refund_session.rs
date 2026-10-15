@@ -36,7 +36,7 @@ use {
     super::{stake, unix_timestamp},
     crate::error::Result,
     crate::{
-        accounts::{check_kinds, check_writable, close, data, kind},
+        accounts::{check_kinds, check_writable, close, data, data_ref, kind},
         borsh::{rd_bool, rd_i64, rd_u16, rd_u64, wr_u16, wr_u64},
         constants::SESSION_REFUND_TIMEOUT_SECS,
         error::{
@@ -78,7 +78,7 @@ pub fn process(accounts: &[AccountView], _args: &[u8]) -> Result {
     let c = unsafe { data::<{ config::SPACE }>(config_acc) };
     let r = unsafe { data::<{ arena::SPACE }>(arena_acc) };
     let s = unsafe { data::<{ session::SPACE }>(session_acc) };
-    let vault_amount = rd_u64(unsafe { data::<ACCOUNT_LEN>(vault) }, ACCOUNT_AMOUNT);
+    let vault_amount = rd_u64(unsafe { data_ref::<ACCOUNT_LEN>(vault) }, ACCOUNT_AMOUNT);
 
     check_writable(player)?;
     stake::check_session_accounts(config_acc, c, arena_acc, r, vault, session_acc, s, player)?;

@@ -52,7 +52,8 @@ use {
     crate::error::Result,
     crate::{
         accounts::{
-            check_kinds, check_pda_seeds, check_writable, close, data, keq, kind, move_lamports,
+            check_kinds, check_pda_seeds, check_writable, close, data, data_ref, keq, kind,
+            move_lamports,
         },
         borsh::{rd_bool, rd_key, rd_u16, rd_u32, rd_u64, rd_u8, wr_bool, wr_u16, wr_u64, Args},
         constants::{SEASON_VAULT_SEED, TREASURY_VAULT_SEED},
@@ -119,7 +120,7 @@ pub fn process(accounts: &[AccountView], args: &[u8]) -> Result {
     let s = unsafe { data::<{ session::SPACE }>(session_acc) };
     let p = unsafe { data::<{ profile::SPACE }>(profile_acc) };
     let sn = unsafe { data::<{ season::SPACE }>(season_acc) };
-    let vault_amount = rd_u64(unsafe { data::<ACCOUNT_LEN>(vault) }, ACCOUNT_AMOUNT);
+    let vault_amount = rd_u64(unsafe { data_ref::<ACCOUNT_LEN>(vault) }, ACCOUNT_AMOUNT);
 
     check_writable(server)?;
     require(
