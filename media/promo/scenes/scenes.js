@@ -463,7 +463,7 @@ function sceneTicket(ctx, t) {
     shockDots(ctx, W / 2, 560, t - 4.82, C.ink, 1300, 0.14);
     const ta = 1 - tw(t, 7.45, 7.7);
     ctx.save(); ctx.globalAlpha = ta;
-    kicker(ctx, 'EAT  /  GROW  /  CASH OUT', W / 2, 760, t, 5.35, { align: 'center', dot: false, size: 26, ls: 10, speed: 0.022 });
+    kicker(ctx, 'EAT  /  GROW  /  GET PAID', W / 2, 760, t, 5.35, { align: 'center', dot: false, size: 26, ls: 10, speed: 0.022 });
     ctx.restore();
     ctx.save(); ctx.globalAlpha = ta * tw(t, 5.9, 6.2);
     chip(ctx, 'LIVE ON SOLANA', W / 2, 840, { align: 'center', size: 17, color: C.tealInk, ls: 4 });
@@ -562,20 +562,129 @@ function scenePlay(ctx, t) {
   hud(ctx, t, 3, false, tw(t, 14.5, 14.9) * wa);
 }
 
-/* ───────────── 5. CASH OUT (20.1 – 26.4) ───────────── */
+/* ───────────── 5. ROUNDS (20.1 – 26.4) ───────────── */
+// A round clock runs the last of a five-minute round down to the bell (22.2), the clock swings
+// away and the "Round over" receipt prints: everyone alive at the bell is paid their till, the
+// fee only touches the profit.
 const RC = { cx: 1400, w: 600, slot: 1000, len: 900 };
 const RC_STAMP = { x: 1270, y: 0 }; // y resolved at draw time
+const BELL_AT = 22.2;
+const CLK = { cx: 1390, cy: 440, w: 640, h: 340 };
 function receiptFeed(t) {
-  const N = 26;
-  const p = prog(t, 20.9, 23.3) * N;
+  const N = 22;
+  const p = prog(t, 22.45, 23.9) * N;
   const i = Math.floor(p), f = p - i;
   return Math.min(1, (i + E.outCubic(clamp(f * 1.6))) / N);
 }
 function receiptTop(t) { return RC.slot - RC.len * receiptFeed(t); }
-function sceneCashout(ctx, t) {
+/** Seconds left on the round clock: 5:00 spins down to 0:03, then 3, 2, 1 on the clock, 0 at the bell. */
+function clockLeft(t) {
+  if (t < 20.55) return 300;
+  if (t < 21.6) return 3 + 297 * (1 - E.outQuart(prog(t, 20.55, 21.6)));
+  if (t < BELL_AT) return 3 - Math.floor((t - 21.6) / 0.2);
+  return 0;
+}
+function bellGlyph(ctx, x, y, s, rot, color) {
+  ctx.save();
+  ctx.translate(x, y); ctx.rotate(rot); ctx.scale(s, s);
+  ctx.fillStyle = color; ctx.strokeStyle = C.ink; ctx.lineWidth = 4; ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(-34, 26);
+  ctx.quadraticCurveTo(-30, 18, -27, 4);
+  ctx.bezierCurveTo(-24, -26, -16, -38, 0, -38);
+  ctx.bezierCurveTo(16, -38, 24, -26, 27, 4);
+  ctx.quadraticCurveTo(30, 18, 34, 26);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(0, -42, 6, 0, TAU); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(0, 32, 8, 0, Math.PI); ctx.fillStyle = C.ink; ctx.fill();
+  ctx.restore();
+}
+function drawRoundClock(ctx, t) {
+  const inK = spring(t - 20.2, 1.6, 6.5);
+  if (t < 20.2) return;
+  const out = E.inCubic(prog(t, 22.75, 23.2));
+  if (out >= 1) return;
+  const v = clockLeft(t);
+  const bell = t >= BELL_AT;
+  const final = v <= 60;
+  const ring = bell ? Math.exp(-(t - BELL_AT) * 5) * Math.sin((t - BELL_AT) * 52) : 0;
+  const x0 = CLK.cx - CLK.w / 2, y0 = CLK.cy - CLK.h / 2;
+  ctx.save();
+  ctx.translate(CLK.cx + out * 220, CLK.cy - out * 900 + (1 - clamp(inK)) * 60);
+  ctx.rotate(-0.025 + ring * 0.05 - out * 0.35);
+  const sc = lerp(0.82, 1, clamp(inK, 0, 1.2)) * 1.18;
+  ctx.scale(sc, sc);
+  ctx.translate(-CLK.cx, -CLK.cy);
+  paperShadow(ctx, () => ticketPath(ctx, x0, y0, CLK.w, CLK.h, 18, CLK.w - 150, 20), 1.1, 0.3);
+  ticketPath(ctx, x0, y0, CLK.w, CLK.h, 18, CLK.w - 150, 20);
+  ctx.fillStyle = C.card; ctx.fill();
+  ctx.lineWidth = 3; ctx.strokeStyle = C.ink; ctx.stroke();
+  // the stub: the room
+  dashed(ctx, x0 + CLK.w - 150, y0 + 30, x0 + CLK.w - 150, y0 + CLK.h - 30, 'rgba(30,27,46,0.45)', 2.5, [7, 7]);
+  ctx.save(); ctx.translate(x0 + CLK.w - 75, CLK.cy); ctx.rotate(-Math.PI / 2);
+  font(ctx, 18, 500, 'mono'); ctx.letterSpacing = '4px'; ctx.fillStyle = C.ink; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('PENNY POND', 0, 0);
+  ctx.restore();
+  // label row
+  const lx = x0 + 44;
+  font(ctx, 20, 500, 'mono'); ctx.letterSpacing = '4px'; ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
+  ctx.fillStyle = bell ? C.pinkText : final ? C.mustardInk : C.ink2;
+  ctx.fillText(bell ? 'ROUND OVER' : final ? 'FINAL MINUTE  /  JOINS CLOSED' : 'ROUND CLOCK', lx, y0 + 62);
+  // digits
+  const sec = Math.max(0, Math.ceil(v - 1e-6));
+  const txt = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+  const tick = t >= 21.6 && t < BELL_AT ? Math.exp(-((t - 21.6) % 0.2) * 22) : 0;
+  ctx.save();
+  ctx.translate(lx - 4, y0 + 212);
+  ctx.scale(1 + tick * 0.06, 1 + tick * 0.06);
+  font(ctx, 170, 800, 'display'); ctx.letterSpacing = '-5px';
+  if (final || bell) {
+    // riso ghost on the hot digits
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.fillStyle = bell ? C.pink : C.mustard; ctx.globalAlpha = 0.85;
+    ctx.fillText(txt, 6, 5);
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  }
+  ctx.fillStyle = bell ? C.pinkInk : C.ink;
+  ctx.fillText(txt, 0, 0);
+  ctx.restore();
+  // the round as a bar: the final minute hatched in mustard, a playhead
+  const bx = lx, by = y0 + 252, bw = CLK.w - 150 - 88, bh = 26;
+  rrect(ctx, bx, by, bw, bh, 6); ctx.fillStyle = C.paper; ctx.fill();
+  ctx.save(); rrect(ctx, bx, by, bw, bh, 6); ctx.clip();
+  ctx.fillStyle = C.mustard; ctx.fillRect(bx + bw * 0.8, by, bw * 0.2, bh);
+  ctx.strokeStyle = 'rgba(30,27,46,0.35)'; ctx.lineWidth = 2;
+  for (let hx = bx + bw * 0.8 - 30; hx < bx + bw; hx += 9) { ctx.beginPath(); ctx.moveTo(hx, by + bh); ctx.lineTo(hx + 26, by); ctx.stroke(); }
+  const k = 1 - v / 300;
+  ctx.fillStyle = C.ink; ctx.globalAlpha = 0.85; ctx.fillRect(bx, by, bw * k, bh);
+  ctx.restore();
+  rrect(ctx, bx, by, bw, bh, 6); ctx.strokeStyle = C.ink; ctx.lineWidth = 2.5; ctx.stroke();
+  font(ctx, 15, 500, 'mono'); ctx.letterSpacing = '2px'; ctx.fillStyle = C.ink2;
+  ctx.fillText('5:00', bx, by + bh + 26);
+  ctx.textAlign = 'right'; ctx.fillText('BELL', bx + bw, by + bh + 26);
+  ctx.fillStyle = C.mustardInk; ctx.textAlign = 'center'; ctx.fillText('LAST MINUTE', bx + bw * 0.9 - 6, by - 10);
+  ctx.textAlign = 'left';
+  // the bell, top right, rings at 0:00
+  const bk = E.outBack(prog(t, BELL_AT, BELL_AT + 0.25), 2.4);
+  if (bk > 0) {
+    const gx = x0 + CLK.w - 210, gy = y0 + 92;
+    bellGlyph(ctx, gx, gy, bk * 1.1, ring * 0.5, C.mustard);
+    ctx.save(); ctx.strokeStyle = C.pinkInk; ctx.lineWidth = 4; ctx.lineCap = 'round';
+    const wa = Math.exp(-(t - BELL_AT) * 2.2);
+    ctx.globalAlpha = clamp(wa * 1.4);
+    for (let i = 0; i < 2; i++) {
+      const r = 52 + i * 18 + (t - BELL_AT) * 40;
+      ctx.beginPath(); ctx.arc(gx, gy, r, -0.6, 0.25); ctx.stroke();
+      ctx.beginPath(); ctx.arc(gx, gy, r, Math.PI - 0.25, Math.PI + 0.6); ctx.stroke();
+    }
+    ctx.restore();
+  }
+  ctx.restore();
+}
+function sceneRounds(ctx, t) {
   bg(ctx, t);
   const d = drift(t, 0.8);
-  const sh = shake(t, [23.4], 16);
+  const sh = shake(t, [BELL_AT, 24.0], 14);
   ctx.save();
   ctx.translate(d.x + sh.x, d.y + sh.y);
   const top = receiptTop(t);
@@ -611,19 +720,19 @@ function sceneCashout(ctx, t) {
     };
     const rule = (y) => dashed(ctx, L, ly(y), R, ly(y), 'rgba(30,27,46,0.5)', 2, [5, 6]);
     font(ctx, 34, 800, 'display'); ctx.letterSpacing = '0px'; ctx.fillStyle = C.ink; ctx.textAlign = 'center';
-    ctx.fillText('SLANA  CASH-OUT', RC.cx, ly(92));
+    ctx.fillText('ROUND  OVER', RC.cx, ly(92));
     font(ctx, 18, 500, 'mono'); ctx.letterSpacing = '2px'; ctx.fillStyle = C.ink2;
     ctx.fillText('PENNY POND  /  TICKET No. 0412', RC.cx, ly(128));
     ctx.textAlign = 'left';
     rule(160);
-    row(214, 'ENTRY TICKET', '1,000.0');
+    row(214, 'ENTRY FEE', '1,000.0');
     row(258, 'TOKENS EATEN', '+750.0');
-    row(302, 'YOU LEAVE WITH', '1,750.0');
+    row(302, 'TILL AT THE BELL', '1,750.0');
     rule(334);
     row(384, 'PROFIT', '750.0');
     row(428, 'FEE  5% OF PROFIT', '-37.5', { color: C.pinkText });
     rule(462);
-    font(ctx, 22, 500, 'mono'); ctx.letterSpacing = '3px'; ctx.fillStyle = C.ink; ctx.fillText('NET', L, ly(548));
+    font(ctx, 22, 500, 'mono'); ctx.letterSpacing = '3px'; ctx.fillStyle = C.ink; ctx.fillText('PAID', L, ly(548));
     font(ctx, 88, 800, 'display'); ctx.letterSpacing = '-2px'; ctx.textAlign = 'right';
     ctx.fillText('1,712.5', R, ly(552));
     font(ctx, 19, 500, 'mono'); ctx.letterSpacing = '2px'; ctx.fillStyle = C.pinkText;
@@ -632,11 +741,11 @@ function sceneCashout(ctx, t) {
     rule(612);
     barcode(ctx, L, ly(646), R - L, 86, 21);
     font(ctx, 18, 500, 'mono'); ctx.letterSpacing = '3px'; ctx.fillStyle = C.ink2; ctx.textAlign = 'center';
-    ctx.fillText('THANKS FOR PLAYING', RC.cx, ly(780));
+    ctx.fillText('ALIVE AT THE BELL', RC.cx, ly(780));
     ctx.fillText('SETTLED ON SOLANA', RC.cx, ly(812));
     ctx.textAlign = 'left';
     // marker underline on the fee line
-    const mk = tw(t, 23.95, 24.35, E.inOutCubic);
+    const mk = tw(t, 24.25, 24.6, E.inOutCubic);
     if (mk > 0) {
       ctx.save();
       ctx.globalCompositeOperation = 'multiply';
@@ -651,9 +760,9 @@ function sceneCashout(ctx, t) {
     ctx.restore();
     RC_STAMP.y = ly(770);
     // PAID stamp (on the receipt)
-    stamp(ctx, 'PAID', RC_STAMP.x, RC_STAMP.y, -0.2, t - 23.4, C.tealInk, { size: 54, round: true, mono: true, scale: 1.25 });
+    stamp(ctx, 'PAID', RC_STAMP.x, RC_STAMP.y, -0.2, t - 24.0, C.tealInk, { size: 54, round: true, mono: true, scale: 1.25 });
     // "2% with a Pass" sticker
-    const st = prog(t, 24.0, 24.25);
+    const st = prog(t, 24.6, 24.85);
     if (st > 0) {
       ctx.save();
       const ss = lerp(1.3, 1, E.outBack(st));
@@ -667,9 +776,11 @@ function sceneCashout(ctx, t) {
       font(ctx, 15, 500, 'mono'); ctx.letterSpacing = '2px';
       ctx.fillText('WITH A PASS', -126, 2);
       ctx.restore();
-      tape(ctx, x0 - 220, ly(458), 90, 32, -0.4, prog(t, 24.08, 24.25));
+      tape(ctx, x0 - 220, ly(458), 90, 32, -0.4, prog(t, 24.68, 24.85));
     }
     ctx.restore();
+  } else {
+    RC_STAMP.y = RC.slot - 230;
   }
   // printer body (front), in ink
   ctx.save();
@@ -678,24 +789,27 @@ function sceneCashout(ctx, t) {
   rrect(ctx, px, RC.slot - 14, 800, 140, 26); ctx.fillStyle = C.ink; ctx.fill();
   ctx.fillStyle = '#0f0d18'; ctx.fillRect(RC.cx - RC.w / 2 - 20, RC.slot - 6, RC.w + 40, 12);
   font(ctx, 16, 500, 'mono'); ctx.letterSpacing = '4px'; ctx.fillStyle = C.nightInk2; ctx.textBaseline = 'middle';
-  ctx.fillText('SLANA  /  CASH-OUT', px + 40, RC.slot + 50);
-  const busy = t > 20.9 && t < 23.35;
-  ctx.fillStyle = busy && Math.sin(t * 30) > 0 ? C.mustard : t > 23.35 ? C.green : '#3a3550';
+  ctx.fillText('SLANA  /  ROUND OVER', px + 40, RC.slot + 50);
+  const busy = t > 22.45 && t < 23.95;
+  ctx.fillStyle = busy && Math.sin(t * 30) > 0 ? C.mustard : t > 23.95 ? C.green : '#3a3550';
   ctx.beginPath(); ctx.arc(px + 760, RC.slot + 48, 8, 0, TAU); ctx.fill();
   ctx.restore();
+  // the round clock rides on top until it swings away
+  drawRoundClock(ctx, t);
   ctx.restore();
 
-  kicker(ctx, 'CASH OUT  /  ANY TIME', 150, 340, t, 20.6, { out: 25.45 });
+  kicker(ctx, 'ROUNDS  /  5 MINUTES', 150, 300, t, 20.45, { out: 25.45 });
   headline(ctx, [
-    { text: 'Cash out anytime.', at: 20.75 },
-    { text: 'Fee on profit only.', at: 22.45, color: C.pink },
-  ], 150, 490, t, { size: 100, out: 25.45 });
-  ctx.save(); ctx.globalAlpha = tw(t, 22.2, 22.6) * (1 - tw(t, 25.45, 25.7));
+    { text: 'Five-minute rounds.', at: 20.75 },
+    { text: 'Alive at the bell?', at: 22.4 },
+    { text: 'Get paid.', at: 23.0, color: C.pink },
+  ], 150, 440, t, { size: 96, out: 25.45 });
+  ctx.save(); ctx.globalAlpha = tw(t, 23.4, 23.8) * (1 - tw(t, 25.45, 25.7));
   font(ctx, 22, 500, 'mono'); ctx.letterSpacing = '2px'; ctx.fillStyle = C.ink2; ctx.textBaseline = 'alphabetic';
-  ctx.fillText('5% of what you won. 2% with a Pass.', 154, 690);
-  ctx.fillText('Nothing if you only broke even.', 154, 724);
+  ctx.fillText('Everyone alive at the bell keeps their till.', 154, 760);
+  ctx.fillText('Fee on profit only: 5%, or 2% with a Pass.', 154, 794);
   ctx.restore();
-  hud(ctx, t, 4, false, tw(t, 20.6, 21.0) * (1 - tw(t, 25.6, 25.8)));
+  hud(ctx, t, 4, false, tw(t, 20.45, 20.85) * (1 - tw(t, 25.6, 25.8)));
 }
 
 /* ───────────── 6. BOTS (25.75 – 31.2), night print ───────────── */
@@ -955,7 +1069,7 @@ const PERKS = [
   ['2% FEE', C.tealInk, 0.10, 0.70, 0.36, true, 34.2],
   ['SEASON PRIZES', C.blue, -0.05, 0.42, 0.52, false, 36.0],
   ['+15% START', C.mustardInk, 0.16, 0.36, 0.70, false, 35.4],
-  ['2 s CASH-OUT', C.red, -0.14, 0.58, 0.86, false, 36.6],
+  ['COIN LOOK', C.red, -0.14, 0.58, 0.86, false, 36.6],
 ];
 function scenePass(ctx, t) {
   bg(ctx, t);
@@ -1046,7 +1160,7 @@ function scenePass(ctx, t) {
   ], 150, 490, t, { size: 110 });
   ctx.save(); ctx.globalAlpha = tw(t, 33.6, 34.0);
   font(ctx, 22, 500, 'mono'); ctx.letterSpacing = '2px'; ctx.fillStyle = C.ink2; ctx.textBaseline = 'alphabetic';
-  ['Pass rooms. A 2% fee.', 'Season prizes.', '+15% head start, 2 s cash-out.'].forEach((s, i) => ctx.fillText(s, 154, 650 + i * 36));
+  ['Pass rooms. A 2% fee.', 'Season prizes.', '+15% head start, your own coin.'].forEach((s, i) => ctx.fillText(s, 154, 650 + i * 36));
   ctx.restore();
   hud(ctx, t, 6, false, tw(t, 31.4, 31.8));
 }
@@ -1156,9 +1270,9 @@ function sceneSeason(ctx, t) {
 /* ───────────── 9. SPLIT (41.35 – 46.8) ───────────── */
 const BAR = { x: 150, y: 560, w: 1620, h: 160 };
 const SEG = [
-  { p: 0.5, col: C.teal, txt: C.card, label: 'TREASURY', at: 42.4 },
-  { p: 0.3, col: C.mustard, txt: C.ink, label: 'SEASON POOL', at: 42.8 },
-  { p: 0.2, col: C.pink, txt: C.ink, label: 'BURNED', at: 43.2 },
+  { p: 0.5, col: C.teal, txt: C.card, label: 'TREASURY', at: 41.8 },
+  { p: 0.3, col: C.mustard, txt: C.ink, label: 'SEASON POOL', at: 42.2 },
+  { p: 0.2, col: C.pink, txt: C.ink, label: 'BURNED', at: 42.6 },
 ];
 const BURN_AT = 44.4;
 function burnFront(ctx, cx, cy, R, seed, t) {
@@ -1173,7 +1287,7 @@ function sceneSplit(ctx, t, own = true) {
   const segX = [];
   let acc = BAR.x;
   SEG.forEach((s) => { segX.push(acc); acc += BAR.w * s.p; });
-  const shellA = tw(t, 41.95, 42.1);
+  const shellA = tw(t, 41.8, 41.95);
   ctx.save();
   ctx.globalAlpha = shellA;
   paperShadow(ctx, () => rrect(ctx, BAR.x, BAR.y, BAR.w, BAR.h, 18), 1.1, 0.3);
@@ -1261,12 +1375,12 @@ function sceneSplit(ctx, t, own = true) {
     ctx.restore();
   }
   ctx.restore();
-  kicker(ctx, 'WHERE THE FEE GOES', 150, 230, t, 41.95);
+  kicker(ctx, 'WHERE THE FEE GOES', 150, 230, t, 41.8);
   headline(ctx, [
-    { text: 'One fee, three ways.', at: 42.2 },
+    { text: 'One fee, three ways.', at: 41.95 },
     { text: 'A fifth is burned.', at: 43.55, color: C.pink },
   ], 150, 370, t, { size: 96 });
-  hud(ctx, t, 8, false, 1);
+  if (own) hud(ctx, t, 8, false, 1);
 }
 
 /* ───────────── 10. END (45.9 – 52.8) ───────────── */
@@ -1293,7 +1407,7 @@ function sceneEnd(ctx, t) {
   ctx.restore();
   shockDots(ctx, W / 2, ly - 80, slam, C.pink, 1100, 0.45);
   // tagline words
-  const words = [['Eat.', 47.95, C.nightInk], ['Grow.', 48.4, C.nightInk], ['Cash out.', 48.83, C.pink]];
+  const words = [['Eat.', 47.95, C.nightInk], ['Grow.', 48.4, C.nightInk], ['Last the round.', 48.83, C.pink]];
   font(ctx, 84, 800, 'display'); ctx.letterSpacing = '-2.4px';
   const sp = 30;
   const ws = words.map(([w]) => ctx.measureText(w).width);
@@ -1389,7 +1503,7 @@ window.SCENE_DRAW = (ctx, t) => {
     const y = lerp(H + 40, -40, p);
     ctx.save();
     ctx.beginPath(); ctx.rect(0, y, W, H + 200); ctx.clip();
-    sceneCashout(ctx, t);
+    sceneRounds(ctx, t);
     ctx.restore();
     // torn edge
     ctx.save();
@@ -1401,9 +1515,9 @@ window.SCENE_DRAW = (ctx, t) => {
     ctx.restore();
     return;
   }
-  if (t < 25.75) return sceneCashout(ctx, t);
+  if (t < 25.75) return sceneRounds(ctx, t);
   if (t < 26.4) {
-    sceneCashout(ctx, t);
+    sceneRounds(ctx, t);
     const p = E.inCubic(prog(t, 25.75, 26.4));
     const R = 20 + p * 2400;
     ctx.save();
@@ -1431,7 +1545,12 @@ window.SCENE_DRAW = (ctx, t) => {
     return;
   }
   if (t < 41.35) return sceneSeason(ctx, t);
-  if (t < 42.0) { sceneSeason(ctx, t); return; }
+  if (t < 42.0) {
+    // the fee bar starts filling inside the morphing pool ticket, so the frame is never empty
+    sceneSeason(ctx, t);
+    if (t >= 41.75) sceneSplit(ctx, t, false);
+    return;
+  }
   if (t < 45.9) return sceneSplit(ctx, t);
   if (t < 46.8) {
     sceneSplit(ctx, t);
