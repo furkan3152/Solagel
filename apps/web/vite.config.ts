@@ -3,6 +3,20 @@ import { defineConfig } from 'vite';
 
 const gameServer = process.env.GAME_SERVER ?? 'http://127.0.0.1:8787';
 
+/**
+ * Dev / preview proxy to the game server. `/api` keeps the browser's Host header
+ * (no `changeOrigin`): the server names the request host in the SIWS sign-in
+ * message, and the client only signs a message for the page it is on
+ * (`localhost:5173`), not for the proxy target (`127.0.0.1:8787`).
+ * The WebSocket carries no host-bound data, so it keeps the target's host.
+ */
+export function gameServerProxy(target: string) {
+  return {
+    '/api': { target, changeOrigin: false },
+    '/ws': { target: target.replace(/^http/, 'ws'), ws: true, changeOrigin: true },
+  };
+}
+
 export default defineConfig({
   plugins: [react()],
   define: {
@@ -15,17 +29,11 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
-    proxy: {
-      '/api': { target: gameServer, changeOrigin: true },
-      '/ws': { target: gameServer.replace(/^http/, 'ws'), ws: true, changeOrigin: true },
-    },
+    proxy: gameServerProxy(gameServer),
   },
   preview: {
     port: 4173,
-    proxy: {
-      '/api': { target: gameServer, changeOrigin: true },
-      '/ws': { target: gameServer.replace(/^http/, 'ws'), ws: true, changeOrigin: true },
-    },
+    proxy: gameServerProxy(gameServer),
   },
   build: {
     target: 'es2022',
