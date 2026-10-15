@@ -271,7 +271,7 @@ Consequences, stated plainly in the player guide:
   timing of `reveal_pass` (or of a re-target) selects which leader produces the target slot, and a colluding leader could
   then grind or skip that slot; this is the same class of risk as the leader influence just stated.
 - `pass_supply` is frozen once the mint opens, so the traits every server and generator computes cannot shift later.
-- The upgrade authority is the strongest key: keep it in a multisig or make the program immutable after an audit.
+- The upgrade authority is the strongest key: it is the admin wallet (`scripts/admin.env`); a multisig is optional later. The program is never made immutable, so the owner can close it at any time (OPERATIONS.md, "Emergency stop / close").
 - Collusion (feeding a second wallet) is not detected in this version.
 
 ## Server internals

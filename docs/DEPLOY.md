@@ -92,24 +92,46 @@ The `keys/` folder is not tracked by git (`.gitignore`: `keys/`, `*.keypair.json
 
 | Key | What it does | Recommendation |
 |---|---|---|
-| Admin (`~/.config/solana/id.json`) | the program's **upgrade authority**; `init` can only be signed by it; it becomes the Config `admin` | on mainnet, hand it over to a multisig (Squads) later |
-| Server (`keys/server.json`) | signs `settle_session` (`Config.server_authority`) | only on the server; a little SOL |
+| Admin wallet (`SLANA_ADMIN` in `scripts/admin.env`: `D2Ts7yCiVjedo6uwqpkM44QA8J45NdVU1J3k5m6iWtvm`) | the project owner's wallet; the program's **upgrade authority**; `init` can only be signed by it; it becomes the Config `admin`; **every admin command is run by this wallet** (`--keypair <its keypair file>`) | the owner's own wallet; a multisig (Squads) is optional later |
+| Temporary deployer (`keys/deployer.json`) | pays for the deploy and is the upgrade authority only until `deploy-lean.sh` hands it to the admin | throwaway; keep a little SOL, delete it afterwards |
+| Server (`keys/server.json`) | signs `settle_session` (`Config.server_authority`) | a separate **hot key** on the server that only settles sessions; it can never withdraw, upgrade or administer; a little SOL |
 | Treasury owner | `withdraw-treasury --to` and the recipient of the collection royalty | multisig |
 | Pass seed (`keys/pass-seed.json`) | the secret seed of the commit–reveal | **secret and backed up**; if it is lost the reveal cannot happen |
 
 ```bash
 mkdir -p keys
 solana-keygen new -o keys/server.json --no-bip39-passphrase
+solana-keygen new -o keys/deployer.json --no-bip39-passphrase   # temporary deployer, see section 4
 ```
+
+The admin wallet's address lives in one place, `scripts/admin.env` (`SLANA_ADMIN=...`); it is a public key and is
+committed. Its secret key never touches the repository or the server.
 
 ## 4. Deploy the program (devnet)
 
+The order matters. Deploy with a temporary deployer key, hand the upgrade authority to the admin, then the admin
+initializes and sets everything up:
+
+1. **Deploy** with the temporary deployer key (it pays the rent and is the first upgrade authority).
+2. **Move the upgrade authority to the admin**. `scripts/deploy-lean.sh` does this by itself right after a successful
+   deploy or upgrade (`solana program set-upgrade-authority <ID> --new-upgrade-authority <ADMIN>
+   --skip-new-upgrade-authority-signer-check`), prints the authority before and after, and skips it when the admin
+   already is the authority. `--keep-authority` leaves it as the deployer (localnet and tests only).
+3. **The admin runs `init`** (section 6): the program only accepts the upgrade authority as signer, so the Config
+   `admin` becomes the admin wallet.
+4. **The admin runs** the collection, seed, mint and arenas steps (sections 7, 8, 11). Every `pnpm admin` command is
+   signed by the admin wallet.
+
 ```bash
-solana config set --url devnet
-solana airdrop 5                                  # if needed, https://faucet.solana.com
-scripts/deploy-lean.sh devnet target/deploy/slana-keypair.json   # never `anchor deploy` (it deploys the reference)
-solana transfer $(solana-keygen pubkey keys/server.json) 0.5 --allow-unfunded-recipient
+solana airdrop 5 $(solana-keygen pubkey keys/deployer.json) -u devnet   # if needed, https://faucet.solana.com
+scripts/deploy-lean.sh devnet target/deploy/slana-keypair.json --keypair keys/deployer.json
+# prints: upgrade authority before/after (after = D2Ts7yCiVjedo6uwqpkM44QA8J45NdVU1J3k5m6iWtvm)
+solana transfer $(solana-keygen pubkey keys/server.json) 0.5 --allow-unfunded-recipient --keypair keys/deployer.json -u devnet
 ```
+
+Never `anchor deploy` (it deploys the reference) and never `--final`: the program stays upgradeable so that it can be
+closed at any time (OPERATIONS.md, "Emergency stop / close"). Later upgrades are signed by the admin:
+`scripts/deploy-lean.sh <url> target/deploy/slana-keypair.json --keypair <admin keypair> --upgrade-authority <admin keypair>`.
 
 ## 5. Token
 
@@ -128,10 +150,20 @@ On mainnet, use the $SLANA mint address. For a devnet trial, create a test mint 
 
 ## 6. Initialize the program: `init --mint`
 
+Run this as the admin wallet (`--keypair` is the admin's keypair file; every later admin command takes it too, or
+copy it to `~/.config/solana/id.json`, the default):
+
 ```bash
-pnpm admin init --mint <MINT> --server $(solana-keygen pubkey keys/server.json)
-pnpm admin status
+ADMIN_KP=~/keys/slana-admin.json    # the keypair file of D2Ts7yCiVjedo6uwqpkM44QA8J45NdVU1J3k5m6iWtvm
+pnpm admin init --keypair $ADMIN_KP --mint <MINT> --server $(solana-keygen pubkey keys/server.json)
+pnpm admin status --keypair $ADMIN_KP
 ```
+
+> **Hardware wallet.** `pnpm admin` (packages/sdk/src/admin.ts) loads `--keypair` only as a JSON keypair file; it does
+> **not** support `usb://ledger`. The Solana CLI steps (`deploy-lean.sh`, `set-upgrade-authority`, `close-program.sh`)
+> do. To keep the admin on a Ledger today, either import the keypair file into a secure machine for the admin session,
+> or do the upgrade-authority step with the Solana CLI and run the `pnpm admin` commands from an offline-stored
+> keypair file. SDK support for hardware signing is an open item.
 
 `init` creates the Config, the treasury and season vaults and season 1. Defaults (`pnpm admin help`):
 
@@ -283,11 +315,14 @@ To end the mint (`close-mint`), publish the seed (`reveal`, records the target s
 1. Do the program keypair and the build (step 2) for mainnet; complete the whole flow (ticket → game → cash-out → payout →
    season) on devnet first.
 2. `solana config set --url mainnet-beta` (or a paid RPC), and put as much SOL as the costs below into the admin wallet.
-3. `bash scripts/build-lean.sh && scripts/deploy-lean.sh mainnet-beta target/deploy/slana-keypair.json` (never `anchor deploy`: it ships the Anchor reference).
+3. `bash scripts/build-lean.sh && scripts/deploy-lean.sh mainnet-beta target/deploy/slana-keypair.json --keypair keys/deployer.json`
+   (never `anchor deploy`: it ships the Anchor reference). The script moves the upgrade authority to the admin wallet.
 4. Repeat steps 6–11 with the mainnet RPC. `SOLANA_CLUSTER=mainnet-beta`, a paid `SOLANA_RPC_URL`, a secret-free
    `PUBLIC_RPC_URL`.
-5. Hand the upgrade authority and the `admin` over to a multisig (`solana program set-upgrade-authority`,
-   `pnpm admin update-config --admin <multisig>`), or make the program immutable after the audit.
+5. The admin wallet already holds the upgrade authority and the Config `admin`. Optionally, later, hand both to a
+   multisig (`solana program set-upgrade-authority`, `pnpm admin update-config --admin <multisig>`). **Do not make the
+   program immutable** (`--final`): the owner wants to be able to close it at any time, see
+   [OPERATIONS.md](OPERATIONS.md#emergency-stop--close). `scripts/close-program.sh` needs the upgrade authority.
 6. Start with small fees; watch `pnpm admin status` and the server logs.
 
 ## 13. Mainnet costs
