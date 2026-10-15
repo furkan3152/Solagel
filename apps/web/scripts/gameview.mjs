@@ -187,6 +187,7 @@ if (want('arena')) {
     window.__slana.engine['onMessage']({ t: 'value', value: 1_000_000_000, delta: -1_450_000_000, reason: 'eaten' });
   });
   await page.waitForTimeout(600);
+  const ses = await ev(page, () => window.__slana.useUi.getState().ticket?.session ?? null);
   // arena death by a bot (injected): tokens spilled
   await ev(page, () =>
     window.__slana.engine['onMessage']({
@@ -218,6 +219,10 @@ if (want('arena')) {
   await waitScreen(page, 'roundover', 8000);
   await page.waitForTimeout(1500);
   await page.screenshot({ path: `${out}/t13-round-over.png` });
+  // the payout lands (injected; a real stack sends `settled` after the bell)
+  await ev(page, (ses) => window.__slana.engine['onMessage']({ t: 'settled', kind: 'cashout', session: ses, signature: '5Kq9xRoundOverDemoSignature1111111111111111111111111111111111111111111', payout: 1_000_000_000, fee: 0, net: 1_000_000_000 }), ses);
+  await page.waitForTimeout(1800);
+  await page.screenshot({ path: `${out}/t13-round-over-settled.png` });
   results.settlement = await ev(page, () => window.__slana.useUi.getState().lastSettlement);
   await ctx.close();
 }

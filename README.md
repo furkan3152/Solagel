@@ -20,8 +20,8 @@ v2, the "Paper Ticket" design: desktop and phone, paper and night themes. All im
 | ![Ticket](docs/images/ticket-sheet-desktop.webp) | ![Ticket stamp](docs/images/ticket-stamp-desktop.webp) |
 | **Arena** | **Night theme** |
 | ![Game](docs/images/game-arena-desktop.webp) | ![Game, night](docs/images/game-night-desktop.webp) |
-| **Payout receipt** | **Eaten** |
-| ![Receipt](docs/images/cashout-receipt.webp) | ![Death](docs/images/death-arena.webp) |
+| **Round over receipt** | **Eaten** |
+| ![Receipt](docs/images/round-over-receipt.webp) | ![Death](docs/images/death-arena.webp) |
 | **Slana Pass** | **Mint** |
 | ![Pass](docs/images/pass-desktop-night.webp) | ![Mint](docs/images/mint-sheet-desktop.webp) |
 | **Standings** | **Guide** |
