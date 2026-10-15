@@ -77,6 +77,8 @@ pub(crate) fn check_fees(fee_bps: u16, pass_fee_bps: u16) -> Result {
 }
 
 /// The three fee shares must sum to exactly `BPS` (summed in u32), else `BadSplit`.
+// Bound: three u16 summed in u32 (< 2^18).
+#[allow(clippy::arithmetic_side_effects)]
 pub(crate) fn check_split(treasury_bps: u16, season_bps: u16, burn_bps: u16) -> Result {
     let sum = u32::from(treasury_bps) + u32::from(season_bps) + u32::from(burn_bps);
     require(sum == u32::from(BPS), BAD_SPLIT)

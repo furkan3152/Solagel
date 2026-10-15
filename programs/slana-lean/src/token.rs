@@ -77,6 +77,8 @@ pub fn check_token_program(acc: &AccountView) -> Result {
 
 /// spl-token `COption` tag: `[0,0,0,0]` None, `[1,0,0,0]` Some.
 #[inline(always)]
+// Bound: `off` is a constant offset below 165.
+#[allow(clippy::arithmetic_side_effects)]
 fn coption_ok(d: &[u8], off: usize) -> bool {
     matches!(d.get(off..off + 4), Some([0 | 1, 0, 0, 0]))
 }
@@ -171,6 +173,9 @@ fn check_token_owner(acc: &AccountView) -> Result {
 /// The extension types of a mint's TLV data as a bit set (bit `t` = `ExtensionType` `t`),
 /// walking it like spl-token-2022's `get_tlv_data_info`; `Err` where that fails (an unknown
 /// type, a truncated header or a value past the end).
+// Bound: `at` never exceeds `tlv.len()` (account data, at most 10 MiB) and a TLV header adds
+// at most 4 + u16::MAX, so no sum can wrap.
+#[allow(clippy::arithmetic_side_effects)]
 fn mint_extensions(d: &[u8]) -> core::result::Result<u32, ()> {
     let tlv = d.get(ACCOUNT_LEN + 1..).unwrap_or(&[]);
     let mut mask = 0u32;
@@ -242,6 +247,8 @@ pub fn token_account_space(mint: &AccountView) -> Result<usize> {
 
 /// `try_calculate_account_len::<Account>(get_required_init_account_extensions(mint))` for a
 /// mint with the extension set `mask`.
+// Bound: a sum of at most five small constants (< 200).
+#[allow(clippy::arithmetic_side_effects)]
 fn account_space_for(mask: u32) -> usize {
     let mut extra = 0;
     if mask & (1 << 1) != 0 {
