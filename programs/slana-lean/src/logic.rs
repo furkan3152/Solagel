@@ -53,24 +53,27 @@ pub fn write_name(d: &mut [u8], off: usize, name: &[u8], len: u8) {
 /// `amount * bps / 10_000`, rounded down; `MathOverflow` when the result exceeds u64.
 ///
 /// The reference computes it in u128; here `amount = q·10⁴ + r` gives the same value as
-/// `q·bps + r·bps/10⁴` in u64 (no 128-bit runtime helpers). `q·bps` and the sum can only
+/// `q·bps + r·bps/10⁴` in u64. `q·bps` is built from 32-bit halves of `q`
+/// (`hi·bps·2³² + lo·bps`), so no 128-bit runtime helper (`__multi3`) is linked: it can only
 /// overflow when the exact result does, which is exactly when the reference fails.
 #[inline(never)]
 pub fn mul_bps(amount: u64, bps: u16) -> Result<u64> {
     let bps = u64::from(bps);
     let base = u64::from(BPS);
     // Bound: `base` is a non-zero constant; `r < 10⁴` and `bps < 2¹⁶`, so `r·bps < 2³⁰`.
+    // `q < 2⁵¹`, so `hi = q >> 32 < 2¹⁹` and `hi·bps < 2³⁵`; `lo < 2³²`, so `lo·bps < 2⁴⁸`.
     #[allow(clippy::arithmetic_side_effects)]
     let (q, rest) = (amount / base, (amount % base) * bps / base);
-    // `q·bps` overflow test by division: `checked_mul` would link the 128-bit `__multi3`.
-    // (`checked_div` is `None` only for `bps = 0`, where `q·bps = 0` cannot overflow.)
-    if matches!(u64::MAX.checked_div(bps), Some(max) if q > max) {
+    #[allow(clippy::arithmetic_side_effects)]
+    let (high, low) = ((q >> 32) * bps, (q & 0xffff_ffff) * bps);
+    // `high·2³²` fits in u64 only below 2³²; otherwise `q·bps ≥ 2⁶⁴` overflows.
+    if high >> 32 != 0 {
         return Err(err(MATH_OVERFLOW));
     }
-    // Bound: `q·bps ≤ u64::MAX` (checked just above; `bps = 0` gives 0).
-    #[allow(clippy::arithmetic_side_effects)]
-    let whole = q * bps;
-    whole.checked_add(rest).ok_or_else(|| err(MATH_OVERFLOW))
+    (high << 32)
+        .checked_add(low)
+        .and_then(|whole| whole.checked_add(rest))
+        .ok_or_else(|| err(MATH_OVERFLOW))
 }
 
 /// How a stake payout is split (base units of the game token).
@@ -260,8 +263,14 @@ const SLOT_HASH_ENTRY: usize = 40;
 pub fn find_slot_hash(data: &[u8], target: u64) -> Option<SlotHashLookup> {
     let (len, rest) = data.split_first_chunk::<8>()?;
     let len = usize::try_from(u64::from_le_bytes(*len)).ok()?;
+    // Bounded by division first: `checked_mul` would link the 128-bit `__multi3`.
+    if len > rest.len() / SLOT_HASH_ENTRY {
+        return None;
+    }
+    // Bound: `len ≤ rest.len() / 40` (above), so `len · 40 ≤ rest.len()`.
+    #[allow(clippy::arithmetic_side_effects)]
     let (entries, _) = rest
-        .get(..len.checked_mul(SLOT_HASH_ENTRY)?)?
+        .get(..len * SLOT_HASH_ENTRY)?
         .as_chunks::<SLOT_HASH_ENTRY>();
     let slot = |e: &[u8; SLOT_HASH_ENTRY]| rd_u64(e, 0);
     let (newest, oldest) = (entries.first()?, entries.last()?);
@@ -302,10 +311,11 @@ pub fn sha256(parts: &[&[u8]]) -> [u8; 32] {
     {
         solana_sha256_hasher::hashv(parts).to_bytes()
     }
+    // Host builds outside the unit tests have no hasher (and no caller).
     #[cfg(all(not(target_os = "solana"), not(test)))]
     {
-        core::hint::black_box(parts);
-        [0u8; 32]
+        let _ = parts;
+        unimplemented!("sha256 is a syscall (SBF only)")
     }
 }
 

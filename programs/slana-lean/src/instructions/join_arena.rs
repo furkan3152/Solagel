@@ -213,9 +213,9 @@ pub fn process(accounts: &[AccountView], args: &[u8], with_pass: bool) -> Result
         entry_fee,
         decimals,
         &[],
-    );
+    )?;
     if settle_fee > 0 {
-        system::transfer(player, session_acc, settle_fee);
+        system::transfer(player, session_acc, settle_fee)?;
     }
 
     let now = unix_timestamp()?;

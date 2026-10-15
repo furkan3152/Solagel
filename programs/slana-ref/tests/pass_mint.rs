@@ -26,7 +26,13 @@ fn core_env() -> TestEnv {
 /// `core_env()` + a Pass collection owned by the pass authority PDA, set in the config, a
 /// committed seed hash, a base URI and an open mint.
 fn mint_env() -> (TestEnv, Pubkey) {
-    let mut env = core_env();
+    mint_env_with(MintKind::Spl)
+}
+
+/// [`mint_env`] with a game token of `kind`.
+fn mint_env_with(kind: MintKind) -> (TestEnv, Pubkey) {
+    let mut env = TestEnv::initialized_with(kind);
+    load_mpl_core(&mut env.svm);
     let admin = env.admin.insecure_clone();
     let collection = env.create_core_collection(&pass_authority_pda());
     assert_ok(env.set_collection_as(&admin, &collection));
@@ -682,6 +688,25 @@ fn pass_constraint_errors_match_anchor() {
     // The existing counter is now loaded (not re-created) and enforces the limit.
     assert_error(mint(&mut env, &|_| {}), SlanaError::MintLimit);
 
+    // With the counter in place (no init CPI that would need these privileges first):
+    // minter, asset and mint_counter must be writable → 2000.
+    for i in [0, 1, 5] {
+        assert_anchor_error(
+            mint(&mut env, &|ix| ix.accounts[i].is_writable = false),
+            A::ConstraintMut,
+        );
+    }
+    // asset: Signer → 3010 when it does not sign.
+    let asset = Keypair::new();
+    let mut unsigned = ix::mint_pass(&a.pubkey(), &asset.pubkey(), &collection, None);
+    unsigned.accounts[1].is_signer = false;
+    assert_anchor_error(env.send(&[unsigned], &[&a]), A::AccountNotSigner);
+    // system_program: Program<System> → 3008.
+    assert_anchor_error(
+        mint(&mut env, &|ix| ix.accounts[8].pubkey = Pubkey::new_unique()),
+        A::InvalidProgramId,
+    );
+
     // reveal_pass: a short seed argument → 102.
     let admin = env.admin.insecure_clone();
     let mut reveal = ix::reveal_pass(&admin.pubkey(), SEED);
@@ -701,4 +726,26 @@ fn pass_constraint_errors_match_anchor() {
     let mut capture = ix::capture_pass_entropy(&admin.pubkey());
     capture.accounts[0].is_signer = false;
     assert_anchor_error(env.send(&[capture], &[]), A::AccountNotSigner);
+
+    pass_min_tokens_accepts_a_token_2022_account();
+}
+
+/// A Token-2022 game token: a `minter_token` (Token-2022 account) holding enough tokens
+/// satisfies `pass_min_tokens`; one base unit short does not.
+fn pass_min_tokens_accepts_a_token_2022_account() {
+    let (mut env, _) = mint_env_with(MintKind::Token2022);
+    assert_eq!(env.token_program, MintKind::Token2022.program());
+    assert_ok(env.update_config(UpdateConfigArgs {
+        pass_min_tokens: Some(100 * TOKEN),
+        ..Default::default()
+    }));
+    let poor = env.token_player("poor", 100 * TOKEN - 1);
+    let (res, _) = env.mint_pass(&poor);
+    assert_error(res, SlanaError::MintMinTokens);
+    let rich = env.token_player("rich", 100 * TOKEN);
+    let (res, asset) = env.mint_pass(&rich);
+    assert_ok(res);
+    assert!(env.svm.get_account(&asset).is_some());
+    assert_eq!(env.config().pass_minted, 1);
+    assert_eq!(env.tokens(&env.player_ata(&rich.pubkey())), 100 * TOKEN);
 }

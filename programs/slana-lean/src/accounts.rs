@@ -295,10 +295,10 @@ fn create_program_address(seeds: &[Seed], program: &Address) -> Option<Address> 
     (rc == 0).then(|| unsafe { out.assume_init() })
 }
 
+/// Host builds (unit tests) have no PDA syscall; no host code derives addresses.
 #[cfg(not(target_os = "solana"))]
-fn create_program_address(seeds: &[Seed], program: &Address) -> Option<Address> {
-    core::hint::black_box((seeds, program));
-    None
+fn create_program_address(_seeds: &[Seed], _program: &Address) -> Option<Address> {
+    unimplemented!("create_program_address is a syscall (SBF only)")
 }
 
 /// `find_program_address(seeds, program)`: the canonical PDA and its bump.
@@ -325,25 +325,16 @@ pub fn find_pda(seeds: &[Seed], program: &Address) -> Result<(Address, u8)> {
     Ok((unsafe { out.assume_init() }, bump))
 }
 
+/// Host builds (unit tests) have no PDA syscall; no host code derives addresses.
 #[cfg(not(target_os = "solana"))]
-pub fn find_pda(seeds: &[Seed], program: &Address) -> Result<(Address, u8)> {
-    core::hint::black_box((seeds, program));
-    Err(err(CONSTRAINT_SEEDS))
+pub fn find_pda(_seeds: &[Seed], _program: &Address) -> Result<(Address, u8)> {
+    unimplemented!("find_program_address is a syscall (SBF only)")
 }
 
-/// `seeds = [..], bump = <stored bump>` (the last seed is the bump): the address must be
-/// `create_program_address(seeds, ID)`, else `ConstraintSeeds`.
-#[inline(never)]
-pub fn check_pda(acc: &AccountView, seeds_with_bump: &[Seed]) -> Result {
-    match create_program_address(seeds_with_bump, &ID) {
-        Some(pda) if &pda == acc.address() => Ok(()),
-        _ => Err(err(CONSTRAINT_SEEDS)),
-    }
-}
-
-/// `seeds = [..], bump = <stored bump>` for up to three seeds, then `mut` when `mutable`
-/// (`ConstraintSeeds`, then `ConstraintMut`). The one seed check every handler shares: the
-/// bump is appended here. More than three seeds is `InvalidArgument` (never truncated).
+/// `seeds = [..], bump = <stored bump>` for up to three seeds: the address must be
+/// `create_program_address(seeds ‖ [bump], ID)` (`ConstraintSeeds`), then `mut` when
+/// `mutable` (`ConstraintMut`). The one seed check every handler shares: the bump is appended
+/// here. More than three seeds is `InvalidArgument` (never truncated).
 #[inline(never)]
 pub fn check_pda_seeds(acc: &AccountView, seeds: &[&[u8]], bump: u8, mutable: bool) -> Result {
     let bump = [bump];
@@ -360,7 +351,10 @@ pub fn check_pda_seeds(acc: &AccountView, seeds: &[&[u8]], bump: u8, mutable: bo
     // 64-bit hosts); the slices outlive the call.
     let with_bump =
         unsafe { core::slice::from_raw_parts(with_bump.as_ptr() as *const Seed, with_bump.len()) };
-    check_pda(acc, with_bump)?;
+    match create_program_address(with_bump, &ID) {
+        Some(pda) if &pda == acc.address() => {}
+        _ => return Err(err(CONSTRAINT_SEEDS)),
+    }
     if mutable {
         check_writable(acc)?;
     }
@@ -425,17 +419,17 @@ pub fn init_pda(
     let rent = rent_minimum(space)?;
     let current = acc.lamports();
     if current == 0 {
-        system::create_account(payer, acc, rent, space as u64, owner, &signer);
+        system::create_account(payer, acc, rent, space as u64, owner, &signer)?;
     } else {
         if payer.address() == acc.address() {
             return Err(err(TRYING_TO_INIT_PAYER_AS_PROGRAM_ACCOUNT));
         }
         let missing = rent.max(1).saturating_sub(current);
         if missing > 0 {
-            system::transfer(payer, acc, missing);
+            system::transfer(payer, acc, missing)?;
         }
-        system::allocate(acc, space as u64, &signer);
-        system::assign(acc, owner, &signer);
+        system::allocate(acc, space as u64, &signer)?;
+        system::assign(acc, owner, &signer)?;
     }
     Ok(())
 }

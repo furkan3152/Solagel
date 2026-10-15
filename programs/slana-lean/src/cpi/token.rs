@@ -4,6 +4,7 @@
 use {
     super::invoke,
     crate::borsh::{wr_bytes, wr_u64},
+    crate::error::Result,
     pinocchio::{cpi::Signer, instruction::InstructionAccount, AccountView, Address},
 };
 
@@ -14,7 +15,7 @@ pub fn initialize_account3(
     account: &AccountView,
     mint: &AccountView,
     owner: &Address,
-) {
+) -> Result {
     let mut data = [0u8; 33];
     data[0] = 18;
     wr_bytes(&mut data, 1, owner.as_ref());
@@ -27,7 +28,7 @@ pub fn initialize_account3(
         &[account, mint],
         &data,
         &[],
-    );
+    )
 }
 
 /// `TransferChecked { amount, decimals }` (12) out of a token account whose authority signs
@@ -44,7 +45,7 @@ pub fn transfer_checked(
     amount: u64,
     decimals: u8,
     signers: &[Signer],
-) {
+) -> Result {
     let mut data = [0u8; 10];
     data[0] = 12;
     wr_u64(&mut data, 1, amount);
@@ -60,7 +61,7 @@ pub fn transfer_checked(
         &[from, mint, to, authority],
         &data,
         signers,
-    );
+    )
 }
 
 /// `Burn { amount }` (8) from a token account whose authority is the PDA signing with
@@ -72,7 +73,7 @@ pub fn burn(
     authority: &AccountView,
     amount: u64,
     signers: &[Signer],
-) {
+) -> Result {
     let mut data = [0u8; 9];
     data[0] = 8;
     wr_u64(&mut data, 1, amount);
@@ -86,5 +87,5 @@ pub fn burn(
         &[from, mint, authority],
         &data,
         signers,
-    );
+    )
 }

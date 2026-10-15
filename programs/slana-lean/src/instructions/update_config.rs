@@ -7,7 +7,7 @@
 //! | `UpdateConfigArgs` Borsh (13 `Option`s, `String` UTF-8) | `Args`                         | 102 |
 //! | `admin: Signer`                                         | `check_signer`                 | 3010 |
 //! | `config: Account<Config>`                               | `load`                         | 3012 / 3007 / 3001 / 3002 / 3003 |
-//! | `config: seeds = [CONFIG_SEED], bump = config.bump`     | `check_admin_config` (`check_pda`) | 2006 |
+//! | `config: seeds = [CONFIG_SEED], bump = config.bump`     | `check_admin_config` (`check_pda_seeds`) | 2006 |
 //! | `config: mut`                                           | `check_admin_config` (`check_writable`) | 2000 |
 //! | `config: has_one = admin @ Unauthorized`                | `check_admin_config`           | Unauthorized |
 //!
