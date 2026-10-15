@@ -23,7 +23,7 @@ use {
         error::ErrorCode as AnchorErrorCode,
         prelude::Pubkey,
         solana_program::instruction::{error::InstructionError, AccountMeta, Instruction},
-        AccountSerialize, Event, Space,
+        AccountSerialize, Space,
     },
     common::*,
     slana::{
@@ -60,38 +60,6 @@ fn assert_instruction_error(res: TxResult, expected: InstructionError) {
             ),
         },
     }
-}
-
-/// Standard base64, for matching `Program data:` event logs.
-fn base64(bytes: &[u8]) -> String {
-    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::new();
-    for chunk in bytes.chunks(3) {
-        let b = [
-            chunk[0],
-            *chunk.get(1).unwrap_or(&0),
-            *chunk.get(2).unwrap_or(&0),
-        ];
-        let n = (u32::from(b[0]) << 16) | (u32::from(b[1]) << 8) | u32::from(b[2]);
-        for i in 0..4 {
-            if i <= chunk.len() {
-                out.push(T[((n >> (18 - 6 * i)) & 63) as usize] as char);
-            } else {
-                out.push('=');
-            }
-        }
-    }
-    out
-}
-
-#[track_caller]
-fn assert_event<E: Event>(meta: &litesvm::types::TransactionMetadata, event: &E) {
-    let line = format!("Program data: {}", base64(&event.data()));
-    assert!(
-        meta.logs.iter().any(|l| l == &line),
-        "missing `{line}`\n{}",
-        meta.pretty_logs()
-    );
 }
 
 /// A `Config` with every field distinct from its neighbours, keeping the env's admin, mint,

@@ -4,9 +4,8 @@
 //! Ported: `check_skin`, `validate_name`, `mul_bps`, `split_payout`, `apply_game`,
 //! `leader_entry` + `upsert_leaderboard` (as [`upsert_leaderboard`]), and the Pass entropy
 //! helpers `find_slot_hash`, `hex32`, `pass_final_seed` (plus the decimal writer and the capture
-//! log line the reference builds with `format!`). The season-claim helpers (`prize_amount`,
-//! `prize_rank`) come with their instructions. The unit tests run the reference functions and
-//! these side by side.
+//! log line the reference builds with `format!`), and the season-claim helpers `prize_rank`
+//! and `prize_amount`. The unit tests run the reference functions and these side by side.
 
 use {
     crate::error::Result,
@@ -14,8 +13,9 @@ use {
         borsh::{rd_arr, rd_key, rd_u32, rd_u64, rd_u8, wr_bytes, wr_i64, wr_u32, wr_u64, wr_u8},
         constants::{
             BASIC_SKINS, BPS, LEADERBOARD_LEN, MAX_SCORE_PER_GAME, MAX_XP_PER_GAME, NAME_BYTES,
+            PRIZE_RANKS, PRIZE_SHARES_BPS,
         },
-        error::{err, require, INVALID_NAME, INVALID_SKIN, MATH_OVERFLOW},
+        error::{err, require, INVALID_NAME, INVALID_SKIN, MATH_OVERFLOW, NOT_ELIGIBLE},
         instructions::update_config::has_control_char,
         state::{leader_entry as le, profile, season},
     },
@@ -74,6 +74,15 @@ pub fn mul_bps(amount: u64, bps: u16) -> Result<u64> {
         .checked_add(low)
         .and_then(|whole| whole.checked_add(rest))
         .ok_or_else(|| err(MATH_OVERFLOW))
+}
+
+/// Reference `prize_amount`: rank `rank`'s share of `prize_pool` (`PRIZE_SHARES_BPS`), or
+/// `NotEligible` for a rank without a share; `MathOverflow` as [`mul_bps`].
+pub fn prize_amount(prize_pool: u64, rank: usize) -> Result<u64> {
+    let share = *PRIZE_SHARES_BPS
+        .get(rank)
+        .ok_or_else(|| err(NOT_ELIGIBLE))?;
+    mul_bps(prize_pool, share)
 }
 
 /// How a stake payout is split (base units of the game token).
@@ -163,6 +172,17 @@ fn rows(s: &mut [u8; season::SPACE]) -> &mut [Row; LEADERBOARD_LEN] {
     // SAFETY: the rows are exactly the last `20 · 62` bytes of the array (checked above),
     // `u8` arrays have alignment 1, and the borrow of `s` covers them.
     unsafe { &mut *(s.as_mut_ptr().wrapping_add(season::ENTRIES) as *mut [Row; LEADERBOARD_LEN]) }
+}
+
+/// Reference `prize_rank(&season.entries, season.count, player)`: the 0-based rank of
+/// `player` among the first `min(count, PRIZE_RANKS)` rows of the season, if listed.
+#[inline(never)]
+pub fn prize_rank(s: &mut [u8; season::SPACE], player: &[u8; 32]) -> Option<usize> {
+    let ranked = usize::from(rd_u8(s, season::COUNT)).min(usize::from(PRIZE_RANKS));
+    rows(s)
+        .iter()
+        .take(ranked)
+        .position(|e| rd_key(e, le::PLAYER) == *player)
 }
 
 /// Reference `leader_entry(profile, game_score)` followed by `upsert_leaderboard` on the
@@ -702,6 +722,47 @@ mod tests {
             }
             let back = rs::Season::try_deserialize(&mut &lean[..]).unwrap();
             assert_eq!(back.count, season.count);
+        }
+    }
+
+    /// `prize_rank` over random boards (counts 0..=25, repeated and absent players) and
+    /// `prize_amount` for every rank (and beyond) against the reference.
+    #[test]
+    fn prize_rank_and_amount_match() {
+        let mut rng = Rng(0x5ea5_0000_0000_0001);
+        for _ in 0..2_000 {
+            let mut season = empty_season();
+            season.count = rng.below(26) as u8;
+            for e in season.entries.iter_mut() {
+                e.player = Pubkey::new_from_array([1 + rng.below(12) as u8; 32]);
+            }
+            let mut lean: [u8; season::SPACE] = ser(&season).try_into().unwrap();
+            for who in 0..=13u8 {
+                let player = Pubkey::new_from_array([who; 32]);
+                assert_eq!(
+                    prize_rank(&mut lean, &player.to_bytes()),
+                    r::prize_rank(&season.entries, season.count, &player)
+                );
+            }
+            assert_eq!(lean.to_vec(), ser(&season));
+        }
+        for pool in [
+            0,
+            1,
+            9_999,
+            10_000,
+            9 * 1_000_000,
+            u64::MAX / 3_000,
+            u64::MAX,
+        ] {
+            for rank in 0..12 {
+                same(prize_amount(pool, rank), r::prize_amount(pool, rank));
+            }
+        }
+        for _ in 0..20_000 {
+            let pool = rng.next() >> rng.below(64);
+            let rank = rng.below(11) as usize;
+            same(prize_amount(pool, rank), r::prize_amount(pool, rank));
         }
     }
 
