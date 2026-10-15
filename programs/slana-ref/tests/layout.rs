@@ -403,11 +403,15 @@ fn withdraw_reads_bumps_and_decimals_from_the_config() {
         AnchorErrorCode::ConstraintSeeds,
     );
 
-    // The decimals passed to transfer_checked come from the config.
+    // The decimals passed to transfer_checked come from the config: a wrong value fails in
+    // the token program (SPL Token `MintDecimalsMismatch` = custom error 18).
     let mut c = base.clone();
     c.token_decimals = DECIMALS + 1;
     env.write_account(&config_pda(), &c);
-    assert!(env.withdraw_treasury_as(&admin, &to, TOKEN).is_err());
+    assert_instruction_error(
+        env.withdraw_treasury_as(&admin, &to, TOKEN),
+        InstructionError::Custom(18),
+    );
 
     env.write_account(&config_pda(), &base);
     let meta = assert_ok(env.withdraw_treasury_as(&admin, &to, TOKEN));
@@ -733,10 +737,14 @@ fn initialize_checks_the_program_accounts() {
         env.send(&[ix], &[&admin]),
         AnchorErrorCode::InvalidProgramId,
     );
-    // The mint owned by SPL Token, the token program Token-2022.
+    // The mint owned by SPL Token, the token program Token-2022: the treasury vault's
+    // `InitializeAccount3` CPI into Token-2022 refuses the SPL Token mint (`IncorrectProgramId`).
     let token_2022 = anchor_spl::token_2022::ID;
     let ix = ix::initialize(&admin.pubkey(), &mint, &token_2022, args.clone());
-    assert!(env.send(&[ix], &[&admin]).is_err());
+    assert_instruction_error(
+        env.send(&[ix], &[&admin]),
+        InstructionError::IncorrectProgramId,
+    );
     // A wrong config address.
     let mut ix = ix::initialize(&admin.pubkey(), &mint, &program, args.clone());
     ix.accounts[1].pubkey = Pubkey::new_unique();

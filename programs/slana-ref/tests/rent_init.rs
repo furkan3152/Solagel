@@ -81,14 +81,21 @@ fn init_paths_fund_the_rent_minimum_under_threshold_one_and_two() {
         let session_len = 8 + Session::INIT_SPACE;
         let counter_len = 8 + MintCounter::INIT_SPACE;
         // The harness (solana-rent) agrees with the formula.
-        assert_eq!(env.rent(profile_len), expected_rent(profile_len, rate, factor));
+        assert_eq!(
+            env.rent(profile_len),
+            expected_rent(profile_len, rate, factor)
+        );
 
         // register_player → profile.
         let p = wallet(&mut env);
         let before = env.balance(&p.pubkey());
         assert_ok(env.register(&p, "rent", 0));
         let profile_rent = expected_rent(profile_len, rate, factor);
-        assert_eq!(env.balance(&profile_pda(&p.pubkey())), profile_rent, "rate {rate}");
+        assert_eq!(
+            env.balance(&profile_pda(&p.pubkey())),
+            profile_rent,
+            "rate {rate}"
+        );
         assert_eq!(before - env.balance(&p.pubkey()), profile_rent);
 
         // join → session (rent + the settle deposit).
@@ -180,10 +187,7 @@ fn join_initializes_a_prefunded_session() {
         assert_ok(env.join(&p, 1));
         assert_eq!(env.owner_of(&session), slana::ID);
         // The settle deposit comes on top of whatever the account holds after init.
-        assert_eq!(
-            env.balance(&session),
-            pre.max(rent) + SETTLE_FEE_LAMPORTS
-        );
+        assert_eq!(env.balance(&session), pre.max(rent) + SETTLE_FEE_LAMPORTS);
         assert_eq!(
             before - env.balance(&p.pubkey()),
             rent.saturating_sub(pre) + SETTLE_FEE_LAMPORTS

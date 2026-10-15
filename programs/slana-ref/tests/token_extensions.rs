@@ -65,11 +65,17 @@ fn token2022_mint_with_variable_length_extensions_full_money_path() {
         assert!(mint_state.freeze_authority.is_none());
         let metadata = token_metadata(&env);
         assert_eq!(
-            (metadata.name.as_str(), metadata.symbol.as_str(), metadata.uri.as_str()),
+            (
+                metadata.name.as_str(),
+                metadata.symbol.as_str(),
+                metadata.uri.as_str()
+            ),
             (META_NAME, META_SYMBOL, META_URI)
         );
         let mint_len = env.svm.get_account(&env.mint).unwrap().data.len();
-        assert!(mint_len > ExtensionType::try_calculate_account_len::<MintState>(&types[..1]).unwrap());
+        assert!(
+            mint_len > ExtensionType::try_calculate_account_len::<MintState>(&types[..1]).unwrap()
+        );
         let config = env.config();
         assert_eq!(config.token_mint, env.mint);
         assert_eq!(config.token_program, kind.program());
