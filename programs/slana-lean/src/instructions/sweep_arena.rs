@@ -22,16 +22,17 @@
 //! | `token::transfer_from_pda(vault → season_vault, vault.amount)` (0 = no-op)    | `stake::pay_from_vault`        | token program |
 //! | `season.pool.checked_add(amount)`                                             | `stake::add`                   | MathOverflow |
 //!
-//! Emits `ArenaSwept`.
+//! Emits `ArenaSwept`. The body is shared with `sweep_loot` ([`sweep`]), which differs only in
+//! the signer, the amount and the arena-state requirements.
 
 use {
     super::{check_admin_config, stake},
     crate::error::Result,
     crate::{
-        accounts::{check_pda_seeds, data, data_ref, kind, parse},
-        borsh::{rd_bool, rd_u16, rd_u32, rd_u64, rd_u8, wr_u64},
+        accounts::{check_pda_seeds, data, data_ref, keq, kind, parse},
+        borsh::{rd_bool, rd_key, rd_u16, rd_u32, rd_u64, rd_u8, wr_u64},
         constants::SEASON_VAULT_SEED,
-        error::{require, ARENA_BUSY, ARENA_HAS_OPEN_SESSIONS},
+        error::{require, ARENA_BUSY, ARENA_HAS_OPEN_SESSIONS, INSUFFICIENT_POT, UNAUTHORIZED},
         events,
         state::{arena, config, season},
         token::{ACCOUNT_AMOUNT, ACCOUNT_LEN},
@@ -41,7 +42,15 @@ use {
 
 #[inline(never)]
 pub fn process(accounts: &[AccountView], _args: &[u8]) -> Result {
-    let [admin, config_acc, arena_acc, vault, season_acc, season_vault, token_mint, token_program] =
+    sweep(accounts, None)
+}
+
+/// `sweep_arena` (`loot = None`: admin-signed, the whole vault of a disabled arena with no
+/// open session) or `sweep_loot` (`loot = Some(amount)`: server-signed, `amount` up to the
+/// vault balance, any arena state; `0` succeeds without a transfer or an event).
+#[inline(never)]
+pub(super) fn sweep(accounts: &[AccountView], loot: Option<u64>) -> Result {
+    let [signer, config_acc, arena_acc, vault, season_acc, season_vault, token_mint, token_program] =
         parse(
             accounts,
             &[
@@ -61,9 +70,21 @@ pub fn process(accounts: &[AccountView], _args: &[u8]) -> Result {
     let c = unsafe { data::<{ config::SPACE }>(config_acc) };
     let r = unsafe { data::<{ arena::SPACE }>(arena_acc) };
     let sn = unsafe { data::<{ season::SPACE }>(season_acc) };
-    let amount = rd_u64(unsafe { data_ref::<ACCOUNT_LEN>(vault) }, ACCOUNT_AMOUNT);
+    let vault_amount = rd_u64(unsafe { data_ref::<ACCOUNT_LEN>(vault) }, ACCOUNT_AMOUNT);
 
-    check_admin_config(config_acc, c, admin, false)?;
+    if loot.is_some() {
+        // `server: constraint = server == config.server_authority` comes before `config`'s seeds.
+        require(
+            keq(
+                signer.address().as_array(),
+                &rd_key(c, config::SERVER_AUTHORITY),
+            ),
+            UNAUTHORIZED,
+        )?;
+        stake::check_config(config_acc, c, false)?;
+    } else {
+        check_admin_config(config_acc, c, signer, false)?;
+    }
     stake::check_arena(arena_acc, r, false)?;
     stake::check_arena_vault(vault, arena_acc, r)?;
     stake::check_current_season(season_acc, sn, c)?;
@@ -75,11 +96,23 @@ pub fn process(accounts: &[AccountView], _args: &[u8]) -> Result {
     )?;
     stake::check_token_addresses(c, token_mint, token_program)?;
 
-    require(!rd_bool(r, arena::ENABLED), ARENA_BUSY)?;
-    require(
-        rd_u16(r, arena::OPEN_SESSIONS) == 0,
-        ARENA_HAS_OPEN_SESSIONS,
-    )?;
+    let (amount, event) = match loot {
+        Some(amount) => {
+            require(vault_amount >= amount, INSUFFICIENT_POT)?;
+            if amount == 0 {
+                return Ok(());
+            }
+            (amount, &events::LOOT_SWEPT)
+        }
+        None => {
+            require(!rd_bool(r, arena::ENABLED), ARENA_BUSY)?;
+            require(
+                rd_u16(r, arena::OPEN_SESSIONS) == 0,
+                ARENA_HAS_OPEN_SESSIONS,
+            )?;
+            (vault_amount, &events::ARENA_SWEPT)
+        }
+    };
 
     stake::pay_from_vault(
         c,
@@ -94,7 +127,8 @@ pub fn process(accounts: &[AccountView], _args: &[u8]) -> Result {
     let pool = stake::add(rd_u64(sn, season::POOL), amount)?;
     wr_u64(sn, season::POOL, pool);
 
-    events::emit(&events::arena_swept(
+    events::emit(&events::swept(
+        event,
         rd_u16(r, arena::ID),
         rd_u32(sn, season::ID),
         amount,

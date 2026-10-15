@@ -15,6 +15,7 @@ pub const JOIN_ARENA_WITH_PASS: [u8; 8] = [145, 196, 60, 74, 142, 112, 166, 224]
 pub const SETTLE_SESSION: [u8; 8] = [156, 20, 180, 117, 117, 85, 225, 128];
 pub const REFUND_SESSION: [u8; 8] = [168, 87, 185, 45, 250, 170, 10, 85];
 pub const SWEEP_ARENA: [u8; 8] = [124, 38, 247, 190, 34, 58, 64, 7];
+pub const SWEEP_LOOT: [u8; 8] = [221, 67, 119, 145, 176, 100, 54, 6];
 pub const SET_PASS_COLLECTION: [u8; 8] = [60, 188, 194, 201, 72, 107, 78, 208];
 pub const SET_PASS_SEED_HASH: [u8; 8] = [192, 248, 24, 81, 247, 241, 216, 11];
 pub const MINT_PASS: [u8; 8] = [142, 56, 26, 197, 227, 241, 84, 174];
@@ -29,7 +30,7 @@ pub const ROLLOVER_SEASON: [u8; 8] = [100, 231, 139, 192, 118, 134, 116, 197];
 pub const EVENT_IX_TAG_LE: [u8; 8] = [0xe4, 0x45, 0xa5, 0x2e, 0x51, 0xcb, 0x9a, 0x1d];
 
 /// Every instruction of the program, by its Anchor (snake_case) name.
-pub const ALL: [(&str, [u8; 8]); 21] = [
+pub const ALL: [(&str, [u8; 8]); 22] = [
     ("initialize", INITIALIZE),
     ("update_config", UPDATE_CONFIG),
     ("create_arena", CREATE_ARENA),
@@ -42,6 +43,7 @@ pub const ALL: [(&str, [u8; 8]); 21] = [
     ("settle_session", SETTLE_SESSION),
     ("refund_session", REFUND_SESSION),
     ("sweep_arena", SWEEP_ARENA),
+    ("sweep_loot", SWEEP_LOOT),
     ("set_pass_collection", SET_PASS_COLLECTION),
     ("set_pass_seed_hash", SET_PASS_SEED_HASH),
     ("mint_pass", MINT_PASS),
@@ -62,7 +64,7 @@ mod tests {
     }
 
     /// The reference's discriminators, from the Anchor-generated `slana::instruction` structs.
-    fn reference() -> [(&'static str, &'static [u8]); 21] {
+    fn reference() -> [(&'static str, &'static [u8]); 22] {
         [
             ("initialize", d::<i::Initialize>()),
             ("update_config", d::<i::UpdateConfig>()),
@@ -76,6 +78,7 @@ mod tests {
             ("settle_session", d::<i::SettleSession>()),
             ("refund_session", d::<i::RefundSession>()),
             ("sweep_arena", d::<i::SweepArena>()),
+            ("sweep_loot", d::<i::SweepLoot>()),
             ("set_pass_collection", d::<i::SetPassCollection>()),
             ("set_pass_seed_hash", d::<i::SetPassSeedHash>()),
             ("mint_pass", d::<i::MintPass>()),

@@ -142,7 +142,7 @@ describe('instruction builders (no RPC)', () => {
     expect(keys(withToken)[6]).toBe(ata(player, tokenMint, TOKEN_PROGRAM_ID).toBase58());
   });
 
-  it('claimSeasonReward, sweepArena, withdrawTreasury, createArena', async () => {
+  it('claimSeasonReward, sweepArena, sweepLoot, withdrawTreasury, createArena', async () => {
     const claim = await client.ix.claimSeasonReward(player, { seasonId: 3, ...token });
     expect(keys(claim)).toEqual(
       b58([player, pdas.config(), pdas.season(3), pdas.seasonVault(), ata(player, tokenMint, TOKEN_2022_PROGRAM_ID), tokenMint, TOKEN_2022_PROGRAM_ID]),
@@ -153,6 +153,16 @@ describe('instruction builders (no RPC)', () => {
     const arena = pdas.arena(9);
     const sweep = await client.ix.sweepArena(admin, { id: 9, currentSeason: 5, ...token });
     expect(keys(sweep)).toEqual(b58([admin, pdas.config(), arena, pdas.vault(arena), pdas.season(5), pdas.seasonVault(), tokenMint, TOKEN_2022_PROGRAM_ID]));
+
+    const loot = await client.ix.sweepLoot(server, { id: 9, amount: 123_456_789n, currentSeason: 5, ...token });
+    expect(keys(loot)).toEqual(b58([server, pdas.config(), arena, pdas.vault(arena), pdas.season(5), pdas.seasonVault(), tokenMint, TOKEN_2022_PROGRAM_ID]));
+    expect(meta(loot, server)).toMatchObject({ isSigner: true, isWritable: false });
+    expect(meta(loot, pdas.vault(arena))).toMatchObject({ isSigner: false, isWritable: true });
+    expect(meta(loot, pdas.season(5))).toMatchObject({ isSigner: false, isWritable: true });
+    // sha256("global:sweep_loot")[..8] + amount (u64 LE)
+    expect([...loot.data.subarray(0, 8)]).toEqual([221, 67, 119, 145, 176, 100, 54, 6]);
+    expect(loot.data.length).toBe(8 + 8);
+    expect(loot.data.readBigUInt64LE(8)).toBe(123_456_789n);
 
     const dest = Keypair.generate().publicKey;
     const withdraw = await client.ix.withdrawTreasury(admin, { amount: 10n ** 15n, destination: dest, ...token });

@@ -67,6 +67,7 @@ fn process_instruction(program_id: &Address, accounts: &[AccountView], data: &[u
         SETTLE_SESSION => ix::settle_session::process(accounts, args),
         REFUND_SESSION => ix::refund_session::process(accounts, args),
         SWEEP_ARENA => ix::sweep_arena::process(accounts, args),
+        SWEEP_LOOT => ix::sweep_loot::process(accounts, args),
         END_SEASON => ix::end_season::process(accounts, args),
         CLAIM_SEASON_REWARD => ix::claim_season_reward::process(accounts, args),
         ROLLOVER_SEASON => ix::rollover_season::process(accounts, args),
@@ -93,6 +94,7 @@ const JOIN_ARENA_WITH_PASS: u64 = u64::from_le_bytes(d::JOIN_ARENA_WITH_PASS);
 const SETTLE_SESSION: u64 = u64::from_le_bytes(d::SETTLE_SESSION);
 const REFUND_SESSION: u64 = u64::from_le_bytes(d::REFUND_SESSION);
 const SWEEP_ARENA: u64 = u64::from_le_bytes(d::SWEEP_ARENA);
+const SWEEP_LOOT: u64 = u64::from_le_bytes(d::SWEEP_LOOT);
 const END_SEASON: u64 = u64::from_le_bytes(d::END_SEASON);
 const CLAIM_SEASON_REWARD: u64 = u64::from_le_bytes(d::CLAIM_SEASON_REWARD);
 const ROLLOVER_SEASON: u64 = u64::from_le_bytes(d::ROLLOVER_SEASON);
