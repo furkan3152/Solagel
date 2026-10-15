@@ -105,8 +105,10 @@ pnpm dev          # game server :8787 + web :5173
 and `SERVER_KEYPAIR` the server runs without a chain (practice only).
 
 Fake chain for UI work: `NODE_ENV=development DEV_FAKE_CHAIN=1 pnpm dev:server` gives every wallet free arena tickets
-and a revealed Pass, and simulates the payouts. Development only; it refuses to start while `PROGRAM_ID` or
-`SERVER_KEYPAIR` is set.
+and simulates the payouts. Its Pass mint is open and unrevealed, so a wallet can mint one (sealed) Pass; publish the
+seed with `curl -X POST localhost:8787/api/dev/pass/reveal` (or `__slanaChain.revealPasses()` in the browser console).
+`DEV_FAKE_PASS=revealed` instead gives every wallet one revealed Pass (the `pass.mjs` screenshot tour expects it).
+Development only; it refuses to start while `PROGRAM_ID` or `SERVER_KEYPAIR` is set.
 
 ## Running with the chain
 

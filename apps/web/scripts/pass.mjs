@@ -2,7 +2,7 @@
 // the application form, a countdown, sold out), the mint sheet and its envelope, the seal break, the
 // standings (season with a claimable prize cheque, today, all time), the claim sheet, the profile and
 // settings, on desktop and mobile, paper / night.
-// Needs a dev server (pnpm dev) whose game server runs NODE_ENV=development DEV_FAKE_CHAIN=1 (and,
+// Needs a dev server (pnpm dev) whose game server runs NODE_ENV=development DEV_FAKE_CHAIN=1 DEV_FAKE_PASS=revealed (and,
 // for the marketplace links, MARKET_URL_*): the web dev build then uses its fake chain stand-in
 // (src/solana/devFake.ts), so nothing is signed. A Wallet Standard test wallet is injected.
 // Usage: node scripts/pass.mjs <baseUrl> <outDir> [step ...]   -> <outDir>/t15-*.png
