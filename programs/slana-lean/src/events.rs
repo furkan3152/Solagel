@@ -159,6 +159,36 @@ pub fn session_refunded(
     e
 }
 
+/// `SeasonEnded { season_id: u32, prize_pool: u64 }`.
+pub fn season_ended(season_id: u32, prize_pool: u64) -> [u8; 20] {
+    let mut e = [0u8; 20];
+    wr_bytes(&mut e, 0, &SEASON_ENDED);
+    wr_u32(&mut e, 8, season_id);
+    wr_u64(&mut e, 12, prize_pool);
+    e
+}
+
+/// `RewardClaimed { season_id: u32, player: Pubkey, rank: u8, amount: u64 }`.
+pub fn reward_claimed(season_id: u32, player: &[u8; 32], rank: u8, amount: u64) -> [u8; 53] {
+    let mut e = [0u8; 53];
+    wr_bytes(&mut e, 0, &REWARD_CLAIMED);
+    wr_u32(&mut e, 8, season_id);
+    wr_bytes(&mut e, 12, player);
+    e[44] = rank;
+    wr_u64(&mut e, 45, amount);
+    e
+}
+
+/// `SeasonRolledOver { from: u32, to: u32, amount: u64 }`.
+pub fn season_rolled_over(from: u32, to: u32, amount: u64) -> [u8; 24] {
+    let mut e = [0u8; 24];
+    wr_bytes(&mut e, 0, &SEASON_ROLLED_OVER);
+    wr_u32(&mut e, 8, from);
+    wr_u32(&mut e, 12, to);
+    wr_u64(&mut e, 16, amount);
+    e
+}
+
 /// `ArenaSwept { arena_id: u16, season_id: u32, amount: u64 }`.
 pub fn arena_swept(arena_id: u16, season_id: u32, amount: u64) -> [u8; 22] {
     let mut e = [0u8; 22];
@@ -349,6 +379,30 @@ mod tests {
         };
         assert_eq!(
             arena_swept(e.arena_id, e.season_id, e.amount).to_vec(),
+            e.data()
+        );
+        let e = r::SeasonEnded {
+            season_id: 0x0102_0304,
+            prize_pool: 0x0506_0708_090a_0b0c,
+        };
+        assert_eq!(season_ended(e.season_id, e.prize_pool).to_vec(), e.data());
+        let e = r::RewardClaimed {
+            season_id: 0x0102_0304,
+            player: k,
+            rank: 9,
+            amount: 0x0506_0708_090a_0b0c,
+        };
+        assert_eq!(
+            reward_claimed(e.season_id, &k.to_bytes(), e.rank, e.amount).to_vec(),
+            e.data()
+        );
+        let e = r::SeasonRolledOver {
+            from: 0x0102_0304,
+            to: 0x0506_0708,
+            amount: 0x090a_0b0c_0d0e_0f10,
+        };
+        assert_eq!(
+            season_rolled_over(e.from, e.to, e.amount).to_vec(),
             e.data()
         );
         let e = r::PassCollectionSet {
