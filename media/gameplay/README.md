@@ -1,7 +1,10 @@
 # Slana gameplay video (Video A)
 
-A cut of real play in Penny Pond, about 72 s, 1920x1080, 30 fps, H.264 + AAC,
--14 LUFS. Cuts sit on the bar lines of the game's own score (82 BPM). It is in
+A cut of one real paid round in Penny Pond, about 66 s, 1920x1080, 30 fps,
+H.264 + AAC, -14 LUFS: a mid-round join (the round chip), a split, loot, a bot
+eats Daphne and she buys back in, the final minute (joins closed), the last ten
+seconds (she eats a player and takes #1), the bell and the "Round over" receipt
+with the PAID stamp. Cuts sit on the bar lines of the game's own score (82 BPM). It is in
 the same Paper Ticket language as the promo (`media/promo`): riso wordmark
 with a teal ghost and pink misregistration, mono kickers with a pink dot,
 ticket lower-thirds, stamps, tape and a perforated paper wipe.
@@ -13,10 +16,11 @@ This folder also holds the capture and render kit that the how-to-play video
 
 | Path | What it is |
 | --- | --- |
-| `capture/lib.mjs` | Playwright kit. `Player` drives the real app (dev wallet, lobby, tickets, an in-page steering brain that eats, flees and seeks open water). `Recorder` records a take: CDP screencast frames with their times, the game audio from the dev tap (`window.__slanaAudioTap`), and a 10 Hz telemetry log (HUD, where Daphne, prey, threats and loot are on screen) plus store events (value floats, kills, rank, banners, cash-out). |
-| `capture/take-*.mjs` | One script per take: `arena` (Daphne and three staged rival wallets with real tickets in Penny Pond; loot, rank climb, cash-out), `practice` (growth, cacti, coin rain), `controls` (each control on its own), `split` (split-catches), `spill` (a bot eats Daphne, tokens spill), `lobby` (tickets, wallet, ticket sheet, Pass, ranks, guide), `music` (the score only, no video). |
+| `capture/lib.mjs` | Playwright kit. `Player` drives the real app (dev wallet, lobby, tickets, "Buy back in", held tickets, an in-page steering brain that eats, flees and seeks open water) and reads the arena round clock (`round()`, `untilRound()`). `Recorder` records a take: CDP screencast frames with their times, the game audio from the dev tap (`window.__slanaAudioTap`), and a 10 Hz telemetry log (HUD, the round's time left and phase, where Daphne, prey, threats and loot are on screen) plus store events (value floats, kills, rank, banners, the bell's round result, held tickets). |
+| `capture/take-*.mjs` | One script per take: `arena` (a whole round: four staged rival wallets with real tickets, Daphne joins mid-round, eats, splits, buys back in if eaten, plays safe through the final minute, the bell, the receipt; run twice as `arena` and `arena2`), `loot` (a rival runs into a bot near Daphne, she sweeps the loot), `spill` (a bot eats Daphne, "Buy back in", the same round again), `held` (the lobby in a final minute: joins closed, a held ticket that joins the next round by itself), `practice` (growth, controls, cacti, coin rain), `controls` and `split` (optional extras), `lobby` (tickets, wallet, ticket sheet, Pass, ranks, guide), `music` (the score only, no video). The round takes wait for the right moment of the wall-clock round. |
 | `capture/take-all.sh` | Records every take in turn. |
-| `capture/pack.mjs` | Packs a take's JPEGs into `video.mkv` (one frame per screencast frame) and deletes them. True capture times stay in `frames.json`. |
+| `capture/pack.mjs` | Packs a take's JPEGs into `video.mkv` (CRF 18, one frame per screencast frame) and deletes them. True capture times stay in `frames.json`. |
+| `capture/trim.py` | Drops unused time ranges of a packed take to save disk; the timeline stays valid. |
 | `motion/motion.html`, `motion/motion.js` | The motion graphics: deterministic components (cards, wipes, lower-thirds, kickers, stamps, keycaps, mouse, hand-drawn rings, arrows and boxes, captions, receipts, fee-split bar, rank counter, the eating-rule diagram) drawn as a pure function of time. Coin characters come from `packages/art` (`motion/build-art.mjs`). |
 | `render/timeline.mjs` | Edit toolkit: shots with speed ramps (integrated time maps), smart reframing from the telemetry (follows Daphne, leans toward nearby prey, threats and loot, critically damped), camera keyframes, punch-ins, shake, tracking helpers. |
 | `render/overlays.mjs` | Renders the graphics layer frame by frame in headless Chromium. |
@@ -37,9 +41,11 @@ python3 -m venv media/gameplay/cache/venv
 media/gameplay/cache/venv/bin/pip install kokoro-onnx soundfile scipy numpy pillow
 node media/gameplay/motion/build-art.mjs
 
-# 1. takes (needs `pnpm demo` running; ports 5173 and 8787 free first)
+# 1. takes (needs `pnpm demo` running with the default 5-minute rounds; ports 5173 and 8787 free first)
 pnpm demo &                                   # fake chain
-media/gameplay/capture/take-all.sh            # ~40 min; logs in media/gameplay/cache/*.log
+media/gameplay/capture/take-all.sh            # ~45 min; logs in media/gameplay/cache/*.log
+node media/gameplay/capture/take-arena.mjs --name arena2   # the second round take
+node media/gameplay/capture/take-loot.mjs --name loot
 # (or one take: node media/gameplay/capture/take-arena.mjs --name arena)
 
 # 2. the cut and the render
@@ -50,17 +56,23 @@ media/gameplay/render/render.sh media/gameplay/cache/edit/gameplay.json \
 ```
 
 Takes are live play, so a new recording tells a slightly different story.
-`edit.mjs` finds its moments by marks and events (the split that caught
-something, the cash-out, the PAID time), but some shot times are literal
-source seconds picked from contact sheets of the takes used for the delivered
-cut (`arena`, `arena-t4`, `arena-t7`, `split`). After recording new takes,
-check them with `tools/peek.py` and update those times.
+`edit.mjs` finds its moments by marks and events (the mid-round join, the
+split, the loot pickups, the death and the buy-back, the final minute, the
+player eaten in the last ten seconds, the bell, the PAID stamp). A new
+recording tells a different story, so check new takes with `tools/peek.py`
+(the delivered cut uses `arena`, `arena2` and `loot`): the last-ten-seconds
+beat, for one, needs a take where Daphne eats a player before the bell.
 
 ## Notes
 
 - Capture runs at about 25-45 fps (software raster at 1080p on 4 cores);
   everything is conformed to 30 fps by capture time, not frame count.
-- The rivals (`mochi_moon`, `bonk_bae`, `lil_lamport`) are real wallets with
+- Disk: a take's screencast JPEGs (quality `JPEG_Q`, default 80) take about
+  10 MB per second of capture until `pack.mjs` replaces them with the mezzanine
+  (about 4-5 MB per second); keep 4 GB free for a whole-round take.
+- Rounds are wall-clock aligned (`ROUND_SECONDS`, default 300). The takes use
+  the default so the round chip shows real five-minute times.
+- The rivals (`mochi_moon`, `bonk_bae`, `lil_lamport`, `rug_ruth`) are real wallets with
   real (fake-chain) tickets, played by the capture script. Bots are the
   game's own.
 - `slana.xyz` on the end card is the promo's placeholder URL.

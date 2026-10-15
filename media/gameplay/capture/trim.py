@@ -23,7 +23,7 @@ for a, b in zip(keep, keep[1:] + [None]):
 expr = "+".join(f"between(n,{a},{b})" for a, b in runs)
 tmp = os.path.join(d, "video.trim.mkv")
 subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", os.path.join(d, "video.mkv"), "-vf", f"select='{expr}',setpts=N/(30*TB)",
-                "-r", "30", "-fps_mode", "cfr", "-c:v", "libx264", "-preset", "faster", "-crf", "15", "-pix_fmt", "yuv420p", "-g", "30", tmp], check=True)
+                "-r", "30", "-fps_mode", "cfr", "-c:v", "libx264", "-preset", "faster", "-crf", "18", "-pix_fmt", "yuv420p", "-g", "30", tmp], check=True)
 n = int(subprocess.run(["ffprobe", "-v", "error", "-count_packets", "-select_streams", "v", "-show_entries", "stream=nb_read_packets", "-of", "csv=p=0", tmp], capture_output=True, text=True).stdout.strip())
 if n < len(keep):
     sys.exit(f"trim produced {n} frames, expected {len(keep)}")

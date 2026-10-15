@@ -340,7 +340,8 @@
       root.style.opacity = 1 - E.inCubic(o);
       if (p.count) {
         const c = E.outExpo(seg(lt, p.countAt ?? 0.25, (p.countAt ?? 0.25) + (p.countDur ?? 0.9)));
-        num.textContent = (p.sign || '') + fmt(lerp(p.count[0], p.count[1], c));
+        const v = lerp(p.count[0], p.count[1], c);
+        num.textContent = (p.sign || '') + (p.dec ? v.toLocaleString('en-US', { minimumFractionDigits: p.dec, maximumFractionDigits: p.dec }) : fmt(v));
       } else num.textContent = p.value ?? '';
       tape.style.opacity = lt > 0.35 ? 1 : 0;
       tape.style.transform = `rotate(-7deg) scale(${lerp(1.4, 1, E.outCubic(seg(lt, 0.35, 0.5)))})`;
@@ -865,6 +866,23 @@
   };
 
   /** A coin character as a graphic (for diagrams): props skin, r, x, y, expression, path. */
+  /** A loot coin (mustard disc, pink riso ghost, inner ring) that pops in and bobs. */
+  C.loot = (p) => {
+    const root = el('div', 'it');
+    const r = p.r || 26;
+    root.innerHTML = `<div style="position:absolute;left:${r * 0.2}px;top:${r * 0.2}px;width:${2 * r}px;height:${2 * r}px;border-radius:50%;background:${COL.pink};mix-blend-mode:multiply"></div>
+      <div style="position:absolute;left:0;top:0;width:${2 * r}px;height:${2 * r}px;box-sizing:border-box;border-radius:50%;background:${COL.mustard};border:${Math.max(3, r * 0.14)}px solid ${INKC}"></div>
+      <div style="position:absolute;left:${r * 0.4}px;top:${r * 0.4}px;width:${1.2 * r}px;height:${1.2 * r}px;box-sizing:border-box;border-radius:50%;border:${Math.max(2, r * 0.1)}px solid rgba(30,27,46,.45)"></div>`;
+    root.style.left = p.x - r + 'px'; root.style.top = p.y - r + 'px';
+    stage.appendChild(root);
+    const update = (lt, dur) => {
+      const a = seg(lt, 0, 0.35), o = seg(lt, dur - 0.25, dur);
+      root.style.opacity = (a > 0 ? 1 : 0) * (1 - o);
+      root.style.transform = `translateY(${Math.sin(lt * 3 + p.x) * 5}px) scale(${E.outBack(a, 2.4)}) scaleX(${Math.abs(Math.cos(lt * 1.6 + p.x * 0.01)) * 0.5 + 0.5})`;
+    };
+    return { root, update };
+  };
+
   C.coin = (p) => {
     const root = el('div', 'it');
     const c = coin(p.skin ?? 4, p.r || 60, { expression: p.expression || 'happy', seed: p.seed || 2 });

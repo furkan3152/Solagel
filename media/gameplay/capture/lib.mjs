@@ -6,7 +6,8 @@
 //   - audio: the dev audio tap (`window.__slanaAudioTap`, the master bus after the limiter)
 //     through MediaRecorder, aligned to the first video frame (`audio.wav`);
 //   - telemetry: a 10 Hz log of the HUD and of where things are on screen (my coin, threats,
-//     prey) plus discrete events (value floats, kills, banners, screens), in take time
+//     prey, the arena round: ms to the bell and its phase) plus discrete events (value floats,
+//     kills, banners, screens, the bell's "Round over" result, a held ticket), in take time
 //     (`events.json`). The edit scripts use it to find the moments and to frame them.
 // Extra players (other wallets) can join the same room with a small, silent browser: the
 // staged rivals of a scene. Nothing here changes the app; it is only played.
@@ -186,8 +187,8 @@ function pageHelpers() {
     const t = Date.now() / 1000;
     if (!S) return { t };
     const st = S.useUi.getState();
-    const out = { t, screen: st.screen, mouse: window.__mouse, hud: st.hud, cash: st.cashout?.state, lb: (st.lb || []).slice(0, 10).map((r) => [r.name, r.value ?? r.mass ?? r.score ?? 0, r.pid === st.me?.pid ? 1 : 0]) };
-    if (st.screen !== 'playing' && st.screen !== 'dead' && st.screen !== 'cashedout') return out;
+    const out = { t, screen: st.screen, mouse: window.__mouse, hud: st.hud, round: window.__round(), held: st.held ? 1 : 0, lb: (st.lb || []).slice(0, 10).map((r) => [r.name, r.value ?? r.mass ?? r.score ?? 0, r.pid === st.me?.pid ? 1 : 0]) };
+    if (st.screen !== 'playing' && st.screen !== 'dead' && st.screen !== 'roundover') return out;
     const s = scan();
     if (!s || !s.w) return out;
     const { e, w, mine, mx, my, big, others, K } = s;
@@ -209,6 +210,26 @@ function pageHelpers() {
     return out;
   };
 
+  /**
+   * The arena round on screen (or of the Penny Pond room in the lobby): ms to the bell and the
+   * phase ('open' | 'closing'). Rounds are wall-clock aligned and the demo server runs on this
+   * machine, so the local clock is the server's.
+   */
+  window.__round = (arenaId) => {
+    const S = window.__slana;
+    if (!S) return null;
+    const st = S.useUi.getState();
+    let r = st.room?.mode === 'arena' && (arenaId == null || st.room.arenaId === arenaId) ? st.room.round : null;
+    if (!r) r = (st.rooms || []).find((q) => q.mode === 'arena' && q.arenaId === (arenaId ?? 1))?.round;
+    if (!r) return null;
+    const now = Date.now();
+    const len = Math.round(r.endsAt / (r.n + 1)); // round n ends at (n + 1) * roundMs
+    let ends = r.endsAt;
+    while (ends <= now) ends += len;
+    const close = ends - (r.endsAt - r.joinsCloseAt);
+    return { left: ends - now, phase: now >= close ? 'closing' : 'open', n: Math.round(ends / len) - 1 };
+  };
+
   /** Discrete events from the store (exact times). */
   window.__events = [];
   const hook = () => {
@@ -223,7 +244,8 @@ function pageHelpers() {
       if (s.banner !== p.banner && s.banner) push('banner', s.banner.kind);
       if (s.hud.rank !== p.hud.rank) push('rank', { rank: s.hud.rank, players: s.hud.players });
       if (s.hud.cells !== p.hud.cells) push('cells', s.hud.cells);
-      if (s.cashout?.state !== p.cashout?.state) push('cashout', s.cashout?.state);
+      if (s.roundResult && s.roundResult !== p.roundResult) push('roundResult', s.roundResult);
+      if (!!s.held !== !!p.held) push('held', s.held);
       if (s.lastSettlement && s.lastSettlement !== p.lastSettlement) push('settled', s.lastSettlement);
       if (s.death && !p.death) push('death', s.death.killer);
       if (s.chat.length !== p.chat.length && s.chat.length) push('chat', s.chat[s.chat.length - 1]?.text);
@@ -340,10 +362,14 @@ export class Player {
   }
 
   /** Buys an arena ticket through the lobby sheet and waits for the room. */
-  async buyTicket(arena = 1, { slow = false, pass = null, signDelay = 900 } = {}) {
-    await this.click(`[role="radio"][data-kb-value="arena:${arena}"]`, { fx: 0.45 });
-    await this.wait(slow ? 700 : 300);
-    await this.click('.kl-cta');
+  async buyTicket(arena = 1, { slow = false, pass = null, signDelay = 900, held = false } = {}) {
+    // "Buy back in" on the death sheet opens the ticket sheet by itself
+    const open = await this.page.locator('.tf-sheet').isVisible().catch(() => false);
+    if (!open) {
+      await this.click(`[role="radio"][data-kb-value="arena:${arena}"]`, { fx: 0.45 });
+      await this.wait(slow ? 700 : 300);
+      await this.click('.kl-cta');
+    }
     await this.page.waitForSelector('.tf-sheet', { timeout: 8000 });
     await this.wait(slow ? 1400 : 500);
     if (pass !== null) {
@@ -353,6 +379,11 @@ export class Player {
     if (slow && this.onSheet) await this.onSheet(this);
     await this.ui((ms) => { if (window.__slanaChain?.fakeWallet) window.__slanaChain.fakeWallet.delayMs = ms; }, signDelay);
     await this.click('.tf-sheet .kb-btn--pink', { before: slow ? 600 : 200 });
+    if (held) {
+      // joins are closed: the lobby holds the ticket and joins by itself at the bell
+      await this.page.waitForFunction(() => { const s = window.__slana.useUi.getState(); return s.screen === 'playing' || !!s.held; }, null, { timeout: 15000 });
+      return (await this.screen()) === 'playing' ? 'playing' : 'held';
+    }
     try {
       const ok = await this.page.waitForFunction(() => window.__slana.useUi.getState().screen === 'playing', null, { timeout: 15000 }).then(() => true, () => false);
       if (!ok) {
@@ -370,6 +401,14 @@ export class Player {
   }
 
   brain(o) { return this.ui((o) => window.__brain(o), o); }
+  /** The round of arena `arenaId` (default: the room on screen, else Penny Pond): {left (ms), phase, n}. */
+  round(arenaId) { return this.ui((a) => window.__round(a), arenaId ?? null); }
+  /** Waits until pred(round) holds (polls every 250 ms). */
+  async untilRound(pred, timeoutMs = 400_000, arenaId) {
+    const t0 = Date.now();
+    while (Date.now() - t0 < timeoutMs) { const r = await this.round(arenaId); if (r && pred(r)) return r; await this.wait(250); }
+    throw new Error('untilRound timed out');
+  }
 
   /** Steers with the brain for `ms` (or until `until()` is true); presses Space when it says so. */
   async drive(ms, o = {}, until = null) {
@@ -452,7 +491,7 @@ export class Recorder {
     });
     await page.evaluate(() => (window.__events = []));
     this.t0 = Date.now() / 1000;
-    if (this.video) await this.cdp.send('Page.startScreencast', { format: 'jpeg', quality: 84, maxWidth: this.p.o.w, maxHeight: this.p.o.h, everyNthFrame: 1 });
+    if (this.video) await this.cdp.send('Page.startScreencast', { format: 'jpeg', quality: Number(process.env.JPEG_Q || 80), maxWidth: this.p.o.w, maxHeight: this.p.o.h, everyNthFrame: 1 });
     this.sampling = true;
     this.sampler = (async () => {
       while (this.sampling) {
