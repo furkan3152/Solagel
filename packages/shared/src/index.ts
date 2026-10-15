@@ -6,6 +6,7 @@ export * from './skins';
 export * from './emotes';
 export * from './arenas';
 export * from './names';
+export * from './localized';
 export * from './text';
 export * from './token';
 export * from './siws';

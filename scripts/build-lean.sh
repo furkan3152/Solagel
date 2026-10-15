@@ -25,6 +25,23 @@ for dir in /opt/solana/bin "$HOME/.local/share/solana/install/active_release/bin
 done
 export PATH
 
+# Cheap guard: a local deploy keypair must belong to the program id baked into the build
+# (the lean `ID` equals the reference's `declare_id!`, which a lean unit test enforces).
+KEYPAIR=target/deploy/slana-keypair.json
+if [[ -f "$KEYPAIR" ]]; then
+  EXPECTED=$(sed -n 's/^declare_id!("\([1-9A-HJ-NP-Za-km-z]*\)");.*/\1/p' programs/slana-ref/src/lib.rs)
+  if [[ -z "$EXPECTED" ]]; then
+    echo "error: could not read the program id from programs/slana-ref/src/lib.rs" >&2
+    exit 1
+  fi
+  ACTUAL=$(solana-keygen pubkey "$KEYPAIR")
+  if [[ "$ACTUAL" != "$EXPECTED" ]]; then
+    echo "error: $KEYPAIR is $ACTUAL but the program id is $EXPECTED." >&2
+    echo "       Deploying with it would create a different program. Remove it or restore the right keypair." >&2
+    exit 1
+  fi
+fi
+
 cargo build-sbf --manifest-path programs/slana-lean/Cargo.toml "$@"
 rm -f target/deploy/slana_lean-keypair.json
 

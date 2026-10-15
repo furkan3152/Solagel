@@ -127,7 +127,7 @@ export const RARE_SHARE = 0.18;
 
 type Base = Omit<PassTraits, 'special' | 'rarity' | 'score'>;
 
-/** The ten hand-picked 1/1 designs ("el yapımı"). */
+/** The ten hand-picked 1/1 designs (hand-made). */
 export const ONE_OF_ONES: readonly Base[] = [
   { ink: 'mustard', overprint: 'fluoPink', offset: { dx: 3, dy: 3 }, symbol: 'crown', eyes: 'star', mouth: 'grin', accessory: 'crown', paper: 'butter' },
   { ink: 'purple', overprint: 'aqua', offset: { dx: -3, dy: 3 }, symbol: 'moon', eyes: 'sleepy', mouth: 'o', accessory: 'halo', paper: 'lilac' },

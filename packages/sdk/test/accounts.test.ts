@@ -71,14 +71,14 @@ function rawProfile(owner: PublicKey, name: string, xp: number): RawProfile {
 describe('account decoding', () => {
   it('profile round-trips through the Anchor coder (UTF-8 name, numbers, level)', async () => {
     const owner = Keypair.generate().publicKey;
-    const data = await encode(ACCOUNT_NAMES.profile, rawProfile(owner, 'Çağrı🚀', 800));
+    const data = await encode(ACCOUNT_NAMES.profile, rawProfile(owner, 'Renée🚀', 800));
     expect(data.length).toBe(8 + 32 + 16 + 1 + 1 + 8 + 4 + 4 + 4 + 8 + 4 + 8 + 4 + 8 + 8 + 8 + 8 + 1);
     const decoded = coder.decode<RawProfile>(ACCOUNT_NAMES.profile, data);
     const view = toProfileView('ProfilePda1111111111111111111111111111111111', decoded);
     expect(view).toEqual({
       address: 'ProfilePda1111111111111111111111111111111111',
       owner: owner.toBase58(),
-      name: 'Çağrı🚀',
+      name: 'Renée🚀',
       skin: 5,
       xp: 800,
       level: 5,

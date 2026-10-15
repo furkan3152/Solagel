@@ -16,14 +16,12 @@ describe('arena catalog', () => {
     for (const a of DEFAULT_ARENAS) {
       const meta = arenaMeta(a.id);
       expect(meta.name.en.length).toBeGreaterThan(0);
-      expect(meta.name.tr.length).toBeGreaterThan(0);
       expect(meta.ink).toMatch(/^#[0-9A-F]{6}$/);
     }
   });
 
   it('names the tiers as in the design spec', () => {
-    expect(DEFAULT_ARENAS.map((a) => arenaMeta(a.id).name.tr)).toEqual(['Kuruş Gölü', 'Gümüş Dere', 'Altın Göl', 'Balina Koyu']);
-    expect(DEFAULT_ARENAS.map((a) => arenaMeta(a.id).name.en)).toEqual(['Penny Pond', 'Silver Stream', 'Golden Lake', 'Whale Bay']);
+    expect(DEFAULT_ARENAS.map((a) => arenaMeta(a.id).name.en)).toEqual(['Penny Pond', 'Silver Creek', 'Gold Lake', 'Whale Bay']);
   });
 
   it('gives every tier its own ink and keeps entry fees ascending', () => {

@@ -465,7 +465,7 @@ mod tests {
         assert_eq!(len, 16);
         assert_eq!(&bytes, b"abcdefghijklmnop");
 
-        let name = "Çağrı🚀";
+        let name = "Renée🚀";
         let (bytes, len) = validate_name(name).unwrap();
         assert_eq!(usize::from(len), name.len());
         assert_eq!(&bytes[..usize::from(len)], name.as_bytes());

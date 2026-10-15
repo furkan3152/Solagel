@@ -14,7 +14,7 @@ const PASS_SUPPLY = 3333;
 const PASS_SEED = createHash('sha256').update('slana-dev-fake-chain').digest('hex');
 
 /** Made-up season players. */
-const DEV_SEASON_NAMES = ['kuruşavcısı', 'Nakamoto', 'Defne', 'balina_koyu', 'mürekkep', 'riso', 'gece pazarı', 'Ayşe', 'tokyo_drift', 'hardal', 'Mert', 'kâğıtkesik'] as const;
+const DEV_SEASON_NAMES = ['pennyhunter', 'Nakamoto', 'Daphne', 'whale_bay', 'inkwell', 'riso', 'night market', 'Alice', 'tokyo_drift', 'mustard', 'Matt', 'papercut'] as const;
 /** A stable, address-shaped id for a made-up player. */
 const fakeAddress = (label: string) => bs58.encode(createHash('sha256').update(label).digest());
 
