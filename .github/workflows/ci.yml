@@ -81,18 +81,26 @@ jobs:
         run: cargo test -p slana-ref --no-fail-fast
         env:
           SLANA_IMPL: ref
-      - name: Ported instructions against the lean program (hard gate)
-        run: >-
-          cargo test -p slana-ref --test admin --test layout --test size --test profile
-          --test arena --test pass_gate --test settle_finalize --test pass_mint
-        env:
-          SLANA_IMPL: lean
-      - name: LiteSVM suite against the lean program (SLANA_IMPL=lean)
-        # TODO(v3 Task 5): remove continue-on-error once the lean program passes the full suite.
-        continue-on-error: true
+      - name: LiteSVM suite against the lean program (SLANA_IMPL=lean, hard gate)
         run: cargo test -p slana-ref --no-fail-fast
         env:
           SLANA_IMPL: lean
+      - name: Lean vs reference size and compute units
+        run: |
+          set -o pipefail
+          for so in target/deploy/slana_lean.so target/deploy/slana.so; do
+            len=$(wc -c <"$so" | tr -d ' ')
+            printf '%-28s %8s bytes, rent %s lamports\n' "$so" "$len" $(((len + 45 + 128) * 6960))
+          done
+          for impl in ref lean; do
+            SLANA_IMPL=$impl cargo test -q -p slana-ref --test cu -- --nocapture \
+              | sed -n 's/^CU //p' >"$RUNNER_TEMP/cu-$impl.txt"
+          done
+          printf '\n%-36s %8s %8s\n' instruction ref lean
+          paste -d'|' "$RUNNER_TEMP/cu-ref.txt" "$RUNNER_TEMP/cu-lean.txt" \
+            | awk -F'|' '{ n = split($1, r, " "); split($2, l, " "); name = r[1];
+                for (i = 2; i < n; i++) name = name " " r[i];
+                printf "%-36s %8s %8s\n", name, r[n], l[n] }'
 
   docker:
     name: Docker image (build only, no push)

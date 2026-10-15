@@ -51,8 +51,7 @@ fn process_instruction(program_id: &Address, accounts: &[AccountView], data: &[u
     let Some((disc, args)) = data.split_first_chunk::<8>() else {
         return Err(err(INSTRUCTION_FALLBACK_NOT_FOUND));
     };
-    // Compared as one u64 per arm. Instructions not ported yet (Task 5) answer like an
-    // unknown instruction (Anchor 101).
+    // Compared as one u64 per arm.
     match u64::from_le_bytes(*disc) {
         INITIALIZE => ix::initialize::process(accounts, args),
         UPDATE_CONFIG => ix::update_config::process(accounts, args),
@@ -68,6 +67,9 @@ fn process_instruction(program_id: &Address, accounts: &[AccountView], data: &[u
         SETTLE_SESSION => ix::settle_session::process(accounts, args),
         REFUND_SESSION => ix::refund_session::process(accounts, args),
         SWEEP_ARENA => ix::sweep_arena::process(accounts, args),
+        END_SEASON => ix::end_season::process(accounts, args),
+        CLAIM_SEASON_REWARD => ix::claim_season_reward::process(accounts, args),
+        ROLLOVER_SEASON => ix::rollover_season::process(accounts, args),
         MINT_PASS => ix::mint_pass::process(accounts, args),
         CLOSE_PASS_MINT => ix::close_pass_mint::process(accounts, args),
         REVEAL_PASS => ix::reveal_pass::process(accounts, args),
@@ -91,6 +93,9 @@ const JOIN_ARENA_WITH_PASS: u64 = u64::from_le_bytes(d::JOIN_ARENA_WITH_PASS);
 const SETTLE_SESSION: u64 = u64::from_le_bytes(d::SETTLE_SESSION);
 const REFUND_SESSION: u64 = u64::from_le_bytes(d::REFUND_SESSION);
 const SWEEP_ARENA: u64 = u64::from_le_bytes(d::SWEEP_ARENA);
+const END_SEASON: u64 = u64::from_le_bytes(d::END_SEASON);
+const CLAIM_SEASON_REWARD: u64 = u64::from_le_bytes(d::CLAIM_SEASON_REWARD);
+const ROLLOVER_SEASON: u64 = u64::from_le_bytes(d::ROLLOVER_SEASON);
 const MINT_PASS: u64 = u64::from_le_bytes(d::MINT_PASS);
 const CLOSE_PASS_MINT: u64 = u64::from_le_bytes(d::CLOSE_PASS_MINT);
 const REVEAL_PASS: u64 = u64::from_le_bytes(d::REVEAL_PASS);

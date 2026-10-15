@@ -14,14 +14,17 @@
 //! Every file starts with a table mapping each reference constraint to its lean check.
 
 pub mod capture_pass_entropy;
+pub mod claim_season_reward;
 pub mod close_pass_mint;
 pub mod create_arena;
+pub mod end_season;
 pub mod initialize;
 pub mod join_arena;
 pub mod mint_pass;
 pub mod refund_session;
 pub mod register_player;
 pub mod reveal_pass;
+pub mod rollover_season;
 pub mod set_pass_collection;
 pub mod set_pass_seed_hash;
 pub mod settle_session;

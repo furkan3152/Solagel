@@ -29,6 +29,10 @@ pub const BPS: u16 = 10_000;
 pub const MAX_FEE_BPS: u16 = 1_000;
 pub const MAX_SETTLE_FEE_LAMPORTS: u64 = 1_000_000;
 pub const MIN_ARENA_SESSIONS: u16 = 2;
+/// Number of leaderboard ranks that receive a season prize.
+pub const PRIZE_RANKS: u8 = 10;
+/// Prize share of each season rank in basis points (sums to 10 000).
+pub const PRIZE_SHARES_BPS: [u16; 10] = [3000, 2000, 1400, 1000, 800, 600, 450, 300, 250, 200];
 pub const MAX_ARENA_SESSIONS: u16 = 2_000;
 
 // ----- Slana Pass -----------------------------------------------------------------------------
@@ -44,6 +48,8 @@ pub const ENTROPY_DELAY_SLOTS: u64 = 150;
 // ----- game -----------------------------------------------------------------------------------
 
 pub const FIRST_SEASON: u32 = 1;
+/// Season prizes can be claimed for this many seconds after the season ended (30 days).
+pub const CLAIM_WINDOW_SECS: i64 = 2_592_000;
 /// A session the server never settled can be refunded this long after the join.
 pub const SESSION_REFUND_TIMEOUT_SECS: i64 = 86_400;
 pub const MAX_XP_PER_GAME: u32 = 2_000;
@@ -85,6 +91,10 @@ pub const SLOT_HASHES_ID: Address = Address::new_from_array([
     6, 167, 213, 23, 25, 47, 10, 175, 198, 242, 101, 227, 251, 119, 204, 122, 218, 130, 197, 41,
     208, 190, 59, 19, 110, 45, 0, 85, 32, 0, 0, 0,
 ]);
+
+const _: () = assert!(PRIZE_SHARES_BPS.len() == PRIZE_RANKS as usize);
+const _: () = assert!(PRIZE_RANKS as usize <= LEADERBOARD_LEN);
+const _: () = assert!(PRIZE_RANKS as u32 <= u16::BITS); // claimed_mask is a u16
 
 #[cfg(test)]
 mod tests {
@@ -130,6 +140,9 @@ mod tests {
         assert_eq!(MAX_SCORE_PER_GAME, r::MAX_SCORE_PER_GAME);
         assert_eq!(BASIC_SKINS, r::BASIC_SKINS);
         assert_eq!(ENTROPY_DELAY_SLOTS, r::ENTROPY_DELAY_SLOTS);
+        assert_eq!(PRIZE_RANKS, r::PRIZE_RANKS);
+        assert_eq!(PRIZE_SHARES_BPS, r::PRIZE_SHARES_BPS);
+        assert_eq!(CLAIM_WINDOW_SECS, r::CLAIM_WINDOW_SECS);
     }
 
     #[test]
