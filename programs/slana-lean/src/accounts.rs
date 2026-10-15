@@ -137,6 +137,18 @@ pub unsafe fn data<const N: usize>(acc: &AccountView) -> &mut [u8; N] {
     unsafe { &mut *(acc.data_ptr() as *mut [u8; N]) }
 }
 
+/// The first `N` data bytes of `acc`, read only. Use it wherever the bytes are only read, and
+/// to read an account's own fields (its bump) before the key or seed check that proves it is
+/// distinct from another account the handler later views mutably.
+///
+/// # Safety
+///
+/// `acc.data_len() >= N`, and no mutable reference to the same bytes is live meanwhile.
+#[inline(always)]
+pub unsafe fn data_ref<const N: usize>(acc: &AccountView) -> &[u8; N] {
+    unsafe { &*(acc.data_ptr() as *const [u8; N]) }
+}
+
 // ----- account types, table driven ------------------------------------------------------
 
 /// What Anchor's account type checks when it deserializes one account (`try_accounts`).

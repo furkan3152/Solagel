@@ -28,7 +28,7 @@ use {
     super::{check_admin_config, stake},
     crate::error::Result,
     crate::{
-        accounts::{check_pda_seeds, data, kind, parse},
+        accounts::{check_pda_seeds, data, data_ref, kind, parse},
         borsh::{rd_bool, rd_u16, rd_u32, rd_u64, rd_u8, wr_u64},
         constants::SEASON_VAULT_SEED,
         error::{require, ARENA_BUSY, ARENA_HAS_OPEN_SESSIONS},
@@ -61,7 +61,7 @@ pub fn process(accounts: &[AccountView], _args: &[u8]) -> Result {
     let c = unsafe { data::<{ config::SPACE }>(config_acc) };
     let r = unsafe { data::<{ arena::SPACE }>(arena_acc) };
     let sn = unsafe { data::<{ season::SPACE }>(season_acc) };
-    let amount = rd_u64(unsafe { data::<ACCOUNT_LEN>(vault) }, ACCOUNT_AMOUNT);
+    let amount = rd_u64(unsafe { data_ref::<ACCOUNT_LEN>(vault) }, ACCOUNT_AMOUNT);
 
     check_admin_config(config_acc, c, admin, false)?;
     stake::check_arena(arena_acc, r, false)?;
