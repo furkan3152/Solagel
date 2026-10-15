@@ -38,6 +38,8 @@ solana-transaction = "4"
 solana-signer = "3"
 solana-keypair = "3.1"
 solana-transaction-error = "3.4"
+# The Rent sysvar type LiteSVM 0.17 serializes (SIMD-0194 threshold tests).
+solana-rent = "4.4"
 bincode = "1"
 
 [lints.rust]
