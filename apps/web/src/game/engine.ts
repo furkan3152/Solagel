@@ -1,7 +1,6 @@
 import { RISO } from '@slana/art';
 import {
   PowerUpType,
-  RULES,
   clamp,
   formatToken,
   encodeEject,
@@ -17,6 +16,7 @@ import { t } from '../i18n';
 import { Renderer } from '../render/renderer';
 import { FOOD_COLORS } from '../render/sprites';
 import { useChainData } from '../solana/chain';
+import { cashoutMsOf } from '../solana/ticket';
 import { toast, useUi, type Screen } from '../store';
 import { Camera } from './camera';
 import { Input } from './input';
@@ -230,7 +230,9 @@ export class GameEngine {
 
   /** Cash-out channel length for the current ticket (Pass tickets print faster). */
   cashoutMs(): number {
-    return useUi.getState().ticket?.hasPass ? RULES.passCashoutMs : RULES.cashoutMs;
+    const s = useUi.getState();
+    // I3: the server's Pass power (its welcome status), RULES for older servers
+    return cashoutMsOf(s.chain, s.ticket?.hasPass === true);
   }
 
   chat(text: string): void {
@@ -432,7 +434,16 @@ export class GameEngine {
       case 'settled':
         // `fee` is taken from the profit; `net` is what reached the wallet
         useUi.setState({
-          lastSettlement: { session: m.session ?? null, arenaId: m.arenaId ?? null, signature: m.signature, payout: m.payout, fee: m.fee, net: m.net, at: Date.now() },
+          lastSettlement: {
+            session: m.session ?? null,
+            arenaId: m.arenaId ?? null,
+            signature: m.signature,
+            payout: m.payout,
+            fee: m.fee,
+            net: m.net,
+            ...(m.collect ? { collect: true } : {}),
+            at: Date.now(),
+          },
         });
         return;
       case 'event': {

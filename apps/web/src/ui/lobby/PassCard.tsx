@@ -2,9 +2,9 @@ import type { OwnedPass } from '@slana/sdk';
 import { formatToken } from '@slana/shared';
 import { Chip, Icon, Stamp } from '../../design';
 import { useT } from '../../i18n';
-import { usePassStatus, useChainData } from '../../solana/chain';
+import { usePassPower, usePassStatus, useChainData } from '../../solana/chain';
 import { passView } from '../../solana/pass';
-import { PASS_POWER, bpsPercent, feeBps } from '../../solana/ticket';
+import { bpsPercent, feeBps } from '../../solana/ticket';
 import { useUi } from '../../store';
 import { CoinPortrait } from '../game/CoinPortrait';
 
@@ -26,6 +26,7 @@ export function PassCard({ onOpen, large = false }: { onOpen?: () => void; large
 
 function PassCover({ pass, more, locked, large, onOpen }: { pass: OwnedPass; more: number; locked: boolean; large: boolean; onOpen?: () => void }) {
   const t = useT();
+  const power = usePassPower();
   const lang = useUi((s) => s.settings.lang);
   const skin = useUi((s) => s.settings.skin);
   const config = useChainData((s) => s.config);
@@ -53,7 +54,7 @@ function PassCover({ pass, more, locked, large, onOpen }: { pass: OwnedPass; mor
           <Chip tone="on-dark">{t('lo.pass.chip.rooms')}</Chip>
           <Chip tone="on-dark">{t('lo.pass.chip.fee', { n: bpsPercent(feeBps(config, true), lang) })}</Chip>
           <Chip tone="on-dark">{t('lo.pass.chip.season')}</Chip>
-          <Chip tone="on-dark">{t('lo.pass.chip.mass', { n: PASS_POWER.startPct })}</Chip>
+          <Chip tone="on-dark">{t('lo.pass.chip.mass', { n: power.startPct })}</Chip>
         </span>
       </div>
       <span className="kl-pass__seal" aria-hidden="true">

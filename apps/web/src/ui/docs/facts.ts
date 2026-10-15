@@ -1,4 +1,4 @@
-import { CAPACITY, DEFAULT_ARENAS, LEADERBOARD_SIZE, PRIZE_SHARES_BPS, RULES, arenaMeta } from '@slana/shared';
+import { CAPACITY, DEFAULT_ARENAS, LEADERBOARD_SIZE, PRIZE_SHARES_BPS, RULES, arenaMeta, type PassPower } from '@slana/shared';
 import {
   CLAIM_WINDOW_SECS,
   DEFAULT_FEE_BPS,
@@ -37,8 +37,6 @@ export const SERVER = {
   maxTicketHours: 6,
   /** `STALE_SESSION_AFTER_S` (chain/solana.ts): a ticket nobody plays is settled at its entry fee after 15 min. */
   staleTicketMinutes: 15,
-  /** `NO_ATA_RETRY_MS` (chain/solana.ts): a payout waiting for the player's token account is re-tried every 5 min. */
-  noAtaRetryMinutes: 5,
   /** `PRIVATE_ROOM_CAPACITY` default (shared CAPACITY.private) and the 5-character room code (rooms/manager.ts). */
   privateCodeLength: 5,
 } as const;
@@ -170,4 +168,13 @@ export interface DocsContent {
   pct: (bps: number) => string;
   /** Formats a whole number with the language's grouping (`1.000` / `1,000`). */
   num: (n: number) => string;
+}
+
+/**
+ * I3: the guide's gameplay numbers with the Pass power this server applies (`ChainStatus.passPower`
+ * from its env); `FACTS.rules` (the `RULES` defaults) when unknown.
+ */
+export function rulesWith(power: PassPower | null | undefined): DocsFacts['rules'] {
+  if (!power) return FACTS.rules;
+  return { ...FACTS.rules, passCashoutS: power.cashoutMs / 1000, passStartPct: Math.round((power.startMassMul - 1) * 100) };
 }

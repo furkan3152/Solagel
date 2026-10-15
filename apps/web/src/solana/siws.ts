@@ -1,4 +1,5 @@
 import type { WalletContextState } from '@solana/wallet-adapter-react';
+import { siwsMessage } from '@slana/shared';
 import bs58 from 'bs58';
 import { SERVER } from '../config';
 import { GameEngine } from '../game/engine';
@@ -25,7 +26,10 @@ export async function signInWithWallet(wallet: WalletContextState, force = false
   try {
     const res = await fetch(`${SERVER.http}/api/auth/nonce?pubkey=${pubkey}`);
     if (!res.ok) throw new Error(`nonce request failed (${res.status})`);
-    const { message } = (await res.json()) as { message: string };
+    const body = (await res.json()) as NonceResponse;
+    // M1: rebuild the SIWS message ourselves and sign only that, for a domain we talk to
+    const message = expectedLoginMessage(body, pubkey, allowedDomains());
+    if (!message) throw new Error('unexpected sign-in message from the server');
     const sig = await wallet.signMessage(new TextEncoder().encode(message));
     engine()?.authSignature(pubkey, message, bs58.encode(sig));
     return true;
@@ -34,6 +38,49 @@ export async function signInWithWallet(wallet: WalletContextState, force = false
     toast(/reject|cancel|denied/i.test(msg) ? 'warn' : 'error', `${t('err.auth_failed')} ${/reject|cancel|denied/i.test(msg) ? '' : msg}`);
     return false;
   }
+}
+
+export interface NonceResponse {
+  message: string;
+  nonce: string;
+  domain: string;
+  uri: string;
+  chainId: string;
+  issuedAt: string;
+}
+
+/** Hosts a sign-in message may name: this page and the game server it talks to. */
+export function allowedDomains(): string[] {
+  const out = new Set<string>();
+  try {
+    if (typeof window !== 'undefined') out.add(window.location.host);
+  } catch {
+    /* ignore */
+  }
+  try {
+    out.add(new URL(SERVER.http, typeof window !== 'undefined' ? window.location.href : 'http://localhost').host);
+  } catch {
+    /* ignore */
+  }
+  return [...out];
+}
+
+/**
+ * The message to sign: rebuilt from the server's fields (SIWS: domain, URI, chain id, nonce,
+ * issued-at) for this wallet. Null when the server's text differs from what the fields say,
+ * when it names another wallet, or a domain this page does not talk to.
+ */
+export function expectedLoginMessage(body: Partial<NonceResponse>, pubkey: string, domains: readonly string[]): string | null {
+  const { message, nonce, domain, uri, chainId, issuedAt } = body;
+  if (![message, nonce, domain, uri, chainId, issuedAt].every((v) => typeof v === 'string' && v.length > 0)) return null;
+  if (!domains.includes(domain!)) return null;
+  try {
+    if (new URL(uri!).host !== domain) return null;
+  } catch {
+    return null;
+  }
+  const rebuilt = siwsMessage({ domain: domain!, address: pubkey, uri: uri!, chainId: chainId!, nonce: nonce!, issuedAt: issuedAt! });
+  return rebuilt === message ? rebuilt : null;
 }
 
 /** True when the server session belongs to the connected wallet. */

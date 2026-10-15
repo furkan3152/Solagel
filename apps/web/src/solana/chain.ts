@@ -7,7 +7,7 @@ import { SERVER } from '../config';
 import { useUi } from '../store';
 import { isDevFake, loadDevFake } from './devFakeLoader';
 import { passStatusOf } from './pass';
-import type { PendingPayout } from './ticket';
+import { passPowerOf, type PassPowerText, type PendingPayout } from './ticket';
 
 export interface SeasonEntryInfo {
   player: string;
@@ -96,6 +96,12 @@ export function usePassStatus(): PassStatus | null {
   const fromChain = useChainData((s) => s.passStatus);
   const fromServer = useUi((s) => s.chain?.pass ?? null);
   return fromChain ?? fromServer;
+}
+
+/** I3: the Pass power the server applies (its `passPower`), `RULES` as the fallback. */
+export function usePassPower(): PassPowerText {
+  const power = useUi((s) => s.chain?.passPower ?? null);
+  return useMemo(() => passPowerOf(power), [power]);
 }
 
 let clientCache: { key: string; client: SlanaClient } | null = null;
@@ -327,8 +333,15 @@ export function useChainSync(): void {
       const arenaId = st.arenaId;
       void loadDevFake().then((dev) => {
         if (!dev) return;
-        dev.fakeWallet.sessions[arenaId] = null;
-        dev.fakeWallet.tokenBalance += BigInt(Math.max(0, Math.round(st.net ?? st.payout - (st.fee ?? 0))));
+        const net = BigInt(Math.max(0, Math.round(st.net ?? st.payout - (st.fee ?? 0))));
+        const open = dev.fakeWallet.sessions[arenaId];
+        // R24 stand-in: without a token account the game is finalized and the payout waits to be collected
+        if (open && net > 0n && !dev.fakeWallet.ataExists) {
+          dev.fakeWallet.sessions[arenaId] = { ...open, finalized: true, owed: net };
+        } else {
+          dev.fakeWallet.sessions[arenaId] = null;
+          dev.fakeWallet.tokenBalance += net;
+        }
         refreshNow();
       });
     });

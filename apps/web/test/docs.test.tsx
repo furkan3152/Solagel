@@ -56,13 +56,29 @@ describe('player guide facts', () => {
     expect(manager).toMatch(new RegExp(`length: ${SERVER.privateCodeLength} }`));
     expect(room).toMatch(new RegExp(`export const MAX_STAKE_SESSION_AGE_S = ${SERVER.maxTicketHours} \\* 3600;`));
     expect(solana).toMatch(new RegExp(`export const STALE_SESSION_AFTER_S = ${SERVER.staleTicketMinutes} \\* 60;`));
-    expect(solana).toMatch(new RegExp(`export const NO_ATA_RETRY_MS = ${SERVER.noAtaRetryMinutes} \\* 60_000;`));
   });
 });
 
 describe('player guide content', () => {
   const tr = docsTr('$SLANA');
   const en = docsEn('$SLANA');
+
+  it('I3: quotes the Pass power the server applies when it publishes one', () => {
+    const text = (c: typeof tr) => JSON.stringify(c.sections);
+    const power = { startMassMul: 1.3, cashoutMs: 1_000 };
+    expect(text(docsEn('$SLANA', power))).toContain('+30% mass and cash out in 1 s');
+    expect(text(docsTr('$SLANA', power))).toContain('1 sn');
+    expect(text(en)).toContain('+15% mass and cash out in 2 s');
+  });
+
+  it('R24: describes collecting a settled payout, not a 24 h refund of the entry fee only', () => {
+    for (const c of [tr, en]) {
+      const t = JSON.stringify(c.sections);
+      expect(t).not.toMatch(/never includes winnings|kazancı hiçbir zaman içermez|create the token account rather|returns your entry fee only/);
+    }
+    expect(JSON.stringify(en.sections)).toContain('Collect payout');
+    expect(JSON.stringify(tr.sections)).toContain('Ödemeni al');
+  });
 
   it('has the same sections and blocks in TR and EN, in the promised order', () => {
     expect(tr.sections.map((s) => s.id)).toEqual(SECTION_IDS);

@@ -1,4 +1,5 @@
-import { FACTS as F, type DocsContent } from './facts';
+import type { PassPower } from '@slana/shared';
+import { FACTS as F, rulesWith, type DocsContent } from './facts';
 
 const nf = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 });
 const num = (n: number): string => nf.format(n);
@@ -8,12 +9,14 @@ const pct = (bps: number): string => `%${nf.format(bps / 100)}`;
 const sol = (lamports: number): string => new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 9 }).format(lamports / 1e9);
 
 const [tBps, sBps, bBps] = F.fee.split;
-const R = F.rules;
 const S = F.server;
 const sym = '$SLANA';
 
 /** The player guide in Turkish. Every number comes from `FACTS` (see facts.ts). */
-export const docsTr = (symbol: string = sym): DocsContent => ({
+export const docsTr = (symbol: string = sym, power: PassPower | null = null): DocsContent => {
+  // I3: the Pass power the server applies (RULES when unknown)
+  const R = rulesWith(power);
+  return {
   pct,
   num,
   kicker: 'Kılavuz · Oyuncu el kitabı',
@@ -196,9 +199,9 @@ export const docsTr = (symbol: string = sym): DocsContent => ({
         {
           kind: 'note',
           tone: 'warn',
-          stamp: 'Token hesabı',
-          title: 'Ödemen için token hesabın olmalı',
-          text: `Sunucu oyuncu hesaplarının kirasını hiçbir zaman ödemez. ${symbol} token hesabın yoksa ödeme kaybolmaz, bekler: lobide “token hesabını oluştur” çağrısı çıkar (kirası ≈◎0,002, senden çıkar, hesap senin). Hesabı açınca ödeme ${S.noAtaRetryMinutes} dakika içinde gelir. Sunucu biletini hiç kapatmazsa, açılışından ${F.refundHours} saat sonra kendin iade alabilirsin: giriş bedelin (kasada yeterliyse) ve depozito dahil tüm SOL sana döner. İade kazancı hiçbir zaman içermez; beklemek yerine token hesabını oluştur.`,
+          stamp: 'Ödemeni al',
+          title: 'Token hesabın yok mu? Oyunun yine sonuçlanır',
+          text: `Sunucu oyuncu hesaplarının kirasını hiçbir zaman ödemez. Oyunun bittiğinde ${symbol} token hesabın yoksa (ya da ödemeyi kabul etmiyorsa) sunucu oyunu yine de sonuçlandırır: kesinti kârdan alınır, ödemen arena kasasında kalır ve biletine yazılır. Lobide “Ödemeni al” çıkar: tek işlem gerekirse token hesabını açar (kirası ≈◎0,002, senden çıkar, hesap senin) ve tam tutarı öder. Bekleme süresi yoktur ve bu tutarı senden başkası alamaz. Yalnızca sunucunun hiç sonuçlandırmadığı bir bilet, açılışından ${F.refundHours} saat sonra iade edilebilir: giriş bedelin (kasada yeterliyse) ve depozito dahil tüm SOL sana döner.`,
         },
       ],
     },
@@ -305,7 +308,7 @@ export const docsTr = (symbol: string = sym): DocsContent => ({
               'Giriş bedelleri arenanın kasasında durur; ödeme kasadakinden fazla olamaz.',
               `Kesinti yalnızca kârdan; oran üst sınırı ${pct(F.fee.maxBps)}. Bölüşüm, yakım ve sezon havuzu.`,
               'Her biletin benzersiz bir numarası vardır; eski bir ödeme yeni bilete uygulanamaz.',
-              `${F.refundHours} saat sonra kendi kendine iade.`,
+              `Sonuçlanmış ödemeyi her an alma; hiç sonuçlanmamış bileti ${F.refundHours} saat sonra kendin iade alma.`,
               'Pass kapısı, Pass kilidi, mint limitleri, mint açılınca sabitlenen arz ve zincir entropili commit–reveal.',
               'Her biletin kesinti oranı, kesildiği anda sabitlenir.',
               `Sezon tablosu, ödül payları ve ${F.season.claimDays} günlük talep süresi.`,
@@ -378,7 +381,7 @@ export const docsTr = (symbol: string = sym): DocsContent => ({
             },
             {
               q: 'Ödemem gelmedi.',
-              a: `Lobideki bekleyen ödeme bandına bak. Token hesabın yoksa önce onu oluştur: kazancın dahil ödeme ${S.noAtaRetryMinutes} dakika içinde gelir. Ağ sorunlarında sunucu ödemeyi kendisi yeniden dener. ${F.refundHours} saatlik kendi kendine iade son çaredir: yalnızca giriş bedelini geri verir, kazancını asla; bu yüzden beklemek yerine token hesabını oluştur.`,
+              a: `Lobideki ödeme bandına bak. “Ödemeni al” yazıyorsa oyunun sonuçlandı ve ödemen kasada bekliyor: tek işlemle hemen al (gerekirse token hesabın aynı işlemde açılır). Ödemenin yolda olduğunu yazıyorsa sunucu hâlâ gönderiyor; ağ sorunlarında kendisi yeniden dener.`,
             },
             { q: 'Sezon puanım neden artmıyor?', a: 'Puan yalnızca Pass’li biletlerle oynanan arena oyunlarından gelir. Antrenman ve Pass’siz biletler puan vermez.' },
             { q: 'Pass’imi satarsam ne olur?', a: 'Açık bir bilete kilitliyse kilit kalkana kadar yeni sahip onu kullanamaz. Avantajlar bilet kesilirken yazıldığı için açık biletin Pass’li kalır.' },
@@ -392,4 +395,5 @@ export const docsTr = (symbol: string = sym): DocsContent => ({
       ],
     },
   ],
-});
+};
+};

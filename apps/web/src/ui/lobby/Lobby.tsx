@@ -9,7 +9,7 @@ import { useChainData } from '../../solana/chain';
 import { ProfileCard } from '../../solana/ProfileCard';
 import { signInWithWallet } from '../../solana/siws';
 import { TicketFlow, type FlowMode } from '../../solana/TicketFlow';
-import { payoutsNeedingAta, type TicketKey } from '../../solana/ticket';
+import { sessionsToCollect, type TicketKey } from '../../solana/ticket';
 import { WalletButton } from '../../solana/WalletButton';
 import { goPage, openModal, updateSettings, useUi, type LobbyPage } from '../../store';
 import { DocsPage } from '../docs/DocsPage';
@@ -95,8 +95,8 @@ export function Lobby() {
         engine()?.play(`arena:${id}`, s?.hasPass && s.passAsset ? { pass: s.passAsset } : {});
         return;
       }
-      case 'needAta':
-        setFlow({ mode: 'ata', key: ticket.key, open: true });
+      case 'collect':
+        setFlow({ mode: 'collect', key: ticket.key, open: true });
         return;
       case 'refund':
         setFlow({ mode: 'refund', key: ticket.key, open: true });
@@ -112,18 +112,18 @@ export function Lobby() {
     }
   };
 
-  const createAta = () => {
-    const { pending: all, ataExists } = useChainData.getState();
-    const pending = payoutsNeedingAta(all, ataExists)[0];
-    const key = (pending?.arenaId != null ? `arena:${pending.arenaId}` : model.tickets.find((x) => x.arenaId !== null)?.key) as TicketKey | undefined;
-    if (key) setFlow({ mode: 'ata', key, open: true });
+  // R24: the first arena whose settled game waits to be collected
+  const collect = () => {
+    const first = sessionsToCollect(model.sessions)[0];
+    const key = first ? (`arena:${first.arenaId}` as TicketKey) : undefined;
+    if (key && model.tickets.some((x) => x.key === key)) setFlow({ mode: 'collect', key, open: true });
   };
 
   const flowTicket = flow ? (model.tickets.find((x) => x.key === flow.key) ?? null) : null;
 
   const tickets = (
     <section className="kl-col kl-col--tickets" aria-labelledby="kl-tickets-h">
-      {mid && <PendingBanner onCreateAta={createAta} />}
+      {mid && <PendingBanner onCollect={collect} />}
       <div className="kl-section-head">
         <h2 id="kl-tickets-h" className="kl-h2">
           {t('lo.tickets')}
@@ -209,7 +209,7 @@ export function Lobby() {
           >
             {tab === 'play' ? (
               <>
-                <PendingBanner onCreateAta={createAta} />
+                <PendingBanner onCollect={collect} />
                 <PassCard onOpen={() => setTab('pass')} />
                 {tickets}
               </>

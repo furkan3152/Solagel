@@ -1,4 +1,5 @@
-import { FACTS as F, type DocsContent } from './facts';
+import type { PassPower } from '@slana/shared';
+import { FACTS as F, rulesWith, type DocsContent } from './facts';
 
 const nf = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
 const num = (n: number): string => nf.format(n);
@@ -8,12 +9,14 @@ const pct = (bps: number): string => `${nf.format(bps / 100)}%`;
 const sol = (lamports: number): string => new Intl.NumberFormat('en-US', { maximumFractionDigits: 9 }).format(lamports / 1e9);
 
 const [tBps, sBps, bBps] = F.fee.split;
-const R = F.rules;
 const S = F.server;
 const sym = '$SLANA';
 
 /** The player guide in English. Every number comes from `FACTS` (see facts.ts). */
-export const docsEn = (symbol: string = sym): DocsContent => ({
+export const docsEn = (symbol: string = sym, power: PassPower | null = null): DocsContent => {
+  // I3: the Pass power the server applies (RULES when unknown)
+  const R = rulesWith(power);
+  return {
   pct,
   num,
   kicker: 'Guide · Player handbook',
@@ -190,9 +193,9 @@ export const docsEn = (symbol: string = sym): DocsContent => ({
         {
           kind: 'note',
           tone: 'warn',
-          stamp: 'Token account',
-          title: 'Your payout needs a token account',
-          text: `The server never pays rent for player accounts. If you have no ${symbol} token account, the payout is not lost, it waits: the lobby shows a "create token account" prompt (≈◎0.002 rent, paid by you, the account is yours). Once it exists the payout arrives within ${S.noAtaRetryMinutes} minutes. If the server never closes your ticket, you can refund it yourself ${F.refundHours} hours after it opened: your entry fee (if the vault holds it) and all the SOL, deposit included, come back. A refund never includes winnings, so create the token account rather than waiting for it.`,
+          stamp: 'Collect',
+          title: 'No token account? Your game still settles',
+          text: `The server never pays rent for player accounts. If you have no ${symbol} token account when your game ends (or it refuses the payout), the server settles the game anyway: the fee is taken from the profit and your payout stays in the arena vault, recorded on your ticket. The lobby then shows "Collect payout": one transaction opens your token account if needed (≈◎0.002 rent, paid by you, the account is yours) and pays you the exact amount. There is no waiting time, and nobody else can take it. Only a ticket the server never settled at all can be refunded, ${F.refundHours} hours after it opened: your entry fee (if the vault holds it) and all the SOL, deposit included, come back.`,
         },
       ],
     },
@@ -299,7 +302,7 @@ export const docsEn = (symbol: string = sym): DocsContent => ({
               "Entry fees sit in the arena's vault; a payout can never exceed it.",
               `Fees only on profit, capped at ${pct(F.fee.maxBps)}. The split, the burn and the season pool.`,
               'Every ticket has a unique id, so an old payout cannot be applied to a new ticket.',
-              `Self-refund after ${F.refundHours} hours.`,
+              `Collecting a settled payout at any time; a self-refund of an unsettled ticket after ${F.refundHours} hours.`,
               'The Pass gate, the Pass lock, mint limits, a supply fixed once the mint opens, and commit–reveal with chain entropy.',
               'The fee rate of each ticket, fixed when it is bought.',
               `The season table, prize shares and the ${F.season.claimDays}-day claim window.`,
@@ -369,7 +372,7 @@ export const docsEn = (symbol: string = sym): DocsContent => ({
             { q: 'I bought a ticket but never played.', a: `The server closes it at its entry fee after about ${S.staleTicketMinutes} minutes. If it does not, refund it yourself after ${F.refundHours} hours.` },
             {
               q: 'My payout has not arrived.',
-              a: `Check the pending payout banner in the lobby. If you have no token account, create one first: the payout, winnings included, follows within ${S.noAtaRetryMinutes} minutes. On network trouble the server retries by itself. The ${F.refundHours}-hour self-refund is a last resort: it returns your entry fee only, never your winnings, so create the token account instead.`,
+              a: `Check the payout banner in the lobby. If it says "Collect payout", your game is settled and the payout waits in the vault: collect it with one transaction (your token account is opened in it if needed), right away. If it says the payout is on the way, the server is still sending it and retries by itself on network trouble.`,
             },
             { q: 'Why are my season points not growing?', a: 'Points only come from arena games played with a Pass ticket. Practice and tickets without a Pass score nothing.' },
             { q: 'What if I sell my Pass?', a: 'If it is locked to an open ticket, the new owner cannot use it until the lock lifts. Your open ticket keeps its Pass perks, which were written when you bought it.' },
@@ -383,4 +386,5 @@ export const docsEn = (symbol: string = sym): DocsContent => ({
       ],
     },
   ],
-});
+};
+};

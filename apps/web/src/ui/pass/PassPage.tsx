@@ -7,9 +7,9 @@ import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 
 import { Chip, Counter, Icon, InkButton, Passport, Stamp, springs, useReducedMotion } from '../../design';
 import { sound } from '../../game/sound';
 import { useT } from '../../i18n';
-import { usePassStatus, useChainData } from '../../solana/chain';
+import { usePassPower, usePassStatus, useChainData } from '../../solana/chain';
 import { mintGate, passNo, passView, previewSeed, previewTraits, splitDuration, type MintGate } from '../../solana/pass';
-import { PASS_POWER, bpsPercent, feeBps } from '../../solana/ticket';
+import { bpsPercent, feeBps } from '../../solana/ticket';
 import { openModal, toast, updateSettings, useUi } from '../../store';
 import { CoinPortrait } from '../game/CoinPortrait';
 import { useTokenText } from '../lobby/useLobby';
@@ -525,11 +525,12 @@ function Perks() {
   const t = useT();
   const lang = useUi((s) => s.settings.lang);
   const config = useChainData((s) => s.config);
+  const power = usePassPower();
   const perks = [
     t('lo.perk.rooms'),
     t('lo.perk.fee', { base: bpsPercent(feeBps(config, false), lang), pass: bpsPercent(feeBps(config, true), lang) }),
     t('lo.perk.season'),
-    t('lo.perk.power', { start: PASS_POWER.startPct, s: PASS_POWER.cashoutS }),
+    t('lo.perk.power', { start: power.startPct, s: power.cashoutS }),
     t('lo.perk.look'),
   ];
   return (
