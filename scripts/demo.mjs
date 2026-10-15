@@ -4,6 +4,9 @@
 //   pnpm demo:localnet   real local validator + slana_lean.so + production-built server + web dev server
 // Flags: --browser  also open a Chromium with the Dev Wallet (a local keypair; needs a display)
 //        --no-build (localnet) skip building missing pieces and fail instead
+// Rounds: paid arenas play wall-clock rounds (5 minutes by default, no cash-out). To see the bell sooner, set
+//        ROUND_SECONDS (e.g. `ROUND_SECONDS=90 pnpm demo`); joins close ROUND_JOIN_CLOSE_SECONDS before it (default
+//        60, capped at half a round). The server reads both.
 // Ctrl+C (SIGINT), SIGTERM and SIGHUP stop every child process group, and in localnet mode the validator.
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
@@ -229,6 +232,8 @@ async function main() {
     console.log('  wallet:            any Wallet Standard wallet signs in (no funds needed), or run with --browser for a Dev Wallet.');
     console.log('  Pass mint:         open and unrevealed. Reveal it with:  curl -X POST localhost:8787/api/dev/pass/reveal');
   }
+  const rs = Number(ENV.ROUND_SECONDS) || 300;
+  console.log(`  arena rounds:      ${rs} s each, no cash-out (set ROUND_SECONDS=90 for a quicker bell)`);
   console.log('  stop:              Ctrl+C');
   console.log('');
 
