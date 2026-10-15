@@ -1,0 +1,86 @@
+[
+ {
+  "id": "intro",
+  "text": "Here's how to play Slana, in about two minutes."
+ },
+ {
+  "id": "c1",
+  "text": "Slana is agar dot io, on-chain. You're a coin in a live arena on Solana. Eat smaller players, take their tokens, and cash out whenever you like."
+ },
+ {
+  "id": "c2",
+  "text": "Start for free. In the lobby, pick the Practice ticket and press Quick Play. No wallet, no tokens: just you and the bots. Practice has two leagues, Rookie and Pro."
+ },
+ {
+  "id": "c3a",
+  "text": "Your coin follows the mouse."
+ },
+ {
+  "id": "c3b",
+  "text": "Press Space to split, and launch half of your coin at a runner."
+ },
+ {
+  "id": "c3c",
+  "text": "Hold W to tip out a little mass."
+ },
+ {
+  "id": "c3d",
+  "text": "Number keys one to eight send stickers, and Enter opens the chat."
+ },
+ {
+  "id": "c4a",
+  "text": "Eat confetti to grow. To eat a coin, you need a quarter more mass than it has, and you have to mostly cover it."
+ },
+ {
+  "id": "c4b",
+  "text": "So run from bigger coins. And the bigger you get, the slower you move."
+ },
+ {
+  "id": "c4c",
+  "text": "Rug cacti pop big coins into pieces. Small coins can hide behind them."
+ },
+ {
+  "id": "c4d",
+  "text": "Bots carry no value. But if a bot eats you, your tokens spill on the floor as loot, and only real players can grab it."
+ },
+ {
+  "id": "c5a",
+  "text": "Ready to play for real? Connect a wallet and buy a ticket. Every arena has a fixed entry fee. Penny Pond is one thousand Slana, Silver Creek ten thousand. Gold Lake and Whale Bay are Pass rooms."
+ },
+ {
+  "id": "c5b",
+  "text": "Your entry fee is your starting value, and it sits in your till. Eat a player, and their tokens move into it."
+ },
+ {
+  "id": "c6a",
+  "text": "To cash out, press C and survive three seconds without losing a cell. Your receipt prints, and the tokens go to your wallet."
+ },
+ {
+  "id": "c6b",
+  "text": "The fee is charged on profit only. Enter with one thousand, cash out at two thousand: that's one thousand profit. The five percent fee is fifty, so you get nineteen fifty."
+ },
+ {
+  "id": "c6c",
+  "text": "With a Pass, the fee is two percent. That's twenty, and you keep nineteen eighty."
+ },
+ {
+  "id": "c6d",
+  "text": "Fees split three ways: half to the treasury, thirty percent to the season pool, and twenty percent is burned."
+ },
+ {
+  "id": "c7a",
+  "text": "The Slana Pass is a free-mint NFT. It opens the Pass rooms, drops the fee to two percent, and gives you a fifteen percent head start and a two-second cash-out."
+ },
+ {
+  "id": "c7b",
+  "text": "Season points come only from Pass tickets, and the top ten win prizes from the season pool."
+ },
+ {
+  "id": "c8",
+  "text": "Quick tips. Warm up in Practice. Only split when the catch is sure: a split coin is easy prey. And cash out while you're ahead."
+ },
+ {
+  "id": "outro",
+  "text": "Slana. Eat. Grow. Cash out."
+ }
+]

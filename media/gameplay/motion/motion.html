@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Slana motion</title>
+<style>
+@font-face { font-family: 'Bricolage'; src: url('../../../apps/web/node_modules/@fontsource-variable/bricolage-grotesque/files/bricolage-grotesque-latin-standard-normal.woff2') format('woff2'); font-weight: 200 800; font-stretch: 75% 100%; }
+@font-face { font-family: 'DM Mono'; src: url('../../../apps/web/node_modules/@fontsource/dm-mono/files/dm-mono-latin-400-normal.woff2') format('woff2'); font-weight: 400; }
+@font-face { font-family: 'DM Mono'; src: url('../../../apps/web/node_modules/@fontsource/dm-mono/files/dm-mono-latin-500-normal.woff2') format('woff2'); font-weight: 500; }
+:root {
+  --paper: #f1eadb; --card: #fffcf4; --ink: #1e1b2e; --ink-2: #5d5870;
+  --pink: #ff4f87; --pink-ink: #d6245f; --teal: #0e9c9a; --teal-ink: #08716f; --mustard: #f2b705; --blue: #3b5bdb; --green: #1f9d61; --red: #e5402b;
+  --line: rgba(30,27,46,.35);
+}
+html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+#stage { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; overflow: hidden; font-family: 'Bricolage', system-ui, sans-serif; color: var(--ink); }
+.it { position: absolute; left: 0; top: 0; display: none; will-change: transform, opacity; }
+.mono { font-family: 'DM Mono', ui-monospace, monospace; text-transform: uppercase; letter-spacing: .14em; font-weight: 500; }
+.disp { font-family: 'Bricolage', sans-serif; font-weight: 800; font-stretch: 85%; letter-spacing: -.02em; line-height: .92; }
+.grain { position: absolute; inset: 0; pointer-events: none; mix-blend-mode: multiply; opacity: .55; }
+.paper { background: var(--paper); }
+.cardstock { background: var(--card); }
+/* lower third: a ticket stub */
+.lt { width: 640px; height: 132px; }
+.lt .body { position: absolute; inset: 0; background: var(--card); border: 3px solid var(--ink); border-radius: 12px; box-shadow: 7px 7px 0 var(--ink); overflow: hidden; }
+.lt .bar { position: absolute; left: 0; top: 0; bottom: 0; width: 16px; background: var(--pink); border-right: 3px solid var(--ink); }
+.lt .k { position: absolute; left: 40px; top: 20px; font-size: 19px; color: var(--ink-2); white-space: nowrap; }
+.lt .v { position: absolute; left: 38px; top: 50px; font-size: 64px; white-space: nowrap; }
+.lt .v small { font-family: 'DM Mono'; font-size: 22px; letter-spacing: .1em; font-weight: 500; margin-left: 10px; color: var(--ink-2); }
+.lt .perf { position: absolute; top: 10px; bottom: 10px; border-left: 3px dashed var(--line); }
+.lt .stub { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center; font-size: 17px; writing-mode: vertical-rl; transform: rotate(180deg); color: var(--ink); }
+.notch { position: absolute; width: 26px; height: 26px; border-radius: 50%; background: transparent; }
+.tape { position: absolute; width: 120px; height: 34px; background: rgba(242,183,5,.55); transform: rotate(-6deg); mix-blend-mode: multiply; }
+/* tag */
+.tag { padding: 12px 18px 11px; background: var(--card); border: 3px solid var(--ink); border-radius: 8px; box-shadow: 5px 5px 0 var(--ink); font-size: 22px; white-space: nowrap; display: flex; align-items: center; gap: 12px; }
+.tag .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--red); box-shadow: 0 0 0 3px rgba(229,64,43,.25); }
+.tag.ink { background: var(--ink); color: var(--card); box-shadow: 5px 5px 0 var(--pink); }
+.tag.kick { background: var(--ink); color: var(--card); border-color: var(--ink); box-shadow: 4px 4px 0 var(--pink); letter-spacing: .2em; }
+.tag.kick .dot { background: var(--pink); box-shadow: none; width: 13px; height: 13px; }
+/* stamp */
+.stamp { padding: 14px 34px 10px; border: 7px solid currentColor; border-radius: 14px; font-size: 120px; mix-blend-mode: multiply; white-space: nowrap; outline: 3px solid currentColor; outline-offset: 7px; }
+/* keycap */
+.key { height: 112px; min-width: 112px; padding: 0 28px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; background: var(--card); border: 4px solid var(--ink); border-radius: 18px; font-size: 40px; position: relative; }
+.keywrap { display: flex; align-items: center; gap: 26px; }
+.keylabel { font-size: 30px; padding: 12px 18px 10px; background: var(--ink); color: var(--card); border-radius: 8px; white-space: nowrap; }
+/* caption */
+.cap { padding: 20px 34px 22px; background: var(--card); border: 3px solid var(--ink); border-radius: 14px; box-shadow: 8px 8px 0 var(--ink); font-size: 50px; white-space: nowrap; }
+.cap .w { display: inline-block; }
+.cap em { font-style: normal; color: var(--pink-ink); }
+/* chapter chip */
+.chip { font-size: 20px; display: flex; align-items: center; gap: 14px; padding: 12px 16px 11px; background: rgba(255,252,244,.94); border: 3px solid var(--ink); border-radius: 8px; box-shadow: 5px 5px 0 var(--ink); }
+.chip .ticks { display: flex; gap: 5px; }
+.chip .ticks i { display: block; width: 18px; height: 8px; border: 2px solid var(--ink); border-radius: 2px; }
+.chip .ticks i.on { background: var(--pink); }
+/* receipt */
+.rc { width: 520px; background: #fffdf7; color: var(--ink); font-family: 'DM Mono'; font-weight: 500; box-shadow: 0 2px 0 rgba(0,0,0,.05); position: relative; }
+.rc .in { padding: 34px 38px 30px; }
+.rc h3 { font-family: 'Bricolage'; font-weight: 800; font-stretch: 85%; font-size: 40px; margin: 0 0 4px; text-align: center; letter-spacing: -.01em; }
+.rc .sub { text-align: center; font-size: 17px; letter-spacing: .14em; color: var(--ink-2); margin-bottom: 18px; }
+.rc .row { display: flex; font-size: 23px; letter-spacing: .06em; padding: 9px 0; align-items: baseline; }
+.rc .row .l { white-space: nowrap; }
+.rc .row .d { flex: 1; border-bottom: 3px dotted rgba(30,27,46,.35); margin: 0 10px; transform: translateY(-6px); }
+.rc .row .r { white-space: nowrap; }
+.rc .rule { border-top: 3px dashed rgba(30,27,46,.45); margin: 12px 0; }
+.rc .rule2 { border-top: 3px double var(--ink); border-bottom: 3px solid var(--ink); height: 3px; margin: 14px 0; }
+.rc .net { display: flex; justify-content: space-between; align-items: baseline; }
+.rc .net b { font-family: 'Bricolage'; font-weight: 800; font-size: 64px; letter-spacing: -.02em; }
+.rc .zig { position: absolute; left: 0; right: 0; bottom: -14px; height: 15px; background: linear-gradient(-45deg, transparent 10px, #fffdf7 0) 0 0/20px 20px, linear-gradient(45deg, transparent 10px, #fffdf7 0) 0 0/20px 20px; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<svg width="0" height="0" style="position:absolute">
+  <filter id="grainF"><feTurbulence type="fractalNoise" baseFrequency=".85" numOctaves="2" seed="3" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 .12  0 0 0 0 .1  0 0 0 0 .18  0 0 0 .55 -.18"/></filter>
+  <filter id="inkF" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" seed="7" result="n"/><feColorMatrix in="n" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -1.25 1.32" result="m"/><feComposite in="SourceGraphic" in2="m" operator="in"/></filter>
+  <filter id="roughF"><feTurbulence type="fractalNoise" baseFrequency=".035" numOctaves="2" seed="2" result="t"/><feDisplacementMap in="SourceGraphic" in2="t" scale="5"/></filter>
+</svg>
+<script src="../cache/art.js"></script>
+<script src="motion.js"></script>
+</body>
+</html>
