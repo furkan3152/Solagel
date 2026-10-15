@@ -54,6 +54,7 @@ pub const INSTRUCTION_DID_NOT_DESERIALIZE: u32 = 102;
 pub const EVENT_INSTRUCTION_STUB: u32 = 1500;
 pub const CONSTRAINT_MUT: u32 = 2000;
 pub const CONSTRAINT_SEEDS: u32 = 2006;
+pub const CONSTRAINT_CLOSE: u32 = 2011;
 pub const CONSTRAINT_ADDRESS: u32 = 2012;
 pub const CONSTRAINT_TOKEN_MINT: u32 = 2014;
 pub const CONSTRAINT_TOKEN_OWNER: u32 = 2015;
@@ -193,6 +194,7 @@ mod tests {
             (DECLARED_PROGRAM_ID_MISMATCH, A::DeclaredProgramIdMismatch),
             (CONSTRAINT_MUT, A::ConstraintMut),
             (CONSTRAINT_SEEDS, A::ConstraintSeeds),
+            (CONSTRAINT_CLOSE, A::ConstraintClose),
             (CONSTRAINT_ADDRESS, A::ConstraintAddress),
             (CONSTRAINT_TOKEN_MINT, A::ConstraintTokenMint),
             (CONSTRAINT_TOKEN_OWNER, A::ConstraintTokenOwner),

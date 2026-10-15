@@ -71,17 +71,20 @@ pub fn process(accounts: &[AccountView], args: &[u8]) -> Result {
             kind::TOKEN_PROGRAM,
         ],
     )?;
-    // SAFETY: `parse` checked the types (and so the lengths); config is only read here.
-    let c = unsafe { data::<{ config::SPACE }>(config_acc) };
-    let vault = unsafe { data::<{ ACCOUNT_LEN }>(treasury_vault) };
-    let dest = unsafe { data::<{ ACCOUNT_LEN }>(destination) };
-
+    // Anchor's duplicate-mutable check, before any view of the two token accounts exists:
+    // from here on they are distinct accounts, so their views never alias.
     if keq(
         treasury_vault.address().as_array(),
         destination.address().as_array(),
     ) {
         return Err(err(CONSTRAINT_DUPLICATE_MUTABLE_ACCOUNT));
     }
+    // SAFETY: `parse` checked the types (and so the lengths); the keys differ (above), and the
+    // config is a program account, so the three views are of distinct accounts. All are read
+    // only here.
+    let c = unsafe { data::<{ config::SPACE }>(config_acc) };
+    let vault = unsafe { data::<{ ACCOUNT_LEN }>(treasury_vault) };
+    let dest = unsafe { data::<{ ACCOUNT_LEN }>(destination) };
 
     check_admin_config(config_acc, c, admin, false)?;
     let vault_bump = [rd_u8(c, config::TREASURY_VAULT_BUMP)];

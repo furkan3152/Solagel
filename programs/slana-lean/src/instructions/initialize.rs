@@ -29,7 +29,7 @@
 
 use {
     super::{check_fees, check_settle_fee, check_split, unix_timestamp},
-    crate::error::Result,
+    crate::error::{Error, Result},
     crate::{
         accounts::{
             check_canonical_pda, check_writable, data, find_pda, init_pda, keq, kind, parse,
@@ -174,36 +174,47 @@ pub(crate) fn init_program_pda(
     init_pda_with(payer, acc, space, &ID, seeds)
 }
 
-/// `init` of an account owned by `owner` at the canonical PDA of `seeds` (at most 3 seeds).
+/// `init` of an account owned by `owner` at the canonical PDA of `seeds` (at most
+/// [`MAX_INIT_SEEDS`] seeds; more is an `InvalidArgument` programming error, never a silent
+/// truncation).
 #[inline(never)]
-fn init_pda_with(
+pub(crate) fn init_pda_with(
     payer: &AccountView,
     acc: &AccountView,
     space: usize,
     owner: &Address,
     seeds: &[&[u8]],
 ) -> Result<u8> {
+    let n = seeds.len();
+    if n > MAX_INIT_SEEDS {
+        return Err(Error::INVALID_ARGUMENT);
+    }
     let empty: &[u8] = &[];
-    let mut seeds_only = [
+    let mut with_bump = [
         Seed::from(empty),
         Seed::from(empty),
         Seed::from(empty),
         Seed::from(empty),
     ];
-    let n = seeds.len().min(3);
-    for (slot, seed) in seeds_only.iter_mut().zip(seeds) {
+    for (slot, seed) in with_bump.iter_mut().zip(seeds) {
         *slot = Seed::from(*seed);
     }
-    let (pda, bump) = find_pda(&seeds_only[..n], &ID)?;
+    let (pda, bump) = find_pda(with_bump.get(..n).unwrap_or(&[]), &ID)?;
     if &pda != acc.address() {
         return Err(err(CONSTRAINT_SEEDS));
     }
     let bump_seed = [bump];
-    let mut with_bump = seeds_only;
-    with_bump[n] = Seed::from(&bump_seed);
-    init_pda(payer, acc, space, owner, &with_bump[..n + 1])?;
+    // `n <= MAX_INIT_SEEDS`, so slot `n` exists and `n + 1` cannot wrap.
+    if let Some(slot) = with_bump.get_mut(n) {
+        *slot = Seed::from(&bump_seed);
+    }
+    init_pda(payer, acc, space, owner, with_bump.get(..=n).unwrap_or(&[]))?;
     Ok(bump)
 }
+
+/// Most seeds (without the bump) of any `init` in the program (`with_bump` above holds
+/// `MAX_INIT_SEEDS + 1` slots).
+const MAX_INIT_SEEDS: usize = 3;
 
 /// `init, payer, seeds = [seed], bump, token::mint = mint, token::authority = authority,
 /// token::token_program = token_program`: the PDA is created with the size the mint requires,

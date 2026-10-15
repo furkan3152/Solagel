@@ -22,6 +22,8 @@ const MAX_CPI_ACCOUNTS: usize = 4;
 /// The program never takes `try_borrow*` guards on account data, so no borrow can be
 /// outstanding here and the unchecked invoke is sound.
 #[inline(never)]
+// Bound: `len` counts the zipped slots, at most `MAX_CPI_ACCOUNTS`.
+#[allow(clippy::arithmetic_side_effects)]
 pub fn invoke(
     program: &Address,
     metas: &[InstructionAccount],

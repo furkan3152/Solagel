@@ -11,6 +11,9 @@
 // `RangeInclusive::contains` is not inlined at `opt-level = "z"` (an out-of-line call per
 // type); the explicit comparisons are smaller.
 #![allow(clippy::manual_range_contains)]
+// `overflow-checks = false` in release (root Cargo.toml): every arithmetic site is either
+// `checked_*` (returning the reference's error) or carries a local allow with its bound.
+#![cfg_attr(not(test), deny(clippy::arithmetic_side_effects))]
 
 pub mod accounts;
 pub mod borsh;

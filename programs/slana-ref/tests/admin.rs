@@ -521,3 +521,88 @@ fn withdraw_treasury_admin_only() {
         assert_eq!(env.token_account(&treasury).amount, 0);
     }
 }
+
+/// Ruling R27 regression: the treasury vault is checked by its stored-bump PDA, so the season
+/// vault (also a token account of the game mint with the config as authority) cannot stand in
+/// for it.
+#[test]
+fn withdraw_treasury_rejects_the_season_vault() {
+    use anchor_lang::{solana_program::instruction::Instruction, InstructionData, ToAccountMetas};
+    let mut env = TestEnv::initialized();
+    let admin = env.admin.insecure_clone();
+    env.mint_to(&season_vault_pda(), 1_000 * TOKEN);
+    let admin_ata = env.create_ata(&admin.pubkey());
+    let ix = Instruction::new_with_bytes(
+        slana::ID,
+        &slana::instruction::WithdrawTreasury { amount: TOKEN }.data(),
+        slana::accounts::WithdrawTreasury {
+            admin: admin.pubkey(),
+            config: config_pda(),
+            treasury_vault: season_vault_pda(),
+            destination: admin_ata,
+            token_mint: env.mint,
+            token_program: env.token_program,
+        }
+        .to_account_metas(None),
+    );
+    assert_anchor_error(env.send(&[ix], &[&admin]), AnchorErrorCode::ConstraintSeeds);
+    assert_eq!(env.tokens(&season_vault_pda()), 1_000 * TOKEN);
+}
+
+/// R27 regression: `initialize` only accepts this program's own ProgramData, even
+/// when another program's ProgramData names the caller as upgrade authority.
+#[test]
+fn initialize_rejects_a_foreign_program_data() {
+    use anchor_lang::{
+        solana_program::{
+            bpf_loader_upgradeable::{self, UpgradeableLoaderState},
+            instruction::Instruction,
+            system_program,
+        },
+        InstructionData, ToAccountMetas,
+    };
+    let mut env = TestEnv::deployed();
+    let mint = env.create_mint(MintKind::Spl, None);
+    env.mint = mint;
+    let admin = env.admin.insecure_clone();
+    let foreign = anchor_lang::prelude::Pubkey::new_unique();
+    let (foreign_data, _) = anchor_lang::prelude::Pubkey::find_program_address(
+        &[foreign.as_ref()],
+        &bpf_loader_upgradeable::ID,
+    );
+    let mut data = bincode::serialize(&UpgradeableLoaderState::ProgramData {
+        slot: 0,
+        upgrade_authority_address: Some(admin.pubkey()),
+    })
+    .expect("serialize ProgramData");
+    data.extend_from_slice(&[0u8; 16]);
+    write_raw_account(
+        &mut env.svm,
+        &foreign_data,
+        bpf_loader_upgradeable::ID,
+        data,
+    );
+
+    let ix = Instruction::new_with_bytes(
+        slana::ID,
+        &slana::instruction::Initialize {
+            args: env.default_init_args(),
+        }
+        .data(),
+        slana::accounts::Initialize {
+            admin: admin.pubkey(),
+            config: config_pda(),
+            season: season_pda(FIRST_SEASON),
+            token_mint: mint,
+            token_program: MintKind::Spl.program(),
+            treasury_vault: treasury_vault_pda(),
+            season_vault: season_vault_pda(),
+            program: slana::ID,
+            program_data: foreign_data,
+            system_program: system_program::ID,
+        }
+        .to_account_metas(None),
+    );
+    assert_error(env.send(&[ix], &[&admin]), SlanaError::Unauthorized);
+    assert!(env.try_fetch::<Config>(&config_pda()).is_none());
+}
