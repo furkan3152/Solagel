@@ -59,6 +59,22 @@ export interface RoomDeps {
   clock?: RoundClock;
   /** A human's game ended (death, leave, round end or operator exit). */
   onGameOver?: (e: { room: Room; conn: Conn | null; player: Player; stats: DeathStats }) => void;
+  /**
+   * The bell settled the ticket of a staker who was away (AFK, not connected). When they come
+   * back the gateway tells them the round ended (`round_ended`) instead of "already playing".
+   */
+  onBellSettled?: (e: BellSettled) => void;
+}
+
+/** An AFK staker's ticket settled at a round's bell (see `RoomDeps.onBellSettled`). */
+export interface BellSettled {
+  arenaId: number;
+  wallet: string;
+  /** Session PDA (the settlement's journal key). */
+  session: string;
+  /** On-chain session id (PDAs are reused by later tickets; the id is not). */
+  sessionId: number;
+  round: number;
 }
 
 /** What a joining player brings besides name and skin. */
@@ -614,13 +630,16 @@ export class Room {
 
     const batch: JournalItem[] = [];
     const results: { conn: Conn; pid: number; payout: number; stats: DeathStats }[] = [];
+    const away: BellSettled[] = [];
     for (const [pid, conn] of [...this.humans]) {
       const p = this.world.players.get(pid);
       if (!p?.alive) continue;
       const payout = ledger.value(pid);
       const c = conn ?? null;
+      const entry = ledger.get(pid);
       const stats = this.finishHuman(p, c, 'round', null, batch);
       if (c) results.push({ conn: c, pid, payout, stats });
+      else if (entry) away.push({ arenaId: entry.arenaId, wallet: entry.player, session: entry.session, sessionId: entry.sessionId, round });
     }
 
     const amount = this.world.takeLoot();
@@ -647,6 +666,7 @@ export class Room {
     }
     this.commitJournal(batch);
     if (batch.length > 0) this.deps.chain.kick();
+    for (const a of away) this.deps.onBellSettled?.(a);
     const settled = batch.filter((i) => i.kind === 'settle').length;
     if (settled > 0 || amount > 0) this.deps.log(`room ${this.id}: round ${round} over · ${settled} settled · loot ${amount} queued for the season pool`);
 

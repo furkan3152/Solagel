@@ -3,8 +3,11 @@ import type { ChainGateway } from '../chain/types';
 import type { ServerConfig } from '../config';
 import type { Conn } from '../net/conn';
 import type { ArenaEntry } from '../stake/ledger';
-import { Room, type RoomDeps } from './room';
+import { Room, type BellSettled, type RoomDeps } from './room';
 import { RoundClock } from './round-clock';
+
+/** How long the gateway remembers an AFK ticket settled at a bell (for `round_ended`). */
+export const BELL_MEMO_MS = 30 * 60_000;
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 /** On-chain arena list is re-read at most this often. */
@@ -40,6 +43,8 @@ export class RoomManager {
   private readonly underfunded = new Map<number, string>();
   /** `enabled` of each arena at the last chain read (detects a disabled → enabled flip). */
   private readonly lastEnabled = new Map<number, boolean>();
+  /** `arenaId:wallet` → the AFK ticket the last bell settled while its player was away. */
+  private readonly bellMemo = new Map<string, BellSettled & { at: number }>();
 
   constructor(
     private readonly cfg: ServerConfig,
@@ -56,6 +61,10 @@ export class RoomManager {
         this.onGameOver(e);
         deps.onGameOver?.(e);
       },
+      onBellSettled: (e) => {
+        this.bellMemo.set(`${e.arenaId}:${e.wallet}`, { ...e, at: Date.now() });
+        deps.onBellSettled?.(e);
+      },
     };
     this.createPractice('rookie');
     this.createPractice('pro');
@@ -69,6 +78,22 @@ export class RoomManager {
   /** The arena round running at `now` (shared by every arena and instance). */
   roundWindow(now = this.now()): RoundWindow {
     return this.deps.clock!.window(now);
+  }
+
+  /** The ticket a bell settled while this wallet was away from the arena (kept `BELL_MEMO_MS`). */
+  bellSettled(arenaId: number, wallet: string): BellSettled | null {
+    const key = `${arenaId}:${wallet}`;
+    const m = this.bellMemo.get(key);
+    if (!m) return null;
+    if (Date.now() - m.at > BELL_MEMO_MS) {
+      this.bellMemo.delete(key);
+      return null;
+    }
+    return m;
+  }
+
+  forgetBellSettled(arenaId: number, wallet: string): void {
+    this.bellMemo.delete(`${arenaId}:${wallet}`);
   }
 
   /* ---------------------------------------------------------------- */
@@ -391,6 +416,7 @@ export class RoomManager {
   }
 
   private cleanup(now: number): void {
+    for (const [key, m] of this.bellMemo) if (now - m.at > BELL_MEMO_MS) this.bellMemo.delete(key);
     for (const room of [...this.rooms.values()]) {
       const idle = room.conns.size === 0 && room.humans.size === 0;
       if (!idle) continue;
