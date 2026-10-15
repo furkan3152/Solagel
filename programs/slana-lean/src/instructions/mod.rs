@@ -30,6 +30,7 @@ pub mod set_pass_seed_hash;
 pub mod settle_session;
 pub mod stake;
 pub mod sweep_arena;
+pub mod sweep_loot;
 pub mod update_arena;
 pub mod update_config;
 pub mod update_profile;

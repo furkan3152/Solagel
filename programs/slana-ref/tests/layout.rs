@@ -787,14 +787,14 @@ fn dispatch_errors_match_anchor() {
 // player and arena instructions
 // ---------------------------------------------------------------------------------------
 
-/// Register → update → Pass join → finalize without a token account → collect → sweep: every
-/// account the program writes decodes with the reference and re-serializes to exactly the
-/// stored bytes, and every event is the reference's encoding.
+/// Register → update → Pass join → finalize without a token account → collect → loot sweep →
+/// sweep: every account the program writes decodes with the reference and re-serializes to
+/// exactly the stored bytes, and every event is the reference's encoding.
 #[test]
 fn stake_flow_writes_reference_layouts_and_events() {
     use slana::{
         events::{
-            ArenaJoined, ArenaSwept, PlayerRegistered, ProfileUpdated, SessionRefunded,
+            ArenaJoined, ArenaSwept, LootSwept, PlayerRegistered, ProfileUpdated, SessionRefunded,
             SessionSettled,
         },
         state::{PassLock, PlayerProfile, Session},
@@ -948,8 +948,23 @@ fn stake_flow_writes_reference_layouts_and_events() {
     );
     assert!(env.session(1, &player).is_none());
 
+    env.mint_to(&vault_pda(&arena_pda(1)), 100);
+    let meta = assert_ok(env.sweep_loot(1, 23));
+    assert_event(
+        &meta,
+        &LootSwept {
+            arena_id: 1,
+            season_id: FIRST_SEASON,
+            amount: 23,
+        },
+    );
+    assert_eq!(env.season(FIRST_SEASON).pool, 23);
+    assert_eq!(
+        raw(&env, &season_pda(FIRST_SEASON)),
+        serialize(&env.season(FIRST_SEASON))
+    );
+
     assert_ok(env.update_arena(1, Some(false), None, None, None));
-    env.mint_to(&vault_pda(&arena_pda(1)), 77);
     let meta = assert_ok(env.sweep(1));
     assert_event(
         &meta,
@@ -959,7 +974,7 @@ fn stake_flow_writes_reference_layouts_and_events() {
             amount: 77,
         },
     );
-    assert_eq!(env.season(FIRST_SEASON).pool, 77);
+    assert_eq!(env.season(FIRST_SEASON).pool, 100);
 }
 
 /// Anchor's duplicate-mutable and seeds checks on the arena instructions.
@@ -1044,6 +1059,20 @@ fn stake_constraint_errors_match_anchor() {
     assert_anchor_error(
         env.send(&[sweep], &[&admin]),
         AnchorErrorCode::ConstraintDuplicateMutableAccount,
+    );
+
+    // sweep_loot: the same → 2040; truncated `amount` → 102.
+    let mut loot = ix::sweep_loot(&server.pubkey(), 1, FIRST_SEASON, 1, &mint, &program);
+    loot.accounts[5].pubkey = vault;
+    assert_anchor_error(
+        env.send(&[loot], &[&server]),
+        AnchorErrorCode::ConstraintDuplicateMutableAccount,
+    );
+    let mut loot = ix::sweep_loot(&server.pubkey(), 1, FIRST_SEASON, 1, &mint, &program);
+    loot.data.truncate(8 + 7);
+    assert_anchor_error(
+        env.send(&[loot], &[&server]),
+        AnchorErrorCode::InstructionDidNotDeserialize,
     );
 }
 

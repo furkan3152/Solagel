@@ -83,8 +83,9 @@ fn compute_units_per_instruction() {
         env.withdraw_treasury_as(&admin, &destination, treasury),
     );
     assert_ok(env.refund(&c, 1));
+    env.mint_to(&vault_pda(&arena_pda(1)), 100);
+    cu("sweep_loot", env.sweep_loot(1, 23));
     assert_ok(env.update_arena(1, Some(false), None, None, None));
-    env.mint_to(&vault_pda(&arena_pda(1)), 77);
     cu("sweep_arena", env.sweep(1));
 
     // ----- seasons ------------------------------------------------------------------------

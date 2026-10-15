@@ -191,6 +191,11 @@ export interface SweepArenaParams extends TokenAccounts {
   currentSeason: number;
 }
 
+export interface SweepLootParams extends SweepArenaParams {
+  /** Token base units, at most the vault balance (`0` succeeds and moves nothing). */
+  amount: IntLike;
+}
+
 export interface WithdrawTreasuryParams extends TokenAccounts {
   /** Token base units. */
   amount: IntLike;
@@ -500,6 +505,25 @@ function createInstructionBuilders(program: Program<Slana>, programId: PublicKey
         .sweepArena()
         .accountsPartial({
           admin: toPublicKey(admin),
+          config: config(),
+          arena: arena(p.id),
+          vault: vault(p.id),
+          season: season(p.currentSeason),
+          seasonVault: pdas.seasonVault(programId),
+          ...tokens(p),
+        })
+        .instruction();
+    },
+
+    /**
+     * Server-signed: moves `amount` of an arena vault's loot into the current season's pool,
+     * while the arena runs (enabled, open sessions allowed).
+     */
+    sweepLoot(server: Address, p: SweepLootParams): Promise<TransactionInstruction> {
+      return program.methods
+        .sweepLoot(toBN(p.amount))
+        .accountsPartial({
+          server: toPublicKey(server),
           config: config(),
           arena: arena(p.id),
           vault: vault(p.id),

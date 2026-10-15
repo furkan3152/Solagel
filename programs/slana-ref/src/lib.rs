@@ -148,6 +148,12 @@ pub mod slana {
         instructions::sweep_arena::handle_sweep_arena(ctx)
     }
 
+    /// Server-signed: moves `amount` (at most the vault balance) from an arena vault into the
+    /// current season's pool, while the arena runs. `amount == 0` succeeds and does nothing.
+    pub fn sweep_loot(ctx: Context<SweepLoot>, amount: u64) -> Result<()> {
+        instructions::sweep_loot::handle_sweep_loot(ctx, amount)
+    }
+
     // ----- Slana Pass ----------------------------------------------------------------------
 
     /// Sets the Pass collection once (a Core collection whose update authority is the
