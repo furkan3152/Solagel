@@ -6,7 +6,7 @@
 mod common;
 
 use {
-    anchor_lang::prelude::Pubkey,
+    anchor_lang::{error::ErrorCode as AnchorErrorCode, prelude::Pubkey},
     anchor_spl::token_2022::spl_token_2022::{
         self, extension::memo_transfer, extension::ExtensionType,
     },
@@ -48,7 +48,10 @@ fn loser_closing_their_token_account_cannot_get_the_entry_fee_back() {
         assert_eq!(env.tokens(&env.player_ata(&a.pubkey())), 1_950);
 
         // Paying B with a token account fails (it no longer exists) ...
-        assert!(env.settle(&b.pubkey(), 1, 0, 0, 0, 0).is_err());
+        assert_anchor_error(
+            env.settle(&b.pubkey(), 1, 0, 0, 0, 0),
+            AnchorErrorCode::AccountNotInitialized,
+        );
         // ... so the server settles without it. Nothing is owed: the session closes at once.
         let server_before = env.balance(&env.server.pubkey());
         assert_ok(env.settle_finalize(&b.pubkey(), 1, 0));
@@ -63,7 +66,7 @@ fn loser_closing_their_token_account_cannot_get_the_entry_fee_back() {
         // Even after 24 h there is nothing left to refund.
         env.warp(SESSION_REFUND_TIMEOUT_SECS + 1);
         env.create_ata(&b.pubkey());
-        assert!(env.refund(&b, 1).is_err());
+        assert_anchor_error(env.refund(&b, 1), AnchorErrorCode::AccountNotInitialized);
         assert_eq!(env.tokens(&env.player_ata(&b.pubkey())), 0);
         assert_eq!(env.tokens(&vault), 0);
     }
@@ -136,7 +139,7 @@ fn partial_payout_without_token_account_is_owed_and_collected_at_once() {
         assert_eq!(env.arena(1).total_paid_out, 1_500);
         assert_eq!(env.config().total_paid_out, 1_500);
         // Collected once only.
-        assert!(env.refund(&b, 1).is_err());
+        assert_anchor_error(env.refund(&b, 1), AnchorErrorCode::AccountNotInitialized);
         // Now B can join again.
         assert_ok(env.join(&b, 1));
     }
@@ -256,11 +259,12 @@ fn memo_required_token_account_falls_back_to_finalize() {
     .expect("enable memos ix");
     assert_ok(env.send(&[realloc, enable], &[&b]));
 
-    assert!(env.settle(&b.pubkey(), 1, 1_500, 0, 0, 0).is_err());
+    let no_memo = spl_token_2022::error::TokenError::NoMemo as u32;
+    assert_custom_error(env.settle(&b.pubkey(), 1, 1_500, 0, 0, 0), no_memo);
     assert_ok(env.settle_finalize(&b.pubkey(), 1, 1_500));
     assert_eq!(env.session(1, &b.pubkey()).unwrap().owed, 1_475);
     // The player's own account still refuses the payout until they lift the memo rule.
-    assert!(env.refund(&b, 1).is_err());
+    assert_custom_error(env.refund(&b, 1), no_memo);
     let disable = memo_transfer::instruction::disable_required_transfer_memos(
         &program,
         &b_ata,

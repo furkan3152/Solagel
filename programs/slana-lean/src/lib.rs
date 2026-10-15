@@ -24,6 +24,7 @@ pub mod discriminator;
 pub mod error;
 pub mod events;
 pub mod instructions;
+pub mod logic;
 pub mod state;
 pub mod token;
 

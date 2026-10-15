@@ -477,6 +477,7 @@ mod tests {
         use session::*;
         assert_eq!(DISCRIMINATOR, r::Session::DISCRIMINATOR);
         assert_eq!(SPACE, 8 + r::Session::INIT_SPACE);
+        assert_eq!(SPACE, 151);
         let s = r::Session {
             id: 0x0102_0304_0506_0701,
             player: key(2),

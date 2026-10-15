@@ -41,6 +41,12 @@ pub const DEFAULT_PASS_PER_WALLET: u8 = 1;
 // ----- game -----------------------------------------------------------------------------------
 
 pub const FIRST_SEASON: u32 = 1;
+/// A session the server never settled can be refunded this long after the join.
+pub const SESSION_REFUND_TIMEOUT_SECS: i64 = 86_400;
+pub const MAX_XP_PER_GAME: u32 = 2_000;
+pub const MAX_SCORE_PER_GAME: u32 = 1_000_000;
+/// Skins `0..BASIC_SKINS`.
+pub const BASIC_SKINS: u8 = 8;
 
 // ----- programs -------------------------------------------------------------------------------
 
@@ -110,6 +116,10 @@ mod tests {
         assert_eq!(DEFAULT_PASS_SUPPLY, r::DEFAULT_PASS_SUPPLY);
         assert_eq!(DEFAULT_PASS_PER_WALLET, r::DEFAULT_PASS_PER_WALLET);
         assert_eq!(FIRST_SEASON, r::FIRST_SEASON);
+        assert_eq!(SESSION_REFUND_TIMEOUT_SECS, r::SESSION_REFUND_TIMEOUT_SECS);
+        assert_eq!(MAX_XP_PER_GAME, r::MAX_XP_PER_GAME);
+        assert_eq!(MAX_SCORE_PER_GAME, r::MAX_SCORE_PER_GAME);
+        assert_eq!(BASIC_SKINS, r::BASIC_SKINS);
     }
 
     #[test]

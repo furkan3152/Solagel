@@ -8,9 +8,9 @@
 //! * Anchor's account-type and constraint errors (wrong owner, discriminator, length, PDA,
 //!   missing accounts, bad arguments, duplicate mutable accounts, pre-funded PDAs).
 //!
-//! Account types the admin instructions cannot create yet (`PlayerProfile`, `Session`,
-//! `PassLock`, `MintCounter`, leaderboard rows) are covered by the host golden tests in
-//! `programs/slana-lean/src/state.rs`.
+//! `PlayerProfile`, `Session` (151 bytes), `PassLock` and leaderboard rows written by the
+//! player and arena instructions are checked in `stake_flow_writes_reference_layouts_and_events`;
+//! `MintCounter` is covered by the host golden tests in `programs/slana-lean/src/state.rs`.
 
 // `TxResult` is LiteSVM's own result type; its error variant is large by design.
 #![allow(clippy::result_large_err)]
@@ -803,5 +803,269 @@ fn dispatch_errors_match_anchor() {
     assert_anchor_error(
         send_data(&mut env, event_cpi),
         AnchorErrorCode::EventInstructionStub,
+    );
+}
+
+// ---------------------------------------------------------------------------------------
+// player and arena instructions
+// ---------------------------------------------------------------------------------------
+
+/// Register → update → Pass join → finalize without a token account → collect → sweep: every
+/// account the program writes decodes with the reference and re-serializes to exactly the
+/// stored bytes, and every event is the reference's encoding.
+#[test]
+fn stake_flow_writes_reference_layouts_and_events() {
+    use slana::{
+        events::{
+            ArenaJoined, ArenaSwept, PlayerRegistered, ProfileUpdated, SessionRefunded,
+            SessionSettled,
+        },
+        state::{PassLock, PlayerProfile, Session},
+    };
+    let mut env = TestEnv::initialized();
+    assert_ok(env.create_arena(1, ENTRY_FEE, 300, false));
+
+    let alice = env.funded_keypair(10 * SOL);
+    let player = alice.pubkey();
+    let meta = assert_ok(env.register(&alice, "Çağrı🚀", 5));
+    assert_event(
+        &meta,
+        &PlayerRegistered {
+            owner: player,
+            name: "Çağrı🚀".into(),
+        },
+    );
+    let profile_key = profile_pda(&player);
+    let data = raw(&env, &profile_key);
+    assert_eq!(data.len(), 8 + PlayerProfile::INIT_SPACE);
+    assert_eq!(data, serialize(&env.profile(&player)));
+    let meta = assert_ok(env.update_profile(&alice, Some("al"), Some(3)));
+    assert_event(
+        &meta,
+        &ProfileUpdated {
+            owner: player,
+            skin: 3,
+        },
+    );
+    let profile = env.profile(&player);
+    assert_eq!(
+        (name_of(&profile.name, profile.name_len), profile.skin),
+        ("al".into(), 3)
+    );
+    assert_eq!(raw(&env, &profile_key), serialize(&profile));
+
+    let ata = env.create_ata(&player);
+    env.mint_to(&ata, 3 * ENTRY_FEE);
+    let (_, asset) = env.give_pass(&player);
+    let meta = assert_ok(env.join_with_pass(&alice, 1, &asset));
+    let session_key = session_pda(&arena_pda(1), &player);
+    let session = env.session(1, &player).expect("session");
+    assert_event(
+        &meta,
+        &ArenaJoined {
+            player,
+            arena_id: 1,
+            session_id: session.id,
+            entry_fee: ENTRY_FEE,
+            has_pass: true,
+        },
+    );
+    let data = raw(&env, &session_key);
+    assert_eq!(data.len(), 151);
+    assert_eq!(data.len(), 8 + Session::INIT_SPACE);
+    assert_eq!(data, serialize(&session));
+    let (_, bump) = Pubkey::find_program_address(
+        &[SESSION_SEED, arena_pda(1).as_ref(), player.as_ref()],
+        &slana::ID,
+    );
+    assert_eq!(
+        (
+            session.player,
+            session.arena,
+            session.arena_id,
+            session.entry_fee,
+            session.opened_at,
+            session.has_pass,
+            session.pass_asset,
+            session.settle_fee,
+            session.fee_bps,
+            session.bump,
+            session.finalized,
+            session.owed,
+        ),
+        (
+            player,
+            arena_pda(1),
+            1,
+            ENTRY_FEE,
+            START_TS,
+            true,
+            asset,
+            SETTLE_FEE_LAMPORTS,
+            PASS_FEE_BPS,
+            bump,
+            false,
+            0,
+        )
+    );
+    assert_eq!(
+        env.balance(&session_key),
+        env.session_rent() + SETTLE_FEE_LAMPORTS
+    );
+    let lock_key = pass_lock_pda(&asset);
+    let lock = env.pass_lock(&asset).expect("lock");
+    let data = raw(&env, &lock_key);
+    assert_eq!(data.len(), 8 + PassLock::INIT_SPACE);
+    assert_eq!(data, serialize(&lock));
+    let (_, lock_bump) =
+        Pubkey::find_program_address(&[PASS_LOCK_SEED, asset.as_ref()], &slana::ID);
+    assert_eq!(
+        (lock.session, lock.player, lock.bump),
+        (session_key, player, lock_bump)
+    );
+
+    // Finalize without a token account (R24): the session stays, finalized with `owed`.
+    let meta = assert_ok(env.settle_to(&player, 1, ENTRY_FEE, 1_234, 5, 60, None));
+    assert_event(
+        &meta,
+        &SessionSettled {
+            player,
+            arena_id: 1,
+            session_id: session.id,
+            payout: ENTRY_FEE,
+            fee: 0,
+            burned: 0,
+            has_pass: true,
+            score: 1_234,
+            kills: 5,
+            owed: ENTRY_FEE,
+        },
+    );
+    let finalized = env.session(1, &player).expect("finalized session");
+    assert_eq!(raw(&env, &session_key), serialize(&finalized));
+    assert!(finalized.finalized);
+    assert_eq!(finalized.owed, ENTRY_FEE);
+    assert!(env.pass_lock(&asset).is_none());
+    assert_eq!(raw(&env, &profile_key), serialize(&env.profile(&player)));
+    let season = env.season(FIRST_SEASON);
+    assert_eq!(raw(&env, &season_pda(FIRST_SEASON)), serialize(&season));
+    assert_eq!(season.count, 1);
+    assert_eq!(
+        (
+            season.entries[0].player,
+            season.entries[0].points,
+            season.entries[0].best_score
+        ),
+        (player, 1_234, 1_234)
+    );
+
+    let meta = assert_ok(env.refund(&alice, 1));
+    assert_event(
+        &meta,
+        &SessionRefunded {
+            player,
+            arena_id: 1,
+            amount: ENTRY_FEE,
+            finalized: true,
+        },
+    );
+    assert!(env.session(1, &player).is_none());
+
+    assert_ok(env.update_arena(1, Some(false), None, None, None));
+    env.mint_to(&vault_pda(&arena_pda(1)), 77);
+    let meta = assert_ok(env.sweep(1));
+    assert_event(
+        &meta,
+        &ArenaSwept {
+            arena_id: 1,
+            season_id: FIRST_SEASON,
+            amount: 77,
+        },
+    );
+    assert_eq!(env.season(FIRST_SEASON).pool, 77);
+}
+
+/// Anchor's duplicate-mutable and seeds checks on the arena instructions.
+#[test]
+fn stake_constraint_errors_match_anchor() {
+    use anchor_lang::{InstructionData, ToAccountMetas};
+    let mut env = TestEnv::initialized();
+    assert_ok(env.create_arena(1, ENTRY_FEE, 300, false));
+    let a = env.token_player("a", ENTRY_FEE);
+    let (mint, program) = (env.mint, env.token_program);
+    let arena = arena_pda(1);
+    let vault = vault_pda(&arena);
+
+    // join: the vault as the player's token account → 2040 (before its token constraints).
+    let join = Instruction::new_with_bytes(
+        slana::ID,
+        &slana::instruction::JoinArena {
+            max_fee_bps: MAX_FEE_BPS,
+            max_entry_fee: u64::MAX,
+            max_settle_fee: MAX_SETTLE_FEE_LAMPORTS,
+        }
+        .data(),
+        slana::accounts::JoinArena {
+            player: a.pubkey(),
+            config: config_pda(),
+            profile: profile_pda(&a.pubkey()),
+            arena,
+            vault,
+            session: session_pda(&arena, &a.pubkey()),
+            player_token: vault,
+            token_mint: mint,
+            token_program: program,
+            system_program: anchor_lang::solana_program::system_program::ID,
+        }
+        .to_account_metas(None),
+    );
+    assert_anchor_error(
+        env.send(&[join], &[&a]),
+        AnchorErrorCode::ConstraintDuplicateMutableAccount,
+    );
+    assert_ok(env.join(&a, 1));
+
+    // settle: treasury and season vaults swapped → 2006.
+    let session = env.session(1, &a.pubkey()).expect("session");
+    let mut settle = ix::settle_session(
+        &env.server.pubkey(),
+        &a.pubkey(),
+        1,
+        FIRST_SEASON,
+        slana::SettleArgs {
+            session_id: session.id,
+            payout: 0,
+            score: 0,
+            kills: 0,
+            xp: 0,
+        },
+        None,
+        Some(env.player_ata(&a.pubkey())),
+        &mint,
+        &program,
+    );
+    settle.accounts[9].pubkey = season_vault_pda();
+    settle.accounts[10].pubkey = treasury_vault_pda();
+    let server = env.server.insecure_clone();
+    assert_anchor_error(
+        env.send(&[settle.clone()], &[&server]),
+        AnchorErrorCode::ConstraintSeeds,
+    );
+    // ... and the vault as the player's token account → 2040.
+    settle.accounts[9].pubkey = treasury_vault_pda();
+    settle.accounts[10].pubkey = season_vault_pda();
+    settle.accounts[6].pubkey = vault;
+    assert_anchor_error(
+        env.send(&[settle], &[&server]),
+        AnchorErrorCode::ConstraintDuplicateMutableAccount,
+    );
+
+    // sweep: the arena vault as the season vault → 2040.
+    let mut sweep = ix::sweep_arena(&env.admin.pubkey(), 1, FIRST_SEASON, &mint, &program);
+    sweep.accounts[5].pubkey = vault;
+    let admin = env.admin.insecure_clone();
+    assert_anchor_error(
+        env.send(&[sweep], &[&admin]),
+        AnchorErrorCode::ConstraintDuplicateMutableAccount,
     );
 }

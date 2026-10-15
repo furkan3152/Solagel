@@ -2,7 +2,7 @@
 //! ("Program data: <base64>"). The discriminators are `sha256("event:<Name>")[..8]`; the unit
 //! tests compare them, and the encodings, with the reference.
 
-use crate::borsh::{wr_bytes, wr_u16, wr_u64};
+use crate::borsh::{wr_bool, wr_bytes, wr_u16, wr_u32, wr_u64};
 
 pub const PLAYER_REGISTERED: [u8; 8] = [175, 78, 252, 170, 75, 230, 36, 251];
 pub const PROFILE_UPDATED: [u8; 8] = [186, 248, 62, 98, 112, 98, 161, 252];
@@ -71,6 +71,104 @@ pub fn pass_collection_set(collection: &[u8; 32]) -> [u8; 40] {
     e
 }
 
+/// `PlayerRegistered { owner: Pubkey, name: String }` for a name of at most 16 bytes; the
+/// event is the first `8 + 32 + 4 + name.len()` bytes.
+pub fn player_registered(owner: &[u8; 32], name: &[u8]) -> [u8; 60] {
+    let mut e = [0u8; 60];
+    wr_bytes(&mut e, 0, &PLAYER_REGISTERED);
+    wr_bytes(&mut e, 8, owner);
+    wr_u32(&mut e, 40, name.len() as u32);
+    wr_bytes(&mut e, 44, name);
+    e
+}
+
+/// `ProfileUpdated { owner: Pubkey, skin: u8 }`.
+pub fn profile_updated(owner: &[u8; 32], skin: u8) -> [u8; 41] {
+    let mut e = [0u8; 41];
+    wr_bytes(&mut e, 0, &PROFILE_UPDATED);
+    wr_bytes(&mut e, 8, owner);
+    e[40] = skin;
+    e
+}
+
+/// `ArenaJoined { player, arena_id: u16, session_id: u64, entry_fee: u64, has_pass: bool }`.
+pub fn arena_joined(
+    player: &[u8; 32],
+    arena_id: u16,
+    session_id: u64,
+    entry_fee: u64,
+    has_pass: bool,
+) -> [u8; 59] {
+    let mut e = [0u8; 59];
+    wr_bytes(&mut e, 0, &ARENA_JOINED);
+    wr_bytes(&mut e, 8, player);
+    wr_u16(&mut e, 40, arena_id);
+    wr_u64(&mut e, 42, session_id);
+    wr_u64(&mut e, 50, entry_fee);
+    wr_bool(&mut e, 58, has_pass);
+    e
+}
+
+/// `SessionSettled { player, arena_id: u16, session_id: u64, payout: u64, fee: u64,
+/// burned: u64, has_pass: bool, score: u32, kills: u16, owed: u64 }`: the fixed head
+/// (player .. session_id) comes from the session, the rest from the settlement.
+pub struct SessionSettled {
+    pub payout: u64,
+    pub fee: u64,
+    pub burned: u64,
+    pub has_pass: bool,
+    pub score: u32,
+    pub kills: u16,
+    pub owed: u64,
+}
+
+pub fn session_settled(
+    player: &[u8; 32],
+    arena_id: u16,
+    session_id: u64,
+    s: &SessionSettled,
+) -> [u8; 89] {
+    let mut e = [0u8; 89];
+    wr_bytes(&mut e, 0, &SESSION_SETTLED);
+    wr_bytes(&mut e, 8, player);
+    wr_u16(&mut e, 40, arena_id);
+    wr_u64(&mut e, 42, session_id);
+    wr_u64(&mut e, 50, s.payout);
+    wr_u64(&mut e, 58, s.fee);
+    wr_u64(&mut e, 66, s.burned);
+    wr_bool(&mut e, 74, s.has_pass);
+    wr_u32(&mut e, 75, s.score);
+    wr_u16(&mut e, 79, s.kills);
+    wr_u64(&mut e, 81, s.owed);
+    e
+}
+
+/// `SessionRefunded { player, arena_id: u16, amount: u64, finalized: bool }`.
+pub fn session_refunded(
+    player: &[u8; 32],
+    arena_id: u16,
+    amount: u64,
+    finalized: bool,
+) -> [u8; 51] {
+    let mut e = [0u8; 51];
+    wr_bytes(&mut e, 0, &SESSION_REFUNDED);
+    wr_bytes(&mut e, 8, player);
+    wr_u16(&mut e, 40, arena_id);
+    wr_u64(&mut e, 42, amount);
+    wr_bool(&mut e, 50, finalized);
+    e
+}
+
+/// `ArenaSwept { arena_id: u16, season_id: u32, amount: u64 }`.
+pub fn arena_swept(arena_id: u16, season_id: u32, amount: u64) -> [u8; 22] {
+    let mut e = [0u8; 22];
+    wr_bytes(&mut e, 0, &ARENA_SWEPT);
+    wr_u16(&mut e, 8, arena_id);
+    wr_u32(&mut e, 10, season_id);
+    wr_u64(&mut e, 14, amount);
+    e
+}
+
 #[cfg(test)]
 mod tests {
     use {
@@ -127,6 +225,75 @@ mod tests {
         };
         assert_eq!(
             treasury_withdrawn(&e.destination.to_bytes(), e.amount).to_vec(),
+            e.data()
+        );
+        let k = Pubkey::new_from_array([5; 32]);
+        for name in ["", "a", "abcdefghijklmnop", "Çağrı🚀"] {
+            let e = r::PlayerRegistered {
+                owner: k,
+                name: name.to_string(),
+            };
+            let len = 44 + name.len();
+            assert_eq!(
+                player_registered(&k.to_bytes(), name.as_bytes())[..len].to_vec(),
+                e.data()
+            );
+        }
+        let e = r::ProfileUpdated { owner: k, skin: 7 };
+        assert_eq!(profile_updated(&k.to_bytes(), 7).to_vec(), e.data());
+        let e = r::ArenaJoined {
+            player: k,
+            arena_id: 0x0102,
+            session_id: 0x0304_0506_0708_090a,
+            entry_fee: 0x0b0c_0d0e_0f10_1112,
+            has_pass: true,
+        };
+        assert_eq!(
+            arena_joined(&k.to_bytes(), e.arena_id, e.session_id, e.entry_fee, true).to_vec(),
+            e.data()
+        );
+        let e = r::SessionSettled {
+            player: k,
+            arena_id: 0x0102,
+            session_id: 0x0304_0506_0708_090a,
+            payout: 0x1112_1314_1516_1718,
+            fee: 0x2122_2324_2526_2728,
+            burned: 0x3132_3334_3536_3738,
+            has_pass: true,
+            score: 0x4142_4344,
+            kills: 0x5152,
+            owed: 0x6162_6364_6566_6768,
+        };
+        let s = SessionSettled {
+            payout: e.payout,
+            fee: e.fee,
+            burned: e.burned,
+            has_pass: e.has_pass,
+            score: e.score,
+            kills: e.kills,
+            owed: e.owed,
+        };
+        assert_eq!(
+            session_settled(&k.to_bytes(), e.arena_id, e.session_id, &s).to_vec(),
+            e.data()
+        );
+        let e = r::SessionRefunded {
+            player: k,
+            arena_id: 0x0102,
+            amount: 0x0304_0506_0708_090a,
+            finalized: true,
+        };
+        assert_eq!(
+            session_refunded(&k.to_bytes(), e.arena_id, e.amount, true).to_vec(),
+            e.data()
+        );
+        let e = r::ArenaSwept {
+            arena_id: 0x0102,
+            season_id: 0x0304_0506,
+            amount: 0x0708_090a_0b0c_0d0e,
+        };
+        assert_eq!(
+            arena_swept(e.arena_id, e.season_id, e.amount).to_vec(),
             e.data()
         );
         let e = r::PassCollectionSet {
