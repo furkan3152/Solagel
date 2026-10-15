@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Local Solana cluster for Slana v2: solana-test-validator with the Slana program (upgrade
+# Local Solana cluster for Slana v3: solana-test-validator with the Slana program (upgrade
 # authority = your local admin key) and Metaplex Core preloaded, a Token-2022 test mint
 # ($SLANA: 6 decimals, no freeze authority, 1,000,000,000 tokens to the admin, then minting
 # disabled so the supply only shrinks by burns), Config initialized, the Slana Pass collection,
