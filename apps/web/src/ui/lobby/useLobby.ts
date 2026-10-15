@@ -69,7 +69,7 @@ export function useLobbyModel(): LobbyModel {
     const tickets = buildTickets(rooms, data.arenas, blocked);
     const sessions: Record<number, OpenSession | null> = {};
     for (const [id, s] of Object.entries(data.sessions)) {
-      sessions[Number(id)] = s ? { address: s.address, openedAt: s.openedAt, hasPass: s.hasPass, passAsset: s.passAsset } : null;
+      sessions[Number(id)] = s ? { address: s.address, openedAt: s.openedAt, hasPass: s.hasPass, passAsset: s.passAsset, finalized: s.finalized, owed: s.owed } : null;
     }
     const free = freePasses(data).length;
     const arenasEnabled = !!chain?.arenasEnabled && data.deployed !== false;
@@ -84,7 +84,6 @@ export function useLobbyModel(): LobbyModel {
         session: t.arenaId !== null ? (sessions[t.arenaId] ?? null) : null,
         pending: data.pending,
         freePasses: free,
-        ataExists: data.ataExists,
         nowS,
       });
     }

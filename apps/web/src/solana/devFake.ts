@@ -21,7 +21,7 @@ export interface FakeWallet {
   lamports: number;
   profile: ProfileView | null;
   sessions: Record<number, SessionView | null>;
-  /** The wallet's game-token account exists (R10 screenshots set it false). */
+  /** The wallet's game-token account exists. False: a settled game is finalized and waits to be collected (R24 screenshots). */
   ataExists: boolean;
   /** Simulated wallet + network delay per phase (ms). */
   delayMs: number;
@@ -164,11 +164,13 @@ export async function fakeSendTicket(
     passAsset,
     settleFee: 20_000,
     feeBps: passAsset !== null ? 200 : 500,
+    finalized: false,
+    owed: 0n,
   };
   return { ok: true, signature };
 }
 
-/** Simulated R10 account creation / refund (no token movement besides the refund). */
+/** Simulated collect / refund transaction (`apply` moves the fake tokens). */
 export async function fakeSimpleTx(onPhase: (p: 'signing' | 'confirming') => void, apply: () => void): Promise<boolean> {
   onPhase('signing');
   await sleep(fakeWallet.delayMs);

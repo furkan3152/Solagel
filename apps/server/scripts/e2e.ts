@@ -4,7 +4,7 @@
  *
  *   scripts/localnet.sh        # validator + Slana + Metaplex Core + test mint + config + Pass mint + arenas
  *   cd apps/server && env $(cat ../../.localnet/server.env | xargs) \
- *     STALE_SESSION_AFTER_S=5 NO_ATA_RETRY_S=2 ARENA_BOT_TARGET=0 ARENA_BOT_MIN=0 ARENA_BOT_MAX=0 \
+ *     STALE_SESSION_AFTER_S=5 ARENA_BOT_TARGET=0 ARENA_BOT_MIN=0 ARENA_BOT_MAX=0 \
  *     npx tsx src/index.ts
  *   pnpm -F @slana/server e2e [ws://127.0.0.1:8787/ws]
  *
@@ -21,9 +21,11 @@
  *  6. the Pass reveal: close-mint → reveal_pass (admin seed) → the server's own
  *     capture_pass_entropy after the target slot → final seed = sha256(seed || entropy) and
  *     `/pass/<n>.json` carries the traits `passTraits(finalSeed, n, supply)`;
- *  7. refund path: an unplayed ticket whose token account was closed in the same transaction is
- *     refunded by the sweeper (STALE_SESSION_AFTER_S), stays queued with needsTokenAccount (R10)
- *     until the player re-creates the account, then settles at the full buy-in, no fee;
+ *  7. two-phase settle (ruling R24): an unplayed ticket whose token account was closed is
+ *     refunded by the sweeper (STALE_SESSION_AFTER_S); the server settles it at once WITHOUT the
+ *     token account, so the session is finalized with `owed` = the buy-in (no server-paid rent,
+ *     no 24 h wait), and the player collects exactly that with the web's collect transaction
+ *     (ATA idempotent + refund_session);
  *  8. end_season and the hunter claims its prize with the web's claim transaction;
  *  9. compute units of every player-signed transaction against the web's limits, and the
  *     account sizes the web quotes against the real accounts.
@@ -72,7 +74,7 @@ import WebSocket from 'ws';
 // The web app's own transaction builders and limits: the e2e signs exactly what a browser signs.
 import { CAPTURE_COMPUTE_UNITS, MINT_COMPUTE_UNITS, MINT_COUNTER_BYTES, buildMintTx, coreAssetBytes } from '../../web/src/solana/pass';
 import { CLAIM_COMPUTE_UNITS, buildClaimTx } from '../../web/src/solana/season';
-import { ACCOUNT_BYTES, TICKET_COMPUTE_UNITS, buildTicketTx } from '../../web/src/solana/ticket';
+import { ACCOUNT_BYTES, CLOSE_COMPUTE_UNITS, TICKET_COMPUTE_UNITS, buildCloseTx, buildTicketTx } from '../../web/src/solana/ticket';
 
 const ROOT = resolve(fileURLToPath(new URL('../../..', import.meta.url)));
 const wsUrl = process.argv[2] ?? 'ws://127.0.0.1:8787/ws';
@@ -421,6 +423,8 @@ async function main(): Promise<void> {
       const welcome = await ws.wait('welcome', 10_000);
       assert(welcome.chain.enabled && welcome.chain.arenasEnabled && welcome.chain.pass, `welcome says chain=${j(welcome.chain)}`);
       assert(!(welcome.blocked ?? []).some((b) => b.arenaId === passArenaId), `arena #${passArenaId} is blocked (R20)`);
+      // I3: the server publishes the Pass power it applies (the web discloses these numbers)
+      assert(welcome.chain.passPower && welcome.chain.passPower.startMassMul >= 1, `welcome has no passPower: ${j(welcome.chain)}`);
       ws.send({ t: 'viewport', w: 1600, h: 900 });
       ws.send({ t: 'auth', pubkey: wallet, message: nonce.message, signature });
       const authed = await ws.wait('authed', 15_000);
@@ -437,6 +441,8 @@ async function main(): Promise<void> {
         register: { name: w.name, skin: w.kp === hunter ? 3 : 5 },
         passAsset: pass.asset,
         maxFeeBps: config.passFeeBps,
+        maxEntryFee: passArena.entryFee,
+        maxSettleFee: config.settleFeeLamports,
       });
       const ticketSig = await send(`ticket (${steps.join(' + ')})`, ixs, [w.kp], TICKET_COMPUTE_UNITS);
       // join right away: an unplayed ticket is refunded after STALE_SESSION_AFTER_S
@@ -597,11 +603,11 @@ async function main(): Promise<void> {
   }
   config = revealed;
 
-  /* 7. refund of an unplayed ticket whose token account is gone (R10) */
+  /* 7. two-phase settle (R24): a stale refund without a token account is finalized, the player collects */
   const idleKey = idle.publicKey.toBase58();
   const idleName = wallets[2].name;
   const idleAta = ata(idle.publicKey, mint, tokenProgram);
-  step(`${idleName}: plain ticket for arena #${plainArenaId}, then closes its (now empty) token account in the same transaction`);
+  step(`${idleName}: plain ticket for arena #${plainArenaId}, then closes its (now empty) token account`);
   const { steps, ixs } = await buildTicketTx(client.ix, {
     player: idleKey,
     arenaId: plainArenaId,
@@ -610,30 +616,39 @@ async function main(): Promise<void> {
     register: { name: idleName, skin: 1 },
     passAsset: null,
     maxFeeBps: config.feeBps,
+    maxEntryFee: plainArena!.entryFee,
+    maxSettleFee: config.settleFeeLamports,
   });
   await send(`ticket (${steps.join(' + ')})`, ixs, [idle], TICKET_COMPUTE_UNITS);
   const idleSession = (await client.fetchSession(plainArenaId, idle.publicKey))!;
-  assert(idleSession && !idleSession.hasPass && idleSession.feeBps === config.feeBps, `idle session ${j(idleSession)}`);
+  assert(idleSession && !idleSession.hasPass && idleSession.feeBps === config.feeBps && !idleSession.finalized, `idle session ${j(idleSession)}`);
   await send('close token account', [closeAccountIx(idleAta, idle.publicKey, idle.publicKey, tokenProgram)], [idle]);
   assert(!(await connection.getAccountInfo(idleAta, 'confirmed')), 'token account still exists');
   ok(`session #${idleSession.id} opened (${fmt(idleSession.entryFee)}), never played · token account closed`);
 
-  step('waiting for the sweeper: refund queued, held for the missing token account');
-  const pending = await waitUntil('the refund to wait for a token account', 60_000, async () => {
-    const r = (await fetch(`${httpUrl}/api/pending?wallet=${idleKey}`).then((x) => x.json())) as { pending: { key: string; payout: number; needsTokenAccount: boolean }[] };
-    return r.pending.find((p) => p.key === idleSession.address && p.needsTokenAccount) ?? null;
+  step('waiting for the sweeper: the refund settles without the token account (finalized, owed)');
+  const finalized = await waitUntil('the session to be finalized', 60_000, async () => {
+    const s = await client.fetchSession(plainArenaId, idle.publicKey);
+    return s?.finalized ? s : null;
   });
-  assert(pending.payout === Number(idleSession.entryFee), `queued refund ${pending.payout}`);
-  assert(await client.fetchSession(plainArenaId, idle.publicKey), 'the session closed without a token account');
-  ok(`/api/pending: ${fmt(pending.payout)} owed, needsTokenAccount — nothing paid, no server-paid rent`);
+  assert(finalized.id === idleSession.id && finalized.owed === idleSession.entryFee, `finalized ${j(finalized)}`);
+  assert(!(await connection.getAccountInfo(idleAta, 'confirmed')), 'the server created the player token account');
+  const arenaAfter = (await client.fetchArena(plainArenaId))!;
+  assert(arenaAfter.openSessions >= 1, 'a finalized session must keep counting as open (sweep guard)');
+  // the journal item goes once the server's send is confirmed (the chain may show the result first)
+  await waitUntil('the journal to drop the finalized settlement', 30_000, async () => {
+    const r = (await fetch(`${httpUrl}/api/pending?wallet=${idleKey}`).then((x) => x.json())) as { pending: { key: string }[] };
+    return r.pending.some((p) => p.key === idleSession.address) ? null : true;
+  });
+  ok(`finalized: owed ${fmt(finalized.owed)} (the buy-in, no fee) waits in the vault · no server-paid rent · journal clear`);
 
-  step(`${idleName}: re-creates its token account (the web's R10 transaction)`);
-  const ataSig = await send('create token account (R10)', [createAtaIdempotentIx(idle.publicKey, idle.publicKey, mint, tokenProgram)], [idle]);
-  units.push({ label: 'create token account (Token-2022 ATA)', used: await txUnits(ataSig), limit: null });
-  await waitUntil('the refund to settle', 60_000, async () => !(await client.fetchSession(plainArenaId, idle.publicKey)));
+  step(`${idleName}: collects the payout with the web's transaction (ATA idempotent + refund_session), no 24 h wait`);
+  const collect = await buildCloseTx(client.ix, { player: idleKey, arenaId: plainArenaId, token, finalized: true, passAsset: finalized.passAsset });
+  await send(`collect (${collect.steps.join(' + ')})`, collect.ixs, [idle], CLOSE_COMPUTE_UNITS);
+  assert(!(await client.fetchSession(plainArenaId, idle.publicKey)), 'the session is still open after collecting');
   const refunded = await balance(idle.publicKey);
-  assert(refunded === idleSession.entryFee, `refund paid ${refunded}, expected the buy-in ${idleSession.entryFee}`);
-  ok(`refunded ${fmt(refunded)} (full buy-in, no fee) · session closed`);
+  assert(refunded === idleSession.entryFee, `collected ${refunded}, expected the owed buy-in ${idleSession.entryFee}`);
+  ok(`collected ${fmt(refunded)} (exactly owed) · session closed`);
 
   /* 8. end the season, the hunter claims */
   const seasonId = config.currentSeason;
@@ -659,7 +674,7 @@ async function main(): Promise<void> {
   console.log(
     `\n✅ e2e passed in ${elapsed().trim()}: fund → mint Pass ×2 → login → Pass tickets → join → fee raise (snapshot kept) → eat → ` +
       `death settle → cash-out settle (fee ${fmt(splitSessionPayout(Number(passArena.entryFee) * 2, { entryFee: passArena.entryFee, feeBps: 200 }, config).fee)}, burn in supply) → season entry → ` +
-      `close-mint → reveal → server capture → revealed metadata → stale refund held for the token account (R10) → refund → end season → claim`,
+      `close-mint → reveal → server capture → revealed metadata → stale refund finalized without a token account (R24) → collect → end season → claim`,
   );
 }
 

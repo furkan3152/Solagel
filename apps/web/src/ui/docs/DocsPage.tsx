@@ -18,7 +18,8 @@ import './docs.css';
 export function DocsPage() {
   const lang = useUi((s) => s.settings.lang);
   const tok = useTokenText();
-  const c = useMemo(() => (lang === 'tr' ? docsTr : docsEn)(tok.symbol), [lang, tok.symbol]);
+  const power = useUi((s) => s.chain?.passPower ?? null);
+  const c = useMemo(() => (lang === 'tr' ? docsTr : docsEn)(tok.symbol, power), [lang, tok.symbol, power]);
   const config = useChainData((s) => s.config);
   const reduced = useReducedMotion();
   const top = useRef<HTMLDivElement>(null);

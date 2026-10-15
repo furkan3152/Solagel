@@ -1,26 +1,26 @@
 import { InkButton } from '../../design';
 import { useT } from '../../i18n';
 import { useChainData } from '../../solana/chain';
-import { payoutsNeedingAta } from '../../solana/ticket';
+import { sessionsToCollect, type OpenSession } from '../../solana/ticket';
 import { useTokenText } from './useLobby';
 
 /**
- * Ruling R10: the server never pays a player's token-account rent. When a
- * payout waits for the player's account, this slip says so, shows the amount
- * and offers the one-instruction transaction that creates it (player-paid).
- * Payouts that are merely in flight are shown as such.
+ * Payouts owed to this wallet. Ruling R24: a game settled without a usable token account
+ * leaves its payout in the arena vault; this slip shows the amount and opens the
+ * "Collect payout" sheet (one transaction, the token account is created if needed,
+ * player-paid, no waiting time). Payouts the server is still sending are shown as such.
  */
-export function PendingBanner({ onCreateAta }: { onCreateAta: () => void }) {
+export function PendingBanner({ onCollect }: { onCollect: () => void }) {
   const t = useT();
   const pending = useChainData((s) => s.pending);
-  const ataExists = useChainData((s) => s.ataExists);
+  const sessions = useChainData((s) => s.sessions);
   const tok = useTokenText();
-  if (pending.length === 0) return null;
-  const total = pending.reduce((s, p) => s + p.payout, 0);
-  // once the account exists, a queued payout is simply on its way
-  const needsAta = payoutsNeedingAta(pending, ataExists).length > 0;
+  const collect = sessionsToCollect(sessions as Record<number, OpenSession | null>);
+  if (pending.length === 0 && collect.length === 0) return null;
+  const action = collect.length > 0;
+  const total = action ? collect.reduce((s, c) => s + c.owed, 0n) : pending.reduce((s, p) => s + BigInt(p.payout), 0n);
   return (
-    <section className={`kl-owed${needsAta ? ' is-action' : ''}`} role={needsAta ? 'alert' : 'status'} aria-labelledby="kl-owed-k">
+    <section className={`kl-owed${action ? ' is-action' : ''}`} role={action ? 'alert' : 'status'} aria-labelledby="kl-owed-k">
       <div className="kl-owed__slip">
         <div className="kl-owed__top">
           <span id="kl-owed-k" className="kl-owed__kicker mono">
@@ -30,12 +30,12 @@ export function PendingBanner({ onCreateAta }: { onCreateAta: () => void }) {
             {tok.fee(total)} <span className="mono">{tok.symbol}</span>
           </span>
         </div>
-        {needsAta ? (
+        {action ? (
           <>
-            <p className="kl-owed__title">{t('lo.pending.ata')}</p>
-            <p className="kl-owed__note">{t('lo.pending.ataNote')}</p>
-            <InkButton variant="pink" size="sm" icon="arrow" onClick={onCreateAta}>
-              {t('lo.pending.cta')}
+            <p className="kl-owed__title">{t('lo.pending.collect')}</p>
+            <p className="kl-owed__note">{t('lo.pending.collectNote')}</p>
+            <InkButton variant="pink" size="sm" icon="arrow" onClick={onCollect}>
+              {t('lo.pending.collectCta')}
             </InkButton>
           </>
         ) : (

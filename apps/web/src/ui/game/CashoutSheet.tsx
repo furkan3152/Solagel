@@ -154,6 +154,11 @@ export function CashoutSheet() {
             )}
           </AnimatePresence>
         </div>
+        {settled?.collect && (
+          <p className="g-cashout__note" role="status">
+            {t('gc.collect')}
+          </p>
+        )}
         <p className="g-cashout__note mono">{t('gc.feeNote')}</p>
       </div>
     </Sheet>
