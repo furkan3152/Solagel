@@ -44,7 +44,8 @@ flowchart LR
   AV -- "fee x burn_bps" --> BURN
   SES -- "settle: deposit" --> SRV
   SES -- "settle / refund: rent" --> P
-  AV -- "refund_session after 24 h: min(entry fee, vault)" --> P
+  AV -- "settle without a token account: owed stays in the vault" --> AV
+  AV -- "refund_session: finalized → min(owed, vault) at once; unsettled → min(entry fee, vault) after 24 h" --> P
   AV -- "sweep_arena: disabled and idle" --> SV
   SV -- "claim_season_reward: top 10" --> P
   TV -- "withdraw_treasury" --> ADM
@@ -108,17 +109,30 @@ Worked example (the player guide shows it as receipts): entry 1 000, cash-out 2 
 On-chain (enforced by the program):
 
 1. **A payout never exceeds the vault.** `settle_session` requires `vault.amount ≥ payout` (`InsufficientPot`);
-   `refund_session` pays `min(entry_fee, vault.amount)`.
+   `refund_session` pays `min(owed, vault.amount)` for a finalized session and `min(entry_fee, vault.amount)` for an
+   unsettled one.
 2. **One open ticket per player per arena**: the Session PDA is `["session", arena, player]`.
 3. **One open ticket per Pass**: `join_arena_with_pass` creates `["pass_lock", asset]`; a second join with the same asset
-   fails, even after a transfer. Settle and refund close it back to the player.
+   fails, even after a transfer. Settle (both paths) and refund close it back to the player.
 4. **No replayed payouts**: `settle_session` requires `session_id == Session.id` (ids come from `Config.total_sessions`,
    PDAs are reused).
 5. **Fees only on profit, bounded and fixed at purchase** (see Fees): `Session.fee_bps` is written by the join and is the
-   only rate `settle_session` uses. The join takes `max_fee_bps` (the rate the player was shown) and fails with
-   `FeeAboveLimit` if the rate it would fix is higher. The burn lowers the mint supply.
+   only rate `settle_session` uses. The join takes what the player was shown and fails rather than charge more:
+   `max_fee_bps` (`FeeAboveLimit`), `max_entry_fee` (`EntryFeeAboveLimit`) and `max_settle_fee`
+   (`SettleFeeAboveLimit`). The burn lowers the mint supply.
 6. **The deposit pays the settler**: a Session holds rent + `settle_fee`; settle moves `settle_fee` to the server and closes
-   the rest to the player; refund returns everything to the player after `SESSION_REFUND_TIMEOUT_SECS` (24 h).
+   the rest to the player (at once, or when a finalized session is collected); the refund of an unsettled session
+   returns everything to the player after `SESSION_REFUND_TIMEOUT_SECS` (24 h).
+6b. **Two-phase settle, no free-roll** (ruling R24): `settle_session` takes the player token account as an optional
+   account. It always applies the game result (fee split, burn, season pool, stats, settle deposit to the server). With
+   the account the player share is paid and the session closes; without it (missing, closed, or refusing the transfer,
+   e.g. a Token-2022 MemoTransfer requirement) the session is kept with `finalized = true` and `owed` = the player share,
+   the Pass lock closes, and `Arena.open_sessions` is **not** decremented, so `sweep_arena` cannot take owed tokens.
+   A finalized session cannot be settled again (`SessionFinalized`), and `refund_session` pays exactly `min(owed,
+   vault)` at once and closes it. A loser who closes their token account therefore gets nothing back: the result is
+   final, and the 24 h entry-fee refund exists only for sessions the server never settled. A new join on that arena
+   fails ("already in use") until the payout is collected; the server refuses to seat a finalized session
+   (`payout_waiting`).
 7. **Season pools**: every transfer into or out of the season vault changes exactly one season's `pool` (settle fee share,
    sweep and rollover add; claims subtract), so the vault balance equals the sum of the pools. `end_season` freezes
    `prize_pool`; rank `r` (0-based) of the top `PRIZE_RANKS` (10) claims `prize_pool × PRIZE_SHARES_BPS[r] / 10 000`
@@ -162,14 +176,22 @@ Off-chain (enforced by the server, covered by tests in `apps/server/test`):
     Before an arena is attached (its first instance created), its vault must hold at least what the journal owes it
     (loot + pending cash-outs + live tickets); otherwise the server keeps it disabled and logs `!!! arena #N KEPT
     DISABLED` (`RoomManager.vaultCovers`, `matchmaking.test.ts`). This catches an arena swept while loot was journaled.
-15. **No server-paid player rent** (ruling R10): a settlement whose player has no token account waits (`needsTokenAccount`
-    in `GET /api/pending`) and is retried every 5 min (`NO_ATA_RETRY_MS`); the player can always self-refund after 24 h.
+15. **No server-paid player rent; settle never waits for the player** (ruling R24, replaces the R10 wait queue): when the
+    player's token account is missing the worker settles at once without it (the session is finalized with `owed`);
+    after `TOKEN_FAILURES_BEFORE_FINALIZE` (3) failures caused by the account itself (owner changed, MemoTransfer, closed
+    between check and send) it does the same. The web shows "Collect payout" (`refund_session` plus an idempotent,
+    player-paid token-account creation, one transaction, no waiting time). The stale sweeper and the arena join skip
+    finalized sessions. On `AccountNotInitialized` / `AccountOwnedByWrongProgram` the worker re-reads the session and
+    drops the item only when the session is gone or re-opened (I2).
+16. **Stale sweeper after a journal quarantine** (M9): while a `journal.json.corrupt-*` file exists, the sweeper stays off
+    until the operator sets `STALE_SWEEP_ACK=1` (or moves the file away): sessions whose real result was in the lost
+    journal must not be refunded at the buy-in.
 
 ## Trust model
 
 | Actor | Can | Cannot |
 |---|---|---|
-| Player | buy and refund tickets (refund after 24 h), mint Passes, claim prizes, edit the profile | settle a ticket, move other players' tokens |
+| Player | buy tickets, collect a finalized payout (any time, exactly `owed`), refund a ticket the server never settled (after 24 h), mint Passes, claim prizes, edit the profile | settle a ticket, undo a settled result (a closed or blocked token account only delays their own payout), move other players' tokens |
 | Server key (`Config.server_authority`) | close any open ticket with any `payout ≤ vault` and any score / kills / XP (clamped) | touch the treasury or season vault, change the config, open tickets, mint |
 | Admin (`Config.admin`) | change fees (≤ 10 %), split, deposit, pause; replace the server key or the admin; create, update, disable and sweep arenas (into the season pool); end and roll over seasons; withdraw the treasury; set the Pass collection (once), seed hash, mint window and (before the mint opens) supply; end the mint; reveal | change the token mint; take an arena vault directly; set a fee above 10 % or change an open ticket's fee; change the supply after the mint opened; reveal a seed that does not match the hash; reopen the mint after it ended |
 | Upgrade authority | replace the program code | (nothing is out of reach) |
@@ -204,11 +226,21 @@ Consequences, stated plainly in the player guide:
   instances `arena-<id>-<n>` hold `ARENA_INSTANCE_CAP` (50) humans; a new instance opens on the same vault when all are
   full. The arena list is re-read from the chain every 30 s.
 - **Settlement worker** (`chain/solana.ts`): drains the journal queue (at most 4 in flight), retries transient failures
-  with backoff (up to 5 min), drops permanent ones (`SessionMismatch`, closed session), and every 5 min queues a refund at
-  the entry fee for tickets nobody played for 15 min (`STALE_SESSION_AFTER_S`). It warns when the server key holds less
-  than 0.05 SOL.
+  with backoff (up to 5 min), drops permanent ones (`SessionMismatch`, `SessionFinalized`, a session that is really
+  gone), settles without the player's token account when it is missing or keeps refusing (R24), and every 5 min queues a
+  refund at the entry fee for tickets nobody played for 15 min (`STALE_SESSION_AFTER_S`; never finalized sessions, and
+  not at all after a journal quarantine until `STALE_SWEEP_ACK=1`). It warns when the server key holds less than
+  0.05 SOL.
 - **Pass endpoints** (`http.ts`): `GET /pass/<n>.json`, `/pass/<n>.png`, `/pass/collection.json`, `/pass/collection.png`
   (sealed before the reveal, images cached under `DATA_DIR/pass/`), `GET /api/pass/owned?wallet=`, rate limited.
 - **Other REST**: `/api/health`, `/api/rooms`, `/api/leaderboard`, `/api/season`, `/api/config`, `/api/auth/nonce`,
-  `/api/pending?wallet=`. With `WEB_DIST` the server also serves the web build and falls back to `index.html` for client
-  routes such as `/docs`.
+  `/api/pending?wallet=` (settlements the server is still sending; finalized sessions to collect are read from the chain by
+  the web). With `WEB_DIST` the server also serves the web build and falls back to `index.html` for client routes such
+  as `/docs`.
+- **Wallet sign-in (SIWS)**: `/api/auth/nonce` returns the message and its fields; the domain is the `PUBLIC_URL` host
+  (else the request host), with `URI:` and `Chain ID: solana:<cluster>` lines. The server checks every line against the
+  issued nonce; the web rebuilds the message from the fields and signs only that, and only for its own host or the game
+  server's. Outstanding nonces are capped (`MAX_NONCES`, oldest evicted).
+- **Pass power disclosure** (I3): `welcome.chain.passPower` / `/api/config` publish the `PASS_START_MASS_MUL` and
+  `PASS_CASHOUT_MS` the server applies; the ticket sheet, Pass page, guide and the cash-out countdown use them
+  (`RULES` only as the fallback for older servers).

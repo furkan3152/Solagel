@@ -23,7 +23,10 @@ tohumu ve özelliklerin türediği son tohum).
 
 - `GET /api/health`: `ok`, çalışma süresi, çevrimiçi oyuncu, oda sayısı (Docker sağlık kontrolü bunu kullanır).
 - `GET /api/rooms`: odalar, örnekler, insan ve bot sayıları, yerdeki ganimet.
-- `GET /api/pending?wallet=<adres>`: bir cüzdana borçlu ödemeler; `needsTokenAccount: true` = oyuncunun token hesabı yok.
+- `GET /api/pending?wallet=<adres>`: sunucunun bir cüzdan için hâlâ gönderdiği ödemeler. Token hesabı olmayan (ya da
+  ödemeyi reddeden) oyuncunun oyunu artık beklemez (R24): sunucu hesabı vermeden sonuçlandırır, oturum `finalized` olur
+  ve `owed` tutarı kasada kalır; günlükte `finalized … (to collect)` yazar. Oyuncu bunu web'deki "Ödemeni al" ile, bekleme
+  süresi olmadan alır. `status` çıktısında bu oturumlar açık sayılır (kasa süpürülemez).
 - Sunucu günlüğünde `!!!` ile başlayan satırlar müdahale ister (ör. okunamayan journal, kasası yetmeyen arena). Sunucu
   anahtarı ◎0,05'in altına düşünce uyarı yazar.
 
@@ -129,7 +132,9 @@ kullanın (Docker `stop` SIGTERM gönderir).
 
 1. `pnpm admin update-arena --id N --enabled false`
 2. Açık biletlerin kapanmasını bekleyin: `status` → `open 0/…`. Sunucu biletleri en geç 6 saatte otomatik cash-out yapar;
-   kapanmayanlar oyuncu tarafından 24 saat sonra iade alınabilir.
+   kapanmayanlar oyuncu tarafından 24 saat sonra iade alınabilir. Sonuçlanmış ama ödemesi alınmamış (`finalized`)
+   oturumlar da açık sayılır: oyuncu "Ödemeni al" diyene kadar `sweep` reddedilir (`ArenaHasOpenSessions`); bu tutar
+   oyuncunundur, beklemek gerekir.
 3. `/api/rooms`'ta o arenanın odalarında ganimet kalmadığından ve `GET /api/pending` / sunucu günlüğünde o arenaya ait
    bekleyen ödeme olmadığından emin olun (CLI sunucunun journal'ını göremez).
 4. ```bash
@@ -170,7 +175,7 @@ upgrade authority için `solana program set-upgrade-authority`.
 
 | Dosya | İçerik | Kaybolursa |
 |---|---|---|
-| `journal.json` | bekleyen ödemeler, arenalardaki canlı değerler, odalardaki ganimet | **borçlu ödemeler kuyruktan düşer** (oyuncular yalnızca 24 saat sonra giriş bedelini iade alabilir) |
+| `journal.json` | bekleyen ödemeler, arenalardaki canlı değerler, odalardaki ganimet | **borçlu ödemeler kuyruktan düşer** (oyuncular yalnızca 24 saat sonra giriş bedelini iade alabilir); bayat bilet süpürücüsü `STALE_SWEEP_ACK=1` olana kadar kapalı kalır |
 | `leaderboards.json` | sunucunun Bugün / Tüm zamanlar tabloları | yalnızca görünüm |
 | `pass/` | Pass PNG önbelleği | yeniden üretilir |
 | `*.dev-fake.json` | `DEV_FAKE_CHAIN` dosyaları | gerçek parayla ilgisi yok |
@@ -180,6 +185,11 @@ upgrade authority için `solana program set-upgrade-authority`.
   bir volume'dan) ve yedekleri şifreli saklayın (cüzdan adresleri içerir).
 - Okunamayan bir journal `journal.json.corrupt-<zaman>` olarak kenara alınır ve sunucu boş başlar; günlükte `!!!` uyarısı
   çıkar. Sunucuyu durdurup son sağlam yedeği geri koyun.
+- **Karantinadan sonra bayat bilet süpürücüsü kapalıdır (M9).** `DATA_DIR`'da `journal.json.corrupt-*` dosyası varken
+  sunucu oynanmamış görünen biletleri giriş bedelinden iade etmez: kaybolan journal'da o biletlerin gerçek sonucu
+  (ör. kazanılmış bir cash-out) olabilir. Günlükte 30 dakikada bir `!!! chain: stale-session sweeper is OFF` yazar.
+  Karantinadaki dosyayı inceleyin, borçlu ödemeleri elle sonuçlandırın (ya da sağlam yedeği geri koyun), sonra
+  `STALE_SWEEP_ACK=1` ile yeniden başlatın ya da dosyayı `DATA_DIR` dışına taşıyın.
 - Geri yükleme: sunucuyu durdurun, dosyayı `DATA_DIR/journal.json` olarak koyun, başlatın. Zaten ödenmiş ya da iade
   edilmiş biletlerin kayıtları kendiliğinden düşer (oturum kapalı ya da `SessionMismatch`); eski görüntüdeki canlı
   biletler otomatik cash-out'a alınır. Eski bir yedek, o tarihten sonra toplanmış ganimeti geri getirebilir: mümkün olan
