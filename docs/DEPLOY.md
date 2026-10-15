@@ -61,9 +61,10 @@ Repodaki `declare_id!` geliştirme sırasında üretilmiş bir adrestir. **Kendi
 ```bash
 solana-keygen new -o target/deploy/slana-keypair.json   # bu dosyayı güvenle yedekleyin
 anchor keys sync                                        # declare_id! ve Anchor.toml güncellenir
-anchor build                                            # target/deploy/slana.so + IDL
+anchor build                                            # Anchor reference (never deployed): IDL + target/deploy/slana.so
 pnpm -F @slana/sdk sync-idl                             # IDL'i SDK'ya kopyalar (istemci, sunucu ve admin bunu kullanır)
-cargo test -p slana                                     # LiteSVM testleri (adım 1'deki Core .so gerekir)
+scripts/build-lean.sh                                   # deployed program: target/deploy/slana_lean.so
+scripts/test-program.sh                                 # LiteSVM suite against both builds (needs the Core .so from step 1)
 ```
 
 ## 3. Anahtarlar
@@ -87,7 +88,7 @@ solana-keygen new -o keys/server.json --no-bip39-passphrase
 ```bash
 solana config set --url devnet
 solana airdrop 5                                  # gerekirse https://faucet.solana.com
-anchor deploy --provider.cluster devnet           # ya da: solana program deploy target/deploy/slana.so --program-id target/deploy/slana-keypair.json
+solana program deploy target/deploy/slana_lean.so --program-id target/deploy/slana-keypair.json   # never `anchor deploy` (it deploys the reference)
 solana transfer $(solana-keygen pubkey keys/server.json) 0.5 --allow-unfunded-recipient
 ```
 

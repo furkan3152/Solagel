@@ -7,7 +7,7 @@
  *
  * Run it after every `anchor build` (pnpm -F @slana/sdk sync-idl).
  *
- * Program address: the IDL carries the address from `declare_id!` in programs/slana/src/lib.rs.
+ * Program address: the IDL carries the address from `declare_id!` in programs/slana-ref/src/lib.rs.
  * `anchor keys sync` rewrites `declare_id!` and Anchor.toml to match target/deploy/slana-keypair.json,
  * which CHANGES the program address; after it you must `anchor build` again and re-run this script,
  * otherwise the SDK (PROGRAM_ID, PDAs) points at the old program. This script warns when the IDL

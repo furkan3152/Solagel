@@ -15,8 +15,8 @@
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
-    "program:build": "anchor build",
-    "program:test": "anchor build && cargo test -p slana",
+    "program:build": "anchor build --ignore-keys && scripts/build-lean.sh",
+    "program:test": "scripts/test-program.sh",
     "admin": "pnpm -F @slana/sdk admin",
     "pass:generate": "pnpm -F @slana/art pass:generate",
     "pass:preview": "pnpm -F @slana/art pass:preview"
