@@ -1,6 +1,8 @@
 import { TOKEN_PROGRAM_ID, type ConfigView, type OwnedPass, type ProfileView, type SessionView } from '@slana/sdk';
 import type { ChainStatus, PassStatus } from '@slana/shared';
-import type { SeasonInfo } from './chain';
+import { SERVER } from '../config';
+import { useUi } from '../store';
+import { refreshChain, type SeasonInfo } from './chain';
 import { DEV_FAKE_PROGRAM_ID } from './devFakeLoader';
 import type { TicketStep } from './ticket';
 
@@ -27,7 +29,7 @@ export interface FakeWallet {
   delayMs: number;
   /** Next "transaction" fails with this SDK error name (e.g. `PassInUse`), then clears. */
   failNext: string | null;
-  /** Passes in the wallet; null = the server's dev-fake answer (one revealed Pass per wallet). */
+  /** Passes in the wallet; null = the server's dev-fake answer (what this wallet minted there, or one revealed Pass with `DEV_FAKE_PASS=revealed`). */
   passes: OwnedPass[] | null;
   /** Passes this wallet minted (its `MintCounter`). */
   minted: number;
@@ -184,6 +186,7 @@ export async function fakeSimpleTx(onPhase: (p: 'signing' | 'confirming') => voi
 export async function fakeMintPass(
   chain: ChainStatus,
   current: OwnedPass[],
+  owner: string | null,
   onPhase: (p: 'signing' | 'confirming', sig?: string) => void,
 ): Promise<{ ok: true; signature: string; pass: OwnedPass } | { ok: false; name: string }> {
   onPhase('signing');
@@ -196,11 +199,44 @@ export async function fakeMintPass(
   const signature = `DevFakeSig${Date.now().toString(36)}`;
   onPhase('confirming', signature);
   await sleep(fakeWallet.delayMs);
+  // the server's fake chain records the mint, so its owned-Pass list, Pass arenas and reveal follow it
+  const server = owner ? await serverMint(owner) : null;
+  if (server && !server.ok) return { ok: false, name: server.error };
+  fakeWallet.minted++;
+  if (server?.ok) return { ok: true, signature, pass: server.pass };
+  // an older server without the dev mint route: keep the mint on this page only
   const status = fakePassStatus(chain);
   const number = (status?.minted ?? 0) + 1;
   extraMinted++;
-  fakeWallet.minted++;
   const pass: OwnedPass = { asset: `DevMintedPass${number}`, number };
   fakeWallet.passes = [...(fakeWallet.passes ?? current), pass];
   return { ok: true, signature, pass };
+}
+
+async function serverMint(owner: string): Promise<{ ok: true; pass: OwnedPass } | { ok: false; error: string } | null> {
+  try {
+    const res = await fetch(`${SERVER.http}/api/dev/pass/mint?wallet=${owner}`, { method: 'POST' });
+    if (res.status === 404) return null;
+    return (await res.json()) as { ok: true; pass: OwnedPass } | { ok: false; error: string };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * DEV ONLY: publishes the fake collection's seed (the reveal) on the server and
+ * here. From the console: `__slanaChain.revealPasses()`.
+ */
+export async function fakeRevealPasses(): Promise<PassStatus | null> {
+  try {
+    const res = await fetch(`${SERVER.http}/api/dev/pass/reveal`, { method: 'POST' });
+    if (!res.ok) return null;
+    const { pass } = (await res.json()) as { pass: PassStatus };
+    const chain = useUi.getState().chain;
+    if (chain) useUi.setState({ chain: { ...chain, pass } });
+    refreshChain();
+    return pass;
+  } catch {
+    return null;
+  }
 }

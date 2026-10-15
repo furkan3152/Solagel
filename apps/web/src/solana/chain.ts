@@ -1,6 +1,6 @@
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { SlanaClient, ata, fetchTokenBalance, pdas, type ArenaView, type ConfigView, type OwnedPass, type ProfileView, type SessionView } from '@slana/sdk';
-import type { PassStatus } from '@slana/shared';
+import type { ChainStatus, PassStatus } from '@slana/shared';
 import { useCallback, useEffect, useMemo } from 'react';
 import { create } from 'zustand';
 import { SERVER } from '../config';
@@ -190,11 +190,15 @@ export function useChainSync(): void {
       const { fakeConfig, fakeWallet, fakePassStatus, fakeSeason } = dev;
       const wallet = owner ? await serverWalletData(owner) : { passes: [], pending: [] };
       if (owner && fakeWallet.passes) wallet.passes = [...fakeWallet.passes];
-      const passStatus = fakePassStatus(chain);
+      // the fake collection changes under us (mints, the dev reveal): its state comes with every refresh
+      const fresh = (await getJson<{ chain?: ChainStatus }>('/api/config'))?.chain?.pass;
+      // (read locally: writing it to the store would re-key this hook and reset the wallet data)
+      const live = fresh ? { ...chain, pass: fresh } : chain;
+      const passStatus = fakePassStatus(live);
       set({
         deployed: true,
         fake: true,
-        config: fakeConfig(chain, passStatus),
+        config: fakeConfig(live, passStatus),
         passStatus,
         mintedByMe: owner ? fakeWallet.minted : null,
         arenas: [],
@@ -360,6 +364,6 @@ export function freePasses(d: Pick<ChainData, 'passes' | 'lockedPasses'>): Owned
 if (import.meta.env.DEV && typeof window !== 'undefined') {
   void loadDevFake().then((dev) => {
     const w = window as unknown as { __slanaChain?: unknown };
-    w.__slanaChain = { useChainData, fakeWallet: dev?.fakeWallet, refresh: () => refreshNow() };
+    w.__slanaChain = { useChainData, fakeWallet: dev?.fakeWallet, refresh: () => refreshNow(), revealPasses: dev?.fakeRevealPasses };
   });
 }

@@ -264,6 +264,7 @@ chain (practice only).
 | `STALE_SESSION_AFTER_S` | `900` | wait (s) before refunding a ticket that was never played; shorter values are for tests only (localnet e2e: `5`) |
 | `STALE_SWEEP_ACK` | empty | `1`: a quarantined journal (`journal.json.corrupt-*`) has been inspected and the stale-ticket sweeper may run again (see OPERATIONS) |
 | `DEV_FAKE_CHAIN` | empty | **development only**: needs `NODE_ENV=development`, refuses to start while `PROGRAM_ID`/`SERVER_KEYPAIR` is set |
+| `DEV_FAKE_PASS` | `mint` | with `DEV_FAKE_CHAIN` only: `mint` (open, unrevealed mint; `POST /api/dev/pass/reveal` reveals) or `revealed` (every wallet has a revealed Pass) |
 
 The server key pays the fee of the payout transactions; every ticket pays it back with the `settle_fee_lamports`
 deposit. The server **never** pays the rent of players' token accounts: the game of a player without an account (or
