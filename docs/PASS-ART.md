@@ -20,7 +20,9 @@ The order is fixed by the program (ruling R23):
 
 Nobody, the team included, can know a number's traits while it can still be minted, and once the seed is public
 everybody learns the outcome at the same moment. Letting the SlotHashes window pass without a capture would re-target,
-but anyone (the game server, the web Pass page, any holder) can capture first.
+but anyone (the game server, the web Pass page, any holder) can capture first. Since the leader schedule is public, the
+timing of the reveal (or of a re-target) selects which leader produces the target slot, and a colluding leader could
+grind or skip that slot: the same class of risk as any Solana leader's influence on its slot's bank hash.
 
 ## Traits and rarity
 

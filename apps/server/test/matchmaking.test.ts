@@ -220,6 +220,51 @@ describe('matchmaking', () => {
     expect(logs.some((l) => /arena #1: vault .* now covers the journal/.test(l))).toBe(true);
   });
 
+  it('R20: disable → sweep → re-enable between two refreshes is still caught (every arena, every refresh)', async () => {
+    const journal = new Journal(null);
+    const logs: string[] = [];
+    const chain = new ArenaChain([{ ...arena(1, FEE), pot: 0 }]);
+    const cfg = loadConfig({ DATA_DIR: mkdtempSync(join(tmpdir(), 'slana-mm-')) });
+    const m = new RoomManager(cfg, { ...roomDeps(chain, journal), log: (l) => logs.push(l) }, chain);
+    const a1 = (await m.arenaRoom(1))!;
+    spillStaker(a1, FEE);
+    chain.arenas[0] = { ...chain.arenas[0], pot: FEE };
+    (m as unknown as { arenaCache: unknown }).arenaCache = null;
+    await m.ensureArenaRooms();
+    expect(m.blockedArenas()).toEqual([]);
+    // the whole sequence happens inside one 30 s window: the next read sees "enabled" again,
+    // only the vault (0) betrays the sweep
+    chain.arenas[0] = { ...chain.arenas[0], pot: 0 };
+    let freshReads = 0;
+    const list = chain.listArenas.bind(chain);
+    chain.listArenas = async (fresh?: boolean) => {
+      if (fresh) freshReads++;
+      return list();
+    };
+    (m as unknown as { arenaCache: unknown }).arenaCache = null;
+    await m.ensureArenaRooms();
+    // an enabled arena's shortfall is confirmed with a fresh read, then blocked
+    expect(freshReads).toBe(1);
+    expect(m.blockedArenas()).toEqual([{ arenaId: 1, reason: 'vault_short' }]);
+    expect(await m.arenaRoom(1)).toBeNull();
+    expect(logs.filter((l) => /arena #1 KEPT DISABLED/.test(l))).toHaveLength(1);
+  });
+
+  it('R20: a stale (cached) pot of a running arena is not blocked when the fresh read covers it', async () => {
+    const journal = new Journal(null);
+    const chain = new ArenaChain([{ ...arena(1, FEE), pot: 0 }]);
+    const cfg = loadConfig({ DATA_DIR: mkdtempSync(join(tmpdir(), 'slana-mm-')) });
+    const m = new RoomManager(cfg, { ...roomDeps(chain, journal), log: () => {} }, chain);
+    const a1 = (await m.arenaRoom(1))!;
+    spillStaker(a1, FEE);
+    // the cached read trails a join the journal already counts; the fresh read has it
+    chain.listArenas = async (fresh?: boolean) => [{ ...arena(1, FEE), pot: fresh ? FEE : 0 }];
+    (m as unknown as { arenaCache: unknown }).arenaCache = null;
+    await m.ensureArenaRooms();
+    expect(m.blockedArenas()).toEqual([]);
+    expect(await m.arenaRoom(1)).toBe(a1);
+  });
+
   it('R20: a disabled → enabled flip is re-checked even without a sweep in between', async () => {
     const journal = new Journal(null);
     journal.commit({ loot: { roomId: 'arena-1-1', arenaId: 1, items: [{ x: 1, y: 1, value: 2 * FEE }] } });
