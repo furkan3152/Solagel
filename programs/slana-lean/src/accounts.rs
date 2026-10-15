@@ -24,8 +24,8 @@ use {
             err, ACCOUNT_DID_NOT_DESERIALIZE, ACCOUNT_DISCRIMINATOR_MISMATCH,
             ACCOUNT_DISCRIMINATOR_NOT_FOUND, ACCOUNT_NOT_ENOUGH_KEYS, ACCOUNT_NOT_INITIALIZED,
             ACCOUNT_NOT_PROGRAM_DATA, ACCOUNT_NOT_SIGNER, ACCOUNT_OWNED_BY_WRONG_PROGRAM,
-            CONSTRAINT_MUT, CONSTRAINT_SEEDS, INVALID_PROGRAM_EXECUTABLE, INVALID_PROGRAM_ID,
-            TRYING_TO_INIT_PAYER_AS_PROGRAM_ACCOUNT,
+            CONSTRAINT_CLOSE, CONSTRAINT_MUT, CONSTRAINT_SEEDS, INVALID_PROGRAM_EXECUTABLE,
+            INVALID_PROGRAM_ID, TRYING_TO_INIT_PAYER_AS_PROGRAM_ACCOUNT,
         },
         ID,
     },
@@ -217,7 +217,8 @@ fn check_kinds(accounts: &[AccountView], kinds: &[u8]) -> Result {
                 program_data_authority(acc)?;
             }
             _ => {
-                let Some((disc, space)) = PROGRAM_ACCOUNTS.get(usize::from(k - kind::CONFIG))
+                let Some((disc, space)) =
+                    PROGRAM_ACCOUNTS.get(usize::from(k.wrapping_sub(kind::CONFIG)))
                 else {
                     return Err(Error::INVALID_ARGUMENT);
                 };
@@ -341,6 +342,9 @@ pub fn check_canonical_pda(acc: &AccountView, seeds: &[Seed], program: &Address)
 /// `Rent::get()?.minimum_balance(space)` (solana-rent 4.x: exemption threshold 1.0 or 2.0,
 /// no floating point).
 #[inline(never)]
+// Bound: at most 10 MiB + 128 bytes times the cluster's per-byte rate (3,480) times 2, far
+// below u64::MAX (solana-rent computes the same product).
+#[allow(clippy::arithmetic_side_effects)]
 pub fn rent_minimum(space: usize) -> Result<u64> {
     /// `2.0f64.to_bits()`.
     const THRESHOLD_TWO: u64 = 0x4000_0000_0000_0000;
@@ -355,7 +359,6 @@ pub fn rent_minimum(space: usize) -> Result<u64> {
     } else {
         1
     };
-    // At most 10 MiB of data times the cluster's per-byte rate: this cannot overflow.
     Ok((space as u64 + 128) * per_byte * factor)
 }
 
@@ -399,8 +402,20 @@ pub fn init_pda(
 /// Anchor's `close = dest`: every lamport moves to `dest`, then the account is handed back
 /// to the system program with no data (owner, lamports and length zeroed), so it cannot be
 /// revived later in the same transaction.
+///
+/// Guards (each unreachable through the handlers, which check them earlier with Anchor's
+/// codes; they keep the helper sound on its own): `acc` and `dest` differ (`ConstraintClose`,
+/// as Anchor's `close` constraint), `acc` is writable (`ConstraintMut`) and owned by this
+/// program (`AccountOwnedByWrongProgram`).
 #[inline(never)]
 pub fn close(acc: &AccountView, dest: &AccountView) -> Result {
+    if keq(acc.address().as_array(), dest.address().as_array()) {
+        return Err(err(CONSTRAINT_CLOSE));
+    }
+    check_writable(acc)?;
+    if !acc.owned_by(&ID) {
+        return Err(err(ACCOUNT_OWNED_BY_WRONG_PROGRAM));
+    }
     let total = dest
         .lamports()
         .checked_add(acc.lamports())
