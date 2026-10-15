@@ -1,7 +1,7 @@
 //! Anchor instruction discriminators: `sha256("global:<name>")[..8]`.
 //!
 //! These must equal the reference's `slana::instruction::<Name>::DISCRIMINATOR`; the
-//! `discriminators` test in `programs/slana-ref/tests` checks both the hash and the reference.
+//! unit tests in this file check them against the hash, the reference and the IDL.
 
 pub const INITIALIZE: [u8; 8] = [175, 175, 109, 31, 13, 152, 155, 237];
 pub const UPDATE_CONFIG: [u8; 8] = [29, 158, 252, 191, 10, 83, 219, 99];
