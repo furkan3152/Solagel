@@ -1,11 +1,14 @@
-import { InkButton, Sheet, Stamp } from '../../design';
+import { DUR, InkButton, Sheet, Stamp, useReducedMotion } from '../../design';
 import { engine } from '../../game/instance';
 import { sound } from '../../game/sound';
 import { useT } from '../../i18n';
 import { requestTicket, useUi } from '../../store';
 import { CoinPortrait } from './CoinPortrait';
 import { formatClock, roomName, useTokenFormat } from './format';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+
+/** The EATEN sheet waits for the death slow motion (ms). */
+export const DEATH_SHEET_DELAY_MS = Math.round((DUR.slowmo + 0.12) * 1000);
 
 /**
  * Death: an "EATEN" verdict stamp, who ate us (or the bot line: our tokens
@@ -19,7 +22,22 @@ export function DeathSheet() {
   const room = useUi((s) => s.room);
   const me = useUi((s) => s.me);
   const signedIn = useUi((s) => s.auth !== null);
-  const open = useUi((s) => s.screen === 'dead' && s.death !== null);
+  const dead = useUi((s) => s.screen === 'dead' && s.death !== null);
+  const reduced = useReducedMotion();
+  // the world slows down over the ink splash first; the verdict comes after that beat
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!dead) {
+      setOpen(false);
+      return;
+    }
+    if (reduced) {
+      setOpen(true);
+      return;
+    }
+    const id = setTimeout(() => setOpen(true), DEATH_SHEET_DELAY_MS);
+    return () => clearTimeout(id);
+  }, [dead, reduced]);
 
   useEffect(() => {
     if (!open) return;

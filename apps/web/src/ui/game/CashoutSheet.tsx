@@ -1,5 +1,5 @@
-import { AnimatePresence, motion } from 'motion/react';
-import { useEffect, useState } from 'react';
+import { AnimatePresence, motion, type TargetAndTransition } from 'motion/react';
+import { useEffect, useMemo, useState } from 'react';
 import { Icon, InkButton, Receipt, Sheet, Stamp, useReducedMotion, type ReceiptLine } from '../../design';
 import { engine } from '../../game/instance';
 import { sound } from '../../game/sound';
@@ -53,6 +53,9 @@ export function CashoutSheet() {
     engine()?.backToLobby();
   };
   const reduced = useReducedMotion();
+  // the receipt slips out of the till's printer and grows into this sheet. Read while the
+  // HUD of the finished game is still on screen (this render precedes its removal).
+  const fromPrinter = useMemo(() => (open ? receiptOrigin() : null), [open]);
   const [since, setSince] = useState(() => Date.now());
   const [printed, setPrinted] = useState(false);
 
@@ -123,6 +126,7 @@ export function CashoutSheet() {
       kicker={t('gc.kicker', { room: roomName(room) })}
       title={t('gc.title')}
       className="g-sheet g-cashout"
+      enterFrom={fromPrinter}
       footer={
         <>
           <InkButton variant="pink" size="lg" icon="ticket" onClick={newTicket} data-autofocus>
@@ -162,4 +166,31 @@ export function CashoutSheet() {
       </div>
     </Sheet>
   );
+}
+
+/**
+ * Start of the receipt's flight: the cash-out printer's slip (desktop), the
+ * phone's cash-out button, or the till. A strip at that spot, as a motion
+ * target relative to where the sheet settles (centred, or a bottom sheet).
+ */
+function receiptOrigin(): TargetAndTransition | null {
+  if (typeof document === 'undefined') return null;
+  const el = document.querySelector('.g-cash__printer') ?? document.querySelector('.g-touch__btn.is-cash') ?? document.querySelector('.g-till');
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  if (r.width === 0 && r.height === 0) return null;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const bottom = window.matchMedia?.('(max-width: 639px)').matches === true;
+  const cx = r.left + r.width / 2;
+  const cy = r.top + r.height / 2;
+  return {
+    x: cx - vw / 2,
+    y: bottom ? cy - vh * 0.62 : cy - vh / 2,
+    scaleX: 0.24,
+    scaleY: 0.08,
+    rotate: -4,
+    opacity: 1,
+    '--lift': 0,
+  };
 }

@@ -19,6 +19,7 @@ export function TicketList({
   value,
   onChange,
   onActivate,
+  punched = null,
 }: {
   tickets: TicketModel[];
   gates: Record<string, TicketGate>;
@@ -28,6 +29,8 @@ export function TicketList({
   onChange: (key: TicketKey) => void;
   /** Double click / Enter on the selected ticket: same as the CTA. */
   onActivate: () => void;
+  /** The ticket the conductor just punched (on the way into its room). */
+  punched?: TicketKey | null;
 }) {
   const t = useT();
   const config = useChainData((s) => s.config);
@@ -73,6 +76,7 @@ export function TicketList({
               value={tk.key}
               stamp={tk.requiresPass ? t('lo.passStamp') : undefined}
               disabled={closed}
+              punched={punched === tk.key}
               onDoubleClick={onActivate}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && value === tk.key) {

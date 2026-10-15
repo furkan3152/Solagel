@@ -1,7 +1,8 @@
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { BASIC_SKINS, MAX_NAME_LENGTH, isBasicSkin, sanitizeName, shortAddress, utf8Length } from '@slana/shared';
 import { useEffect, useId, useRef, useState } from 'react';
-import { Field, Icon, InkButton, Stamp } from '../../design';
+import { motion } from 'motion/react';
+import { Field, Icon, InkButton, Stamp, staggerIn, useReducedMotion } from '../../design';
 import { levelProgress } from '../../game/engine';
 import { sound } from '../../game/sound';
 import { useT } from '../../i18n';
@@ -265,6 +266,7 @@ function NameAndCoin() {
 
 function Record() {
   const t = useT();
+  const reduced = useReducedMotion();
   const profile = useChainData((s) => s.profile);
   const currentSeason = useChainData((s) => s.config?.currentSeason ?? null);
   const tok = useTokenText();
@@ -296,11 +298,11 @@ function Record() {
         {t('pf.record')}
       </h3>
       <dl className="pf-stats">
-        {stats.map(([k, v]) => (
-          <div key={k}>
+        {stats.map(([k, v], i) => (
+          <motion.div key={k} {...staggerIn(i, reduced)}>
             <dt className="mono">{k}</dt>
             <dd>{v}</dd>
-          </div>
+          </motion.div>
         ))}
       </dl>
     </section>

@@ -4,7 +4,7 @@ import { shortAddress, type MarketUrls, type PassStatus } from '@slana/shared';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { Chip, Counter, Icon, InkButton, Passport, Stamp, springs, useReducedMotion } from '../../design';
+import { Chip, Counter, Icon, InkButton, Passport, Stamp, StampSpinner, springs, useReducedMotion } from '../../design';
 import { sound } from '../../game/sound';
 import { useT } from '../../i18n';
 import { usePassPower, usePassStatus, useChainData } from '../../solana/chain';
@@ -405,7 +405,10 @@ function MintButton({ gate, onMint }: { gate: MintGate; onMint: () => void }) {
     case 'loading':
       return (
         <InkButton variant="pink" size="lg" disabled block>
-          {t('ap.g.loading')}
+          <span className="kb-wait">
+            <StampSpinner size="sm" />
+            {t('ap.g.loading')}
+          </span>
         </InkButton>
       );
     default:

@@ -1,5 +1,6 @@
 import { CARD_PAPER, INK, RISO, type CoinLook } from '@slana/art';
 import { CellFlag, EntityKind, PlayerFlag, type PassStatus } from '@slana/shared';
+import { DROP_LAND, dropScale } from '../design/curves';
 import type { Camera } from '../game/camera';
 import type { Particles } from '../game/particles';
 import type { CEntity, ClientWorld } from '../game/state';
@@ -87,6 +88,8 @@ export interface FrameInput {
   cashout: { until: number; total: number } | null;
   coinRain: boolean;
   rand: () => number;
+  /** My coin dropping onto the paper (join / respawn): progress 0…1, null when landed. */
+  drop?: number | null;
 }
 
 interface RainCoin {
@@ -452,7 +455,19 @@ export class Renderer {
     }
 
     const spawnPop = Math.min(1, (f.now - e.born) / 180);
-    const r = e.r * (0.6 + 0.4 * spawnPop);
+    const dropping = mine && f.drop != null;
+    const r = e.r * (dropping ? dropScale(f.drop!) : 0.6 + 0.4 * spawnPop);
+    if (dropping && f.drop! < DROP_LAND) {
+      // its shadow on the paper: small and soft while high, gathering under it as it lands
+      const h = 1 - f.drop! / DROP_LAND;
+      ctx.save();
+      ctx.globalAlpha = 0.22 * (1 - h * 0.6);
+      ctx.fillStyle = INK;
+      ctx.beginPath();
+      ctx.ellipse(e.x + e.r * 0.5 * h, e.y + e.r * 0.7 * h, e.r * (1 - 0.15 * h), e.r * (0.92 - 0.2 * h), 0, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+    }
     const look = this.lookFor(player?.skin ?? 0, player?.pass ?? 0, f.pass);
     drawCoinLook(ctx, e.x, e.y, r, look, {
       time: f.reduced ? 0 : f.now,

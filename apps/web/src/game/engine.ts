@@ -1,4 +1,4 @@
-import { RISO } from '@slana/art';
+import { INK, RISO } from '@slana/art';
 import {
   PowerUpType,
   clamp,
@@ -12,6 +12,7 @@ import {
   type SnapshotData,
 } from '@slana/shared';
 import { SERVER } from '../config';
+import { DROP_LAND, DUR, SLOWMO_TOTAL, slowmoScale } from '../design/curves';
 import { t } from '../i18n';
 import { Renderer } from '../render/renderer';
 import { FOOD_COLORS } from '../render/sprites';
@@ -53,6 +54,10 @@ export class GameEngine {
   /** Arena id of the stake room we were in (reclaimed after a reconnect). */
   private wasArena: number | null = null;
   private reduced = false;
+  /** My coin dropping onto the paper after a join / respawn (performance.now() start). */
+  private drop: { at: number; rung: boolean } | null = null;
+  /** Death slow motion start (performance.now()), renderer time only. */
+  private slowmoAt = -Infinity;
   private readonly unsub: () => void;
   private readonly reducedQuery: MediaQueryList | null;
 
@@ -312,6 +317,15 @@ export class GameEngine {
       }
       case 'joined': {
         if (this.world.myPid !== m.playerId) this.snapNext = true;
+        const from = useUi.getState().screen;
+        if (!this.reduced) {
+          // the coin drops onto the paper; out of the lobby the camera also falls into the world
+          const fromPaper = from === 'lobby' || from === 'spectating';
+          // out of the lobby the drop waits until the paper wipe has opened over it
+          this.drop = { at: now + (fromPaper ? DUR.dropDelay * 1000 : 0), rung: false };
+          this.camera.zoomIntro(fromPaper ? DUR.zoomIn : 0);
+        }
+        this.slowmoAt = -Infinity;
         this.world.myPid = m.playerId;
         this.world.width = m.room.width;
         this.world.height = m.room.height;
@@ -379,6 +393,9 @@ export class GameEngine {
       case 'death': {
         const me = this.world.myStats();
         if (me) {
+          // an ink splash where the coin was, then the world slows for a beat (renderer only)
+          this.particles.splat(me.x, me.y, INK, Math.max(26, me.maxR * 0.7));
+          if (!this.reduced) this.slowmoAt = now;
           this.particles.scraps(me.x, me.y, Math.max(60, me.maxR), 34);
           // a bot ate a staker: the tokens spill onto the map
           if (m.stats.byBot && (m.stats.lootSpilled ?? 0) > 0) this.particles.coinBurst(me.x, me.y, Math.max(60, me.maxR), 22);
@@ -583,6 +600,13 @@ export class GameEngine {
     const ui = useUi.getState();
     const world = this.world;
 
+    // death slow motion: the renderer's own clocks (particles, jelly, camera) run slow; the
+    // world keeps the server's pace
+    const sinceDeath = (now - this.slowmoAt) / 1000;
+    const ts = sinceDeath < SLOWMO_TOTAL ? slowmoScale(sinceDeath) : 1;
+    const rdt = dt * ts;
+    this.camera.push = 1 + 0.1 * ((1 - ts) / 0.7);
+
     world.update(now, dt);
     if (now - this.lastExpr > 150) {
       this.lastExpr = now;
@@ -590,7 +614,7 @@ export class GameEngine {
     }
     this.handleEats();
     this.handleFloats();
-    this.particles.update(dt);
+    this.particles.update(rdt);
 
     // camera
     const me = world.myStats();
@@ -602,18 +626,27 @@ export class GameEngine {
       short = Math.max(short, aspect >= 1 ? Math.max(bh, bw / aspect) : Math.max(bw, bh * aspect));
       this.camera.follow(me.x, me.y, short, dt, this.snapNext);
       this.snapNext = false;
+      if (this.drop && !this.drop.rung && (now - this.drop.at) / (DUR.drop * 1000) >= DROP_LAND) {
+        // the coin lands: an ink ring goes off on the paper
+        this.drop.rung = true;
+        this.particles.ring(me.x, me.y, Math.max(40, me.maxR * 1.25), INK);
+        this.particles.dots(me.x, me.y, Math.max(40, me.maxR), RISO.fluoPink, 8);
+      }
     } else {
       const v = world.serverView;
       // lobby: the room is the front-page photo (a window in the paper), so show it wide like a spectator
       const short = ui.screen === 'lobby' || ui.screen === 'spectating' ? this.camera.visibleShortFor(0, true) * 0.85 : this.camera.visibleShortFor(400);
-      if (v.at > 0) this.camera.follow(v.x, v.y, short, dt * (ui.screen === 'lobby' ? 0.35 : 1));
+      if (v.at > 0) this.camera.follow(v.x, v.y, short, rdt * (ui.screen === 'lobby' ? 0.35 : 1));
     }
 
     this.sendTarget();
 
+    const dropT = this.drop ? Math.max(0, (now - this.drop.at) / (DUR.drop * 1000)) : 1;
+    if (dropT >= 1) this.drop = null;
     this.renderer.draw({
       now,
-      dt,
+      dt: rdt,
+      drop: dropT < 1 ? dropT : null,
       world,
       camera: this.camera,
       particles: this.particles,
