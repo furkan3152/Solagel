@@ -2,15 +2,14 @@ import { AnimatePresence, motion, type TargetAndTransition } from 'motion/react'
 import { useEffect, useMemo, useState } from 'react';
 import { Icon, InkButton, Receipt, Sheet, Stamp, useReducedMotion, type ReceiptLine } from '../../design';
 import { engine } from '../../game/instance';
+import { roundStartLabel } from '../../game/round';
+import { useChainData } from '../../solana/chain';
+import { feeBps } from '../../solana/ticket';
 import { sound } from '../../audio';
 import { useT } from '../../i18n';
 import { explorerTx } from '../../solana/links';
 import { requestTicket, useUi } from '../../store';
 import { formatClock, ordinal, roomName, useTokenFormat } from './format';
-
-/** Program defaults (spec §3.3): 5 % of the profit, 2 % on a Pass ticket. */
-export const FEE_BPS = 500;
-export const PASS_FEE_BPS = 200;
 
 /** The receipt waits for the bell to ring over the frozen world (ms). */
 export const ROUND_SHEET_DELAY_MS = 900;
@@ -20,12 +19,11 @@ const TOP = 5;
 
 /**
  * Receipt numbers: the settlement's own `fee` / `net` once it arrives, an
- * estimate (5 %, 2 % with a Pass) before. After settlement the fee % label is
- * derived from the real fee and the gain.
+ * estimate at `bps` (the live config's rate for this ticket: `feeBps`) before.
+ * After settlement the fee % label is derived from the real fee and the gain.
  */
-export function receiptNumbers(payout: number, entryFee: number, hasPass: boolean, settled: { fee?: number; net?: number } | null) {
+export function receiptNumbers(payout: number, entryFee: number, bps: number, settled: { fee?: number; net?: number } | null) {
   const gain = payout - entryFee;
-  const bps = hasPass ? PASS_FEE_BPS : FEE_BPS;
   const estFee = Math.floor((Math.max(0, gain) * bps) / 10_000);
   const final = settled?.fee !== undefined;
   const fee = settled?.fee ?? estFee;
@@ -57,6 +55,7 @@ export function RoundOverSheet() {
   const ticket = useUi((s) => s.ticket);
   const chain = useUi((s) => s.chain);
   const settledRaw = useUi((s) => s.lastSettlement);
+  const config = useChainData((s) => s.config);
   const over = useUi((s) => s.screen === 'roundover' && s.roundResult !== null);
   const reduced = useReducedMotion();
   const exit = res?.kind === 'exit';
@@ -103,7 +102,8 @@ export function RoundOverSheet() {
 
   const payout = res?.payout ?? 0;
   const entry = ticket?.entryFee ?? room?.entryFee ?? 0;
-  const n = receiptNumbers(payout, entry, ticket?.hasPass ?? false, settled);
+  const n = receiptNumbers(payout, entry, feeBps(config, ticket?.hasPass ?? false), settled);
+  const roundTime = res?.round != null ? roundStartLabel(res.round, room?.round) : '';
   const approx = n.final ? '' : `${t('gr.estimate')} `;
   const lines: ReceiptLine[] = [
     { label: t('gr.till'), value: tf.fmt(payout) },
@@ -155,7 +155,7 @@ export function RoundOverSheet() {
       open={open}
       onClose={toLobby}
       closeLabel={t('gr.close')}
-      kicker={exit ? t('gr.exitKicker', { room: roomName(room) }) : t('gr.kicker', { n: res?.round ?? '', room: roomName(room) })}
+      kicker={exit ? t('gr.exitKicker', { room: roomName(room) }) : t('gr.kicker', { time: roundTime, room: roomName(room) })}
       title={exit ? t('gr.exitTitle') : <Stamp text={t('gr.title')} size="lg" tone="teal" rotate={-5} animateIn delay={0.12} />}
       className={`g-sheet g-roundover${exit ? '' : ' has-board'}`}
       enterFrom={fromTill}
@@ -175,7 +175,7 @@ export function RoundOverSheet() {
           <Receipt
             printing
             onPrinted={() => setPrinted(true)}
-            title={exit ? t('gr.receiptExit') : t('gr.receipt', { n: res?.round ?? '' })}
+            title={exit ? t('gr.receiptExit') : t('gr.receipt', { time: roundTime })}
             meta={`${date}${res?.stats ? ` · ${formatClock(res.stats.aliveMs)}` : ''}`}
             lines={lines}
             code={settled?.signature ?? `pending-${since}`}

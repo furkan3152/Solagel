@@ -5,7 +5,8 @@ import { Kb } from '../src/design';
 import { ServerClock, serverClock } from '../src/game/clock';
 import { HELD_JITTER_MS, HeldTicket } from '../src/game/held';
 import { Input } from '../src/game/input';
-import { formatCountdown, roundInfoFor, roundLengths, roundStateAt } from '../src/game/round';
+import { formatCountdown, roundInfoFor, roundLengths, roundStartLabel, roundStateAt } from '../src/game/round';
+import { useChainData } from '../src/solana/chain';
 import { RoundCues, type RoundCueSink } from '../src/game/roundCues';
 import type { TicketGate, TicketModel } from '../src/solana/ticket';
 import { useUi } from '../src/store';
@@ -24,6 +25,8 @@ const R: RoundInfo = { n: N, endsAt: START + RULES.roundMs, joinsCloseAt: START 
 const ARENA: RoomInfo = { id: 'arena-1-1', mode: 'arena', name: 'Penny Pond', width: 6400, height: 6400, players: 3, bots: 10, maxPlayers: 50, arenaId: 1, entryFee: 1000 * M, round: R };
 const STATS: DeathStats = { aliveMs: 94_000, finalMass: 0, maxMass: 640, foodEaten: 88, cellsEaten: 1, playersEaten: 1, bestRank: 5 };
 const CHAIN = { enabled: true, cluster: 'devnet', programId: null, rpcUrl: null, arenasEnabled: true, currentSeason: 1, token: { mint: 'M', symbol: '$SLANA', decimals: 6 }, pass: null };
+// jsdom has no canvas: the same null it returns, without the "not implemented" warning
+HTMLCanvasElement.prototype.getContext = (() => null) as never;
 const initial = useUi.getState();
 
 /** Freezes `Date.now()` (the server clock, offset 0) at `at`; timers stay real. */
@@ -80,6 +83,12 @@ describe('round math on the client', () => {
     local += 10_000;
     expect(clock.now()).toBe(1_013_100);
     expect(clock.toLocal(1_013_100)).toBe(local);
+    // a bad round trip (negative, NaN) counts as unmeasured: no half-trip added, and it never wins
+    const c2 = new ServerClock(() => 0);
+    c2.sync(10_000, Number.NaN);
+    expect(c2.offset).toBe(10_000);
+    c2.sync(20_000, -5);
+    expect(c2.offset).toBe(20_000);
   });
 });
 
@@ -203,7 +212,10 @@ describe('Round over sheet', () => {
       </Kb>,
     );
     expect(screen.getByRole('dialog', { name: 'Round over' })).toBeTruthy();
-    expect(screen.getByText(`SLANA · ROUND ${N}`)).toBeTruthy();
+    // the round is named by its start time, not by its index since 1970
+    expect(screen.getByText(`SLANA · ${roundStartLabel(N, R)} ROUND`)).toBeTruthy();
+    expect(roundStartLabel(N, R)).toMatch(/^\d\d:\d\d$/);
+    expect(document.body.textContent).not.toContain(String(N));
     expect(screen.getByText('Your till')).toBeTruthy();
     expect(screen.getByText('3,000')).toBeTruthy();
     expect(screen.getByText('Fee 5%')).toBeTruthy();
@@ -243,6 +255,26 @@ describe('Round over sheet', () => {
     expect(screen.getByText('Your place').nextElementSibling?.textContent).toBe('Outside the top 6');
     // a loss: no fee
     expect(screen.getByText('Fee 2%')).toBeTruthy();
+  });
+
+  it('estimates the fee at the live config rate', () => {
+    setReducedMotion(true);
+    clockAt(R.endsAt + 500);
+    useChainData.setState({ config: { feeBps: 300, passFeeBps: 100 } as never });
+    useUi.setState({
+      screen: 'roundover',
+      room: ARENA,
+      ticket: { entryFee: 1000 * M, hasPass: false, arenaId: 1, session: 'S3' },
+      roundResult: { kind: 'round', round: N, payout: 3000 * M, stats: STATS, standings: [] },
+    });
+    render(
+      <Kb>
+        <RoundOverSheet />
+      </Kb>,
+    );
+    expect(screen.getByText('Fee 3%')).toBeTruthy();
+    expect(screen.getByText('≈ −60')).toBeTruthy();
+    useChainData.setState({ config: null });
   });
 });
 
@@ -313,13 +345,14 @@ describe('lobby tickets and the held ticket', () => {
     expect((cta as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('a held ticket joins by itself when the round opens, 0-400 ms after the bell', () => {
+  it('a held ticket joins by itself when the round opens, within the jitter after the bell', () => {
     vi.useRealTimers();
     vi.useFakeTimers();
     vi.setSystemTime(R.endsAt - 41_000);
-    const join = vi.fn();
-    let wanted = true;
-    const held = new HeldTicket(join, () => wanted);
+    const join = vi.fn(() => true);
+    let free = true;
+    const released = vi.fn();
+    const held = new HeldTicket({ join, free: () => free, released });
     held.hold('arena:1', 'PassAsset', R.endsAt);
     expect(useUi.getState().held).toEqual({ arenaId: 1, opensAt: R.endsAt });
     vi.advanceTimersByTime(40_999);
@@ -327,32 +360,37 @@ describe('lobby tickets and the held ticket', () => {
     vi.advanceTimersByTime(1 + HELD_JITTER_MS);
     expect(join).toHaveBeenCalledTimes(1);
     expect(join).toHaveBeenCalledWith('arena:1', 'PassAsset');
+    expect(held.inFlight).toBe(true);
+    // refused for another reason: let go
+    held.refused();
+    expect(useUi.getState().held).toBeNull();
 
-    // joined meanwhile (cleared) or already in an arena game: no second join
+    // cleared before the opening: no join
     held.hold('arena:1', null, Date.now() + 5_000);
     held.clear();
-    expect(useUi.getState().held).toBeNull();
+    vi.advanceTimersByTime(10_000);
+    // busy in a game at the opening: no join, released with a reason
     held.hold('arena:1', null, Date.now() + 5_000);
-    wanted = false;
-    vi.advanceTimersByTime(6_000);
+    free = false;
+    vi.advanceTimersByTime(10_000);
     expect(join).toHaveBeenCalledTimes(1);
+    expect(released).toHaveBeenCalledWith('busy');
+    expect(useUi.getState().held).toBeNull();
   });
 
   it('spreads held tickets over the jitter window', () => {
     const waits: number[] = [];
     for (const random of [0, 0.5, 0.999]) {
-      const h = new HeldTicket(() => {}, () => true, {
-        toLocal: (ms) => ms,
-        now: () => 1_000,
-        random: () => random,
-        setTimeout: (_fn, ms) => waits.push(ms),
-        clearTimeout: () => {},
-      });
+      const h = new HeldTicket(
+        { join: () => true, free: () => true, released: () => {} },
+        { toLocal: (ms) => ms, now: () => 1_000, random: () => random, setTimeout: (_fn, ms) => waits.push(ms), clearTimeout: () => {} },
+      );
       h.hold('arena:2', null, 11_000);
     }
+    expect(HELD_JITTER_MS).toBe(1500);
     expect(waits[0]).toBe(10_000);
-    expect(waits[1]).toBe(10_200);
-    expect(waits[2]).toBeGreaterThan(10_399);
-    expect(waits[2]).toBeLessThan(10_400);
+    expect(waits[1]).toBe(10_750);
+    expect(waits[2]).toBeGreaterThan(11_490);
+    expect(waits[2]).toBeLessThan(11_500);
   });
 });

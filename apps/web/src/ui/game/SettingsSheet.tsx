@@ -21,7 +21,7 @@ const HOWTO: { icon: Parameters<typeof Icon>[0]['name']; key: TKey }[] = [
   { icon: 'eject', key: 'howto.eject' },
   { icon: 'flame', key: 'howto.cactus' },
   { icon: 'emote', key: 'howto.powerups' },
-  { icon: 'cashout', key: 'howto.stakes' },
+  { icon: 'payout', key: 'howto.stakes' },
   { icon: 'trophy', key: 'howto.season' },
 ];
 

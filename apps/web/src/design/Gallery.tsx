@@ -358,8 +358,8 @@ function ButtonDemo({ t, fmt }: { t: T; fmt: (n: number) => string }) {
         <InkButton size="sm" lead="bot">
           {t('ds.btn.practice')}
         </InkButton>
-        <InkButton size="sm" variant="pink" lead="cashout">
-          {t('ds.btn.cashout')}
+        <InkButton size="sm" variant="pink" lead="ticket">
+          {t('ds.btn.nextRound')}
         </InkButton>
         <InkButton size="sm" variant="paper" disabled>
           {t('ds.btn.soldOut')}

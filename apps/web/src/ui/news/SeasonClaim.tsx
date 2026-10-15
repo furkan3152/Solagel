@@ -107,7 +107,7 @@ function Cheque({ prize, payee, onClaim, stamped, compact = false }: { prize: Pr
           <>
             <span className="sc-cheque__until mono">{t('sc.until', { date: deadline ?? '' })}</span>
             {onClaim && (
-              <InkButton variant="pink" size="md" icon="cashout" onClick={onClaim}>
+              <InkButton variant="pink" size="md" icon="payout" onClick={onClaim}>
                 {t('sc.cta')}
               </InkButton>
             )}
@@ -260,7 +260,7 @@ function ClaimSheet({ open, prize, payee, onClose, onPaid }: { open: boolean; pr
   ) : phase === 'review' || phase === 'error' ? (
     <>
       {/* no autofocus on the sign button */}
-      <InkButton variant="pink" size="lg" icon="cashout" disabled={!owner || !config || busy} onClick={() => void claim()}>
+      <InkButton variant="pink" size="lg" icon="payout" disabled={!owner || !config || busy} onClick={() => void claim()}>
         {phase === 'error' ? t('tf.retry') : t('sc.confirm', { amount: tok.exact(v.amount), sym: tok.symbol })}
       </InkButton>
       <InkButton variant="paper" size="lg" onClick={onClose} className="tf-cancel">
