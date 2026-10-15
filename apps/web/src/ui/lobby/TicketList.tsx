@@ -47,9 +47,11 @@ export function TicketList({
         const maintenance = gate?.kind === 'maintenance';
         const closed = gate?.kind === 'offline' || maintenance;
         const status =
-          gate?.kind === 'settling' || gate?.kind === 'collect'
+          gate?.kind === 'settling'
             ? t('lo.payoutChip')
-            : !practice && openTickets.includes(tk.arenaId!)
+            : gate?.kind === 'collect'
+              ? t('lo.collectChip')
+              : !practice && openTickets.includes(tk.arenaId!)
               ? t('lo.yourTicket')
               : null;
         const meta = practice
