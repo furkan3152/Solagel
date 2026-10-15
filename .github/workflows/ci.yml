@@ -10,7 +10,7 @@ concurrency:
 
 jobs:
   typescript:
-    name: TypeScript (shared · sdk · server · web)
+    name: TypeScript (shared · art · sdk · server · web)
     runs-on: ubuntu-latest
     env:
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
@@ -24,16 +24,21 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Shared
         run: pnpm -F @slana/shared typecheck && pnpm -F @slana/shared test
+      - name: Art
+        run: pnpm -F @slana/art typecheck && pnpm -F @slana/art test
       - name: SDK
         run: pnpm -F @slana/sdk typecheck && pnpm -F @slana/sdk test
       - name: Server
         run: pnpm -F @slana/server typecheck && pnpm -F @slana/server test && pnpm -F @slana/server build
       - name: Web
-        run: pnpm -F @slana/web build
+        run: pnpm -F @slana/web typecheck && pnpm -F @slana/web test && pnpm -F @slana/web build
 
   program:
     name: Anchor program (build + LiteSVM tests)
     runs-on: ubuntu-latest
+    env:
+      # public endpoint; scripts/fetch-programs.sh dumps Metaplex Core from it (no secrets)
+      MAINNET_RPC: https://api.mainnet-beta.solana.com
     steps:
       - uses: actions/checkout@v4
       - uses: actions/cache@v4
@@ -57,5 +62,7 @@ jobs:
         run: npm i -g @anchor-lang/cli@1.2.1
       - name: Build
         run: anchor build --ignore-keys
+      - name: Fetch external programs (Metaplex Core)
+        run: scripts/fetch-programs.sh
       - name: Test
         run: cargo test -p slana

@@ -58,6 +58,14 @@ export interface ServerConfig {
     priorityFeeMicroLamports: number;
     /** Display symbol of the game token (`TOKEN_SYMBOL`, default `$SLANA`). */
     tokenSymbol: string;
+    /**
+     * Seconds after which an open session nobody plays is refunded by the sweeper
+     * (`STALE_SESSION_AFTER_S`, default 900). The sweeper runs every 5 minutes, or this often
+     * when it is shorter (the localnet e2e uses 5 s to reach the refund path quickly).
+     */
+    staleSessionAfterS: number;
+    /** Re-check interval of a payout waiting for the player's token account (`NO_ATA_RETRY_S`, default 300). */
+    noAtaRetryS: number;
   };
 }
 
@@ -180,6 +188,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
         .filter((n) => Number.isInteger(n) && n >= 0 && n <= 65535),
       priorityFeeMicroLamports: int(env.PRIORITY_FEE_MICROLAMPORTS, 5000),
       tokenSymbol: env.TOKEN_SYMBOL?.trim() || TOKEN_SYMBOL_DEFAULT,
+      staleSessionAfterS: Math.max(1, int(env.STALE_SESSION_AFTER_S, 15 * 60)),
+      noAtaRetryS: Math.max(1, int(env.NO_ATA_RETRY_S, 5 * 60)),
     },
   };
 }

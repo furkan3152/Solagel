@@ -64,3 +64,11 @@ describe('MARKET_URLS', () => {
     expect(pub.cluster).toBe('devnet');
   });
 });
+
+describe('sweeper tunables', () => {
+  it('default to 15 min / 5 min and read STALE_SESSION_AFTER_S / NO_ATA_RETRY_S', () => {
+    expect(loadConfig({}).chain).toMatchObject({ staleSessionAfterS: 900, noAtaRetryS: 300 });
+    expect(loadConfig({ STALE_SESSION_AFTER_S: '5', NO_ATA_RETRY_S: '2' }).chain).toMatchObject({ staleSessionAfterS: 5, noAtaRetryS: 2 });
+    expect(loadConfig({ STALE_SESSION_AFTER_S: '0', NO_ATA_RETRY_S: '-4' }).chain).toMatchObject({ staleSessionAfterS: 1, noAtaRetryS: 1 });
+  });
+});

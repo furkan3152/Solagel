@@ -11,8 +11,11 @@ import { BASE_FEE_LAMPORTS, PRIORITY_MICRO_LAMPORTS } from './ticket';
  * Pass page and the mint sheet render them.
  */
 
-/** Compute-unit limit of the mint transaction (Core `CreateV2` CPI + counter init). */
-export const MINT_COMPUTE_UNITS = 160_000;
+/**
+ * Compute-unit limit of the mint transaction (Core `CreateV2` CPI + counter init). The localnet
+ * e2e measured 34k–44k; 100k keeps more than 2× headroom.
+ */
+export const MINT_COMPUTE_UNITS = 100_000;
 /** `MintCounter`: discriminator 8 + count 1 + bump 1 (from the SDK, checked against the IDL). */
 export const MINT_COUNTER_BYTES = ACCOUNT_BYTES.mintCounter;
 /** The minter and the fresh asset keypair both sign. */
@@ -172,7 +175,7 @@ export function splitDuration(totalS: number): { d: number; h: number; m: number
 
 /* ── completing the reveal (ruling R23) ──────────────────────────────────── */
 
-/** Compute-unit limit of `capture_pass_entropy` (a full 512-entry SlotHashes scan is ~18k CU). */
+/** Compute-unit limit of `capture_pass_entropy` (a full 512-entry SlotHashes scan is ~18k CU; the localnet e2e measured 10k). */
 export const CAPTURE_COMPUTE_UNITS = 60_000;
 
 /** SOL the "Complete the reveal" transaction costs: one signature plus the priority fee. Nothing else moves. */

@@ -8,14 +8,12 @@ import { useT } from '../../i18n';
 import { refreshChain, useChainData, useSlanaClient } from '../../solana/chain';
 import { loadDevFake } from '../../solana/devFakeLoader';
 import { explorerTx } from '../../solana/links';
-import { claimState, buildClaimTx, prizeAmount, type ClaimState } from '../../solana/season';
+import { CLAIM_COMPUTE_UNITS, claimState, buildClaimTx, prizeAmount, type ClaimState } from '../../solana/season';
 import { ACCOUNT_BYTES, BASE_FEE_LAMPORTS, PRIORITY_MICRO_LAMPORTS, bpsPercent, defaultRent } from '../../solana/ticket';
 import { sendTx, txErrorText, type TxPhase } from '../../solana/tx';
 import { toast, useUi } from '../../store';
 import { useTokenText } from '../lobby/useLobby';
 
-/** Compute-unit limit of the claim transaction (bounds the priority fee). */
-const CLAIM_COMPUTE_UNITS = 90_000;
 const SOL_DECIMALS = 9;
 
 type Phase = 'review' | 'preparing' | TxPhase | 'done' | 'error';

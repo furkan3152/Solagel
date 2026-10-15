@@ -209,6 +209,8 @@ antrenman) çalışır.
 | `STAKE_ARENA_IDS` | boş | yalnızca bu arena id'leri (virgülle); boş = zincirdeki tüm açık arenalar |
 | `TOKEN_SYMBOL` | `$SLANA` | yalnızca görünüm. Bazı env yükleyiciler `$NAME`'i genişletir; örnek dosyada yorum satırıdır |
 | `PRIORITY_FEE_MICROLAMPORTS` | `5000` | ödeme işlemlerinin öncelik ücreti |
+| `STALE_SESSION_AFTER_S` | `900` | hiç oynanmayan biletin iadesi için bekleme (sn); daha kısası yalnızca test içindir (localnet e2e: `5`) |
+| `NO_ATA_RETRY_S` | `300` | token hesabı olmayan oyuncunun bekleyen ödemesini yeniden deneme aralığı (sn) |
 | `DEV_FAKE_CHAIN` | boş | **yalnızca geliştirme**: `NODE_ENV=development` ister, `PROGRAM_ID`/`SERVER_KEYPAIR` varken başlamaz |
 
 Sunucu anahtarı ödeme işlemlerinin ücretini öder; her bilet `settle_fee_lamports` depozitosuyla bunu geri öder. Sunucu

@@ -579,6 +579,15 @@ describe('settlement worker', () => {
     expect(h.sentIxs.flat().some((ix) => ix.programId.equals(ASSOCIATED_TOKEN_PROGRAM_ID))).toBe(false);
   });
 
+  it('NO_ATA_RETRY_S sets the re-check interval', async () => {
+    const h = await harness({ cfg: { noAtaRetryS: 3 } });
+    const s = h.client.addSession(wallet());
+    h.client.missing.add(ata(s.player, h.client.config!.tokenMint, h.client.config!.tokenProgram).toBase58());
+    h.journal.enqueue(settleItem(s));
+    await h.chain.processPending();
+    expect(h.journal.pending[0]).toMatchObject({ needsTokenAccount: true, nextAttemptAt: T0 + 3_000 });
+  });
+
   it('settles once the player ATA exists', async () => {
     const h = await harness();
     const s = h.client.addSession(wallet());
@@ -807,6 +816,16 @@ describe('stale-session sweeper', () => {
 
     await h.chain.processPending();
     expect(h.settled.map((e) => [e.key, e.payout])).toEqual([[stale.address, 50_000_000]]);
+  });
+
+  it('STALE_SESSION_AFTER_S shortens the age (localnet e2e)', async () => {
+    const h = await harness({ cfg: { staleSessionAfterS: 5 } });
+    const nowS = Math.floor(T0 / 1000);
+    const old = h.client.addSession(wallet(), { openedAt: nowS - 6, entryFee: 7n, id: 21 });
+    h.client.addSession(wallet(), { openedAt: nowS - 2 }); // younger than 5 s
+    expect(await h.chain.sweepStale()).toBe(1);
+    expect(h.journal.pending.map((p) => p.key)).toEqual([old.address]);
+    expect(h.logs.some((l) => /older than 5 s/.test(l))).toBe(true);
   });
 
   it('only sweeps the configured arenas', async () => {
