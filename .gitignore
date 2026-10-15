@@ -35,3 +35,8 @@ test-results/
 .vite/
 out/
 out/videos/
+
+# media renders: caches, venvs, models, raw takes
+media/gameplay/cache/
+media/how-to-play/cache/
+media/**/__pycache__/
