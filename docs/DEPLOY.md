@@ -94,7 +94,7 @@ The `keys/` folder is not tracked by git (`.gitignore`: `keys/`, `*.keypair.json
 |---|---|---|
 | Admin wallet (`SLANA_ADMIN` in `scripts/admin.env`: `D2Ts7yCiVjedo6uwqpkM44QA8J45NdVU1J3k5m6iWtvm`) | the project owner's wallet; the program's **upgrade authority**; `init` can only be signed by it; it becomes the Config `admin`; **every admin command is run by this wallet** (`--keypair <its keypair file>`) | the owner's own wallet; a multisig (Squads) is optional later |
 | Temporary deployer (`keys/deployer.json`) | pays for the deploy and is the upgrade authority only until `deploy-lean.sh` hands it to the admin | throwaway; keep a little SOL, delete it afterwards |
-| Server (`keys/server.json`) | signs `settle_session` (`Config.server_authority`) | a separate **hot key** on the server that only settles sessions; it can never withdraw, upgrade or administer; a little SOL |
+| Server (`keys/server.json`) | signs `settle_session` and `sweep_loot` (`Config.server_authority`) | a separate **hot key** on the server that only settles sessions and sweeps arena loot into the season pool (up to the vault balance); it can never withdraw to a wallet, upgrade or administer; a little SOL |
 | Treasury owner | `withdraw-treasury --to` and the recipient of the collection royalty | multisig |
 | Pass seed (`keys/pass-seed.json`) | the secret seed of the commit–reveal | **secret and backed up**; if it is lost the reveal cannot happen |
 
@@ -132,6 +132,10 @@ solana transfer $(solana-keygen pubkey keys/server.json) 0.5 --allow-unfunded-re
 Never `anchor deploy` (it deploys the reference) and never `--final`: the program stays upgradeable so that it can be
 closed at any time (OPERATIONS.md, "Emergency stop / close"). Later upgrades are signed by the admin:
 `scripts/deploy-lean.sh <url> target/deploy/slana-keypair.json --keypair <admin keypair> --upgrade-authority <admin keypair>`.
+
+**Upgrading an existing deployment:** upgrade the program to the build that has `sweep_loot` **before** rolling out this
+server. A server that sweeps loot against an older program gets "instruction not found" (`InstructionFallbackNotFound`)
+and retries with backoff; value stays conserved (the sweep is journaled and counted as owed), but the logs fill with failures.
 
 ## 5. Token
 

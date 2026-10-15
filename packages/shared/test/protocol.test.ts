@@ -13,9 +13,9 @@ import {
   type ServerMessage,
 } from '../src';
 
-describe('protocol v2 constants', () => {
+describe('protocol v3 constants', () => {
   it('pins the wire values', () => {
-    expect(PROTOCOL_VERSION).toBe(2);
+    expect(PROTOCOL_VERSION).toBe(3);
     expect(EntityKind.Loot).toBe(6);
     expect(PlayerFlag.Pass).toBe(8);
   });
@@ -138,14 +138,14 @@ describe('v2 message shapes', () => {
         killer: 'Bot',
         killerSkin: 1,
       },
-      { t: 'settled', kind: 'cashout', signature: 'sig', payout: 1950, fee: 50, net: 1950 },
+      { t: 'settled', kind: 'payout', signature: 'sig', payout: 1950, fee: 50, net: 1950 },
       { t: 'settled', kind: 'death', signature: 'sig', payout: 0 },
       { t: 'settled', kind: 'refund', signature: 'sig', payout: 1000 },
     ];
     // @ts-expect-error the on-chain record kind is gone
     const record: ServerMessage = { t: 'settled', kind: 'record', signature: 'sig', payout: 0 };
     // @ts-expect-error payout is now always present
-    const noPayout: ServerMessage = { t: 'settled', kind: 'cashout', signature: 'sig' };
+    const noPayout: ServerMessage = { t: 'settled', kind: 'payout', signature: 'sig' };
     expect([msgs, record, noPayout]).toHaveLength(3);
   });
 

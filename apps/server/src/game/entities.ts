@@ -172,8 +172,6 @@ export class Player {
   magnetUntil = 0;
   pumpUntil = 0;
   shieldUntil = 0;
-  /** Stake rooms: cash-out completes at this time (0 = not cashing out). */
-  cashoutUntil = 0;
   /** Stake rooms: disconnected and waiting for a reconnect. */
   afk = false;
   /** Slana Pass number whose look the player wears (0 = none). */

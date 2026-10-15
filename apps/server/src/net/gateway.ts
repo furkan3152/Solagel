@@ -43,10 +43,10 @@ function toBytes(data: RawData): Uint8Array {
 
 /**
  * The `settled` message for a settlement event: it names the on-chain session
- * (and arena) so a client matches it to the ticket it cashed out (ruling R16).
+ * (and arena) so a client matches it to the ticket it paid out (R16).
  */
 export function settledMessage(e: SettledEvent): Extract<ServerMessage, { t: 'settled' }> {
-  const kind = e.payout > 0 ? 'cashout' : 'death';
+  const kind = e.payout > 0 ? 'payout' : 'death';
   return {
     t: 'settled',
     kind,

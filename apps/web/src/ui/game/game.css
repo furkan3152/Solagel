@@ -1,6 +1,6 @@
 /* ─────────────────────── Paper Ticket · in-game view ───────────────────────
  * HUD scraps taped over the riso world, phone controls and the game sheets
- * (death, cash-out receipt, settings). Everything lives under `.g-root`
+ * (death, payout receipt, settings). Everything lives under `.g-root`
  * (a `.kb` root without its own paper) or in a `.g-sheet` portalled panel.
  * ------------------------------------------------------------------------- */
 
