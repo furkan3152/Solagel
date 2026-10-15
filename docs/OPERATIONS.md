@@ -1,207 +1,210 @@
-# Slana: operasyon rehberi
+# Slana: operations guide
 
-Kurulumdan sonraki işler: sezon döngüsü, Pass açılışı, hazine, durdurma, arena kapatma, anahtar değişimi ve journal
-yedeği. Kurulum: [DEPLOY.md](DEPLOY.md). Para akışı ve güven modeli: [ARCHITECTURE.md](ARCHITECTURE.md).
+What comes after the setup: the season cycle, the Pass reveal, the treasury, pausing, shutting an arena down, key
+rotation and the journal backup. Setup: [DEPLOY.md](DEPLOY.md). Money flow and trust model:
+[ARCHITECTURE.md](ARCHITECTURE.md). Every command below exists in `pnpm admin help`.
 
-*English: day-to-day operations (season cycle, Pass reveal, treasury, pause, arena shutdown, key rotation, journal
-backup). Every command below exists in `pnpm admin help`.*
-
-Komutlar `--url`, `--keypair` (varsayılan `~/.config/solana/id.json`, yani yönetici) ve `--program` alır; bkz.
-[DEPLOY.md](DEPLOY.md). Her işlemden önce ve sonra:
+The commands take `--url`, `--keypair` (default `~/.config/solana/id.json`, i.e. the admin) and `--program`; see
+[DEPLOY.md](DEPLOY.md). Before and after every operation:
 
 ```bash
 pnpm admin status
 ```
 
-`status` şunları yazar: admin ve sunucu anahtarı (SOL bakiyesiyle), token mint'i ve arzı, kesinti ve bölüşüm, depozito,
-güncel sezon, `paused`, toplamlar, hazine ve sezon kasası bakiyeleri, arenalar (açık bilet / sınır, kasa, açık mı),
-sezonun ilk 10'u ve havuzu, bir önceki sezonun dondurulan havuzu, talep edilmeyen kısmı ve talep maskesi, Pass
-koleksiyonu, base URI, basılan / arz, arz kilidi, mint durumu, tohum özeti, entropi (hedef slot ya da yakalanan hash) ve açılış (yönetici
-tohumu ve özelliklerin türediği son tohum).
+`status` prints: the admin and server keys (with their SOL balances), the token mint and its supply, the fee and the split,
+the deposit, the current season, `paused`, the totals, the treasury and season vault balances, the arenas (open tickets /
+cap, vault, enabled or not), the season's top 10 and its pool, the previous season's frozen pool, its unclaimed part and
+the claim mask, the Pass collection, the base URI, minted / supply, the supply lock, the mint state, the seed hash, the
+entropy (target slot or captured hash) and the reveal (the admin seed and the final seed the traits derive from).
 
-## İzleme
+## Monitoring
 
-- `GET /api/health`: `ok`, çalışma süresi, çevrimiçi oyuncu, oda sayısı (Docker sağlık kontrolü bunu kullanır).
-- `GET /api/rooms`: odalar, örnekler, insan ve bot sayıları, yerdeki ganimet.
-- `GET /api/pending?wallet=<adres>`: sunucunun bir cüzdan için hâlâ gönderdiği ödemeler. Token hesabı olmayan (ya da
-  ödemeyi reddeden) oyuncunun oyunu artık beklemez (R24): sunucu hesabı vermeden sonuçlandırır, oturum `finalized` olur
-  ve `owed` tutarı kasada kalır; günlükte `finalized … (to collect)` yazar. Oyuncu bunu web'deki "Ödemeni al" ile, bekleme
-  süresi olmadan alır. `status` çıktısında bu oturumlar açık sayılır (kasa süpürülemez).
-- Sunucu günlüğünde `!!!` ile başlayan satırlar müdahale ister (ör. okunamayan journal, kasası yetmeyen arena). Sunucu
-  anahtarı ◎0,05'in altına düşünce uyarı yazar.
+- `GET /api/health`: `ok`, uptime, players online, room count (the Docker health check uses it).
+- `GET /api/rooms`: rooms, instances, human and bot counts, loot on the floor.
+- `GET /api/pending?wallet=<address>`: the payouts the server is still sending for a wallet. The game of a player without
+  a token account (or whose account refuses the payout) no longer waits (R24): the server settles it without the account,
+  the session becomes `finalized` and the `owed` amount stays in the vault; the log says `finalized … (to collect)`. The
+  player collects it with "Collect payout" on the web, with no waiting time. In the `status` output these sessions count
+  as open (the vault cannot be swept).
+- Server log lines starting with `!!!` need attention (e.g. an unreadable journal, an arena whose vault falls short). The
+  server logs a warning when the server key drops below ◎0.05.
 
-## Sezon döngüsü
+## Season cycle
 
-Sezonun zincirde sabit bir bitiş zamanı **yoktur**; sezonu yönetici bitirir. Takvimi (ör. 30 gün) oyunculara siz
-duyurursunuz.
+A season has **no** fixed end time on-chain; the admin ends it. You announce the calendar (e.g. 30 days) to the players
+yourself.
 
-1. **Sezon sürerken** puan yalnızca Pass'li biletlerden gelir; havuz kesintilerin sezon payından (varsayılan %30) ve
-   süpürülen arenalardan dolar. `status` havuzu ve ilk 10'u gösterir.
-2. **Bitirin:**
+1. **While the season runs**, points come only from Pass tickets; the pool fills from the season share of the fees
+   (default 30 %) and from swept arenas. `status` shows the pool and the top 10.
+2. **End it:**
    ```bash
    pnpm admin end-season
    ```
-   Güncel sezonun havuzu `prize_pool` olarak dondurulur ve hemen yeni sezon başlar. Yeni Season hesabının kirasını
-   (≈◎0,0099) yönetici öder.
-3. **Talep:** ilk 10, Sıralama sayfasından ödülünü kendisi talep eder: dondurulan havuzun %30 / %20 / %14 / %10 / %8 /
-   %6 / %4,5 / %3 / %2,5 / %2'si. Süre sezon bittikten sonra 30 gündür (`CLAIM_WINDOW_SECS`).
-4. **Devir:** 30 gün dolduktan sonra talep edilmeyenleri (yuvarlama artıkları ve boş sıralar dahil) aktif sezona aktarın:
+   The current season's pool is frozen as `prize_pool` and the next season starts immediately. The admin pays the rent of
+   the new Season account (≈◎0.0099).
+3. **Claims:** the top 10 claim their prizes themselves from the Ranks page: 30 % / 20 % / 14 % / 10 % / 8 % / 6 % /
+   4.5 % / 3 % / 2.5 % / 2 % of the frozen pool. The window is 30 days after the season ends (`CLAIM_WINDOW_SECS`).
+4. **Rollover:** once the 30 days have passed, move what was not claimed (rounding remainders and empty ranks included) to
+   the active season:
    ```bash
    pnpm admin rollover --season <N>
    ```
-   Program süre dolmadan devri reddeder (`ClaimWindowOpen`).
+   The program refuses a rollover before the window closes (`ClaimWindowOpen`).
 
-## Pass açılışı (reveal)
+## Pass reveal
 
-Açılış commit–reveal'in ikinci yarısıdır ve sırası önemlidir (karar R23):
+The reveal is the second half of the commit–reveal, and its order matters (ruling R23):
 
-- Mint **bittiğinde** (`close-mint` ya da son Pass'in basılması) mint **bir daha açılamaz**; henüz hiçbir entropi hedefi
-  yoktur.
-- `reveal` tohumu zincirde **herkese açık** yayınlar (program `sha256(tohum) == pass_seed_hash` şartını denetler) ve
-  **ancak ondan sonra** hedef slotu kaydeder: o anki slot + `ENTROPY_DELAY_SLOTS` (150 slot ≈ 1 dakika).
-- Hedef geçince herkesin gönderebildiği `capture_pass_entropy`, hedefte ya da ondan sonraki ilk blokta oluşan slotun
-  hash'ini SlotHashes sysvar'ından okuyup `pass_entropy` olarak saklar, son tohumu
-  `pass_final_seed = sha256(tohum ‖ pass_entropy)` hesaplar ve açılışı tamamlar. Bütün Pass'lerin özellikleri
-  `passTraits(pass_final_seed, n, pass_supply)` ile herkesçe hesaplanabilir.
+- Once the mint **is over** (`close-mint` or the last Pass minted) the mint **can never reopen**; there is no entropy
+  target yet.
+- `reveal` publishes the seed **in the open** on-chain (the program checks `sha256(seed) == pass_seed_hash`) and **only
+  then** records the target slot: the current slot + `ENTROPY_DELAY_SLOTS` (150 slots ≈ 1 minute).
+- Once the target has passed, `capture_pass_entropy`, which anyone can send, reads from the SlotHashes sysvar the hash of
+  the slot produced at the target or in the first block after it, stores it as `pass_entropy`, computes the final seed
+  `pass_final_seed = sha256(seed ‖ pass_entropy)` and completes the reveal. The traits of every Pass can be computed by
+  anyone with `passTraits(pass_final_seed, n, pass_supply)`.
 
-Tohum hedef slottan önce açık olduğu için sonucu herkes aynı anda öğrenir; yöneticinin bilgi avantajı yoktur. Kalan risk
-(dürüstçe): sonucu beğenmeyen biri pencerenin (≈512 slot) yakalama olmadan geçmesini umabilir, bu hedefi yeni bir gelecek
-slota taşır. Ama herkes (Pass sahipleri dahil) her an yakalayabilir; oyun sunucusu ve web'deki Pass sayfası da yakalar,
-bu yüzden zamanlamayı tek bir taraf kontrol edemez.
+Because the seed is public before the target slot, everyone learns the result at the same moment; the admin has no
+information advantage. The remaining risk (honestly): someone who dislikes the result can hope the window (≈512 slots)
+passes without a capture, which moves the target to a new future slot. But anyone (Pass holders included) can capture at
+any time; the game server and the web's Pass page capture too, so no single party controls the timing.
 
-1. Mint'i bitirin (arz bittiyse program zaten bitirmiştir):
+1. End the mint (if the supply is sold out, the program has already ended it):
    ```bash
    pnpm admin close-mint
    ```
-   Hiç Pass basılmadıysa komut yalnızca bayrağı kapatır (mint yeniden açılabilir). Basım başladıysa
-   `update-config --mint-open false` reddedilir (`UseCloseMint`): mint'i yalnızca `close-mint` bitirir.
-2. Tohum dosyasının özetini zincirdekiyle karşılaştırın:
+   If no Pass was minted, the command only clears the flag (the mint can be reopened). Once minting has started,
+   `update-config --mint-open false` is refused (`UseCloseMint`): only `close-mint` ends the mint.
+2. Compare the seed file's hash with the one on-chain:
    ```bash
-   pnpm admin pass-seed                       # keys/pass-seed.json'un sha256'sını yazar
-   pnpm admin status                          # "seed hash" satırı
+   pnpm admin pass-seed                       # prints the sha256 of keys/pass-seed.json
+   pnpm admin status                          # the "seed hash" line
    ```
-3. Tohumu açıklayın (hedef slotu da bu ayarlar):
+3. Reveal the seed (this also sets the target slot):
    ```bash
    pnpm admin reveal [--seed-file keys/pass-seed.json]
    ```
-   Program mint'in bitmiş olmasını ve `sha256(seed) == pass_seed_hash` şartını denetler; tohumu açık saklar ve hedef
-   slotu yazar. Komut hedef slotu yazdırır. Pass sayfası "Açılışın tamamlanması bekleniyor" durumunu gösterir.
-4. Açılışı tamamlayın: oyun sunucusu hedef slot geçince `capture_pass_entropy`'yi kendisi gönderir (yalnızca ağ
-   ücretini öder, başarısız olursa 30 sn'de bir yeniden dener; günlükte `chain: Pass entropy captured … final seed …`).
-   Web'deki Pass sayfasında bağlı her cüzdan "Açılışı tamamla" düğmesine basabilir. Elle:
+   The program checks that the mint is over and that `sha256(seed) == pass_seed_hash`; it stores the seed in the open and
+   writes the target slot. The command prints the target slot. The Pass page shows "Waiting for the reveal to complete".
+4. Complete the reveal: the game server sends `capture_pass_entropy` itself once the target slot has passed (it pays only
+   the network fee and retries every 30 s on failure; the log says `chain: Pass entropy captured … final seed …`). On the
+   web's Pass page any connected wallet can press "Complete the reveal". By hand:
    ```bash
-   pnpm admin capture-entropy                 # herhangi bir cüzdan gönderebilir
+   pnpm admin capture-entropy                 # any wallet can send it
    pnpm admin status                          # entropy, final seed
    ```
-5. Oyun sunucusu açılışı zincirden okur (yapılandırma önbelleği 30 sn) ve `/pass/<n>.json` ile `/pass/<n>.png` mühürlü
-   içerik yerine özellikleri döndürür. Önbellek süreleri: JSON mühürlüyken 60 sn, açılıştan sonra 1 saat (`PUBLIC_URL`
-   boşsa JSON hiç önbelleğe alınmaz); PNG mühürlüyken 300 sn, açılıştan sonra 1 gün. Pazar yerlerinden metadata
-   yenilemesi isteyin.
-6. İsteğe bağlı: koleksiyonu çevrimdışı üretip arşivleyin ya da Arweave'e yükleyin ([PASS-ART.md](PASS-ART.md)).
+5. The game server reads the reveal from the chain (config cache 30 s), and `/pass/<n>.json` and `/pass/<n>.png` return
+   the traits instead of the sealed content. Cache lifetimes: JSON 60 s while sealed, 1 hour after the reveal (no JSON
+   caching at all if `PUBLIC_URL` is empty); PNG 300 s while sealed, 1 day after the reveal. Ask the marketplaces for a
+   metadata refresh.
+6. Optional: render the collection offline and archive it, or upload it to Arweave ([PASS-ART.md](PASS-ART.md)).
 
-> **Arz sabittir.** Özellikler `pass_supply`'a bağlıdır (1/1 yerleşimi ve tekrar ayıklama bütün koleksiyon üzerinden
-> yapılır). Program arzı mint bir kez açıldıktan sonra değiştirmez (`SupplyLocked`); CLI de `update-config --supply` ve
-> `open-mint --supply`'ı o andan sonra reddeder. Arzı `open-mint`'ten önce ayarlayın. Mint'i erken bitirmek sorun değildir:
-> arz aynı kalır, basılmayan numaralar hiç basılmaz.
+> **The supply is fixed.** The traits depend on `pass_supply` (the 1/1 placement and the de-duplication run over the
+> whole collection). The program does not change the supply once the mint has opened (`SupplyLocked`); the CLI also
+> refuses `update-config --supply` and `open-mint --supply` from then on. Set the supply before `open-mint`. Ending the
+> mint early is fine: the supply stays the same and the numbers that were not minted are never minted.
 
-## Hazine
+## Treasury
 
-Kesintilerin hazine payı (varsayılan %50) hazine kasasında birikir (`status` → `vaults treasury`).
+The treasury share of the fees (default 50 %) builds up in the treasury vault (`status` → `vaults treasury`).
 
 ```bash
-pnpm admin withdraw-treasury --amount <token> --to <sahip cüzdan>
+pnpm admin withdraw-treasury --amount <token> --to <owner wallet>
 ```
 
-`--to` bir **cüzdan adresidir** (token hesabı değil): ödeme bu cüzdanın ilişkili token hesabına gider; hesap yoksa aynı
-işlemde oluşturulur (kirasını yönetici öder). Tutar tam token olarak yazılır ve kasadan fazla olamaz.
+`--to` is a **wallet address** (not a token account): the payout goes to this wallet's associated token account; if the
+account does not exist it is created in the same transaction (the admin pays its rent). The amount is written in whole
+tokens and cannot exceed the vault.
 
-## Durdurma ve acil durum
+## Pausing and emergencies
 
-| Ne | Komut | Etkisi |
+| What | Command | Effect |
 |---|---|---|
-| Yeni biletleri durdur | `pnpm admin update-config --paused true` | `join_arena` reddedilir; **ödemeler ve iadeler sürer**. Geri almak: `--paused false` |
-| Tek arenayı kapat | `pnpm admin update-arena --id N --enabled false` | o arenaya bilet kesilemez; açık biletler oynanıp kapanır |
-| Arenaları sunucuda kapat | sunucu ortamında `STAKE_ENABLED=false`, yeniden başlat | arenalar lobiden kalkar; ödeme kuyruğu çalışmaya devam eder |
-| Kesintiyi ya da depozitoyu değiştir | `pnpm admin update-config --fee-bps N --pass-fee-bps N --split T/S/B --settle-fee-lamports N` | kesinti oranı ve depozito bundan sonra **kesilen biletlere** uygulanır (açık bilet, kesildiği andaki oranı korur: `Session.fee_bps`); bölüşüm sonraki ödemelerde geçerli; kesinti en fazla 1000 (%10) |
-| Pass gücünü kapat | sunucuda `PASS_START_MASS_MUL=1` ve `PASS_CASHOUT_MS=3000`, yeniden başlat | Pass'li biletler normal başlar ve çıkar |
+| Stop new tickets | `pnpm admin update-config --paused true` | `join_arena` is refused; **payouts and refunds go on**. To undo: `--paused false` |
+| Close one arena | `pnpm admin update-arena --id N --enabled false` | no tickets can be bought for that arena; open tickets are played and close |
+| Close the arenas on the server | `STAKE_ENABLED=false` in the server environment, restart | the arenas leave the lobby; the payout queue keeps running |
+| Change the fee or the deposit | `pnpm admin update-config --fee-bps N --pass-fee-bps N --split T/S/B --settle-fee-lamports N` | the fee rate and the deposit apply to tickets **bought from now on** (an open ticket keeps the rate of the moment it was bought: `Session.fee_bps`); the split applies to later payouts; the fee is at most 1000 (10 %) |
+| Turn off the Pass power | `PASS_START_MASS_MUL=1` and `PASS_CASHOUT_MS=3000` on the server, restart | Pass tickets start and cash out like the others |
 
-Sunucu `SIGTERM`/`SIGINT` alınca arenadaki oyuncuları cash-out'a alır ve durumu kaydeder; yeniden başlatmalar için bunu
-kullanın (Docker `stop` SIGTERM gönderir).
+On `SIGTERM`/`SIGINT` the server cashes out the players in the arenas and saves its state; use it for restarts (Docker
+`stop` sends SIGTERM).
 
-### Arenayı kalıcı kapatma (sweep)
+### Shutting an arena down for good (sweep)
 
 1. `pnpm admin update-arena --id N --enabled false`
-2. Açık biletlerin kapanmasını bekleyin: `status` → `open 0/…`. Sunucu biletleri en geç 6 saatte otomatik cash-out yapar;
-   kapanmayanlar oyuncu tarafından 24 saat sonra iade alınabilir. Sonuçlanmış ama ödemesi alınmamış (`finalized`)
-   oturumlar da açık sayılır: oyuncu "Ödemeni al" diyene kadar `sweep` reddedilir (`ArenaHasOpenSessions`); bu tutar
-   oyuncunundur, beklemek gerekir.
-3. `/api/rooms`'ta o arenanın odalarında ganimet kalmadığından ve `GET /api/pending` / sunucu günlüğünde o arenaya ait
-   bekleyen ödeme olmadığından emin olun (CLI sunucunun journal'ını göremez).
+2. Wait for the open tickets to close: `status` → `open 0/…`. The server cashes tickets out automatically within 6 hours
+   at the latest; those that do not close can be refunded by the player after 24 hours. Settled sessions whose payout
+   has not been collected (`finalized`) also count as open: `sweep` is refused (`ArenaHasOpenSessions`) until the player
+   presses "Collect payout"; that amount belongs to the player, you have to wait.
+3. Make sure no loot is left in that arena's rooms in `/api/rooms`, and that `GET /api/pending` / the server log shows no
+   pending payout for that arena (the CLI cannot see the server's journal).
 4. ```bash
    pnpm admin sweep --id N --force
    ```
-   `--force` olmadan komut yalnızca uyarıyı yazar ve durur. Kasanın tamamı güncel sezonun havuzuna aktarılır (oyunculara
-   döner). Program yalnızca kapalı ve açık bileti olmayan arenayı süpürür. Süpürülmüş bir arenayı yeniden açmayın:
-   sunucunun journal'ında kalmış ganimet artık kasada değildir. Sunucu da bunu denetler: bir arenayı bağlarken kasası
-   journal'daki borcu (ganimet + bekleyen ödemeler + canlı biletler) karşılamıyorsa arenayı kapalı tutar ve günlüğe
-   `!!! arena #N KEPT DISABLED` yazar.
+   Without `--force` the command only prints the warning and stops. The whole vault moves to the current season's pool
+   (it goes back to the players). The program only sweeps a disabled arena with no open tickets. Do not re-enable a swept
+   arena: loot left in the server's journal is no longer in the vault. The server checks this too: when it binds an arena
+   whose vault does not cover the journal's debt (loot + pending payouts + live tickets), it keeps the arena disabled and
+   logs `!!! arena #N KEPT DISABLED`.
 
-## Sunucu anahtarını değiştirme
+## Rotating the server key
 
-Ödemeleri yalnızca `Config.server_authority` imzalayabilir; journal'daki bekleyen ödemeler yeni anahtarla gönderilir.
+Only `Config.server_authority` can sign payouts; the pending payouts in the journal are sent with the new key.
 
-1. Yeni anahtar üretin ve fonlayın:
+1. Generate and fund a new key:
    ```bash
    solana-keygen new -o keys/server-2.json --no-bip39-passphrase
    solana transfer $(solana-keygen pubkey keys/server-2.json) 0.5 --allow-unfunded-recipient
    ```
-2. Sunucuyu durdurun (SIGTERM: oyuncular cash-out'a alınır, ödemeler journal'da kalır).
-3. Zincirde değiştirin:
+2. Stop the server (SIGTERM: players are cashed out, payouts stay in the journal).
+3. Change it on-chain:
    ```bash
    pnpm admin update-config --server $(solana-keygen pubkey keys/server-2.json)
    ```
-4. Sunucuyu aynı `DATA_DIR` ile `SERVER_KEYPAIR=keys/server-2.json` olarak başlatın; bekleyen ödemeler yeni anahtarla
-   gönderilir. Eski anahtar uyuşmadığı sürece sunucu "server key is not the program server authority" diyerek bekler ve
-   yeniden dener.
-5. Eski anahtardaki SOL'ü çekin ve anahtarı imha edin.
+4. Start the server with the same `DATA_DIR` and `SERVER_KEYPAIR=keys/server-2.json`; the pending payouts are sent with
+   the new key. As long as the key does not match, the server says "server key is not the program server authority",
+   waits and retries.
+5. Withdraw the SOL left on the old key and destroy the key.
 
-Anahtar **sızdıysa** önce `pnpm admin update-config --paused true`, sonra hemen 3. adım: eski anahtar, değiştirilene kadar
-açık biletleri kasayı aşmayan herhangi bir tutarla kapatabilir. Yönetici anahtarı için `update-config --admin <yeni>`;
-upgrade authority için `solana program set-upgrade-authority`.
+If the key **leaked**, first `pnpm admin update-config --paused true`, then step 3 right away: until it is replaced, the
+old key can close open tickets with any amount that does not exceed the vault. For the admin key use
+`update-config --admin <new>`; for the upgrade authority `solana program set-upgrade-authority`.
 
-## Journal yedeği
+## Journal backup
 
-`DATA_DIR` içeriği:
+Contents of `DATA_DIR`:
 
-| Dosya | İçerik | Kaybolursa |
+| File | Contents | If it is lost |
 |---|---|---|
-| `journal.json` | bekleyen ödemeler, arenalardaki canlı değerler, odalardaki ganimet | **borçlu ödemeler kuyruktan düşer** (oyuncular yalnızca 24 saat sonra giriş bedelini iade alabilir); bayat bilet süpürücüsü `STALE_SWEEP_ACK=1` olana kadar kapalı kalır |
-| `leaderboards.json` | sunucunun Bugün / Tüm zamanlar tabloları | yalnızca görünüm |
-| `pass/` | Pass PNG önbelleği | yeniden üretilir |
-| `*.dev-fake.json` | `DEV_FAKE_CHAIN` dosyaları | gerçek parayla ilgisi yok |
+| `journal.json` | pending payouts, live values in the arenas, loot in the rooms | **owed payouts drop out of the queue** (players can only get their entry fee refunded after 24 hours); the stale-ticket sweeper stays off until `STALE_SWEEP_ACK=1` |
+| `leaderboards.json` | the server's Today / All time tables | display only |
+| `pass/` | Pass PNG cache | regenerated |
+| `*.dev-fake.json` | `DEV_FAKE_CHAIN` files | nothing to do with real money |
 
-- Journal her ödeme kuyruğa girdiğinde ve değerler değiştikçe en fazla saniyede bir **geçici dosyaya yazılıp yeniden
-  adlandırılır**: diskteki dosya her an tam bir anlık görüntüdür. Düzenli olarak kopyalayın (ör. dakikada bir, kalıcı
-  bir volume'dan) ve yedekleri şifreli saklayın (cüzdan adresleri içerir).
-- Okunamayan bir journal `journal.json.corrupt-<zaman>` olarak kenara alınır ve sunucu boş başlar; günlükte `!!!` uyarısı
-  çıkar. Sunucuyu durdurup son sağlam yedeği geri koyun.
-- **Karantinadan sonra bayat bilet süpürücüsü kapalıdır (M9).** `DATA_DIR`'da `journal.json.corrupt-*` dosyası varken
-  sunucu oynanmamış görünen biletleri giriş bedelinden iade etmez: kaybolan journal'da o biletlerin gerçek sonucu
-  (ör. kazanılmış bir cash-out) olabilir. Günlükte 30 dakikada bir `!!! chain: stale-session sweeper is OFF` yazar.
-  Karantinadaki dosyayı inceleyin, borçlu ödemeleri elle sonuçlandırın (ya da sağlam yedeği geri koyun), sonra
-  `STALE_SWEEP_ACK=1` ile yeniden başlatın ya da dosyayı `DATA_DIR` dışına taşıyın.
-- Geri yükleme: sunucuyu durdurun, dosyayı `DATA_DIR/journal.json` olarak koyun, başlatın. Zaten ödenmiş ya da iade
-  edilmiş biletlerin kayıtları kendiliğinden düşer (oturum kapalı ya da `SessionMismatch`); eski görüntüdeki canlı
-  biletler otomatik cash-out'a alınır. Eski bir yedek, o tarihten sonra toplanmış ganimeti geri getirebilir: mümkün olan
-  en yeni yedeği kullanın.
-- Aynı `DATA_DIR`'ı ya da aynı `SERVER_KEYPAIR`'ı iki sunucuda birden kullanmayın.
+- Whenever a payout is queued, and as values change at most once a second, the journal is **written to a temporary file
+  and renamed**: the file on disk is a complete snapshot at every moment. Copy it regularly (e.g. once a minute, from a
+  persistent volume) and keep the backups encrypted (they contain wallet addresses).
+- An unreadable journal is moved aside as `journal.json.corrupt-<time>` and the server starts empty; a `!!!` warning
+  appears in the log. Stop the server and put the last good backup back.
+- **After a quarantine the stale-ticket sweeper is off (M9).** While a `journal.json.corrupt-*` file is in `DATA_DIR`, the
+  server does not refund tickets that look unplayed from their entry fee: the lost journal may hold those tickets' real
+  outcome (e.g. a winning cash-out). Every 30 minutes the log says `!!! chain: stale-session sweeper is OFF`. Inspect the
+  quarantined file, settle the owed payouts by hand (or put the good backup back), then restart with
+  `STALE_SWEEP_ACK=1` or move the file out of `DATA_DIR`.
+- Restore: stop the server, put the file in place as `DATA_DIR/journal.json`, start it. The records of tickets already
+  paid or refunded drop out by themselves (session closed or `SessionMismatch`); live tickets from the old snapshot are
+  cashed out automatically. An old backup can bring back loot collected after its date: use the newest backup you have.
+- Never use the same `DATA_DIR` or the same `SERVER_KEYPAIR` on two servers at once.
 
-## Program güncellemesi
+## Program upgrade
 
 ```bash
 anchor build --ignore-keys && pnpm -F @slana/sdk sync-idl && scripts/build-lean.sh && scripts/test-program.sh
-solana program deploy target/deploy/slana_lean.so --program-id target/deploy/slana-keypair.json   # upgrade authority ile
+solana program deploy target/deploy/slana_lean.so --program-id target/deploy/slana-keypair.json   # with the upgrade authority
 ```
 
-Hesap düzenini (state.rs) geriye uyumlu tutun; yeni `.so` daha büyükse önce `solana program extend <PROGRAM_ID> <bayt>`.
-Mainnet'te güncellemeyi multisig ile yapın ve öncesinde devnet'te deneyin.
+> **Never `anchor deploy`.** It deploys `target/deploy/slana.so`, the ~679 KB Anchor reference, instead of the lean
+> program, and its rent would lock ≈ ◎4.7. Upgrades always go through `solana program deploy target/deploy/slana_lean.so`.
+
+Keep the account layout (state.rs) backward compatible; if the new `.so` is larger, first run
+`solana program extend <PROGRAM_ID> <bytes>`. On mainnet, do the upgrade through a multisig and try it on devnet first.

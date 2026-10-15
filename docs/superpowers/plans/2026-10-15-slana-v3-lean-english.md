@@ -17,7 +17,7 @@
 - Program id unchanged: `5skf5Twyqr8M84dJ8RLGfz1NU6fR3zPDRLUvGd5y7472`. The program keypair is never committed.
 - Lean program: `no_std`, no allocator, no `format!`/`core::fmt`, no floats. Logging only where it is part of the contract (`Pass entropy: slot … hash …`, events).
 - No behaviour change to any v2 ruling (R1–R24). Any behavioural trade-off needed for size → stop and ask the user.
-- English only everywhere when Phase B is done; CI grep guard rejects `[çğıöşüÇĞİÖŞÜ]` in tracked text files.
+- English only everywhere when Phase B is done; CI grep guard rejects the Turkish-specific letters `[\x{e7}\x{11f}\x{131}\x{f6}\x{15f}\x{fc}\x{c7}\x{11e}\x{130}\x{d6}\x{15e}\x{dc}]` (PCRE code points: c-cedilla, g-breve, dotless i, o-umlaut, s-cedilla, u-umlaut and their capitals) in tracked text files.
 - Never commit keypairs, seeds, `.localnet/`, `target/`. Commit messages end with the two attribution lines.
 - Done means: `cargo test` (both implementations), `pnpm -r typecheck && pnpm -r test`, `pnpm -F @slana/web build`, `pnpm -F @slana/server build`, size gate, localnet e2e on the lean build.
 
@@ -99,7 +99,7 @@
 
 ### Task 7: English core packages, server and program sources
 
-**Files:** `packages/{shared,art,sdk}/**`, `apps/server/**`, `programs/**`, `scripts/**` — every file listed by `git grep -lP '[çğıöşüÇĞİÖŞÜ]'` outside `apps/web` and `docs`.
+**Files:** `packages/{shared,art,sdk}/**`, `apps/server/**`, `programs/**`, `scripts/**` — every file listed by `git grep -lP` with the guard's letter class outside `apps/web` and `docs`.
 
 - [ ] Step 1: Translate comments, log/error strings, CLI help, bot names, emote/sticker labels, arena names (choose English names once in `packages/shared/src/arenas.ts`), art trait/palette labels; delete the Turkish chat-filter list (keep the English one).
 - [ ] Step 2: Regenerate any byte-parity fixtures (Pass metadata) in the same commit; all tests green.
@@ -107,7 +107,7 @@
 
 ### Task 8: English-only web
 
-**Files:** delete `apps/web/src/i18n/tr.ts`, `apps/web/src/ui/docs/content.tr.ts`; modify `apps/web/src/i18n/{index.ts,en.ts}`, settings (remove language option), every component with Turkish literals, design-system naming ("Kâğıt Bilet" → "Paper Ticket"), gallery, tests.
+**Files:** delete `apps/web/src/i18n/tr.ts`, `apps/web/src/ui/docs/content.tr.ts`; modify `apps/web/src/i18n/{index.ts,en.ts}`, settings (remove language option), every component with Turkish literals, design-system naming (the Turkish name → "Paper Ticket"), gallery, tests.
 
 - [ ] Step 1: Single locale; `en-US` number formatting (compact `1.5K`); remove language UI/state/storage; keep `t()` keys.
 - [ ] Step 2: Replace remaining Turkish literals in components/stamps; update tests (parity tests that compared TR/EN become single-table completeness tests).
@@ -120,5 +120,5 @@
 
 - [ ] Step 1: Translate every remaining Turkish document faithfully (keep meaning and numbers; mark nothing as "translated").
 - [ ] Step 2: Re-shoot `docs/images/*.webp` in English; README links valid.
-- [ ] Step 3: CI step `git grep -nP '[çğıöşüÇĞİÖŞÜ]' -- ':!*.webp' ':!*.png' && exit 1 || true` (fails on any match); run it locally → clean.
+- [ ] Step 3: CI step `git grep -nP` with the guard's letter class `-- ':!*.webp' ':!*.png' && exit 1 || true` (fails on any match); run it locally → clean.
 - [ ] Step 4: Full verification (Global Constraints "Done means"); commit `docs: English-only documentation and guard`.

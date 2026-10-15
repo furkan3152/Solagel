@@ -16,6 +16,12 @@ jobs:
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
     steps:
       - uses: actions/checkout@v4
+      # English only: fails on any Turkish-specific letter (c-cedilla, g-breve, dotless i, o-umlaut,
+      # s-cedilla, u-umlaut and their capitals) in a tracked text file. The letters are written as
+      # PCRE code points so this file passes its own check; images are skipped as binaries.
+      - name: English-only guard (no Turkish letters in tracked text files)
+        run: |
+          LC_ALL=C.UTF-8 git grep -nP '[\x{e7}\x{11f}\x{131}\x{f6}\x{15f}\x{fc}\x{c7}\x{11e}\x{130}\x{d6}\x{15e}\x{dc}]' -- . ':!*.webp' ':!*.png' ':!*.jpg' && { echo "Turkish text found"; exit 1; } || true
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
