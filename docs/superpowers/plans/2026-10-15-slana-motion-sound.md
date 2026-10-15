@@ -28,3 +28,9 @@
 
 ## Task 3: Walkthrough video with audio
 - Re-record the 4-minute walkthrough (reuse the scratchpad `walkthrough.mjs`) on the new build, capturing game audio through the dev master-bus tap + MediaRecorder, mux with ffmpeg; include Pass mint now that the fake allows it. Announcer audio is captured only if speech is routed through WebAudio — if not, note it.
+
+## Task 1b: One-command demo (owner request: "get the project to the state in the videos")
+- `pnpm demo`: from a fresh clone (after `pnpm install`) start the full stack exactly as in the walkthrough videos — server with `NODE_ENV=development DEV_FAKE_CHAIN=1`, web dev server, sign-in working with no extra env, dev wallet available, mintable Pass, seeded standings — print the URL, stop cleanly on Ctrl+C. Preflight: Node/pnpm versions, ports free, helpful errors.
+- `pnpm demo:localnet`: the same UI against a real local validator (`scripts/localnet.sh` + lean program + server with `.localnet/server.env`), for people who want real transactions; documents the wallet (local keypair or Phantom on localhost) and how to fund it.
+- `scripts/record-walkthrough.mjs` committed (moved from the scratchpad, cleaned up) with `pnpm demo:record` so anyone can regenerate the videos.
+- README "Run it" section rewritten around these three commands; verify from a fresh clone (git worktree in the scratchpad) that `pnpm install && pnpm demo` reaches the lobby, signs in, buys a ticket and plays.
