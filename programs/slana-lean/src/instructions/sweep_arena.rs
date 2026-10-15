@@ -90,7 +90,7 @@ pub fn process(accounts: &[AccountView], _args: &[u8]) -> Result {
         season_vault,
         token_program,
         amount,
-    );
+    )?;
     let pool = stake::add(rd_u64(sn, season::POOL), amount)?;
     wr_u64(sn, season::POOL, pool);
 

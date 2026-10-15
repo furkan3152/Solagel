@@ -189,7 +189,7 @@ pub fn process(accounts: &[AccountView], args: &[u8]) -> Result {
                 to,
                 token_program,
                 amount,
-            );
+            )?;
         }
     }
     if split.burn > 0 {
@@ -202,7 +202,7 @@ pub fn process(accounts: &[AccountView], args: &[u8]) -> Result {
                 split.burn,
                 signer,
             )
-        });
+        })?;
     }
 
     let pool = stake::add(rd_u64(sn, season::POOL), split.season)?;

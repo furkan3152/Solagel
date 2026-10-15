@@ -243,7 +243,7 @@ pub(crate) fn init_seeded_token_vault(
 ) -> Result<u8> {
     let space = token_account_space(mint)?;
     let bump = init_pda_with(payer, vault, space, token_program.address(), seeds)?;
-    initialize_account3(token_program.address(), vault, mint, authority);
+    initialize_account3(token_program.address(), vault, mint, authority)?;
     Ok(bump)
 }
 

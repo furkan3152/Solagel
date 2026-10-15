@@ -94,14 +94,12 @@ pub fn process(accounts: &[AccountView], _args: &[u8]) -> Result {
     };
 
     // ----- init_if_needed: mint_counter ----------------------------------------------------
-    let counter_bump = check_canonical_pda(
-        counter,
-        &[
-            Seed::from(PASS_MINTED_SEED),
-            Seed::from(minter.address().as_ref()),
-        ],
-        &ID,
-    )?;
+    // The seeds are built once: the canonical-PDA check, then (with the bump) the init.
+    let [prefix, owner] = [
+        Seed::from(PASS_MINTED_SEED),
+        Seed::from(minter.address().as_ref()),
+    ];
+    let counter_bump = check_canonical_pda(counter, &[prefix.clone(), owner.clone()], &ID)?;
     if counter.owned_by(&SYSTEM_PROGRAM_ID) {
         let bump = [counter_bump];
         init_pda(
@@ -109,11 +107,7 @@ pub fn process(accounts: &[AccountView], _args: &[u8]) -> Result {
             counter,
             mint_counter::SPACE,
             &ID,
-            &[
-                Seed::from(PASS_MINTED_SEED),
-                Seed::from(minter.address().as_ref()),
-                Seed::from(&bump),
-            ],
+            &[prefix, owner, Seed::from(&bump)],
         )?;
     } else {
         check_account(counter, &mint_counter::DISCRIMINATOR, mint_counter::SPACE)?;
@@ -205,7 +199,7 @@ pub fn process(accounts: &[AccountView], _args: &[u8]) -> Result {
         number,
         base_uri,
         &[Signer::from(&seeds)],
-    );
+    )?;
 
     wr_u32(c, config::PASS_MINTED, number);
     if number >= supply {
