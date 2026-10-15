@@ -20,7 +20,7 @@ from `packages/sdk/src/constants.ts` (`pnpm admin init`), game rules from `packa
 | `packages/shared` | everywhere | rules, binary protocol, arena metadata, token formatting |
 
 The browser talks to the server over a WebSocket (binary snapshots, 30 ticks per second) and signs its own transactions
-(register, join, create token account, mint, claim, refund) against the RPC. The server signs only `settle_session`.
+(register, join, create token account, mint, claim, refund) against the RPC. The server key signs `settle_session` and `sweep_loot` (and sends the permissionless `capture_pass_entropy`).
 
 ## The on-chain program: two crates, one deployed
 

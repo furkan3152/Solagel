@@ -90,7 +90,7 @@ invariants: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 | `apps/server` | Game server: rooms and instances, bots, loot, the journal, the payout queue, Pass metadata endpoints |
 | `apps/web` | Game client: the "Paper Ticket" design system, lobby, ticket flow, Pass office, standings, player guide |
 
-Docs: [design document (v2)](docs/superpowers/specs/2026-10-14-slana-design.md) ·
+Docs: [project overview](docs/PROJECT.md) · [design document (v2)](docs/superpowers/specs/2026-10-14-slana-design.md) ·
 [setup and deployment](docs/DEPLOY.md) · [operations](docs/OPERATIONS.md) · [architecture](docs/ARCHITECTURE.md) ·
 [Pass art](docs/PASS-ART.md)
 
