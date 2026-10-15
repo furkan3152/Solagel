@@ -35,6 +35,14 @@ v2, "Kâğıt Bilet" tasarımı: masaüstü ve telefon, TR / EN, kâğıt ve gec
 | --- | --- | --- | --- | --- |
 | ![](docs/images/lobby-mobile-en-night.webp) | ![](docs/images/ticket-mobile-tr.webp) | ![](docs/images/game-mobile.webp) | ![](docs/images/pass-mobile-tr-paper.webp) | ![](docs/images/leaderboard-mobile-en-night.webp) |
 
+| Telefon: lobi (kâğıt) | Yenildin | Mint teslim | Kılavuz (gece) |
+| --- | --- | --- | --- |
+| ![](docs/images/lobby-mobile-tr-paper.webp) | ![](docs/images/death-mobile.webp) | ![](docs/images/mint-delivered-mobile.webp) | ![](docs/images/docs-mobile-tr-night.webp) |
+
+| Pass açıldı | Sezon ödülü talebi |
+| --- | --- |
+| ![Pass revealed](docs/images/pass-revealed.webp) | ![Claim](docs/images/claim-sheet.webp) |
+
 Ekran görüntüleri `apps/web/scripts/{lobby,gameview,pass,docs}.mjs` turlarıyla, `DEV_FAKE_CHAIN=1` geliştirme
 yığınında alınır (tarayıcıda işlem imzalatmak otomatikleştirilemediği için). Gerçek zincir yolunu localnet uçtan uca
 testi kanıtlar: `scripts/localnet.sh` + `pnpm -F @slana/server e2e` (bkz. [OPERATIONS](docs/OPERATIONS.md)).
@@ -120,7 +128,7 @@ Pass koleksiyonu, gizli tohum taahhüdü (`.localnet/pass-seed.json`), açık mi
 ```bash
 anchor build && scripts/localnet.sh
 cd apps/server && env $(cat ../../.localnet/server.env | xargs) \
-  STALE_SESSION_AFTER_S=5 NO_ATA_RETRY_S=2 ARENA_BOT_TARGET=0 ARENA_BOT_MIN=0 ARENA_BOT_MAX=0 npx tsx src/index.ts
+  STALE_SESSION_AFTER_S=5 ARENA_BOT_TARGET=0 ARENA_BOT_MIN=0 ARENA_BOT_MAX=0 npx tsx src/index.ts
 pnpm -F @slana/server e2e          # başka bir terminalde; ~2 dk
 scripts/localnet.sh --stop
 ```
@@ -128,7 +136,8 @@ scripts/localnet.sh --stop
 Test gerçek zinciri kullanır (sahte zincir değil): cüzdanlara SOL ve $SLANA, iki Pass mint'i, web'in bilet işlemiyle
 Pass odasına giriş, ücret artışında oturumun sabit kesintisi, oyunda bir oyuncuyu yiyip değerini alma, ölüm ve cash-out
 ödemeleri (kârın %2'si kesinti, yakımın arzdan düşmesi), sezon tablosu, mint kapanışı → açılış → sunucunun entropi
-yakalaması ve açılmış metadata, token hesabı kapalı oynanmamış biletin bekletilip iadesi (R10), sezon sonu ve ödül
+yakalaması ve açılmış metadata, token hesabı kapalı oynanmamış biletin hesap olmadan sonuçlandırılıp (`owed`) oyuncunun
+"Ödemeni al" işlemiyle bekleme süresi olmadan alınması (R24), sezon sonu ve ödül
 talebi. Sonunda her işlemin harcadığı compute unit'leri web limitleriyle, hesap boyutlarını web'in kira hesabıyla
 karşılaştırır. Pass mint'i ve sezon kalıcı olarak kapandığından her koşu temiz bir `scripts/localnet.sh` ister.
 
@@ -153,7 +162,11 @@ Ek araçlar: `pnpm -F @slana/server sim` (bot dengesi), `pnpm -F @slana/web shot
 ## Güven modeli
 
 - Giriş bedelleri arena kasalarında (program hesapları) durur; ödeme kasayı aşamaz, kesinti yalnızca kârdan alınır ve
-  %10 ile sınırlıdır. 24 saat ödenmeyen bileti oyuncu kendisi iade alır.
+  %10 ile sınırlıdır. Oyuncu bilet alırken gösterilen kesinti oranı, giriş bedeli ve depozito zincirde üst sınırdır.
+- Ödeme iki aşamalıdır (R24): sunucu sonucu her zaman zincire yazar. Oyuncunun token hesabı yoksa ya da ödemeyi
+  reddediyorsa tutar kasada `owed` olarak kalır ve oyuncu "Ödemeni al" ile istediği an tam o tutarı alır. Kaybeden bir
+  oyuncu token hesabını kapatarak sonucu bozamaz, giriş bedelini geri alamaz. Sunucunun hiç sonuçlandırmadığı bir bileti
+  oyuncu 24 saat sonra kendisi iade alır.
 - Oyunun sonucu (kim kimi yedi, cash-out anındaki değer, skor) **yetkili sunucuya güvenir**. Sunucu anahtarı yalnızca açık
   biletleri kapatabilir; hazineye, sezon kasasına ve ayarlara dokunamaz. Yönetici sunucu anahtarını değiştirebildiği için
   bu güven sonuçta yöneticiye güvendir.

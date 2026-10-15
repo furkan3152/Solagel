@@ -186,7 +186,7 @@ antrenman) çalışır.
 | `AUTH_SECRET` | rastgele | `openssl rand -hex 32`; yoksa her yeniden başlatmada oyuncular yeniden imzalar |
 | `CORS_ORIGIN` | `*` | |
 | `TRUST_PROXY` | `0` | ters vekil arkasında `1` (X-Forwarded-For / -Proto / -Host) |
-| `PUBLIC_URL` | boş | sunucunun herkese açık adresi (`https://slana.example`); Pass metadata bağlantıları. **Üretimde ayarlayın** |
+| `PUBLIC_URL` | boş | sunucunun herkese açık adresi (`https://slana.example`); Pass metadata bağlantıları ve cüzdan girişindeki (SIWS) alan adı. Web sayfası başka bir alan adından sunuluyorsa giriş mesajı oyun sunucusunun adını gösterir. **Üretimde ayarlayın** |
 | `MARKET_URLS` | boş | JSON (`magicEden`, `tensor`, `opensea`); yalnızca https bağlantılar kullanılır |
 | `MARKET_URL_MAGICEDEN` / `_TENSOR` / `_OPENSEA` | boş | `MARKET_URLS`'ten önceliklidir |
 | `WEB_DIST` | boş | web derlemesini bu klasörden servis eder (tek origin) |
@@ -210,12 +210,13 @@ antrenman) çalışır.
 | `TOKEN_SYMBOL` | `$SLANA` | yalnızca görünüm. Bazı env yükleyiciler `$NAME`'i genişletir; örnek dosyada yorum satırıdır |
 | `PRIORITY_FEE_MICROLAMPORTS` | `5000` | ödeme işlemlerinin öncelik ücreti |
 | `STALE_SESSION_AFTER_S` | `900` | hiç oynanmayan biletin iadesi için bekleme (sn); daha kısası yalnızca test içindir (localnet e2e: `5`) |
-| `NO_ATA_RETRY_S` | `300` | token hesabı olmayan oyuncunun bekleyen ödemesini yeniden deneme aralığı (sn) |
+| `STALE_SWEEP_ACK` | boş | `1`: karantinaya alınmış bir journal (`journal.json.corrupt-*`) incelendi, bayat bilet süpürücüsü yeniden çalışabilir (bkz. OPERATIONS) |
 | `DEV_FAKE_CHAIN` | boş | **yalnızca geliştirme**: `NODE_ENV=development` ister, `PROGRAM_ID`/`SERVER_KEYPAIR` varken başlamaz |
 
 Sunucu anahtarı ödeme işlemlerinin ücretini öder; her bilet `settle_fee_lamports` depozitosuyla bunu geri öder. Sunucu
-oyuncu token hesaplarının kirasını **hiç ödemez**: hesabı olmayan oyuncunun ödemesi bekler, 5 dakikada bir yeniden
-denenir ve lobide "token hesabını oluştur" çağrısı görünür. Sunucu anahtarı 0,05 SOL'ün altına düşünce günlüğe uyarı
+oyuncu token hesaplarının kirasını **hiç ödemez**: hesabı olmayan (ya da ödemeyi reddeden) oyuncunun oyunu yine de
+hemen sonuçlandırılır, ödemesi kasada `owed` olarak kalır ve lobide "Ödemeni al" çağrısı görünür (R24; oyuncu hesabı
+kendisi açar, bekleme süresi yok). Sunucu anahtarı 0,05 SOL'ün altına düşünce günlüğe uyarı
 yazar.
 
 Yerelde: `pnpm dev` (sunucu :8787 + web :5173; Vite `/ws` ve `/api`'yi sunucuya yönlendirir).
@@ -273,18 +274,18 @@ Mint'i bitirmek (`close-mint`), tohumu açıklamak (`reveal`, hedef slotu kayded
 
 Kira = `(bayt + 128) × 6960` lamport (varsayılan kira: 3480 lamport/bayt-yıl × 2 yıl muafiyet). `solana rent <bayt>` bir
 RPC'ye ihtiyaç duyar; aşağıdaki değerler bu formülle hesaplandı. Hesap boyutları programdaki `INIT_SPACE` değerleridir
-(Config 507, Season 1289, Arena 74, PlayerProfile 135, Session 142, PassLock 73, MintCounter 10 bayt; SDK'daki
+(Config 507, Season 1289, Arena 74, PlayerProfile 135, Session 151, PassLock 73, MintCounter 10 bayt; SDK'daki
 `ACCOUNT_BYTES` ve bir SDK testi bunları IDL'den yeniden hesaplar).
 
-**Program dağıtımı.** `target/deploy/slana.so` = **674.896 bayt** (`anchor build`, bu commit'teki kaynakla).
+**Program dağıtımı.** `target/deploy/slana.so` = **676.696 bayt** (`anchor build`, bu commit'teki kaynakla).
 
 | Hesap | Bayt | Kira |
 |---|---|---|
-| ProgramData (`.so` + 45) | 674.941 | 4.698.480.240 lamport ≈ **◎4,698** (program kapatılırsa geri alınır) |
+| ProgramData (`.so` + 45) | 676.741 | 4.711.008.240 lamport ≈ **◎4,711** (program kapatılırsa geri alınır) |
 | Program hesabı | 36 | 1.141.440 lamport ≈ ◎0,0011 |
-| Dağıtım tamponu (`.so` + 37, geçici) | 674.933 | 4.698.424.560 lamport ≈ ◎4,698 (dağıtım bitince geri döner) |
+| Dağıtım tamponu (`.so` + 37, geçici) | 676.733 | 4.710.952.560 lamport ≈ ◎4,711 (dağıtım bitince geri döner) |
 
-Dağıtım sırasında cüzdanda yaklaşık **◎9,40 + işlem ücretleri** bulunmalı; ◎4,70 kalıcı olarak programda kalır.
+Dağıtım sırasında cüzdanda yaklaşık **◎9,43 + işlem ücretleri** bulunmalı; ◎4,71 kalıcı olarak programda kalır.
 `solana program deploy`'un `--max-len` varsayılanı ilk programın boyudur; daha büyük bir sürüm yüklemek için
 `solana program extend` gerekir (ek bayt başına aynı kira).
 
@@ -303,7 +304,7 @@ Token-2022 token hesapları uzantılar nedeniyle biraz daha büyüktür (ör. 17
 20.000 lamport depozitoyla bunu karşılar (taban ücret 5.000 lamport/imza + `PRIORITY_FEE_MICROLAMPORTS` × işlem
 birimi). Anahtarda bir miktar SOL tampon tutun (sunucu ◎0,05 altında uyarır).
 
-**Oyuncunun ödedikleri (bilgi için).** Oturum kirası 142 bayt ≈ ◎0,00188 ve Pass kilidi 73 bayt ≈ ◎0,0014 (bilet
+**Oyuncunun ödedikleri (bilgi için).** Oturum kirası 151 bayt ≈ ◎0,00194 ve Pass kilidi 73 bayt ≈ ◎0,0014 (bilet
 kapanınca geri döner); profil 135 bayt ≈ ◎0,0018 ve token hesabı ≈ ◎0,0020 (oyuncuda kalır); depozito ◎0,00002;
 Pass mint: Core varlığı (ör. `https://slana.example/pass/` ile ≈ 127 bayt ≈ ◎0,0018) + ilk mint'te sayaç (10 bayt
 ≈ ◎0,00096).

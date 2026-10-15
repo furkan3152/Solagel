@@ -62,7 +62,22 @@ jobs:
         run: npm i -g @anchor-lang/cli@1.2.1
       - name: Build
         run: anchor build --ignore-keys
-      - name: Fetch external programs (Metaplex Core)
+      - name: SDK IDL is in sync with the program
+        run: node scripts/sync-idl.mjs && git diff --exit-code packages/sdk/src/idl
+      # Metaplex Core is a fixed mainnet program: cache the dump so CI rarely hits the public RPC
+      - uses: actions/cache@v4
+        with:
+          path: target/programs
+          key: external-programs-mpl-core-v1
+      - name: Fetch external programs (Metaplex Core, retried)
         run: scripts/fetch-programs.sh
       - name: Test
         run: cargo test -p slana
+
+  docker:
+    name: Docker image (build only, no push)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: docker build -t slana:ci .
