@@ -25,6 +25,9 @@ pub const END_SEASON: [u8; 8] = [167, 166, 166, 109, 166, 71, 15, 68];
 pub const CLAIM_SEASON_REWARD: [u8; 8] = [129, 96, 145, 129, 154, 203, 29, 150];
 pub const ROLLOVER_SEASON: [u8; 8] = [100, 231, 139, 192, 118, 134, 116, 197];
 
+/// `anchor_lang::event::EVENT_IX_TAG_LE`: Anchor's event-CPI instruction tag.
+pub const EVENT_IX_TAG_LE: [u8; 8] = [0xe4, 0x45, 0xa5, 0x2e, 0x51, 0xcb, 0x9a, 0x1d];
+
 /// Every instruction of the program, by its Anchor (snake_case) name.
 pub const ALL: [(&str, [u8; 8]); 21] = [
     ("initialize", INITIALIZE),
@@ -83,6 +86,12 @@ mod tests {
             ("claim_season_reward", d::<i::ClaimSeasonReward>()),
             ("rollover_season", d::<i::RolloverSeason>()),
         ]
+    }
+
+    #[test]
+    fn event_tag_matches_anchor() {
+        assert_eq!(&EVENT_IX_TAG_LE[..], anchor_lang::event::EVENT_IX_TAG_LE);
+        assert!(ALL.iter().all(|(_, d)| *d != EVENT_IX_TAG_LE));
     }
 
     #[test]

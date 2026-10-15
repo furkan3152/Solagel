@@ -29,6 +29,7 @@ pinocchio-token-2022 = { version = "=0.4.0", default-features = false }
 # Conformance oracle: the Anchor reference (lib `slana`). Host-only, never in the .so.
 slana-ref = { path = "../slana-ref" }
 anchor-lang = "1.2.1"
+anchor-spl = { version = "1.2.1", features = ["token", "token_2022"] }
 serde_json = "1"
 solana-sha256-hasher = { version = "3.1", features = ["sha2"] }
 
