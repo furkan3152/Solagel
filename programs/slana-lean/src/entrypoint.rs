@@ -51,7 +51,7 @@ fn process_instruction(program_id: &Address, accounts: &[AccountView], data: &[u
     let Some((disc, args)) = data.split_first_chunk::<8>() else {
         return Err(err(INSTRUCTION_FALLBACK_NOT_FOUND));
     };
-    // Compared as one u64 per arm. Instructions not ported yet (Tasks 4–5) answer like an
+    // Compared as one u64 per arm. Instructions not ported yet (Task 5) answer like an
     // unknown instruction (Anchor 101).
     match u64::from_le_bytes(*disc) {
         INITIALIZE => ix::initialize::process(accounts, args),
@@ -68,6 +68,10 @@ fn process_instruction(program_id: &Address, accounts: &[AccountView], data: &[u
         SETTLE_SESSION => ix::settle_session::process(accounts, args),
         REFUND_SESSION => ix::refund_session::process(accounts, args),
         SWEEP_ARENA => ix::sweep_arena::process(accounts, args),
+        MINT_PASS => ix::mint_pass::process(accounts, args),
+        CLOSE_PASS_MINT => ix::close_pass_mint::process(accounts, args),
+        REVEAL_PASS => ix::reveal_pass::process(accounts, args),
+        CAPTURE_PASS_ENTROPY => ix::capture_pass_entropy::process(accounts, args),
         EVENT_IX_TAG => Err(err(EVENT_INSTRUCTION_STUB)),
         _ => Err(err(INSTRUCTION_FALLBACK_NOT_FOUND)),
     }
@@ -87,4 +91,8 @@ const JOIN_ARENA_WITH_PASS: u64 = u64::from_le_bytes(d::JOIN_ARENA_WITH_PASS);
 const SETTLE_SESSION: u64 = u64::from_le_bytes(d::SETTLE_SESSION);
 const REFUND_SESSION: u64 = u64::from_le_bytes(d::REFUND_SESSION);
 const SWEEP_ARENA: u64 = u64::from_le_bytes(d::SWEEP_ARENA);
+const MINT_PASS: u64 = u64::from_le_bytes(d::MINT_PASS);
+const CLOSE_PASS_MINT: u64 = u64::from_le_bytes(d::CLOSE_PASS_MINT);
+const REVEAL_PASS: u64 = u64::from_le_bytes(d::REVEAL_PASS);
+const CAPTURE_PASS_ENTROPY: u64 = u64::from_le_bytes(d::CAPTURE_PASS_ENTROPY);
 const EVENT_IX_TAG: u64 = u64::from_le_bytes(d::EVENT_IX_TAG_LE);

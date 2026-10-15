@@ -84,7 +84,7 @@ jobs:
       - name: Ported instructions against the lean program (hard gate)
         run: >-
           cargo test -p slana-ref --test admin --test layout --test size --test profile
-          --test arena --test pass_gate --test settle_finalize
+          --test arena --test pass_gate --test settle_finalize --test pass_mint
         env:
           SLANA_IMPL: lean
       - name: LiteSVM suite against the lean program (SLANA_IMPL=lean)

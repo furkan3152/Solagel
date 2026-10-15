@@ -633,3 +633,72 @@ fn mint_needs_a_base_uri() {
     assert_error(env.mint_pass(&a).0, SlanaError::BadBaseUri);
     assert_eq!(env.config().pass_minted, 0);
 }
+
+/// Anchor's account checks on the Pass instructions, with the exact error under both
+/// implementations.
+#[test]
+// `TxResult` is LiteSVM's own result type; its error variant is large by design.
+#[allow(clippy::result_large_err)]
+fn pass_constraint_errors_match_anchor() {
+    use anchor_lang::{error::ErrorCode as A, solana_program::instruction::Instruction};
+    let (mut env, collection) = mint_env();
+    let a = env.funded_keypair(10 * SOL);
+    let mint = |env: &mut TestEnv, edit: &dyn Fn(&mut Instruction)| {
+        let asset = Keypair::new();
+        let mut ix = ix::mint_pass(&a.pubkey(), &asset.pubkey(), &collection, None);
+        edit(&mut ix);
+        env.send(&[ix], &[&a, &asset])
+    };
+    // mpl_core_program: address = MPL_CORE_ID → 2012.
+    assert_anchor_error(
+        mint(&mut env, &|ix| ix.accounts[7].pubkey = Pubkey::new_unique()),
+        A::ConstraintAddress,
+    );
+    // pass_authority: canonical PDA → 2006.
+    assert_anchor_error(
+        mint(&mut env, &|ix| ix.accounts[4].pubkey = Pubkey::new_unique()),
+        A::ConstraintSeeds,
+    );
+    // mint_counter: someone else's counter → 2006 (the init_if_needed seeds come first).
+    let other = mint_counter_pda(&Pubkey::new_unique());
+    assert_anchor_error(
+        mint(&mut env, &|ix| ix.accounts[5].pubkey = other),
+        A::ConstraintSeeds,
+    );
+    // collection: mut → 2000; config: mut → 2000.
+    assert_anchor_error(
+        mint(&mut env, &|ix| ix.accounts[3].is_writable = false),
+        A::ConstraintMut,
+    );
+    assert_anchor_error(
+        mint(&mut env, &|ix| ix.accounts[2].is_writable = false),
+        A::ConstraintMut,
+    );
+    // A pre-funded counter PDA is still initialized (fund + allocate + assign).
+    let counter = mint_counter_pda(&a.pubkey());
+    env.airdrop(&counter, 1_000_000);
+    assert_ok(mint(&mut env, &|_| {}));
+    assert_eq!(env.mint_counter(&a.pubkey()).unwrap().count, 1);
+    // The existing counter is now loaded (not re-created) and enforces the limit.
+    assert_error(mint(&mut env, &|_| {}), SlanaError::MintLimit);
+
+    // reveal_pass: a short seed argument → 102.
+    let admin = env.admin.insecure_clone();
+    let mut reveal = ix::reveal_pass(&admin.pubkey(), SEED);
+    reveal.data.truncate(8 + 31);
+    assert_anchor_error(
+        env.send(&[reveal], &[&admin]),
+        A::InstructionDidNotDeserialize,
+    );
+    // close_pass_mint / capture: the config must be writable → 2000.
+    let mut close = ix::close_pass_mint(&admin.pubkey());
+    close.accounts[1].is_writable = false;
+    assert_anchor_error(env.send(&[close], &[&admin]), A::ConstraintMut);
+    let mut capture = ix::capture_pass_entropy(&a.pubkey());
+    capture.accounts[1].is_writable = false;
+    assert_anchor_error(env.send(&[capture], &[&a]), A::ConstraintMut);
+    // capture: the signer must sign → 3010.
+    let mut capture = ix::capture_pass_entropy(&admin.pubkey());
+    capture.accounts[0].is_signer = false;
+    assert_anchor_error(env.send(&[capture], &[]), A::AccountNotSigner);
+}

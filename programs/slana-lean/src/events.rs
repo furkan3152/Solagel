@@ -169,6 +169,61 @@ pub fn arena_swept(arena_id: u16, season_id: u32, amount: u64) -> [u8; 22] {
     e
 }
 
+/// `PassMinted { minter: Pubkey, asset: Pubkey, number: u32 }`.
+pub fn pass_minted(minter: &[u8; 32], asset: &[u8; 32], number: u32) -> [u8; 76] {
+    let mut e = [0u8; 76];
+    wr_bytes(&mut e, 0, &PASS_MINTED);
+    wr_bytes(&mut e, 8, minter);
+    wr_bytes(&mut e, 40, asset);
+    wr_u32(&mut e, 72, number);
+    e
+}
+
+/// `PassMintEnded { minted: u32 }`.
+pub fn pass_mint_ended(minted: u32) -> [u8; 12] {
+    let mut e = [0u8; 12];
+    wr_bytes(&mut e, 0, &PASS_MINT_ENDED);
+    wr_u32(&mut e, 8, minted);
+    e
+}
+
+/// `PassSeedRevealed { seed: [u8; 32], entropy_target_slot: u64 }`.
+pub fn pass_seed_revealed(seed: &[u8; 32], entropy_target_slot: u64) -> [u8; 48] {
+    let mut e = [0u8; 48];
+    wr_bytes(&mut e, 0, &PASS_SEED_REVEALED);
+    wr_bytes(&mut e, 8, seed);
+    wr_u64(&mut e, 40, entropy_target_slot);
+    e
+}
+
+/// `PassEntropyCaptured { slot: u64, entropy: [u8; 32] }`.
+pub fn pass_entropy_captured(slot: u64, entropy: &[u8; 32]) -> [u8; 48] {
+    let mut e = [0u8; 48];
+    wr_bytes(&mut e, 0, &PASS_ENTROPY_CAPTURED);
+    wr_u64(&mut e, 8, slot);
+    wr_bytes(&mut e, 16, entropy);
+    e
+}
+
+/// `PassEntropyRetargeted { missed_target_slot: u64, entropy_target_slot: u64 }`.
+pub fn pass_entropy_retargeted(missed_target_slot: u64, entropy_target_slot: u64) -> [u8; 24] {
+    let mut e = [0u8; 24];
+    wr_bytes(&mut e, 0, &PASS_ENTROPY_RETARGETED);
+    wr_u64(&mut e, 8, missed_target_slot);
+    wr_u64(&mut e, 16, entropy_target_slot);
+    e
+}
+
+/// `PassRevealed { seed: [u8; 32], entropy: [u8; 32], final_seed: [u8; 32] }`.
+pub fn pass_revealed(seed: &[u8; 32], entropy: &[u8; 32], final_seed: &[u8; 32]) -> [u8; 104] {
+    let mut e = [0u8; 104];
+    wr_bytes(&mut e, 0, &PASS_REVEALED);
+    wr_bytes(&mut e, 8, seed);
+    wr_bytes(&mut e, 40, entropy);
+    wr_bytes(&mut e, 72, final_seed);
+    e
+}
+
 #[cfg(test)]
 mod tests {
     use {
@@ -303,5 +358,46 @@ mod tests {
             pass_collection_set(&e.collection.to_bytes()).to_vec(),
             e.data()
         );
+        let (h1, h2, h3) = ([0x11u8; 32], [0x22u8; 32], [0x33u8; 32]);
+        let e = r::PassMinted {
+            minter: k,
+            asset: Pubkey::new_from_array([6; 32]),
+            number: 0x0102_0304,
+        };
+        assert_eq!(
+            pass_minted(&k.to_bytes(), &[6; 32], e.number).to_vec(),
+            e.data()
+        );
+        let e = r::PassMintEnded {
+            minted: 0x0a0b_0c0d,
+        };
+        assert_eq!(pass_mint_ended(e.minted).to_vec(), e.data());
+        let e = r::PassSeedRevealed {
+            seed: h1,
+            entropy_target_slot: 0x0102_0304_0506_0708,
+        };
+        assert_eq!(
+            pass_seed_revealed(&h1, e.entropy_target_slot).to_vec(),
+            e.data()
+        );
+        let e = r::PassEntropyCaptured {
+            slot: 0x1112_1314_1516_1718,
+            entropy: h2,
+        };
+        assert_eq!(pass_entropy_captured(e.slot, &h2).to_vec(), e.data());
+        let e = r::PassEntropyRetargeted {
+            missed_target_slot: 0x0102_0304_0506_0708,
+            entropy_target_slot: 0x1112_1314_1516_1718,
+        };
+        assert_eq!(
+            pass_entropy_retargeted(e.missed_target_slot, e.entropy_target_slot).to_vec(),
+            e.data()
+        );
+        let e = r::PassRevealed {
+            seed: h1,
+            entropy: h2,
+            final_seed: h3,
+        };
+        assert_eq!(pass_revealed(&h1, &h2, &h3).to_vec(), e.data());
     }
 }
