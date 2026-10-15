@@ -24,7 +24,13 @@ export interface App {
 
 export async function createApp(
   cfg: ServerConfig,
-  opts: { chain?: ChainGateway; log?: (m: string) => void; persist?: boolean } = {},
+  opts: {
+    chain?: ChainGateway;
+    log?: (m: string) => void;
+    persist?: boolean;
+    /** Wall clock for the arena rounds (Unix ms); tests inject one. Defaults to `Date.now`. */
+    now?: () => number;
+  } = {},
 ): Promise<App> {
   const log = opts.log ?? ((m: string) => console.log(`[${new Date().toISOString()}] ${m}`));
   const persist = opts.persist ?? true;
@@ -47,6 +53,7 @@ export async function createApp(
       journal,
       leaderboards,
       log,
+      now: opts.now,
     },
     chain,
   );

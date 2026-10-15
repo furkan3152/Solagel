@@ -1,7 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
 import { basename, dirname } from 'node:path';
 
-export type SettleReason = 'cashout' | 'death' | 'afk' | 'crash' | 'stale' | 'maxage' | 'kicked';
+/**
+ * Why a ticket was settled. `round`: alive at the round end (paid arenas). `cashout` and `afk` are
+ * no longer produced by arena rooms (timed rounds) but stay readable in old journals.
+ */
+export type SettleReason = 'cashout' | 'death' | 'afk' | 'crash' | 'stale' | 'maxage' | 'kicked' | 'round';
 
 export interface SettlementItem {
   /** v1 journals also held free-play `record` items; v2 drops them on load. */
@@ -32,6 +36,43 @@ export interface SettlementItem {
   tokenFailures?: number;
 }
 
+/**
+ * Floor loot an arena instance still held at a round end, moved to the current season's pool
+ * by `sweep_loot` (server-signed). Only the loot value the room computed is ever swept: never
+ * live stakes or owed payouts. Idempotent by `key` = `sweep:<roomId>:<round>`.
+ */
+export interface SweepItem {
+  kind: 'sweep';
+  /** `sweep:<roomId>:<round>`. */
+  key: string;
+  arenaId: number;
+  /** Arena instance whose floor held the loot. */
+  roomId: string;
+  /** Round number (`roundAt(...).n`) that ended. */
+  round: number;
+  /** Raw token units to move from the arena vault to the season vault (> 0). */
+  amount: number;
+  attempts: number;
+  nextAttemptAt: number;
+  createdAt: number;
+  lastError?: string;
+  /**
+   * The last transaction sent for this sweep and when (Unix ms). A sweep has no on-chain
+   * marker, so before sending again the worker checks this signature: it must never move the
+   * same loot twice (persisted, so a restart does not lose it).
+   */
+  sentSignature?: string;
+  sentAt?: number;
+}
+
+/** Everything the chain worker executes: ticket settlements and loot sweeps. */
+export type JournalItem = SettlementItem | SweepItem;
+
+/** Raw token units a journal item still owes out of its arena vault. */
+export const itemAmount = (item: JournalItem): number => (item.kind === 'sweep' ? item.amount : (item.payout ?? 0));
+
+export const sweepKey = (roomId: string, round: number): string => `sweep:${roomId}:${round}`;
+
 export interface LiveStake {
   roomId: string;
   session: string;
@@ -59,7 +100,7 @@ export const firstArenaInstance = (arenaId: number): string => `arena-${arenaId}
 
 interface JournalFile {
   version: 2;
-  pending: SettlementItem[];
+  pending: JournalItem[];
   live: LiveStake[];
   loot: LootRecord[];
   updatedAt: number;
@@ -76,10 +117,11 @@ interface JournalFileV1 {
  * Crash-safe record of money the server owes. Every change is written with
  * write-to-temp + rename, so the file on disk is always a complete snapshot.
  *
- * Invariant: at any instant, Σ live values + Σ loot + Σ pending payouts (per
- * arena) equals what the arena vault owes, because value only leaves `live`
- * in the same write that adds the matching pending settlement, and the room
- * writes live values and loot together.
+ * Invariant: at any instant, Σ live values + Σ loot + Σ pending amounts (payouts and
+ * loot sweeps, per arena) equals what the arena vault owes, because value only leaves
+ * `live` in the same write that adds the matching pending settlement, loot only leaves
+ * the floor records in the same write that adds its sweep, and the room writes live
+ * values and loot together.
  *
  * File format v2 adds `loot` and `LiveStake.hasPass`; v1 files are migrated on load.
  * Loot is keyed by arena instance (room id), so instances of one arena never
@@ -88,7 +130,7 @@ interface JournalFileV1 {
  * existed (no `roomId`) belong to the first instance.
  */
 export class Journal {
-  private pendingItems: SettlementItem[] = [];
+  private pendingItems: JournalItem[] = [];
   private liveByRoom = new Map<string, LiveStake[]>();
   private lootByRoom = new Map<string, LootRecord[]>();
   /** Arenas whose loot was already adopted in this process (restored once only). */
@@ -137,8 +179,13 @@ export class Journal {
     }
   }
 
-  get pending(): readonly SettlementItem[] {
+  get pending(): readonly JournalItem[] {
     return this.pendingItems;
+  }
+
+  /** The pending ticket settlements (without loot sweeps). */
+  settlements(): SettlementItem[] {
+    return this.pendingItems.filter((p): p is SettlementItem => p.kind === 'settle');
   }
 
   live(): LiveStake[] {
@@ -178,12 +225,12 @@ export class Journal {
   }
 
   /**
-   * What the journal says arena `arenaId`'s vault owes: Σ pending payouts + Σ loot on its
-   * floors + Σ live ticket values (raw token units). The vault must hold at least this.
+   * What the journal says arena `arenaId`'s vault owes: Σ pending payouts and loot sweeps + Σ loot
+   * on its floors + Σ live ticket values (raw token units). The vault must hold at least this.
    */
   owedByArena(arenaId: number): number {
     let sum = 0;
-    for (const p of this.pendingItems) if (p.arenaId === arenaId) sum += p.payout ?? 0;
+    for (const p of this.pendingItems) if (p.arenaId === arenaId) sum += itemAmount(p);
     for (const list of this.lootByRoom.values()) for (const l of list) if (l.arenaId === arenaId) sum += l.value;
     for (const list of this.liveByRoom.values()) for (const l of list) if (l.arenaId === arenaId) sum += l.value;
     return sum;
@@ -232,7 +279,7 @@ export class Journal {
    * replace an arena instance's loot records.
    */
   commit(opts: {
-    enqueue?: SettlementItem[];
+    enqueue?: JournalItem[];
     roomId?: string;
     live?: LiveStake[];
     loot?: { roomId: string; arenaId: number; items: { x: number; y: number; value: number }[] };
@@ -254,8 +301,25 @@ export class Journal {
     this.persist();
   }
 
-  enqueue(item: SettlementItem): void {
+  enqueue(item: JournalItem): void {
     this.commit({ enqueue: [item] });
+  }
+
+  /**
+   * Records the transaction just sent for a sweep item (persisted before the send is awaited);
+   * an empty `signature` clears it (the send failed for certain, nothing moved).
+   */
+  markSent(key: string, signature: string, at = Date.now()): void {
+    const item = this.pendingItems.find((p) => p.key === key);
+    if (!item || item.kind !== 'sweep') return;
+    if (signature) {
+      item.sentSignature = signature;
+      item.sentAt = at;
+    } else {
+      delete item.sentSignature;
+      delete item.sentAt;
+    }
+    this.persist();
   }
 
   /** Marks an item as done (settled on-chain or no longer applicable). */
@@ -276,7 +340,7 @@ export class Journal {
     item.attempts++;
     item.lastError = error.slice(0, 300);
     item.nextAttemptAt = now + (opts.delayMs ?? Math.min(300_000, 2000 * 2 ** Math.min(item.attempts, 8)));
-    if (opts.tokenFailure) item.tokenFailures = (item.tokenFailures ?? 0) + 1;
+    if (opts.tokenFailure && item.kind === 'settle') item.tokenFailures = (item.tokenFailures ?? 0) + 1;
     this.persist();
   }
 
@@ -324,6 +388,12 @@ function migrate(data: JournalFile | JournalFileV1): JournalFile {
     };
   }
   if (data.version !== 2 || !Array.isArray(data.loot)) throw new Error('bad journal shape');
+  for (const p of data.pending) {
+    if ((p as { kind: string }).kind !== 'sweep') continue;
+    const sw = p as SweepItem;
+    if (typeof sw.key !== 'string' || !Number.isSafeInteger(sw.amount) || sw.amount <= 0) throw new Error('bad sweep item');
+    if (!Number.isInteger(sw.arenaId) || sw.arenaId < 0 || typeof sw.roomId !== 'string' || !Number.isInteger(sw.round)) throw new Error('bad sweep item');
+  }
   for (const l of data.loot) {
     if (!Number.isSafeInteger(l.value) || l.value <= 0 || !Number.isFinite(l.x) || !Number.isFinite(l.y)) throw new Error('bad loot record');
     if (!Number.isInteger(l.arenaId) || l.arenaId < 0) throw new Error('bad loot record');

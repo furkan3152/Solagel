@@ -143,8 +143,21 @@ export class Gateway {
     conn.room?.leave(conn, 'disconnect');
   }
 
-  private error(conn: Conn, code: ErrorCode, message: string): void {
-    conn.send({ t: 'error', code, message });
+  private error(conn: Conn, code: ErrorCode, message: string, extra: { opensAt?: number } = {}): void {
+    conn.send({ t: 'error', code, message, ...extra });
+  }
+
+  /**
+   * New arena joins are refused from `joinsCloseAt` until the round ends (`round_closed` with
+   * `opensAt` = the end). Returns true when refused. Reconnects of a live staker never come here.
+   */
+  private roundClosed(conn: Conn): boolean {
+    const now = this.rooms.now();
+    const r = this.rooms.roundWindow(now);
+    if (now < r.joinsCloseAt) return false;
+    const secs = Math.max(1, Math.ceil((r.endsAt - now) / 1000));
+    this.error(conn, 'round_closed', `Joins are closed for the rest of this round. The next round opens in ${secs} s.`, { opensAt: r.endsAt });
+    return true;
   }
 
   private async refreshProfile(wallet: string): Promise<void> {
@@ -182,6 +195,7 @@ export class Gateway {
           t: 'welcome',
           v: PROTOCOL_VERSION,
           serverTime: Date.now(),
+          serverNow: this.rooms.now(),
           rooms: this.rooms.list(),
           chain: publicChainStatus(this.chain.status(), this.cfg),
           online: this.rooms.online(),
@@ -230,7 +244,7 @@ export class Gateway {
         conn.room?.cashout(conn);
         return;
       case 'ping':
-        conn.send({ t: 'pong', ts: Number(msg.ts) || 0, serverTime: Date.now() });
+        conn.send({ t: 'pong', ts: Number(msg.ts) || 0, serverTime: Date.now(), serverNow: this.rooms.now() });
         return;
     }
   }
@@ -348,6 +362,8 @@ export class Gateway {
         this.error(conn, 'session_busy', 'You are already playing in this arena.');
         return;
       }
+      // a new join (not the AFK return above): only while the round's joins are open
+      if (this.roundClosed(conn)) return;
       if (!conn.allowChainOp()) {
         this.error(conn, 'rate_limited', 'Too many join attempts — wait a moment.');
         return;
@@ -394,6 +410,8 @@ export class Gateway {
         this.error(conn, 'no_session', 'Your previous game in this arena is still being settled.');
         return;
       }
+      // the awaits above may have crossed into the closed window
+      if (this.roundClosed(conn)) return;
       if (conn.player?.alive) conn.room?.leave(conn, 'switch');
       room.join(conn, {
         name,

@@ -17,10 +17,10 @@ import {
 import { Connection, Keypair, PublicKey, TransactionInstruction } from '@solana/web3.js';
 import { describe, expect, it } from 'vitest';
 import { createChain } from '../src/chain';
-import { SolanaChain, STALE_SESSION_AFTER_S, TOKEN_FAILURES_BEFORE_FINALIZE, type ChainClient } from '../src/chain/solana';
+import { SolanaChain, STALE_SESSION_AFTER_S, SWEEP_RESEND_AFTER_MS, TOKEN_FAILURES_BEFORE_FINALIZE, type ChainClient } from '../src/chain/solana';
 import type { SettledEvent } from '../src/chain/types';
 import { loadConfig, type ServerConfig } from '../src/config';
-import { Journal, type SettlementItem } from '../src/stake/journal';
+import { Journal, sweepKey, type SettlementItem, type SweepItem } from '../src/stake/journal';
 
 const PROGRAM = new PublicKey('5skf5Twyqr8M84dJ8RLGfz1NU6fR3zPDRLUvGd5y7472');
 const T0 = 1_760_000_000_000;
@@ -117,6 +117,9 @@ class FakeClient implements ChainClient {
   settles: Record<string, unknown>[] = [];
   /** Real `settle_session` instructions built from the same params. */
   built: TransactionInstruction[] = [];
+  /** `sweep_loot` params, and the real instructions built from them. */
+  sweeps: Record<string, unknown>[] = [];
+  sweepBuilt: TransactionInstruction[] = [];
   /** Addresses `accountExists` reports as missing (e.g. a player's ATA). */
   missing = new Set<string>();
   /** Raw mint supply. */
@@ -215,6 +218,12 @@ class FakeClient implements ChainClient {
       this.captures.push(signer.toBase58());
       return realIx.capturePassEntropy(signer);
     },
+    sweepLoot: async (server: PublicKey, p: Parameters<ChainClient['ix']['sweepLoot']>[1]) => {
+      this.sweeps.push(p as unknown as Record<string, unknown>);
+      const ix = await realIx.sweepLoot(server, p);
+      this.sweepBuilt.push(ix);
+      return ix;
+    },
   } as unknown as ChainClient['ix'];
 }
 
@@ -235,11 +244,13 @@ interface Harness {
   clock: { now: number };
 }
 
-async function harness(opts: { cfg?: Partial<ServerConfig['chain']>; setup?: (c: FakeClient, server: Keypair) => void } = {}): Promise<Harness> {
+async function harness(
+  opts: { cfg?: Partial<ServerConfig['chain']>; setup?: (c: FakeClient, server: Keypair) => void; journal?: Journal } = {},
+): Promise<Harness> {
   const server = Keypair.generate();
   const client = new FakeClient(server);
   opts.setup?.(client, server);
-  const journal = new Journal(null);
+  const journal = opts.journal ?? new Journal(null);
   const h: Harness = {
     chain: null as unknown as SolanaChain,
     client,
@@ -601,7 +612,7 @@ describe('settlement worker', () => {
     for (let i = 0; i < TOKEN_FAILURES_BEFORE_FINALIZE; i++) h.failures.push(memo());
     for (let i = 0; i < TOKEN_FAILURES_BEFORE_FINALIZE; i++) {
       await h.chain.processPending();
-      expect(h.journal.pending[0].tokenFailures).toBe(i + 1);
+      expect(h.journal.settlements()[0].tokenFailures).toBe(i + 1);
       h.clock.now = h.journal.pending[0].nextAttemptAt;
     }
     expect(h.client.settles.every((p) => p.playerToken === undefined)).toBe(true);
@@ -615,7 +626,7 @@ describe('settlement worker', () => {
     t.journal.enqueue(settleItem(s2));
     t.failures.push({ logs: ['Program log: AnchorError caused by account: player_token. Error Code: ConstraintTokenOwner. Error Number: 2015. Error Message: x.'] });
     await t.chain.processPending();
-    expect(t.journal.pending[0].tokenFailures).toBe(1);
+    expect(t.journal.settlements()[0].tokenFailures).toBe(1);
   });
 
   it('I2: AccountNotInitialized with the session still open retries; dropped only once the session is gone', async () => {
@@ -984,5 +995,108 @@ describe('Pass reads', () => {
     expect(await h.chain.listArenas()).toEqual([
       { id: 2, address: 'A2', entryFee: 5_000, requiresPass: true, maxSessions: 64, openSessions: 3, enabled: true, pot: 15_000 },
     ]);
+  });
+});
+
+function sweepItem(overrides: Partial<SweepItem> = {}): SweepItem {
+  return {
+    kind: 'sweep',
+    key: sweepKey('arena-1-1', 5_970_000),
+    arenaId: 1,
+    roomId: 'arena-1-1',
+    round: 5_970_000,
+    amount: 3_141_592,
+    attempts: 0,
+    nextAttemptAt: T0,
+    createdAt: T0,
+    ...overrides,
+  };
+}
+
+describe('loot sweeps (round end)', () => {
+  it('sends sweep_loot for exactly the journaled amount, signed by the server, once', async () => {
+    const h = await harness();
+    h.journal.enqueue(sweepItem());
+    await h.chain.processPending();
+    expect(h.client.sweeps).toEqual([
+      { id: 1, amount: 3_141_592, currentSeason: 3, tokenMint: h.client.config!.tokenMint, tokenProgram: h.client.config!.tokenProgram },
+    ]);
+    const ix = h.client.sweepBuilt[0];
+    expect(ix.keys[0]).toMatchObject({ isSigner: true });
+    expect(ix.keys[0].pubkey.equals(h.server.publicKey)).toBe(true);
+    expect(ix.keys.map((k) => k.pubkey.toBase58())).toContain(pdas.seasonVault(PROGRAM).toBase58());
+    expect(h.sent).toBe(1);
+    expect(h.journal.pending).toHaveLength(0);
+    expect(h.logs.some((l) => /swept .* loot of arena-1-1/.test(l))).toBe(true);
+    await h.chain.processPending();
+    expect(h.sent).toBe(1);
+  });
+
+  it('a sweep item survives a journal reload and is executed once', async () => {
+    const path = join(mkdtempSync(join(tmpdir(), 'slana-sweep-')), 'journal.json');
+    const before = new Journal(path);
+    // the round-end write: the floor loot leaves the loot records in the same commit that queues the sweep
+    before.commit({ roomId: 'arena-1-1', live: [], loot: { roomId: 'arena-1-1', arenaId: 1, items: [{ x: 1, y: 2, value: 3_141_592 }] } });
+    expect(before.owedByArena(1)).toBe(3_141_592);
+    before.commit({ enqueue: [sweepItem()], roomId: 'arena-1-1', live: [], loot: { roomId: 'arena-1-1', arenaId: 1, items: [] } });
+    expect(before.owedByArena(1)).toBe(3_141_592);
+
+    const reloaded = new Journal(path);
+    expect(reloaded.pending).toEqual([sweepItem()]);
+    expect(reloaded.recoverLoot(1)).toEqual([]);
+    expect(reloaded.recoverLive()).toBe(0);
+    expect(reloaded.pending).toHaveLength(1);
+    const h = await harness({ journal: reloaded });
+    await h.chain.processPending();
+    await h.chain.processPending();
+    expect(h.sent).toBe(1);
+    expect(new Journal(path).pending).toEqual([]);
+  });
+
+  it('never sends a sweep twice while an earlier send may still land', async () => {
+    const path = join(mkdtempSync(join(tmpdir(), 'slana-sweep-')), 'journal.json');
+    const h = await harness({ journal: new Journal(path) });
+    h.journal.enqueue(sweepItem());
+    h.failures.push(new Error('block height exceeded? timeout'));
+    await h.chain.processPending();
+    expect(h.sent).toBe(1);
+    // the signature was persisted before the send
+    expect(new Journal(path).pending[0]).toMatchObject({ kind: 'sweep', sentSignature: 'sig1', sentAt: T0 });
+
+    // not landed, still young: only the status is re-checked
+    h.clock.now = h.journal.pending[0].nextAttemptAt;
+    await h.chain.processPending();
+    expect(h.sent).toBe(1);
+
+    // it landed after all: done without a second transaction
+    h.landed.add('sig1');
+    h.clock.now = h.journal.pending[0].nextAttemptAt;
+    await h.chain.processPending();
+    expect(h.sent).toBe(1);
+    expect(h.journal.pending).toHaveLength(0);
+    expect(h.client.sweeps).toHaveLength(1);
+  });
+
+  it('resends a sweep whose transaction expired unlanded, and retries a program error at once', async () => {
+    const h = await harness();
+    h.journal.enqueue(sweepItem());
+    h.failures.push(new Error('timeout'));
+    await h.chain.processPending();
+    h.clock.now = T0 + SWEEP_RESEND_AFTER_MS;
+    await h.chain.processPending();
+    expect(h.sent).toBe(2);
+    expect(h.journal.pending).toHaveLength(0);
+
+    const t = await harness();
+    t.journal.enqueue(sweepItem());
+    t.failures.push({ logs: ['Program log: AnchorError occurred. Error Code: InsufficientPot. Error Number: 6007. Error Message: x.'] });
+    await t.chain.processPending();
+    const left = t.journal.pending[0] as SweepItem;
+    expect(left.sentSignature).toBeUndefined();
+    expect(left.attempts).toBe(1);
+    t.clock.now = left.nextAttemptAt;
+    await t.chain.processPending();
+    expect(t.sent).toBe(2);
+    expect(t.journal.pending).toHaveLength(0);
   });
 });

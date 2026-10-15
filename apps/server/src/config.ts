@@ -25,8 +25,14 @@ export interface ServerConfig {
   arenaInstanceCap: number;
   /** Bot population per room kind. */
   bots: { practiceRookie: BotManagerOptions; practicePro: BotManagerOptions; arena: BotManagerOptions; private: BotManagerOptions };
-  /** Slana Pass power (`PASS_START_MASS_MUL`, `PASS_CASHOUT_MS`). */
+  /** Slana Pass power (`PASS_START_MASS_MUL`, `PASS_CASHOUT_MS`; the cash-out time is unused since arenas play rounds). */
   pass: { startMassMul: number; cashoutMs: number };
+  /**
+   * Arena round clock (`ROUND_SECONDS`, `ROUND_JOIN_CLOSE_SECONDS`; defaults `RULES.roundMs` /
+   * `RULES.roundJoinCloseMs`). Tests, the localnet e2e and demo recordings shorten it;
+   * production uses the defaults. The closed window is at most half a round.
+   */
+  round: { roundMs: number; closeMs: number };
   authSecret: Buffer;
   /** `NODE_ENV` as given (null when unset). */
   nodeEnv: string | null;
@@ -132,6 +138,15 @@ export function parseMarketUrls(env: NodeJS.ProcessEnv): MarketUrls {
   return out;
 }
 
+/** `ROUND_SECONDS` / `ROUND_JOIN_CLOSE_SECONDS`: whole seconds, a round of at least 2 s, joins closed for at most half of it. */
+export function parseRoundConfig(env: NodeJS.ProcessEnv): { roundMs: number; closeMs: number } {
+  const roundS = Math.floor(num(env.ROUND_SECONDS, RULES.roundMs / 1000));
+  const roundMs = Math.max(2, roundS) * 1000;
+  const closeS = Math.floor(num(env.ROUND_JOIN_CLOSE_SECONDS, RULES.roundJoinCloseMs / 1000));
+  const closeMs = Math.min(Math.max(0, closeS) * 1000, Math.floor(roundMs / 2000) * 1000);
+  return { roundMs, closeMs };
+}
+
 const bool = (v: string | undefined, d: boolean): boolean => (v === undefined ? d : ['1', 'true', 'yes', 'on'].includes(v.toLowerCase()));
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
@@ -178,6 +193,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       startMassMul: Math.max(1, num(env.PASS_START_MASS_MUL, RULES.passStartMassMul)),
       cashoutMs: Math.max(0, int(env.PASS_CASHOUT_MS, RULES.passCashoutMs)),
     },
+    round: parseRoundConfig(env),
     authSecret: secret,
     nodeEnv: env.NODE_ENV?.trim() || null,
     devFakeChain: bool(env.DEV_FAKE_CHAIN, false),

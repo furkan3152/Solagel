@@ -1,6 +1,6 @@
 import type { ChainStatus } from '@slana/shared';
 import { describe, expect, it } from 'vitest';
-import { loadConfig, parseMarketUrls, publicChainStatus } from '../src/config';
+import { loadConfig, parseMarketUrls, parseRoundConfig, publicChainStatus } from '../src/config';
 
 const status: ChainStatus = {
   enabled: false,
@@ -80,5 +80,24 @@ describe('Pass power in the public status (I3)', () => {
     expect(publicChainStatus(status, loadConfig({})).passPower).toEqual({ startMassMul: 1.15, cashoutMs: 2000 });
     // without a pass config (older callers) nothing is added
     expect('passPower' in publicChainStatus(status, { markets: {} })).toBe(false);
+  });
+});
+
+describe('round clock config', () => {
+  it('defaults to 5-minute rounds with joins closed in the last minute', () => {
+    expect(loadConfig({}).round).toEqual({ roundMs: 300_000, closeMs: 60_000 });
+    expect(parseRoundConfig({ ROUND_SECONDS: '', ROUND_JOIN_CLOSE_SECONDS: ' ' })).toEqual({ roundMs: 300_000, closeMs: 60_000 });
+  });
+
+  it('reads ROUND_SECONDS / ROUND_JOIN_CLOSE_SECONDS (tests, localnet e2e)', () => {
+    expect(loadConfig({ ROUND_SECONDS: '30', ROUND_JOIN_CLOSE_SECONDS: '5' }).round).toEqual({ roundMs: 30_000, closeMs: 5_000 });
+    expect(parseRoundConfig({ ROUND_SECONDS: '600', ROUND_JOIN_CLOSE_SECONDS: '0' })).toEqual({ roundMs: 600_000, closeMs: 0 });
+  });
+
+  it('keeps joins open for at least half a round and rounds of at least 2 s', () => {
+    // a 30 s round with the default 60 s closed window would never open: capped at half the round
+    expect(parseRoundConfig({ ROUND_SECONDS: '30' })).toEqual({ roundMs: 30_000, closeMs: 15_000 });
+    expect(parseRoundConfig({ ROUND_SECONDS: '0', ROUND_JOIN_CLOSE_SECONDS: '-4' })).toEqual({ roundMs: 2_000, closeMs: 0 });
+    expect(parseRoundConfig({ ROUND_SECONDS: 'soon' })).toEqual({ roundMs: 300_000, closeMs: 60_000 });
   });
 });

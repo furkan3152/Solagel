@@ -27,7 +27,7 @@ import {
 import { TOKEN_SYMBOL_DEFAULT, formatToken, toSafeAmount, type ChainStatus, type PassStatus } from '@slana/shared';
 import { Connection, Keypair, PublicKey, type TransactionInstruction } from '@solana/web3.js';
 import type { ServerConfig } from '../config';
-import type { Journal, SettlementItem } from '../stake/journal';
+import type { Journal, JournalItem, SettlementItem, SweepItem } from '../stake/journal';
 import type {
   ChainArena,
   ChainGateway,
@@ -75,6 +75,12 @@ const TOKEN_ACCOUNT_CODES: readonly number[] = [2014, 2015, 2021];
 /** SPL Token and Token-2022 program ids (a failure inside them on settle is the player's account). */
 const TOKEN_PROGRAM_FAILED = /Program (TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA|TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb) failed/;
 const STOP_GRACE_MS = 5_000;
+/**
+ * A sweep transaction that has not landed this long after it was sent never will (its blockhash
+ * expired), so the worker may send the sweep again. Before that it only re-checks the signature:
+ * a sweep has no on-chain marker and must never move the same loot twice.
+ */
+export const SWEEP_RESEND_AFTER_MS = 120_000;
 
 const ERR = {
   unauthorized: SlanaErrorCode.Unauthorized,
@@ -114,7 +120,7 @@ export interface ChainClient {
   listOwnedPasses(owner: string, collection: string): Promise<OwnedPass[]>;
   /** Current slot ('confirmed'). */
   getSlot(): Promise<number>;
-  readonly ix: Pick<SlanaClient['ix'], 'settleSession' | 'capturePassEntropy'>;
+  readonly ix: Pick<SlanaClient['ix'], 'settleSession' | 'capturePassEntropy' | 'sweepLoot'>;
 }
 
 /** `ChainClient` over a real `SlanaClient` + its connection. */
@@ -817,10 +823,95 @@ export class SolanaChain implements ChainGateway {
     return this.journal.pending.some((p) => p.key === key);
   }
 
-  private async process(item: SettlementItem): Promise<void> {
+  private async process(item: JournalItem): Promise<void> {
     if (item.kind === 'settle') return this.processSettle(item);
+    if (item.kind === 'sweep') return this.processSweep(item);
     this.log(`!!! chain: dropping journal item of unknown kind: ${JSON.stringify(item)}`);
-    this.journal.remove(item.key);
+    this.journal.remove((item as { key: string }).key);
+  }
+
+  /**
+   * Round end: moves exactly the journaled floor-loot value of one arena instance from the arena
+   * vault to the current season's pool (`sweep_loot`, server-signed). The program caps it only
+   * by the vault balance, so the amount is never anything but what the room computed, and the
+   * same item is never executed twice: its last signature is persisted before each send and
+   * checked before any resend (`SWEEP_RESEND_AFTER_MS`).
+   */
+  private async processSweep(item: SweepItem): Promise<void> {
+    const { key } = item;
+    if (!Number.isSafeInteger(item.amount) || item.amount <= 0 || !Number.isInteger(item.arenaId) || item.arenaId < 0) {
+      this.log(`!!! chain: dropping malformed loot sweep (needs manual review): ${JSON.stringify(item)}`);
+      this.journal.remove(key);
+      return;
+    }
+    if (item.sentSignature) {
+      const landed = await this.sweepLanded(item.sentSignature);
+      if (landed === null) {
+        this.journal.retryLater(key, `sweep ${short(item.sentSignature)} status unknown`, this.now());
+        return;
+      }
+      if (landed) {
+        this.journal.remove(key);
+        this.seasonCache = null;
+        this.arenaCache = null;
+        this.log(`chain: swept ${this.units(item.amount)} loot of ${item.roomId} (round ${item.round}) → season (confirmation arrived late) · ${item.sentSignature}`);
+        return;
+      }
+      const age = this.now() - (item.sentAt ?? 0);
+      if (age < SWEEP_RESEND_AFTER_MS) {
+        this.journal.retryLater(key, `sweep ${short(item.sentSignature)} not confirmed yet`, this.now(), { delayMs: Math.min(15_000, SWEEP_RESEND_AFTER_MS - age) });
+        return;
+      }
+    }
+    const config = await this.currentConfig();
+    if (!config) {
+      this.journal.retryLater(key, 'config unavailable', this.now());
+      return;
+    }
+    if (!this.authorized) {
+      this.journal.retryLater(key, 'server key is not the program server authority', this.now());
+      return;
+    }
+    const ix = await this.client!.ix.sweepLoot(this.keypair!.publicKey, {
+      id: item.arenaId,
+      amount: item.amount,
+      currentSeason: config.currentSeason,
+      tokenMint: config.tokenMint,
+      tokenProgram: config.tokenProgram,
+    });
+    try {
+      const signature = await this.send(key, [ix], (sig) => this.journal.markSent(key, sig, this.now()));
+      this.journal.remove(key);
+      this.sentSignatures.delete(key);
+      this.seasonCache = null;
+      this.arenaCache = null;
+      this.log(`chain: swept ${this.units(item.amount)} loot of ${item.roomId} (round ${item.round}) → season ${config.currentSeason} · ${signature}`);
+    } catch (err) {
+      const code = programErrorCode(err);
+      const d = describeError(err);
+      const label = `${d.name ?? 'error'}${code !== null ? ` ${code}` : ''}: ${firstLine(err)}`;
+      // a program error is a definitive failure (nothing moved): the next attempt may send at once
+      if (code !== null) this.journal.markSent(key, '', 0);
+      if (code === ERR.constraintSeeds || code === ERR.constraintAddress) this.configAt = 0;
+      if (code === ERR.unauthorized) await this.freshConfig();
+      if (code === ERR.insufficientPot) {
+        this.warn(`sweep-pot-${item.arenaId}`, `!!! chain: arena #${item.arenaId} vault cannot cover the loot sweep ${short(key)} (${this.units(item.amount)}) — retrying with backoff`);
+      }
+      if (item.attempts > 0 && item.attempts % 5 === 0) this.log(`!!! chain: loot sweep ${key} still failing after ${item.attempts + 1} attempts: ${label}`);
+      this.journal.retryLater(key, label, this.now());
+    }
+  }
+
+  /** Whether a sent sweep landed: true / false, or null when the status cannot be read now. */
+  private async sweepLanded(signature: string): Promise<boolean | null> {
+    try {
+      if (this.deps.signatureLanded) return await this.deps.signatureLanded(signature);
+      if (!this.connection) return null;
+      const status = (await this.connection.getSignatureStatuses([signature], { searchTransactionHistory: true })).value[0];
+      return !!status && !status.err && status.confirmationStatus !== 'processed';
+    } catch {
+      return null;
+    }
   }
 
   private async processSettle(item: SettlementItem): Promise<void> {
@@ -1028,8 +1119,11 @@ export class SolanaChain implements ChainGateway {
     return logs.some((l) => TOKEN_PROGRAM_FAILED.test(l));
   }
 
-  private send(key: string, ixs: TransactionInstruction[]): Promise<string> {
-    const onSignature = (signature: string) => this.sentSignatures.set(key, signature);
+  private send(key: string, ixs: TransactionInstruction[], onSent?: (signature: string) => void): Promise<string> {
+    const onSignature = (signature: string) => {
+      this.sentSignatures.set(key, signature);
+      onSent?.(signature);
+    };
     if (this.deps.send) return withTimeout(this.deps.send(ixs, onSignature), SEND_TIMEOUT_MS, 'send');
     return withTimeout(
       this.sdk!.sendAndConfirm(ixs, [this.keypair!], { priorityMicroLamports: this.cfg.chain.priorityFeeMicroLamports, onSignature }),

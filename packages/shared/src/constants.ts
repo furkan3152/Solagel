@@ -70,10 +70,18 @@ export const RULES = {
   /** Newly spawned players are shielded this long. */
   spawnShieldMs: 3_000,
 
-  /** Arena mode: cash-out channel duration. */
+  /** Cash-out channel duration (unused since paid arenas play timed rounds; kept for old clients). */
   cashoutMs: 3_000,
-  /** Arena mode: disconnected players stay in the arena this long. */
+  /** Arena mode: a disconnected player's cells stay in the arena (AFK) at least this long; they are settled at the round end. */
   afkGraceMs: 45_000,
+
+  /**
+   * Arena rounds: wall-clock aligned, round n runs [n·roundMs, (n+1)·roundMs) of Unix time,
+   * identical for every arena and instance. Everyone alive at the end is paid their value.
+   */
+  roundMs: 300_000,
+  /** New arena joins close this long before a round ends (`round_closed` until the next round opens). */
+  roundJoinCloseMs: 60_000,
 
   /** Slana Pass holders start with this multiple of `startMass`… */
   passStartMassMul: 1.15,

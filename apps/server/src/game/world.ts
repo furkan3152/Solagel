@@ -364,6 +364,23 @@ export class World {
     }
   }
 
+  /** Removes every loot piece from the floor and returns their total value (round end: it goes to the season pool). */
+  takeLoot(): number {
+    let sum = 0;
+    for (const l of this.lootList) {
+      sum += l.value;
+      this.removeStatic(l, 0);
+    }
+    this.lootList.length = 0;
+    return sum;
+  }
+
+  /** Round reset: clears the ejected mass lying around (players are removed by their owners). */
+  clearEjects(): void {
+    for (const e of this.ejects) this.removeEject(e, 0);
+    this.ejects.length = 0;
+  }
+
   /** Loot currently on the floor. */
   loot(): { id: number; x: number; y: number; value: number }[] {
     return this.lootList.map((l) => ({ id: l.id, x: l.x, y: l.y, value: l.value }));

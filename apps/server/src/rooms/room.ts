@@ -5,6 +5,7 @@ import {
   PlayerFlag,
   RULES,
   clamp,
+  roundAt,
   VIEW,
   WORLD_PRESETS,
   sanitizeChat,
@@ -17,6 +18,8 @@ import {
   type League,
   type RoomInfo,
   type RoomMode,
+  type RoundInfo,
+  type RoundStanding,
   type ServerMessage,
 } from '@slana/shared';
 import type { BotManagerOptions } from '../bots/manager';
@@ -28,7 +31,7 @@ import { mulberry32 } from '../game/rng';
 import { World, type CellEatenEvent } from '../game/world';
 import type { Leaderboards } from '../leaderboards';
 import type { Conn } from '../net/conn';
-import type { Journal, LiveStake, SettleReason, SettlementItem } from '../stake/journal';
+import { sweepKey, type Journal, type JournalItem, type LiveStake, type SettleReason, type SettlementItem } from '../stake/journal';
 import { ArenaLedger, type ArenaEntry } from '../stake/ledger';
 
 /** Stake players are force-cashed-out long before the on-chain 24 h refund window opens. */
@@ -45,7 +48,11 @@ export interface RoomDeps {
   log: (msg: string) => void;
   /** Slana Pass power (defaults to `RULES.passStartMassMul` / `RULES.passCashoutMs`). */
   pass?: { startMassMul: number; cashoutMs: number };
-  /** A human's game ended (death, leave or cash-out). */
+  /** Wall clock (Unix ms) the arena rounds run on; defaults to `Date.now`. Tests inject their own. */
+  now?: () => number;
+  /** Arena round clock (defaults to `RULES.roundMs` / `RULES.roundJoinCloseMs`). */
+  round?: { roundMs: number; closeMs: number };
+  /** A human's game ended (death, leave, round end or operator exit). */
   onGameOver?: (e: { room: Room; conn: Conn | null; player: Player; stats: DeathStats }) => void;
 }
 
@@ -85,7 +92,7 @@ interface ChatLine {
   system?: boolean;
 }
 
-type FinishCause = 'death' | 'left' | 'cashout' | 'afk' | 'maxage' | 'kicked';
+type FinishCause = 'death' | 'left' | 'round' | 'maxage' | 'kicked';
 
 export class Room {
   readonly world: World;
@@ -105,6 +112,9 @@ export class Room {
   /** Arena rooms: live values or loot changed since the last journal write. */
   private journalDirty = false;
   private lastAgeCheckAt = 0;
+  /** Arena rooms: the round this room is playing (its end triggers `endRound`). */
+  private roundN = 0;
+  private roundEndsAt = Infinity;
   lastActivity = Date.now();
 
   constructor(
@@ -118,6 +128,28 @@ export class Room {
     this.ledger = opts.mode === 'arena' ? new ArenaLedger() : null;
     // loot left on any of this arena's instances when the server last stopped: the first instance adopts it all
     if (this.ledger && opts.stake && (opts.instance ?? 1) === 1) this.world.restoreLoot(deps.journal.adoptLoot(opts.stake.arenaId, this.id));
+    if (this.ledger) {
+      const r = this.roundWindow();
+      this.roundN = r.n;
+      this.roundEndsAt = r.endsAt;
+    }
+  }
+
+  /** The wall clock rounds run on (Unix ms). */
+  now(): number {
+    return this.deps.now ? this.deps.now() : Date.now();
+  }
+
+  private roundWindow(now = this.now()) {
+    const cfg = this.deps.round ?? { roundMs: RULES.roundMs, closeMs: RULES.roundJoinCloseMs };
+    return roundAt(now, cfg.roundMs, cfg.closeMs);
+  }
+
+  /** Arena rooms: the round in play now (undefined elsewhere). */
+  round(now = this.now()): RoundInfo | undefined {
+    if (!this.ledger) return undefined;
+    const r = this.roundWindow(now);
+    return { n: r.n, endsAt: r.endsAt, joinsCloseAt: r.joinsCloseAt };
   }
 
   get id(): string {
@@ -141,6 +173,7 @@ export class Room {
       instance: this.opts.stake ? (this.opts.instance ?? 1) : undefined,
       loot: this.ledger ? this.lootValue() : undefined,
       code: this.opts.code,
+      round: this.round(),
     };
   }
 
@@ -229,6 +262,7 @@ export class Room {
       entryFee: this.ledger ? (this.ledger.get(player.id)?.entryFee ?? this.entryFee) : undefined,
       hasPass: hasPass || undefined,
       session: this.ledger?.get(player.id)?.session,
+      round: this.round(),
     });
     conn.send({ t: 'history', chat: this.chatLog });
     return player;
@@ -256,6 +290,7 @@ export class Room {
       entryFee: this.ledger ? (this.ledger.get(pid)?.entryFee ?? this.entryFee) : undefined,
       hasPass: p.hasPass || undefined,
       session: this.ledger?.get(pid)?.session,
+      round: this.round(),
     });
     conn.send({ t: 'history', chat: this.chatLog });
     return true;
@@ -276,7 +311,7 @@ export class Room {
 
   /**
    * The connection leaves the game. Free rooms remove the player at once;
-   * stake rooms leave the cells in the arena (AFK) — use cash-out to exit safely.
+   * stake rooms leave the cells in the arena (AFK) until they are eaten or the round ends.
    */
   leave(conn: Conn, reason: 'left' | 'disconnect' | 'switch'): void {
     const p = conn.player;
@@ -351,18 +386,10 @@ export class Room {
     this.broadcast({ t: 'emote', pid: p.id, id });
   }
 
+  /** Paid arenas have no cash-out: everyone alive is paid at the round end. Other rooms have nothing to cash out. */
   cashout(conn: Conn): void {
-    const p = conn.player;
-    if (!this.ledger || !p || !p.alive || p.cashoutUntil > 0) return;
-    const ms = p.hasPass ? this.passPower.cashoutMs : RULES.cashoutMs;
-    p.cashoutUntil = this.world.now + ms;
-    conn.send({ t: 'cashout', state: 'started', ms });
-  }
-
-  private cancelCashout(p: Player): void {
-    if (p.cashoutUntil === 0) return;
-    p.cashoutUntil = 0;
-    this.humans.get(p.id)?.send({ t: 'cashout', state: 'canceled' });
+    if (!this.ledger) return;
+    conn.send({ t: 'error', code: 'no_cashout', message: 'No cash-out in paid arenas: stay alive and you are paid your value when the round ends.' });
   }
 
   /* ---------------------------------------------------------------- */
@@ -411,7 +438,7 @@ export class Room {
    * atomic journal write, so Σ live + Σ loot + Σ pending never changes on disk
    * except by settlements being confirmed.
    */
-  private commitJournal(enqueue?: SettlementItem[]): void {
+  private commitJournal(enqueue?: JournalItem[]): void {
     if (!this.ledger) {
       if (enqueue && enqueue.length > 0) this.deps.journal.commit({ enqueue });
       return;
@@ -476,7 +503,11 @@ export class Room {
     this.world.restoreLoot([{ x: c.x, y: c.y, value }]);
   }
 
-  private finishHuman(p: Player, conn: Conn | null, cause: FinishCause, killer: Player | null = null): void {
+  /**
+   * Ends a human's game. With `batch`, the settlement is appended to it and nothing is written
+   * (the caller commits the whole batch in one journal write) and no message is sent.
+   */
+  private finishHuman(p: Player, conn: Conn | null, cause: FinishCause, killer: Player | null = null, batch?: JournalItem[]): DeathStats {
     const stillAlive = cause !== 'death';
     const stats = this.statsFor(p, stillAlive);
     const wallet = this.walletOf.get(p.id) ?? null;
@@ -497,7 +528,8 @@ export class Room {
         stats.lootSpilled = loss?.spilled ?? 0;
         stats.byBot = !!killer && this.bots?.isBot(killer.id) === true;
       }
-      const reason: SettleReason = cause === 'left' ? 'afk' : cause;
+      // arena humans never `leave` (they go AFK); an operator exit settles at value like a kick
+      const reason: SettleReason = cause === 'left' ? 'kicked' : cause;
       enqueue.push({
         kind: 'settle',
         key: entry.session,
@@ -515,7 +547,8 @@ export class Room {
         createdAt: now,
       });
     }
-    if (enqueue.length > 0 || this.ledger) {
+    if (batch) batch.push(...enqueue);
+    else if (enqueue.length > 0 || this.ledger) {
       this.commitJournal(enqueue);
       if (enqueue.length > 0) this.deps.chain.kick();
     }
@@ -535,10 +568,76 @@ export class Room {
     if (c) {
       if (c.player === p) c.player = null;
       c.lastCenter = p.center();
+      if (batch) return stats;
       if (cause === 'death') c.send({ t: 'death', stats, killer: killer?.name ?? null, killerSkin: killer?.skin ?? null });
-      else if (cause === 'cashout' || cause === 'afk' || cause === 'maxage' || cause === 'kicked')
-        c.send({ t: 'cashout', state: 'done', value: stats.payout, stats });
+      else if (cause === 'maxage' || cause === 'kicked') c.send({ t: 'cashout', state: 'done', value: stats.payout, stats });
     }
+    return stats;
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* Round end (arena rooms)                                          */
+  /* ---------------------------------------------------------------- */
+
+  /**
+   * The bell, in one tick: every live staker (connected or AFK) is settled at their value
+   * (reason `round`); the floor loot is collected and one `sweep` item for its value is queued
+   * in the SAME journal write (Σ live + Σ loot + Σ pending is preserved); every settled human
+   * gets `roundOver`; the world is reset for the next round while bots keep playing.
+   */
+  private endRound(round: number): void {
+    const ledger = this.ledger!;
+    // standings at the bell: stakers by value (ties: bigger mass first)
+    const ranked = ledger
+      .all()
+      .map((e) => ({ e, p: this.world.players.get(e.pid) }))
+      .sort((a, b) => b.e.value - a.e.value || (b.p?.totalMass() ?? 0) - (a.p?.totalMass() ?? 0));
+    const top = ranked.slice(0, 10);
+
+    const batch: JournalItem[] = [];
+    const results: { conn: Conn; pid: number; payout: number; stats: DeathStats }[] = [];
+    for (const [pid, conn] of [...this.humans]) {
+      const p = this.world.players.get(pid);
+      if (!p?.alive) continue;
+      const payout = ledger.value(pid);
+      const c = conn ?? null;
+      const stats = this.finishHuman(p, c, 'round', null, batch);
+      if (c) results.push({ conn: c, pid, payout, stats });
+    }
+
+    const amount = this.world.takeLoot();
+    const now = Date.now();
+    if (amount > 0 && this.opts.stake) {
+      batch.push({
+        kind: 'sweep',
+        key: sweepKey(this.id, round),
+        arenaId: this.opts.stake.arenaId,
+        roomId: this.id,
+        round,
+        amount,
+        attempts: 0,
+        nextAttemptAt: now,
+        createdAt: now,
+      });
+    }
+    this.commitJournal(batch);
+    if (batch.length > 0) this.deps.chain.kick();
+    const settled = batch.filter((i) => i.kind === 'settle').length;
+    if (settled > 0 || amount > 0) this.deps.log(`room ${this.id}: round ${round} over · ${settled} settled · loot ${amount} queued for the season pool`);
+
+    for (const r of results) {
+      const standings: RoundStanding[] = top.map(({ e, p }) => ({
+        name: p?.name ?? '???',
+        value: e.value,
+        ...(e.pid === r.pid ? { you: true } : {}),
+      }));
+      r.conn.send({ t: 'roundOver', round, payout: r.payout, stats: r.stats, standings });
+    }
+
+    // the next round starts on a fresh floor; bots keep playing (respawned)
+    this.world.clearEjects();
+    const gone = this.bots?.resetRound() ?? [];
+    for (const c of this.conns) for (const pid of gone) c.view.forgetPlayer(pid);
   }
 
   /* ---------------------------------------------------------------- */
@@ -551,17 +650,25 @@ export class Room {
 
   tick(dtMs: number): void {
     if (this.conns.size > 0 || this.humans.size > 0) this.lastActivity = Date.now();
+    if (this.ledger) {
+      // rounds end on the wall clock, even in a sleeping room (its floor loot goes to the season)
+      const now = this.now();
+      if (now >= this.roundEndsAt) {
+        const ended = this.roundN;
+        const r = this.roundWindow(now);
+        this.roundN = r.n;
+        this.roundEndsAt = r.endsAt;
+        this.endRound(ended);
+      }
+    }
     if (this.sleeping) return;
     const world = this.world;
     const ev = world.tick(dtMs);
 
     // loot is picked before any cell is eaten in a tick (the world eats static entities first)
     for (const lp of ev.lootPicked) this.onLootPicked(lp.pid, lp.value);
-    // value moves with every eaten stake cell; getting hit cancels a cash-out
-    for (const ce of ev.cellsEaten) {
-      this.onCellEaten(ce);
-      if (!ce.last && ce.victim.cashoutUntil > 0) this.cancelCashout(ce.victim);
-    }
+    // value moves with every eaten stake cell
+    for (const ce of ev.cellsEaten) this.onCellEaten(ce);
 
     for (const k of ev.kills) {
       this.broadcast({
@@ -613,15 +720,7 @@ export class Room {
 
   private stakeHousekeeping(): void {
     const world = this.world;
-    for (const [pid, c] of this.humans) {
-      const p = world.players.get(pid);
-      if (!p || !p.alive) continue;
-      if (p.cashoutUntil > 0 && world.now >= p.cashoutUntil) this.finishHuman(p, c, 'cashout');
-    }
-    for (const [pid, since] of this.afkSince) {
-      const p = world.players.get(pid);
-      if (p?.alive && world.now - since >= RULES.afkGraceMs) this.finishHuman(p, null, 'afk');
-    }
+    // AFK stakers are not cashed out any more: their cells stay until eaten or the round ends
     const now = Date.now();
     if (now - this.lastAgeCheckAt >= 5000) {
       this.lastAgeCheckAt = now;
@@ -726,7 +825,7 @@ export class Room {
     }
   }
 
-  /** Server shutdown: cash out every stake player at their current value. */
+  /** Server shutdown: settle every stake player at their current value (an operator exit). */
   shutdown(): void {
     for (const [pid, c] of [...this.humans]) {
       const p = this.world.players.get(pid);

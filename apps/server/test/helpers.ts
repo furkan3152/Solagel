@@ -1,4 +1,4 @@
-import type { ChainStatus, PassStatus, ServerMessage } from '@slana/shared';
+import { roundAt, type ChainStatus, type PassStatus, type ServerMessage } from '@slana/shared';
 import type { ChainArena, ChainGateway, ChainPass, ChainProfile, ChainSession, OwnedPassInfo, SeasonView } from '../src/chain/types';
 import { Leaderboards } from '../src/leaderboards';
 import { Conn } from '../src/net/conn';
@@ -72,12 +72,16 @@ export const arena = (id: number, entryFee: number, requiresPass = false): Chain
   requiresPass,
 });
 
-export function roomDeps(chain: ChainGateway, journal = new Journal(null)): RoomDeps {
+/** A fixed wall-clock instant one minute into a 5-minute round: room tests never hit a round end by accident. */
+export const MID_ROUND = roundAt(1_791_000_000_000).startsAt + 60_000;
+
+export function roomDeps(chain: ChainGateway, journal = new Journal(null), now: () => number = () => MID_ROUND): RoomDeps {
   return {
     chain,
     journal,
     leaderboards: new Leaderboards(null),
     log: () => {},
+    now,
   };
 }
 

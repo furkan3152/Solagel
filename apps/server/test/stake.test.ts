@@ -112,13 +112,13 @@ describe('settlement journal', () => {
     expect(j2.live()).toHaveLength(2);
     expect(j2.recoverLive(123)).toBe(2);
     expect(j2.live()).toHaveLength(0);
-    const recovered = j2.pending.filter((p) => p.reason === 'crash');
+    const recovered = j2.settlements().filter((p) => p.reason === 'crash');
     expect(recovered.map((p) => [p.session, p.payout])).toEqual([
       ['s-a', 70],
       ['s-b', 80],
     ]);
     // total owed is unchanged by the crash
-    expect(j2.pending.reduce((s, p) => s + (p.payout ?? 0), 0)).toBe(300);
+    expect(j2.settlements().reduce((s, p) => s + (p.payout ?? 0), 0)).toBe(300);
 
     const j3 = new Journal(path);
     expect(j3.pending).toHaveLength(3);

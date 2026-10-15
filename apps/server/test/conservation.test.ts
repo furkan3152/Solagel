@@ -1,13 +1,15 @@
-import { PlayerFlag, TICK_MS, type ServerMessage } from '@slana/shared';
+import { PlayerFlag, TICK_MS, roundAt, type ServerMessage } from '@slana/shared';
 import { describe, expect, it } from 'vitest';
 import { NullChain } from '../src/chain/types';
 import { Leaderboards } from '../src/leaderboards';
 import { mulberry32 } from '../src/game/rng';
 import { Conn } from '../src/net/conn';
 import { Room } from '../src/rooms/room';
-import { Journal } from '../src/stake/journal';
+import { Journal, itemAmount } from '../src/stake/journal';
 
 const FEE = 1_000_000_007; // odd on purpose: proportional shares never divide evenly
+/** Short rounds so the 3 simulated minutes cross several round ends. */
+const ROUND = { roundMs: 40_000, closeMs: 10_000 };
 
 function fakeConn(wallet: string): Conn & { msgs: ServerMessage[] } {
   const msgs: ServerMessage[] = [];
@@ -25,9 +27,11 @@ function fakeConn(wallet: string): Conn & { msgs: ServerMessage[] } {
 }
 
 describe('arena money conservation', () => {
-  it('ledger + loot + pending == entry fees − settled, every tick (seeded)', () => {
+  it('ledger + loot + pending == entry fees − settled, every tick, across round ends with loot (seeded)', () => {
     const rng = mulberry32(20261014);
     const journal = new Journal(null);
+    // the wall clock advances with the simulation; it starts 5 s into a round
+    let clock = roundAt(1_791_000_000_000, ROUND.roundMs, ROUND.closeMs).startsAt + 5_000;
     const room = new Room(
       {
         id: 'stake-1',
@@ -43,6 +47,8 @@ describe('arena money conservation', () => {
         journal,
         leaderboards: new Leaderboards(null),
         log: () => {},
+        now: () => clock,
+        round: ROUND,
       },
     );
     const world = room.world;
@@ -77,12 +83,16 @@ describe('arena money conservation', () => {
     };
     for (let i = 0; i < 6; i++) join();
 
-    const pendingTotal = () => journal.pending.reduce((s, p) => s + (p.payout ?? 0), 0);
+    const pendingTotal = () => journal.pending.reduce((s, p) => s + itemAmount(p), 0);
     const lootTotal = () => world.loot().reduce((s, l) => s + l.value, 0);
     let spills = 0;
     let picks = 0;
     let transfers = 0;
-    let cashouts = 0;
+    let roundEnds = 0;
+    let roundSettles = 0;
+    let afkAtBell = 0;
+    let swept = 0;
+    let lastRound = roundAt(clock, ROUND.roundMs, ROUND.closeMs).n;
 
     const ticks = Math.ceil(180_000 / TICK_MS);
     for (let t = 0; t < ticks; t++) {
@@ -115,21 +125,36 @@ describe('arena money conservation', () => {
             world.setTarget(p.id, c.x + (rng() - 0.5) * 1600, c.y + (rng() - 0.5) * 1600);
           }
         }
-        if (rng() < 0.0004) {
-          room.cashout(conn);
-          cashouts++;
-        }
+        // a staker disconnects: their cells stay in the arena (AFK) until eaten or the bell
+        if (rng() < 0.0003) room.leave(conn, 'disconnect');
       }
-      // dead or cashed-out stakers come back with a new ticket
+      // dead stakers buy back in while the round's joins are open (the gateway's rule)
       const alive = conns.filter((c) => c.player?.alive).length;
-      if (alive < 6 && rng() < 0.01) join();
+      const r = roundAt(clock, ROUND.roundMs, ROUND.closeMs);
+      if (alive < 6 && clock < r.joinsCloseAt && rng() < 0.01) join();
 
+      const afk = [...room.humans.values()].filter((c) => c === null).length;
+      clock += TICK_MS;
       room.tick(TICK_MS);
+      const n = roundAt(clock, ROUND.roundMs, ROUND.closeMs).n;
+      if (n !== lastRound) {
+        roundEnds++;
+        lastRound = n;
+        afkAtBell += afk;
+        // the bell settled every staker, connected or AFK, and cleared the floor
+        expect(ledger.size).toBe(0);
+        expect(world.loot()).toHaveLength(0);
+        expect(journal.live()).toHaveLength(0);
+        expect(journal.recoverLoot(1)).toEqual([]);
+        const sweep = journal.pending.find((p) => p.kind === 'sweep' && p.round === n - 1);
+        if (sweep) swept += itemAmount(sweep);
+      }
 
-      // the chain settles pending payouts in the background
+      // the chain settles pending payouts and sweeps in the background
       if (journal.pending.length > 0 && rng() < 0.03) {
         const item = journal.pending[0];
-        settled += item.payout ?? 0;
+        settled += itemAmount(item);
+        if (item.kind === 'settle' && item.reason === 'round') roundSettles++;
         journal.remove(item.key);
       }
 
@@ -154,7 +179,10 @@ describe('arena money conservation', () => {
     expect(spills).toBeGreaterThan(0);
     expect(picks).toBeGreaterThan(0);
     expect(transfers).toBeGreaterThan(0);
-    expect(cashouts).toBeGreaterThan(0);
+    expect(roundEnds).toBeGreaterThanOrEqual(3);
+    expect(roundSettles).toBeGreaterThan(0);
+    expect(swept).toBeGreaterThan(0);
     expect(joins).toBeGreaterThan(6);
+    expect(afkAtBell).toBeGreaterThan(0);
   }, 120_000);
 });
