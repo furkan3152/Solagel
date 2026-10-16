@@ -1,23 +1,22 @@
 # Slana: operations guide
 
-What comes after the setup: the season cycle, the Pass reveal, the treasury, pausing, shutting an arena down, key
-rotation and the journal backup. Setup: [DEPLOY.md](DEPLOY.md). Money flow and trust model:
-[ARCHITECTURE.md](ARCHITECTURE.md). Every command below exists in `pnpm admin help`.
+What comes after the setup: the fee wallet, the loot burn, pausing, shutting an arena down, key rotation and the journal
+backup. Setup: [DEPLOY.md](DEPLOY.md). Money flow and trust model: [ARCHITECTURE.md](ARCHITECTURE.md). Every command below
+exists in `pnpm admin help`.
 
 The commands take `--url`, `--keypair` (default `~/.config/solana/id.json`; it must be the **admin wallet**
 `D2Ts7yCiVjedo6uwqpkM44QA8J45NdVU1J3k5m6iWtvm`, `SLANA_ADMIN` in `scripts/admin.env`) and `--program`; see
 [DEPLOY.md](DEPLOY.md). Every admin command is run by this wallet; the server key is a separate hot key that only
-settles sessions. `pnpm admin` reads a keypair file only (no `usb://ledger`), see the hardware wallet note in DEPLOY.md. Before and after every operation:
+settles sessions and burns floor loot. `pnpm admin` reads a keypair file only (no `usb://ledger`), see the hardware wallet note in DEPLOY.md. Before and after every operation:
 
 ```bash
 pnpm admin status
 ```
 
-`status` prints: the admin and server keys (with their SOL balances), the token mint and its supply, the fee and the split,
-the deposit, the current season, `paused`, the totals, the treasury and season vault balances, the arenas (open tickets /
-cap, vault, enabled or not), the season's top 10 and its pool, the previous season's frozen pool, its unclaimed part and
-the claim mask, the Pass collection, the base URI, minted / supply, the supply lock, the mint state, the seed hash, the
-entropy (target slot or captured hash) and the reveal (the admin seed and the final seed the traits derive from).
+`status` prints: the admin and server keys (with their SOL balances), the token (`token: not set (run \`pnpm admin
+set-token --mint <CA>\`; arenas open after it)` until it is set, then the mint, token program, decimals, symbol and
+supply), the fee wallet, its token account and balance (and a warning when that account is missing), the fee and the
+deposit, `paused`, the totals and the arenas (open tickets / cap, vault, enabled or not).
 
 ## Monitoring
 
@@ -28,95 +27,45 @@ entropy (target slot or captured hash) and the reveal (the admin seed and the fi
   the session becomes `finalized` and the `owed` amount stays in the vault; the log says `finalized … (to collect)`. The
   player collects it with "Collect payout" on the web, with no waiting time. In the `status` output these sessions count
   as open (the vault cannot be swept).
-- Server log lines starting with `!!!` need attention (e.g. an unreadable journal, an arena whose vault falls short). The
-  server logs a warning when the server key drops below ◎0.05.
+- `GET /api/config`: `chain.tokenReady` is `false` until `set-token` has run, then `true` with the token's mint, symbol and
+  decimals and the current `feeBps`. After `set-token` the server picks the token up within 30 s and logs
+  `game token set — mint …`; no restart is needed. New arenas can take up to about 60 s to appear in `/api/rooms`.
+- Server log lines starting with `!!!` need attention (e.g. an unreadable journal, an arena whose vault falls short, an
+  unusable fee wallet token account). The server logs a warning when the server key drops below ◎0.05.
 
-## Season cycle
+## The fee wallet
 
-A season has **no** fixed end time on-chain; the admin ends it. You announce the calendar (e.g. 30 days) to the players
-yourself.
+The whole fee of every settlement (5 % of profit by default, at most 10 %) is paid to **one token account**: a token
+account of the game mint owned by `Config.fee_wallet`. By default the fee wallet is the admin wallet. There is no
+treasury vault, no season pool and no on-chain burn split; what the fee wallet holds is yours, and the owner burns tokens
+off-chain by hand (the plan is 75 % burned, 25 % kept).
 
-1. **While the season runs**, points come only from Pass tickets; the pool fills from the season share of the fees
-   (default 30 %) and from swept arenas. `status` shows the pool and the top 10.
-2. **End it:**
-   ```bash
-   pnpm admin end-season
-   ```
-   The current season's pool is frozen as `prize_pool` and the next season starts immediately. The admin pays the rent of
-   the new Season account (≈◎0.0099).
-3. **Claims:** the top 10 claim their prizes themselves from the Ranks page: 30 % / 20 % / 14 % / 10 % / 8 % / 6 % /
-   4.5 % / 3 % / 2.5 % / 2 % of the frozen pool. The window is 30 days after the season ends (`CLAIM_WINDOW_SECS`).
-4. **Rollover:** once the 30 days have passed, move what was not claimed (rounding remainders and empty ranks included) to
-   the active season:
-   ```bash
-   pnpm admin rollover --season <N>
-   ```
-   The program refuses a rollover before the window closes (`ClaimWindowOpen`).
+- `pnpm admin set-token` creates the fee wallet's associated token account in the same transaction (the admin pays its
+  rent). `pnpm admin update-config --fee-wallet <pubkey>` does the same for a new fee wallet, and `pnpm admin sweep`
+  creates it if it is missing. `pnpm admin status` shows the account and its balance.
+- **Never close the fee wallet's token account.** Settlement checks the account before every payout. If it is missing,
+  owned by another program, of another mint, frozen or otherwise unusable, **every settlement is held**: players are not
+  paid until it is fixed. The server logs this loudly, about once a minute:
 
-## Pass reveal
+  ```
+  !!! chain: fee wallet token account <address> (fee wallet <wallet>) is <problem>: ALL settlements are held. Recreate it ...
+  ```
 
-The reveal is the second half of the commit–reveal, and its order matters (ruling R23):
-
-- Once the mint **is over** (`close-mint` or the last Pass minted) the mint **can never reopen**; there is no entropy
-  target yet.
-- `reveal` publishes the seed **in the open** on-chain (the program checks `sha256(seed) == pass_seed_hash`) and **only
-  then** records the target slot: the current slot + `ENTROPY_DELAY_SLOTS` (150 slots ≈ 1 minute).
-- Once the target has passed, `capture_pass_entropy`, which anyone can send, reads from the SlotHashes sysvar the hash of
-  the slot produced at the target or in the first block after it, stores it as `pass_entropy`, computes the final seed
-  `pass_final_seed = sha256(seed ‖ pass_entropy)` and completes the reveal. The traits of every Pass can be computed by
-  anyone with `passTraits(pass_final_seed, n, pass_supply)`.
-
-Because the seed is public before the target slot, everyone learns the result at the same moment; the admin has no
-information advantage. The remaining risk (honestly): someone who dislikes the result can hope the window (≈512 slots)
-passes without a capture, which moves the target to a new future slot. But anyone (Pass holders included) can capture at
-any time; the game server and the web's Pass page capture too, so no single party controls the timing.
-
-1. End the mint (if the supply is sold out, the program has already ended it):
-   ```bash
-   pnpm admin close-mint
-   ```
-   If no Pass was minted, the command only clears the flag (the mint can be reopened). Once minting has started,
-   `update-config --mint-open false` is refused (`UseCloseMint`): only `close-mint` ends the mint.
-2. Compare the seed file's hash with the one on-chain:
-   ```bash
-   pnpm admin pass-seed                       # prints the sha256 of keys/pass-seed.json
-   pnpm admin status                          # the "seed hash" line
-   ```
-3. Reveal the seed (this also sets the target slot):
-   ```bash
-   pnpm admin reveal [--seed-file keys/pass-seed.json]
-   ```
-   The program checks that the mint is over and that `sha256(seed) == pass_seed_hash`; it stores the seed in the open and
-   writes the target slot. The command prints the target slot. The Pass page shows "Waiting for the reveal to complete".
-4. Complete the reveal: the game server sends `capture_pass_entropy` itself once the target slot has passed (it pays only
-   the network fee and retries every 30 s on failure; the log says `chain: Pass entropy captured … final seed …`). On the
-   web's Pass page any connected wallet can press "Complete the reveal". By hand:
-   ```bash
-   pnpm admin capture-entropy                 # any wallet can send it
-   pnpm admin status                          # entropy, final seed
-   ```
-5. The game server reads the reveal from the chain (config cache 30 s), and `/pass/<n>.json` and `/pass/<n>.png` return
-   the traits instead of the sealed content. Cache lifetimes: JSON 60 s while sealed, 1 hour after the reveal (no JSON
-   caching at all if `PUBLIC_URL` is empty); PNG 300 s while sealed, 1 day after the reveal. Ask the marketplaces for a
-   metadata refresh.
-6. Optional: render the collection offline and archive it, or upload it to Arweave ([PASS-ART.md](PASS-ART.md)).
-
-> **The supply is fixed.** The traits depend on `pass_supply` (the 1/1 placement and the de-duplication run over the
-> whole collection). The program does not change the supply once the mint has opened (`SupplyLocked`); the CLI also
-> refuses `update-config --supply` and `open-mint --supply` from then on. Set the supply before `open-mint`. Ending the
-> mint early is fine: the supply stays the same and the numbers that were not minted are never minted.
-
-## Treasury
-
-The treasury share of the fees (default 50 %) builds up in the treasury vault (`status` → `vaults treasury`).
-
-```bash
-pnpm admin withdraw-treasury --amount <token> --to <owner wallet>
-```
-
-`--to` is a **wallet address** (not a token account): the payout goes to this wallet's associated token account; if the
-account does not exist it is created in the same transaction (the admin pays its rent). The amount is written in whole
-tokens and cannot exceed the vault.
+  Nothing is lost and no player is blamed: the held items wait in the journal and go out by themselves (the log says
+  `fee wallet token account … is usable again — settlements resume`) as soon as the account exists again. To recreate it,
+  run `pnpm admin update-config --fee-wallet <the current fee wallet>` (it prepends the idempotent account creation), or
+  `spl-token create-account <MINT> --owner <fee wallet> --fee-payer <keypair>` (add `--program-id` for a Token-2022 mint).
+  The server never creates the account itself.
+- **Do not add Token-2022 extensions to the fee wallet's token account** (for example a required memo, `MemoTransfer`).
+  The fee is sent without a memo, so an account that demands one refuses it and settlements are held like above.
+- Moving the tokens out is up to you: they are an ordinary balance of the fee wallet. Keep the token account open (it can
+  stay at a balance of 0).
+- A different fee wallet (`update-config --fee-wallet`) applies to settlements from then on, including tickets that are
+  already open (the fee goes to whichever wallet is in the Config at settlement); the new wallet's token account is
+  created in the same transaction.
+- The fee wallet may play as an ordinary player. When its own token account is both the player's and the fee account, the
+  server settles that ticket without the player's account (the amount is kept as `owed`) and the wallet collects it with
+  "Collect payout".
 
 ## Arena rounds and the loot sweep
 
@@ -124,17 +73,18 @@ Paid arenas play wall-clock rounds: `ROUND_SECONDS` (default 300) and `ROUND_JOI
 a round) in the server environment. Round *n* covers `[n × ROUND_SECONDS, (n + 1) × ROUND_SECONDS)` of Unix time, so keep
 the server clock synced (NTP). There is no cash-out: at the bell every live ticket is paid its value, and the loot left
 on the floor is journaled as a `sweep` item (`sweep:<roomId>:<round>`) and sent with the server-signed program
-instruction `sweep_loot(amount)` (arena vault to the season vault, credited to the current season's pool).
+instruction `sweep_loot(amount)`, which **burns** that amount from the arena vault (the token supply drops; the program
+emits `LootBurned`).
 
 - A sweep is journaled like a payout. After a crash it is resumed; it is resent only once its blockhash has provably
   expired, so it is never applied twice. It belongs to no wallet, so `GET /api/pending?wallet=` does not list it; the journal (`DATA_DIR/journal.json`, kind `sweep`) and the log do.
 - `!!! chain: arena #N vault cannot cover the loot sweep ...` means the vault holds less than the journal says; the server
   retries with backoff. Do not force anything: check the arena with `pnpm admin status` first. `!!! chain: dropping
   malformed loot sweep` and `... without a recorded blockhash expiry; not resending` need a manual look at the journal.
-- On an existing deployment, upgrade the program to the build with `sweep_loot` before rolling out this server; against an
-  older program every sweep fails with "instruction not found" and retries (value stays conserved, the logs are noisy).
-- `sweep_loot` is bounded only by the vault balance (the same trust as `settle_session`). The server computes the amount
-  from the floor loot it holds; only the server key can send it.
+- `sweep_loot` burns, and its only cap is the vault balance (the same trust as `settle_session`). The server computes the
+  amount from the floor loot it holds; only the server key can send it. A leaked server key could therefore burn an
+  arena's whole vault, including tickets that have not been played: **protect the server key** like the payout key it is
+  (a separate hot key, minimal SOL, rotate it at once if it may have leaked, see below).
 - A short `ROUND_SECONDS` is for demos and tests (`ROUND_SECONDS=90 pnpm demo`; the localnet e2e uses 30). Keep the
   default in production so players see the same 5-minute rounds the guide describes.
 
@@ -145,8 +95,8 @@ instruction `sweep_loot(amount)` (arena vault to the season vault, credited to t
 | Stop new tickets | `pnpm admin update-config --paused true` | `join_arena` is refused; **payouts and refunds go on**. To undo: `--paused false` |
 | Close one arena | `pnpm admin update-arena --id N --enabled false` | no tickets can be bought for that arena; open tickets are played and close |
 | Close the arenas on the server | `STAKE_ENABLED=false` in the server environment, restart | the arenas leave the lobby; the payout queue keeps running |
-| Change the fee or the deposit | `pnpm admin update-config --fee-bps N --pass-fee-bps N --split T/S/B --settle-fee-lamports N` | the fee rate and the deposit apply to tickets **bought from now on** (an open ticket keeps the rate of the moment it was bought: `Session.fee_bps`); the split applies to later payouts; the fee is at most 1000 (10 %) |
-| Turn off the Pass power | `PASS_START_MASS_MUL=1` on the server, restart | Pass tickets start with the same mass as the others (`PASS_CASHOUT_MS` is unused: arenas have no cash-out) |
+| Change the fee or the deposit | `pnpm admin update-config --fee-bps N --settle-fee-lamports N` | the fee rate and the deposit apply to tickets **bought from now on** (an open ticket keeps the rate of the moment it was bought: `Session.fee_bps`); the fee is at most 1000 (10 %) and the whole of it goes to the fee wallet |
+| Change the fee wallet | `pnpm admin update-config --fee-wallet <pubkey>` | the new wallet's token account is created in the same transaction (admin pays); it must stay open, see "The fee wallet" |
 
 On `SIGTERM`/`SIGINT` the server settles the players in the arenas at their current value (an operator exit, not a cash-out they chose) and saves its state; use it for restarts (Docker
 `stop` sends SIGTERM).
@@ -163,8 +113,8 @@ On `SIGTERM`/`SIGINT` the server settles the players in the arenas at their curr
 4. ```bash
    pnpm admin sweep --id N --force
    ```
-   Without `--force` the command only prints the warning and stops. The whole vault moves to the current season's pool
-   (it goes back to the players). `sweep_arena` only works on a disabled arena with no open tickets (the per-round `sweep_loot` is separate, see Arena rounds). Do not re-enable a swept
+   Without `--force` the command only prints the warning and stops. The whole vault moves to the fee wallet's token
+   account (the command creates it if it is missing). `sweep_arena` only works on a disabled arena with no open tickets (the per-round `sweep_loot` is separate: it burns, see Arena rounds). Do not re-enable a swept
    arena: loot left in the server's journal is no longer in the vault. The server checks this too: when it binds an arena
    whose vault does not cover the journal's debt (loot + pending payouts + live tickets), it keeps the arena disabled and
    logs `!!! arena #N KEPT DISABLED`.
@@ -189,7 +139,7 @@ Only `Config.server_authority` can sign payouts; the pending payouts in the jour
 5. Withdraw the SOL left on the old key and destroy the key.
 
 If the key **leaked**, first `pnpm admin update-config --paused true`, then step 3 right away: until it is replaced, the
-old key can close open tickets with any amount that does not exceed the vault. For the admin key use
+old key can close open tickets with any amount that does not exceed the vault and burn up to a vault's balance with `sweep_loot`. For the admin key use
 `update-config --admin <new>`; for the upgrade authority `solana program set-upgrade-authority`.
 
 ## Journal backup
@@ -200,7 +150,6 @@ Contents of `DATA_DIR`:
 |---|---|---|
 | `journal.json` | pending payouts, live values in the arenas, loot in the rooms | **owed payouts drop out of the queue** (players can only get their entry fee refunded after 24 hours); the stale-ticket sweeper stays off until `STALE_SWEEP_ACK=1` |
 | `leaderboards.json` | the server's Today / All time tables | display only |
-| `pass/` | Pass PNG cache | regenerated |
 | `*.dev-fake.json` | `DEV_FAKE_CHAIN` files | nothing to do with real money |
 
 - Whenever a payout is queued, and as values change at most once a second, the journal is **written to a temporary file
@@ -225,8 +174,8 @@ anchor build --ignore-keys && pnpm -F @slana/sdk sync-idl && scripts/build-lean.
 scripts/deploy-lean.sh <cluster-url> target/deploy/slana-keypair.json   # with the upgrade authority
 ```
 
-> **Never `anchor deploy`.** It deploys `target/deploy/slana.so`, the ~679 KB Anchor reference, instead of the lean
-> program, and its rent would lock ≈ ◎4.7. Upgrades always go through `scripts/deploy-lean.sh` (`solana program deploy target/deploy/slana_lean.so`).
+> **Never `anchor deploy`.** It deploys `target/deploy/slana.so`, the 454,704-byte Anchor reference, instead of the lean
+> program (36,408 bytes), and its rent would lock about ◎3.2. Upgrades always go through `scripts/deploy-lean.sh` (`solana program deploy target/deploy/slana_lean.so`).
 
 The upgrade authority is the admin wallet: `deploy-lean.sh` moves it there after a deploy, so an upgrade is signed by the
 admin (`--keypair <admin keypair> --upgrade-authority <admin keypair>`); it skips the move when the admin already is the
@@ -252,9 +201,8 @@ pnpm admin update-config --paused true --keypair <admin keypair>     # undo: --p
 2. Disable the arenas (`pnpm admin update-arena --id N --enabled false`) and let the open sessions settle. Players
    collect their payouts and, after 24 hours, refund any ticket that did not settle. `pnpm admin status` must show
    `open 0` for every arena.
-3. Withdraw the treasury: `pnpm admin withdraw-treasury --amount <tokens> --to <wallet>`.
-4. Sweep each idle arena into the season pool: `pnpm admin sweep --id N --force`.
-5. End the season (`pnpm admin end-season`) and let the players claim their share of the pool.
+3. Sweep each idle arena into the fee wallet: `pnpm admin sweep --id N --force`.
+4. Move the fee wallet's tokens wherever you want them (they are an ordinary balance of that wallet).
 
 **(c) Instant close.** Irreversible.
 
@@ -264,11 +212,12 @@ scripts/close-program.sh <cluster-url> <admin-keypair> --force  # no confirmatio
 ```
 
 The script prints the on-chain state first (`pnpm admin status`: the paused flag, each arena's open sessions and vault,
-the treasury and season vaults, the Pass mint), then a warning, then runs `solana program close <PROGRAM_ID>
---bypass-warning --recipient <admin> --keypair <admin>` and prints the reclaimed SOL (about 0.418 SOL of ProgramData
+the fee wallet and its token account), then a warning, then runs `solana program close <PROGRAM_ID>
+--bypass-warning --recipient <admin> --keypair <admin>` and prints the reclaimed SOL (about 0.2546 SOL of ProgramData
 rent).
 
-> **Warning.** Once the program is closed, every token left in a program-owned vault (arenas, treasury, season pool) is
+> **Warning.** Once the program is closed, every token left in a program-owned vault (the arenas) is
 > **permanently inaccessible**, open sessions can no longer settle or refund, and nothing can be recovered. A closed
-> program id can **never be reused**: redeploying means a new program id, a new Config and a new token setup. Prefer
-> (a) and (b) unless it is a real emergency.
+> program id can **never be reused**: redeploying means a new program id, a new Config and a new token setup (`init`, then `set-token` again). This is also
+> the only way out of a wrong `set-token`: the token can be set once and never changed. Prefer (a) and (b) unless it is a
+> real emergency.
