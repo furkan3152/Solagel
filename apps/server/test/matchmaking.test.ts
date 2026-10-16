@@ -13,7 +13,7 @@ import { ArenaChain, arena, fakeConn, roomDeps, stakeJoin } from './helpers';
 
 const FEE = 1_000_000;
 
-function manager(env: Record<string, string> = {}, chain = new ArenaChain([arena(1, FEE), arena(3, 5 * FEE, true)]), journal = new Journal(null)) {
+function manager(env: Record<string, string> = {}, chain = new ArenaChain([arena(1, FEE), arena(3, 5 * FEE)]), journal = new Journal(null)) {
   const cfg = loadConfig({ DATA_DIR: mkdtempSync(join(tmpdir(), 'slana-mm-')), ...env });
   return new RoomManager(cfg, roomDeps(chain, journal), chain);
 }
@@ -68,7 +68,7 @@ describe('matchmaking', () => {
   });
 
   it('arena opens a second instance at 50 humans', async () => {
-    const chain = new ArenaChain([arena(1, FEE), arena(3, 5 * FEE, true)]);
+    const chain = new ArenaChain([arena(1, FEE), arena(3, 5 * FEE)]);
     const m = manager({}, chain);
     const a1 = (await m.arenaRoom(1))!;
     expect(a1.id).toBe('arena-1-1');
@@ -87,12 +87,12 @@ describe('matchmaking', () => {
     expect(await m.arenaRoom(1)).toBe(a2);
 
     const infos = m.list().filter((r) => r.mode === 'arena' && r.arenaId === 1);
-    expect(infos.map((r) => [r.id, r.instance, r.entryFee, r.requiresPass, r.loot])).toEqual([
-      ['arena-1-1', 1, FEE, false, 0],
-      ['arena-1-2', 2, FEE, false, 0],
+    expect(infos.map((r) => [r.id, r.instance, r.entryFee, r.loot])).toEqual([
+      ['arena-1-1', 1, FEE, 0],
+      ['arena-1-2', 2, FEE, 0],
     ]);
     const gold = (await m.arenaRoom(3))!;
-    expect(gold.info()).toMatchObject({ id: 'arena-3-1', arenaId: 3, entryFee: 5 * FEE, requiresPass: true, instance: 1 });
+    expect(gold.info()).toMatchObject({ id: 'arena-3-1', arenaId: 3, entryFee: 5 * FEE, instance: 1 });
     expect(await m.arenaRoom(7)).toBeNull();
     // arena data is cached for 30 s
     expect(chain.listCalls).toBe(1);
@@ -131,7 +131,7 @@ describe('matchmaking', () => {
     // the vault still holds what the journal owes (loot + recovered cash-outs): attach
     const owed = j2.owedByArena(1);
     expect(owed).toBeGreaterThanOrEqual(4 * FEE);
-    const m2 = manager({ ARENA_INSTANCE_CAP: '1' }, new ArenaChain([{ ...arena(1, FEE), pot: owed }, arena(3, 5 * FEE, true)]), j2);
+    const m2 = manager({ ARENA_INSTANCE_CAP: '1' }, new ArenaChain([{ ...arena(1, FEE), pot: owed }, arena(3, 5 * FEE)]), j2);
     await m2.ensureArenaRooms();
     const b1 = m2.rooms.get('arena-1-1')!;
     expect(lootSum(b1)).toBe(4 * FEE);
@@ -146,14 +146,14 @@ describe('matchmaking', () => {
   it('keeps an arena disabled while its vault cannot cover the journal (sweep guard)', async () => {
     const journal = new Journal(null);
     journal.commit({ loot: { roomId: 'arena-1-1', arenaId: 1, items: [{ x: 1, y: 1, value: 3 * FEE }] } });
-    journal.commit({ roomId: 'arena-1-2', live: [{ roomId: 'arena-1-2', session: 'S1', sessionId: 1, player: 'w1', arenaId: 1, value: FEE, score: 0, kills: 0, hasPass: false }] });
+    journal.commit({ roomId: 'arena-1-2', live: [{ roomId: 'arena-1-2', session: 'S1', sessionId: 1, player: 'w1', arenaId: 1, value: FEE, score: 0, kills: 0 }] });
     journal.enqueue({ kind: 'settle', key: 'S2', player: 'w2', arenaId: 1, payout: 2 * FEE, score: 0, kills: 0, xp: 0, attempts: 0, nextAttemptAt: 0, createdAt: 0 });
     // another arena's debts do not count
     journal.enqueue({ kind: 'settle', key: 'S3', player: 'w3', arenaId: 3, payout: 50 * FEE, score: 0, kills: 0, xp: 0, attempts: 0, nextAttemptAt: 0, createdAt: 0 });
     expect(journal.owedByArena(1)).toBe(6 * FEE);
 
     const logs: string[] = [];
-    const swept = new ArenaChain([{ ...arena(1, FEE), pot: 5 * FEE }, { ...arena(3, 5 * FEE, true), pot: 50 * FEE }]);
+    const swept = new ArenaChain([{ ...arena(1, FEE), pot: 5 * FEE }, { ...arena(3, 5 * FEE), pot: 50 * FEE }]);
     const cfg = loadConfig({ DATA_DIR: mkdtempSync(join(tmpdir(), 'slana-mm-')) });
     const m = new RoomManager(cfg, { ...roomDeps(swept, journal), log: (l) => logs.push(l) }, swept);
     await m.ensureArenaRooms();

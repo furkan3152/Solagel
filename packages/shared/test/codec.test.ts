@@ -19,8 +19,8 @@ const sample: SnapshotData = {
   tick: 123456,
   view: { x: 1500.5, y: 2200.25, h: 1150 },
   players: [
-    { id: 1, skin: 0, flags: 0, pass: 0, name: 'gm_gummy' },
-    { id: 65000, skin: 23, flags: 3, pass: 3333, name: 'Renée🚀' },
+    { id: 1, skin: 0, flags: 0, name: 'gm_gummy' },
+    { id: 65000, skin: 23, flags: 3, name: 'Renée🚀' },
   ],
   upserts: [
     { id: 1, kind: EntityKind.Cell, x: 10.5, y: 20.25, r: 44.72, playerId: 65000, flags: 5 },
@@ -81,21 +81,21 @@ describe('snapshot codec', () => {
   it('truncates very long names on a UTF-8 boundary', () => {
     const name = '🚀'.repeat(100); // 400 bytes
     const decoded = decodeSnapshot(
-      encodeSnapshot({ tick: 1, view: { x: 0, y: 0, h: 1 }, players: [{ id: 1, skin: 0, flags: 0, pass: 0, name }], upserts: [], removals: [] }),
+      encodeSnapshot({ tick: 1, view: { x: 0, y: 0, h: 1 }, players: [{ id: 1, skin: 0, flags: 0, name }], upserts: [], removals: [] }),
     );
     expect(decoded.players[0].name).toBe('🚀'.repeat(63));
   });
 
-  it('roundtrips players with pass numbers', () => {
+  it('roundtrips players with their flags', () => {
     const players: PlayerInfo[] = [
-      { id: 1, skin: 0, flags: 0, pass: 0, name: 'no pass' },
-      { id: 2, skin: 3, flags: PlayerFlag.Verified | PlayerFlag.Pass, pass: 3333, name: 'Pass #3333' },
-      { id: 3, skin: 7, flags: PlayerFlag.Staker | PlayerFlag.Pass, pass: 1, name: '' },
-      { id: 65535, skin: 255, flags: 255, pass: 65535, name: 'Renée🚀' },
+      { id: 1, skin: 0, flags: 0, name: 'guest' },
+      { id: 2, skin: 3, flags: PlayerFlag.Verified, name: 'verified' },
+      { id: 3, skin: 7, flags: PlayerFlag.Staker | PlayerFlag.Verified, name: '' },
+      { id: 65535, skin: 255, flags: 255, name: 'Renée🚀' },
     ];
     const decoded = decodeSnapshot(encodeSnapshot({ tick: 9, view: { x: 1, y: 2, h: 3 }, players, upserts: [], removals: [] }));
     expect(decoded.players).toEqual(players);
-    expect(decoded.players.map((p) => (p.flags & PlayerFlag.Pass) !== 0)).toEqual([false, true, true, true]);
+    expect(decoded.players.map((p) => (p.flags & PlayerFlag.Staker) !== 0)).toEqual([false, false, true, true]);
   });
 
   it('roundtrips loot entities with variant', () => {
@@ -128,12 +128,12 @@ describe('snapshot codec', () => {
     expect(decoded.removals).toEqual([{ id: 100, eaterId: 7 }]);
   });
 
-  it('writes the documented byte layout (pass sits between flags and name; loot carries a variant byte)', () => {
+  it('writes the documented byte layout (name follows flags; loot carries a variant byte)', () => {
     const bytes = new Uint8Array(
       encodeSnapshot({
         tick: 1,
         view: { x: 0, y: 0, h: 0 },
-        players: [{ id: 0x0102, skin: 5, flags: PlayerFlag.Pass, pass: 0x0d05, name: 'ab' }],
+        players: [{ id: 0x0102, skin: 5, flags: PlayerFlag.Staker, name: 'ab' }],
         upserts: [{ id: 7, kind: EntityKind.Loot, x: 0, y: 0, r: 0, variant: 3 }],
         removals: [],
       }),
@@ -141,10 +141,10 @@ describe('snapshot codec', () => {
     // op u8 | tick u32 | view 3×f32 → 17 bytes, then nPlayers u8
     expect(Array.from(bytes.subarray(0, 5))).toEqual([1, 1, 0, 0, 0]);
     expect(bytes[17]).toBe(1);
-    // player record: u16 id (LE) | u8 skin | u8 flags | u16 pass (LE) | str8 name
-    expect(Array.from(bytes.subarray(18, 18 + 2 + 1 + 1 + 2 + 1 + 2))).toEqual([0x02, 0x01, 5, PlayerFlag.Pass, 0x05, 0x0d, 2, 0x61, 0x62]);
+    // player record: u16 id (LE) | u8 skin | u8 flags | str8 name
+    expect(Array.from(bytes.subarray(18, 18 + 2 + 1 + 1 + 1 + 2))).toEqual([0x02, 0x01, 5, PlayerFlag.Staker, 2, 0x61, 0x62]);
     // nUpserts u16 | u32 id | u8 kind | 3×f32 | u8 variant
-    const up = 18 + 9;
+    const up = 18 + 7;
     expect(Array.from(bytes.subarray(up, up + 2))).toEqual([1, 0]);
     expect(Array.from(bytes.subarray(up + 2, up + 7))).toEqual([7, 0, 0, 0, EntityKind.Loot]);
     expect(bytes[up + 7 + 12]).toBe(3);

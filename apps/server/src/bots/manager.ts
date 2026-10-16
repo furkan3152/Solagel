@@ -62,7 +62,7 @@ export class BotManager {
     return `${BOT_NAMES[Math.floor(this.rng() * BOT_NAMES.length)]}_${Math.floor(this.rng() * 90 + 10)}`;
   }
 
-  /** Bots wear the basic skins only (Pass looks and premium skins belong to people). */
+  /** Bots wear the basic skins only. */
   private pickSkin(): number {
     return Math.floor(this.rng() * BASIC_SKINS.length);
   }

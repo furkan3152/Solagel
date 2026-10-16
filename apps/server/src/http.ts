@@ -2,15 +2,12 @@ import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { PROTOCOL_VERSION, siwsChainId } from '@slana/shared';
-import { serializePassJson } from '@slana/art';
 import { isValidPubkey, type Auth, type SiwsOrigin } from './auth';
-import type { DevFakePassActions } from './chain/dev-fake';
+import type { DevFakeChainActions } from './chain/dev-fake';
 import type { ChainGateway } from './chain/types';
-import { publicChainStatus, type ServerConfig } from './config';
+import type { ServerConfig } from './config';
 import type { Leaderboards } from './leaderboards';
 import { clientIp } from './net/gateway';
-import { PassImages } from './pass/images';
-import { collectionMetadata, passMetadata } from './pass/metadata';
 import type { RoomManager } from './rooms/manager';
 import type { Journal } from './stake/journal';
 
@@ -39,17 +36,12 @@ interface Ctx {
   startedAt: number;
   /** Settlements owed (for `/api/pending`). */
   journal?: Journal;
-  /** Pass image renderer/cache (default: `DATA_DIR/pass`). */
-  passImages?: PassImages;
 }
 
-/** Requests per minute and IP on `/pass/*` and `/api/pass/*`. */
-export const PASS_RATE_PER_MIN = 60;
 const HOST_RE = /^[A-Za-z0-9.-]+(:\d{1,5})?$|^\[[0-9A-Fa-f:.]+\](:\d{1,5})?$/;
-const PASS_PATH = /^\/pass\/([1-9]\d{0,5})\.(json|png)$/;
 
 /**
- * Base URL for links in Pass metadata: `PUBLIC_URL` when set, else the request's
+ * Public base URL of this server: `PUBLIC_URL` when set, else the request's
  * host (and `X-Forwarded-Proto`/`-Host` behind a trusted proxy), else localhost.
  */
 export function publicBaseUrl(cfg: ServerConfig, req: IncomingMessage, trustProxy: boolean): string {
@@ -123,38 +115,7 @@ function serveStatic(root: string, req: IncomingMessage, res: ServerResponse, pa
 export function createHttpServer(cfg: ServerConfig, ctx: Ctx): Server {
   const apiLimiter = new Limiter(240, 60_000);
   const nonceLimiter = new Limiter(20, 60_000);
-  const passLimiter = new Limiter(PASS_RATE_PER_MIN, 60_000);
   const trustProxy = process.env.TRUST_PROXY === '1';
-  const passImages = ctx.passImages ?? new PassImages(join(cfg.dataDir, 'pass'));
-
-  /** `/pass/collection.json|png`, `/pass/<n>.json|png`; every other `/pass/*` path is a 404. */
-  async function servePass(req: IncomingMessage, res: ServerResponse, pathname: string): Promise<void> {
-    const pass = ctx.chain.passStatus();
-    if (!pass) return json(res, 404, { error: 'pass collection not configured' });
-    const base = publicBaseUrl(cfg, req, trustProxy);
-    const sealed = !(pass.revealed && pass.seed);
-    // a Host-derived base URL must not be cached by shared caches under another host
-    const cache = !cfg.publicUrl ? 'no-store' : sealed ? 'public, max-age=60' : 'public, max-age=3600';
-    const sendJson = (body: unknown) => {
-      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': cache });
-      res.end(req.method === 'HEAD' ? undefined : serializePassJson(body));
-    };
-    const sendPng = (buf: Buffer) => {
-      res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': buf.length, 'Cache-Control': sealed ? 'public, max-age=300' : 'public, max-age=86400' });
-      res.end(req.method === 'HEAD' ? undefined : buf);
-    };
-    if (pathname === '/pass/collection.json') return sendJson(collectionMetadata(pass, base));
-    if (pathname === '/pass/collection.png') return sendPng((await passImages.png('collection', pass))!);
-    const m = PASS_PATH.exec(pathname);
-    if (!m) return json(res, 404, { error: 'not found' });
-    const n = Number(m[1]);
-    if (m[2] === 'json') {
-      const meta = passMetadata(n, pass, base);
-      return meta ? sendJson(meta) : json(res, 404, { error: 'no such pass' });
-    }
-    const png = await passImages.png(n, pass);
-    return png ? sendPng(png) : json(res, 404, { error: 'no such pass' });
-  }
 
   return createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
@@ -169,14 +130,8 @@ export function createHttpServer(cfg: ServerConfig, ctx: Ctx): Server {
     }
     const ip = clientIp(req, trustProxy);
     try {
-      if (url.pathname.startsWith('/pass/')) {
-        if (req.method !== 'GET' && req.method !== 'HEAD') return json(res, 405, { error: 'method not allowed' });
-        if (!passLimiter.allow(ip)) return json(res, 429, { error: 'rate_limited' });
-        return await servePass(req, res, url.pathname);
-      }
       if (url.pathname.startsWith('/api/')) {
         if (!apiLimiter.allow(ip)) return json(res, 429, { error: 'rate_limited' });
-        if (url.pathname.startsWith('/api/pass/') && !passLimiter.allow(ip)) return json(res, 429, { error: 'rate_limited' });
         switch (url.pathname) {
           case '/api/health':
             return json(res, 200, {
@@ -188,11 +143,11 @@ export function createHttpServer(cfg: ServerConfig, ctx: Ctx): Server {
           case '/api/rooms':
             return json(res, 200, { rooms: ctx.rooms.list(), online: ctx.rooms.online(), blocked: ctx.rooms.blockedArenas() });
           case '/api/leaderboard':
+            // the standings: off-chain daily / all-time best scores, no prizes
             return json(res, 200, ctx.leaderboards.snapshot());
-          case '/api/season':
-            return json(res, 200, (await ctx.chain.season()) ?? { enabled: false });
           case '/api/config':
-            return json(res, 200, { protocol: PROTOCOL_VERSION, chain: publicChainStatus(ctx.chain.status(), cfg) });
+            // `chain.tokenReady` false: practice only, arenas "opening soon" (the server picks the token up by itself)
+            return json(res, 200, { protocol: PROTOCOL_VERSION, chain: ctx.chain.status() });
           case '/api/auth/nonce': {
             if (!nonceLimiter.allow(ip)) return json(res, 429, { error: 'rate_limited' });
             const pubkey = url.searchParams.get('pubkey');
@@ -209,22 +164,14 @@ export function createHttpServer(cfg: ServerConfig, ctx: Ctx): Server {
               .flatMap((p) => (p.kind === 'settle' && p.player === wallet ? [{ key: p.key, arenaId: p.arenaId ?? null, payout: p.payout ?? 0 }] : []));
             return json(res, 200, { pending });
           }
-          case '/api/dev/pass/mint':
-          case '/api/dev/pass/reveal': {
-            // DEV ONLY: the fake chain's Pass mint and reveal (absent unless DEV_FAKE_CHAIN=1, which needs NODE_ENV=development)
-            const dev = cfg.devFakeChain ? (ctx.chain as Partial<DevFakePassActions>) : null;
-            if (!dev?.devMintPass || !dev.devRevealPasses) return json(res, 404, { error: 'not found' });
+          case '/api/dev/token': {
+            // DEV ONLY: sets the fake chain's game token, like `pnpm admin set-token` (absent unless
+            // DEV_FAKE_CHAIN=1, which needs NODE_ENV=development); shows the "opening soon" → open transition
+            const dev = cfg.devFakeChain ? (ctx.chain as Partial<DevFakeChainActions>) : null;
+            if (!dev?.devSetToken) return json(res, 404, { error: 'not found' });
             if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' });
-            if (url.pathname === '/api/dev/pass/reveal') return json(res, 200, { pass: dev.devRevealPasses() });
-            const wallet = url.searchParams.get('wallet');
-            if (!isValidPubkey(wallet)) return json(res, 400, { error: 'invalid wallet' });
-            const out = dev.devMintPass(wallet);
-            return json(res, out.ok ? 200 : 409, out);
-          }
-          case '/api/pass/owned': {
-            const wallet = url.searchParams.get('wallet');
-            if (!isValidPubkey(wallet)) return json(res, 400, { error: 'invalid wallet' });
-            return json(res, 200, { passes: await ctx.chain.ownedPasses(wallet) });
+            const changed = dev.devSetToken();
+            return json(res, 200, { changed, chain: ctx.chain.status() });
           }
           default:
             return json(res, 404, { error: 'not found' });

@@ -6,8 +6,11 @@
 # the admin), `set-token --mint` (also creates the fee wallet's token account) and
 # `create-arena --defaults` (four open arenas).
 #
-#   scripts/localnet.sh          (re)start from a fresh ledger and print the game-server env
-#   scripts/localnet.sh --stop   stop the validator started by this script
+#   scripts/localnet.sh             (re)start from a fresh ledger and print the game-server env
+#   scripts/localnet.sh --no-token  same, but stop after `init`: the mint exists (the admin holds the
+#                                   supply) but is NOT set on the program and no arena exists, like a
+#                                   fresh mainnet deploy before `set-token` (the server e2e starts here)
+#   scripts/localnet.sh --stop      stop the validator started by this script
 #
 # State lives in .localnet/ (server + token-mint keypairs, ledger, logs, server.env). Never commit it. Requires target/deploy/slana_lean.so (scripts/build-lean.sh: the
 # deployed Pinocchio program; the Anchor reference slana.so is never deployed), the IDL synced from `anchor build`, the Agave CLI
@@ -70,7 +73,12 @@ if [[ "${1:-}" == "--stop" ]]; then
   say "localnet stopped"
   exit 0
 fi
-if [[ $# -gt 0 ]]; then die "usage: $0 [--stop]"; fi
+NO_TOKEN=0
+if [[ "${1:-}" == "--no-token" ]]; then
+  NO_TOKEN=1
+  shift
+fi
+if [[ $# -gt 0 ]]; then die "usage: $0 [--no-token | --stop]"; fi
 
 for tool in solana-test-validator solana solana-keygen spl-token curl pnpm; do
   command -v "$tool" >/dev/null || die "$tool not found in PATH"
@@ -157,17 +165,21 @@ admin() {
 }
 say "initializing the program (no token yet; fee wallet = the admin)"
 admin init --server "$SERVER"
-say "setting the game token"
-admin set-token --mint "$TOKEN_MINT"
-say "creating the default arenas"
-admin create-arena --defaults
+if [[ "$NO_TOKEN" == 1 ]]; then
+  say "--no-token: the mint is NOT set (run \`pnpm admin set-token --mint $TOKEN_MINT\`, then \`create-arena --defaults\`)"
+else
+  say "setting the game token"
+  admin set-token --mint "$TOKEN_MINT"
+  say "creating the default arenas"
+  admin create-arena --defaults
+fi
 
+# The game server reads the mint from the program config (no TOKEN_MINT setting).
 cat >"$STATE/server.env" <<ENV
 SOLANA_CLUSTER=localnet
 SOLANA_RPC_URL=$RPC_URL
 PROGRAM_ID=$PROGRAM_ID
 SERVER_KEYPAIR=$SERVER_KEYPAIR
-TOKEN_MINT=$TOKEN_MINT
 PUBLIC_URL=$GAME_URL
 ENV
 
@@ -176,9 +188,10 @@ say "localnet ready ✓   status: pnpm admin status · stop: scripts/localnet.sh
 echo "Game server env (also in .localnet/server.env):"
 echo
 echo "  SOLANA_CLUSTER=localnet SOLANA_RPC_URL=$RPC_URL PROGRAM_ID=$PROGRAM_ID SERVER_KEYPAIR=$SERVER_KEYPAIR"
-echo "  TOKEN_MINT=$TOKEN_MINT PUBLIC_URL=$GAME_URL"
+echo "  PUBLIC_URL=$GAME_URL"
 echo
-echo "The admin ($ADMIN) holds the $TOKEN_SUPPLY test tokens and is the fee wallet."
+echo "The admin ($ADMIN) holds the $TOKEN_SUPPLY test tokens of $TOKEN_MINT and is the fee wallet."
+if [[ "$NO_TOKEN" == 1 ]]; then echo "The token is not set yet: the game server plays practice only until it is."; fi
 echo
 echo "e.g.  cd apps/server && env \$(cat ../../.localnet/server.env | xargs) npx tsx src/index.ts"
-echo "      pnpm -F @slana/server e2e        (needs STALE_SESSION_AFTER_S=5 on the server)"
+echo "      pnpm -F @slana/server e2e        (after --no-token; see apps/server/scripts/e2e.ts for the server env)"

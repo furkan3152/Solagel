@@ -387,8 +387,7 @@ export const FREE_SKIN_IDS = SKINS.filter((s) => s.tier === 'free').map((s) => s
 export const getSkin = (id: number): SkinDef => SKINS[id] ?? SKINS[0];
 
 /**
- * The basic skins (ids 0..7): free for everyone and the only looks a player
- * can pick without a Slana Pass, which brings its own NFT look.
+ * The basic skins (ids 0..7): free for everyone and the only looks a player can pick.
  */
 export const BASIC_SKINS: readonly SkinDef[] = SKINS.slice(0, 8);
 

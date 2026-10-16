@@ -2,43 +2,29 @@ import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import {
-  MPL_CORE_ID,
   SlanaClient,
   SlanaErrorCode,
   assertSafeSupply,
   ata,
   clusterDefaultRpc,
   describeError,
+  feeWalletAta,
+  isTokenSet,
   lamportsToSol,
-  listOwnedPasses,
-  parseCoreAsset,
-  passNumberFromName,
   programErrorCode,
-  splitSessionPayout,
+  requireToken,
+  splitPayout,
   type ArenaView,
   type ConfigView,
-  type CoreAsset,
-  type LeaderEntryView,
-  type OwnedPass,
+  type GameToken,
   type ProfileView,
-  type SeasonView as SdkSeasonView,
   type SessionView,
 } from '@slana/sdk';
-import { TOKEN_SYMBOL_DEFAULT, formatToken, toSafeAmount, type ChainStatus, type PassStatus } from '@slana/shared';
+import { TOKEN_SYMBOL_DEFAULT, formatToken, toSafeAmount, type ChainStatus } from '@slana/shared';
 import { Connection, Keypair, PublicKey, type TransactionInstruction } from '@solana/web3.js';
 import type { ServerConfig } from '../config';
 import type { Journal, JournalItem, SettlementItem, SweepItem } from '../stake/journal';
-import type {
-  ChainArena,
-  ChainGateway,
-  ChainPass,
-  ChainProfile,
-  ChainSession,
-  OwnedPassInfo,
-  SeasonEntry,
-  SeasonView,
-  SettledEvent,
-} from './types';
+import type { ChainArena, ChainGateway, ChainProfile, ChainSession, SettledEvent } from './types';
 
 export type { SettledEvent } from './types';
 
@@ -52,11 +38,7 @@ const SWEEP_INTERVAL_MS = 5 * 60_000;
 /** Sessions nobody plays for this long are refunded (payout = buy-in); `STALE_SESSION_AFTER_S` overrides it. */
 export const STALE_SESSION_AFTER_S = 15 * 60;
 const PROFILE_TTL_MS = 60_000;
-const PASS_TTL_MS = 60_000;
-const OWNED_TTL_MS = 30_000;
-const MAX_PASS_CACHE = 10_000;
 const ARENA_TTL_MS = 30_000;
-const SEASON_TTL_MS = 30_000;
 const CONFIG_TTL_MS = 30_000;
 const MAX_IN_FLIGHT = 4;
 /** Upper bound for one send+confirm (a blockhash lives ~60–90 s). */
@@ -87,7 +69,7 @@ const ERR = {
   accountNotInitialized: 3012,
   /** Anchor: account owned by another program (a closed PDA that received lamports). */
   accountOwnedByWrongProgram: 3007,
-  /** Anchor: PDA seeds mismatch (e.g. the season changed under us). */
+  /** Anchor: PDA seeds mismatch. */
   constraintSeeds: 2006,
   constraintAddress: 2012,
 } as const;
@@ -105,18 +87,11 @@ export interface ChainClient {
   fetchArenas(): Promise<ArenaView[]>;
   fetchSession(arenaId: number, player: string): Promise<SessionView | null>;
   fetchSessions(): Promise<SessionView[]>;
-  fetchSeason(id: number): Promise<SdkSeasonView | null>;
   /** Raw supply of the game-token mint (base units). */
   fetchMintSupply(mint: string): Promise<bigint>;
   /** Whether an account exists (used for the player's token account). */
   accountExists(address: string): Promise<boolean>;
-  /** A Metaplex Core asset, null when the account is missing or not an `AssetV1`. */
-  fetchCoreAsset(asset: string): Promise<CoreAsset | null>;
-  /** Core assets of `collection` owned by `owner` (SDK `listOwnedPasses`). */
-  listOwnedPasses(owner: string, collection: string): Promise<OwnedPass[]>;
-  /** Current slot ('confirmed'). */
-  getSlot(): Promise<number>;
-  readonly ix: Pick<SlanaClient['ix'], 'settleSession' | 'capturePassEntropy' | 'sweepLoot'>;
+  readonly ix: Pick<SlanaClient['ix'], 'settleSession' | 'sweepLoot'>;
 }
 
 /** `ChainClient` over a real `SlanaClient` + its connection. */
@@ -130,15 +105,8 @@ export function sdkChainClient(sdk: SlanaClient, connection: Connection): ChainC
     fetchArenas: () => sdk.fetchArenas(),
     fetchSession: (arenaId, player) => sdk.fetchSession(arenaId, player),
     fetchSessions: () => sdk.fetchSessions(),
-    fetchSeason: (id) => sdk.fetchSeason(id),
     fetchMintSupply: async (mint) => BigInt((await connection.getTokenSupply(new PublicKey(mint), 'confirmed')).value.amount),
     accountExists: async (address) => (await connection.getAccountInfo(new PublicKey(address), 'confirmed')) !== null,
-    fetchCoreAsset: async (asset) => {
-      const info = await connection.getAccountInfo(new PublicKey(asset), 'confirmed');
-      return info && info.owner.equals(MPL_CORE_ID) ? parseCoreAsset(info.data) : null;
-    },
-    listOwnedPasses: (owner, collection) => listOwnedPasses(connection, owner, collection),
-    getSlot: () => connection.getSlot('confirmed'),
   };
 }
 
@@ -248,21 +216,24 @@ const toChainProfile = (p: ProfileView): ChainProfile => ({
   skin: p.skin,
   xp: p.xp,
   level: p.level,
-  premiumSkins: 0, // v2 has no premium skins (Pass looks replace them)
+  premiumSkins: 0, // no premium skins: everyone picks from the basic skins
   gamesPlayed: p.gamesPlayed,
   bestScore: p.bestScore,
 });
-
-const toEntry = (e: LeaderEntryView): SeasonEntry => ({ player: e.player, name: e.name, skin: e.skin, points: e.points, bestScore: e.bestScore });
 
 /* ------------------------------------------------------------------ */
 /* Gateway                                                             */
 /* ------------------------------------------------------------------ */
 
 /**
- * Solana-backed `ChainGateway`: cached reads for the rooms (profiles, arenas, sessions, seasons,
- * Slana Passes), plus the settlement worker that turns journal items into `settle_session`
+ * Solana-backed `ChainGateway`: cached reads for the rooms (profiles, arenas, sessions), plus the
+ * settlement worker that turns journal items into `settle_session` / `sweep_loot` (burn)
  * transactions signed by the server authority, and a sweeper that refunds sessions nobody played.
+ *
+ * Token watcher: the program may be initialized without a mint (`set_token_mint` comes later).
+ * The config is read at start and every 30 s; while the mint is unset the gateway reports
+ * `tokenReady: false` (practice only). The first read that finds the mint set turns arenas on
+ * (after the supply check) and fires `onStatusChange`, so rooms attach without a restart.
  */
 export class SolanaChain implements ChainGateway {
   enabled = false;
@@ -288,12 +259,10 @@ export class SolanaChain implements ChainGateway {
   private readonly profiles = new Map<string, { at: number; value: ChainProfile | null }>();
   private readonly profileFetches = new Map<string, Promise<ChainProfile | null>>();
   private arenaCache: { at: number; value: ChainArena[] } | null = null;
-  private seasonCache: { at: number; value: SeasonView | null } | null = null;
-  private seasonFetch: Promise<SeasonView | null> | null = null;
-  private readonly passes = new Map<string, { at: number; value: ChainPass | null }>();
-  private readonly owned = new Map<string, { at: number; value: OwnedPassInfo[] }>();
   private probing: Promise<boolean> | null = null;
-  private capturing: Promise<void> | null = null;
+  private readonly statusListeners: (() => void)[] = [];
+  /** `tokenReady` as last announced (status-change listeners fire on a flip). */
+  private announcedTokenReady = false;
 
   private timers: NodeJS.Timeout[] = [];
   private kickScheduled = false;
@@ -384,11 +353,13 @@ export class SolanaChain implements ChainGateway {
       this.enabled = true;
       await this.checkSupply();
       this.log(
-        `chain: ${where} · program ${client.programId.toBase58()} · season ${config.currentSeason} · ` +
+        `chain: ${where} · program ${client.programId.toBase58()} · ` +
+          `token ${config.tokenMint ?? 'not set (practice only until `pnpm admin set-token`; re-checking every 30 s)'} · ` +
+          `fee ${config.feeBps / 100} % → ${config.feeWallet} · ` +
           `server ${this.keypair!.publicKey.toBase58()} · stake ${this.stakeEnabled ? 'on' : 'off'}`,
       );
       void this.checkBalance();
-      void this.refreshSeason();
+      this.announceStatus();
       return true;
     } catch (err) {
       this.warn('probe', `chain: RPC ${where} unreachable (${firstLine(err)}) — free play only (re-checking every 30 s)`);
@@ -396,8 +367,11 @@ export class SolanaChain implements ChainGateway {
     }
   }
 
-  /** 30 s loop: re-probe while offline, otherwise refresh config + season caches. */
-  private async refresh(): Promise<void> {
+  /**
+   * 30 s loop: re-probe while offline, otherwise re-read the config (server authority, pause,
+   * and, until it is set, the token mint) and the supply. Public so tests drive it by hand.
+   */
+  async refresh(): Promise<void> {
     if (this.stopped || !this.client) return;
     if (!this.enabled) {
       if (await this.probe()) this.kick();
@@ -405,41 +379,38 @@ export class SolanaChain implements ChainGateway {
     }
     await this.freshConfig();
     await this.checkSupply();
-    await this.refreshSeason();
-    await this.captureEntropyIfDue();
+    this.announceStatus();
   }
 
-  /**
-   * Rulings R22/R23: once the seed is public (`reveal_pass`) and the entropy target slot has
-   * passed, sends the permissionless `capture_pass_entropy`, which completes the reveal (the
-   * server pays only the network fee). Runs on every 30 s refresh until the config shows the
-   * Pass revealed, so a failure simply retries. If the target left the SlotHashes window, the
-   * program re-targets and the next refresh tries the new slot. Never throws.
-   */
-  captureEntropyIfDue(): Promise<void> {
-    this.capturing ??= this.captureEntropyNow().finally(() => (this.capturing = null));
-    return this.capturing;
+  /** The game token of the cached config, null while it is unset (or the config is unknown). */
+  private token(config: ConfigView | null = this.config): GameToken | null {
+    return config && isTokenSet(config) ? requireToken(config) : null;
   }
 
-  private async captureEntropyNow(): Promise<void> {
-    if (!this.enabled || !this.client || !this.keypair) return;
-    const config = this.config;
-    if (!config || !config.passSeedRevealed || config.passRevealed) return;
-    try {
-      const slot = await this.client.getSlot();
-      if (slot <= config.passEntropyTargetSlot) return;
-      const ix = await this.client.ix.capturePassEntropy(this.keypair.publicKey);
-      const signature = await this.send('pass-entropy', [ix]);
-      this.sentSignatures.delete('pass-entropy');
-      const after = await this.freshConfig();
-      if (after?.passRevealed) {
-        this.log(`chain: Pass entropy captured — hash of slot ${after.passEntropySlot}, final seed ${after.passFinalSeed} · ${signature}`);
-      } else if (after && after.passEntropyTargetSlot !== config.passEntropyTargetSlot) {
-        this.log(`chain: Pass entropy target ${config.passEntropyTargetSlot} was missed; new target slot ${after.passEntropyTargetSlot} · ${signature}`);
+  get tokenReady(): boolean {
+    return this.enabled && this.token() !== null;
+  }
+
+  onStatusChange(fn: () => void): void {
+    this.statusListeners.push(fn);
+  }
+
+  /** Fires the status listeners when `tokenReady` flipped since the last announcement. */
+  private announceStatus(): void {
+    const ready = this.tokenReady;
+    if (ready === this.announcedTokenReady) return;
+    this.announcedTokenReady = ready;
+    if (ready) {
+      const c = this.config!;
+      this.arenaCache = null;
+      this.log(`chain: game token set — mint ${c.tokenMint} (${c.tokenDecimals} decimals) · arenas ${this.stakeEnabled ? 'on' : 'off'}`);
+    }
+    for (const fn of this.statusListeners) {
+      try {
+        fn();
+      } catch (err) {
+        this.log(`chain: status listener failed: ${(err as Error).stack ?? err}`);
       }
-    } catch (err) {
-      const d = describeError(err);
-      this.warn('pass-entropy', `chain: Pass entropy capture failed (${d.name ?? firstLine(err)}); retrying on the next refresh`);
     }
   }
 
@@ -448,11 +419,11 @@ export class SolanaChain implements ChainGateway {
    * (`assertSafeSupply`). RPC errors keep the last known answer.
    */
   private async checkSupply(): Promise<void> {
-    const config = this.config;
-    if (!config) return;
+    const token = this.token();
+    if (!token) return;
     let safe: boolean;
     try {
-      const supply = await this.client!.fetchMintSupply(config.tokenMint);
+      const supply = await this.client!.fetchMintSupply(token.tokenMint);
       try {
         assertSafeSupply(supply);
         safe = true;
@@ -470,12 +441,12 @@ export class SolanaChain implements ChainGateway {
   }
 
   private updateStakeEnabled(): void {
-    this.stakeEnabled = this.authorized === true && this.cfg.chain.stakeEnabled && this.supplySafe === true;
+    this.stakeEnabled = this.authorized === true && this.cfg.chain.stakeEnabled && this.token() !== null && this.supplySafe === true;
   }
 
   /** Raw token units with the mint's decimals and the display symbol (for logs). */
   private units(raw: number): string {
-    const decimals = this.config?.tokenDecimals;
+    const decimals = this.token()?.tokenDecimals;
     if (decimals === undefined) return `${raw} token units`;
     try {
       return `${formatToken(raw, decimals, { maxFrac: decimals })} ${this.cfg.chain.tokenSymbol}`;
@@ -551,79 +522,19 @@ export class SolanaChain implements ChainGateway {
   status(): ChainStatus {
     const { cluster, publicRpcUrl } = this.cfg.chain;
     if (!this.enabled || !this.client) {
-      return { enabled: false, cluster, programId: null, rpcUrl: null, arenasEnabled: false, currentSeason: null, token: null, pass: null };
+      return { enabled: false, cluster, programId: null, rpcUrl: null, arenasEnabled: false, tokenReady: false, token: null, feeBps: null };
     }
-    const config = this.config;
+    const token = this.token();
     return {
       enabled: true,
       cluster,
       programId: this.client.programId.toBase58(),
       rpcUrl: publicRpcUrl ?? clusterDefaultRpc(cluster),
       arenasEnabled: this.stakeEnabled,
-      currentSeason: config?.currentSeason ?? null,
-      token: config ? { mint: config.tokenMint, symbol: this.cfg.chain.tokenSymbol || TOKEN_SYMBOL_DEFAULT, decimals: config.tokenDecimals } : null,
-      pass: this.passStatus(),
+      tokenReady: token !== null,
+      token: token ? { mint: token.tokenMint, symbol: this.cfg.chain.tokenSymbol || TOKEN_SYMBOL_DEFAULT, decimals: token.tokenDecimals } : null,
+      feeBps: this.config?.feeBps ?? null,
     };
-  }
-
-  /** From the cached config; null until the Pass collection is set. */
-  passStatus(): PassStatus | null {
-    const c = this.config;
-    if (!this.enabled || !c || !c.passCollection) return null;
-    return {
-      collection: c.passCollection,
-      supply: c.passSupply,
-      minted: c.passMinted,
-      perWallet: c.passPerWallet,
-      mintOpen: c.passMintOpen,
-      mintStartTs: c.passMintStartTs,
-      revealed: c.passRevealed && !!c.passFinalSeed,
-      seedRevealed: c.passSeedRevealed,
-      entropyTargetSlot: c.passEntropyTargetSlot,
-      // traits derive from the final seed sha256(seed || entropy), never the admin seed
-      seed: c.passRevealed ? c.passFinalSeed : null,
-    };
-  }
-
-  /**
-   * A Core asset that is a Slana Pass of our collection (`Slana Pass #n`), with its
-   * current owner. Cached 60 s; RPC errors yield the last known value or null.
-   */
-  async getPass(asset: string): Promise<ChainPass | null> {
-    const collection = this.config?.passCollection;
-    if (!this.enabled || !this.client || !collection || !isPubkey(asset)) return null;
-    const cached = this.passes.get(asset);
-    if (cached && this.now() - cached.at < PASS_TTL_MS) return cached.value;
-    try {
-      const a = await this.client.fetchCoreAsset(asset);
-      const number = a && a.collection === collection ? passNumberFromName(a.name) : null;
-      const value = a && number !== null ? { owner: a.owner, number } : null;
-      if (this.passes.size >= MAX_PASS_CACHE) this.passes.delete(this.passes.keys().next().value!);
-      this.passes.delete(asset);
-      this.passes.set(asset, { at: this.now(), value });
-      return value;
-    } catch (err) {
-      this.warn('pass', `chain: Pass lookup failed (${firstLine(err)})`);
-      return cached?.value ?? null;
-    }
-  }
-
-  /** Passes owned by `wallet` (DAS or getProgramAccounts via the SDK); cached 30 s. */
-  async ownedPasses(wallet: string): Promise<OwnedPassInfo[]> {
-    const collection = this.config?.passCollection;
-    if (!this.enabled || !this.client || !collection || !isPubkey(wallet)) return [];
-    const cached = this.owned.get(wallet);
-    if (cached && this.now() - cached.at < OWNED_TTL_MS) return cached.value;
-    try {
-      const value = (await this.client.listOwnedPasses(wallet, collection)).map((p) => ({ asset: p.asset, number: p.number }));
-      if (this.owned.size >= MAX_PASS_CACHE) this.owned.delete(this.owned.keys().next().value!);
-      this.owned.delete(wallet);
-      this.owned.set(wallet, { at: this.now(), value });
-      return value;
-    } catch (err) {
-      this.warn('owned', `chain: owned-Pass listing failed (${firstLine(err)})`);
-      return cached?.value ?? [];
-    }
   }
 
   /** Cached 60 s (`fresh` bypasses). Never throws: RPC errors yield the last known value or null. */
@@ -667,8 +578,6 @@ export class SolanaChain implements ChainGateway {
         arenaId: s.arenaId,
         entryFee: toSafeAmount(s.entryFee),
         openedAt: s.openedAt,
-        hasPass: s.hasPass,
-        passAsset: s.passAsset,
         finalized: s.finalized,
         owed: toSafeAmount(s.owed),
       };
@@ -680,7 +589,7 @@ export class SolanaChain implements ChainGateway {
 
   /** Cached 30 s. */
   async listArenas(fresh = false): Promise<ChainArena[]> {
-    if (!this.enabled || !this.client) return [];
+    if (!this.enabled || !this.client || !this.tokenReady) return [];
     if (!fresh && this.arenaCache && this.now() - this.arenaCache.at < ARENA_TTL_MS) return this.arenaCache.value;
     try {
       const value = (await this.client.fetchArenas()).map(
@@ -688,7 +597,6 @@ export class SolanaChain implements ChainGateway {
           id: a.id,
           address: a.address,
           entryFee: toSafeAmount(a.entryFee),
-          requiresPass: a.requiresPass,
           maxSessions: a.maxSessions,
           openSessions: a.openSessions,
           enabled: a.enabled,
@@ -700,54 +608,6 @@ export class SolanaChain implements ChainGateway {
     } catch (err) {
       this.warn('arenas', `chain: arena list failed (${firstLine(err)})`);
       return this.arenaCache?.value ?? [];
-    }
-  }
-
-  /** Current season (live pool) + the previous finalized one; cached 30 s. */
-  async season(): Promise<SeasonView | null> {
-    if (!this.enabled || !this.client) return null;
-    if (this.seasonCache && this.now() - this.seasonCache.at < SEASON_TTL_MS) return this.seasonCache.value;
-    return this.refreshSeason();
-  }
-
-  private refreshSeason(): Promise<SeasonView | null> {
-    this.seasonFetch ??= this.fetchSeasonView().finally(() => (this.seasonFetch = null));
-    return this.seasonFetch;
-  }
-
-  private async fetchSeasonView(): Promise<SeasonView | null> {
-    try {
-      const config = await this.currentConfig();
-      if (!config) return this.seasonCache?.value ?? null;
-      const client = this.client!;
-      const [current, previous] = await Promise.all([
-        client.fetchSeason(config.currentSeason),
-        config.currentSeason - 1 > 0 ? client.fetchSeason(config.currentSeason - 1) : Promise.resolve(null),
-      ]);
-      const value: SeasonView | null = current
-        ? {
-            id: current.id,
-            startedAt: current.startedAt,
-            finalized: current.finalized,
-            prizePool: toSafeAmount(current.finalized ? current.prizePool : current.pool),
-            entries: current.entries.map(toEntry),
-            previous:
-              previous && previous.finalized
-                ? {
-                    id: previous.id,
-                    prizePool: toSafeAmount(previous.prizePool),
-                    endedAt: previous.endedAt,
-                    entries: previous.entries.map(toEntry),
-                    claimedMask: previous.claimedMask,
-                  }
-                : null,
-          }
-        : null;
-      this.seasonCache = { at: this.now(), value };
-      return value;
-    } catch (err) {
-      this.warn('season', `chain: season refresh failed (${firstLine(err)})`);
-      return this.seasonCache?.value ?? null;
     }
   }
 
@@ -765,7 +625,6 @@ export class SolanaChain implements ChainGateway {
 
   private emit(e: SettledEvent): void {
     this.profiles.delete(e.player);
-    this.seasonCache = null;
     this.arenaCache = null;
     for (const fn of this.settledListeners) {
       try {
@@ -833,8 +692,8 @@ export class SolanaChain implements ChainGateway {
   }
 
   /**
-   * Round end: moves exactly the journaled floor-loot value of one arena instance from the arena
-   * vault to the current season's pool (`sweep_loot`, server-signed). The program caps it only
+   * Round end: burns exactly the journaled floor-loot value of one arena instance from the arena
+   * vault (`sweep_loot`, server-signed; the mint supply drops). The program caps it only
    * by the vault balance, so the amount is never anything but what the room computed, and the
    * same item is never executed twice: its last signature and blockhash `lastValidBlockHeight`
    * are persisted before each send, and it is sent again only when the block height is past that
@@ -866,9 +725,8 @@ export class SolanaChain implements ChainGateway {
       }
       if (landed) {
         this.journal.remove(key);
-        this.seasonCache = null;
         this.arenaCache = null;
-        this.log(`chain: swept ${this.units(item.amount)} loot of ${item.roomId} (round ${item.round}) → season (confirmation arrived late) · ${sig}`);
+        this.log(`chain: burned ${this.units(item.amount)} loot of ${item.roomId} (round ${item.round}) (confirmation arrived late) · ${sig}`);
         return;
       }
       const lvbh = item.sentLastValidBlockHeight;
@@ -887,6 +745,11 @@ export class SolanaChain implements ChainGateway {
       this.journal.retryLater(key, 'config unavailable', this.now());
       return;
     }
+    const token = this.token(config);
+    if (!token) {
+      this.journal.retryLater(key, 'game token not set', this.now());
+      return;
+    }
     if (!this.authorized) {
       this.journal.retryLater(key, 'server key is not the program server authority', this.now());
       return;
@@ -894,17 +757,15 @@ export class SolanaChain implements ChainGateway {
     const ix = await this.client!.ix.sweepLoot(this.keypair!.publicKey, {
       id: item.arenaId,
       amount: item.amount,
-      currentSeason: config.currentSeason,
-      tokenMint: config.tokenMint,
-      tokenProgram: config.tokenProgram,
+      tokenMint: token.tokenMint,
+      tokenProgram: token.tokenProgram,
     });
     try {
       const signature = await this.send(key, [ix], (sig, lvbh) => this.journal.markSent(key, sig, this.now(), lvbh));
       this.journal.remove(key);
       this.sentSignatures.delete(key);
-      this.seasonCache = null;
       this.arenaCache = null;
-      this.log(`chain: swept ${this.units(item.amount)} loot of ${item.roomId} (round ${item.round}) → season ${config.currentSeason} · ${signature}`);
+      this.log(`chain: burned ${this.units(item.amount)} loot of ${item.roomId} (round ${item.round}) · ${signature}`);
     } catch (err) {
       const code = programErrorCode(err);
       const d = describeError(err);
@@ -961,6 +822,12 @@ export class SolanaChain implements ChainGateway {
       this.journal.retryLater(key, 'config unavailable', this.now());
       return;
     }
+    const token = this.token(config);
+    if (!token) {
+      // no ticket can exist before the mint is set; keep the item for when it is
+      this.journal.retryLater(key, 'game token not set', this.now());
+      return;
+    }
     if (!this.authorized) {
       // Money is owed: keep the item until the server key is fixed (or the player refunds).
       this.journal.retryLater(key, 'server key is not the program server authority', this.now());
@@ -993,23 +860,32 @@ export class SolanaChain implements ChainGateway {
 
     // Settle pays into the player's token account. The server never pays its rent (a player
     // could close and re-open it to drain the server). Ruling R24: without a usable account
-    // the server settles anyway, without it: the fee split and stats happen now and the
-    // session is finalized with `owed`, which the player collects themselves (no waiting).
-    const playerAta = ata(item.player, config.tokenMint, config.tokenProgram).toBase58();
-    let ataExists: boolean;
-    try {
-      ataExists = await this.client!.accountExists(playerAta);
-    } catch (err) {
-      this.journal.retryLater(key, `token account lookup failed: ${firstLine(err)}`, this.now());
-      return;
+    // the server settles anyway, without it: the fee and stats happen now and the session is
+    // finalized with `owed`, which the player collects themselves (no waiting).
+    // The fee goes to the fee wallet's ATA. When the player IS the fee wallet, both accounts are
+    // the same ATA and the program refuses the duplicate (Anchor 2040): settle without the
+    // player's account then (finalize; the fee wallet collects `owed` with `refund_session`).
+    const feeWalletToken = feeWalletAta(config).toBase58();
+    const playerAta = ata(item.player, token.tokenMint, token.tokenProgram).toBase58();
+    const feeWalletPlays = playerAta === feeWalletToken;
+    let ataExists = false;
+    if (!feeWalletPlays) {
+      try {
+        ataExists = await this.client!.accountExists(playerAta);
+      } catch (err) {
+        this.journal.retryLater(key, `token account lookup failed: ${firstLine(err)}`, this.now());
+        return;
+      }
     }
     const tokenFailures = item.tokenFailures ?? 0;
-    const finalize = !ataExists || tokenFailures >= TOKEN_FAILURES_BEFORE_FINALIZE;
+    const finalize = feeWalletPlays || !ataExists || tokenFailures >= TOKEN_FAILURES_BEFORE_FINALIZE;
     if (finalize) {
-      this.log(
-        `chain: settlement ${short(key)} — ${ataExists ? `token account ${short(playerAta)} refused ${tokenFailures} time(s)` : `no token account ${short(playerAta)}`}; ` +
-          'settling without it (the player collects the payout)',
-      );
+      const why = feeWalletPlays
+        ? `the player is the fee wallet (its token account ${short(playerAta)} receives the fee)`
+        : ataExists
+          ? `token account ${short(playerAta)} refused ${tokenFailures} time(s)`
+          : `no token account ${short(playerAta)}`;
+      this.log(`chain: settlement ${short(key)} — ${why}; settling without it (the player collects the payout)`);
     }
     const ixs: TransactionInstruction[] = [];
     const ix = await this.client!.ix.settleSession(this.keypair!.publicKey, {
@@ -1020,11 +896,9 @@ export class SolanaChain implements ChainGateway {
       score: clampInt(item.score, 0xffff_ffff),
       kills: clampInt(item.kills, 0xffff),
       xp: clampInt(item.xp, 0xffff_ffff),
-      currentSeason: config.currentSeason,
-      tokenMint: config.tokenMint,
-      tokenProgram: config.tokenProgram,
-      hasPass: session.hasPass,
-      passAsset: session.passAsset,
+      tokenMint: token.tokenMint,
+      tokenProgram: token.tokenProgram,
+      feeWalletToken,
       ...(finalize ? { playerToken: null } : {}),
     });
     // Last check right before sending: a stale session may have been picked up meanwhile.
@@ -1037,7 +911,7 @@ export class SolanaChain implements ChainGateway {
     let fee: number | undefined;
     try {
       // the fee fixed in the session at join: exactly what `settle_session` charges
-      fee = toSafeAmount(splitSessionPayout(payout, session, config).fee);
+      fee = toSafeAmount(splitPayout(payout, session.entryFee, session.feeBps).fee);
     } catch {
       fee = undefined;
     }
@@ -1110,6 +984,9 @@ export class SolanaChain implements ChainGateway {
       return;
     }
     if (!finalized && this.isTokenAccountFailure(err, code)) {
+      // the same codes fire for the fee wallet's account (fee wallet changed since our config
+      // read): re-read the config before the retry so the next attempt uses the current one
+      this.configAt = 0;
       const n = (item.tokenFailures ?? 0) + 1;
       this.log(
         `chain: ${what} — the player's token account refused the payout (${label}); ` +
@@ -1134,7 +1011,7 @@ export class SolanaChain implements ChainGateway {
       return;
     }
     if (code === ERR.constraintSeeds || code === ERR.constraintAddress) {
-      this.configAt = 0; // the season probably moved: re-read before the retry
+      this.configAt = 0; // the config probably moved (e.g. a new fee wallet): re-read before the retry
     }
     if (code === ERR.insufficientPot) {
       this.warn(`pot-${item.arenaId}`, `!!! chain: arena #${item.arenaId} pot cannot cover ${what} (${this.units(item.payout ?? 0)}) — retrying with backoff`);
@@ -1202,7 +1079,7 @@ export class SolanaChain implements ChainGateway {
    * Returns the number of sessions queued.
    */
   async sweepStale(): Promise<number> {
-    if (this.stopped || !this.enabled || this.authorized !== true || !this.client) return 0;
+    if (this.stopped || !this.enabled || this.authorized !== true || !this.client || !this.tokenReady) return 0;
     if (!this.staleSweepAllowed()) return 0;
     let sessions: SessionView[];
     try {

@@ -174,10 +174,6 @@ export class Player {
   shieldUntil = 0;
   /** Stake rooms: disconnected and waiting for a reconnect. */
   afk = false;
-  /** Slana Pass number whose look the player wears (0 = none). */
-  pass = 0;
-  /** Pass power applies (heavier start). */
-  hasPass = false;
 
   stats: PlayerStats;
 

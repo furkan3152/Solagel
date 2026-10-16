@@ -37,8 +37,8 @@ export interface SettlementItem {
 }
 
 /**
- * Floor loot an arena instance still held at a round end, moved to the current season's pool
- * by `sweep_loot` (server-signed). Only the loot value the room computed is ever swept: never
+ * Floor loot an arena instance still held at a round end, burned from the arena vault by
+ * `sweep_loot` (server-signed). Only the loot value the room computed is ever swept: never
  * live stakes or owed payouts. Idempotent by `key` = `sweep:<roomId>:<round>`.
  */
 export interface SweepItem {
@@ -50,7 +50,7 @@ export interface SweepItem {
   roomId: string;
   /** Round number (`roundAt(...).n`) that ended. */
   round: number;
-  /** Raw token units to move from the arena vault to the season vault (> 0). */
+  /** Raw token units to burn from the arena vault (> 0). */
   amount: number;
   attempts: number;
   nextAttemptAt: number;
@@ -85,7 +85,6 @@ export interface LiveStake {
   value: number;
   score: number;
   kills: number;
-  hasPass: boolean;
 }
 
 /** A loot piece lying on an arena instance's floor (value in raw token units). */
@@ -112,7 +111,7 @@ interface JournalFile {
 interface JournalFileV1 {
   version: 1;
   pending: SettlementItem[];
-  live: Omit<LiveStake, 'hasPass'>[];
+  live: LiveStake[];
   updatedAt: number;
 }
 
@@ -126,7 +125,8 @@ interface JournalFileV1 {
  * the floor records in the same write that adds its sweep, and the room writes live
  * values and loot together.
  *
- * File format v2 adds `loot` and `LiveStake.hasPass`; v1 files are migrated on load.
+ * File format v2 adds `loot`; v1 files are migrated on load. (A `hasPass` field that older v2
+ * files carry on live stakes is ignored: the Slana Pass is gone.)
  * Loot is keyed by arena instance (room id), so instances of one arena never
  * overwrite each other's records; on restart an arena's first instance adopts
  * every instance's loot (`adoptLoot`). Records written before instances
@@ -382,14 +382,14 @@ export class Journal {
   }
 }
 
-/** Validates a journal file and upgrades v1 (no loot, no `hasPass`) to v2. */
+/** Validates a journal file and upgrades v1 (no loot) to v2. */
 function migrate(data: JournalFile | JournalFileV1): JournalFile {
   if (!data || !Array.isArray(data.pending) || !Array.isArray(data.live)) throw new Error('bad journal shape');
   if (data.version === 1) {
     return {
       version: 2,
       pending: data.pending,
-      live: data.live.map((l) => ({ ...l, hasPass: false })),
+      live: data.live,
       loot: [],
       updatedAt: data.updatedAt,
     };
@@ -408,5 +408,10 @@ function migrate(data: JournalFile | JournalFileV1): JournalFile {
     if (l.roomId === undefined) l.roomId = firstArenaInstance(l.arenaId);
     else if (typeof l.roomId !== 'string' || l.roomId.length === 0) throw new Error('bad loot record');
   }
+  // written while the Slana Pass existed: drop the field so it is not carried on
+  data.live = data.live.map((l) => {
+    const { hasPass: _gone, ...rest } = l as LiveStake & { hasPass?: unknown };
+    return rest;
+  });
   return data;
 }
