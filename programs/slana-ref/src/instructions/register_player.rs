@@ -42,7 +42,6 @@ pub fn handle_register_player(ctx: Context<RegisterPlayer>, name: String, skin: 
     profile.name = name_bytes;
     profile.name_len = name_len;
     profile.skin = skin;
-    profile.season = config.current_season;
     profile.created_at = now;
     profile.bump = ctx.bumps.profile;
 

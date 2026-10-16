@@ -1,6 +1,6 @@
 //! Error codes, numerically identical to the reference.
 //!
-//! * `SlanaError` (6000 + variant index, append-only) — `programs/slana-ref/src/error.rs`;
+//! * `SlanaError` (6000 + variant index) — `programs/slana-ref/src/error.rs`;
 //! * the Anchor built-in codes the reference raises through its account constraints and
 //!   account types (`anchor_lang::error::ErrorCode`).
 //!
@@ -88,53 +88,21 @@ pub const ARENA_DISABLED: u32 = 6005;
 pub const ARENA_FULL: u32 = 6006;
 pub const INSUFFICIENT_POT: u32 = 6007;
 pub const REFUND_TOO_EARLY: u32 = 6008;
-pub const SEASON_FINALIZED: u32 = 6009;
-pub const SEASON_NOT_FINALIZED: u32 = 6010;
-pub const NOT_ELIGIBLE: u32 = 6011;
-pub const ALREADY_CLAIMED: u32 = 6012;
-pub const CLAIM_WINDOW_CLOSED: u32 = 6013;
-pub const CLAIM_WINDOW_OPEN: u32 = 6014;
-pub const INVALID_SEASON: u32 = 6015;
-pub const ARENA_HAS_OPEN_SESSIONS: u32 = 6016;
-pub const INVALID_AMOUNT: u32 = 6017;
-pub const MATH_OVERFLOW: u32 = 6018;
-pub const SESSION_MISMATCH: u32 = 6019;
-pub const MINT_NOT_ALLOWED: u32 = 6020;
-pub const FREEZE_AUTHORITY_PRESENT: u32 = 6021;
-pub const PASS_REQUIRED: u32 = 6022;
-pub const PASS_NOT_OWNED: u32 = 6023;
-pub const PASS_WRONG_COLLECTION: u32 = 6024;
-pub const PASS_IN_USE: u32 = 6025;
-pub const MINT_CLOSED: u32 = 6026;
-pub const MINT_SOLD_OUT: u32 = 6027;
-pub const MINT_LIMIT: u32 = 6028;
-pub const MINT_MIN_TOKENS: u32 = 6029;
-pub const SEED_MISMATCH: u32 = 6030;
-pub const SEED_NOT_SET: u32 = 6031;
-pub const ALREADY_REVEALED: u32 = 6032;
-pub const COLLECTION_ALREADY_SET: u32 = 6033;
-pub const COLLECTION_NOT_SET: u32 = 6034;
-pub const BAD_COLLECTION: u32 = 6035;
-pub const BAD_SPLIT: u32 = 6036;
-pub const ARENA_BUSY: u32 = 6037;
-pub const BAD_BASE_URI: u32 = 6038;
-pub const INVALID_MAX_SESSIONS: u32 = 6039;
-pub const ENTRY_FEE_ZERO: u32 = 6040;
-pub const SEED_LOCKED: u32 = 6041;
-pub const MINT_STILL_OPEN: u32 = 6042;
-pub const MINT_ENDED: u32 = 6043;
-pub const SUPPLY_LOCKED: u32 = 6044;
-pub const USE_CLOSE_MINT: u32 = 6045;
-pub const BAD_SLOT_HASHES: u32 = 6046;
-pub const NOTHING_MINTED: u32 = 6047;
-pub const ENTROPY_NOT_READY: u32 = 6048;
-pub const ENTROPY_NOT_CAPTURED: u32 = 6049;
-pub const SEED_NOT_REVEALED: u32 = 6050;
-pub const FEE_ABOVE_LIMIT: u32 = 6051;
-pub const ENTRY_FEE_ABOVE_LIMIT: u32 = 6052;
-pub const SETTLE_FEE_ABOVE_LIMIT: u32 = 6053;
-pub const SESSION_FINALIZED: u32 = 6054;
-pub const INVALID_AUTHORITY: u32 = 6055;
+pub const ARENA_HAS_OPEN_SESSIONS: u32 = 6009;
+pub const MATH_OVERFLOW: u32 = 6010;
+pub const SESSION_MISMATCH: u32 = 6011;
+pub const MINT_NOT_ALLOWED: u32 = 6012;
+pub const FREEZE_AUTHORITY_PRESENT: u32 = 6013;
+pub const ARENA_BUSY: u32 = 6014;
+pub const INVALID_MAX_SESSIONS: u32 = 6015;
+pub const ENTRY_FEE_ZERO: u32 = 6016;
+pub const FEE_ABOVE_LIMIT: u32 = 6017;
+pub const ENTRY_FEE_ABOVE_LIMIT: u32 = 6018;
+pub const SETTLE_FEE_ABOVE_LIMIT: u32 = 6019;
+pub const SESSION_FINALIZED: u32 = 6020;
+pub const INVALID_AUTHORITY: u32 = 6021;
+pub const TOKEN_NOT_SET: u32 = 6022;
+pub const TOKEN_ALREADY_SET: u32 = 6023;
 
 /// `ProgramError::Custom(code)`. Out of line and cold: every failure path shares it.
 #[cold]
@@ -254,53 +222,21 @@ mod tests {
             (ARENA_FULL, S::ArenaFull),
             (INSUFFICIENT_POT, S::InsufficientPot),
             (REFUND_TOO_EARLY, S::RefundTooEarly),
-            (SEASON_FINALIZED, S::SeasonFinalized),
-            (SEASON_NOT_FINALIZED, S::SeasonNotFinalized),
-            (NOT_ELIGIBLE, S::NotEligible),
-            (ALREADY_CLAIMED, S::AlreadyClaimed),
-            (CLAIM_WINDOW_CLOSED, S::ClaimWindowClosed),
-            (CLAIM_WINDOW_OPEN, S::ClaimWindowOpen),
-            (INVALID_SEASON, S::InvalidSeason),
             (ARENA_HAS_OPEN_SESSIONS, S::ArenaHasOpenSessions),
-            (INVALID_AMOUNT, S::InvalidAmount),
             (MATH_OVERFLOW, S::MathOverflow),
             (SESSION_MISMATCH, S::SessionMismatch),
             (MINT_NOT_ALLOWED, S::MintNotAllowed),
             (FREEZE_AUTHORITY_PRESENT, S::FreezeAuthorityPresent),
-            (PASS_REQUIRED, S::PassRequired),
-            (PASS_NOT_OWNED, S::PassNotOwned),
-            (PASS_WRONG_COLLECTION, S::PassWrongCollection),
-            (PASS_IN_USE, S::PassInUse),
-            (MINT_CLOSED, S::MintClosed),
-            (MINT_SOLD_OUT, S::MintSoldOut),
-            (MINT_LIMIT, S::MintLimit),
-            (MINT_MIN_TOKENS, S::MintMinTokens),
-            (SEED_MISMATCH, S::SeedMismatch),
-            (SEED_NOT_SET, S::SeedNotSet),
-            (ALREADY_REVEALED, S::AlreadyRevealed),
-            (COLLECTION_ALREADY_SET, S::CollectionAlreadySet),
-            (COLLECTION_NOT_SET, S::CollectionNotSet),
-            (BAD_COLLECTION, S::BadCollection),
-            (BAD_SPLIT, S::BadSplit),
             (ARENA_BUSY, S::ArenaBusy),
-            (BAD_BASE_URI, S::BadBaseUri),
             (INVALID_MAX_SESSIONS, S::InvalidMaxSessions),
             (ENTRY_FEE_ZERO, S::EntryFeeZero),
-            (SEED_LOCKED, S::SeedLocked),
-            (MINT_STILL_OPEN, S::MintStillOpen),
-            (MINT_ENDED, S::MintEnded),
-            (SUPPLY_LOCKED, S::SupplyLocked),
-            (USE_CLOSE_MINT, S::UseCloseMint),
-            (BAD_SLOT_HASHES, S::BadSlotHashes),
-            (NOTHING_MINTED, S::NothingMinted),
-            (ENTROPY_NOT_READY, S::EntropyNotReady),
-            (ENTROPY_NOT_CAPTURED, S::EntropyNotCaptured),
-            (SEED_NOT_REVEALED, S::SeedNotRevealed),
             (FEE_ABOVE_LIMIT, S::FeeAboveLimit),
             (ENTRY_FEE_ABOVE_LIMIT, S::EntryFeeAboveLimit),
             (SETTLE_FEE_ABOVE_LIMIT, S::SettleFeeAboveLimit),
             (SESSION_FINALIZED, S::SessionFinalized),
             (INVALID_AUTHORITY, S::InvalidAuthority),
+            (TOKEN_NOT_SET, S::TokenNotSet),
+            (TOKEN_ALREADY_SET, S::TokenAlreadySet),
         ]
     }
 

@@ -85,10 +85,6 @@ impl<'a> Args<'a> {
         self.uint(8)
     }
 
-    pub fn i64(&mut self) -> i64 {
-        self.uint(8) as i64
-    }
-
     /// `[u8; 32]` (a `Pubkey` or a hash).
     #[inline(never)]
     pub fn key(&mut self) -> [u8; 32] {
@@ -231,12 +227,6 @@ pub fn rd_key(d: &[u8], off: usize) -> [u8; 32] {
     chunk(d, off)
 }
 
-/// `N` bytes at `off` (zeros when out of range).
-#[inline(always)]
-pub fn rd_arr<const N: usize>(d: &[u8], off: usize) -> [u8; N] {
-    chunk(d, off)
-}
-
 #[inline(always)]
 pub fn wr_u8(d: &mut [u8], off: usize, v: u8) {
     put(d, off, &[v]);
@@ -284,7 +274,6 @@ mod tests {
             b: u16,
             c: u32,
             d: u64,
-            e: i64,
             f: bool,
             g: Option<u16>,
             h: Option<u16>,
@@ -296,7 +285,6 @@ mod tests {
             b: 0x0203,
             c: 0x0405_0607,
             d: 0x0809_0a0b_0c0d_0e0f,
-            e: -5,
             f: true,
             g: None,
             h: Some(77),
@@ -310,7 +298,6 @@ mod tests {
         assert_eq!(a.u16(), s.b);
         assert_eq!(a.u32(), s.c);
         assert_eq!(a.u64(), s.d);
-        assert_eq!(a.i64(), s.e);
         assert!(a.bool());
         assert!(!a.some());
         assert!(a.some());

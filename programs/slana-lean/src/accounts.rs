@@ -178,9 +178,6 @@ pub mod kind {
     pub const PROFILE: u8 = 9;
     pub const ARENA: u8 = 10;
     pub const SESSION: u8 = 11;
-    pub const PASS_LOCK: u8 = 12;
-    pub const SEASON: u8 = 13;
-    pub const MINT_COUNTER: u8 = 14;
     /// Flag: `Option<T>` (Anchor encodes `None` as the program id, which is consumed and not
     /// checked). Use [`super::is_none`] in the handler.
     pub const OPT: u8 = 0x80;
@@ -193,16 +190,13 @@ pub fn is_none(acc: &AccountView) -> bool {
 }
 
 /// `(DISCRIMINATOR, SPACE)` of the program accounts, in `kind::CONFIG..` order.
-const PROGRAM_ACCOUNTS: [(&[u8; 8], usize); 7] = {
+const PROGRAM_ACCOUNTS: [(&[u8; 8], usize); 4] = {
     use crate::state::*;
     [
         (&config::DISCRIMINATOR, config::SPACE),
         (&profile::DISCRIMINATOR, profile::SPACE),
         (&arena::DISCRIMINATOR, arena::SPACE),
         (&session::DISCRIMINATOR, session::SPACE),
-        (&pass_lock::DISCRIMINATOR, pass_lock::SPACE),
-        (&season::DISCRIMINATOR, season::SPACE),
-        (&mint_counter::DISCRIMINATOR, mint_counter::SPACE),
     ]
 };
 

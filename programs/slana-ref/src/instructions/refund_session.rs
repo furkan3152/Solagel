@@ -5,8 +5,7 @@ use crate::{
     constants::*,
     error::SlanaError,
     events::SessionRefunded,
-    instructions::shared,
-    state::{Arena, Config, PassLock, Session},
+    state::{Arena, Config, Session},
     token,
 };
 
@@ -17,7 +16,7 @@ use crate::{
 ///   happened, so this never returns the entry fee.
 /// * Unsettled session (the server never settled it): after `SESSION_REFUND_TIMEOUT_SECS`
 ///   the player gets `min(entry_fee, vault balance)` back, plus the session rent and its
-///   settle deposit (and the Pass lock rent).
+///   settle deposit.
 #[derive(Accounts)]
 pub struct RefundSession<'info> {
     #[account(mut)]
@@ -56,18 +55,12 @@ pub struct RefundSession<'info> {
     pub token_mint: Box<InterfaceAccount<'info, Mint>>,
     #[account(address = config.token_program)]
     pub token_program: Interface<'info, TokenInterface>,
-    /// Required iff the session has a Pass and is not finalized (settlement already closed the
-    /// lock of a finalized session): its lock, closed back to the player.
-    #[account(mut, close = player)]
-    pub pass_lock: Option<Box<Account<'info, PassLock>>>,
 }
 
 pub fn handle_refund_session(ctx: Context<RefundSession>) -> Result<()> {
     let a = &mut *ctx.accounts;
     let finalized = a.session.finalized;
     let refund = if finalized {
-        // The lock was closed at settlement; any lock passed here would be someone else's.
-        require!(a.pass_lock.is_none(), SlanaError::PassInUse);
         a.session.owed.min(a.vault.amount)
     } else {
         let now = Clock::get()?.unix_timestamp;
@@ -77,7 +70,6 @@ pub fn handle_refund_session(ctx: Context<RefundSession>) -> Result<()> {
             .checked_add(SESSION_REFUND_TIMEOUT_SECS)
             .ok_or(SlanaError::MathOverflow)?;
         require_gte!(now, refundable_at, SlanaError::RefundTooEarly);
-        shared::check_pass_lock(&a.session, a.pass_lock.as_deref())?;
         a.session.entry_fee.min(a.vault.amount)
     };
 

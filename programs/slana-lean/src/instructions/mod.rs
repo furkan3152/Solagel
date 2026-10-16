@@ -13,20 +13,12 @@
 //!
 //! Every file starts with a table mapping each reference constraint to its lean check.
 
-pub mod capture_pass_entropy;
-pub mod claim_season_reward;
-pub mod close_pass_mint;
 pub mod create_arena;
-pub mod end_season;
 pub mod initialize;
 pub mod join_arena;
-pub mod mint_pass;
 pub mod refund_session;
 pub mod register_player;
-pub mod reveal_pass;
-pub mod rollover_season;
-pub mod set_pass_collection;
-pub mod set_pass_seed_hash;
+pub mod set_token_mint;
 pub mod settle_session;
 pub mod stake;
 pub mod sweep_arena;
@@ -34,7 +26,6 @@ pub mod sweep_loot;
 pub mod update_arena;
 pub mod update_config;
 pub mod update_profile;
-pub mod withdraw_treasury;
 
 use {
     crate::error::Result,
@@ -43,7 +34,8 @@ use {
         borsh::rd_key,
         constants::*,
         error::{
-            require, BAD_SPLIT, ENTRY_FEE_ZERO, INVALID_FEE, INVALID_MAX_SESSIONS, UNAUTHORIZED,
+            require, ENTRY_FEE_ZERO, INVALID_AUTHORITY, INVALID_FEE, INVALID_MAX_SESSIONS,
+            UNAUTHORIZED,
         },
         state::config,
     },
@@ -70,13 +62,6 @@ pub(crate) fn check_admin_config(
     )
 }
 
-/// `Clock::get()?.slot`.
-pub(crate) fn clock_slot() -> Result<u64> {
-    let mut slot = [0u8; 8];
-    get_sysvar(&mut slot, &CLOCK_ID, 0).map_err(|_| crate::error::Error::UNSUPPORTED_SYSVAR)?;
-    Ok(u64::from_le_bytes(slot))
-}
-
 /// `Clock::get()?.unix_timestamp`.
 pub(crate) fn unix_timestamp() -> Result<i64> {
     let mut ts = [0u8; 8];
@@ -87,23 +72,20 @@ pub(crate) fn unix_timestamp() -> Result<i64> {
 
 // ----- reference `instructions/shared.rs`: parameter validation ----------------------------
 
-/// `fee_bps ≤ MAX_FEE_BPS` and `pass_fee_bps ≤ fee_bps`, else `InvalidFee`.
-pub(crate) fn check_fees(fee_bps: u16, pass_fee_bps: u16) -> Result {
-    require(fee_bps <= MAX_FEE_BPS, INVALID_FEE)?;
-    require(pass_fee_bps <= fee_bps, INVALID_FEE)
-}
-
-/// The three fee shares must sum to exactly `BPS` (summed in u32), else `BadSplit`.
-// Bound: three u16 summed in u32 (< 2^18).
-#[allow(clippy::arithmetic_side_effects)]
-pub(crate) fn check_split(treasury_bps: u16, season_bps: u16, burn_bps: u16) -> Result {
-    let sum = u32::from(treasury_bps) + u32::from(season_bps) + u32::from(burn_bps);
-    require(sum == u32::from(BPS), BAD_SPLIT)
+/// `fee_bps ≤ MAX_FEE_BPS`, else `InvalidFee`.
+pub(crate) fn check_fee(fee_bps: u16) -> Result {
+    require(fee_bps <= MAX_FEE_BPS, INVALID_FEE)
 }
 
 /// `settle_fee_lamports ≤ MAX_SETTLE_FEE_LAMPORTS`, else `InvalidFee`.
 pub(crate) fn check_settle_fee(settle_fee_lamports: u64) -> Result {
     require(settle_fee_lamports <= MAX_SETTLE_FEE_LAMPORTS, INVALID_FEE)
+}
+
+/// A role key (admin, server authority, fee wallet) must not be the default key, else
+/// `InvalidAuthority`.
+pub(crate) fn check_authority(key: &[u8; 32]) -> Result {
+    require(*key != [0; 32], INVALID_AUTHORITY)
 }
 
 /// `entry_fee > 0`, else `EntryFeeZero`.

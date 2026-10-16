@@ -24,18 +24,16 @@ pub struct UpdateArena<'info> {
     pub arena: Box<Account<'info, Arena>>,
 }
 
-/// `enabled` and `max_sessions` can change at any time. `entry_fee` and `requires_pass`
-/// only while no session is open (`ArenaBusy`), because open sessions were priced and
-/// gated with the old values.
+/// `enabled` and `max_sessions` can change at any time, `entry_fee` only while no session
+/// is open (`ArenaBusy`), because open sessions were priced with the old value.
 pub fn handle_update_arena(
     ctx: Context<UpdateArena>,
     enabled: Option<bool>,
     max_sessions: Option<u16>,
     entry_fee: Option<u64>,
-    requires_pass: Option<bool>,
 ) -> Result<()> {
     let arena = &mut ctx.accounts.arena;
-    if entry_fee.is_some() || requires_pass.is_some() {
+    if entry_fee.is_some() {
         require!(arena.open_sessions == 0, SlanaError::ArenaBusy);
     }
     if let Some(enabled) = enabled {
@@ -48,9 +46,6 @@ pub fn handle_update_arena(
     if let Some(entry_fee) = entry_fee {
         shared::check_entry_fee(entry_fee)?;
         arena.entry_fee = entry_fee;
-    }
-    if let Some(requires_pass) = requires_pass {
-        arena.requires_pass = requires_pass;
     }
     Ok(())
 }

@@ -1,11 +1,10 @@
-//! `update_arena(enabled, max_sessions, entry_fee, requires_pass)` — reference
-//! `instructions/update_arena.rs`.
+//! `update_arena(enabled, max_sessions, entry_fee)` — reference `instructions/update_arena.rs`.
 //!
 //! Accounts: 0 admin, 1 config, 2 arena.
 //!
 //! | reference constraint                                          | lean check                   | error |
 //! |---------------------------------------------------------------|------------------------------|-------|
-//! | args Borsh (`Option<bool>, Option<u16>, Option<u64>, Option<bool>`) | `Args`                 | 102 |
+//! | args Borsh (`Option<bool>, Option<u16>, Option<u64>`)         | `Args`                       | 102 |
 //! | `admin: Signer`                                               | `check_signer`               | 3010 |
 //! | `config: Account<Config>`                                     | `load`                       | 3012 / 3007 / 3001 / 3002 / 3003 |
 //! | `arena: Account<Arena>`                                       | `load`                       | 3012 / 3007 / 3001 / 3002 / 3003 |
@@ -33,7 +32,6 @@ pub fn process(accounts: &[AccountView], args: &[u8]) -> Result {
     let enabled = if a.some() { Some(a.bool()) } else { None };
     let max_sessions = if a.some() { Some(a.u16()) } else { None };
     let entry_fee = if a.some() { Some(a.u64()) } else { None };
-    let requires_pass = if a.some() { Some(a.bool()) } else { None };
     a.finish()?;
 
     let [admin, config_acc, arena_acc] =
@@ -47,7 +45,7 @@ pub fn process(accounts: &[AccountView], args: &[u8]) -> Result {
     let id = rd_u16(r, arena::ID).to_le_bytes();
     check_pda_seeds(arena_acc, &[ARENA_SEED, &id], rd_u8(r, arena::BUMP), true)?;
 
-    if entry_fee.is_some() || requires_pass.is_some() {
+    if entry_fee.is_some() {
         require(rd_u16(r, arena::OPEN_SESSIONS) == 0, ARENA_BUSY)?;
     }
     if let Some(enabled) = enabled {
@@ -60,9 +58,6 @@ pub fn process(accounts: &[AccountView], args: &[u8]) -> Result {
     if let Some(entry_fee) = entry_fee {
         check_entry_fee(entry_fee)?;
         wr_u64(r, arena::ENTRY_FEE, entry_fee);
-    }
-    if let Some(requires_pass) = requires_pass {
-        wr_bool(r, arena::REQUIRES_PASS, requires_pass);
     }
     Ok(())
 }

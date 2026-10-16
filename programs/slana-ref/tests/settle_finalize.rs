@@ -34,7 +34,7 @@ fn close_ata(env: &mut TestEnv, player: &solana_keypair::Keypair) {
 fn loser_closing_their_token_account_cannot_get_the_entry_fee_back() {
     for kind in [MintKind::Spl, MintKind::Token2022] {
         let mut env = TestEnv::initialized_with(kind);
-        assert_ok(env.create_arena(1, 1_000, 300, false));
+        assert_ok(env.create_arena(1, 1_000, 300));
         let a = env.token_player("a", 1_000);
         let b = env.token_player("b", 1_000);
         assert_ok(env.join(&a, 1));
@@ -76,7 +76,7 @@ fn loser_closing_their_token_account_cannot_get_the_entry_fee_back() {
 fn partial_payout_without_token_account_is_owed_and_collected_at_once() {
     for kind in [MintKind::Spl, MintKind::Token2022] {
         let mut env = TestEnv::initialized_with(kind);
-        assert_ok(env.create_arena(1, 1_000, 300, false));
+        assert_ok(env.create_arena(1, 1_000, 300));
         let a = env.token_player("a", 1_000);
         let b = env.token_player("b", 1_000);
         assert_ok(env.join(&a, 1));
@@ -87,19 +87,17 @@ fn partial_payout_without_token_account_is_owed_and_collected_at_once() {
         let supply = env.mint_supply();
         let server_before = env.balance(&env.server.pubkey());
 
-        // B cashes out 1500 (profit 500, fee 5 % = 25: treasury 12, season 8, burn 5;
-        // B is owed 1475).
+        // B cashes out 1500 (profit 500, fee 5 % = 25 to the fee wallet; B is owed 1475).
         assert_ok(env.settle_to(&b.pubkey(), 1, 1_500, 99, 2, 7, None));
         let session = env
             .session(1, &b.pubkey())
             .expect("finalized session stays open");
         assert!(session.finalized);
         assert_eq!(session.owed, 1_475);
-        // The fee split happened; the owed share stays in the vault.
+        // The fee is paid; the owed share stays in the vault; nothing is burned.
         assert_eq!(env.tokens(&vault), 2_000 - 1_500 + 1_475);
-        assert_eq!(env.mint_supply(), supply - 5);
-        assert_eq!(env.tokens(&treasury_vault_pda()), 12);
-        assert_eq!(env.season(FIRST_SEASON).pool, 8);
+        assert_eq!(env.mint_supply(), supply);
+        assert_eq!(env.tokens(&env.fee_ata()), 25);
         // The server got its deposit; the session keeps only its rent.
         assert_eq!(
             env.balance(&env.server.pubkey()),
@@ -148,7 +146,7 @@ fn partial_payout_without_token_account_is_owed_and_collected_at_once() {
 #[test]
 fn collect_pays_at_most_the_vault() {
     let mut env = TestEnv::initialized();
-    assert_ok(env.create_arena(1, 1_000, 300, false));
+    assert_ok(env.create_arena(1, 1_000, 300));
     let a = env.token_player("a", 1_000);
     assert_ok(env.join(&a, 1));
     close_ata(&mut env, &a);
@@ -163,7 +161,7 @@ fn collect_pays_at_most_the_vault() {
 #[test]
 fn unsettled_refund_still_waits_24h_and_returns_the_entry_fee() {
     let mut env = TestEnv::initialized();
-    assert_ok(env.create_arena(1, 1_000, 300, false));
+    assert_ok(env.create_arena(1, 1_000, 300));
     let a = env.token_player("a", 1_000);
     assert_ok(env.join(&a, 1));
     assert!(!env.session(1, &a.pubkey()).unwrap().finalized);
@@ -176,7 +174,7 @@ fn unsettled_refund_still_waits_24h_and_returns_the_entry_fee() {
 #[test]
 fn sweep_waits_for_a_finalized_session_to_be_collected() {
     let mut env = TestEnv::initialized();
-    assert_ok(env.create_arena(1, 1_000, 300, false));
+    assert_ok(env.create_arena(1, 1_000, 300));
     let a = env.token_player("a", 1_000);
     let b = env.token_player("b", 1_000);
     assert_ok(env.join(&a, 1));
@@ -184,7 +182,7 @@ fn sweep_waits_for_a_finalized_session_to_be_collected() {
     assert_ok(env.settle(&a.pubkey(), 1, 0, 0, 0, 0));
     close_ata(&mut env, &b);
     assert_ok(env.settle_finalize(&b.pubkey(), 1, 2_000));
-    assert_ok(env.update_arena(1, Some(false), None, None, None));
+    assert_ok(env.update_arena(1, Some(false), None, None));
 
     assert_error(env.sweep(1), SlanaError::ArenaHasOpenSessions);
     env.create_ata(&b.pubkey());
@@ -195,44 +193,9 @@ fn sweep_waits_for_a_finalized_session_to_be_collected() {
 }
 
 #[test]
-fn finalize_frees_the_pass_and_collect_takes_no_lock() {
-    let mut env = TestEnv::initialized();
-    assert_ok(env.create_arena(1, 1_000, 300, false));
-    assert_ok(env.create_arena(2, 1_000, 300, false));
-    let a = env.token_player("a", 2_000);
-    let b = env.token_player("b", 1_000);
-    let (_, asset) = env.give_pass(&a.pubkey());
-    assert_ok(env.join_with_pass(&a, 1, &asset));
-    assert_ok(env.join(&b, 1));
-    let lock_rent = env.pass_lock_rent();
-    let a_lamports = env.balance(&a.pubkey());
-
-    // A wins B's stake but has no usable token account at settlement time.
-    assert_ok(env.settle_to(&a.pubkey(), 1, 2_000, 500, 1, 1, None));
-    // The lock is closed back to A: the Pass can back a new session right away.
-    assert!(env.pass_lock(&asset).is_none());
-    assert_eq!(env.balance(&a.pubkey()), a_lamports + lock_rent);
-    // Pass fee 2 % on 1000 profit = 20: A is owed 1980; season points were recorded.
-    let session = env.session(1, &a.pubkey()).unwrap();
-    assert_eq!(session.owed, 1_980);
-    assert!(env.profile(&a.pubkey()).season_points > 0);
-    assert_ok(env.join_with_pass(&a, 2, &asset));
-
-    // Collecting with any Pass lock is refused (it would close someone's live lock).
-    assert_error(
-        env.refund_with(&a, 1, Some(pass_lock_pda(&asset))),
-        SlanaError::PassInUse,
-    );
-    assert!(env.pass_lock(&asset).is_some());
-    let before = env.tokens(&env.player_ata(&a.pubkey()));
-    assert_ok(env.refund_with(&a, 1, None));
-    assert_eq!(env.tokens(&env.player_ata(&a.pubkey())), before + 1_980);
-}
-
-#[test]
 fn memo_required_token_account_falls_back_to_finalize() {
     let mut env = TestEnv::initialized_with(MintKind::Token2022);
-    assert_ok(env.create_arena(1, 1_000, 300, false));
+    assert_ok(env.create_arena(1, 1_000, 300));
     let a = env.token_player("a", 1_000);
     let b = env.token_player("b", 1_000);
     assert_ok(env.join(&a, 1));
@@ -280,10 +243,8 @@ fn memo_required_token_account_falls_back_to_finalize() {
 #[test]
 fn join_refuses_entry_or_settle_fee_above_the_signed_bound() {
     let mut env = TestEnv::initialized();
-    assert_ok(env.create_arena(1, 1_000, 300, false));
+    assert_ok(env.create_arena(1, 1_000, 300));
     let a = env.token_player("a", 1_000);
-    let b = env.token_player("b", 1_000);
-    let (_, asset) = env.give_pass(&b.pubkey());
     let exact = JoinLimits {
         max_fee_bps: FEE_BPS,
         max_entry_fee: 1_000,
@@ -311,38 +272,9 @@ fn join_refuses_entry_or_settle_fee_above_the_signed_bound() {
         ),
         SlanaError::SettleFeeAboveLimit,
     );
-    let pass_exact = JoinLimits {
-        max_fee_bps: PASS_FEE_BPS,
-        ..exact
-    };
-    assert_error(
-        env.join_with_pass_limits(
-            &b,
-            1,
-            &asset,
-            JoinLimits {
-                max_entry_fee: 1,
-                ..pass_exact
-            },
-        ),
-        SlanaError::EntryFeeAboveLimit,
-    );
-    assert_error(
-        env.join_with_pass_limits(
-            &b,
-            1,
-            &asset,
-            JoinLimits {
-                max_settle_fee: 0,
-                ..pass_exact
-            },
-        ),
-        SlanaError::SettleFeeAboveLimit,
-    );
     assert!(env.session(1, &a.pubkey()).is_none());
     assert_eq!(env.tokens(&env.player_ata(&a.pubkey())), 1_000);
     assert_ok(env.join_limits(&a, 1, exact));
-    assert_ok(env.join_with_pass_limits(&b, 1, &asset, pass_exact));
 }
 
 #[test]
@@ -369,7 +301,7 @@ fn update_config_refuses_default_authorities() {
 fn settle_args_session_id_still_guards_finalized_sessions() {
     // A stale settlement for an old id hits SessionMismatch before anything else.
     let mut env = TestEnv::initialized();
-    assert_ok(env.create_arena(1, 1_000, 300, false));
+    assert_ok(env.create_arena(1, 1_000, 300));
     let a = env.token_player("a", 1_000);
     assert_ok(env.join(&a, 1));
     let id = env.session(1, &a.pubkey()).unwrap().id;
@@ -387,7 +319,6 @@ fn settle_args_session_id_still_guards_finalized_sessions() {
                 xp: 0,
             },
             None,
-            None,
         ),
         SlanaError::SessionMismatch,
     );
@@ -398,8 +329,8 @@ fn settle_args_session_id_still_guards_finalized_sessions() {
 /// Arenas 1 and 2 with `a` joined to both; returns the env and `a`.
 fn two_arena_env() -> (TestEnv, solana_keypair::Keypair) {
     let mut env = TestEnv::initialized();
-    assert_ok(env.create_arena(1, 1_000, 300, false));
-    assert_ok(env.create_arena(2, 1_000, 300, false));
+    assert_ok(env.create_arena(1, 1_000, 300));
+    assert_ok(env.create_arena(2, 1_000, 300));
     let a = env.token_player("a", 2_000);
     assert_ok(env.join(&a, 1));
     assert_ok(env.join(&a, 2));
@@ -415,11 +346,10 @@ fn settle_ix(
     player_token: Option<Pubkey>,
 ) -> anchor_lang::solana_program::instruction::Instruction {
     let session_id = env.session(arena_id, player).map_or(0, |s| s.id);
-    ix::settle_session(
+    env.settle_ix(
         &env.server.pubkey(),
         player,
         arena_id,
-        env.config().current_season,
         SettleArgs {
             session_id,
             payout,
@@ -427,10 +357,7 @@ fn settle_ix(
             kills: 0,
             xp: 0,
         },
-        None,
         player_token,
-        &env.mint,
-        &env.token_program,
     )
 }
 
@@ -452,10 +379,10 @@ fn settle_and_refund_reject_another_arenas_vault_or_session() {
 
     env.warp(SESSION_REFUND_TIMEOUT_SECS + 1);
     let (mint, program) = (env.mint, env.token_program);
-    let mut refund = ix::refund_session(&a.pubkey(), 1, None, &mint, &program);
+    let mut refund = ix::refund_session(&a.pubkey(), 1, &mint, &program);
     refund.accounts[3].pubkey = vault_pda(&arena_pda(2));
     assert_anchor_error(env.send(&[refund], &[&a]), seeds);
-    let mut refund = ix::refund_session(&a.pubkey(), 2, None, &mint, &program);
+    let mut refund = ix::refund_session(&a.pubkey(), 2, &mint, &program);
     refund.accounts[4].pubkey = session_pda(&arena_pda(1), &a.pubkey());
     assert_anchor_error(env.send(&[refund], &[&a]), seeds);
 
@@ -501,7 +428,7 @@ fn settle_and_refund_cannot_run_twice_in_one_transaction() {
         not_init,
     );
     // settle (pay) then refund: the refund needs the player's signature too.
-    let refund = ix::refund_session(&a.pubkey(), 1, None, &mint, &program);
+    let refund = ix::refund_session(&a.pubkey(), 1, &mint, &program);
     env.warp(SESSION_REFUND_TIMEOUT_SECS + 1);
     assert_anchor_error(
         env.send(&[settle, refund.clone()], &[&server, &a]),
@@ -521,7 +448,7 @@ fn refund_rejects_the_vault_as_player_token() {
     let (mut env, a) = two_arena_env();
     env.warp(SESSION_REFUND_TIMEOUT_SECS + 1);
     let (mint, program) = (env.mint, env.token_program);
-    let mut refund = ix::refund_session(&a.pubkey(), 1, None, &mint, &program);
+    let mut refund = ix::refund_session(&a.pubkey(), 1, &mint, &program);
     refund.accounts[5].pubkey = vault_pda(&arena_pda(1));
     assert_anchor_error(
         env.send(&[refund], &[&a]),
@@ -555,7 +482,7 @@ fn settle_and_refund_reject_a_foreign_player_token() {
         (others, AnchorErrorCode::ConstraintTokenOwner),
         (wrong_mint, AnchorErrorCode::ConstraintTokenMint),
     ] {
-        let mut refund = ix::refund_session(&a.pubkey(), 1, None, &mint, &program);
+        let mut refund = ix::refund_session(&a.pubkey(), 1, &mint, &program);
         refund.accounts[5].pubkey = token;
         assert_anchor_error(env.send(&[refund], &[&a]), err);
     }
