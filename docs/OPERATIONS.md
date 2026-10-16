@@ -175,7 +175,7 @@ scripts/deploy-lean.sh <cluster-url> target/deploy/slana-keypair.json   # with t
 ```
 
 > **Never `anchor deploy`.** It deploys `target/deploy/slana.so`, the 454,704-byte Anchor reference, instead of the lean
-> program (36,408 bytes), and its rent would lock about ◎3.2. Upgrades always go through `scripts/deploy-lean.sh` (`solana program deploy target/deploy/slana_lean.so`).
+> program (39,032 bytes), and its rent would lock about ◎3.2. Upgrades always go through `scripts/deploy-lean.sh` (`solana program deploy target/deploy/slana_lean.so`).
 
 The upgrade authority is the admin wallet: `deploy-lean.sh` moves it there after a deploy, so an upgrade is signed by the
 admin (`--keypair <admin keypair> --upgrade-authority <admin keypair>`); it skips the move when the admin already is the
@@ -213,7 +213,7 @@ scripts/close-program.sh <cluster-url> <admin-keypair> --force  # no confirmatio
 
 The script prints the on-chain state first (`pnpm admin status`: the paused flag, each arena's open sessions and vault,
 the fee wallet and its token account), then a warning, then runs `solana program close <PROGRAM_ID>
---bypass-warning --recipient <admin> --keypair <admin>` and prints the reclaimed SOL (about 0.2546 SOL of ProgramData
+--bypass-warning --recipient <admin> --keypair <admin>` and prints the reclaimed SOL (about 0.2729 SOL of ProgramData
 rent).
 
 > **Warning.** Once the program is closed, every token left in a program-owned vault (the arenas) is

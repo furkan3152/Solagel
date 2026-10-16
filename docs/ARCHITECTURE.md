@@ -29,7 +29,7 @@ The money rules exist twice, as two crates that must behave identically on the w
 | Crate | Built by | Output | Role |
 |---|---|---|---|
 | `programs/slana-ref` (Anchor 1.2.1, lib name `slana`) | `anchor build --ignore-keys` | `target/deploy/slana.so` (~679 KB) and the IDL | **Reference, never deployed.** The IDL (`pnpm -F @slana/sdk sync-idl` → `packages/sdk/src/idl`) and so every TS type come from it. In the tests it is the conformance oracle. |
-| `programs/slana-lean` (Pinocchio 0.11, `no_std`, no allocator, no `core::fmt`, no floats) | `bash scripts/build-lean.sh` (`cargo build-sbf`) | `target/deploy/slana_lean.so` (36,408 bytes) | **The deployed program**, at the same program id. It dispatches on the 8-byte Anchor discriminators and reads/writes accounts at fixed offsets. It reproduces the reference's account checks, error codes (6000+ and the Anchor built-ins it raises) and events. |
+| `programs/slana-lean` (Pinocchio 0.11, `no_std`, no allocator, no `core::fmt`, no floats) | `bash scripts/build-lean.sh` (`cargo build-sbf`) | `target/deploy/slana_lean.so` (39,032 bytes) | **The deployed program**, at the same program id. It dispatches on the 8-byte Anchor discriminators and reads/writes accounts at fixed offsets. It reproduces the reference's account checks, error codes (6000+ and the Anchor built-ins it raises) and events. |
 
 Wire compatibility means the following match: instruction discriminators and Borsh arguments, account order and
 signer/writable flags, account discriminators, layouts and sizes, PDA seeds, error codes and event bytes. Anchor's
@@ -67,7 +67,7 @@ with the game server and the web's own transaction builders.
 
 **Size gate.** `programs/slana-ref/tests/size.rs` fails when `slana_lean.so` exceeds 71,000 bytes, or when its
 ProgramData rent, `(len + 45 + 128) × 6960` lamports, exceeds ◎0.5. CI runs it on every push. Today the program is
-36,408 bytes, which is 254,603,760 lamports ≈ ◎0.2546. The reference (454,704 bytes) would lock about ◎3.17. The size settings are
+39,032 bytes, which is 272,866,800 lamports ≈ ◎0.2729. The reference (454,704 bytes) would lock about ◎3.17. The size settings are
 per-package overrides in the root `Cargo.toml`:
 
 - `opt-level = "z"` for the lean crate and the Pinocchio crates;

@@ -168,7 +168,7 @@ Browser (apps/web)  --WebSocket, binary 30 Hz-->  Game server (apps/server)  --s
 
 | Path | What it is |
 |---|---|
-| `programs/slana-lean` | **The deployed program** (Pinocchio, `no_std`). 36,408 bytes, which locks about ◎0.2546 of rent; the CI gate fails above 71,000 bytes. |
+| `programs/slana-lean` | **The deployed program** (Pinocchio, `no_std`). 39,032 bytes, which locks about ◎0.2729 of rent; the CI gate fails above 71,000 bytes. |
 | `programs/slana-ref` | Anchor reference program. It is never deployed; it is the source of the IDL and TypeScript types and the conformance oracle. The LiteSVM test suite runs against both programs (`SLANA_IMPL=ref\|lean`). |
 | `packages/shared` | Game rules (`RULES`), the binary protocol (version 4), arena metadata, the round math, token formatting |
 | `packages/sdk` | TypeScript client: PDAs, instruction builders, account readers, fee math, and the admin CLI (`pnpm admin`) |
