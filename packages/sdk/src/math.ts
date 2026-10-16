@@ -1,5 +1,5 @@
 import type BN from 'bn.js';
-import { BPS, PRIZE_SHARES_BPS, XP_LEVEL_DIVISOR } from './constants';
+import { BPS, XP_LEVEL_DIVISOR } from './constants';
 
 /** Anything that holds an integer: a JS number, a bigint or an Anchor `BN`. */
 export type IntLike = number | bigint | BN;
@@ -52,64 +52,26 @@ const U64_MAX = (1n << 64n) - 1n;
 
 /** How a stake payout is split (base units of the game token). */
 export interface PayoutSplit {
-  /** Total fee, charged on profit only: `treasury + season + burn`. */
+  /** Fee on profit, paid in full to the fee wallet's token account. */
   fee: bigint;
-  /** Fee share sent to the treasury vault. */
-  treasury: bigint;
-  /** Fee share sent to the season vault (gets the rounding remainder). */
-  season: bigint;
-  /** Fee share burned. */
-  burn: bigint;
   /** What the player receives: `payout - fee`. */
   player: bigint;
 }
 
-/** The config fields `splitPayout` needs (a `ConfigView` fits). */
-export interface SplitConfig {
-  feeBps: number;
-  passFeeBps: number;
-  treasuryBps: number;
-  burnBps: number;
-}
-
 /**
- * Mirrors `logic::split_payout` exactly: `fee = (payout - entryFee)⁺ × bps / 10 000` where
- * `bps` is `passFeeBps` for a Pass session and `feeBps` otherwise; treasury and burn are
- * rounded down and the season gets the remainder. Throws `RangeError` where the program
- * fails with `MathOverflow` (shares above 100 %, or a value outside u64).
+ * Mirrors `settle_session` exactly: `profit = max(0, payout − entryFee)`,
+ * `fee = floor(profit × feeBps / 10 000)`, `player = payout − fee`.
+ *
+ * For a settlement pass the session's own `feeBps` (fixed at join), not the config's current
+ * rate; for a preview of a ticket not bought yet pass `Config.feeBps`. Throws `RangeError`
+ * where the program could not run (a value outside u64, `feeBps` not a u16).
  */
-export function splitPayout(payout: IntLike, entryFee: IntLike, hasPass: boolean, cfg: SplitConfig): PayoutSplit {
-  return splitWithFeeBps(payout, entryFee, hasPass ? cfg.passFeeBps : cfg.feeBps, cfg);
-}
-
-/**
- * What `settle_session` actually charges an open session: the fee in `session.feeBps` was
- * fixed at join (a `SessionView` fits), only the treasury/burn shares come from the config.
- * Use this for settlements; `splitPayout` is for previews of a ticket not bought yet.
- */
-export function splitSessionPayout(
-  payout: IntLike,
-  session: { entryFee: IntLike; feeBps: number },
-  cfg: Pick<SplitConfig, 'treasuryBps' | 'burnBps'>,
-): PayoutSplit {
-  return splitWithFeeBps(payout, session.entryFee, session.feeBps, cfg);
-}
-
-function splitWithFeeBps(payout: IntLike, entryFee: IntLike, feeBps: number, cfg: Pick<SplitConfig, 'treasuryBps' | 'burnBps'>): PayoutSplit {
+export function splitPayout(payout: IntLike, entryFee: IntLike, feeBps: number): PayoutSplit {
   const p = toBigInt(payout);
   const e = toBigInt(entryFee);
   if (p < 0n || e < 0n || p > U64_MAX || e > U64_MAX) throw new RangeError('payout and entry fee must be u64 values');
+  if (!Number.isInteger(feeBps) || feeBps < 0 || feeBps > 0xffff) throw new RangeError(`feeBps must be a u16, got ${feeBps}`);
   const profit = p > e ? p - e : 0n;
   const fee = mulBps(profit, feeBps);
-  const treasury = mulBps(fee, cfg.treasuryBps);
-  const burn = mulBps(fee, cfg.burnBps);
-  const season = fee - treasury - burn;
-  if (season < 0n) throw new RangeError('fee split above 100 % (MathOverflow)');
-  return { fee, treasury, season, burn, player: p - fee };
-}
-
-/** Prize of leaderboard `rank` (0-based) for a frozen prize pool; 0 outside the prize ranks. */
-export function prizeAmount(prizePool: IntLike, rank: number): bigint {
-  const share = PRIZE_SHARES_BPS[rank];
-  return share === undefined ? 0n : mulBps(prizePool, share);
+  return { fee, player: p - fee };
 }

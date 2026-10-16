@@ -14,15 +14,15 @@ export const ARENA_META: Record<number, ArenaMeta> = {
 };
 
 /**
- * Default tiers created by `admin create-arena --defaults`. `entryTokens` is in
- * whole tokens (scale by the mint's decimals for base units); `maxSessions` is
- * how many tickets can be open at once.
+ * Default tiers created by `admin create-arena --defaults`, all open to everyone (they
+ * differ only by entry fee). `entryTokens` is in whole tokens (scale by the mint's
+ * decimals for base units); `maxSessions` is how many tickets can be open at once.
  */
 export const DEFAULT_ARENAS = [
-  { id: 1, entryTokens: 1000, requiresPass: false, maxSessions: 300 },
-  { id: 2, entryTokens: 10000, requiresPass: false, maxSessions: 300 },
-  { id: 3, entryTokens: 50000, requiresPass: true, maxSessions: 300 },
-  { id: 4, entryTokens: 250000, requiresPass: true, maxSessions: 300 },
+  { id: 1, entryTokens: 1000, maxSessions: 300 },
+  { id: 2, entryTokens: 10000, maxSessions: 300 },
+  { id: 3, entryTokens: 50000, maxSessions: 300 },
+  { id: 4, entryTokens: 250000, maxSessions: 300 },
 ] as const;
 
 export function arenaMeta(id: number): ArenaMeta {
