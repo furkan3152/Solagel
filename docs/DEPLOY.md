@@ -66,7 +66,7 @@ Two crates build from this repository. Only one of them is deployed:
 
 | Crate | Output | Role |
 |---|---|---|
-| `programs/slana-lean` (Pinocchio, `no_std`) | `target/deploy/slana_lean.so`, 36,408 bytes, at most 71,000 (size gate) | **the deployed program** |
+| `programs/slana-lean` (Pinocchio, `no_std`) | `target/deploy/slana_lean.so`, 39,032 bytes, at most 71,000 (size gate) | **the deployed program** |
 | `programs/slana-ref` (Anchor 1.2.1) | `target/deploy/slana.so` (454,704 bytes) and the IDL | never deployed: it is the source of the IDL and TS types, and the conformance oracle in the tests |
 
 Both use the same program id. The `declare_id!` in the repo is a development address. **Generate your own program
@@ -182,7 +182,7 @@ idempotent create), then `set_token_mint` stores the mint, the token program (re
 decimals. The CLI prints the program, the decimals, the symbol (Token-2022 metadata, else Metaplex Token Metadata, best
 effort) and the fee wallet's token account.
 
-Requirements (checked by the CLI before it signs, and by the program):
+Requirements (the CLI checks the owner program, the freeze authority and the supply before it signs; the program checks all of them, and only the program checks the Token-2022 extension list, so a refused extension shows as a generic program error):
 
 - an SPL Token or Token-2022 mint;
 - **no freeze authority** (a mint with a `freeze authority` is refused);
@@ -317,25 +317,26 @@ To host the web client separately, the build arguments are `VITE_SERVER_URL` (th
 Rent = `(bytes + 128) × 6960` lamports (default rent: 3480 lamports per byte-year × the 2-year exemption). `solana rent
 <bytes>` needs an RPC; the values below were computed with this formula.
 
-**Program deployment.** The deployed program is `target/deploy/slana_lean.so` = **36,408 bytes**
+**Program deployment.** The deployed program is `target/deploy/slana_lean.so` = **39,032 bytes**
 (`bash scripts/build-lean.sh`; the size gate `tests/size.rs` and CI fail above 71,000 bytes or ◎0.5 of rent). Rent is
 `(len + 45 + 128) × 6960` lamports for the ProgramData.
+The figures below are the CI toolchain's (Agave 4.3.0). The exact size depends on the platform-tools version; the size gate in CI prints the current figure, and `build-lean.sh` prints the size and rent of your own build.
 
 | Account | Bytes | Rent |
 |---|---|---|
-| ProgramData (`.so` + 45) | 36,453 | (36,408 + 45 + 128) × 6960 = **254,603,760 lamports ≈ ◎0.2546** (locked while the program exists; recovered with `solana program close`) |
+| ProgramData (`.so` + 45) | 39,077 | (39,032 + 45 + 128) × 6960 = **272,866,800 lamports ≈ ◎0.2729** (locked while the program exists; recovered with `solana program close`) |
 | Program account | 36 | 1,141,440 lamports ≈ ◎0.0011 (locked) |
-| Deploy buffer (`.so` + 37, temporary) | 36,445 | (36,408 + 37 + 128) × 6960 = 254,548,080 lamports ≈ ◎0.2545 (returned to the payer when the deploy finishes) |
+| Deploy buffer (`.so` + 37, temporary) | 39,069 | (39,032 + 37 + 128) × 6960 = 272,811,120 lamports ≈ ◎0.2728 (returned to the payer when the deploy finishes) |
 
-The deploy peak is ProgramData + buffer + program account = 254,603,760 + 254,548,080 + 1,141,440 = 510,293,280
-lamports, so the wallet needs about **◎0.51 + transaction fees** during the deploy, and **◎0.2557** (ProgramData plus the
+The deploy peak is ProgramData + buffer + program account = 272,866,800 + 272,811,120 + 1,141,440 = 546,819,360
+lamports ≈ ◎0.5468, so the wallet needs about **◎0.55 + transaction fees** during the deploy, and **◎0.2740** (ProgramData plus the
 program account) stays locked in the program afterwards; the buffer comes back. For comparison, the Anchor reference
 (454,704 bytes) would lock about ◎3.17 and need about ◎6.3 during a deploy: this is why it is never deployed.
 
 `solana program deploy` sizes the ProgramData to the program by default (`--max-len`), so a larger later version needs
 `solana program extend` first (same rent per extra byte). To reserve room up to the size gate at once, deploy with
 `--max-len 71000`: the ProgramData then holds 71,045 bytes, 495,364,080 lamports ≈ ◎0.4954, still under ◎0.5, and the
-deploy peak is 495,364,080 + 254,548,080 + 1,141,440 = **751,053,600 lamports ≈ ◎0.75** + transaction fees.
+deploy peak is 495,364,080 + 272,811,120 + 1,141,440 = **769,316,640 lamports ≈ ◎0.77** + transaction fees.
 
 **Account rents (exact, `(bytes + 128) × 6960` lamports).** The sizes are the programs' `INIT_SPACE` values; they are the
 same for the lean program and the reference (the layout tests compare them), and the SDK's `ACCOUNT_BYTES` and an SDK
