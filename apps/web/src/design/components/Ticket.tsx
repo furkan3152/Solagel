@@ -22,7 +22,7 @@ export interface TicketProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement
   meta?: ReactNode;
   /** Right-hand stub (behind the perforation): fee and unit. */
   stub: ReactNode;
-  /** Small rotated stamp over the perforation, e.g. "PASS". */
+  /** Small rotated stamp over the perforation, e.g. "HELD". */
   stamp?: string;
   /** Standalone toggle state (aria-pressed). Ignored inside a TicketGroup. */
   selected?: boolean;

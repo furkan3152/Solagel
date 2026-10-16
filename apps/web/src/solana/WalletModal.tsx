@@ -27,6 +27,7 @@ export function WalletModal() {
   const auth = useUi((s) => s.auth);
   const cluster = useUi((s) => s.chain?.cluster ?? 'devnet');
   const tok = useTokenText();
+  const soon = useUi((s) => !!s.chain?.enabled && s.chain.tokenReady === false);
   const [busy, setBusy] = useState(false);
 
   const addr = connected && publicKey ? publicKey.toBase58() : null;
@@ -82,7 +83,13 @@ export function WalletModal() {
             <div>
               <dt className="mono wl-cap">{t('wl.tokens')}</dt>
               <dd>
-                <span className="wl-bal__big">{tokens === null ? '…' : tok.exact(tokens)}</span> <span className="mono">{tok.symbol}</span>
+                {soon ? (
+                  <span className="mono">{t('wl.tokenSoonLong')}</span>
+                ) : (
+                  <>
+                    <span className="wl-bal__big">{tokens === null ? '…' : tok.exact(tokens)}</span> <span className="mono">{tok.symbol}</span>
+                  </>
+                )}
               </dd>
             </div>
             <div>

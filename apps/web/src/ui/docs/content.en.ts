@@ -1,5 +1,4 @@
-import type { PassPower } from '@slana/shared';
-import { FACTS as F, rulesWith, type DocsContent } from './facts';
+import { FACTS as F, feeExample, type DocsContent } from './facts';
 
 const nf = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
 const num = (n: number): string => nf.format(n);
@@ -8,45 +7,41 @@ const pct = (bps: number): string => `${nf.format(bps / 100)}%`;
 /** Lamports as SOL with every significant digit (`20000` → `0.00002`). */
 const sol = (lamports: number): string => new Intl.NumberFormat('en-US', { maximumFractionDigits: 9 }).format(lamports / 1e9);
 
-const [tBps, sBps, bBps] = F.fee.split;
 const S = F.server;
+const R = F.rules;
 const sym = '$SLANA';
 
-/** The player guide in English. Every number comes from `FACTS` (see facts.ts). */
-export const docsEn = (symbol: string = sym, power: PassPower | null = null): DocsContent => {
-  // I3: the Pass power the server applies (RULES when unknown)
-  const R = rulesWith(power);
+/**
+ * The player guide in English. Every number comes from `FACTS` (see facts.ts); the fee rate is
+ * the server's `feeBps` (the on-chain `Config.fee_bps`) when known, else the program default.
+ */
+export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps): DocsContent => {
+  const ex = feeExample(feeBps);
   return {
   pct,
   num,
   kicker: 'Guide · Player handbook',
   title: 'Ticket, coin, receipt.',
-  deck: `How Slana plays, where your money goes, what the Pass gives you and what lives on-chain: short and plain. Numbers are the defaults in the game's code; the admin can change some of them. The amounts on the ticket confirmation are the ones that count.`,
+  deck: `How Slana plays, where your money goes and what lives on-chain: short and plain. Numbers are the defaults in the game's code; the admin can change some of them. The amounts on the ticket confirmation are the ones that count.`,
+  feeBps,
   dateline: [
-    `Fee ${pct(F.fee.bps)} · Pass ${pct(F.fee.passBps)}`,
+    `Fee ${pct(feeBps)} of profit`,
     `Rounds ${R.roundMin} min · joins close ${R.joinCloseS} s before the bell`,
     `${F.capacity.arena} players per room`,
-    `Top ${F.season.prizeRanks} win prizes`,
+    'Floor loot burned at the bell',
   ],
   tocLabel: 'Contents',
   receipt: {
     title: 'Round over',
-    titlePass: 'Round over · Pass',
-    meta: 'Example · default settings',
+    meta: `Example · fee ${pct(feeBps)} of profit`,
     entry: 'Entry fee',
-    cashout: 'Value at the bell',
+    cashout: 'Till at the bell',
     profit: 'Profit',
     fee: (p) => `Fee (${p} of profit)`,
     net: 'To your wallet',
-    split: 'Where the fee goes',
-    treasury: 'Treasury',
-    season: 'Season pool',
-    burn: 'Burned',
-    caption: `A ${num(F.example.entry)} ${symbol} ticket paid out at ${num(F.example.cashout)} ${symbol}`,
+    footer: "The fee goes to the operator's wallet",
+    caption: `A ${num(F.example.entry)} ${symbol} ticket with ${num(F.example.cashout)} ${symbol} in the till at the bell`,
   },
-  perkWhere: { chain: 'On-chain', server: 'Server' },
-  rank: (n) => `#${n}`,
-  live: (fee, passFee) => `This server's on-chain setting right now: fee ${fee}, Pass ${passFee}. A ticket keeps the rate it was bought at.`,
   colophon: `This page uses the values in the game's code. The smart contract has not been independently audited; only play with what you can afford to lose.`,
   backToTop: 'Back to top',
   sections: [
@@ -92,7 +87,7 @@ export const docsEn = (symbol: string = sym, power: PassPower | null = null): Do
           items: [
             {
               term: 'Practice',
-              text: `is free: no wallet, token or NFT. You play with bots; there are no prizes, no season points and nothing on-chain. Up to ${F.capacity.practice} players per room.`,
+              text: `is free: no wallet, token or NFT. You play with bots; there are no prizes and nothing on-chain. Up to ${F.capacity.practice} players per room.`,
             },
             {
               term: 'Leagues:',
@@ -103,18 +98,22 @@ export const docsEn = (symbol: string = sym, power: PassPower | null = null): Do
               text: `are accounts on-chain. Your entry fee goes into the arena's vault, an account of the program that nobody holds a private key for. Arenas are open 24/7 and play in rounds (see Rounds and payout); bots play while they are empty. A room instance holds up to ${F.capacity.arena} real players; when it is full, a new instance opens on the same vault.`,
             },
             { term: 'One ticket:', text: 'You can hold one open ticket per arena at a time. Each arena also caps how many tickets are open at once.' },
+            {
+              term: 'Opening soon:',
+              text: `The arenas open once the admin has set the ${symbol} token on-chain (this happens once, after launch, and can never change). Until then the lobby shows the arenas as "Opening soon", no ticket can be bought and practice is open. The lobby opens the arenas by itself the moment the token is set; no reload is needed.`,
+            },
           ],
         },
         {
           kind: 'table',
-          caption: 'Default arenas',
-          head: ['No', 'Room', 'Entry fee', 'Pass'],
+          caption: 'Default arenas (open to everyone; they differ only by entry fee)',
+          head: ['No', 'Room', 'Entry fee'],
           numeric: [0, 2],
-          rows: F.arenas.map((a) => [String(a.id), a.name, `${num(a.entry)} ${symbol}`, a.pass ? 'required' : 'not needed']),
+          rows: F.arenas.map((a) => [String(a.id), a.name, `${num(a.entry)} ${symbol}`]),
         },
         {
           kind: 'p',
-          text: "The admin can change fees, open new arenas or close one; the current fee is printed on the ticket in the lobby. The fee rate is fixed on-chain when you buy a ticket: a later change only applies to tickets bought after it. An arena's entry fee and Pass rule cannot change while it has open tickets (an on-chain rule).",
+          text: "The admin can change the fee, open new arenas or close one; the current fee is printed on the ticket in the lobby. The fee rate is fixed on-chain when you buy a ticket: a later change only applies to tickets bought after it. An arena's entry fee cannot change while it has open tickets (an on-chain rule).",
         },
         {
           kind: 'p',
@@ -144,7 +143,7 @@ export const docsEn = (symbol: string = sym, power: PassPower | null = null): Do
               term: 'If a bot eats you,',
               text: `the value you lose turns into loot coins scattered on the map: ⌈V ÷ (fee / ${R.lootEntryDiv})⌉ pieces, at least ${R.lootMin} and at most ${R.lootMax}. The pieces add up exactly to the value lost.`,
             },
-            { term: 'Loot', text: 'never despawns. Only real players can pick it up; bots pass through it.' },
+            { term: 'Loot', text: 'stays on the floor until the bell, when it is burned. Only real players can pick it up; bots pass through it.' },
             { term: 'Mass is not value.', text: 'Tipping mass (W), cactus pops and mass decay do not change your value; value only changes hands by eating.' },
             { term: 'If you disconnect,', text: `your coin stays in the arena (it can still be eaten) and you carry on if you come back. If you are still alive at the bell, you are paid as usual.` },
             { term: 'If you die,', text: 'your value goes to the player who ate you, or to loot if a bot did. The ticket closes and its account rent comes back to you.' },
@@ -156,7 +155,7 @@ export const docsEn = (symbol: string = sym, power: PassPower | null = null): Do
           tone: 'info',
           stamp: 'Vault',
           title: 'A payout never exceeds the vault',
-          text: "Every value in play (live coins, loot on the floor, payouts waiting to be sent) is backed by the tokens in the arena's vault. The program never pays out more than the vault holds. The server writes live values and loot to disk on every change; if it crashes, open tickets are settled automatically at their last saved value. Loot still on the floor at the bell moves from the arena vault to the season pool.",
+          text: "Every value in play (live coins, loot on the floor, payouts waiting to be sent) is backed by the tokens in the arena's vault. The program never pays out more than the vault holds. The server writes live values and loot to disk on every change; if it crashes, open tickets are settled automatically at their last saved value. Loot still on the floor at the bell is burned from the arena vault.",
         },
       ],
     },
@@ -171,16 +170,16 @@ export const docsEn = (symbol: string = sym, power: PassPower | null = null): Do
         },
         {
           kind: 'p',
-          text: `You can join a running round at the same entry fee, and if you were eaten you may buy a new ticket and re-enter the same round. Joins close ${R.joinCloseS} s before the bell. A ticket bought in that window is not lost: the lobby holds it and the game joins automatically when the next round opens. Loot still on the floor at the bell goes to the season prize pool.`,
+          text: `You can join a running round at the same entry fee, and if you were eaten you may buy a new ticket and re-enter the same round. Joins close ${R.joinCloseS} s before the bell. A ticket bought in that window is not lost: the lobby holds it and the game joins automatically when the next round opens. Loot still on the floor at the bell is burned: it leaves the token supply for good.`,
         },
         {
           kind: 'p',
-          text: `The fee is charged on profit only: profit = value at the bell − entry fee. At a loss or break-even there is no fee. The default rate is ${pct(F.fee.bps)}, ${pct(F.fee.passBps)} on a Pass ticket; the program caps it at ${pct(F.fee.maxBps)}. The rate is written into your ticket when you buy it, and the payout uses that rate even if the admin changes the setting meanwhile.`,
+          text: `The fee is charged on profit only: profit = till at the bell − entry fee. At a loss or break-even there is no fee. The rate is ${pct(feeBps)} of profit; the program caps it at ${pct(F.fee.maxBps)}. The rate is written into your ticket when you buy it, and the payout uses that rate even if the admin changes the setting meanwhile. Example: entry ${num(F.example.entry)}, till at the bell ${num(F.example.cashout)}, fee ${num(Number(ex.fee))}, you get ${num(Number(ex.player))}.`,
         },
         { kind: 'fee-example' },
         {
           kind: 'p',
-          text: `The fee is split three ways (defaults): ${pct(tBps)} to the treasury (the team's income), ${pct(sBps)} to the season prize pool and ${pct(bBps)} burned (removed from the token supply for good). Rounding leftovers go to the season pool.`,
+          text: "The whole fee goes to the operator's wallet (the fee wallet set in the program's config); it is the team's income. Nothing else is taken from your payout.",
         },
         {
           kind: 'list',
@@ -189,7 +188,7 @@ export const docsEn = (symbol: string = sym, power: PassPower | null = null): Do
               term: 'Deposit:',
               text: `When you buy a ticket you put a small SOL deposit on the ticket account (default ${num(F.settleFeeLamports)} lamports = ◎${sol(F.settleFeeLamports)}). The server sends the payout transaction and the deposit pays its network fee, so the server wallet spends nothing net on it.`,
             },
-            { term: 'Rent:', text: "The ticket account's rent (and the Pass lock's, if you entered with a Pass) comes back to you when the ticket closes." },
+            { term: 'Rent:', text: "The ticket account's rent comes back to you when the ticket closes." },
             { term: 'Unplayed ticket:', text: `If you buy a ticket and never enter the room, the server closes it at its entry fee after about ${S.staleTicketMinutes} minutes (no profit, so no fee).` },
           ],
         },
@@ -203,96 +202,6 @@ export const docsEn = (symbol: string = sym, power: PassPower | null = null): Do
       ],
     },
     {
-      id: 'pass',
-      title: 'Slana Pass',
-      lede: 'A free-mint NFT. It opens the Pass rooms, lowers the fee, earns season prizes and gives in-game power.',
-      blocks: [
-        {
-          kind: 'perks',
-          items: [
-            { title: 'Pass rooms', text: "Pass-only arenas sell tickets only to Pass holders. The program checks the Pass's owner and collection.", where: 'chain' },
-            { title: `${pct(F.fee.passBps)} fee`, text: `A Pass ticket pays ${pct(F.fee.passBps)} of profit (${pct(F.fee.bps)} without).`, where: 'chain' },
-            { title: 'Season points and prizes', text: 'Season points come only from Pass tickets, so only Pass players reach the prize table.', where: 'chain' },
-            {
-              title: `+${pct(R.passStartPct * 100)} start mass`,
-              text: `With a Pass ticket in an arena (and wearing a Pass in practice) you start with +${pct(R.passStartPct * 100)} mass.`,
-              where: 'server',
-            },
-            { title: 'Coin look', text: "Your Pass's risograph coin becomes your look in the game; the server verifies you own it.", where: 'server' },
-          ],
-        },
-        {
-          kind: 'note',
-          tone: 'warn',
-          stamp: 'Disclosure',
-          title: 'The Pass gives in-game power',
-          text: `A Pass ticket starts with +${pct(R.passStartPct * 100)} mass. That is a real edge over players without a Pass in the same room. The mint is free, but Passes trade for money on marketplaces, so the edge can be bought: it is close to pay-to-win. The ticket confirmation lists these perks on its Pass line. The values are server settings; the admin can change or switch them off.`,
-        },
-        {
-          kind: 'list',
-          items: [
-            { term: 'Opt-in:', text: 'Using your Pass in an arena that does not require one is your choice. Pick "Enter with my Pass" on the ticket confirmation and the perks apply to that ticket.' },
-            {
-              term: 'Lock:',
-              text: 'A Pass backs one ticket at a time. The lock lifts when the ticket closes (round end, death or refund) and its rent comes back to you. Even if you transfer the Pass mid-game, the new owner cannot use it until the lock lifts.',
-            },
-            { term: 'Fixed at purchase:', text: 'The Pass and the fee rate (Pass or normal) are written on-chain when you buy the ticket; a later fee change, or buying or selling a Pass, does not change an open ticket.' },
-          ],
-        },
-      ],
-    },
-    {
-      id: 'mint',
-      title: 'Mint and reveal',
-      lede: `The Pass is free: no ${symbol}, only account rent and the network fee in SOL.`,
-      blocks: [
-        {
-          kind: 'steps',
-          items: [
-            'Open the application form on the Pass tab. While the mint is open you see the supply left and a counter.',
-            `Sign with your wallet. The transaction creates a new NFT; numbers are sequential (#1, #2, …). No ${symbol} should leave your wallet, only SOL (rent and network fee). The mint sheet shows the exact amount before you sign; the rent stays with the NFT and does not come back.`,
-            'Your Pass arrives sealed in an envelope. Its look and traits are revealed for the whole collection at once after the mint closes.',
-          ],
-        },
-        {
-          kind: 'list',
-          items: [
-            { term: 'Supply:', text: `${num(F.pass.supply)} Passes by default; ${F.pass.perWallet} per wallet.` },
-            { term: 'Conditions:', text: `The admin may set a start time and, optionally, a minimum ${symbol} balance to mint (default: none).` },
-            {
-              term: 'Fair reveal (commit–reveal + chain entropy):',
-              text: "Before the mint starts, the admin writes the hash (sha256) of a secret seed on-chain. When the mint closes or sells out, it can never reopen. Then the admin publishes the seed (the program checks it against the hash) and only then the program picks a Solana slot about a minute in the future. Once that slot has passed, anyone can store its hash (entropy) on-chain: the game server does it automatically and the Pass page has a “Complete the reveal” button for any wallet. The program then stores the final seed = sha256(seed + entropy). Every Pass's traits come from that final seed and its number: while Passes can still be minted nobody, the team included, can know which number will be rare, and because the seed is public before the slot exists, everyone learns the result at the same moment. Someone who dislikes it could hope the ~3-minute window passes without a capture (that picks a new slot), but anyone can capture first, so no single party controls it.",
-            },
-            { term: 'Look:', text: 'Until the reveal every Pass shows as a "sealed passport" in the game and on marketplaces. The Pass page links the marketplaces when the admin has set them.' },
-          ],
-        },
-      ],
-    },
-    {
-      id: 'seasons',
-      title: 'Seasons',
-      lede: `Score with Pass tickets, reach the top ${F.season.prizeRanks}, claim your share of the pool.`,
-      blocks: [
-        {
-          kind: 'list',
-          items: [
-            {
-              term: 'Points',
-              text: `come only from arena games played with a Pass ticket, whether you are paid at the bell or die. A game scores the highest mass you reached (capped at ${num(F.season.maxScore)} per game), added up over the season.`,
-            },
-            { term: 'The table', text: `lives on-chain and shows the top ${F.season.boardSize}; the top ${F.season.prizeRanks} win prizes.` },
-            { term: 'The pool', text: `fills from the season share of player fees (default ${pct(sBps)}), from floor loot swept at the end of every round and from leftovers of closed arenas. The team does not fund it.` },
-            { term: 'The end:', text: 'A season has no fixed end time on-chain. The admin ends it; the pool is frozen at that moment and the next season starts.' },
-            {
-              term: 'Claiming:',
-              text: `You claim your prize yourself on the Ranks page, within ${F.season.claimDays} days after the season ends. After that the admin rolls unclaimed prizes into the running season's pool.`,
-            },
-          ],
-        },
-        { kind: 'prizes', caption: 'Prize shares (percent of the frozen pool)' },
-      ],
-    },
-    {
       id: 'fair',
       title: 'Fair play and transparency',
       lede: 'The money rules are on-chain, the game itself runs on a server. Know what you trust.',
@@ -303,32 +212,31 @@ export const docsEn = (symbol: string = sym, power: PassPower | null = null): Do
             title: 'On-chain: program rules anyone can verify',
             items: [
               "Entry fees sit in the arena's vault; a payout can never exceed it.",
-              `Fees only on profit, capped at ${pct(F.fee.maxBps)}. The split, the burn and the season pool.`,
+              `Fees only on profit, capped at ${pct(F.fee.maxBps)}, paid to the fee wallet.`,
+              'Floor loot swept at the bell is burned.',
               'Every ticket has a unique id, so an old payout cannot be applied to a new ticket.',
               `Collecting a settled payout at any time; a self-refund of an unsettled ticket after ${F.refundHours} hours.`,
-              'The Pass gate, the Pass lock, mint limits, a supply fixed once the mint opens, and commit–reveal with chain entropy.',
               'The fee rate of each ticket, fixed when it is bought.',
-              `The season table, prize shares and the ${F.season.claimDays}-day claim window.`,
+              `The ${symbol} token, set once by the admin and never changed.`,
             ],
           },
           right: {
             title: 'On the server: you trust it',
             items: [
               'Physics and the outcome: who ate whom, what you were worth at the bell. The server signs the payout amount.',
-              'Score, XP and kill counts (season points come from them).',
+              'Score, XP and kill counts.',
               'Bots, matchmaking and leagues.',
-              'Pass power and checking the Pass you wear.',
-              "The server's Today / All-time boards and the chat filter.",
+              "The server's Today / All-time standings (for bragging rights, no prizes) and the chat filter.",
             ],
           },
         },
         {
           kind: 'p',
-          text: "The server key can only close open tickets and sweep floor loot: it pays from an arena's vault, moves round-end loot from the vault to the season pool (never more than the vault holds) and cannot touch the treasury or the settings. A buggy or malicious server could still split an arena's vault wrongly between players. This hybrid model, standard for real-time games, requires trusting the server.",
+          text: "The server key can only close open tickets and burn floor loot: it pays from an arena's vault, burns round-end loot from the vault (never more than the vault holds) and cannot touch the fee wallet or the settings. A buggy or malicious server could still split an arena's vault wrongly between players. This hybrid model, standard for real-time games, requires trusting the server.",
         },
         {
           kind: 'p',
-          text: `The admin can change settings (fee at most ${pct(F.fee.maxBps)}), stop new ticket sales (payouts and refunds keep working), close arenas, end seasons, withdraw the treasury and replace the server key, so trusting the server ultimately means trusting the admin. The admin cannot move arena vaults to themselves: a closed arena's leftover can only be swept into the season pool. The admin knows the committed Pass seed, but traits also depend on the hash of a slot chosen only after the mint has closed and the seed was published, so not even the admin can know them while Passes can be minted, and everyone learns them at the same moment. Feeding each other from two wallets (collusion) is not detected in this version.`,
+          text: `The admin can change settings (fee at most ${pct(F.fee.maxBps)}), change the fee wallet, stop new ticket sales (payouts and refunds keep working), close arenas and replace the server key, so trusting the server ultimately means trusting the admin. The admin cannot take an open arena's vault: only an arena that is closed and has no open tickets can be swept, and its leftover goes to the fee wallet. Feeding each other from two wallets (collusion) is not detected in this version.`,
         },
         {
           kind: 'note',
@@ -349,7 +257,6 @@ export const docsEn = (symbol: string = sym, power: PassPower | null = null): Do
           items: [
             { term: 'Sign-in', text: '(verification) is only a message signature: it starts with "Slana wants you to sign in with your Solana account", sends no transaction and costs nothing.' },
             { term: 'A ticket transaction', text: `should show only the entry fee in ${symbol} and small SOL amounts (network fee, deposit, rent). If you see more, do not sign.` },
-            { term: 'A mint transaction', text: `should move no ${symbol}; only SOL (rent and fee).` },
             { term: 'Anyone asking', text: 'for your recovery phrase or private key, site, person or "support", is a scammer.' },
             { term: 'Use a separate wallet', text: 'for games and keep only what you want to play with in it.' },
             { term: 'Links:', text: 'Check the address bar. Do not click "airdrop" or "mint" links sent in DMs.' },
@@ -368,7 +275,11 @@ export const docsEn = (symbol: string = sym, power: PassPower | null = null): Do
             { q: 'Do I need a wallet for practice?', a: 'No. Practice is free; no wallet, token or NFT needed.' },
             {
               q: `Where do I get ${symbol}?`,
-              a: 'On a decentralized exchange. Check the correct mint address only through official channels; the program accepts the single mint recorded once at setup.',
+              a: 'On a decentralized exchange. Check the correct mint address only through official channels; the program accepts the single mint the admin records once, after launch.',
+            },
+            {
+              q: 'Why do the arenas say "Opening soon"?',
+              a: `The ${symbol} token is not set on-chain yet. Practice is open; the arenas open by themselves as soon as the admin sets the token.`,
             },
             { q: 'Do I earn tokens by eating bots?', a: 'No. Bots are always worth 0; you only gain mass.' },
             { q: 'I lost my connection or closed the tab.', a: `Your coin stays in the arena and can still be eaten. Come back and you carry on; if it is still alive at the bell, you are paid as usual.` },
@@ -378,12 +289,11 @@ export const docsEn = (symbol: string = sym, power: PassPower | null = null): Do
               q: 'My payout has not arrived.',
               a: `Check the payout banner in the lobby. If it says "Collect payout", your game is settled and the payout waits in the vault: collect it with one transaction (your token account is opened in it if needed), right away. If it says the payout is on the way, the server is still sending it and retries by itself on network trouble.`,
             },
-            { q: 'Why are my season points not growing?', a: 'Points only come from arena games played with a Pass ticket. Practice and tickets without a Pass score nothing.' },
-            { q: 'What if I sell my Pass?', a: 'If it is locked to an open ticket, the new owner cannot use it until the lock lifts. Your open ticket keeps its Pass perks, which were written when you bought it.' },
-            { q: 'Who gets the fee?', a: `By default ${pct(tBps)} goes to the treasury, ${pct(sBps)} to the season pool and ${pct(bBps)} is burned.` },
+            { q: 'Who gets the fee?', a: `The operator's wallet gets the whole fee (${pct(feeBps)} of profit). Floor loot left at the bell is burned.` },
+            { q: 'Are there prizes for the Standings?', a: 'No. The Today and All-time standings are kept by the game server for fun; they pay nothing.' },
             {
               q: 'Is this gambling?',
-              a: 'It is a skill game played with a token of real value, and many countries may regulate it. Make sure playing is legal where you are. Season prizes and burns are not a promise of returns.',
+              a: 'It is a skill game played with a token of real value, and many countries may regulate it. Make sure playing is legal where you are. Burns are not a promise of returns.',
             },
           ],
         },

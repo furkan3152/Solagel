@@ -44,8 +44,7 @@
   --red-ink: #b42318;
   /* fixed print ink: text/art on accent fills, same in both themes */
   --ink-fixed: #1e1b2e;
-  /* fixed passport cover stock (same in both themes) */
-  --cover: #08716f;
+  /* text on a fixed dark stock (same in both themes) */
   --on-cover: #fffcf4;
 
   /* derived */

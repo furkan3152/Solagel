@@ -19,7 +19,6 @@ import { DROP_LAND, DUR, SLOWMO_TOTAL, slowmoScale } from '../design/curves';
 import { t } from '../i18n';
 import { Renderer } from '../render/renderer';
 import { FOOD_COLORS } from '../render/sprites';
-import { useChainData } from '../solana/chain';
 import { toast, useUi, type Screen } from '../store';
 import { Camera } from './camera';
 import { serverClock } from './clock';
@@ -76,14 +75,14 @@ export class GameEngine {
   /** Snapshots held back while frozen (they are deltas: applied in order on the thaw). */
   private snapQueue: SnapshotData[] = [];
   /** The last join asked for (a held ticket repeats it when the next round opens). */
-  private lastJoin: { room: string; pass: string | null } | null = null;
+  private lastJoin: { room: string } | null = null;
   /** A ticket held through the closed window; it joins when the next round opens. */
   private readonly heldTicket = new HeldTicket({
-    join: (room, pass) => {
+    join: (room) => {
       // the socket is down: the hold waits for the next `welcome` (rearm)
       if (!this.net.open) return false;
-      this.ticketRetry = { room, pass, left: 2 };
-      this.sendJoin(room, pass);
+      this.ticketRetry = { room, left: 2 };
+      this.sendJoin(room);
       return true;
     },
     // only from the lobby (or watching): never pull a player out of a game, practice included
@@ -192,27 +191,22 @@ export class GameEngine {
   /* ---------------------------------------------------------------- */
 
   /**
-   * Joins a room. `pass`: the Slana Pass asset to wear (defaults to the equipped
-   * one; in an arena the ticket's own Pass wins on the server). `awaitTicket`:
+   * Joins a room. `awaitTicket`:
    * the ticket was bought a moment ago, so a `no_session` answer (the server's
    * RPC may lag the confirmation) is retried quietly a few times.
    */
-  play(room: string, opts: { pass?: string | null; awaitTicket?: boolean } = {}): void {
+  play(room: string, opts: { awaitTicket?: boolean } = {}): void {
     unlockAudio();
-    const { settings } = useUi.getState();
-    // the equipped Pass look only while the connected wallet still holds it (else the server says pass_invalid)
-    const equipped = settings.passSkin && useChainData.getState().passes.some((p) => p.asset === settings.passSkin) ? settings.passSkin : null;
-    const pass = opts.pass === undefined ? equipped : opts.pass;
-    this.ticketRetry = opts.awaitTicket ? { room, pass, left: 4 } : null;
-    this.sendJoin(room, pass);
+    this.ticketRetry = opts.awaitTicket ? { room, left: 4 } : null;
+    this.sendJoin(room);
   }
 
-  private ticketRetry: { room: string; pass: string | null; left: number } | null = null;
+  private ticketRetry: { room: string; left: number } | null = null;
 
-  private sendJoin(room: string, pass: string | null): void {
+  private sendJoin(room: string): void {
     const { settings } = useUi.getState();
-    this.lastJoin = { room, pass };
-    this.net.send({ t: 'join', room, name: settings.name || 'Coinie', skin: settings.skin, ...(pass ? { pass } : {}) });
+    this.lastJoin = { room };
+    this.net.send({ t: 'join', room, name: settings.name || 'Coinie', skin: settings.skin });
   }
 
   spectate(room?: string): void {
@@ -378,6 +372,10 @@ export class GameEngine {
         }
         return;
       }
+      case 'chain':
+        // the chain status changed (the game token was set): the lobby opens its arenas live
+        useUi.setState({ chain: m.chain });
+        return;
       case 'rooms':
         useUi.setState({ rooms: m.rooms, online: m.online, blockedArenas: (m.blocked ?? []).map((b) => b.arenaId) });
         return;
@@ -435,7 +433,6 @@ export class GameEngine {
             m.room.mode === 'arena'
               ? {
                   entryFee: m.entryFee ?? m.room.entryFee ?? 0,
-                  hasPass: m.hasPass === true,
                   arenaId: m.room.arenaId ?? null,
                   session: m.session ?? null,
                 }
@@ -559,7 +556,7 @@ export class GameEngine {
           this.ticketRetry = null;
           if (join?.room.startsWith('arena:')) {
             const arenaId = Number(join.room.slice('arena:'.length));
-            this.heldTicket.hold(join.room, join.pass, m.opensAt ?? currentRound(arenaId)?.endsAt ?? serverClock.now());
+            this.heldTicket.hold(join.room, m.opensAt ?? currentRound(arenaId)?.endsAt ?? serverClock.now());
           }
           return;
         }
@@ -576,7 +573,7 @@ export class GameEngine {
         if (m.code === 'no_session' && retry && retry.left > 0) {
           retry.left--;
           setTimeout(() => {
-            if (this.ticketRetry === retry && useUi.getState().screen !== 'playing') this.sendJoin(retry.room, retry.pass);
+            if (this.ticketRetry === retry && useUi.getState().screen !== 'playing') this.sendJoin(retry.room);
           }, 1500);
           return;
         }
@@ -653,7 +650,7 @@ export class GameEngine {
           break;
         case 'cell': {
           const victim = this.world.players.get(ev.victimPid);
-          const look = this.renderer.lookFor(victim?.skin ?? 0, victim?.pass ?? 0, useUi.getState().chain?.pass ?? null);
+          const look = this.renderer.lookFor(victim?.skin ?? 0);
           if (ev.mine) {
             sound.chomp();
             this.bite(performance.now());
@@ -762,7 +759,6 @@ export class GameEngine {
       camera: this.camera,
       particles: this.particles,
       settings: ui.settings,
-      pass: ui.chain?.pass ?? null,
       reduced: this.reduced,
       aim: ui.screen === 'playing' ? this.aimPoint() : null,
       coinRain: !!ui.banner && ui.banner.kind === 'coinrain' && ui.banner.until > Date.now(),

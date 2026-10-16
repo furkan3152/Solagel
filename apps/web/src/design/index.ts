@@ -25,7 +25,6 @@ export {
 export { Ticket, TicketGroup, TicketStub, type TicketProps, type TicketGroupProps } from './components/Ticket';
 export { Stamp, type StampProps, type StampTone } from './components/Stamp';
 export { Receipt, type ReceiptProps, type ReceiptLine } from './components/Receipt';
-export { Passport, Crest, WaxSeal, type PassportProps, type PassportTrait } from './components/Passport';
 export { InkButton, type InkButtonProps } from './components/InkButton';
 export { Counter, type CounterProps } from './components/Counter';
 export { Rule, type RuleProps } from './components/Rule';

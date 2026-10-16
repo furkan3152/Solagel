@@ -1,7 +1,7 @@
 import { useWallet } from '@solana/wallet-adapter-react';
 import { TOKEN_SYMBOL_DEFAULT, arenaMeta, formatToken } from '@slana/shared';
 import { useEffect, useMemo, useState } from 'react';
-import { freePasses, useChainData } from '../../solana/chain';
+import { useChainData } from '../../solana/chain';
 import { buildTickets, quickPlayTarget, ticketGate, type OpenSession, type TicketGate, type TicketKey, type TicketModel } from '../../solana/ticket';
 import { useUi } from '../../store';
 
@@ -27,10 +27,16 @@ export function tokenText(decimals: number, symbol: string): TokenText {
   };
 }
 
+/**
+ * The game token's display: symbol and decimals from the server's config (`ChainStatus.token`),
+ * the on-chain decimals once the config is read. Until the token is set (no symbol yet) the
+ * symbol shows as `$SLANA` and amounts use 6 decimals.
+ */
 export function useTokenText(): TokenText {
   const token = useUi((s) => s.chain?.token ?? null);
-  const decimals = useChainData((s) => s.config?.tokenDecimals) ?? token?.decimals ?? 6;
-  return useMemo(() => tokenText(decimals, token?.symbol ?? TOKEN_SYMBOL_DEFAULT), [decimals, token?.symbol]);
+  const chainDecimals = useChainData((s) => (s.config?.tokenMint ? s.config.tokenDecimals : undefined));
+  const decimals = chainDecimals ?? token?.decimals ?? 6;
+  return useMemo(() => tokenText(decimals, token?.symbol || TOKEN_SYMBOL_DEFAULT), [decimals, token?.symbol]);
 }
 
 export const ticketName = (t: Pick<TicketModel, 'arenaId'>, practice: string): string =>
@@ -65,12 +71,16 @@ export function useLobbyModel(): LobbyModel {
   }, []);
 
   return useMemo(() => {
-    const tickets = buildTickets(rooms, data.arenas, blocked);
+    const token = {
+      enabled: !!chain?.enabled,
+      tokenReady: chain?.tokenReady === true,
+      decimals: chain?.token?.decimals ?? 6,
+    };
+    const tickets = buildTickets(rooms, data.arenas, blocked, token);
     const sessions: Record<number, OpenSession | null> = {};
     for (const [id, s] of Object.entries(data.sessions)) {
-      sessions[Number(id)] = s ? { address: s.address, openedAt: s.openedAt, hasPass: s.hasPass, passAsset: s.passAsset, finalized: s.finalized, owed: s.owed } : null;
+      sessions[Number(id)] = s ? { address: s.address, openedAt: s.openedAt, finalized: s.finalized, owed: s.owed } : null;
     }
-    const free = freePasses(data).length;
     const arenasEnabled = !!chain?.arenasEnabled && data.deployed !== false;
     const gates: Record<string, TicketGate> = {};
     for (const t of tickets) {
@@ -82,7 +92,6 @@ export function useLobbyModel(): LobbyModel {
         balance: data.tokenBalance,
         session: t.arenaId !== null ? (sessions[t.arenaId] ?? null) : null,
         pending: data.pending,
-        freePasses: free,
         nowS,
       });
     }
@@ -92,8 +101,7 @@ export function useLobbyModel(): LobbyModel {
     const quick = quickPlayTarget({
       walletConnected: connected,
       balance: arenasEnabled ? data.tokenBalance : null,
-      tickets: tickets.filter((t) => t.arenaId === null || (gates[t.key].kind !== 'offline' && gates[t.key].kind !== 'maintenance')),
-      hasFreePass: free > 0,
+      tickets: tickets.filter((t) => t.arenaId === null || (gates[t.key].kind !== 'offline' && gates[t.key].kind !== 'maintenance' && gates[t.key].kind !== 'soon')),
       lastArena,
       openSessions,
     });

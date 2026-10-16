@@ -24,7 +24,7 @@ const START = N * RULES.roundMs;
 const R: RoundInfo = { n: N, endsAt: START + RULES.roundMs, joinsCloseAt: START + RULES.roundMs - RULES.roundJoinCloseMs };
 const ARENA: RoomInfo = { id: 'arena-1-1', mode: 'arena', name: 'Penny Pond', width: 6400, height: 6400, players: 3, bots: 10, maxPlayers: 50, arenaId: 1, entryFee: 1000 * M, round: R };
 const STATS: DeathStats = { aliveMs: 94_000, finalMass: 0, maxMass: 640, foodEaten: 88, cellsEaten: 1, playersEaten: 1, bestRank: 5 };
-const CHAIN = { enabled: true, cluster: 'devnet', programId: null, rpcUrl: null, arenasEnabled: true, currentSeason: 1, token: { mint: 'M', symbol: '$SLANA', decimals: 6 }, pass: null };
+const CHAIN = { enabled: true, cluster: 'devnet', programId: null, rpcUrl: null, arenasEnabled: true, tokenReady: true, token: { mint: 'M', symbol: '$SLANA', decimals: 6 }, feeBps: null };
 // jsdom has no canvas: the same null it returns, without the "not implemented" warning
 HTMLCanvasElement.prototype.getContext = (() => null) as never;
 const initial = useUi.getState();
@@ -164,7 +164,7 @@ describe('HUD round chip', () => {
 
 describe('no cash-out in arenas', () => {
   it('the HUD dock, the phone controls and the C key have no cash-out', () => {
-    useUi.setState({ screen: 'playing', room: ARENA, ticket: { entryFee: 1000 * M, hasPass: false, arenaId: 1, session: 'S' }, hud: { mass: 20, cells: 1, value: 1000 * M, rank: 2, players: 4 } });
+    useUi.setState({ screen: 'playing', room: ARENA, ticket: { entryFee: 1000 * M, arenaId: 1, session: 'S' }, hud: { mass: 20, cells: 1, value: 1000 * M, rank: 2, players: 4 } });
     clockAt(START + 1000);
     render(
       <Kb>
@@ -202,7 +202,7 @@ describe('Round over sheet', () => {
     useUi.setState({
       screen: 'roundover',
       room: ARENA,
-      ticket: { entryFee: 1000 * M, hasPass: false, arenaId: 1, session: 'SessMine' },
+      ticket: { entryFee: 1000 * M, arenaId: 1, session: 'SessMine' },
       roundResult: { kind: 'round', round: N, payout: 3000 * M, stats: STATS, standings },
       lastSettlement: null,
     });
@@ -242,7 +242,7 @@ describe('Round over sheet', () => {
     useUi.setState({
       screen: 'roundover',
       room: ARENA,
-      ticket: { entryFee: 1000 * M, hasPass: true, arenaId: 1, session: 'S2' },
+      ticket: { entryFee: 1000 * M, arenaId: 1, session: 'S2' },
       roundResult: { kind: 'round', round: N, payout: 400 * M, stats: STATS, standings: standings.map((s) => ({ name: s.name, value: s.value })) },
     });
     render(
@@ -253,18 +253,19 @@ describe('Round over sheet', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     await screen.findByRole('dialog', { name: 'Round over' }, { timeout: 2000 });
     expect(screen.getByText('Your place').nextElementSibling?.textContent).toBe('Outside the top 6');
-    // a loss: no fee
-    expect(screen.getByText('Fee 2%')).toBeTruthy();
+    // a loss: no fee (the rate shown is the program default while the server's is unknown)
+    expect(screen.getByText('Fee 5%')).toBeTruthy();
   });
 
-  it('estimates the fee at the live config rate', () => {
+  it("estimates the fee at the server's live rate (feeBps)", () => {
     setReducedMotion(true);
     clockAt(R.endsAt + 500);
-    useChainData.setState({ config: { feeBps: 300, passFeeBps: 100 } as never });
+    useChainData.setState({ config: { feeBps: 700 } as never });
+    useUi.setState({ chain: { ...CHAIN, feeBps: 300 } });
     useUi.setState({
       screen: 'roundover',
       room: ARENA,
-      ticket: { entryFee: 1000 * M, hasPass: false, arenaId: 1, session: 'S3' },
+      ticket: { entryFee: 1000 * M, arenaId: 1, session: 'S3' },
       roundResult: { kind: 'round', round: N, payout: 3000 * M, stats: STATS, standings: [] },
     });
     render(
@@ -281,7 +282,7 @@ describe('Round over sheet', () => {
 describe('death sheet in an arena', () => {
   const eaten = () => {
     setReducedMotion(true);
-    useUi.setState({ screen: 'dead', room: ARENA, ticket: { entryFee: 1000 * M, hasPass: false, arenaId: 1, session: 'S' }, death: { stats: { ...STATS, valueLost: 10 * M }, killer: 'Nakamoto', killerSkin: 1 } });
+    useUi.setState({ screen: 'dead', room: ARENA, ticket: { entryFee: 1000 * M, arenaId: 1, session: 'S' }, death: { stats: { ...STATS, valueLost: 10 * M }, killer: 'Nakamoto', killerSkin: 1 } });
     render(
       <Kb>
         <DeathSheet />
@@ -305,8 +306,8 @@ describe('death sheet in an arena', () => {
 });
 
 describe('lobby tickets and the held ticket', () => {
-  const practice: TicketModel = { key: 'practice', arenaId: null, entryFee: 0n, requiresPass: false, humans: 0, bots: 0, loot: 0, open: true };
-  const penny: TicketModel = { key: 'arena:1', arenaId: 1, entryFee: 1000n * 1_000_000n, requiresPass: false, humans: 3, bots: 10, loot: 0, open: true };
+  const practice: TicketModel = { key: 'practice', arenaId: null, entryFee: 0n, humans: 0, bots: 0, loot: 0, open: true };
+  const penny: TicketModel = { key: 'arena:1', arenaId: 1, entryFee: 1000n * 1_000_000n, humans: 3, bots: 10, loot: 0, open: true };
   const list = () =>
     render(
       <Kb>
@@ -353,24 +354,24 @@ describe('lobby tickets and the held ticket', () => {
     let free = true;
     const released = vi.fn();
     const held = new HeldTicket({ join, free: () => free, released });
-    held.hold('arena:1', 'PassAsset', R.endsAt);
+    held.hold('arena:1', R.endsAt);
     expect(useUi.getState().held).toEqual({ arenaId: 1, opensAt: R.endsAt });
     vi.advanceTimersByTime(40_999);
     expect(join).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1 + HELD_JITTER_MS);
     expect(join).toHaveBeenCalledTimes(1);
-    expect(join).toHaveBeenCalledWith('arena:1', 'PassAsset');
+    expect(join).toHaveBeenCalledWith('arena:1');
     expect(held.inFlight).toBe(true);
     // refused for another reason: let go
     held.refused();
     expect(useUi.getState().held).toBeNull();
 
     // cleared before the opening: no join
-    held.hold('arena:1', null, Date.now() + 5_000);
+    held.hold('arena:1', Date.now() + 5_000);
     held.clear();
     vi.advanceTimersByTime(10_000);
     // busy in a game at the opening: no join, released with a reason
-    held.hold('arena:1', null, Date.now() + 5_000);
+    held.hold('arena:1', Date.now() + 5_000);
     free = false;
     vi.advanceTimersByTime(10_000);
     expect(join).toHaveBeenCalledTimes(1);
@@ -385,7 +386,7 @@ describe('lobby tickets and the held ticket', () => {
         { join: () => true, free: () => true, released: () => {} },
         { toLocal: (ms) => ms, now: () => 1_000, random: () => random, setTimeout: (_fn, ms) => waits.push(ms), clearTimeout: () => {} },
       );
-      h.hold('arena:2', null, 11_000);
+      h.hold('arena:2', 11_000);
     }
     expect(HELD_JITTER_MS).toBe(1500);
     expect(waits[0]).toBe(10_000);

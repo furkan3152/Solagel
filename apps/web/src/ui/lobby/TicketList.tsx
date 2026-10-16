@@ -5,7 +5,6 @@ import { STAGGER, Ticket, TicketGroup, TicketStub, useReducedMotion } from '../.
 import { formatCountdown, useRound } from '../../game/round';
 import { useT } from '../../i18n';
 import { useUi } from '../../store';
-import { useChainData, usePassPower } from '../../solana/chain';
 import { bpsPercent, feeBps, type TicketGate, type TicketKey, type TicketModel } from '../../solana/ticket';
 import { ticketName, useTokenText } from './useLobby';
 
@@ -29,8 +28,8 @@ export function RoundLine({ arenaId }: { arenaId: number }) {
 /**
  * The tickets: practice first, then one per arena (instances summed), each
  * with its price on the stub, live counts, the loot on the floor, the round's
- * state, a PASS stamp when a Pass is required and the Pass perk line where it
- * is optional.
+ * state and the fee line. While the game token is not set the arenas are listed
+ * as "Opening soon" (not for sale); practice plays.
  */
 export function TicketList({
   tickets,
@@ -53,12 +52,11 @@ export function TicketList({
   punched?: TicketKey | null;
 }) {
   const t = useT();
-  const config = useChainData((s) => s.config);
+  const serverBps = useUi((s) => s.chain?.feeBps ?? null);
   const tok = useTokenText();
   const reduced = useReducedMotion();
-  const power = usePassPower();
   const held = useUi((s) => s.held);
-  const perk = t('lo.perk', { start: power.startPct, fee: bpsPercent(feeBps(config, true)) });
+  const feeLine = t('lo.feeLine', { fee: bpsPercent(feeBps(serverBps)) });
 
   const count = (n: number, one: 'lo.humans1' | 'lo.bots1', many: 'lo.humans' | 'lo.bots') => (n === 1 ? t(one) : t(many, { n }));
 
@@ -69,7 +67,8 @@ export function TicketList({
         const practice = tk.arenaId === null;
         const name = ticketName(tk, t('lo.practice'));
         const maintenance = gate?.kind === 'maintenance';
-        const closed = gate?.kind === 'offline' || maintenance;
+        const soon = gate?.kind === 'soon';
+        const closed = gate?.kind === 'offline' || maintenance || soon;
         const status =
           !practice && held?.arenaId === tk.arenaId
             ? t('lo.held')
@@ -82,7 +81,9 @@ export function TicketList({
               : null;
         const meta = practice
           ? [t('lo.practiceMeta'), tk.humans > 0 ? count(tk.humans, 'lo.humans1', 'lo.humans') : null].filter(Boolean).join(' · ')
-          : [count(tk.humans, 'lo.humans1', 'lo.humans'), count(tk.bots, 'lo.bots1', 'lo.bots'), t('lo.onFloor', { n: tok.compact(tk.loot), sym: tok.symbol })]
+          : soon
+            ? t('lo.soonMeta')
+            : [count(tk.humans, 'lo.humans1', 'lo.humans'), count(tk.bots, 'lo.bots1', 'lo.bots'), t('lo.onFloor', { n: tok.compact(tk.loot), sym: tok.symbol })]
               .filter(Boolean)
               .join(' · ');
         const style = { '--kl-ink': practice ? 'var(--ink-2)' : arenaMeta(tk.arenaId!).ink } as CSSProperties;
@@ -97,7 +98,6 @@ export function TicketList({
           >
             <Ticket
               value={tk.key}
-              stamp={tk.requiresPass ? t('lo.passStamp') : undefined}
               disabled={closed}
               punched={punched === tk.key}
               onDoubleClick={onActivate}
@@ -111,7 +111,7 @@ export function TicketList({
             >
               <span className="kl-ticket__head">
                 <span className="kb-ticket__title">{name}</span>
-                {closed && <span className="kl-ticket__flag mono">{maintenance ? t('lo.maintenance') : t('lo.closed')}</span>}
+                {closed && <span className="kl-ticket__flag mono">{maintenance ? t('lo.maintenance') : soon ? t('lo.soon') : t('lo.closed')}</span>}
                 {status && <span className="kl-ticket__flag is-open mono">{status}</span>}
               </span>
               <span className="kb-ticket__meta mono">
@@ -119,7 +119,7 @@ export function TicketList({
                 {meta}
               </span>
               {!practice && !closed && <RoundLine arenaId={tk.arenaId!} />}
-              {!practice && !tk.requiresPass && <span className="kl-ticket__perk mono">{perk}</span>}
+              {!practice && !soon && <span className="kl-ticket__perk mono">{feeLine}</span>}
             </Ticket>
           </motion.div>
         );

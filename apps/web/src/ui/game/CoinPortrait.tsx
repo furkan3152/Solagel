@@ -5,19 +5,17 @@ import { drawCoinLook } from '../../render/coin';
 import { JellyBody } from '../../render/jelly';
 import { LookCache } from '../../render/looks';
 import { canvasDpr } from '../../render/renderer';
-import { usePassStatus } from '../../solana/chain';
 import { useTicker } from '../ticker';
 
-// one look cache for every portrait (Pass looks come from the revealed collection)
+// one look cache for every portrait
 const looks = new LookCache();
 
 let rng = 41;
 const rand = () => ((rng = (rng * 16807) % 2147483647) / 2147483647);
 
-/** A coin character on its own canvas, wearing a Pass look when it has one. */
+/** A coin character on its own canvas. */
 export function CoinPortrait({
   skin,
-  pass = 0,
   size,
   expression = 'happy',
   seed = 1,
@@ -26,19 +24,17 @@ export function CoinPortrait({
   look,
 }: {
   skin: number;
-  pass?: number;
   size: number;
   expression?: Expression;
   seed?: number;
   className?: string;
   /** Draw once, no animation loop (grids of many portraits). */
   still?: boolean;
-  /** An explicit look (Pass preview, sealed or revealed passport), instead of `skin` / `pass`. */
+  /** An explicit look instead of the basic `skin`. */
   look?: CoinLook;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const jelly = useRef(new JellyBody());
-  const status = usePassStatus();
   const reduced = useReducedMotion();
 
   const draw = (now: number, dt: number) => {
@@ -59,7 +55,7 @@ export function CoinPortrait({
     const lx = reduced ? 0 : Math.cos(now / 1400 + seed) * 0.4;
     const ly = reduced ? 0.2 : Math.sin(now / 1700 + seed) * 0.25;
     if (!reduced) jelly.current.update(dt, r, r, lx * 0.5, ly * 0.5, [], rand);
-    drawCoinLook(ctx, size / 2, size / 2 + size * 0.05, r, look ?? looks.lookFor(skin, pass, status), {
+    drawCoinLook(ctx, size / 2, size / 2 + size * 0.05, r, look ?? looks.lookFor(skin), {
       time: reduced ? 0 : now,
       lookX: lx,
       lookY: ly,
@@ -75,7 +71,7 @@ export function CoinPortrait({
   useEffect(() => {
     if (!loop) draw(0, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [skin, pass, size, expression, loop, status, look]);
+  }, [skin, size, expression, loop, look]);
 
   return <canvas ref={ref} className={className} style={{ width: size, height: size }} aria-hidden="true" />;
 }

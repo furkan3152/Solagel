@@ -1,19 +1,5 @@
-import { CAPACITY, DEFAULT_ARENAS, LEADERBOARD_SIZE, PRIZE_SHARES_BPS, RULES, arenaMeta, type PassPower } from '@slana/shared';
-import {
-  CLAIM_WINDOW_SECS,
-  DEFAULT_FEE_BPS,
-  DEFAULT_FEE_SPLIT_BPS,
-  DEFAULT_PASS_FEE_BPS,
-  DEFAULT_PASS_PER_WALLET,
-  DEFAULT_PASS_SUPPLY,
-  DEFAULT_SETTLE_FEE_LAMPORTS,
-  MAX_FEE_BPS,
-  MAX_SCORE_PER_GAME,
-  PRIZE_RANKS,
-  SESSION_REFUND_TIMEOUT_SECS,
-  splitPayout,
-  type PayoutSplit,
-} from '@slana/sdk';
+import { CAPACITY, DEFAULT_ARENAS, RULES, arenaMeta } from '@slana/shared';
+import { DEFAULT_FEE_BPS, DEFAULT_SETTLE_FEE_LAMPORTS, MAX_FEE_BPS, SESSION_REFUND_TIMEOUT_SECS, splitPayout, type PayoutSplit } from '@slana/sdk';
 
 /**
  * Every number the player guide quotes, taken from the code that enforces it, so the
@@ -41,19 +27,23 @@ export const SERVER = {
   privateCodeLength: 5,
 } as const;
 
-/** The worked fee example of the guide: a 1,000-token ticket paid out at 2,000 tokens at the bell. */
+/** The worked fee example of the guide: a 1,000-token ticket with 2,000 tokens in the till at the bell. */
 export const EXAMPLE = { entry: 1000, cashout: 2000 } as const;
 
+/** The worked example at `bps` (the server's `feeBps`; 5 % → fee 50, player 1,950), exactly as `settle_session` splits it. */
+export function feeExample(bps: number): PayoutSplit {
+  return splitPayout(EXAMPLE.cashout, EXAMPLE.entry, bps);
+}
+
 export interface DocsFacts {
-  fee: { bps: number; passBps: number; maxBps: number; split: readonly [number, number, number] };
+  fee: { bps: number; maxBps: number };
   settleFeeLamports: number;
-  example: { entry: number; cashout: number; normal: PayoutSplit; pass: PayoutSplit };
-  arenas: { id: number; name: string; entry: number; pass: boolean; maxSessions: number }[];
+  example: { entry: number; cashout: number };
+  arenas: { id: number; name: string; entry: number; maxSessions: number }[];
   capacity: { practice: number; private: number; arena: number };
   rules: {
     roundMin: number;
     joinCloseS: number;
-    passStartPct: number;
     afkS: number;
     spawnShieldS: number;
     eatRatio: number;
@@ -61,28 +51,19 @@ export interface DocsFacts {
     lootMax: number;
     lootEntryDiv: number;
   };
-  season: { boardSize: number; prizeRanks: number; shares: readonly number[]; claimDays: number; maxScore: number };
-  pass: { supply: number; perWallet: number };
   refundHours: number;
   server: typeof SERVER;
 }
 
-const cfg = { feeBps: DEFAULT_FEE_BPS, passFeeBps: DEFAULT_PASS_FEE_BPS, treasuryBps: DEFAULT_FEE_SPLIT_BPS[0], burnBps: DEFAULT_FEE_SPLIT_BPS[2] };
-
 export const FACTS: DocsFacts = {
-  fee: { bps: DEFAULT_FEE_BPS, passBps: DEFAULT_PASS_FEE_BPS, maxBps: MAX_FEE_BPS, split: DEFAULT_FEE_SPLIT_BPS },
+  fee: { bps: DEFAULT_FEE_BPS, maxBps: MAX_FEE_BPS },
   settleFeeLamports: DEFAULT_SETTLE_FEE_LAMPORTS,
-  example: {
-    ...EXAMPLE,
-    normal: splitPayout(EXAMPLE.cashout, EXAMPLE.entry, false, cfg),
-    pass: splitPayout(EXAMPLE.cashout, EXAMPLE.entry, true, cfg),
-  },
-  arenas: DEFAULT_ARENAS.map((a) => ({ id: a.id, name: arenaMeta(a.id).name, entry: a.entryTokens, pass: a.requiresPass, maxSessions: a.maxSessions })),
+  example: EXAMPLE,
+  arenas: DEFAULT_ARENAS.map((a) => ({ id: a.id, name: arenaMeta(a.id).name, entry: a.entryTokens, maxSessions: a.maxSessions })),
   capacity: { practice: CAPACITY.practice, private: CAPACITY.private, arena: CAPACITY.arena },
   rules: {
     roundMin: RULES.roundMs / 60_000,
     joinCloseS: RULES.roundJoinCloseMs / 1000,
-    passStartPct: Math.round((RULES.passStartMassMul - 1) * 100),
     afkS: RULES.afkGraceMs / 1000,
     spawnShieldS: RULES.spawnShieldMs / 1000,
     eatRatio: RULES.eatRatio,
@@ -90,8 +71,6 @@ export const FACTS: DocsFacts = {
     lootMax: RULES.lootPiecesMax,
     lootEntryDiv: Math.round(1 / RULES.lootPieceEntryFraction),
   },
-  season: { boardSize: LEADERBOARD_SIZE, prizeRanks: PRIZE_RANKS, shares: PRIZE_SHARES_BPS, claimDays: CLAIM_WINDOW_SECS / 86_400, maxScore: MAX_SCORE_PER_GAME },
-  pass: { supply: DEFAULT_PASS_SUPPLY, perWallet: DEFAULT_PASS_PER_WALLET },
   refundHours: SESSION_REFUND_TIMEOUT_SECS / 3600,
   server: SERVER,
 };
@@ -104,24 +83,18 @@ export type DocBlock =
   | { kind: 'p'; text: string }
   /** Bulleted list; an item may lead with a bold term. */
   | { kind: 'list'; items: (string | { term: string; text: string })[] }
-  /** Numbered steps. */
-  | { kind: 'steps'; items: string[] }
   /** Key → action rows (controls). */
   | { kind: 'keys'; rows: { key: string; action: string }[]; caption: string }
   /** Newspaper table. */
   | { kind: 'table'; caption: string; head: string[]; rows: string[][]; numeric?: number[] }
   /** Boxes joined by arrows: how value moves. */
   | { kind: 'flow'; label: string; steps: { title: string; text: string }[] }
-  /** The worked fee example as two receipts (without and with a Pass). */
+  /** The worked fee example as a receipt (at the server's fee rate). */
   | { kind: 'fee-example' }
-  /** Perks with where each one is enforced. */
-  | { kind: 'perks'; items: { title: string; text: string; where: 'chain' | 'server' }[] }
   /** Two columns compared side by side. */
   | { kind: 'compare'; left: { title: string; items: string[] }; right: { title: string; items: string[] } }
   /** A boxed notice; `stamp` is printed on it. */
   | { kind: 'note'; tone: 'warn' | 'info'; stamp: string; title: string; text: string }
-  /** Prize shares of the season ranks. */
-  | { kind: 'prizes'; caption: string }
   /** Questions and answers (disclosure widgets). */
   | { kind: 'faq'; items: { q: string; a: string }[] };
 
@@ -141,26 +114,21 @@ export interface DocsContent {
   /** Short facts for the dateline strip under the head. */
   dateline: string[];
   tocLabel: string;
-  /** Labels of the worked fee example receipts. */
+  /** The worked fee example receipt (its numbers come from `feeExample(feeBps)`). */
   receipt: {
     title: string;
-    titlePass: string;
     meta: string;
     entry: string;
     cashout: string;
     profit: string;
     fee: (pct: string) => string;
     net: string;
-    split: string;
-    treasury: string;
-    season: string;
-    burn: string;
+    /** Where the fee goes (the receipt's footer). */
+    footer: string;
     caption: string;
   };
-  perkWhere: { chain: string; server: string };
-  rank: (n: number) => string;
-  /** Live config line (shown when the chain config differs from the defaults). */
-  live: (fee: string, passFee: string) => string;
+  /** The fee rate the guide quotes (basis points): the server's `feeBps`, else the program default. */
+  feeBps: number;
   colophon: string;
   backToTop: string;
   sections: DocSection[];
@@ -168,13 +136,4 @@ export interface DocsContent {
   pct: (bps: number) => string;
   /** Formats a whole number with the language's grouping (`1.000` / `1,000`). */
   num: (n: number) => string;
-}
-
-/**
- * I3: the guide's gameplay numbers with the Pass power this server applies (`ChainStatus.passPower`
- * from its env); `FACTS.rules` (the `RULES` defaults) when unknown.
- */
-export function rulesWith(power: PassPower | null | undefined): DocsFacts['rules'] {
-  if (!power) return FACTS.rules;
-  return { ...FACTS.rules, passStartPct: Math.round((power.startMassMul - 1) * 100) };
 }

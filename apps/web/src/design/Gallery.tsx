@@ -11,7 +11,6 @@ import { Counter } from './components/Counter';
 import { Dateline } from './components/Dateline';
 import { Field } from './components/Field';
 import { InkButton } from './components/InkButton';
-import { Passport } from './components/Passport';
 import { Receipt } from './components/Receipt';
 import { Rule } from './components/Rule';
 import { Sheet } from './components/Sheet';
@@ -105,21 +104,18 @@ export function Gallery() {
             <Section n="08" title={t('ds.s.stamps')} note={t('ds.s.stamps.note')}>
               <StampDemo t={t} />
             </Section>
-            <Section n="09" title={t('ds.s.passport')} note={t('ds.s.passport.note')}>
-              <PassportDemo t={t} />
-            </Section>
-            <Section n="10" title={t('ds.s.counter')} note={t('ds.s.counter.note')}>
+            <Section n="09" title={t('ds.s.counter')} note={t('ds.s.counter.note')}>
               <CounterDemo t={t} fmt={fmt} />
             </Section>
           </div>
           <div className="g-col">
-            <Section n="11" title={t('ds.s.receipt')} note={t('ds.s.receipt.note')}>
+            <Section n="10" title={t('ds.s.receipt')} note={t('ds.s.receipt.note')}>
               <ReceiptDemo t={t} fmt={fmt} />
             </Section>
-            <Section n="12" title={t('ds.s.paper')}>
+            <Section n="11" title={t('ds.s.paper')}>
               <PaperBits t={t} fmt={fmt} />
             </Section>
-            <Section n="13" title={t('ds.s.overlays')} note={t('ds.s.overlays.note')}>
+            <Section n="12" title={t('ds.s.overlays')} note={t('ds.s.overlays.note')}>
               <OverlayDemo t={t} />
             </Section>
           </div>
@@ -187,7 +183,7 @@ function Masthead({
         items={[
           t('ds.edition'),
           t('ds.date'),
-          t('ds.dl.pool', { n: fmt(84200) }),
+          t('ds.dl.round'),
           reduced ? t('ds.motion.reduced') : t('ds.motion.full'),
         ]}
       />
@@ -315,8 +311,8 @@ function TicketDemo({ t, fmt }: { t: T; fmt: (n: number) => string }) {
   const rooms = [
     { id: 'practice', title: t('ds.room.practice'), meta: t('ds.room.practiceMeta'), value: t('ds.room.free'), unit: t('ds.room.noTokens') },
     { id: 'penny', title: t('ds.room.penny'), meta: t('ds.room.pennyMeta', { n: 23 }), value: fmt(1000), unit: '$SLANA' },
-    { id: 'gold', title: t('ds.room.gold'), meta: t('ds.room.players', { n: 9 }), value: fmt(25000), unit: '$SLANA', pass: true },
-    { id: 'whale', title: t('ds.room.whale'), meta: t('ds.room.onFloor', { n: fmt(310400) }), value: fmt(100000), unit: '$SLANA', pass: true },
+    { id: 'gold', title: t('ds.room.gold'), meta: t('ds.room.players', { n: 9 }), value: fmt(50000), unit: '$SLANA' },
+    { id: 'whale', title: t('ds.room.whale'), meta: t('ds.room.onFloor', { n: fmt(310400) }), value: fmt(250000), unit: '$SLANA' },
   ];
   return (
     <TicketGroup className="g-tickets" label={t('ds.rooms')} value={sel} onChange={setSel}>
@@ -332,7 +328,6 @@ function TicketDemo({ t, fmt }: { t: T; fmt: (n: number) => string }) {
             title={r.title}
             meta={r.meta}
             stub={<TicketStub value={r.value} unit={r.unit} />}
-            stamp={r.pass ? t('ds.stamp.pass') : undefined}
           />
         </motion.div>
       ))}
@@ -347,8 +342,8 @@ function ButtonDemo({ t, fmt }: { t: T; fmt: (n: number) => string }) {
         {t('ds.btn.play')}
       </InkButton>
       <div className="g-row">
-        <InkButton variant="pink" lead="passport">
-          {t('ds.btn.mint')}
+        <InkButton variant="pink" lead="coin">
+          {t('ds.btn.collect')}
         </InkButton>
         <InkButton variant="paper" lead="wallet">
           {t('ds.btn.wallet')}
@@ -379,61 +374,13 @@ function StampDemo({ t }: { t: T }) {
       <div className="g-stamps__pad" key={round}>
         <Stamp text={t('ds.stamp.defeated')} tone="red" size="lg" rotate={-7} animateIn />
         <Stamp text={t('ds.stamp.paid')} tone="teal" size="md" rotate={6} animateIn delay={0.25} />
-        <Stamp text={t('ds.stamp.valid')} sub={t('ds.stamp.season')} tone="mustard" round rotate={-12} animateIn delay={0.4} />
-        <Stamp text={t('ds.stamp.pass')} tone="pink" size="sm" rotate={-11} animateIn delay={0.55} />
-        <Stamp text={t('ds.stamp.sealed')} tone="ink" size="md" rotate={-3} animateIn delay={0.65} />
+        <Stamp text={t('ds.stamp.valid')} sub={t('ds.stamp.round')} tone="mustard" round rotate={-12} animateIn delay={0.4} />
+        <Stamp text={t('ds.stamp.held')} tone="ink" size="md" rotate={-3} animateIn delay={0.55} />
       </div>
       <InkButton size="sm" variant="paper" lead="flame" onClick={() => setRound((r) => r + 1)}>
         {t('ds.stamp.replay')}
       </InkButton>
     </div>
-  );
-}
-
-function PassportDemo({ t }: { t: T }) {
-  const [sealed, setSealed] = useState(false);
-  return (
-    <div className="g-passports">
-      <Passport
-        title={t('ds.pp.title')}
-        kind={t('ds.pp.kind')}
-        number="0412"
-        numberLabel={t('ds.pp.no')}
-        sealed={sealed}
-        sealedLabel={t('ds.stamp.sealed')}
-        visa={t('ds.stamp.valid')}
-        holderLabel={t('ds.pp.holder')}
-        holder={t('ds.pp.holderName')}
-        art={<PassArt />}
-        traits={[
-          { label: t('ds.pp.body'), value: t('ds.pp.bodyV') },
-          { label: t('ds.pp.crown'), value: t('ds.pp.crownV') },
-          { label: t('ds.pp.rarity'), value: t('ds.pp.rarityV') },
-          { label: t('ds.pp.sessions'), value: '3 / 5' },
-        ]}
-      />
-      <InkButton size="sm" variant={sealed ? 'pink' : 'paper'} lead={sealed ? 'key' : 'lock'} onClick={() => setSealed((s) => !s)}>
-        {sealed ? t('ds.pp.open') : t('ds.pp.seal')}
-      </InkButton>
-    </div>
-  );
-}
-
-/** The crowned coin from artboard B, as Pass art. Printed in fixed inks (art does not invert at night). */
-function PassArt() {
-  const ink = { stroke: 'var(--ink-fixed)' };
-  return (
-    <svg className="g-passart" width="92" height="92" viewBox="0 0 100 100" aria-hidden="true">
-      <circle cx="54" cy="55" r="36" style={{ fill: 'var(--teal)' }} />
-      <circle cx="50" cy="51" r="36" style={{ fill: 'var(--pink)', mixBlendMode: 'multiply' }} />
-      <circle cx="50" cy="51" r="27" fill="none" style={ink} strokeWidth="2.5" opacity="0.45" />
-      <path d="M30 18 L36 6 L44 15 L50 2 L56 15 L64 6 L70 18 Z" style={{ ...ink, fill: 'var(--mustard)' }} strokeWidth="2.5" strokeLinejoin="round" />
-      <ellipse cx="40" cy="52" rx="4.5" ry="6.5" style={{ fill: 'var(--ink-fixed)' }} />
-      <ellipse cx="60" cy="52" rx="4.5" ry="6.5" style={{ fill: 'var(--ink-fixed)' }} />
-      <circle cx="31" cy="62" r="4.5" style={{ fill: 'var(--mustard)' }} opacity="0.9" />
-      <circle cx="69" cy="62" r="4.5" style={{ fill: 'var(--mustard)' }} opacity="0.9" />
-      <path d="M44 63 Q50 69 56 63" fill="none" style={ink} strokeWidth="3" strokeLinecap="round" />
-    </svg>
   );
 }
 
@@ -507,7 +454,7 @@ function PaperBits({ t, fmt }: { t: T; fmt: (n: number) => string }) {
     <div className="g-bits">
       <Dateline
         label={t('ds.dl.label')}
-        items={[t('ds.dl.season'), t('ds.dl.left', { n: 12 }), t('ds.dl.pool', { n: fmt(84200) })]}
+        items={[t('ds.dl.open'), t('ds.dl.round'), t('ds.dl.fee', { p: t('ds.pct', { n: 5 }) })]}
       />
       <Rule variant="thin" />
       <Rule variant="double" label={t('ds.rule.today')} />
@@ -521,12 +468,12 @@ function PaperBits({ t, fmt }: { t: T; fmt: (n: number) => string }) {
       </div>
       <div className="g-chips">
         <Chip>{t('ds.chip.private')}</Chip>
-        <Chip tone="pink">{t('ds.chip.fee', { p: t('ds.pct', { n: 2 }) })}</Chip>
-        <Chip tone="teal" icon="trophy">
-          {t('ds.chip.prize')}
+        <Chip tone="pink">{t('ds.chip.fee', { p: t('ds.pct', { n: 5 }) })}</Chip>
+        <Chip tone="teal" icon="ticket">
+          {t('ds.chip.held')}
         </Chip>
         <Chip tone="mustard" icon="flame">
-          {t('ds.chip.mass')}
+          {t('ds.chip.round')}
         </Chip>
       </div>
       <div className="g-chips">
@@ -545,11 +492,10 @@ function PaperBits({ t, fmt }: { t: T; fmt: (n: number) => string }) {
 }
 
 function TabsDemo({ t, fmt }: { t: T; fmt: (n: number) => string }) {
-  const [period, setPeriod] = useState<'season' | 'today' | 'all'>('season');
-  const [nav, setNav] = useState<'play' | 'ranks' | 'pass' | 'profile'>('play');
+  const [period, setPeriod] = useState<'today' | 'all'>('today');
+  const [nav, setNav] = useState<'play' | 'ranks' | 'profile'>('play');
   const text = useMemo(
     () => ({
-      season: t('ds.tab.panel.season', { n: fmt(84200) }),
       today: t('ds.tab.panel.today', { n: fmt(18930) }),
       all: t('ds.tab.panel.all', { n: fmt(402115) }),
     }),
@@ -563,7 +509,6 @@ function TabsDemo({ t, fmt }: { t: T; fmt: (n: number) => string }) {
         value={period}
         onChange={setPeriod}
         items={[
-          { id: 'season', label: t('ds.tab.season') },
           { id: 'today', label: t('ds.tab.today') },
           { id: 'all', label: t('ds.tab.all') },
         ]}
@@ -580,7 +525,6 @@ function TabsDemo({ t, fmt }: { t: T; fmt: (n: number) => string }) {
           items={[
             { id: 'play', label: t('ds.tab.play'), icon: 'ticket' },
             { id: 'ranks', label: t('ds.tab.ranks'), icon: 'trophy' },
-            { id: 'pass', label: t('ds.tab.pass'), icon: 'passport' },
             { id: 'profile', label: t('ds.tab.profile'), icon: 'user' },
           ]}
         />
@@ -639,8 +583,8 @@ function OverlayDemo({ t }: { t: T }) {
       >
         <p className="g-sheet-text">{t('ds.sh.body')}</p>
         <div className="g-sheet-chips">
-          <Chip tone="teal" icon="passport">
-            {t('ds.chip.fee', { p: t('ds.pct', { n: 2 }) })}
+          <Chip tone="teal" icon="ticket">
+            {t('ds.chip.fee', { p: t('ds.pct', { n: 5 }) })}
           </Chip>
           <Chip icon="coin">{t('ds.room.penny')}</Chip>
         </div>

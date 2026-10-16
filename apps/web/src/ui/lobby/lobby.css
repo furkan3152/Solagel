@@ -384,7 +384,7 @@
   font-weight: 500;
 }
 .kl-ticket__perk {
-  /* verbatim sentence case ("Pass: +15% start · …"), not a caps label */
+  /* verbatim sentence case ("Fee 5% of profit only"), not a caps label */
   text-transform: none;
   letter-spacing: 0.01em;
   font-size: 12px;
@@ -418,192 +418,6 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-/* ── Pass card (teal cover stock) ─────────────────────────────────────── */
-.kl-pass {
-  position: relative;
-  display: flex;
-  gap: 14px;
-  padding: 12px;
-  border: 2px solid var(--ink);
-  border-radius: var(--r-card);
-  background: var(--cover);
-  color: var(--on-cover);
-  box-shadow: 4px 4px 0 var(--ink);
-}
-.kl-pass::after {
-  /* foil guilloche over the cover */
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: repeating-radial-gradient(circle at 110% -10%, transparent 0 9px, rgba(255, 252, 244, 0.07) 9px 10px);
-  pointer-events: none;
-}
-.kl-pass__photo {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 82px;
-  height: 96px;
-  border-radius: 8px;
-  background: var(--card);
-  box-shadow: inset 0 0 0 2px var(--ink-fixed);
-}
-.kb[data-theme='night'] .kl-pass__photo {
-  background: #fffcf4;
-}
-.kl-pass__text {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-}
-.kl-pass__title {
-  font-size: 25px;
-  font-weight: 800;
-  font-stretch: 88%;
-  line-height: 0.95;
-  letter-spacing: -0.02em;
-}
-.kl-pass__no {
-  font-size: var(--t-label);
-  color: #ddf6f4;
-}
-.kl-pass__chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  margin-top: 2px;
-}
-.kl-pass__chips .kb-chip {
-  min-height: 24px;
-  padding: 2px 6px;
-  font-size: var(--t-label);
-}
-.kl-pass__seal {
-  position: absolute;
-  right: -12px;
-  top: -16px;
-  z-index: 1;
-  animation: kl-seal 3.6s ease-in-out infinite;
-}
-.kl-pass__seal .kb-stamp--round {
-  width: 62px;
-  height: 62px;
-  color: var(--mustard-text);
-  background: var(--card);
-  mix-blend-mode: normal;
-}
-@keyframes kl-seal {
-  0%,
-  86%,
-  100% {
-    transform: scale(1);
-  }
-  90% {
-    transform: scale(1.1);
-  }
-}
-.kl-pass.is-large {
-  padding: 16px;
-}
-.kl-pass.is-large .kl-pass__photo {
-  width: 110px;
-  height: 128px;
-}
-.kl-pass.is-large .kl-pass__title {
-  font-size: 30px;
-}
-
-/* "Apply for a Pass" */
-.kl-apply {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  width: 100%;
-  padding: 14px;
-  border: 2px dashed var(--ink);
-  border-radius: var(--r-card);
-  background: var(--card);
-  color: var(--ink);
-  text-align: left;
-  cursor: pointer;
-  transition:
-    transform var(--dur-micro) var(--ease-spring),
-    box-shadow var(--dur-micro) var(--ease-spring);
-}
-.kl-apply.is-static {
-  cursor: default;
-  border-style: solid;
-}
-.kl-apply:not(.is-static):hover {
-  transform: translate(-1px, -1px);
-  box-shadow: 4px 4px 0 var(--teal);
-}
-.kl-apply:not(.is-static):active {
-  transform: translate(1px, 1px);
-  box-shadow: none;
-}
-.kl-apply__icon {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 52px;
-  height: 60px;
-  border-radius: 6px;
-  background: var(--cover);
-  color: var(--on-cover);
-  transform: rotate(-4deg);
-}
-.kl-apply__text {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-  flex: 1;
-}
-.kl-apply__title {
-  font-size: 21px;
-  font-weight: 800;
-  font-stretch: 88%;
-  line-height: 1;
-  letter-spacing: -0.02em;
-}
-.kl-apply__body {
-  font-size: var(--t-small);
-  line-height: 1.35;
-  color: var(--ink-2);
-}
-.kl-apply__supply {
-  font-size: var(--t-label);
-  color: var(--teal-ink);
-}
-.kl-apply__go {
-  flex: none;
-  color: var(--pink-text);
-}
-
-/* Pass desk (phone tab) */
-.kl-perks {
-  display: flex;
-  flex-direction: column;
-  border-top: 2px solid var(--ink);
-}
-.kl-perks li {
-  display: flex;
-  gap: 12px;
-  padding: 11px 0;
-  border-bottom: 1px solid var(--line);
-  font-size: var(--t-body);
-  line-height: 1.35;
-}
-.kl-perks__n {
-  flex: none;
-  padding-top: 3px;
-  font-size: var(--t-label);
-  color: var(--pink-text);
 }
 
 /* ── R10: payout waiting slip ─────────────────────────────────────────── */
@@ -709,67 +523,6 @@
       9px 0 0 var(--d-off),
       18px 0 0 currentColor;
   }
-}
-
-/* ── season standings ─────────────────────────────────────────────────── */
-.kl-season {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.kl-season__head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-  padding-bottom: 8px;
-  border-bottom: 2px solid var(--ink);
-}
-.kl-season__pool {
-  font-size: var(--t-label);
-  color: var(--ink-2);
-  white-space: nowrap;
-}
-.kl-standings {
-  width: 100%;
-  border-collapse: collapse;
-}
-.kl-standings td {
-  padding: 8px 0;
-  border-bottom: 1px solid var(--line-soft);
-  vertical-align: baseline;
-}
-.kl-standings__rank {
-  width: 34px;
-  padding-right: 8px !important;
-  font-size: var(--t-label);
-  color: var(--ink-2);
-}
-.kl-standings tr:nth-child(-n + 3) .kl-standings__rank {
-  color: var(--pink-text);
-}
-.kl-standings__name {
-  font-weight: 700;
-  max-width: 0;
-  width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  padding-right: 8px !important;
-}
-.kl-standings__pts,
-.kl-standings__share {
-  font-size: var(--t-label);
-  white-space: nowrap;
-  text-align: right;
-}
-.kl-standings__share {
-  width: 52px;
-  padding-left: 10px !important;
-  color: var(--teal-ink);
-}
-.kl-standings tr.is-me td {
-  background: color-mix(in srgb, var(--pink) 14%, transparent);
 }
 
 /* ── profile card ─────────────────────────────────────────────────────── */
@@ -1082,17 +835,6 @@
   font-size: var(--t-label);
   color: var(--ink-2);
 }
-.tf-ticket__pass {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  align-self: flex-start;
-  padding: 2px 7px;
-  border-radius: 4px;
-  background: var(--cover);
-  color: var(--on-cover);
-  font-size: var(--t-label);
-}
 .tf-ticket__stamp {
   position: absolute;
   right: 14px;
@@ -1113,9 +855,6 @@
 .tf-ticket__sym {
   font-size: var(--t-label);
   color: var(--ink-2);
-}
-.tf-ticket__passmark {
-  margin-top: 4px;
 }
 
 /* the lines of what is signed */
@@ -1158,139 +897,6 @@
   font-size: var(--t-small);
   line-height: 1.45;
   color: var(--ink-2);
-}
-
-/* Pass choice */
-.tf-pass {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px 14px;
-  border: 1.5px solid var(--line);
-  border-radius: 12px;
-  transition:
-    border-color var(--dur-micro) linear,
-    background-color var(--dur-micro) linear;
-}
-.tf-pass.is-on {
-  border-color: var(--teal-ink);
-  background: color-mix(in srgb, var(--teal) 8%, transparent);
-}
-.tf-pass__head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--teal-ink);
-}
-.tf-pass__title {
-  font-size: 17px;
-  font-weight: 800;
-  color: var(--ink);
-}
-.tf-pass__note {
-  font-size: var(--t-small);
-  line-height: 1.4;
-  color: var(--ink-2);
-}
-.tf-switch {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 44px;
-  padding: 0;
-  border: 0;
-  background: none;
-  cursor: pointer;
-  text-align: left;
-}
-.tf-switch:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-.tf-switch__track {
-  position: relative;
-  flex: none;
-  width: 48px;
-  height: 28px;
-  border: 2px solid var(--ink);
-  border-radius: 14px;
-  background: var(--card);
-  transition: background-color var(--dur-micro) linear;
-}
-.tf-switch__knob {
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--ink);
-  transition:
-    transform 220ms var(--ease-spring),
-    background-color var(--dur-micro) linear;
-}
-.tf-switch[aria-checked='true'] .tf-switch__track {
-  background: var(--teal);
-}
-.tf-switch[aria-checked='true'] .tf-switch__knob {
-  transform: translateX(20px);
-  background: var(--ink-fixed);
-  box-shadow: inset 0 0 0 4px #fffcf4;
-}
-.tf-switch:focus-visible {
-  outline: none;
-}
-.tf-switch:focus-visible .tf-switch__track {
-  outline: 3px solid var(--focus);
-  outline-offset: 2px;
-}
-.tf-pick {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-.tf-pick legend {
-  margin-bottom: 6px;
-  font-size: var(--t-label);
-  color: var(--ink-2);
-}
-.tf-pick__item {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 48px;
-  padding: 4px 12px 4px 6px;
-  border: 2px solid var(--line);
-  border-radius: 10px;
-  background: var(--card);
-  cursor: pointer;
-  font-size: var(--t-label);
-}
-.tf-pick__item input {
-  position: absolute;
-  opacity: 0;
-  inset: 0;
-  margin: 0;
-  cursor: inherit;
-}
-.tf-pick__item.is-on {
-  border-color: var(--ink);
-  box-shadow: 3px 3px 0 var(--teal);
-}
-.tf-pick__item:has(input:focus-visible) {
-  outline: 3px solid var(--focus);
-  outline-offset: 2px;
-}
-.tf-pick__item.is-busy {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-.tf-pick__busy {
-  color: var(--pink-text);
 }
 
 /* the transaction, step by step */
@@ -1557,9 +1163,6 @@
   border-color: var(--ink);
   box-shadow: 3px 3px 0 var(--pink);
 }
-.pf-look.is-pass.is-on {
-  box-shadow: 3px 3px 0 var(--teal);
-}
 .pf-look__name {
   font-size: 12.5px;
   font-weight: 600;
@@ -1621,7 +1224,6 @@
   .kb-screen[data-entrance='boot'] .kl-wordmark__ink,
   .kb-screen[data-entrance='boot'] .kl-wordmark__pink,
   .kl-wordmark__coin,
-  .kl-pass__seal,
   .kl-live-dot,
   .kl-live__rec,
   .kl-dots {
@@ -1776,26 +1378,6 @@
 }
 .kl-section {
   padding: 20px 0 8px;
-}
-.kl-pass.is-link {
-  width: 100%;
-  text-align: left;
-  font: inherit;
-  cursor: pointer;
-  transition:
-    transform var(--dur-micro) var(--ease-spring),
-    box-shadow var(--dur-micro) var(--ease-spring);
-}
-.kl-pass.is-link:hover {
-  transform: translate(-1px, -1px);
-  box-shadow: 5px 5px 0 var(--ink);
-}
-.kl-pass.is-link:active {
-  transform: translate(2px, 2px);
-  box-shadow: 2px 2px 0 var(--ink);
-}
-.kl-season__more {
-  align-self: flex-end;
 }
 
 .pg-head {

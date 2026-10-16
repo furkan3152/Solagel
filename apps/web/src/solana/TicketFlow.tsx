@@ -1,5 +1,5 @@
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
-import { TOKEN_2022_PROGRAM_ID, pdas, type OwnedPass } from '@slana/sdk';
+import { TOKEN_2022_PROGRAM_ID, isTokenSet, pdas } from '@slana/sdk';
 import { arenaMeta, formatToken, isBasicSkin, sanitizeName, truncateUtf8, utf8Length } from '@slana/shared';
 import { motion } from 'motion/react';
 import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react';
@@ -8,9 +8,8 @@ import { engine } from '../game/instance';
 import { announce, sound } from '../audio';
 import { useT } from '../i18n';
 import { toast, updateSettings, useUi } from '../store';
-import { CoinPortrait } from '../ui/game/CoinPortrait';
 import { ticketName, useTokenText } from '../ui/lobby/useLobby';
-import { freePasses, refreshChain, useChainData, usePassPower, useSlanaClient } from './chain';
+import { refreshChain, useChainData, useSlanaClient } from './chain';
 import { loadDevFake } from './devFakeLoader';
 import { explorerTx } from './links';
 import {
@@ -41,15 +40,13 @@ const SOL_DECIMALS = 9;
 const TEAR_AT_MS = 560;
 const PLAY_AT_MS = 1_650;
 
-const passNo = (n: number) => String(n).padStart(4, '0');
-const RENT_SIZES = [ACCOUNT_BYTES.session, ACCOUNT_BYTES.passLock, ACCOUNT_BYTES.profile, ACCOUNT_BYTES.ata, ACCOUNT_BYTES.ata2022];
+const RENT_SIZES = [ACCOUNT_BYTES.session, ACCOUNT_BYTES.profile, ACCOUNT_BYTES.ata, ACCOUNT_BYTES.ata2022];
 
 /**
- * Cutting a ticket (spec §7.2.2): a confirm sheet that shows exactly what is
- * signed (fee, fee policy, Pass, deposit, SOL moved, every instruction), one
- * wallet signature for `[createAta?] + [registerPlayer?] + joinArena|joinArenaWithPass`,
- * polling confirmation, then the stamp lands, the stub tears off and the player
- * enters the room. The same sheet collects a finalized game's payout (R24, any
+ * Cutting a ticket: a confirm sheet that shows exactly what is signed (fee,
+ * fee policy, deposit, SOL moved, every instruction), one wallet signature for
+ * `[createAta?] + [registerPlayer?] + joinArena`, polling confirmation, then
+ * the stamp lands, the stub tears off and the player enters the room. The same sheet collects a finalized game's payout (R24, any
  * time) and refunds an unsettled ticket after 24 h, each in one transaction that
  * first creates the player's token account idempotently (player-paid).
  *
@@ -70,13 +67,11 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
   const tok = useTokenText();
   const reduced = useReducedMotion();
   const nameId = useId();
-  const power = usePassPower();
+  const serverBps = useUi((s) => s.chain?.feeBps ?? null);
 
   const [phase, setPhase] = useState<Phase>('review');
   const [error, setError] = useState<string | null>(null);
   const [signature, setSignature] = useState<string | null>(null);
-  const [usePass, setUsePass] = useState(false);
-  const [passAsset, setPassAsset] = useState<string | null>(null);
   const [name, setName] = useState(settings.name);
   /** What was on the sheet when the player pressed confirm: shown until the flow ends, never re-read from the chain. */
   const [frozen, setFrozen] = useState<Review | null>(null);
@@ -89,11 +84,6 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
 
   const arenaId = ticket?.arenaId ?? null;
   const session = arenaId !== null ? (data.sessions[arenaId] ?? null) : null;
-  const free = useMemo(() => freePasses(data), [data]);
-  const owned = data.passes;
-  const passRequired = ticket?.requiresPass === true;
-  const passOn = passRequired || usePass;
-  const chosenPass = passOn ? (free.find((p) => p.asset === passAsset) ?? free[0] ?? null) : null;
 
   // fresh state every time the sheet opens
   useEffect(() => {
@@ -102,8 +92,6 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
     setPhase('review');
     setError(null);
     setSignature(null);
-    setUsePass(false);
-    setPassAsset(free.find((p) => p.asset === settings.passSkin)?.asset ?? free[0]?.asset ?? null);
     setName(settings.name);
     setFrozen(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -135,11 +123,13 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
 
   const room = ticketName(ticket, t('lo.practice'));
   const owner = wallet.publicKey?.toBase58() ?? null;
-  const config = data.config;
+  // the game token must be set for any ticket transaction (the lobby lists none before)
+  const config = data.config && isTokenSet(data.config) ? data.config : null;
+  const token = config ? { tokenMint: config.tokenMint!, tokenProgram: config.tokenProgram! } : null;
   const register = data.profile ? null : { name: truncateUtf8(sanitizeName(name, ''), 16), skin: isBasicSkin(settings.skin) ? settings.skin : 0 };
   const nameOk = !register || (register.name.length > 0 && utf8Length(register.name) <= 16);
-  const steps: TicketStep[] = ticketSteps({ ataExists: data.ataExists, register, passAsset: chosenPass?.asset ?? null });
-  const bps = feeBps(config, passOn);
+  const steps: TicketStep[] = ticketSteps({ ataExists: data.ataExists, register });
+  const bps = feeBps(serverBps, config);
   const fee = mode === 'refund' ? (session?.entryFee ?? ticket.entryFee) : ticket.entryFee;
   const deposit = mode === 'refund' ? (session?.settleFee ?? 0) : (config?.settleFeeLamports ?? 0);
   const token2022 = config?.tokenProgram === TOKEN_2022_PROGRAM_ID.toBase58();
@@ -158,7 +148,7 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
   const busy = phase === 'preparing' || phase === 'signing' || phase === 'confirming' || phase === 'stamped';
   const sol = (lamports: number) => formatToken(lamports, SOL_DECIMALS, { maxFrac: 6 });
   const owed = session?.finalized ? session.owed : 0n;
-  const live: Review = { steps, fee, bps, deposit, balance: data.tokenBalance, register, pass: chosenPass, owed, sol: solCost, close: closeCost, sessionId: session?.id ?? null };
+  const live: Review = { steps, fee, bps, deposit, balance: data.tokenBalance, register, owed, sol: solCost, close: closeCost, sessionId: session?.id ?? null };
   const v = frozen ?? live;
   const lowSol = mode === 'buy' && data.balance !== null && data.balance < v.sol.total;
   // the transaction landed after all (e.g. confirmation timed out): never offer to pay twice
@@ -179,7 +169,7 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
     if (sig) setSignature(sig);
   };
 
-  const enterRoom = (sig: string, pass: string | null) => {
+  const enterRoom = (sig: string) => {
     setPhase('stamped');
     if (!reduced) later(290, () => sound.stamp('valid'));
     later(reduced ? 300 : 700, () => announce('punched'));
@@ -190,8 +180,7 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
     later(reduced ? 700 : PLAY_AT_MS, () => {
       // the paper opens onto the room from the VALID stamp
       markTransitionOrigin(document.querySelector('.tf-ticket__stamp') ?? document.querySelector('.tf-ticket'));
-      // (fake chain: its Pass ids are not addresses the server can verify; it applies the ticket's Pass itself)
-      engine()?.play(`arena:${arenaId}`, { pass: data.fake ? null : (pass ?? undefined), awaitTicket: true });
+      engine()?.play(`arena:${arenaId}`, { awaitTicket: true });
       onClose();
     });
   };
@@ -200,48 +189,46 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
     sound.punch();
     updateSettings({ lastArena: arenaId });
     markTransitionOrigin(document.querySelector('.tf-ticket'));
-    engine()?.play(`arena:${arenaId}`, session?.hasPass && session.passAsset && !data.fake ? { pass: session.passAsset } : {});
+    engine()?.play(`arena:${arenaId}`);
     onClose();
   };
 
   const buy = async () => {
     if (inFlight.current) return;
-    if (!owner || !config || !nameOk || (passOn && !chosenPass)) return;
+    if (!owner || !config || !token || !nameOk) return;
     inFlight.current = true;
     setPhase('preparing');
     sound.click();
     const review = live;
     setFrozen(review);
-    const pass = review.pass?.asset ?? null;
     if (data.fake) {
       const dev = await loadDevFake();
       if (!dev) return fail(t('tf.err.NetworkError'));
-      const res = await dev.fakeSendTicket(owner, arenaId, review.fee, review.steps, review.register, pass, onPhase);
+      const res = await dev.fakeSendTicket(owner, arenaId, review.fee, review.steps, review.register, review.bps, onPhase);
       if (!res.ok) return fail(txErrorText({ code: null, name: res.name, message: res.name }));
       setSignature(res.signature);
-      return enterRoom(res.signature, pass);
+      return enterRoom(res.signature);
     }
     if (!client) return fail(t('tf.err.NetworkError'));
     // R20: the server keeps this arena closed (vault short of its journal): never sell a ticket
     if (useUi.getState().blockedArenas.includes(arenaId)) return fail(t('tf.err.Maintenance'));
     try {
-      // re-read the arena and the config: the price, Pass rule, fee rate (fixed into the ticket at join)
+      // re-read the arena and the config: the price, fee rate (fixed into the ticket at join)
       // and deposit signed must be the ones shown
       const [fresh, freshConfig] = await Promise.all([client.fetchArena(arenaId), client.fetchConfig()]);
-      if (!fresh || !fresh.enabled || fresh.entryFee !== review.fee || fresh.requiresPass !== ticket.requiresPass) {
+      if (!fresh || !fresh.enabled || fresh.entryFee !== review.fee) {
         return fail(t('tf.err.PriceChanged'));
       }
       if (useUi.getState().blockedArenas.includes(arenaId)) return fail(t('tf.err.Maintenance'));
-      if (!freshConfig || feeBps(freshConfig, pass !== null) !== review.bps || freshConfig.settleFeeLamports !== review.deposit) {
+      if (!freshConfig || freshConfig.feeBps !== review.bps || freshConfig.settleFeeLamports !== review.deposit) {
         return fail(t('tf.err.FeeChanged'));
       }
       const { ixs } = await buildTicketTx(client.ix, {
         player: owner,
         arenaId,
-        token: config,
+        token,
         ataExists: review.steps.includes('ata') ? false : true,
         register: review.register,
-        passAsset: pass,
         // the values on the frozen review: the program refuses the join if any is higher (M3)
         maxFeeBps: review.bps,
         maxEntryFee: review.fee,
@@ -251,12 +238,11 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
         onPhase,
         computeUnits: TICKET_COMPUTE_UNITS,
         describe: {
-          passLock: pass ? pdas.passLock(pass, client.programId) : null,
           session: client.programId ? pdas.session(pdas.arena(arenaId, client.programId), owner, client.programId) : null,
         },
       });
       if (!res.ok) return fail(txErrorText(res.error));
-      enterRoom(res.signature, pass);
+      enterRoom(res.signature);
     } catch (err) {
       fail((err as Error).message);
     }
@@ -265,7 +251,7 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
   /** Collect a finalized payout (R24) or refund an unsettled ticket: `[createAtaIdempotent] + refundSession`. */
   const closeTx = async (kind: 'refund' | 'collect') => {
     if (inFlight.current) return;
-    if (!owner || !config || !session) return;
+    if (!owner || !config || !token || !session) return;
     inFlight.current = true;
     setPhase('preparing');
     sound.click();
@@ -296,9 +282,8 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
       const { ixs } = await buildCloseTx(client.ix, {
         player: owner,
         arenaId,
-        token: config,
+        token,
         finalized: kind === 'collect',
-        passAsset: fresh.passAsset,
       });
       const res = await sendTx(client, connection, wallet, ixs, { onPhase, computeUnits: CLOSE_COMPUTE_UNITS });
       if (!res.ok) return fail(txErrorText(res.error));
@@ -312,10 +297,10 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
   const confirm = mode === 'buy' ? buy : () => closeTx(mode);
   // the price shown must be the price signed: on a real chain the arena account itself must agree (re-read again at confirm)
   const chainArena = data.arenas.find((a) => a.id === arenaId);
-  const priceOk = data.fake || (chainArena !== undefined && chainArena.entryFee === ticket.entryFee && chainArena.requiresPass === ticket.requiresPass);
+  const priceOk = !ticket.soon && (data.fake || (chainArena !== undefined && chainArena.entryFee === ticket.entryFee));
   const maintenance = mode === 'buy' && blockedArenas.includes(arenaId);
   const canConfirm =
-    !!owner && !!config && !busy && !maintenance && (mode === 'buy' ? priceOk && nameOk && (!passOn || !!chosenPass) : session !== null && (mode !== 'collect' || !!session.finalized));
+    !!owner && !!config && !busy && !maintenance && (mode === 'buy' ? priceOk && nameOk : session !== null && (mode !== 'collect' || !!session.finalized));
   const confirmLabel =
     mode === 'buy'
       ? t('tf.confirm', { fee: tok.exact(fee), sym: tok.symbol })
@@ -383,7 +368,7 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
     >
       <div className="tf-body">
         {mode !== 'collect' && (
-          <TicketPreview ticket={ticket} room={room} fee={tok.fee(v.fee)} sym={tok.symbol} pass={v.pass} stamped={phase === 'stamped'} reduced={reduced} />
+          <TicketPreview ticket={ticket} room={room} fee={tok.fee(v.fee)} sym={tok.symbol} stamped={phase === 'stamped'} reduced={reduced} />
         )}
 
         {landed ? (
@@ -422,12 +407,6 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
           <dl className="tf-lines">
             <Line label={t('tf.entry')} value={`${tok.exact(v.fee)} ${tok.symbol}`} strong />
             {mode === 'buy' && <Line label={t('tf.fee')} value={t('tf.feeV', { n: bpsPercent(v.bps) })} />}
-            {mode === 'buy' && v.pass && (
-              <Line
-                label={t('tf.passLine')}
-                value={t('tf.passLineV', { n: passNo(v.pass.number), fee: bpsPercent(v.bps), start: power.startPct })}
-              />
-            )}
             <Line label={t('tf.deposit')} value={t('tf.depositV', { sol: sol(v.deposit) })} />
             {mode === 'buy' && <Line label={t('tf.sol')} value={t('tf.solV', { total: sol(v.sol.total), back: sol(v.sol.refundable) })} />}
             {mode === 'buy' && v.balance !== null && (
@@ -443,20 +422,6 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
         )}
         {maintenance && <p className="tf-warn">{t('tf.err.Maintenance')}</p>}
         {lowSol && !busy && data.balance !== null && <p className="tf-warn">{t('tf.lowSol', { sol: sol(data.balance) })}</p>}
-
-        {mode === 'buy' && (passRequired || owned.length > 0) && (
-          <PassChoice
-            required={passRequired}
-            on={passOn}
-            setOn={setUsePass}
-            owned={owned}
-            free={free}
-            chosen={chosenPass}
-            choose={setPassAsset}
-            disabled={busy}
-            feeText={bpsPercent(feeBps(config, true))}
-          />
-        )}
 
         {mode === 'buy' && v.register && (
           <Field
@@ -488,9 +453,7 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
                       ? t('tf.step.collect', { room })
                     : s === 'register'
                       ? t('tf.step.register', { name: v.register?.name || '—' })
-                      : s === 'joinWithPass'
-                        ? t('tf.step.joinWithPass', { n: passNo(v.pass?.number ?? 0), room })
-                        : s === 'refund'
+                      : s === 'refund'
                           ? t('tf.step.refund', { room })
                           : t('tf.step.join', { room })}
                 </span>
@@ -518,7 +481,6 @@ interface Review {
   deposit: number;
   balance: bigint | null;
   register: { name: string; skin: number } | null;
-  pass: OwnedPass | null;
   /** Finalized session payout to collect (raw units). */
   owed: bigint;
   /** SOL of the collect / refund transaction. */
@@ -536,78 +498,12 @@ function Line({ label, value, strong = false }: { label: string; value: string; 
   );
 }
 
-function PassChoice({
-  required,
-  on,
-  setOn,
-  owned,
-  free,
-  chosen,
-  choose,
-  disabled,
-  feeText,
-}: {
-  required: boolean;
-  on: boolean;
-  setOn: (v: boolean) => void;
-  owned: OwnedPass[];
-  free: OwnedPass[];
-  chosen: OwnedPass | null;
-  choose: (asset: string) => void;
-  disabled: boolean;
-  feeText: string;
-}) {
-  const t = useT();
-  const power = usePassPower();
-  const skin = useUi((s) => s.settings.skin);
-  const groupId = useId();
-  const allBusy = owned.length > 0 && free.length === 0;
-  return (
-    <section className={`tf-pass${on ? ' is-on' : ''}`}>
-      {required ? (
-        <div className="tf-pass__head">
-          <Icon name="passport" size={20} />
-          <span className="tf-pass__title">{t('tf.pass.required')}</span>
-        </div>
-      ) : (
-        <button type="button" role="switch" aria-checked={on} className="tf-switch" onClick={() => setOn(!on)} disabled={disabled || free.length === 0}>
-          <span className="tf-switch__track" aria-hidden="true">
-            <span className="tf-switch__knob" />
-          </span>
-          <span className="tf-pass__title">{t('tf.pass.toggle')}</span>
-        </button>
-      )}
-      <p className="tf-pass__note">
-        {required ? t('tf.pass.requiredNote') : t('tf.pass.toggleNote', { fee: feeText, start: power.startPct })}
-      </p>
-      {allBusy && <p className="tf-warn">{t('tf.pass.allBusy')}</p>}
-      {on && owned.length > 1 && (
-        <fieldset className="tf-pick" disabled={disabled}>
-          <legend className="mono">{t('tf.pass.pick')}</legend>
-          {owned.map((p) => {
-            const busy = !free.includes(p);
-            return (
-              <label key={p.asset} className={`tf-pick__item${chosen?.asset === p.asset ? ' is-on' : ''}${busy ? ' is-busy' : ''}`}>
-                <input type="radio" name={groupId} value={p.asset} checked={chosen?.asset === p.asset} disabled={busy} onChange={() => choose(p.asset)} />
-                <CoinPortrait skin={skin} pass={p.number} size={36} still seed={p.number} />
-                <span className="mono">{t('tf.pass.no', { n: passNo(p.number) })}</span>
-                {busy && <span className="tf-pick__busy mono">{t('tf.pass.busy')}</span>}
-              </label>
-            );
-          })}
-        </fieldset>
-      )}
-    </section>
-  );
-}
-
 /** The ticket itself: stamped "VALID" on confirmation, then its stub tears off. */
 function TicketPreview({
   ticket,
   room,
   fee,
   sym,
-  pass,
   stamped,
   reduced,
 }: {
@@ -615,7 +511,6 @@ function TicketPreview({
   room: string;
   fee: string;
   sym: string;
-  pass: OwnedPass | null;
   stamped: boolean;
   reduced: boolean;
 }) {
@@ -653,11 +548,6 @@ function TicketPreview({
           <span className="tf-ticket__serial mono">
             {t('tf.serial', { n: serial })} · {date} {time}
           </span>
-          {pass && (
-            <span className="tf-ticket__pass mono">
-              <Icon name="passport" size={14} /> {t('tf.pass.no', { n: passNo(pass.number) })}
-            </span>
-          )}
           {stamped && (
             <span className="tf-ticket__stamp">
               <Stamp text={t('tf.stamped')} tone="teal" size="lg" rotate={-9} animateIn />
@@ -676,11 +566,6 @@ function TicketPreview({
         <div className="tf-ticket__stub">
           <span className="tf-ticket__fee">{fee}</span>
           <span className="tf-ticket__sym mono">{sym}</span>
-          {ticket.requiresPass && (
-            <span className="tf-ticket__passmark">
-              <Stamp text={t('lo.passStamp')} tone="pink" size="sm" rotate={-11} />
-            </span>
-          )}
         </div>
       </motion.div>
     </div>
