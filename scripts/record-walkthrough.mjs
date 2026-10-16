@@ -376,7 +376,7 @@ if (!QUICK) {
   await click('.wl-sheet .kb-sheet__head .kb-iconbtn');
   await wait(700);
 }
-await hover('.kl-pass', { fx: 0.45, pause: QUICK ? 500 : 1800 }).catch(() => {});
+await hover('.kl-ticket', { fx: 0.45, pause: QUICK ? 500 : 1800 }).catch(() => {});
 await snap('2-lobby');
 
 // 3 · Free practice
@@ -522,85 +522,43 @@ if (QUICK) {
 }
 
 if (!QUICK) {
-  // 7 · Pass
-  await chapter('7 · Slana Pass');
-  await click('.kl-sections__item:has-text("Pass")');
-  await wait(1500);
-  await snap('7-pass');
-  const sealed = await page.locator('.pp-card.is-sealed .kb-btn--pink').count();
-  if (sealed) {
-    await hover('.pp-card', { fx: 0.4, fy: 0.4, pause: 900 });
-    await click('.pp-card.is-sealed .kb-btn--pink', { before: 600 });
-    await wait(3800);
-    await snap('7-revealed');
-  } else {
-    const mint = await page.locator('.pp-mint .kb-btn').count();
-    if (mint) {
-      await click('.pp-mint .kb-btn');
-      await page.waitForSelector('.mt-sheet');
-      await wait(1500);
-      await click('.mt-sheet .kb-btn--pink');
-      await page.waitForSelector('.rv-env.is-open', { timeout: 8000 }).catch(() => {});
-      await wait(4000);
-      await click('.mt-sheet .kb-btn--pink');
-      await wait(1500);
-    }
-  }
-  await hover('.pp-card', { fx: 0.7, fy: 0.5, pause: 800 }).catch(() => {});
-  await wheel(500, 60, 60);
-  await wait(1800);
-  await wheel(500, 60, 60);
-  await wait(1500);
-  await snap('7-pass-scrolled');
-
-  // 8 · Standings
-  await chapter('8 · Standings');
+  // 7 · Standings
+  await chapter('7 · Standings');
   await wheel(-1400, 120, 30);
   await click('.kl-sections__item:has-text("Ranks")');
   await wait(1600);
-  await snap('8-ranks');
+  await snap('7-ranks');
   const rows = page.locator('.nw-table tr, .nw-table li, .nw-row');
   const nrows = Math.min(4, await rows.count());
   for (let i = 1; i < nrows; i++) await hover(rows.nth(i), { fx: 0.3, pause: 450 }).catch(() => {});
-  const claim = await page.locator('.sc-cheque .kb-btn').count();
-  if (claim) {
-    await click('.sc-cheque .kb-btn');
-    await page.waitForSelector('.sc-sheet');
-    await wait(1200);
-    await click('.sc-sheet .kb-btn--pink');
-    await page.waitForSelector('.sc-sheet .sc-cheque__stamp', { timeout: 8000 }).catch(() => {});
-    await wait(2000);
-    await page.keyboard.press('Escape');
-  }
+  // Today / All time (the server's off-chain standings; no prizes)
   const tabs = page.locator('.nw-tabs [role="tab"]');
-  if ((await tabs.count()) >= 3) {
+  if ((await tabs.count()) >= 2) {
     await click(tabs.nth(1));
     await wait(1700);
-    await snap('8-today');
-    await click(tabs.nth(2));
-    await wait(1700);
+    await snap('7-alltime');
     await click(tabs.nth(0));
     await wait(900);
   }
   await wheel(400, 60, 50);
   await wait(1500);
 
-  // 9 · Profile
-  await chapter('9 · Profile');
+  // 8 · Profile
+  await chapter('8 · Profile');
   await wheel(-1200, 120, 30);
   await click('.kl-sections__item:has-text("Profile")');
   await wait(1800);
-  await snap('9-profile');
+  await snap('8-profile');
   await hover('.pf-card', { fx: 0.5, fy: 0.4, pause: 800 }).catch(() => {});
   await wheel(450, 60, 60);
   await wait(1800);
   await wheel(-450, 90, 30);
 
-  // 10 · Guide
-  await chapter('10 · Guide');
+  // 9 · Guide
+  await chapter('9 · Guide');
   await click('.kl-sections__item:has-text("Guide")');
   await wait(1800);
-  await snap('10-guide');
+  await snap('9-guide');
   await moveTo(700, 450);
   for (let i = 0; i < 6; i++) { await wheel(260, 65, 70); await wait(900); }
   // scroll the fee-example receipts into view, by wheel
@@ -611,12 +569,12 @@ if (!QUICK) {
     await wait(250);
   }
   await wait(2600);
-  await snap('10-fees');
+  await snap('9-fees');
   await wheel(380, 65, 70);
   await wait(2400);
 }
 
-// 11 · back to the lobby, end card
+// 10 · back to the lobby, end card
 if (!QUICK) {
   await wheel(-6000, 400, 20);
   await click('.kl-sections__item:has-text("Tickets")');
@@ -627,7 +585,7 @@ await wait(800);
 chapters.push({ label: 'End · Slana', at: Date.now() / 1000 });
 await ui(() => window.__caption?.('Slana', 0, true));
 await wait(2800);
-await snap('11-end');
+await snap('10-end');
 
 await cdp.send('Page.stopScreencast');
 const end = Date.now() / 1000;

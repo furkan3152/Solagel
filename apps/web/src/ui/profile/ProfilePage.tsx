@@ -2,13 +2,12 @@ import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { BASIC_SKINS, MAX_NAME_LENGTH, isBasicSkin, sanitizeName, shortAddress, utf8Length } from '@slana/shared';
 import { useEffect, useId, useRef, useState } from 'react';
 import { motion } from 'motion/react';
-import { Field, Icon, InkButton, Stamp, staggerIn, useReducedMotion } from '../../design';
+import { Field, Icon, InkButton, staggerIn, useReducedMotion } from '../../design';
 import { levelProgress } from '../../game/engine';
 import { sound } from '../../audio';
 import { useT } from '../../i18n';
-import { refreshChain, useChainData, usePassStatus, useSlanaClient } from '../../solana/chain';
+import { refreshChain, useChainData, useSlanaClient } from '../../solana/chain';
 import { loadDevFake } from '../../solana/devFakeLoader';
-import { passNo, passView } from '../../solana/pass';
 import { signInWithWallet } from '../../solana/siws';
 import { sendWalletTx } from '../../solana/tx';
 import { openModal, toast, updateSettings, useUi } from '../../store';
@@ -24,7 +23,7 @@ const MAX_NAME_BYTES = 16;
 /**
  * Profile (spec §7.2.8): the member card (coin, name, level and XP), the
  * name (saved on chain with `updateProfile` when an on-chain profile
- * exists), the coin you wear (basic coins and your Passes) and the record;
+ * exists), the coin you wear and the record;
  * settings sit next to it.
  */
 export function ProfilePage() {
@@ -57,14 +56,12 @@ function MemberCard() {
   const settings = useUi((s) => s.settings);
   const auth = useUi((s) => s.auth);
   const profile = useChainData((s) => s.profile);
-  const passes = useChainData((s) => s.passes);
   const wallet = useWallet();
   const owner = wallet.publicKey?.toBase58() ?? null;
   const nf = new Intl.NumberFormat('en-US');
   const name = profile?.name ?? auth?.profile?.name ?? (settings.name || t('pf.guest'));
   const xp = profile?.xp ?? auth?.profile?.xp ?? 0;
   const prog = levelProgress(xp);
-  const wearing = passes.find((p) => p.asset === settings.passSkin) ?? null;
   const since = profile?.createdAt
     ? new Date(profile.createdAt * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
     : null;
@@ -75,7 +72,7 @@ function MemberCard() {
       </span>
       <div className="pf-card__grid">
         <span className="pf-card__photo">
-          <CoinPortrait skin={settings.skin} pass={wearing?.number ?? 0} size={104} expression="proud" seed={11} />
+          <CoinPortrait skin={settings.skin} size={104} expression="proud" seed={11} />
         </span>
         <div className="pf-card__id">
           <h3 id="pf-card-h" className="pf-card__name">
@@ -105,11 +102,6 @@ function MemberCard() {
           )}
         </div>
       </div>
-      {wearing && (
-        <span className="pf-card__pass">
-          <Stamp text={`PASS ${passNo(wearing.number)}`} tone="teal" size="sm" rotate={-8} />
-        </span>
-      )}
     </section>
   );
 }
@@ -121,9 +113,7 @@ function NameAndCoin() {
   const { connection } = useConnection();
   const client = useSlanaClient();
   const profile = useChainData((s) => s.profile);
-  const passes = useChainData((s) => s.passes);
   const fake = useChainData((s) => s.fake);
-  const status = usePassStatus();
   const groupId = useId();
   const [name, setName] = useState(profile?.name ?? settings.name);
   const [busy, setBusy] = useState(false);
@@ -208,7 +198,7 @@ function NameAndCoin() {
         <legend className="mono pf-cap">{t('pf.coin')}</legend>
         <div className="pf-grid">
           {BASIC_SKINS.map((s) => {
-            const on = settings.passSkin === null && skin === s.id;
+            const on = skin === s.id;
             return (
               <label key={s.id} className={`pf-look${on ? ' is-on' : ''}`}>
                 <input
@@ -217,7 +207,7 @@ function NameAndCoin() {
                   checked={on}
                   onChange={() => {
                     sound.click();
-                    updateSettings({ skin: s.id, passSkin: null });
+                    updateSettings({ skin: s.id });
                   }}
                   aria-label={s.name}
                 />
@@ -226,30 +216,8 @@ function NameAndCoin() {
               </label>
             );
           })}
-          {passes.map((p) => {
-            const on = settings.passSkin === p.asset;
-            const sealed = passView(p, status).sealed;
-            return (
-              <label key={p.asset} className={`pf-look is-pass${on ? ' is-on' : ''}`}>
-                <input
-                  type="radio"
-                  name={groupId}
-                  checked={on}
-                  onChange={() => {
-                    sound.click();
-                    updateSettings({ passSkin: p.asset });
-                  }}
-                  aria-label={`Slana Pass ${t('tf.pass.no', { n: passNo(p.number) })}${sealed ? ` (${t('pf.sealedPass')})` : ''}`}
-                />
-                <CoinPortrait skin={skin} pass={p.number} size={52} still={!on} seed={p.number} />
-                <span className="pf-look__name mono">{t('tf.pass.no', { n: passNo(p.number) })}</span>
-              </label>
-            );
-          })}
         </div>
-        <p className="kl-note">
-          {t('pf.coinNote')} {passes.length > 0 ? t('pf.passNote') : t('pf.noPass')}
-        </p>
+        <p className="kl-note">{t('pf.coinNote')}</p>
       </fieldset>
 
       <div className={`pf-save${dirty ? ' is-dirty' : ''}`}>
@@ -268,7 +236,6 @@ function Record() {
   const t = useT();
   const reduced = useReducedMotion();
   const profile = useChainData((s) => s.profile);
-  const currentSeason = useChainData((s) => s.config?.currentSeason ?? null);
   const tok = useTokenText();
   const nf = new Intl.NumberFormat('en-US');
   if (!profile) {
@@ -282,12 +249,11 @@ function Record() {
       </section>
     );
   }
-  const points = currentSeason === null || profile.season === currentSeason ? profile.seasonPoints : 0;
   const stats: [string, string][] = [
     [t('pf.games'), nf.format(profile.gamesPlayed)],
     [t('pf.kills'), nf.format(profile.kills)],
     [t('pf.best'), nf.format(profile.bestScore)],
-    [t('pf.points'), nf.format(points)],
+    [t('pf.totalScore'), nf.format(profile.totalScore)],
     [t('pf.staked'), nf.format(profile.stakeGames)],
     [t('pf.won'), `${tok.fee(profile.totalWon)} ${tok.symbol}`],
   ];

@@ -6,7 +6,7 @@ import { Kb } from '../src/design';
 import { useChainData } from '../src/solana/chain';
 import { fakeConfig } from '../src/solana/devFake';
 import { TicketFlow } from '../src/solana/TicketFlow';
-import { PASS_POWER, type TicketModel } from '../src/solana/ticket';
+import type { TicketModel } from '../src/solana/ticket';
 import { useUi } from '../src/store';
 
 const spies = vi.hoisted(() => ({
@@ -41,17 +41,15 @@ const CHAIN = {
   programId: null,
   rpcUrl: null,
   arenasEnabled: true,
-  currentSeason: 1,
+  tokenReady: true,
   token: { mint: 'M', symbol: '$SLANA', decimals: 6 },
-  pass: null,
+  feeBps: 500,
 };
-const PENNY: TicketModel = { key: 'arena:1', arenaId: 1, entryFee: 1000n * M, requiresPass: false, humans: 3, bots: 10, loot: 0, open: true };
-const GOLD: TicketModel = { key: 'arena:3', arenaId: 3, entryFee: 50_000n * M, requiresPass: true, humans: 3, bots: 10, loot: 0, open: true };
-const arena = (id: number, entryFee: bigint, requiresPass: boolean) => ({
+const PENNY: TicketModel = { key: 'arena:1', arenaId: 1, entryFee: 1000n * M, humans: 3, bots: 10, loot: 0, open: true };
+const arena = (id: number, entryFee: bigint) => ({
   id,
   address: `A${id}`,
   entryFee,
-  requiresPass,
   maxSessions: 300,
   openSessions: 0,
   enabled: true,
@@ -67,10 +65,8 @@ const finalized = (owed: bigint) => ({
   arenaId: 1,
   entryFee: 1000n * M,
   openedAt: 1,
-  hasPass: true,
-  passAsset: 'PassX',
   settleFee: 20_000,
-  feeBps: 200,
+  feeBps: 500,
   finalized: true,
   owed,
 });
@@ -85,7 +81,7 @@ beforeEach(() => {
   spies.fetchSession.mockImplementation(async (id: number) => useChainData.getState().sessions[id] ?? null);
   spies.sendTx.mockClear();
   spies.fetchArena.mockReset();
-  spies.fetchArena.mockImplementation(async (id: number) => (id === 1 ? arena(1, 1000n * M, false) : arena(3, 50_000n * M, true)));
+  spies.fetchArena.mockImplementation(async (id: number) => (id === 1 ? arena(1, 1000n * M) : arena(3, 50_000n * M)));
   spies.fetchConfig.mockReset();
   spies.fetchConfig.mockImplementation(async () => useChainData.getState().config);
   useUi.setState({ settings: { ...ui0.settings, name: 'Daphne', skin: 4 }, chain: CHAIN });
@@ -96,10 +92,8 @@ beforeEach(() => {
     balance: 420_000_000,
     ataExists: true,
     profile: null,
-    passes: [],
-    lockedPasses: [],
     pending: [],
-    arenas: [arena(1, 1000n * M, false), arena(3, 50_000n * M, true)],
+    arenas: [arena(1, 1000n * M), arena(3, 50_000n * M)],
   });
 });
 afterEach(() => {
@@ -141,38 +135,32 @@ describe('ticket confirm sheet', () => {
   });
 
   it('never offers to sign a price the arena account does not confirm', () => {
-    useChainData.setState({ arenas: [arena(1, 1200n * M, false)] });
+    useChainData.setState({ arenas: [arena(1, 1200n * M)] });
     open(PENNY);
     // the sheet shows the ticket's price, but the chain disagrees: no signing
     expect((screen.getByRole('button', { name: /^Pay / }) as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('R8: a Pass is opt-in in an open arena and switches the fee to the Pass rate', () => {
-    useChainData.setState({ passes: [{ asset: 'A1', number: 412 }], profile: null });
+  it("shows the server's fee rate and signs it as the bound (fee to the operator's wallet, on profit only)", async () => {
+    useUi.setState({ chain: { ...CHAIN, feeBps: 450 } });
+    useChainData.setState({ config: { ...useChainData.getState().config!, feeBps: 450 } });
     open(PENNY);
-    const sw = screen.getByRole('switch', { name: /Enter with my Pass/ });
-    expect(sw.getAttribute('aria-checked')).toBe('false');
-    act(() => sw.click());
-    expect(screen.getByText('2% · on profit only · fixed for this ticket')).toBeTruthy();
-    expect(screen.getByText(/Buy the ticket with Pass No\. 0412 · Penny Pond/)).toBeTruthy();
-    // the Pass line discloses every perk, no cash-out perk in arenas
-    expect(screen.getByText(new RegExp(`^No\\. 0412 · 2% fee, \\+${PASS_POWER.startPct}% start$`))).toBeTruthy();
+    expect(screen.getByText('4.5% · on profit only · fixed for this ticket')).toBeTruthy();
+    act(() => screen.getByRole('button', { name: /^Pay / }).click());
+    await act(async () => new Promise((r) => setTimeout(r, 30)));
+    expect(spies.buildTicketTx.mock.calls[0]).toEqual([expect.anything(), expect.objectContaining({ maxFeeBps: 450 })]);
   });
 
-  it('I3: the Pass line discloses the Pass power the server applies, not the built-in default', () => {
-    useUi.setState({ chain: { ...CHAIN, passPower: { startMassMul: 1.3, cashoutMs: 1_000 } } });
-    useChainData.setState({ passes: [{ asset: 'A1', number: 412 }], profile: null });
-    open(PENNY);
-    act(() => screen.getByRole('switch', { name: /Enter with my Pass/ }).click());
-    expect(screen.getByText('No. 0412 · 2% fee, +30% start')).toBeTruthy();
-  });
-
-  it('R8: a Pass room requires a Pass; locked Passes are explained and the ticket cannot be bought', () => {
-    useChainData.setState({ passes: [{ asset: 'A1', number: 7 }], lockedPasses: ['A1'], tokenBalance: 60_000n * M });
-    open(GOLD);
-    expect(screen.getByText('This room needs a Pass')).toBeTruthy();
-    expect(screen.getByText(/Your Passes are locked to other tickets/)).toBeTruthy();
-    expect((screen.getByRole('button', { name: /Pay 50,000 \$SLANA/ }) as HTMLButtonElement).disabled).toBe(true);
+  it('cannot sign while the game token is not set on chain', () => {
+    useUi.setState({ chain: { ...CHAIN, tokenReady: false, token: null, arenasEnabled: false } });
+    useChainData.setState({ config: fakeConfig({ ...CHAIN, tokenReady: false, token: null }) });
+    const view = open(PENNY);
+    expect((screen.getByRole('button', { name: /^Pay / }) as HTMLButtonElement).disabled).toBe(true);
+    view.unmount();
+    // and an "Opening soon" ticket never can
+    useChainData.setState({ config: fakeConfig(CHAIN) });
+    open({ ...PENNY, soon: true, open: false });
+    expect((screen.getByRole('button', { name: /^Pay / }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('R24: the collect sheet shows the payout, the SOL it moves, and signs the account creation + collect', () => {
@@ -212,7 +200,7 @@ describe('ticket flow races', () => {
     expect(spies.buildTicketTx.mock.calls[0]).toEqual([expect.anything(), expect.objectContaining({ maxFeeBps: 500, maxEntryFee: 1000n * M, maxSettleFee: 50_000 })]);
   });
 
-  it('R24: collect is guarded, re-checks the session on chain, and passes no Pass lock', async () => {
+  it('R24: collect is guarded and re-checks the session on chain', async () => {
     useChainData.setState({ sessions: { 1: finalized(2150n * M) } });
     open(PENNY, 'collect');
     const btn = screen.getByRole('button', { name: /Collect · 2,150/ });
@@ -274,7 +262,7 @@ describe('ticket flow races', () => {
   it('R20: the fresh re-check refuses an arena blocked while the chain was being read', async () => {
     spies.fetchArena.mockImplementation(async () => {
       useUi.setState({ blockedArenas: [1] });
-      return arena(1, 1000n * M, false);
+      return arena(1, 1000n * M);
     });
     open(PENNY);
     act(() => screen.getByRole('button', { name: /^Pay / }).click());
@@ -284,7 +272,7 @@ describe('ticket flow races', () => {
   });
 
   it('re-reads the arena right before building and refuses a changed price', async () => {
-    spies.fetchArena.mockImplementation(async () => arena(1, 1500n * M, false));
+    spies.fetchArena.mockImplementation(async () => arena(1, 1500n * M));
     open(PENNY);
     act(() => screen.getByRole('button', { name: /^Pay / }).click());
     await settle();
@@ -296,7 +284,7 @@ describe('ticket flow races', () => {
   it('offers "Resume" instead of paying again when the ticket turns out to be open', () => {
     useChainData.setState({
       sessions: {
-        1: { address: 'S', id: 1, player: 'P', arena: 'A1', arenaId: 1, entryFee: 1000n * M, openedAt: 1, hasPass: false, passAsset: null, settleFee: 20_000, feeBps: 500, finalized: false, owed: 0n },
+        1: { address: 'S', id: 1, player: 'P', arena: 'A1', arenaId: 1, entryFee: 1000n * M, openedAt: 1, settleFee: 20_000, feeBps: 500, finalized: false, owed: 0n },
       },
     });
     open(PENNY);

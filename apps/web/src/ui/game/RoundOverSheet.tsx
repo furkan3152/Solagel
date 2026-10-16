@@ -56,6 +56,9 @@ export function RoundOverSheet() {
   const chain = useUi((s) => s.chain);
   const settledRaw = useUi((s) => s.lastSettlement);
   const config = useChainData((s) => s.config);
+  const serverBps = useUi((s) => s.chain?.feeBps ?? null);
+  // the rate fixed into this ticket at join (its session), else the live rate
+  const sessionBps = useChainData((s) => (ticket?.arenaId != null ? (s.sessions[ticket.arenaId]?.feeBps ?? null) : null));
   const over = useUi((s) => s.screen === 'roundover' && s.roundResult !== null);
   const reduced = useReducedMotion();
   const exit = res?.kind === 'exit';
@@ -102,7 +105,7 @@ export function RoundOverSheet() {
 
   const payout = res?.payout ?? 0;
   const entry = ticket?.entryFee ?? room?.entryFee ?? 0;
-  const n = receiptNumbers(payout, entry, feeBps(config, ticket?.hasPass ?? false), settled);
+  const n = receiptNumbers(payout, entry, sessionBps ?? feeBps(serverBps, config), settled);
   const roundTime = res?.round != null ? roundStartLabel(res.round, room?.round) : '';
   const approx = n.final ? '' : `${t('gr.estimate')} `;
   const lines: ReceiptLine[] = [
@@ -111,7 +114,6 @@ export function RoundOverSheet() {
       label: (
         <>
           {t('gr.fee', { pct: n.pct.toLocaleString('en-US', { maximumFractionDigits: 1 }) })}
-          {ticket?.hasPass && <span className="g-receipt__pass">PASS</span>}
         </>
       ),
       value: n.fee > 0 ? `${approx}−${tf.fmt(n.fee)}` : tf.fmt(0),

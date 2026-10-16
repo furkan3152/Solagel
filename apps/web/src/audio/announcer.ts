@@ -21,9 +21,7 @@ export type LineId =
   | 'eaten'
   | 'oneMinute'
   | 'tenSeconds'
-  | 'roundOver'
-  | 'minted'
-  | 'revealed';
+  | 'roundOver';
 
 interface Line {
   key: TKey;
@@ -46,8 +44,6 @@ export const LINES: Record<LineId, Line> = {
   oneMinute: { key: 'an.oneMinute', cooldown: 20_000 },
   tenSeconds: { key: 'an.tenSeconds', cooldown: 20_000 },
   roundOver: { key: 'an.roundOver', cooldown: 20_000 },
-  minted: { key: 'an.minted', cooldown: 15_000 },
-  revealed: { key: 'an.revealed', cooldown: 60_000 },
 };
 
 /** Voices that are calm and clear, best first (macOS, Chrome, Windows, Android names). */

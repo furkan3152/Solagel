@@ -5,32 +5,28 @@ import { DUR, Dateline, Icon, Kb, Rule, Tabs, presets, springs, themeFromSetting
 import { engine } from '../../game/instance';
 import { sound } from '../../audio';
 import { useT } from '../../i18n';
-import { useChainData } from '../../solana/chain';
 import { ProfileCard } from '../../solana/ProfileCard';
 import { signInWithWallet } from '../../solana/siws';
 import { TicketFlow, type FlowMode } from '../../solana/TicketFlow';
-import { sessionsToCollect, type TicketKey } from '../../solana/ticket';
+import { bpsPercent, feeBps, sessionsToCollect, type TicketKey } from '../../solana/ticket';
 import { WalletButton } from '../../solana/WalletButton';
 import { goPage, openModal, updateSettings, useUi, type LobbyPage } from '../../store';
 import { DocsPage } from '../docs/DocsPage';
 import { Leaderboards } from '../news/Leaderboards';
-import { PassPage } from '../pass/PassPage';
 import { ProfilePage } from '../profile/ProfilePage';
 import { LiveFrame } from './LiveFrame';
 import './lobby.css';
-import { PassCard } from './PassCard';
 import { HeldBanner } from './HeldBanner';
 import { PendingBanner } from './PendingBanner';
 import { QuickPlay } from './QuickPlay';
-import { SeasonColumn } from './SeasonColumn';
 import { TicketList } from './TicketList';
-import { useLobbyModel, useMedia, useTokenText } from './useLobby';
+import { useLobbyModel, useMedia } from './useLobby';
 
 /**
- * The lobby. Phones follow artboard B (masthead, wallet slip, dateline, Pass
- * card, tickets, Quick Play, bottom tabs). Desktop is a newspaper front page:
+ * The lobby. Phones follow artboard B (masthead, wallet slip, dateline,
+ * tickets, Quick Play, bottom tabs). Desktop is a newspaper front page:
  * tickets on the left, the live room as the front-page photo in the middle,
- * Pass, season and profile on the right.
+ * the profile on the right.
  */
 export function Lobby() {
   const t = useT();
@@ -122,11 +118,10 @@ export function Lobby() {
         return;
       case 'resume': {
         sound.punch();
-        const s = id !== null ? model.sessions[id] : null;
         updateSettings({ lastArena: id });
         setPunched(ticket.key);
         // no transaction: the ticket is already open on chain
-        engine()?.play(`arena:${id}`, s?.hasPass && s.passAsset ? { pass: s.passAsset } : {});
+        engine()?.play(`arena:${id}`);
         return;
       }
       case 'collect':
@@ -134,9 +129,6 @@ export function Lobby() {
         return;
       case 'refund':
         setFlow({ mode: 'refund', key: ticket.key, open: true });
-        return;
-      case 'needPass':
-        setTab('pass');
         return;
       case 'buy':
         setFlow({ mode: 'buy', key: ticket.key, open: true });
@@ -186,10 +178,6 @@ export function Lobby() {
 
   const side = (
     <aside className="kl-col kl-col--side">
-      <div id="kl-pass-slot">
-        <PassCard onOpen={() => setTab('pass')} />
-      </div>
-      <SeasonColumn limit={wide ? 6 : 10} onMore={() => setTab('ranks')} />
       <ProfileCard onEdit={() => setTab('profile')} />
     </aside>
   );
@@ -237,7 +225,6 @@ export function Lobby() {
             {tab === 'play' ? (
               <>
                 <PendingBanner onCollect={collect} />
-                <PassCard onOpen={() => setTab('pass')} />
                 {tickets}
               </>
             ) : (
@@ -267,24 +254,22 @@ export function Lobby() {
 
 function SectionPage({ page }: { page: LobbyPage }) {
   if (page === 'ranks') return <Leaderboards />;
-  if (page === 'pass') return <PassPage />;
   if (page === 'profile') return <ProfilePage />;
   if (page === 'docs') return <DocsPage />;
   return null;
 }
 
 /** Left-to-right order of the lobby's pages (the page turn's direction). */
-const PAGE_ORDER: readonly LobbyPage[] = ['play', 'ranks', 'pass', 'profile', 'docs'];
+const PAGE_ORDER: readonly LobbyPage[] = ['play', 'ranks', 'profile', 'docs'];
 
-const SECTIONS: { id: LobbyPage; key: 'lo.tickets' | 'lo.tab.ranks' | 'lo.tab.pass' | 'lo.tab.profile' | 'lo.tab.docs'; icon: IconName }[] = [
+const SECTIONS: { id: LobbyPage; key: 'lo.tickets' | 'lo.tab.ranks' | 'lo.tab.profile' | 'lo.tab.docs'; icon: IconName }[] = [
   { id: 'play', key: 'lo.tickets', icon: 'ticket' },
   { id: 'ranks', key: 'lo.tab.ranks', icon: 'trophy' },
-  { id: 'pass', key: 'lo.tab.pass', icon: 'passport' },
   { id: 'profile', key: 'lo.tab.profile', icon: 'user' },
   { id: 'docs', key: 'lo.tab.docs', icon: 'docs' },
 ];
 
-/** Desktop section index under the dateline: the newspaper's pages, A to E. */
+/** Desktop section index under the dateline: the newspaper's pages, A to D. */
 function SectionNav({ page, onChange }: { page: LobbyPage; onChange: (p: LobbyPage) => void }) {
   const t = useT();
   const spring = springs.dial;
@@ -312,7 +297,6 @@ function PhoneTabs({ tab, setTab }: { tab: LobbyPage; setTab: (t: LobbyPage) => 
   const items: TabItem<LobbyPage>[] = [
     { id: 'play', label: t('lo.tab.play'), icon: 'ticket' },
     { id: 'ranks', label: t('lo.tab.ranks'), icon: 'trophy' },
-    { id: 'pass', label: t('lo.tab.pass'), icon: 'passport' },
     { id: 'profile', label: t('lo.tab.profile'), icon: 'user' },
   ];
   return <Tabs variant="nav" items={items} value={tab} onChange={setTab} label={t('lo.nav')} className="kl-tabs" />;
@@ -360,15 +344,10 @@ function Masthead({ full, wide }: { full: boolean; wide: boolean }) {
   const s = useUi((st) => st.settings);
   const online = useUi((st) => st.online);
   const connected = useUi((st) => st.connected);
-  const season = useChainData((st) => st.season);
-  const currentSeason = useUi((st) => st.chain?.currentSeason ?? null);
-  const tok = useTokenText();
-  const seasonId = season?.id ?? currentSeason;
-  const day = season && season.startedAt > 0 ? Math.max(1, Math.floor((Date.now() / 1000 - season.startedAt) / 86_400) + 1) : null;
+  const chain = useUi((st) => st.chain);
   const items = [
-    seasonId !== null ? t('lo.season', { n: String(seasonId).padStart(2, '0') }) : null,
-    day !== null ? t('lo.seasonDay', { n: day }) : null,
-    season ? t('lo.pool', { n: tok.fee(season.prizePool), sym: tok.symbol }) : null,
+    chain?.enabled ? (chain.tokenReady ? t('lo.arenasOpen') : t('lo.arenasSoon')) : null,
+    chain?.enabled ? t('lo.feeDate', { pct: bpsPercent(feeBps(chain.feeBps)) }) : null,
     wide ? (connected ? t('lo.online', { n: online }) : t('lo.live.connecting')) : null,
   ].filter((x): x is string => x !== null);
   const today = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });

@@ -144,14 +144,6 @@
   font-size: var(--t-label);
   color: var(--ink-2);
 }
-.g-till__pass {
-  padding: 1px 6px;
-  border: 1.5px solid var(--pink-text);
-  border-radius: 3px;
-  color: var(--pink-text);
-  transform: rotate(-6deg);
-  letter-spacing: 0.16em;
-}
 .g-till__code {
   display: inline-flex;
   align-items: center;
@@ -1064,19 +1056,6 @@
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.06em;
-}
-.g-receipt__pass {
-  flex: none;
-  margin-left: 6px;
-  padding: 0 4px;
-  border: 1.2px solid var(--pink-text);
-  border-radius: 3px;
-  color: var(--pink-text);
-  font-size: 9.5px;
-  letter-spacing: 0.12em;
-}
-.kb-receipt__line dt .g-receipt__pass {
-  order: 0;
 }
 .g-receipt__tx {
   display: inline-flex;

@@ -60,14 +60,14 @@ describe('Sheet', () => {
 });
 
 function TabsHarness() {
-  const [v, setV] = useState<'season' | 'today' | 'all'>('season');
+  const [v, setV] = useState<'week' | 'today' | 'all'>('week');
   return (
     <Tabs
       label="Period"
       value={v}
       onChange={setV}
       items={[
-        { id: 'season', label: 'Season' },
+        { id: 'week', label: 'Week' },
         { id: 'today', label: 'Today' },
         { id: 'all', label: 'All time' },
       ]}
@@ -78,21 +78,21 @@ function TabsHarness() {
 describe('Tabs', () => {
   it('moves selection and focus with Left/Right/Home/End', () => {
     render(<TabsHarness />);
-    const season = screen.getByRole('tab', { name: 'Season' });
-    expect(season.getAttribute('aria-selected')).toBe('true');
-    expect(season.tabIndex).toBe(0);
-    season.focus();
+    const week = screen.getByRole('tab', { name: 'Week' });
+    expect(week.getAttribute('aria-selected')).toBe('true');
+    expect(week.tabIndex).toBe(0);
+    week.focus();
 
-    fireEvent.keyDown(season, { key: 'ArrowRight' });
+    fireEvent.keyDown(week, { key: 'ArrowRight' });
     const today = screen.getByRole('tab', { name: 'Today' });
     expect(today.getAttribute('aria-selected')).toBe('true');
     expect(document.activeElement).toBe(today);
-    expect(screen.getByRole('tab', { name: 'Season' }).tabIndex).toBe(-1);
+    expect(screen.getByRole('tab', { name: 'Week' }).tabIndex).toBe(-1);
 
     fireEvent.keyDown(today, { key: 'End' });
     expect(screen.getByRole('tab', { name: 'All time' }).getAttribute('aria-selected')).toBe('true');
     fireEvent.keyDown(document.activeElement!, { key: 'ArrowRight' });
-    expect(screen.getByRole('tab', { name: 'Season' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('tab', { name: 'Week' }).getAttribute('aria-selected')).toBe('true');
     fireEvent.keyDown(document.activeElement!, { key: 'ArrowLeft' });
     expect(screen.getByRole('tab', { name: 'All time' }).getAttribute('aria-selected')).toBe('true');
 

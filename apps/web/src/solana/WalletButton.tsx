@@ -16,6 +16,8 @@ export function WalletButton() {
   const tokens = useChainData((s) => s.tokenBalance);
   const auth = useUi((s) => s.auth);
   const tok = useTokenText();
+  // the game token is not set on chain yet: there is no balance to read
+  const soon = useUi((s) => !!s.chain?.enabled && s.chain.tokenReady === false);
 
   if (!connected || !publicKey) {
     return (
@@ -45,7 +47,13 @@ export function WalletButton() {
         {short}
       </span>
       <span className="kl-wallet__main">
-        {bal ?? '…'} <span className="kl-wallet__sym mono">{tok.symbol}</span>
+        {soon ? (
+          <span className="kl-wallet__sym mono">{t('wl.tokenSoon')}</span>
+        ) : (
+          <>
+            {bal ?? '…'} <span className="kl-wallet__sym mono">{tok.symbol}</span>
+          </>
+        )}
       </span>
     </button>
   );

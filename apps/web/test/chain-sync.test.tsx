@@ -34,10 +34,9 @@ describe('useChainSync', () => {
     const slowA = new Promise<void>((r) => (releaseA = r));
     globalThis.fetch = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.includes('/api/season')) return json({ enabled: false });
-      if (url.includes('/api/pending')) return json({ pending: [] });
-      if (url.includes(`wallet=${a.toBase58()}`)) return slowA.then(() => json({ passes: [{ asset: 'PassOfA', number: 1 }] }));
-      return json({ passes: [{ asset: 'PassOfB', number: 2 }] });
+      if (url.includes(`/api/pending?wallet=${a.toBase58()}`)) return slowA.then(() => json({ pending: [{ key: 'SessionOfA', arenaId: 1, payout: 1 }] }));
+      if (url.includes('/api/pending')) return json({ pending: [{ key: 'SessionOfB', arenaId: 2, payout: 2 }] });
+      return json({});
     }) as typeof fetch;
     act(() =>
       useUi.setState({
@@ -47,9 +46,9 @@ describe('useChainSync', () => {
           programId: DEV_FAKE_PROGRAM_ID,
           rpcUrl: null,
           arenasEnabled: true,
-          currentSeason: 1,
-          token: null,
-          pass: null,
+          tokenReady: true,
+          token: { mint: 'DevFakeMint', symbol: '$SLANA', decimals: 6 },
+          feeBps: 500,
         },
       }),
     );
@@ -66,12 +65,12 @@ describe('useChainSync', () => {
       </WalletContext.Provider>,
     );
     await flush();
-    expect(useChainData.getState().passes.map((p) => p.asset)).toEqual(['PassOfB']);
+    expect(useChainData.getState().pending.map((p) => p.key)).toEqual(['SessionOfB']);
 
     // A's reads finally land
     releaseA();
     await flush();
-    expect(useChainData.getState().passes.map((p) => p.asset)).toEqual(['PassOfB']);
+    expect(useChainData.getState().pending.map((p) => p.key)).toEqual(['SessionOfB']);
     view.unmount();
   });
 });

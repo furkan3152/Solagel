@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // One-command Slana demo.
 //   pnpm demo            fake chain: server (NODE_ENV=development DEV_FAKE_CHAIN=1 DEV_FAKE_TOKEN=1) + web dev server
+//                        (DEV_FAKE_TOKEN=0 pnpm demo: the game token starts unset, arenas "Opening soon";
+//                        `curl -X POST localhost:8787/api/dev/token` sets it live)
 //   pnpm demo:localnet   real local validator + slana_lean.so + production-built server + web dev server
 // Flags: --browser  also open a Chromium with the Dev Wallet (a local keypair; needs a display)
 //        --no-build (localnet) skip building missing pieces and fail instead
@@ -179,8 +181,9 @@ async function main() {
     const data = join(ROOT, 'out/demo-data');
     rmSync(data, { recursive: true, force: true });
     mkdirSync(data, { recursive: true });
-    // DEV_FAKE_TOKEN=1: the game token starts set, so the arenas are playable at once
-    serverEnv = { ...ENV, NODE_ENV: 'development', DEV_FAKE_CHAIN: '1', DEV_FAKE_TOKEN: '1', DATA_DIR: data };
+    // DEV_FAKE_TOKEN=1: the game token starts set, so the arenas are playable at once.
+    // `DEV_FAKE_TOKEN=0 pnpm demo` starts with it unset ("Opening soon"; set it with POST /api/dev/token).
+    serverEnv = { ...ENV, NODE_ENV: 'development', DEV_FAKE_CHAIN: '1', DEV_FAKE_TOKEN: ENV.DEV_FAKE_TOKEN === '0' ? '0' : '1', DATA_DIR: data };
     delete serverEnv.PROGRAM_ID; // the fake chain refuses to start next to a real chain config
     delete serverEnv.SERVER_KEYPAIR;
     serverCmd = ['pnpm', ['-F', '@slana/server', 'dev']];

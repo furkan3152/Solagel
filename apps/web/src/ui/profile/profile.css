@@ -100,11 +100,6 @@
   height: 8px;
   border-radius: 4px;
 }
-.pf-card__pass {
-  position: absolute;
-  right: 14px;
-  top: 40px;
-}
 @media (max-width: 459px) {
   .pf-card__grid {
     gap: 14px;

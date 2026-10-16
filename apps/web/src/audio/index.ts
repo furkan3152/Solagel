@@ -1,4 +1,3 @@
-import { useChainData } from '../solana/chain';
 import { useUi, type Screen, type UiState } from '../store';
 import { Announcer, type LineId } from './announcer';
 import { Mixer, prefsFromSettings } from './mixer';
@@ -124,7 +123,7 @@ export function startAudio(): () => void {
         else if (s.screen === 'lobby') sound.whoosh('out');
       }
       if (s.page !== prev.page && s.screen === 'lobby') {
-        const order = ['play', 'ranks', 'pass', 'profile', 'docs'];
+        const order = ['play', 'ranks', 'profile', 'docs'];
         sound.rustle(order.indexOf(s.page) >= order.indexOf(prev.page) ? 1 : -1);
       }
       if (s.toasts.length > 0 && s.toasts[s.toasts.length - 1] !== prev.toasts[prev.toasts.length - 1]) {
@@ -133,13 +132,6 @@ export function startAudio(): () => void {
       }
     }),
   );
-  // the Pass collection is revealed (watched live): announce it once
-  offs.push(
-    useChainData.subscribe((s, prev) => {
-      if (s.passStatus?.revealed && prev.passStatus && !prev.passStatus.revealed) announce('revealed');
-    }),
-  );
-
   if (import.meta.env.DEV) {
     const w = window as unknown as { __slanaAudioTap?: () => MediaStream | null; __slanaAudio?: unknown };
     // recording (scripts/record-walkthrough.mjs): the master output, after the limiter

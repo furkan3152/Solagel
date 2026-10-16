@@ -14,10 +14,8 @@ export function ProfileCard({ onEdit }: { onEdit?: () => void }) {
   const settings = useUi((s) => s.settings);
   const auth = useUi((s) => s.auth);
   const profile = useChainData((s) => s.profile);
-  const passes = useChainData((s) => s.passes);
   const tok = useTokenText();
   const nf = new Intl.NumberFormat('en-US');
-  const passNumber = passes.find((p) => p.asset === settings.passSkin)?.number ?? 0;
   const connected = wallet.connected && !!wallet.publicKey;
   const name = profile?.name ?? auth?.profile?.name ?? (settings.name || t('pf.guest'));
   const xp = profile?.xp ?? auth?.profile?.xp ?? 0;
@@ -26,7 +24,7 @@ export function ProfileCard({ onEdit }: { onEdit?: () => void }) {
   return (
     <section className="kl-card kl-profile" aria-labelledby="kl-profile-h">
       <div className="kl-profile__top">
-        <CoinPortrait skin={settings.skin} pass={passNumber} size={64} expression="happy" seed={9} className="kl-profile__coin" />
+        <CoinPortrait skin={settings.skin} size={64} expression="happy" seed={9} className="kl-profile__coin" />
         <div className="kl-profile__id">
           <h3 id="kl-profile-h" className="kl-profile__name">
             {name}

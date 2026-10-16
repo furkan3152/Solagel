@@ -43,13 +43,12 @@ for (const theme of ['light', 'dark']) {
   const t = theme === 'light' ? 'paper' : 'night';
   await shoot({ name: `desk-${t}-top`, theme, mobile: false });
   await shoot({ name: `desk-${t}-payout`, theme, mobile: false, after: scrollTo('#docs-payout') });
-  await shoot({ name: `desk-${t}-pass`, theme, mobile: false, after: scrollTo('#docs-pass') });
+  await shoot({ name: `desk-${t}-rooms`, theme, mobile: false, after: scrollTo('#docs-rooms') });
   await shoot({ name: `phone-${t}-top`, theme, mobile: true });
   await shoot({ name: `phone-${t}-payout`, theme, mobile: true, after: scrollTo('#docs-payout .dc-fee') });
 }
 // more sections (paper) and the lobby links
 await shoot({ name: 'desk-paper-value', theme: 'light', mobile: false, after: scrollTo('#docs-value') });
-await shoot({ name: 'desk-paper-seasons', theme: 'light', mobile: false, after: scrollTo('#docs-seasons') });
 await shoot({ name: 'desk-paper-fair', theme: 'light', mobile: false, after: scrollTo('#docs-fair') });
 await shoot({
   name: 'desk-paper-faq',
@@ -61,7 +60,7 @@ await shoot({
     await page.waitForTimeout(200);
   },
 });
-await shoot({ name: 'phone-paper-pass', theme: 'light', mobile: true, after: scrollTo('#docs-pass') });
+await shoot({ name: 'phone-paper-rooms', theme: 'light', mobile: true, after: scrollTo('#docs-rooms') });
 await shoot({ name: 'phone-night-fair', theme: 'dark', mobile: true, after: scrollTo('#docs-fair') });
 await shoot({ name: 'desk-paper-hash', theme: 'light', mobile: false, path: '/#docs' });
 await shoot({ name: 'desk-paper-lobby-index', theme: 'light', mobile: false, path: '/' });

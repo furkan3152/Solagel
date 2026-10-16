@@ -3,13 +3,21 @@
  * transaction that buys a ticket. Pure functions (no React, no network) so the
  * money path is unit-tested (test/ticket.test.ts).
  */
-import { RULES, type ChainStatus, type PassPower, type RoomInfo } from '@slana/shared';
-import { ACCOUNT_BYTES as SDK_ACCOUNT_BYTES, SESSION_REFUND_TIMEOUT_SECS, createAtaIdempotentIx, type Address, type SlanaInstructions, type TokenAccounts } from '@slana/sdk';
+import { DEFAULT_ARENAS, type RoomInfo } from '@slana/shared';
+import {
+  ACCOUNT_BYTES as SDK_ACCOUNT_BYTES,
+  DEFAULT_FEE_BPS,
+  SESSION_REFUND_TIMEOUT_SECS,
+  createAtaIdempotentIx,
+  type Address,
+  type SlanaInstructions,
+  type TokenAccounts,
+} from '@slana/sdk';
 import type { TransactionInstruction } from '@solana/web3.js';
 
 /* ── the ticket transaction ─────────────────────────────────────────────── */
 
-export type TicketStep = 'ata' | 'register' | 'join' | 'joinWithPass';
+export type TicketStep = 'ata' | 'register' | 'join';
 
 export interface TicketTxInput {
   player: Address;
@@ -20,8 +28,6 @@ export interface TicketTxInput {
   ataExists: boolean | null;
   /** Profile to register in the same transaction; `null` when the player already has one. */
   register: { name: string; skin: number } | null;
-  /** Slana Pass asset backing the ticket (`joinArenaWithPass`); `null` for a plain ticket. */
-  passAsset: string | null;
   /** The fee rate (bps) shown on the frozen review: the program refuses a higher one (`FeeAboveLimit`). */
   maxFeeBps: number;
   /** The entry fee shown on the frozen review (raw units): the program refuses a higher one (`EntryFeeAboveLimit`). */
@@ -31,16 +37,16 @@ export interface TicketTxInput {
 }
 
 /** The instructions a ticket transaction carries, in order. */
-export function ticketSteps(input: Pick<TicketTxInput, 'ataExists' | 'register' | 'passAsset'>): TicketStep[] {
+export function ticketSteps(input: Pick<TicketTxInput, 'ataExists' | 'register'>): TicketStep[] {
   const steps: TicketStep[] = [];
   if (input.ataExists !== true) steps.push('ata');
   if (input.register) steps.push('register');
-  steps.push(input.passAsset ? 'joinWithPass' : 'join');
+  steps.push('join');
   return steps;
 }
 
 /**
- * One transaction: `[createAtaIdempotent?] + [registerPlayer?] + joinArena | joinArenaWithPass`.
+ * One transaction: `[createAtaIdempotent?] + [registerPlayer?] + joinArena`.
  * The player pays every rent in it (the server never pays a player's token account).
  */
 export async function buildTicketTx(ix: SlanaInstructions, input: TicketTxInput): Promise<{ steps: TicketStep[]; ixs: TransactionInstruction[] }> {
@@ -51,8 +57,7 @@ export async function buildTicketTx(ix: SlanaInstructions, input: TicketTxInput)
     else if (step === 'register') ixs.push(await ix.registerPlayer(input.player, input.register!.name, input.register!.skin));
     else {
       const limits = { maxFeeBps: input.maxFeeBps, maxEntryFee: input.maxEntryFee, maxSettleFee: input.maxSettleFee };
-      if (step === 'joinWithPass') ixs.push(await ix.joinArenaWithPass(input.player, { arenaId: input.arenaId, ...input.token, passAsset: input.passAsset!, ...limits }));
-      else ixs.push(await ix.joinArena(input.player, { arenaId: input.arenaId, ...input.token, ...limits }));
+      ixs.push(await ix.joinArena(input.player, { arenaId: input.arenaId, tokenMint: input.token.tokenMint, tokenProgram: input.token.tokenProgram, ...limits }));
     }
   }
   return { steps, ixs };
@@ -70,20 +75,15 @@ export type CloseStep = 'ata' | 'collect' | 'refund';
  * token account is always created idempotently first (player-paid, a no-op when it exists),
  * so a payout can land even if the account was closed. `collect` pays a finalized session's
  * `owed` payout at once (ruling R24); `refund` returns an unsettled ticket's entry fee after
- * 24 h. A finalized session's Pass lock is already closed, so none is passed.
+ * 24 h.
  */
 export async function buildCloseTx(
   ix: SlanaInstructions,
-  input: { player: Address; arenaId: number; token: TokenAccounts; finalized: boolean; passAsset: string | null },
+  input: { player: Address; arenaId: number; token: TokenAccounts; finalized: boolean },
 ): Promise<{ steps: CloseStep[]; ixs: TransactionInstruction[] }> {
   const ixs = [
     createAtaIdempotentIx(input.player, input.player, input.token.tokenMint, input.token.tokenProgram),
-    await ix.refundSession(input.player, {
-      arenaId: input.arenaId,
-      ...input.token,
-      finalized: input.finalized,
-      passAsset: input.finalized ? null : input.passAsset,
-    }),
+    await ix.refundSession(input.player, { arenaId: input.arenaId, tokenMint: input.token.tokenMint, tokenProgram: input.token.tokenProgram }),
   ];
   return { steps: ['ata', input.finalized ? 'collect' : 'refund'], ixs };
 }
@@ -96,7 +96,6 @@ export type TicketKey = 'practice' | `arena:${number}`;
 export interface ArenaLike {
   id: number;
   entryFee: bigint;
-  requiresPass: boolean;
   enabled: boolean;
 }
 
@@ -105,7 +104,6 @@ export interface TicketModel {
   arenaId: number | null;
   /** Raw token units (0 for practice). */
   entryFee: bigint;
-  requiresPass: boolean;
   /** Summed over every instance of the arena. */
   humans: number;
   bots: number;
@@ -115,27 +113,64 @@ export interface TicketModel {
   open: boolean;
   /** The server keeps this arena closed (R20: its vault cannot cover the journal): "under maintenance", no sales. */
   blocked?: boolean;
+  /**
+   * The game token is not set on chain yet: a default arena shown as "Opening soon" (its
+   * price from `DEFAULT_ARENAS`), not for sale. Practice still plays.
+   */
+  soon?: boolean;
+}
+
+/** What the lobby knows about the game token (`ChainStatus`). */
+export interface TokenState {
+  /** The chain is on (a program is configured). */
+  enabled: boolean;
+  /** The mint is set on chain (`ChainStatus.tokenReady`). */
+  tokenReady: boolean;
+  /** Mint decimals for the "Opening soon" prices (6 when unknown). */
+  decimals: number;
+}
+
+/** The default arenas, "Opening soon", while the token is not set (prices in whole tokens × 10^decimals). */
+export function soonTickets(decimals: number): TicketModel[] {
+  const unit = 10n ** BigInt(decimals);
+  return DEFAULT_ARENAS.map((a) => ({
+    key: `arena:${a.id}` as TicketKey,
+    arenaId: a.id,
+    entryFee: BigInt(a.entryTokens) * unit,
+    humans: 0,
+    bots: 0,
+    loot: 0,
+    open: false,
+    soon: true,
+  }));
 }
 
 /**
  * Practice plus one ticket per arena. Arena rooms are sharded into instances,
  * so live counts and loot are summed per `arenaId`. The on-chain arena wins for
  * the price (it is what the player signs); rooms fill in when the chain is not
- * readable yet. Sorted by price.
+ * readable yet. Sorted by price. While the chain is on but the game token is not set
+ * (`token.tokenReady` false) the default arenas are listed as "Opening soon".
  */
-export function buildTickets(rooms: readonly RoomInfo[], arenas: readonly ArenaLike[], blocked: readonly number[] = []): TicketModel[] {
-  const practice: TicketModel = { key: 'practice', arenaId: null, entryFee: 0n, requiresPass: false, humans: 0, bots: 0, loot: 0, open: true };
+export function buildTickets(
+  rooms: readonly RoomInfo[],
+  arenas: readonly ArenaLike[],
+  blocked: readonly number[] = [],
+  token: TokenState = { enabled: true, tokenReady: true, decimals: 6 },
+): TicketModel[] {
+  const practice: TicketModel = { key: 'practice', arenaId: null, entryFee: 0n, humans: 0, bots: 0, loot: 0, open: true };
+  for (const r of rooms) {
+    if (r.mode !== 'practice') continue;
+    practice.humans += r.players;
+    practice.bots += r.bots;
+  }
+  if (token.enabled && !token.tokenReady) return [practice, ...soonTickets(token.decimals)];
   const byId = new Map<number, TicketModel>();
   for (const a of arenas) {
-    byId.set(a.id, { key: `arena:${a.id}`, arenaId: a.id, entryFee: a.entryFee, requiresPass: a.requiresPass, humans: 0, bots: 0, loot: 0, open: a.enabled });
+    byId.set(a.id, { key: `arena:${a.id}`, arenaId: a.id, entryFee: a.entryFee, humans: 0, bots: 0, loot: 0, open: a.enabled });
   }
   const chainKnown = arenas.length > 0;
   for (const r of rooms) {
-    if (r.mode === 'practice') {
-      practice.humans += r.players;
-      practice.bots += r.bots;
-      continue;
-    }
     if (r.mode !== 'arena' || r.arenaId === undefined) continue;
     let t = byId.get(r.arenaId);
     if (!t) {
@@ -145,7 +180,6 @@ export function buildTickets(rooms: readonly RoomInfo[], arenas: readonly ArenaL
         key: `arena:${r.arenaId}`,
         arenaId: r.arenaId,
         entryFee: BigInt(r.entryFee ?? 0),
-        requiresPass: r.requiresPass === true,
         humans: 0,
         bots: 0,
         loot: 0,
@@ -172,8 +206,6 @@ export interface QuickPlayInput {
   /** Game-token balance, raw units (`null` = unknown). */
   balance: bigint | null;
   tickets: readonly TicketModel[];
-  /** The wallet owns a Pass that is not locked in another session. */
-  hasFreePass: boolean;
   lastArena: number | null;
   /** Arenas where the wallet already has an open ticket (playing them costs nothing). */
   openSessions?: readonly number[];
@@ -189,11 +221,11 @@ export function quickPlayTarget(input: QuickPlayInput): TicketKey {
     const resumable = input.walletConnected ? input.tickets.find((t) => t.arenaId !== null && input.openSessions?.includes(t.arenaId)) : undefined;
     return resumable ? resumable.key : 'practice';
   }
-  const arenas = input.tickets.filter((t) => t.arenaId !== null && t.open && !t.blocked);
+  const arenas = input.tickets.filter((t) => t.arenaId !== null && t.open && !t.blocked && !t.soon);
   const open = arenas.find((t) => input.openSessions?.includes(t.arenaId!));
   if (open) return open.key;
   const balance = input.balance;
-  const affordable = (t: TicketModel) => t.entryFee > 0n && t.entryFee <= balance && (!t.requiresPass || input.hasFreePass);
+  const affordable = (t: TicketModel) => t.entryFee > 0n && t.entryFee <= balance;
   const last = arenas.find((t) => t.arenaId === input.lastArena);
   if (last && affordable(last)) return last.key;
   const cheapest = arenas.filter(affordable).sort((a, b) => (a.entryFee < b.entryFee ? -1 : a.entryFee > b.entryFee ? 1 : 0))[0];
@@ -213,8 +245,6 @@ export interface PendingPayout {
 export interface OpenSession {
   address: string;
   openedAt: number;
-  hasPass: boolean;
-  passAsset: string | null;
   /** R24: settled without a token account; `owed` waits for the player to collect it. */
   finalized?: boolean;
   /** Raw token units to collect (finalized sessions). */
@@ -223,6 +253,8 @@ export interface OpenSession {
 
 export type TicketGate =
   | { kind: 'practice' }
+  /** The game token is not set on chain yet: the arena opens soon (nothing is sold; practice plays). */
+  | { kind: 'soon' }
   | { kind: 'offline' }
   /** R20: the server keeps this arena closed (its vault cannot cover the journal); nothing is sold. */
   | { kind: 'maintenance' }
@@ -236,7 +268,6 @@ export type TicketGate =
   | { kind: 'verify' }
   /** "Devam et": an open ticket, no transaction. */
   | { kind: 'resume' }
-  | { kind: 'needPass' }
   | { kind: 'insufficient'; missing: bigint }
   | { kind: 'buy' };
 
@@ -248,14 +279,13 @@ export interface GateInput {
   balance: bigint | null;
   session: OpenSession | null;
   pending: readonly PendingPayout[];
-  /** Owned Passes that are not locked in another session. */
-  freePasses: number;
   nowS: number;
 }
 
 export function ticketGate(g: GateInput): TicketGate {
   const t = g.ticket;
   if (t.arenaId === null) return { kind: 'practice' };
+  if (t.soon) return { kind: 'soon' };
   // R24: a payout waiting to be collected comes first, even while arenas are offline or blocked
   if (g.walletConnected && g.session?.finalized) return { kind: 'collect', owed: g.session.owed ?? 0n };
   if (!g.arenasEnabled) return { kind: 'offline' };
@@ -272,43 +302,27 @@ export function ticketGate(g: GateInput): TicketGate {
   // R20: the server keeps this arena closed; nothing new is sold
   if (t.blocked) return { kind: 'maintenance' };
   if (!g.verified) return { kind: 'verify' };
-  if (t.requiresPass && g.freePasses === 0) return { kind: 'needPass' };
   if (g.balance !== null && g.balance < t.entryFee) return { kind: 'insufficient', missing: t.entryFee - g.balance };
   return { kind: 'buy' };
 }
 
 /* ── fee policy ─────────────────────────────────────────────────────────── */
 
-/** Program defaults (5 % of profit, 2 % with a Pass) when the config is not loaded. */
-export const DEFAULT_FEE_BPS = 500;
-export const DEFAULT_PASS_FEE_BPS = 200;
+export { DEFAULT_FEE_BPS };
 
-export function feeBps(config: { feeBps: number; passFeeBps: number } | null, withPass: boolean): number {
-  if (!config) return withPass ? DEFAULT_PASS_FEE_BPS : DEFAULT_FEE_BPS;
-  return withPass ? config.passFeeBps : config.feeBps;
+/**
+ * The fee on profit for a new ticket, basis points: the server's `ChainStatus.feeBps`
+ * (the on-chain `Config.fee_bps` it reads), else the loaded config, else the program
+ * default (5 %). The ticket sheet re-reads the config before signing and refuses a change.
+ */
+export function feeBps(server: number | null | undefined, config: { feeBps: number } | null = null): number {
+  return server ?? config?.feeBps ?? DEFAULT_FEE_BPS;
 }
 
 /** `500` → `5`, `250` → `2.5`. */
 export function bpsPercent(bps: number): string {
   return (bps / 100).toFixed(2).replace(/\.?0+$/, '');
 }
-
-/** Pass power numbers for the perk line ("+15% start mass"). */
-export interface PassPowerText {
-  startPct: number;
-}
-
-/**
- * I3: the Pass power the server actually applies (`ChainStatus.passPower`, from its env),
- * with `RULES` as the fallback for older servers.
- */
-export function passPowerOf(power: PassPower | null | undefined): PassPowerText {
-  const p = power ?? { startMassMul: RULES.passStartMassMul, cashoutMs: RULES.passCashoutMs };
-  return { startPct: Math.round((p.startMassMul - 1) * 100) };
-}
-
-/** `RULES` defaults (use `passPowerOf(chain.passPower)` / `usePassPower()` for what the server applies). */
-export const PASS_POWER: PassPowerText = passPowerOf(null);
 
 /** R24: arenas whose last game is settled with a payout waiting to be collected. */
 export function sessionsToCollect(sessions: Readonly<Record<number, OpenSession | null>>): { arenaId: number; owed: bigint }[] {
@@ -327,16 +341,14 @@ export function sessionsToCollect(sessions: Readonly<Record<number, OpenSession 
 export const ACCOUNT_BYTES = {
   profile: SDK_ACCOUNT_BYTES.playerProfile,
   session: SDK_ACCOUNT_BYTES.session,
-  passLock: SDK_ACCOUNT_BYTES.passLock,
   ata: 165,
   ata2022: 170,
 } as const;
 
 /**
  * Compute-unit limit of the ticket transaction (bounds the priority fee). The localnet e2e
- * measured 25k (register + join) to 34k (ATA idempotent + register + join with a Pass) on
- * Token-2022 with the deployed lean program (49k–66k on the Anchor reference); 150k keeps more
- * than 2× headroom for longer names and bump searches.
+ * measured 28k–32.5k (ATA idempotent + register + join) with the deployed lean program;
+ * 150k keeps more than 2× headroom for longer names, bump searches and the Anchor reference.
  */
 export const TICKET_COMPUTE_UNITS = 150_000;
 /** Priority fee the web client attaches, micro-lamports per compute unit. */
@@ -350,18 +362,17 @@ export const defaultRent = (bytes: number): number => (bytes + 128) * 6_960;
 export interface SolCost {
   /** Everything that leaves the wallet in SOL: rents, deposit, network fees. */
   total: number;
-  /** Comes back when the ticket closes (session and Pass-lock rent). */
+  /** Comes back when the ticket closes (the session rent). */
   refundable: number;
 }
 
 /**
- * SOL a ticket transaction moves. Session and Pass-lock rent return when the
+ * SOL a ticket transaction moves. The session rent returns when the
  * ticket closes; profile and token-account rent stay with the player's own
  * accounts; the settle deposit pays the server's payout transaction.
  */
 export function ticketSolCost(steps: readonly TicketStep[], opts: { settleFeeLamports: number; token2022: boolean; rent: (bytes: number) => number }): SolCost {
-  let refundable = opts.rent(ACCOUNT_BYTES.session);
-  if (steps.includes('joinWithPass')) refundable += opts.rent(ACCOUNT_BYTES.passLock);
+  const refundable = opts.rent(ACCOUNT_BYTES.session);
   let kept = 0;
   if (steps.includes('register')) kept += opts.rent(ACCOUNT_BYTES.profile);
   if (steps.includes('ata')) kept += opts.rent(opts.token2022 ? ACCOUNT_BYTES.ata2022 : ACCOUNT_BYTES.ata);

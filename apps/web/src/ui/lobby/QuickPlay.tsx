@@ -23,6 +23,8 @@ export function useCtaText(ticket: TicketModel | undefined, gate: TicketGate | u
   switch (gate.kind) {
     case 'practice':
       return { label: t('lo.cta.practice'), sub: t('lo.cta.practiceSub'), icon: 'play', inert: false };
+    case 'soon':
+      return { label: t('lo.cta.soon'), sub: t('lo.cta.soonSub'), icon: 'lock', inert: true };
     case 'offline':
       return { label: t('lo.cta.offline'), sub: t('lo.cta.offlineSub'), icon: 'lock', inert: true };
     case 'maintenance':
@@ -39,8 +41,6 @@ export function useCtaText(ticket: TicketModel | undefined, gate: TicketGate | u
       return { label: t('lo.cta.collect'), sub: t('lo.cta.collectSub', { amount: tok.fee(gate.owed), sym: tok.symbol }), icon: 'coin', inert: false };
     case 'refund':
       return { label: t('lo.cta.refund'), sub: t('lo.cta.refundSub', { room }), icon: 'coin', inert: false };
-    case 'needPass':
-      return { label: t('lo.cta.needPass'), sub: t('lo.cta.needPassSub', { room }), icon: 'passport', inert: false };
     case 'insufficient':
       return {
         label: t('lo.cta.insufficient', { sym: tok.symbol }),

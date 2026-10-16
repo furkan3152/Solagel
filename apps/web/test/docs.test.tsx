@@ -7,7 +7,7 @@ import { Kb } from '../src/design';
 import { pageFromUrl, urlForPage, useUi } from '../src/store';
 import { DocsPage } from '../src/ui/docs/DocsPage';
 import { docsEn } from '../src/ui/docs/content.en';
-import { FACTS, SERVER } from '../src/ui/docs/facts';
+import { FACTS, SERVER, feeExample } from '../src/ui/docs/facts';
 
 const initial = useUi.getState();
 const en0 = docsEn();
@@ -16,31 +16,30 @@ afterEach(() => {
 });
 
 /** The section order the guide promises (Task 16 brief). */
-const SECTION_IDS = ['play', 'rooms', 'value', 'payout', 'pass', 'mint', 'seasons', 'fair', 'wallet', 'faq'];
+const SECTION_IDS = ['play', 'rooms', 'value', 'payout', 'fair', 'wallet', 'faq'];
 
 describe('player guide facts', () => {
-  it('works the fee example through splitPayout: 1,000 in, 2,000 out → fee 50 (Pass 20), net 1,950 (Pass 1,980)', () => {
-    const { normal, pass } = FACTS.example;
-    expect(FACTS.example).toMatchObject({ entry: 1000, cashout: 2000 });
-    expect(normal).toEqual({ fee: 50n, treasury: 25n, season: 15n, burn: 10n, player: 1950n });
-    expect(pass).toEqual({ fee: 20n, treasury: 10n, season: 6n, burn: 4n, player: 1980n });
+  it('works the fee example through splitPayout: entry 1,000, till 2,000 at the bell → fee 50, player 1,950', () => {
+    expect(FACTS.example).toEqual({ entry: 1000, cashout: 2000 });
+    expect(feeExample(500)).toEqual({ fee: 50n, player: 1950n });
+    // the server's own rate when it differs
+    expect(feeExample(450)).toEqual({ fee: 45n, player: 1955n });
   });
 
   it('quotes the program and admin defaults', () => {
-    expect(FACTS.fee).toEqual({ bps: 500, passBps: 200, maxBps: 1000, split: [5000, 3000, 2000] });
+    expect(FACTS.fee).toEqual({ bps: 500, maxBps: 1000 });
     expect(FACTS.settleFeeLamports).toBe(20_000);
-    expect(FACTS.season).toMatchObject({ boardSize: 20, prizeRanks: 10, claimDays: 30, shares: [3000, 2000, 1400, 1000, 800, 600, 450, 300, 250, 200] });
-    expect(FACTS.pass).toEqual({ supply: 3333, perWallet: 1 });
     expect(FACTS.refundHours).toBe(24);
-    expect(FACTS.rules).toMatchObject({ roundMin: 5, joinCloseS: 60, passStartPct: 15, afkS: 45, lootMin: 3, lootMax: 24, lootEntryDiv: 4 });
+    expect(FACTS.rules).toMatchObject({ roundMin: 5, joinCloseS: 60, afkS: 45, lootMin: 3, lootMax: 24, lootEntryDiv: 4 });
+    expect(FACTS.rules.roundMin).toBe(RULES.roundMs / 60_000);
     expect(FACTS.capacity).toEqual({ practice: CAPACITY.practice, private: CAPACITY.private, arena: 50 });
-    expect(FACTS.arenas.map((a) => [a.id, a.entry, a.pass])).toEqual([
-      [1, 1000, false],
-      [2, 10000, false],
-      [3, 50000, true],
-      [4, 250000, true],
+    // every default arena is open to everyone; they differ only by entry fee
+    expect(FACTS.arenas.map((a) => [a.id, a.entry])).toEqual([
+      [1, 1000],
+      [2, 10000],
+      [3, 50000],
+      [4, 250000],
     ]);
-    expect(RULES.passStartMassMul).toBe(1.15);
   });
 
   it('mirrors the server-only timings from the server source', () => {
@@ -62,11 +61,28 @@ describe('player guide facts', () => {
 describe('player guide content', () => {
   const en = docsEn('$SLANA');
 
-  it('I3: quotes the Pass power the server applies when it publishes one', () => {
-    const text = (c: typeof en) => JSON.stringify(c.sections);
-    const power = { startMassMul: 1.3, cashoutMs: 1_000 };
-    expect(text(docsEn('$SLANA', power))).toContain('start with +30% mass');
-    expect(text(en)).toContain('start with +15% mass');
+  it("quotes the server's fee rate and uses it in the worked example", () => {
+    const text = (c: typeof en) => JSON.stringify([c.dateline, c.sections]);
+    expect(text(en)).toContain('fee 50, you get 1,950');
+    expect(text(en)).toContain('Fee 5% of profit');
+    const live = docsEn('$SLANA', 300);
+    expect(live.feeBps).toBe(300);
+    expect(text(live)).toContain('fee 30, you get 1,970');
+    expect(text(live)).toContain('Fee 3% of profit');
+  });
+
+  it("says the fee goes to the operator's wallet, floor loot is burned, and arenas open soon until the token is set", () => {
+    const t = JSON.stringify([en.receipt, en.sections]);
+    expect(t).toContain("The whole fee goes to the operator's wallet");
+    expect(en.receipt.footer).toBe("The fee goes to the operator's wallet");
+    expect(t).toMatch(/Loot still on the floor at the bell is burned/);
+    expect(t).toContain('Opening soon');
+  });
+
+  it('has no Pass, mint, season, treasury or prize-pool chapter or wording', () => {
+    const t = JSON.stringify(en);
+    expect(t).not.toMatch(/Slana Pass|\bPass\b|NFT mint/);
+    expect(t).not.toMatch(/season|treasury|prize pool|reveal/i);
   });
 
   it('describes timed rounds and promises no cash-out in arenas', () => {
@@ -109,21 +125,35 @@ describe('player guide content', () => {
 });
 
 describe('player guide page', () => {
-  it('renders the ten sections and the worked fee example', () => {
+  it('renders the seven sections and the worked fee example', () => {
     render(
       <Kb theme="paper">
         <DocsPage />
       </Kb>,
     );
     const toc = screen.getByRole('navigation', { name: en0.tocLabel });
-    expect(within(toc).getAllByRole('button')).toHaveLength(10);
+    expect(within(toc).getAllByRole('button')).toHaveLength(7);
     for (const s of en0.sections) expect(screen.getByRole('heading', { level: 3, name: s.title })).toBeTruthy();
     expect(screen.getByRole('heading', { level: 3, name: 'Rounds, payout and fees' })).toBeTruthy();
-    // Receipts: net 1,950 without a Pass, 1,980 with one; fee 50 / 20
+    // the receipt: fee 50, 1,950 to the player
     expect(screen.getByText('1,950')).toBeTruthy();
-    expect(screen.getByText('1,980')).toBeTruthy();
     expect(screen.getByText('−50')).toBeTruthy();
-    expect(screen.getByText('−20')).toBeTruthy();
+    expect(screen.getByText("The fee goes to the operator's wallet")).toBeTruthy();
+  });
+
+  it("follows the server's fee rate (ChainStatus.feeBps)", () => {
+    act(() =>
+      useUi.setState({
+        chain: { enabled: true, cluster: 'devnet', programId: null, rpcUrl: null, arenasEnabled: true, tokenReady: true, token: null, feeBps: 400 },
+      }),
+    );
+    render(
+      <Kb theme="paper">
+        <DocsPage />
+      </Kb>,
+    );
+    expect(screen.getByText('1,960')).toBeTruthy();
+    expect(screen.getByText('−40')).toBeTruthy();
   });
 });
 
@@ -132,7 +162,8 @@ describe('docs routes', () => {
     expect(pageFromUrl('/docs', '')).toBe('docs');
     expect(pageFromUrl('/docs/', '')).toBe('docs');
     expect(pageFromUrl('/', '#docs')).toBe('docs');
-    expect(pageFromUrl('/', '#pass')).toBe('pass');
+    // the retired Pass page falls back to the front page
+    expect(pageFromUrl('/', '#pass')).toBe('play');
     expect(pageFromUrl('/docs', '#ranks')).toBe('ranks');
     expect(pageFromUrl('/', '')).toBe('play');
     expect(pageFromUrl('/elsewhere', '')).toBe('play');
@@ -141,7 +172,7 @@ describe('docs routes', () => {
   it('keeps /docs while on the guide and leaves it for the other pages', () => {
     expect(urlForPage('docs', '/', '')).toBe('/#docs');
     expect(urlForPage('docs', '/docs', '')).toBe('/docs');
-    expect(urlForPage('pass', '/docs', '')).toBe('/#pass');
+    expect(urlForPage('profile', '/docs', '')).toBe('/#profile');
     expect(urlForPage('play', '/docs', '?x=1')).toBe('/?x=1');
     expect(urlForPage('ranks', '/', '')).toBe('/#ranks');
   });

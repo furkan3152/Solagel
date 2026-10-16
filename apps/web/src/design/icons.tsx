@@ -10,7 +10,6 @@ export const ICON_NAMES = [
   'play',
   'trophy',
   'ticket',
-  'passport',
   'user',
   'wallet',
   'lock',
@@ -56,13 +55,6 @@ const P: Record<IconName, ReactElement> = {
     <>
       <path d="M3.5 7a1 1 0 0 1 1-1h15a1 1 0 0 1 1 1v3a2 2 0 0 0 0 4v3a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1v-3a2 2 0 0 0 0-4z" />
       <path d="M15 9v0M15 12v0M15 15v0" />
-    </>
-  ),
-  passport: (
-    <>
-      <rect x="5" y="3" width="14" height="18" rx="2" />
-      <circle cx="12" cy="10" r="3.2" />
-      <path d="M8.5 17h7" />
     </>
   ),
   user: (

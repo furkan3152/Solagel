@@ -1,5 +1,5 @@
 import { CARD_PAPER, INK, RISO, type CoinLook } from '@slana/art';
-import { EntityKind, PlayerFlag, type PassStatus } from '@slana/shared';
+import { EntityKind, PlayerFlag } from '@slana/shared';
 import { DROP_LAND, dropScale } from '../design/curves';
 import type { Camera } from '../game/camera';
 import type { Particles } from '../game/particles';
@@ -78,8 +78,6 @@ export interface FrameInput {
   camera: Camera;
   particles: Particles;
   settings: Settings;
-  /** Slana Pass collection status (seed once revealed) for Pass looks. */
-  pass: PassStatus | null;
   /** prefers-reduced-motion: idle loops stop. */
   reduced: boolean;
   /** Mouse target in world coordinates (for own eyes). */
@@ -122,9 +120,9 @@ export class Renderer {
     this.canvas.style.height = `${h}px`;
   }
 
-  /** Coin look of a player (Pass / sealed / basic skin), cached. */
-  lookFor(skin: number, pass: number, status: PassStatus | null): CoinLook {
-    return this.looks.lookFor(skin, pass, status);
+  /** Coin look of a player (its basic skin), cached. */
+  lookFor(skin: number): CoinLook {
+    return this.looks.lookFor(skin);
   }
 
   draw(f: FrameInput): void {
@@ -464,7 +462,7 @@ export class Renderer {
       ctx.fill();
       ctx.restore();
     }
-    const look = this.lookFor(player?.skin ?? 0, player?.pass ?? 0, f.pass);
+    const look = this.lookFor(player?.skin ?? 0);
     drawCoinLook(ctx, e.x, e.y, r, look, {
       time: f.reduced ? 0 : f.now,
       lookX: lx,
@@ -475,7 +473,7 @@ export class Renderer {
       flags: e.flags,
       seed: e.seed * 10 + e.playerId,
       halftone,
-      // live renderer speed-ups (Pass images never use them): one flat body fill,
+      // live renderer speed-ups: one flat body fill,
       // and no multiply overprint / halftone on coins under ~25 px radius
       fastBody: true,
       minPrintPx: 25,

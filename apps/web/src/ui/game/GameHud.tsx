@@ -70,7 +70,6 @@ function TillSlip() {
         {arena && ticket && (
           <div className="g-till__foot mono">
             <span>{t('g.ticket', { fee: tf.fmt(ticket.entryFee, { compact: true }) })}</span>
-            {ticket.hasPass && <span className="g-till__pass">PASS</span>}
           </div>
         )}
         {room?.mode === 'private' && room.code && (

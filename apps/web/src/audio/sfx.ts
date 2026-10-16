@@ -212,20 +212,6 @@ export class Sfx {
     this.printing = [];
   }
 
-  /** A letter slides out of its envelope and the flap settles. */
-  envelope(): void {
-    this.noise(0.42, 700, 2200, { gain: 0.05, q: 0.6, attack: 0.12 });
-    this.noise(0.06, 1400, 600, { gain: 0.05, delay: 0.4 });
-  }
-
-  /** A wax seal cracks: a crunchy knock and a few crumbs. */
-  seal(): void {
-    this.tone(180, 0.1, { type: 'triangle', slideTo: 90, gain: 0.12 });
-    this.noise(0.07, 3200, 900, { gain: 0.11, q: 2.2 });
-    for (let i = 0; i < 4; i++) this.noise(0.018, 4500 + this.random() * 2000, 3000, { gain: 0.03, delay: 0.09 + i * 0.045 + this.random() * 0.02 });
-    this.mixer.duck(0.6);
-  }
-
   /** A paper whoosh for screen transitions: in (into the room) rises, out falls. */
   whoosh(dir: 'in' | 'out'): void {
     const up = dir === 'in';

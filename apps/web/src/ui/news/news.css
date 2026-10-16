@@ -1,17 +1,13 @@
 /* ─────────────────────── Paper Ticket · the standings page ───────────────────────
- * Task 15. A newspaper results page: section tabs, a headline on the leader,
- * a results table with dotted leaders, the pool box, the winner's prize
- * cheque and last season's final table.
+ * Task 15. A newspaper results page: section tabs (Today / All time), a
+ * headline on the leader and a results table with dotted leaders. The
+ * standings are the server's off-chain records: no prizes.
  * ------------------------------------------------------------------------- */
 
 .nw-page {
   display: flex;
   flex-direction: column;
   gap: 18px;
-}
-.nw-edition {
-  font-size: var(--t-label);
-  color: var(--ink-2);
 }
 .nw-tabs {
   margin-top: -2px;
@@ -26,12 +22,6 @@
   display: flex;
   flex-direction: column;
   gap: 28px;
-}
-.nw-cols.is-wide {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 1px minmax(300px, 370px);
-  gap: 0 clamp(24px, 3vw, 40px);
-  align-items: start;
 }
 .nw-lead {
   display: flex;
@@ -62,12 +52,6 @@
   font-size: var(--t-small);
   line-height: 1.45;
   color: var(--ink-2);
-}
-.nw-side {
-  display: flex;
-  flex-direction: column;
-  gap: 28px;
-  min-width: 0;
 }
 
 /* ── the results table ────────────────────────────────────────────────── */
@@ -109,9 +93,6 @@
   font-size: 13px;
   white-space: nowrap;
   text-align: right !important;
-}
-.nw-table__prize {
-  color: var(--teal-ink);
 }
 .nw-table__name {
   max-width: 0;
@@ -196,237 +177,8 @@
   color: var(--mustard-ink);
 }
 
-/* ── pool box ─────────────────────────────────────────────────────────── */
-.nw-pool {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 16px 16px 14px;
-  border: 2px solid var(--ink);
-  border-radius: var(--r-card);
-  background: var(--card);
-  box-shadow: 4px 4px 0 var(--mustard);
-}
-.nw-pool__kicker {
-  font-size: var(--t-label);
-  font-weight: 500;
-  color: var(--ink-2);
-}
-.nw-pool__value {
-  font-size: 44px;
-  font-weight: 800;
-  line-height: 1;
-  letter-spacing: -0.03em;
-}
-.nw-pool__value .kb-counter__unit {
-  font-size: 14px;
-  letter-spacing: 0.04em;
-}
-.nw-pool__note {
-  font-size: 13.5px;
-  line-height: 1.45;
-  color: var(--ink-2);
-}
-.nw-shares__h {
-  margin-top: 6px;
-  padding-top: 10px;
-  border-top: 1.5px dashed var(--line);
-  font-size: var(--t-label);
-  font-weight: 500;
-  color: var(--ink-2);
-}
-.nw-shares {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 2px 18px;
-}
-.nw-shares li {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 4px 0;
-  border-bottom: 1px solid var(--line-soft);
-}
-.nw-shares__rank {
-  font-size: var(--t-label);
-  color: var(--pink-text);
-}
-.nw-shares__pct {
-  font-weight: 800;
-}
-.nw-shares__amt {
-  margin-left: auto;
-  font-size: var(--t-label);
-  color: var(--ink-2);
-}
-
-/* ── last season ──────────────────────────────────────────────────────── */
-.nw-prev {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.nw-prev__note {
-  font-size: var(--t-label);
-  line-height: 1.5;
-  color: var(--ink-2);
-}
-.nw-prev__list {
-  display: flex;
-  flex-direction: column;
-  border-top: 2px solid var(--ink);
-}
-.nw-prev__list li {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  padding: 6px 0;
-  border-bottom: 1px solid var(--line-soft);
-}
-.nw-prev__rank {
-  font-size: var(--t-label);
-  color: var(--ink-2);
-}
-.nw-prev__name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 700;
-}
-.nw-prev__amt {
-  font-size: var(--t-label);
-}
-.nw-prev__paid {
-  padding: 0 5px;
-  border: 1.2px solid var(--teal-ink);
-  border-radius: 3px;
-  font-size: 10.5px;
-  color: var(--teal-ink);
-  transform: rotate(-3deg);
-}
-.nw-prev__list li.is-me .nw-prev__name {
-  color: var(--pink-text);
-}
-
-/* ── the prize cheque ─────────────────────────────────────────────────── */
-.sc-cheque {
-  position: relative;
-  display: grid;
-  grid-template-columns: 76px minmax(0, 1fr);
-  border: 2px solid var(--ink);
-  border-radius: 12px;
-  background-color: var(--card);
-  background-image:
-    repeating-radial-gradient(circle at 120% 120%, transparent 0 8px, var(--line-soft) 8px 9px),
-    repeating-linear-gradient(45deg, transparent 0 14px, color-mix(in srgb, var(--teal) 5%, transparent) 14px 15px);
-  box-shadow: 4px 4px 0 var(--pink);
-}
-.sc-cheque__stub {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  padding: 12px 4px;
-  border-right: 2px dashed var(--line);
-  border-radius: 10px 0 0 10px;
-  background: color-mix(in srgb, var(--mustard) 26%, var(--card));
-  font-size: var(--t-label);
-}
-.sc-cheque__rank {
-  font-size: 44px;
-  font-weight: 800;
-  line-height: 1;
-  letter-spacing: -0.04em;
-}
-.sc-cheque__body {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 14px 16px 16px;
-  min-width: 0;
-}
-.sc-cheque__kicker {
-  font-size: var(--t-label);
-  color: var(--pink-text);
-}
-.sc-cheque__title {
-  font-size: 22px;
-  font-weight: 800;
-  font-stretch: 88%;
-  line-height: 1.02;
-  letter-spacing: -0.02em;
-  text-wrap: balance;
-}
-.sc-cheque__pay {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  width: 100%;
-}
-.sc-cheque__pay .mono {
-  flex: none;
-  font-size: var(--t-label);
-  color: var(--ink-2);
-}
-.sc-cheque__payee {
-  flex: 1;
-  min-width: 0;
-  padding-bottom: 2px;
-  border-bottom: 1.5px solid var(--ink);
-  font-size: 19px;
-  font-weight: 700;
-  font-style: italic;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.sc-cheque__amount {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 8px;
-}
-.sc-cheque__value {
-  font-size: 34px;
-  font-weight: 800;
-  line-height: 1;
-  letter-spacing: -0.03em;
-  font-variant-numeric: tabular-nums;
-}
-.sc-cheque__share {
-  font-size: var(--t-label);
-  color: var(--teal-ink);
-}
-.sc-cheque__until {
-  font-size: var(--t-label);
-  color: var(--ink-2);
-}
-.sc-cheque__stamp {
-  position: absolute;
-  right: 12px;
-  bottom: 14px;
-  z-index: 1;
-  pointer-events: none;
-}
-.sc-cheque.is-expired {
-  box-shadow: 4px 4px 0 var(--line);
-}
-.sc-cheque.is-expired .sc-cheque__value {
-  color: var(--ink-2);
-  text-decoration: line-through;
-  text-decoration-thickness: 2px;
-}
-.sc-cheque.is-compact {
-  box-shadow: 3px 3px 0 var(--pink);
-}
-
-/* phones: the prize column lives in the shares box; names get the room */
+/* phones: names get the room */
 @media (max-width: 559px) {
-  .nw-table__prize,
   .nw-table__leader {
     display: none;
   }
