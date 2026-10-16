@@ -8,16 +8,15 @@ import {
   type ClientMessage,
   type ErrorCode,
   type JoinTarget,
-  type PassStatus,
   type RoomInfo,
   type ServerMessage,
 } from '../src';
 
-describe('protocol v3 constants', () => {
-  it('pins the wire values', () => {
-    expect(PROTOCOL_VERSION).toBe(3);
+describe('protocol v4 constants', () => {
+  it('pins the wire values (v4: no Slana Pass in snapshots or flags)', () => {
+    expect(PROTOCOL_VERSION).toBe(4);
     expect(EntityKind.Loot).toBe(6);
-    expect(PlayerFlag.Pass).toBe(8);
+    expect(PlayerFlag).toEqual({ Bot: 1, Verified: 2, Staker: 4 });
   });
 
   it('keeps entity kinds and player flags distinct', () => {
@@ -69,27 +68,25 @@ describe('parseJoinTarget', () => {
  */
 describe('v2 message shapes', () => {
   it('type-checks the lobby and chain payloads', () => {
-    const pass: PassStatus = {
-      collection: 'Coll1111111111111111111111111111111111111111',
-      supply: 3333,
-      minted: 12,
-      perWallet: 1,
-      mintOpen: true,
-      mintStartTs: 1_760_000_000,
-      revealed: false,
-      seed: null,
-    };
     const chain: ChainStatus = {
       enabled: true,
       cluster: 'devnet',
       programId: 'Prog111111111111111111111111111111111111111',
       rpcUrl: null,
       arenasEnabled: true,
-      currentSeason: 1,
+      tokenReady: true,
       token: { mint: 'Mint111111111111111111111111111111111111111', symbol: '$SLANA', decimals: 6 },
-      pass,
+      feeBps: 500,
     };
-    const offline: ChainStatus = { ...chain, enabled: false, arenasEnabled: false, token: null, pass: null };
+    // deployed and initialized, token not set yet: practice only, arenas "opening soon"
+    const opening: ChainStatus = { ...chain, arenasEnabled: false, tokenReady: false, token: null };
+    const offline: ChainStatus = { ...chain, enabled: false, arenasEnabled: false, tokenReady: false, token: null, feeBps: null };
+    // @ts-expect-error the Pass status is gone
+    const pass: ChainStatus = { ...chain, pass: null };
+    // @ts-expect-error seasons are gone
+    const season: ChainStatus = { ...chain, currentSeason: 1 };
+    const pushed: ServerMessage = { t: 'chain', chain };
+    expect([opening.tokenReady, pass, season, pushed.t]).toHaveLength(4);
     const arena: RoomInfo = {
       id: 'arena-1-1',
       mode: 'arena',
@@ -101,7 +98,6 @@ describe('v2 message shapes', () => {
       maxPlayers: 50,
       arenaId: 1,
       entryFee: 1_000_000_000,
-      requiresPass: false,
       instance: 1,
       loot: 250_000_000,
     };
@@ -120,14 +116,16 @@ describe('v2 message shapes', () => {
     const old: JoinTarget = 'stake:1';
     const joins: ClientMessage[] = [
       { t: 'join', room: 'practice', name: 'gm', skin: 0 },
-      { t: 'join', room: 'arena:3', name: 'gm', skin: 0, pass: 'Asset11111111111111111111111111111111111111' },
+      { t: 'join', room: 'arena:3', name: 'gm', skin: 0 },
     ];
-    expect([targets, old, joins]).toHaveLength(3);
+    // @ts-expect-error joins carry no Pass any more
+    const withPass: ClientMessage = { t: 'join', room: 'arena:3', name: 'gm', skin: 0, pass: 'Asset11111111111111111111111111111111111111' };
+    expect([targets, old, joins, withPass]).toHaveLength(4);
   });
 
   it('type-checks the server messages', () => {
     const msgs: ServerMessage[] = [
-      { t: 'joined', room: { id: 'x', mode: 'arena', name: 'x', width: 1, height: 1, players: 1, bots: 0, maxPlayers: 50 }, playerId: 1, name: 'n', skin: 0, value: 1000, entryFee: 1000, hasPass: true },
+      { t: 'joined', room: { id: 'x', mode: 'arena', name: 'x', width: 1, height: 1, players: 1, bots: 0, maxPlayers: 50 }, playerId: 1, name: 'n', skin: 0, value: 1000, entryFee: 1000 },
       { t: 'value', value: 1500, delta: 500, reason: 'eat' },
       { t: 'value', value: 1500, delta: 250, reason: 'loot' },
       { t: 'value', value: 0, delta: -1500, reason: 'eaten' },
@@ -150,9 +148,11 @@ describe('v2 message shapes', () => {
   });
 
   it('has the v2 error codes and drops stake_disabled', () => {
-    const codes: ErrorCode[] = ['pass_required', 'pass_invalid', 'pass_in_use', 'arenas_disabled'];
+    const codes: ErrorCode[] = ['arenas_disabled', 'token_not_set', 'round_closed', 'round_ended'];
     // @ts-expect-error renamed to arenas_disabled
     const gone: ErrorCode = 'stake_disabled';
-    expect([codes, gone]).toHaveLength(2);
+    // @ts-expect-error the Pass error codes are gone
+    const pass: ErrorCode = 'pass_required';
+    expect([codes, gone, pass]).toHaveLength(3);
   });
 });

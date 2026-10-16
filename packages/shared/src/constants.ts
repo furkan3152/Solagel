@@ -1,5 +1,5 @@
 /** Bumped whenever the wire format changes in an incompatible way. */
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 
 /** Simulation + snapshot rate. */
 export const TICK_RATE = 30;
@@ -83,11 +83,6 @@ export const RULES = {
   /** New arena joins close this long before a round ends (`round_closed` until the next round opens). */
   roundJoinCloseMs: 60_000,
 
-  /** Slana Pass holders start with this multiple of `startMass`… */
-  passStartMassMul: 1.15,
-  /** Unused since paid arenas play timed rounds (the Pass no longer cashes out faster; kept for old clients). */
-  passCashoutMs: 2_000,
-
   /**
    * Loot: when a bot eats a staker, the victim's tokens spill as
    * `clamp(ceil(value / (entryFee × lootPieceEntryFraction)), lootPiecesMin, lootPiecesMax)`
@@ -147,8 +142,6 @@ export const FOOD_MASS = [1, 1, 1, 1, 1, 1, 2, 8] as const;
 export const MAX_NAME_LENGTH = 16;
 export const MAX_CHAT_LENGTH = 100;
 
-/** Season prize split (basis points) for ranks 1..10 — mirrors the on-chain constant. */
-export const PRIZE_SHARES_BPS = [3000, 2000, 1400, 1000, 800, 600, 450, 300, 250, 200] as const;
 export const LEADERBOARD_SIZE = 20;
 
 export const LAMPORTS_PER_SOL = 1_000_000_000;

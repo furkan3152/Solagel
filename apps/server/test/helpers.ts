@@ -1,5 +1,5 @@
-import { roundAt, type ChainStatus, type PassStatus, type ServerMessage } from '@slana/shared';
-import type { ChainArena, ChainGateway, ChainPass, ChainProfile, ChainSession, OwnedPassInfo, SeasonView } from '../src/chain/types';
+import { roundAt, type ChainStatus, type ServerMessage } from '@slana/shared';
+import type { ChainArena, ChainGateway, ChainProfile, ChainSession } from '../src/chain/types';
 import { Leaderboards } from '../src/leaderboards';
 import { Conn } from '../src/net/conn';
 import type { RoomDeps } from '../src/rooms/room';
@@ -25,11 +25,21 @@ export function fakeConn(wallet: string | null = null, ip = '127.0.0.1'): TestCo
 /** A chain with stake arenas and nothing else. */
 export class ArenaChain implements ChainGateway {
   readonly enabled = true;
+  readonly tokenReady = true;
   readonly stakeEnabled = true;
   listCalls = 0;
   constructor(readonly arenas: ChainArena[]) {}
   status(): ChainStatus {
-    return { enabled: true, cluster: 'test', programId: 'Fake111', rpcUrl: null, arenasEnabled: true, currentSeason: 1, token: null, pass: null };
+    return {
+      enabled: true,
+      cluster: 'test',
+      programId: 'Fake111',
+      rpcUrl: null,
+      arenasEnabled: true,
+      tokenReady: true,
+      token: { mint: 'Mint111', symbol: '$SLANA', decimals: 6 },
+      feeBps: 500,
+    };
   }
   async getProfile(): Promise<ChainProfile | null> {
     return null;
@@ -41,26 +51,15 @@ export class ArenaChain implements ChainGateway {
     this.listCalls++;
     return this.arenas;
   }
-  async season(): Promise<SeasonView | null> {
-    return null;
-  }
-  async getPass(): Promise<ChainPass | null> {
-    return null;
-  }
-  async ownedPasses(): Promise<OwnedPassInfo[]> {
-    return [];
-  }
-  passStatus(): PassStatus | null {
-    return null;
-  }
   kick(): void {}
   setLiveSessionProvider(): void {}
   onSettled(): void {}
+  onStatusChange(): void {}
   async start(): Promise<void> {}
   async stop(): Promise<void> {}
 }
 
-export const arena = (id: number, entryFee: number, requiresPass = false): ChainArena => ({
+export const arena = (id: number, entryFee: number): ChainArena => ({
   id,
   address: `Arena${id}`,
   entryFee,
@@ -69,7 +68,6 @@ export const arena = (id: number, entryFee: number, requiresPass = false): Chain
   openSessions: 0,
   // no vault tracking unless a test sets it (the vault-vs-journal guard is skipped)
   pot: null,
-  requiresPass,
 });
 
 /** A fixed wall-clock instant one minute into a 5-minute round: room tests never hit a round end by accident. */
@@ -87,7 +85,7 @@ export function roomDeps(chain: ChainGateway, journal = new Journal(null), now: 
 
 let stakeSeq = 0;
 /** Join options for an arena ticket worth `fee`. */
-export function stakeJoin(arenaId: number, fee: number, hasPass = false) {
+export function stakeJoin(arenaId: number, fee: number) {
   const n = ++stakeSeq;
   return {
     name: `staker${n}`,
@@ -101,7 +99,6 @@ export function stakeJoin(arenaId: number, fee: number, hasPass = false) {
       entryFee: fee,
       value: fee,
       openedAt: Math.floor(Date.now() / 1000),
-      hasPass,
     },
   };
 }

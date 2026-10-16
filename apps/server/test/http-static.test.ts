@@ -38,14 +38,14 @@ describe('static web client', () => {
     }
   });
 
-  it('serves hashed assets immutable and 404s missing files, the API and pass routes', async () => {
+  it('serves hashed assets immutable and 404s missing files and API paths', async () => {
     const url = await start();
     const asset = await fetch(`${url}/assets/app-1234.js`);
     expect(asset.status).toBe(200);
     expect(asset.headers.get('cache-control')).toMatch(/immutable/);
     // a missing file with an extension is not the SPA
     expect((await fetch(`${url}/assets/missing.js`)).status).toBe(404);
-    // API and Pass paths never fall back to index.html
+    // API paths and missing files with an extension (e.g. the removed /pass/<n>.json) never fall back to index.html
     const api = await fetch(`${url}/api/docs`);
     expect(api.status).toBe(404);
     expect(api.headers.get('content-type')).toMatch(/json/);

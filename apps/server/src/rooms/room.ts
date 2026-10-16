@@ -46,8 +46,6 @@ export interface RoomDeps {
   journal: Journal;
   leaderboards: Leaderboards;
   log: (msg: string) => void;
-  /** Slana Pass power (defaults to `RULES.passStartMassMul` / `RULES.passCashoutMs`). */
-  pass?: { startMassMul: number; cashoutMs: number };
   /** Wall clock (Unix ms) the arena rounds run on; defaults to `Date.now`. Tests inject their own. */
   now?: () => number;
   /** Arena round clock (defaults to `RULES.roundMs` / `RULES.roundJoinCloseMs`). */
@@ -82,12 +80,8 @@ export interface JoinOptions {
   name: string;
   skin: number;
   flags: number;
-  /** Arena ticket; `stake.hasPass` turns on Pass power in arenas. */
+  /** Arena ticket. */
   stake?: Omit<ArenaEntry, 'pid'>;
-  /** Verified Slana Pass number the player wears (0 / absent = none). In practice it also turns on Pass power; private rooms ignore it. */
-  pass?: number;
-  /** Practice: a verified Pass is equipped (Pass power) even when its number is unknown. Private rooms ignore it. */
-  hasPass?: boolean;
 }
 
 export interface RoomOptions {
@@ -101,7 +95,7 @@ export interface RoomOptions {
   /** Arena rooms: instance (shard) number within the arena, from 1. */
   instance?: number;
   bots: BotManagerOptions | null;
-  stake?: { arenaId: number; buyIn: number; requiresPass?: boolean };
+  stake?: { arenaId: number; buyIn: number };
   seed?: number;
 }
 
@@ -201,7 +195,6 @@ export class Room {
       league: this.opts.league,
       arenaId: this.opts.stake?.arenaId,
       entryFee: this.opts.stake?.buyIn,
-      requiresPass: this.opts.stake ? (this.opts.stake.requiresPass ?? false) : undefined,
       instance: this.opts.stake ? (this.opts.instance ?? 1) : undefined,
       loot: this.ledger ? this.lootValue() : undefined,
       code: this.opts.code,
@@ -214,10 +207,6 @@ export class Room {
     let sum = 0;
     for (const l of this.world.loot()) sum += l.value;
     return sum;
-  }
-
-  private get passPower(): { startMassMul: number; cashoutMs: number } {
-    return this.deps.pass ?? { startMassMul: RULES.passStartMassMul, cashoutMs: RULES.passCashoutMs };
   }
 
   get isFull(): boolean {
@@ -262,17 +251,7 @@ export class Room {
   join(conn: Conn, opts: JoinOptions): Player {
     this.syncRound();
     this.attach(conn);
-    // private rooms ignore the Pass entirely
-    const practice = this.opts.mode === 'practice';
-    const passOk = !!this.ledger || practice;
-    const pass = passOk && Number.isInteger(opts.pass) && (opts.pass ?? 0) > 0 && (opts.pass ?? 0) <= 0xffff ? opts.pass! : 0;
-    // Pass power: arenas take it from the ticket, practice from a verified Pass
-    const hasPass = this.ledger ? (opts.stake?.hasPass ?? false) : practice && (pass > 0 || opts.hasPass === true);
-    const flags = hasPass || pass > 0 ? opts.flags | PlayerFlag.Pass : opts.flags & ~PlayerFlag.Pass;
-    const mass = hasPass ? RULES.startMass * this.passPower.startMassMul : RULES.startMass;
-    const player = this.world.addPlayer({ name: opts.name, skin: opts.skin, flags, mass });
-    player.pass = pass;
-    player.hasPass = hasPass;
+    const player = this.world.addPlayer({ name: opts.name, skin: opts.skin, flags: opts.flags, mass: RULES.startMass });
     this.humans.set(player.id, conn);
     conn.player = player;
     conn.spectating = false;
@@ -293,7 +272,6 @@ export class Room {
       value: this.ledger?.value(player.id),
       // the ticket's own price (the arena's may have changed since it was bought)
       entryFee: this.ledger ? (this.ledger.get(player.id)?.entryFee ?? this.entryFee) : undefined,
-      hasPass: hasPass || undefined,
       session: this.ledger?.get(player.id)?.session,
       round: this.round(),
     });
@@ -322,7 +300,6 @@ export class Room {
       skin: p.skin,
       value: this.ledger?.value(pid),
       entryFee: this.ledger ? (this.ledger.get(pid)?.entryFee ?? this.entryFee) : undefined,
-      hasPass: p.hasPass || undefined,
       session: this.ledger?.get(pid)?.session,
       round: this.round(),
     });
@@ -457,7 +434,6 @@ export class Room {
         value: e.value,
         score: Math.floor(p?.stats.maxMass ?? 0),
         kills: p?.stats.playersEaten ?? 0,
-        hasPass: e.hasPass,
       };
     });
   }
@@ -668,7 +644,7 @@ export class Room {
     if (batch.length > 0) this.deps.chain.kick();
     for (const a of away) this.deps.onBellSettled?.(a);
     const settled = batch.filter((i) => i.kind === 'settle').length;
-    if (settled > 0 || amount > 0) this.deps.log(`room ${this.id}: round ${round} over · ${settled} settled · loot ${amount} queued for the season pool`);
+    if (settled > 0 || amount > 0) this.deps.log(`room ${this.id}: round ${round} over · ${settled} settled · loot ${amount} queued to burn`);
 
     for (const r of results) {
       const standings: RoundStanding[] = top.map(({ e, p }) => ({
@@ -695,7 +671,7 @@ export class Room {
 
   tick(dtMs: number): void {
     if (this.conns.size > 0 || this.humans.size > 0) this.lastActivity = Date.now();
-    // rounds end on the wall clock, even in a sleeping room (its floor loot goes to the season)
+    // rounds end on the wall clock, even in a sleeping room (its floor loot is burned)
     this.syncRound();
     if (this.sleeping) return;
     const world = this.world;

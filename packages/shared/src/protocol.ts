@@ -39,8 +39,6 @@ export const PlayerFlag = {
   Verified: 2,
   /** Plays an arena ticket (tokens at stake). */
   Staker: 4,
-  /** Plays with a Slana Pass; `PlayerInfo.pass` carries its number. */
-  Pass: 8,
 } as const;
 
 /** Binary client → server opcodes (first byte). */
@@ -63,8 +61,6 @@ export interface PlayerInfo {
   id: number;
   skin: number;
   flags: number;
-  /** Slana Pass number whose look this player wears (0 = none). */
-  pass: number;
   name: string;
 }
 
@@ -116,8 +112,6 @@ export interface RoomInfo {
   arenaId?: number;
   /** Entry fee in raw token units (base units of the mint). */
   entryFee?: number;
-  /** A Slana Pass is needed to buy a ticket. */
-  requiresPass?: boolean;
   /** Instance (shard) number within the arena. */
   instance?: number;
   /** Total value of loot on the floor, raw token units. */
@@ -157,60 +151,23 @@ export interface BlockedArena {
   reason: 'vault_short';
 }
 
-/** The Slana Pass collection as the server sees it on chain. */
-export interface PassStatus {
-  /** Collection address. */
-  collection: string;
-  supply: number;
-  minted: number;
-  perWallet: number;
-  mintOpen: boolean;
-  /** Unix seconds; the mint opens at this time. */
-  mintStartTs: number;
-  /** The traits are public (`capture_pass_entropy` stored the final seed). */
-  revealed: boolean;
-  /**
-   * The admin published the seed (`reveal_pass`) and the entropy target slot is set; the
-   * reveal completes when anyone captures that slot's hash. Absent on old servers.
-   */
-  seedRevealed?: boolean;
-  /** Slot whose hash completes the reveal (0 before `reveal_pass`). */
-  entropyTargetSlot?: number;
-  /** Final trait seed `Config.pass_final_seed` = sha256(admin seed || entropy), hex, published at reveal (null before). `passTraits(seed, n, supply)`. */
-  seed: string | null;
-}
-
-/** Marketplace pages of the Slana Pass collection (server `MARKET_URLS`); a missing key hides that link. */
-export interface MarketUrls {
-  magicEden?: string;
-  tensor?: string;
-  opensea?: string;
-}
-
 export interface ChainStatus {
   enabled: boolean;
   cluster: string;
   programId: string | null;
   rpcUrl: string | null;
-  /** Paid arenas are open for tickets (false when the chain is off or the token is unusable). */
+  /** Paid arenas are open for tickets (false when the chain is off, the token is not set yet or is unusable). */
   arenasEnabled: boolean;
-  currentSeason: number | null;
-  /** The game token; `symbol` is display only. */
-  token: { mint: string; symbol: string; decimals: number } | null;
-  pass: PassStatus | null;
-  /** Collection pages on the marketplaces (added by the server from its config; absent = none). */
-  markets?: MarketUrls;
   /**
-   * The Pass power this server actually applies (`PASS_START_MASS_MUL`; `cashoutMs` is unused since arenas play rounds),
-   * added from its config. Clients fall back to `RULES` when absent (older servers).
+   * The game token is set on chain (`set_token_mint`). Until then the server runs practice only
+   * and arena joins answer `token_not_set` ("Opening soon"). The server picks the token up
+   * without a restart (it re-reads the config every 30 s) and then pushes a `chain` message.
    */
-  passPower?: PassPower;
-}
-
-/** Slana Pass power in play: start-mass multiplier (`cashoutMs` is unused since arenas play rounds). */
-export interface PassPower {
-  startMassMul: number;
-  cashoutMs: number;
+  tokenReady: boolean;
+  /** The game token, null until it is set; `symbol` is display only (server `TOKEN_SYMBOL`). */
+  token: { mint: string; symbol: string; decimals: number } | null;
+  /** Fee on profit for new tickets (`Config.fee_bps`, basis points); null while the config is unknown. */
+  feeBps: number | null;
 }
 
 export interface ProfileSummary {
@@ -233,8 +190,6 @@ export type ClientMessage =
       room: JoinTarget | string;
       name: string;
       skin: number;
-      /** Address of the Slana Pass asset to play with; the server verifies ownership. */
-      pass?: string;
     }
   | { t: 'spectate'; room?: string; next?: boolean }
   | { t: 'leave' }
@@ -297,8 +252,6 @@ export type ServerMessage =
       value?: number;
       /** Arena rooms: the ticket price, raw token units. */
       entryFee?: number;
-      /** The ticket carries a Slana Pass (Pass power applies). */
-      hasPass?: boolean;
       /** Arena rooms: the ticket's on-chain session address (matches `settled.session`). */
       session?: string;
       /** Arena rooms: the round in play (same as `room.round`). */
@@ -356,6 +309,8 @@ export type ServerMessage =
   | { t: 'xp'; xp: number; level: number }
   | { t: 'history'; chat: { pid: number; from: string; skin: number; text: string; system?: boolean }[] }
   | { t: 'rooms'; rooms: RoomInfo[]; online: number; blocked?: BlockedArena[] }
+  // The chain status changed (e.g. the game token was set: `tokenReady` turned true); same shape as `welcome.chain`.
+  | { t: 'chain'; chain: ChainStatus }
   // `opensAt` (Unix ms, server clock): with `round_closed`, when the next round opens for joins.
   | { t: 'error'; code: ErrorCode; message: string; opensAt?: number }
   | { t: 'pong'; ts: number; serverTime: number; serverNow: number };
@@ -371,10 +326,9 @@ export type ErrorCode =
   | 'session_busy'
   | 'payout_waiting'
   | 'skin_locked'
-  | 'pass_required'
-  | 'pass_invalid'
-  | 'pass_in_use'
   | 'arenas_disabled'
+  /** The game token is not set on chain yet: arenas open soon (`ChainStatus.tokenReady` false); practice works. */
+  | 'token_not_set'
   | 'server_full'
   | 'version_mismatch'
   /** Arena joins are closed for the rest of the round; `opensAt` says when the next one opens. */

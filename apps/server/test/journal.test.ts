@@ -13,7 +13,6 @@ const live = (session: string, value: number): LiveStake => ({
   value,
   score: 100,
   kills: 2,
-  hasPass: true,
 });
 
 const tmpPath = () => join(mkdtempSync(join(tmpdir(), 'slana-journal-')), 'journal.json');
@@ -47,6 +46,15 @@ describe('journal v2', () => {
     expect(j3.lootTotal()).toBe(3);
   });
 
+  it('drops the Slana Pass flag that older v2 files carry on live stakes', () => {
+    const path = tmpPath();
+    writeFileSync(path, JSON.stringify({ version: 2, pending: [], live: [{ ...live('s-p', 90), hasPass: true }], loot: [], updatedAt: 1 }));
+    const j = new Journal(path);
+    expect(j.live()).toEqual([live('s-p', 90)]);
+    j.commit({});
+    expect(JSON.parse(readFileSync(path, 'utf8')).live[0]).not.toHaveProperty('hasPass');
+  });
+
   it('v1 journal migrates', () => {
     const path = tmpPath();
     const v1 = {
@@ -77,7 +85,7 @@ describe('journal v2', () => {
     const j = new Journal(path, (m) => logs.push(m));
     expect(logs.some((l) => /unreadable/.test(l))).toBe(false);
     expect(j.settlements().map((p) => [p.key, p.payout])).toEqual([['s-old', 150]]);
-    expect(j.live()).toEqual([{ ...v1.live[0], hasPass: false }]);
+    expect(j.live()).toEqual([v1.live[0]]);
     expect(j.recoverLoot(1)).toEqual([]);
     // the next write upgrades the file
     j.commit({});

@@ -138,7 +138,7 @@ export class BinaryReader {
 /**
  * Layout (little endian):
  *   u8 op=1 | u32 tick | f32 viewX | f32 viewY | f32 viewH
- *   u8 nPlayers   { u16 id | u8 skin | u8 flags | u16 pass | str8 name }
+ *   u8 nPlayers   { u16 id | u8 skin | u8 flags | str8 name }
  *   u16 nUpserts  { u32 id | u8 kind | f32 x | f32 y | f32 r | kind data }
  *        Cell: u16 playerId | u8 flags ; Food/Eject/PowerUp/Loot: u8 variant ; Virus: –
  *   u16 nRemovals { u32 id | u32 eaterId }
@@ -157,7 +157,6 @@ export function writeSnapshot(w: BinaryWriter, s: SnapshotData): void {
     w.u16(p.id);
     w.u8(p.skin);
     w.u8(p.flags);
-    w.u16(p.pass);
     w.str8(p.name);
   }
 
@@ -209,7 +208,7 @@ export function decodeSnapshot(buf: ArrayBuffer | ArrayBufferView): SnapshotData
   const nPlayers = r.u8();
   const players = new Array(nPlayers);
   for (let i = 0; i < nPlayers; i++) {
-    players[i] = { id: r.u16(), skin: r.u8(), flags: r.u8(), pass: r.u16(), name: r.str8() };
+    players[i] = { id: r.u16(), skin: r.u8(), flags: r.u8(), name: r.str8() };
   }
 
   const nUpserts = r.u16();

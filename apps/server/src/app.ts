@@ -58,18 +58,20 @@ export async function createApp(
     chain,
   );
   chain.setLiveSessionProvider(() => rooms.liveSessions());
+  // the game token was set on chain (picked up by the 30 s config watcher, no restart): attach the
+  // arenas now (a fresh read of the arena list) instead of waiting for the next arena timer
+  chain.onStatusChange(() => {
+    if (chain.tokenReady) void rooms.refreshArenas();
+  });
   await chain.start();
   await rooms.ensureArenaRooms();
 
-  if (chain.passStatus() && !cfg.publicUrl) {
-    log('pass: PUBLIC_URL is not set — Pass metadata image links come from the request host (set PUBLIC_URL in production)');
-  }
   const server = createHttpServer(cfg, { rooms, leaderboards, chain, auth, journal, startedAt: Date.now() });
   const gateway = new Gateway(cfg, rooms, auth, chain, journal, log);
   gateway.attach(server);
   const flushTimer = setInterval(() => leaderboards.flush(), 30_000);
   flushTimer.unref();
-  // arenas created (or a chain that came online) after startup show up in the lobby without a restart
+  // arenas created (or a chain / token that came online) after startup show up in the lobby without a restart
   const arenaTimer = setInterval(() => void rooms.ensureArenaRooms(), 30_000);
   arenaTimer.unref();
 

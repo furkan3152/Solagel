@@ -25,7 +25,6 @@ interface ArenaData {
   buyIn: number;
   maxPlayers: number;
   enabled: boolean;
-  requiresPass: boolean;
   /** Vault balance (raw units); null = not tracked (dev-fake). */
   pot: number | null;
 }
@@ -53,7 +52,6 @@ export class RoomManager {
   ) {
     this.deps = {
       ...deps,
-      pass: deps.pass ?? cfg.pass,
       round: deps.round ?? cfg.round,
       // one clock for the gateway and every room
       clock: deps.clock ?? new RoundClock(deps.now, deps.round ?? cfg.round),
@@ -185,7 +183,7 @@ export class RoomManager {
     if (this.arenaCache && Date.now() - this.arenaCache.at < ARENA_CACHE_MS) return this.arenaCache.ids;
     const list = await this.chain.listArenas();
     const ids = new Map<number, ArenaData>(
-      list.map((a) => [a.id, { buyIn: a.entryFee, maxPlayers: a.maxSessions, enabled: a.enabled, requiresPass: a.requiresPass, pot: a.pot }]),
+      list.map((a) => [a.id, { buyIn: a.entryFee, maxPlayers: a.maxSessions, enabled: a.enabled, pot: a.pot }]),
     );
     this.arenaCache = { at: Date.now(), ids };
     await this.recheckVaults(ids);
@@ -245,7 +243,7 @@ export class RoomManager {
         instance: n,
         maxPlayers: this.cfg.arenaInstanceCap,
         bots: this.cfg.bots.arena,
-        stake: { arenaId, buyIn: arena.buyIn, requiresPass: arena.requiresPass },
+        stake: { arenaId, buyIn: arena.buyIn },
       },
       this.deps,
     );
@@ -337,6 +335,12 @@ export class RoomManager {
       if (entry) return { room, entry };
     }
     return null;
+  }
+
+  /** Forgets the cached arena list and attaches every enabled arena now (the token was just set). */
+  async refreshArenas(): Promise<void> {
+    this.arenaCache = null;
+    await this.ensureArenaRooms();
   }
 
   /**

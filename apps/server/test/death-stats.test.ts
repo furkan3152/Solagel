@@ -38,7 +38,7 @@ function staker(room: Room, n: number): { conn: ReturnType<typeof fakeConn>; p: 
     name: `staker${n}`,
     skin: 1,
     flags: PlayerFlag.Staker,
-    stake: { player: `wallet${n}`, session: `session${n}`, sessionId: n, arenaId: 3, entryFee: FEE, value: FEE, openedAt: Math.floor(Date.now() / 1000), hasPass: true },
+    stake: { player: `wallet${n}`, session: `session${n}`, sessionId: n, arenaId: 3, entryFee: FEE, value: FEE, openedAt: Math.floor(Date.now() / 1000) },
   });
   p.shieldUntil = 0;
   return { conn, p };

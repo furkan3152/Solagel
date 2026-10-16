@@ -1,4 +1,4 @@
-import type { ChainStatus, PassStatus } from '@slana/shared';
+import type { ChainStatus } from '@slana/shared';
 
 export interface ChainProfile {
   owner: string;
@@ -21,10 +21,6 @@ export interface ChainSession {
   entryFee: number;
   /** Unix seconds. */
   openedAt: number;
-  /** The ticket was bought with a Slana Pass (Pass power, lower fee). */
-  hasPass: boolean;
-  /** The Pass asset locked by this session, null without a Pass. */
-  passAsset: string | null;
   /**
    * R24: already settled without the player's token account; the result is final and
    * `owed` waits for the player to collect it. Never playable, never refunded as stale.
@@ -39,8 +35,6 @@ export interface ChainArena {
   address: string;
   /** Ticket price, raw token units. */
   entryFee: number;
-  /** A Slana Pass is needed to buy a ticket. */
-  requiresPass: boolean;
   /** On-chain cap on open sessions. */
   maxSessions: number;
   openSessions: number;
@@ -50,18 +44,6 @@ export interface ChainArena {
    * (dev-fake), which skips the vault-vs-journal guard.
    */
   pot: number | null;
-}
-
-/** A verified Slana Pass (Core asset of our collection). */
-export interface ChainPass {
-  owner: string;
-  number: number;
-}
-
-/** A Slana Pass owned by a wallet. */
-export interface OwnedPassInfo {
-  asset: string;
-  number: number;
 }
 
 export interface SettledEvent {
@@ -79,51 +61,38 @@ export interface SettledEvent {
   collect?: boolean;
 }
 
-export interface SeasonEntry {
-  player: string;
-  name: string;
-  skin: number;
-  points: number;
-  bestScore: number;
-}
-
-export interface SeasonView {
-  id: number;
-  startedAt: number;
-  finalized: boolean;
-  prizePool: number;
-  entries: SeasonEntry[];
-  /** Previous finalized season (for claims), if any. */
-  previous: { id: number; prizePool: number; endedAt: number; entries: SeasonEntry[]; claimedMask: number } | null;
-}
-
 /** Everything the rooms need from Solana. `NullChain` is used when disabled. */
 export interface ChainGateway {
   readonly enabled: boolean;
+  /**
+   * The game token is set on chain (`isTokenSet(config)`). False while the program is
+   * initialized without a mint: practice only, arena joins answer `token_not_set`.
+   */
+  readonly tokenReady: boolean;
+  /** Arena tickets can be played (chain on, token set and usable, server authorized). */
   readonly stakeEnabled: boolean;
   status(): ChainStatus;
   getProfile(owner: string, fresh?: boolean): Promise<ChainProfile | null>;
   getSession(arenaId: number, player: string): Promise<ChainSession | null>;
   /** On-chain arenas; cached briefly unless `fresh` (a re-read that bypasses the cache). */
   listArenas(fresh?: boolean): Promise<ChainArena[]>;
-  season(): Promise<SeasonView | null>;
-  /** Core asset `asset` when it is a Pass of our collection (cached 60 s); null otherwise. */
-  getPass(asset: string): Promise<ChainPass | null>;
-  /** Passes of our collection owned by `wallet` (cached 30 s). */
-  ownedPasses(wallet: string): Promise<OwnedPassInfo[]>;
-  /** Collection / mint / reveal state, null while the collection is not set. */
-  passStatus(): PassStatus | null;
   /** Wake the settlement worker (new journal items). */
   kick(): void;
   /** Ids of sessions currently owned by a room (live); never refunded as stale. */
   setLiveSessionProvider(fn: () => Set<string>): void;
   onSettled(fn: (e: SettledEvent) => void): void;
+  /**
+   * `status()` changed in a way clients must see without reconnecting (the token was set, so
+   * `tokenReady` turned true and arenas can attach). Listeners re-read `status()`.
+   */
+  onStatusChange(fn: () => void): void;
   start(): Promise<void>;
   stop(): Promise<void>;
 }
 
 export class NullChain implements ChainGateway {
   readonly enabled = false;
+  readonly tokenReady = false;
   readonly stakeEnabled = false;
   constructor(private readonly cluster = 'disabled') {}
   status(): ChainStatus {
@@ -133,9 +102,9 @@ export class NullChain implements ChainGateway {
       programId: null,
       rpcUrl: null,
       arenasEnabled: false,
-      currentSeason: null,
+      tokenReady: false,
       token: null,
-      pass: null,
+      feeBps: null,
     };
   }
   async getProfile(): Promise<ChainProfile | null> {
@@ -147,21 +116,10 @@ export class NullChain implements ChainGateway {
   async listArenas(): Promise<ChainArena[]> {
     return [];
   }
-  async season(): Promise<SeasonView | null> {
-    return null;
-  }
-  async getPass(_asset: string): Promise<ChainPass | null> {
-    return null;
-  }
-  async ownedPasses(_wallet: string): Promise<OwnedPassInfo[]> {
-    return [];
-  }
-  passStatus(): PassStatus | null {
-    return null;
-  }
   kick(): void {}
   setLiveSessionProvider(): void {}
   onSettled(): void {}
+  onStatusChange(): void {}
   async start(): Promise<void> {}
   async stop(): Promise<void> {}
 }
