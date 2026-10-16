@@ -1177,4 +1177,23 @@ describe('fee wallet token account', () => {
     expect(t.journal.settlements()[0].tokenFailures).toBeUndefined();
     expect(t.journal.pending[0].lastError).toMatch(/not the fee wallet/);
   });
+
+  it('fee wallet rotated within the config TTL: a 2015 is re-read, not blamed on the player', async () => {
+    const h = await harness();
+    const s = h.client.addSession(wallet());
+    h.journal.enqueue(settleItem(s));
+    // the send is built with the cached (old) fee wallet; the admin rotates it before the send fails
+    h.failures.push({ logs: ['Program log: AnchorError caused by account: fee_wallet_token. Error Code: ConstraintTokenOwner. Error Number: 2015. Error Message: x.'] });
+    const fetchConfig = h.client.fetchConfig.bind(h.client);
+    h.client.fetchConfig = async () => {
+      const c = await fetchConfig();
+      return h.sent > 0 && c ? { ...c, feeWallet: wallet() } : c;
+    };
+    await h.chain.processPending();
+    expect(h.sent).toBe(1);
+    expect(h.journal.pending).toHaveLength(1);
+    expect(h.journal.settlements()[0].tokenFailures).toBeUndefined();
+    expect(h.journal.pending[0].lastError).toMatch(/fee wallet changed/);
+    expect(h.logs.some((l) => /player's token account refused/.test(l))).toBe(false);
+  });
 });
