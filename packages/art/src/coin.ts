@@ -42,7 +42,7 @@ export interface CoinState {
   halftone?: (r: number, spacing: number) => CanvasImageSource | null;
   /**
    * Fast opaque body (one flat fill instead of paper + multiply). Visually the
-   * same; opt-in for the live renderer only. Off for Pass images (byte-stable).
+   * same; opt-in for the live renderer only.
    */
   fastBody?: boolean;
   /**
