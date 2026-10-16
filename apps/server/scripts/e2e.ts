@@ -87,8 +87,8 @@ const ROUND_ENV = {
 
 const t0 = Date.now();
 const elapsed = () => `${((Date.now() - t0) / 1000).toFixed(1)}s`.padStart(6);
-const step = (msg: string) => console.log(`${elapsed()}  ▸ ${msg}`);
-const ok = (msg: string) => console.log(`${elapsed()}  ✓ ${msg}`);
+const step = (msg: string) => console.log(`${elapsed()}  > ${msg}`);
+const ok = (msg: string) => console.log(`${elapsed()}  OK ${msg}`);
 const sol = (lamports: number) => `◎${lamportsToSol(lamports).toFixed(9).replace(/\.?0+$/, '')}`;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const short = (s: string) => `${s.slice(0, 4)}…${s.slice(-4)}`;

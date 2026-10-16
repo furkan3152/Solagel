@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { ArenaLedger } from '../src/stake/ledger';
+import { ArenaLedger, type ArenaEntry } from '../src/stake/ledger';
 
-const entry = (pid: number, value: number) => ({
+const entry = (pid: number, value: number): ArenaEntry => ({
   pid,
   player: `wallet${pid}`,
   session: `session${pid}`,
@@ -10,7 +10,6 @@ const entry = (pid: number, value: number) => ({
   entryFee: value,
   value,
   openedAt: 0,
-  hasPass: false,
 });
 
 describe('arena ledger', () => {
