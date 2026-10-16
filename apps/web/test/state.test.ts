@@ -19,7 +19,7 @@ function worldWithMe(now = 0): ClientWorld {
   w.myPid = ME;
   w.apply(
     snap({
-      players: [{ id: ME, skin: 2, flags: 0, pass: 0, name: 'Me' }],
+      players: [{ id: ME, skin: 2, flags: 0, name: 'Me' }],
       upserts: [{ id: 1, kind: EntityKind.Cell, x: 1000, y: 1000, r: 60, playerId: ME }],
     }),
     now,

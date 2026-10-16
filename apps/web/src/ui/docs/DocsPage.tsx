@@ -1,23 +1,24 @@
 import { useMemo, useRef } from 'react';
-import { Chip, Dateline, Icon, Receipt, Rule, Stamp, useReducedMotion, type ReceiptLine } from '../../design';
-import { useChainData } from '../../solana/chain';
+import { Dateline, Icon, Receipt, Rule, Stamp, useReducedMotion, type ReceiptLine } from '../../design';
+import { feeBps } from '../../solana/ticket';
 import { useUi } from '../../store';
 import { useTokenText } from '../lobby/useLobby';
 import { PageHead } from '../PageHead';
 import { docsEn } from './content.en';
-import { FACTS, type DocBlock, type DocsContent } from './facts';
+import { EXAMPLE, feeExample, type DocBlock, type DocsContent } from './facts';
 import './docs.css';
 
 /**
- * The player guide (`/docs`, `#docs`): how to play, rooms, value flow, fees,
- * the Pass, mint, seasons, what is on-chain, wallet safety and an FAQ. Typed
- * content lives in content.en.ts; every number comes from the code through facts.ts.
+ * The player guide (`/docs`, `#docs`): how to play, rooms, value flow, rounds and
+ * fees, what is on-chain, wallet safety and an FAQ. Typed content lives in
+ * content.en.ts; every number comes from the code through facts.ts, and the fee
+ * rate is the server's (`ChainStatus.feeBps`) when it is known.
  */
 export function DocsPage() {
   const tok = useTokenText();
-  const power = useUi((s) => s.chain?.passPower ?? null);
-  const c = useMemo(() => docsEn(tok.symbol, power), [tok.symbol, power]);
-  const config = useChainData((s) => s.config);
+  const serverBps = useUi((s) => s.chain?.feeBps ?? null);
+  const bps = feeBps(serverBps);
+  const c = useMemo(() => docsEn(tok.symbol, bps), [tok.symbol, bps]);
   const reduced = useReducedMotion();
   const top = useRef<HTMLDivElement>(null);
 
@@ -27,8 +28,6 @@ export function DocsPage() {
     el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
     el.querySelector<HTMLElement>('h3')?.focus({ preventScroll: true });
   };
-
-  const live = config && (config.feeBps !== FACTS.fee.bps || config.passFeeBps !== FACTS.fee.passBps) ? c.live(c.pct(config.feeBps), c.pct(config.passFeeBps)) : null;
 
   return (
     <div className="dc-page" ref={top}>
@@ -68,7 +67,7 @@ export function DocsPage() {
               </header>
               <div className="dc-sec__body">
                 {s.blocks.map((b, j) => (
-                  <Block key={j} block={b} c={c} live={s.id === 'payout' ? live : null} />
+                  <Block key={j} block={b} c={c} />
                 ))}
               </div>
             </section>
@@ -95,7 +94,7 @@ export function DocsPage() {
   );
 }
 
-function Block({ block: b, c, live }: { block: DocBlock; c: DocsContent; live: string | null }) {
+function Block({ block: b, c }: { block: DocBlock; c: DocsContent }) {
   switch (b.kind) {
     case 'p':
       return <p className="dc-p">{b.text}</p>;
@@ -112,19 +111,6 @@ function Block({ block: b, c, live }: { block: DocBlock; c: DocsContent; live: s
             ),
           )}
         </ul>
-      );
-    case 'steps':
-      return (
-        <ol className="dc-steps">
-          {b.items.map((it, i) => (
-            <li key={i}>
-              <span className="dc-steps__no mono" aria-hidden="true">
-                {i + 1}
-              </span>
-              <span>{it}</span>
-            </li>
-          ))}
-        </ol>
       );
     case 'keys':
       return (
@@ -187,23 +173,7 @@ function Block({ block: b, c, live }: { block: DocBlock; c: DocsContent; live: s
         </ol>
       );
     case 'fee-example':
-      return <FeeExample c={c} live={live} />;
-    case 'perks':
-      return (
-        <ul className="dc-perks">
-          {b.items.map((p, i) => (
-            <li key={i} className="dc-perk">
-              <div className="dc-perk__head">
-                <strong className="dc-perk__title">{p.title}</strong>
-                <Chip tone={p.where === 'chain' ? 'teal' : 'mustard'} icon={p.where === 'chain' ? 'lock' : 'globe'}>
-                  {c.perkWhere[p.where]}
-                </Chip>
-              </div>
-              <p className="dc-perk__text">{p.text}</p>
-            </li>
-          ))}
-        </ul>
-      );
+      return <FeeExample c={c} />;
     case 'compare':
       return (
         <div className="dc-compare">
@@ -230,20 +200,6 @@ function Block({ block: b, c, live }: { block: DocBlock; c: DocsContent; live: s
           <p className="dc-note__text">{b.text}</p>
         </aside>
       );
-    case 'prizes':
-      return (
-        <figure className="dc-prizes">
-          <figcaption className="mono">{b.caption}</figcaption>
-          <ol className="dc-prizes__list">
-            {FACTS.season.shares.map((bps, i) => (
-              <li key={i} className={i < 3 ? 'is-podium' : undefined}>
-                <span className="dc-prizes__rank mono">{c.rank(i + 1)}</span>
-                <span className="dc-prizes__pct">{c.pct(bps)}</span>
-              </li>
-            ))}
-          </ol>
-        </figure>
-      );
     case 'faq':
       return (
         <div className="dc-faq">
@@ -263,27 +219,25 @@ function Block({ block: b, c, live }: { block: DocBlock; c: DocsContent; live: s
   }
 }
 
-/** The worked example: a 1.000-token ticket paid out at 2.000, without and with a Pass. */
-function FeeExample({ c, live }: { c: DocsContent; live: string | null }) {
-  const { entry, cashout, normal, pass } = FACTS.example;
+/** The worked example: a 1,000-token ticket with 2,000 in the till at the bell, at the server's fee rate. */
+function FeeExample({ c }: { c: DocsContent }) {
+  const { entry, cashout } = EXAMPLE;
+  const split = feeExample(c.feeBps);
   const r = c.receipt;
   const n = (v: bigint | number) => c.num(Number(v));
-  const lines = (split: typeof normal, bps: number): ReceiptLine[] => [
+  const lines: ReceiptLine[] = [
     { label: r.entry, value: n(entry) },
     { label: r.cashout, value: n(cashout) },
     { label: r.profit, value: n(cashout - entry) },
-    { label: r.fee(c.pct(bps)), value: `−${n(split.fee)}`, muted: true },
+    { label: r.fee(c.pct(c.feeBps)), value: `−${n(split.fee)}`, muted: true },
     { label: r.net, value: n(split.player), strong: true },
   ];
-  const foot = (split: typeof normal) => `${r.split}: ${r.treasury} ${n(split.treasury)} · ${r.season} ${n(split.season)} · ${r.burn} ${n(split.burn)}`;
   return (
     <figure className="dc-fee">
       <figcaption className="dc-fee__cap mono">{r.caption}</figcaption>
       <div className="dc-fee__slips">
-        <Receipt title={r.title} meta={r.meta} lines={lines(normal, FACTS.fee.bps)} footer={foot(normal)} className="dc-fee__slip" />
-        <Receipt title={r.titlePass} meta={r.meta} lines={lines(pass, FACTS.fee.passBps)} footer={foot(pass)} className="dc-fee__slip is-pass" />
+        <Receipt title={r.title} meta={r.meta} lines={lines} footer={r.footer} className="dc-fee__slip" />
       </div>
-      {live && <p className="dc-fee__live mono">{live}</p>}
     </figure>
   );
 }

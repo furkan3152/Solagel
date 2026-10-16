@@ -71,7 +71,7 @@ afterEach(() => {
 
 /** Buys in during the closed window: the server refuses with round_closed. */
 function refusedJoin() {
-  engine.play('arena:1', { pass: 'PassA' });
+  engine.play('arena:1');
   expect(joins()).toHaveLength(1);
   recv({ t: 'error', code: 'round_closed', message: 'closed', opensAt: OPENS });
 }
@@ -85,7 +85,7 @@ describe('held ticket in the engine', () => {
     expect(joins()).toHaveLength(1);
     vi.advanceTimersByTime(2);
     expect(joins()).toHaveLength(2);
-    expect(joins()[1]).toMatchObject({ t: 'join', room: 'arena:1', pass: 'PassA' });
+    expect(joins()[1]).toMatchObject({ t: 'join', room: 'arena:1' });
     recv({ t: 'joined', room: { ...ARENA }, playerId: 7, name: 'Daphne', skin: 0, value: 1, entryFee: 1, session: 'S' });
     expect(useUi.getState().held).toBeNull();
     expect(useUi.getState().screen).toBe('playing');

@@ -33,7 +33,7 @@ export type ReleaseReason = 'busy' | 'gaveUp';
 
 export interface HeldHooks {
   /** Sends the join. Returns false when it could not go out (the socket is down): the hold waits for `rearm`. */
-  join(room: string, pass: string | null): boolean;
+  join(room: string): boolean;
   /**
    * Whether the player is free to be moved into the arena now: only from the lobby (or a
    * results / watch screen), never out of a game they are playing (practice included).
@@ -54,7 +54,7 @@ export interface HeldHooks {
  */
 export class HeldTicket {
   private timer: unknown = null;
-  private job: { room: string; pass: string | null; opensAt: number; attempts: number } | null = null;
+  private job: { room: string; opensAt: number; attempts: number } | null = null;
   /** A held join is out and not answered yet. */
   private sent = false;
 
@@ -69,7 +69,7 @@ export class HeldTicket {
   }
 
   /** Joins were closed: hold (or keep holding) this ticket until `opensAt` (server clock). */
-  hold(room: string, pass: string | null, opensAt: number): void {
+  hold(room: string, opensAt: number): void {
     const arenaId = Number(room.slice('arena:'.length));
     const attempts = this.job && this.job.room === room ? this.job.attempts : 0;
     this.cancel();
@@ -77,7 +77,7 @@ export class HeldTicket {
       this.release('gaveUp');
       return;
     }
-    this.job = { room, pass, opensAt, attempts };
+    this.job = { room, opensAt, attempts };
     useUi.setState({ held: { arenaId, opensAt } });
     this.schedule();
   }
@@ -127,7 +127,7 @@ export class HeldTicket {
       return;
     }
     job.attempts++;
-    if (this.hooks.join(job.room, job.pass)) this.sent = true;
+    if (this.hooks.join(job.room)) this.sent = true;
   }
 
   private cancel(): void {

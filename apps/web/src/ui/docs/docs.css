@@ -176,35 +176,6 @@
   font-weight: 750;
 }
 
-.dc-steps {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  max-width: 68ch;
-}
-.dc-steps li {
-  display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
-  gap: 12px;
-  align-items: start;
-  line-height: 1.55;
-}
-.dc-steps__no {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border: 2px solid var(--ink);
-  border-radius: 50%;
-  font-size: 15px;
-  font-weight: 500;
-  background: var(--card);
-  box-shadow: 2px 2px 0 var(--ink);
-}
-
 /* controls */
 .dc-keys {
   border-collapse: collapse;
@@ -352,8 +323,7 @@
   flex-direction: column;
   gap: 10px;
 }
-.dc-fee__cap,
-.dc-prizes figcaption {
+.dc-fee__cap {
   font-size: var(--t-label);
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -361,57 +331,15 @@
 }
 .dc-fee__slips {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 300px));
+  grid-template-columns: minmax(0, 300px);
   gap: 22px;
   align-items: start;
 }
-.dc-fee__slip.is-pass {
-  transform: rotate(0.8deg);
-}
-.dc-fee__slip:not(.is-pass) {
+.dc-fee__slip {
   transform: rotate(-0.6deg);
-}
-.dc-fee__live {
-  font-size: 12.5px;
-  color: var(--teal-ink);
 }
 
 /* perks */
-.dc-perks {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-.dc-perk {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 14px 16px;
-  background: var(--card);
-  border: 2px solid var(--ink);
-  border-radius: var(--r-card);
-}
-.dc-perk__head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.dc-perk__title {
-  font-size: 18px;
-  font-weight: 800;
-  font-stretch: var(--display-stretch);
-  letter-spacing: -0.02em;
-}
-.dc-perk__text {
-  font-size: 15px;
-  line-height: 1.45;
-  color: var(--ink);
-}
 
 /* on-chain vs server */
 .dc-compare {
@@ -487,47 +415,6 @@
   font-size: 15px;
   line-height: 1.55;
   text-wrap: pretty;
-}
-
-/* season prizes */
-.dc-prizes {
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  max-width: 640px;
-}
-.dc-prizes__list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  border-top: 2px solid var(--ink);
-  border-left: 1px solid var(--ink);
-}
-.dc-prizes__list li {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 10px 12px;
-  border-right: 1px solid var(--ink);
-  border-bottom: 1px solid var(--ink);
-  background: var(--card);
-}
-.dc-prizes__list li.is-podium {
-  background: color-mix(in srgb, var(--mustard) 22%, var(--card));
-}
-.dc-prizes__rank {
-  font-size: 12px;
-  color: var(--ink-2);
-}
-.dc-prizes__pct {
-  font-size: 22px;
-  font-weight: 800;
-  font-stretch: var(--display-stretch);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
 }
 
 /* FAQ */
@@ -670,16 +557,12 @@
     grid-template-columns: minmax(0, 1fr);
     max-width: 320px;
   }
-  .dc-perks,
   .dc-compare {
     grid-template-columns: minmax(0, 1fr);
   }
   .dc-compare__col.is-server {
     border-left: 0;
     border-top: 2px dashed var(--line);
-  }
-  .dc-prizes__list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .dc-foot {
     margin-top: -16px;

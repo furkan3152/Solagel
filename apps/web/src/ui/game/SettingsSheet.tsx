@@ -22,10 +22,9 @@ const HOWTO: { icon: Parameters<typeof Icon>[0]['name']; key: TKey }[] = [
   { icon: 'flame', key: 'howto.cactus' },
   { icon: 'emote', key: 'howto.powerups' },
   { icon: 'payout', key: 'howto.stakes' },
-  { icon: 'trophy', key: 'howto.season' },
 ];
 
-/** How to play: eight numbered lines with drawn icons (no emoji). */
+/** How to play: numbered lines with drawn icons (no emoji). */
 export function HowToSheet() {
   const t = useT();
   const open = useUi((st) => st.modal === 'howto');

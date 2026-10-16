@@ -37,8 +37,6 @@ export interface Settings {
   showChat: boolean;
   /** Last arena the player bought a ticket for (Quick Play goes back there). */
   lastArena: number | null;
-  /** Slana Pass asset worn as the look (server-verified at join), null = basic skin. */
-  passSkin: string | null;
 }
 
 export interface KillItem {
@@ -82,9 +80,9 @@ export interface Toast {
 
 export type Modal = 'settings' | 'howto' | 'wallet' | null;
 
-/** Lobby pages: the ticket front page, the newspaper leaderboard, the Pass office, the profile, the player guide. */
-export type LobbyPage = 'play' | 'ranks' | 'pass' | 'profile' | 'docs';
-const PAGES: readonly LobbyPage[] = ['play', 'ranks', 'pass', 'profile', 'docs'];
+/** Lobby pages: the ticket front page, the newspaper leaderboard, the profile, the player guide. */
+export type LobbyPage = 'play' | 'ranks' | 'profile' | 'docs';
+const PAGES: readonly LobbyPage[] = ['play', 'ranks', 'profile', 'docs'];
 /** The player guide also lives at the path `/docs` (the server's SPA fallback serves index.html there). */
 const DOCS_PATH = /^\/docs\/?$/;
 
@@ -110,8 +108,8 @@ export interface UiState {
   hud: { mass: number; cells: number; value: number | null; rank: number; players: number };
   /** Last arena value change, for the till slip's "+X" chip (id changes per message). */
   valueDelta: { id: number; delta: number; reason: 'eat' | 'loot' | 'eaten' | 'spill' } | null;
-  /** The arena ticket being played: its own price and whether it carries a Slana Pass. */
-  ticket: { entryFee: number; hasPass: boolean; arenaId: number | null; session: string | null } | null;
+  /** The arena ticket being played: its own price, arena and session. */
+  ticket: { entryFee: number; arenaId: number | null; session: string | null } | null;
   lb: LbEntry[];
   leaders: { x: number; y: number }[];
   killfeed: KillItem[];
@@ -137,7 +135,7 @@ export interface UiState {
   spectateTarget: number | null;
   toasts: Toast[];
   modal: Modal;
-  /** Lobby page (mirrored in the URL hash: `#pass`, `#ranks`, `#profile`, `#docs`; the guide also at `/docs`). */
+  /** Lobby page (mirrored in the URL hash: `#ranks`, `#profile`, `#docs`; the guide also at `/docs`). */
   page: LobbyPage;
   /** Death / receipt "New ticket": the lobby selects this ticket and opens its confirm sheet. */
   lobbyIntent: { ticket: 'practice' | `arena:${number}`; open: boolean; at: number } | null;
@@ -167,13 +165,12 @@ function loadSettings(): Settings {
     showMinimap: true,
     showChat: true,
     lastArena: null,
-    passSkin: null,
   };
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (raw) {
-      // `lang` is a retired field (the interface is English only); drop it from older saves
-      const { lang: _retired, ...saved } = JSON.parse(raw) as Partial<Settings> & { lang?: unknown };
+      // retired fields: `lang` (the interface is English only) and `passSkin` (the Slana Pass is gone)
+      const { lang: _lang, passSkin: _passSkin, ...saved } = JSON.parse(raw) as Partial<Settings> & { lang?: unknown; passSkin?: unknown };
       return { ...defaults, ...saved };
     }
   } catch {
@@ -252,7 +249,7 @@ function pageFromLocation(): LobbyPage {
 }
 
 /**
- * The URL for `page` seen from `pathname`: pages are hashes (`/#pass`); the guide keeps
+ * The URL for `page` seen from `pathname`: pages are hashes (`/#ranks`); the guide keeps
  * the path `/docs` when it was opened there, and leaving it from `/docs` goes back to `/`.
  */
 export function urlForPage(page: LobbyPage, pathname: string, search: string): string {
@@ -262,7 +259,7 @@ export function urlForPage(page: LobbyPage, pathname: string, search: string): s
   return `${path}${search}${page === 'play' ? '' : `#${page}`}`;
 }
 
-/** Opens a lobby page (and keeps the URL in step, so a page can be linked: `/#pass`, `/docs`). */
+/** Opens a lobby page (and keeps the URL in step, so a page can be linked: `/#ranks`, `/docs`). */
 export function goPage(page: LobbyPage): void {
   useUi.setState({ page });
   try {

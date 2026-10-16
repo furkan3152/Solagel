@@ -1,32 +1,14 @@
-import { SEALED_LOOK, lookForBasicSkin, lookForPass, passTraits, type CoinLook } from '@slana/art';
-import type { PassStatus } from '@slana/shared';
+import { lookForBasicSkin, type CoinLook } from '@slana/art';
 
-/**
- * Coin looks by player: a revealed Slana Pass (traits from the seeded
- * collection), the sealed look before the reveal, or the basic skin. Cached;
- * the cache resets when the collection seed changes.
- */
+/** Coin looks by basic skin id, cached (one riso look per skin). */
 export class LookCache {
-  private readonly looks = new Map<string, CoinLook>();
-  private seed: string | null = null;
+  private readonly looks = new Map<number, CoinLook>();
 
-  lookFor(skin: number, pass: number, status: PassStatus | null): CoinLook {
-    const seed = status?.revealed && status.seed ? `${status.seed}:${status.supply}` : null;
-    if (seed !== this.seed) {
-      this.looks.clear();
-      this.seed = seed;
-    }
-    const key = pass > 0 ? `p${pass}` : `s${skin}`;
-    let look = this.looks.get(key);
+  lookFor(skin: number): CoinLook {
+    let look = this.looks.get(skin);
     if (!look) {
-      if (pass > 0) {
-        try {
-          look = status?.revealed && status.seed ? lookForPass(passTraits(status.seed, pass, status.supply)) : SEALED_LOOK;
-        } catch {
-          look = SEALED_LOOK;
-        }
-      } else look = lookForBasicSkin(skin);
-      this.looks.set(key, look);
+      look = lookForBasicSkin(skin);
+      this.looks.set(skin, look);
     }
     return look;
   }

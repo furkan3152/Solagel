@@ -13,7 +13,7 @@ const STATS: DeathStats = { aliveMs: 94_000, finalMass: 0, maxMass: 640, foodEat
 const initial = useUi.getState();
 
 beforeEach(() => {
-  useUi.setState({ chain: { enabled: true, cluster: 'devnet', programId: null, rpcUrl: null, arenasEnabled: true, currentSeason: 1, token: { mint: 'M', symbol: '$SLANA', decimals: 6 }, pass: null } });
+  useUi.setState({ chain: { enabled: true, cluster: 'devnet', programId: null, rpcUrl: null, arenasEnabled: true, tokenReady: true, token: { mint: 'M', symbol: '$SLANA', decimals: 6 }, feeBps: 500 } });
 });
 afterEach(() => {
   act(() => useUi.setState(initial, true));

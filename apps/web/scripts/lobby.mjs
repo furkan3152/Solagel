@@ -1,7 +1,10 @@
 // Lobby and ticket-flow tour (Task 14): screenshots of the lobby (desktop / mobile,
 // paper / night), the ticket confirm sheet, the stamp-and-tear frame, the R24 collect-payout slip,
-// the PassInUse error, and the wallet / profile sheets.
-// Needs a dev server (pnpm dev) whose game server runs NODE_ENV=development DEV_FAKE_CHAIN=1:
+// a refused transaction, the wallet / profile sheets, and the "Opening soon" lobby before the
+// game token is set (step `soon`).
+// Needs a dev server (pnpm dev) whose game server runs NODE_ENV=development DEV_FAKE_CHAIN=1
+// (with DEV_FAKE_TOKEN=1 for every step but `soon`, which needs the token unset and then sets it
+// through POST /api/dev/token to shoot the live flip):
 // the web dev build then uses its fake chain stand-in (src/solana/devFake.ts), so no
 // transaction is signed. A Wallet Standard test wallet is injected (it signs the free login
 // message with a throwaway key and refuses transactions).
@@ -16,28 +19,11 @@ const bs58 = require('bs58').default ?? require('bs58');
 
 const [base, out, ...which] = process.argv.slice(2);
 const want = (k) => which.length === 0 || which.includes(k);
-const exe = [process.env.CHROME_PATH, '/opt/pw-browsers/chromium'].filter(Boolean).find((p) => existsSync(p));
+const exe = [process.env.CHROME_PATH, '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', '/opt/pw-browsers/chromium'].filter(Boolean).find((p) => existsSync(p));
 const browser = await chromium.launch({ executablePath: exe, args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const logs = [];
 
 const M = 1_000_000;
-const SEASON = {
-  id: 1,
-  startedAt: Math.floor(Date.now() / 1000) - 11 * 86_400 - 3600,
-  finalized: false,
-  prizePool: 84_200 * M,
-  entries: [
-    { player: 'P1', name: 'pennyhunter', skin: 3, points: 4210, bestScore: 9000 },
-    { player: 'P2', name: 'Nakamoto', skin: 1, points: 3980, bestScore: 8800 },
-    { player: 'P3', name: 'Daphne', skin: 4, points: 3120, bestScore: 7000 },
-    { player: 'P4', name: 'whale_bay', skin: 6, points: 2400, bestScore: 6400 },
-    { player: 'P5', name: 'inkwell', skin: 2, points: 1985, bestScore: 5000 },
-    { player: 'P6', name: 'riso', skin: 5, points: 1530, bestScore: 4100 },
-    { player: 'P7', name: 'night market', skin: 7, points: 990, bestScore: 2500 },
-  ],
-  previous: null,
-};
-
 const ICON =
   'data:image/svg+xml;base64,' +
   Buffer.from(
@@ -113,7 +99,7 @@ async function installWallet(ctx, kp, autoConnect) {
   return address;
 }
 
-async function newPage({ viewport, mobile = false, theme = 'light', wallet = true, verified = true, pending = null, reduced = false }) {
+async function newPage({ viewport, mobile = false, theme = 'light', wallet = true, verified = true, pending = null, reduced = false, tokenReady = true }) {
   const ctx = await browser.newContext({
     viewport,
     deviceScaleFactor: mobile ? 2 : 1,
@@ -141,7 +127,6 @@ async function newPage({ viewport, mobile = false, theme = 'light', wallet = tru
     },
     { theme },
   );
-  await ctx.route('**/api/season', (r) => r.fulfill({ json: SEASON }));
   if (pending) await ctx.route('**/api/pending*', (r) => r.fulfill({ json: { pending } }));
   const kp = nacl.sign.keyPair();
   let address = null;
@@ -158,7 +143,8 @@ async function newPage({ viewport, mobile = false, theme = 'light', wallet = tru
     await page.evaluate(([p, m, s]) => window.__slana.engine.authSignature(p, m, s), [address, message, sig]);
     await page.waitForFunction(() => !!window.__slana.useUi.getState().auth, null, { timeout: 10000 });
   }
-  if (wallet)
+  // (the token balance is only read once the game token is set)
+  if (wallet && tokenReady)
     await page.waitForFunction(() => !!window.__slanaChain?.fakeWallet && window.__slanaChain.useChainData.getState().tokenBalance !== null, null, {
       timeout: 10000,
     });
@@ -218,13 +204,6 @@ for (const [k, viewport, mobile, theme, reduced] of [
   await page.waitForSelector('.tf-sheet', { timeout: 5000 });
   await page.waitForTimeout(700);
   await shot(page, `ticket-sheet-${k}`);
-  // turn the Pass on to show what it changes
-  const sw = page.locator('.tf-switch');
-  if (k === 'desktop' && (await sw.count())) {
-    await sw.click();
-    await page.waitForTimeout(300);
-    await shot(page, `ticket-sheet-pass-${k}`);
-  }
   await page.evaluate(() => (window.__slanaChain.fakeWallet.delayMs = 700));
   await page.locator('.tf-sheet .kb-btn--pink').click();
   await page.waitForTimeout(350);
@@ -285,8 +264,8 @@ if (want('newticket')) {
   await ctx.close();
 }
 
-// ── Pass-required arena (balance topped up), with the Pass picker ──
-if (want('passarena')) {
+// ── Gold Lake (balance topped up): every arena is open to everyone; then a refused transaction ──
+if (want('goldlake')) {
   const { ctx, page } = await newPage({ viewport: D });
   await page.evaluate(() => {
     window.__slanaChain.fakeWallet.tokenBalance = 62_450_000_000n;
@@ -297,14 +276,43 @@ if (want('passarena')) {
   await cta(page).click();
   await page.waitForSelector('.tf-sheet');
   await page.waitForTimeout(700);
-  await shot(page, 'ticket-sheet-passarena');
-  // PassInUse: the chain refuses the Pass lock
-  await page.evaluate(() => (window.__slanaChain.fakeWallet.failNext = 'PassInUse'));
+  await shot(page, 'ticket-sheet-goldlake');
+  // ArenaFull: the chain refuses the join
+  await page.evaluate(() => (window.__slanaChain.fakeWallet.failNext = 'ArenaFull'));
   await page.locator('.tf-sheet .kb-btn--pink').click();
   await page.waitForSelector('.tf-error', { timeout: 6000 });
   await page.waitForTimeout(300);
-  await shot(page, 'ticket-error-passinuse');
+  await shot(page, 'ticket-error-arenafull');
   await ctx.close();
+}
+
+// ── the game token is not set yet: "Opening soon", then the live flip when it is set ──
+// (the server must run without DEV_FAKE_TOKEN; this step sets the token on the fake chain)
+if (want('soon')) {
+  const api = base.replace(/\/$/, '');
+  for (const [k, viewport, mobile] of [
+    ['desktop', D, false],
+    ['mobile', P, true],
+  ]) {
+    const { ctx, page } = await newPage({ viewport, mobile, tokenReady: false });
+    const ready = await page.evaluate(() => window.__slana.useUi.getState().chain?.tokenReady);
+    if (ready) {
+      logs.push('[soon] the server already has the token set: run it without DEV_FAKE_TOKEN');
+      await ctx.close();
+      break;
+    }
+    await shot(page, `soon-${k}`);
+    if (k === 'mobile') {
+      // the server sets the token and pushes `chain`: the arenas open with no reload
+      const res = await fetch(`${api}/api/dev/token`, { method: 'POST' });
+      logs.push(`[soon] POST /api/dev/token → ${res.status}`);
+      await page.waitForFunction(() => window.__slana.useUi.getState().chain?.tokenReady === true, null, { timeout: 10000 });
+      await page.waitForFunction(() => window.__slana.useUi.getState().rooms.some((r) => r.mode === 'arena'), null, { timeout: 15000 });
+      await page.waitForTimeout(1200);
+      await shot(page, 'soon-flipped-mobile');
+    }
+    await ctx.close();
+  }
 }
 
 // ── R24: a finalized session waits for the player to collect the payout ──
@@ -328,8 +336,6 @@ if (want('pending')) {
           arenaId: 1,
           entryFee: 1_000_000_000n,
           openedAt: Math.floor(Date.now() / 1000) - 600,
-          hasPass: false,
-          passAsset: null,
           settleFee: 20_000,
           feeBps: 500,
           finalized: true,
@@ -352,7 +358,7 @@ if (want('pending')) {
   }
 }
 
-// ── wallet, profile sheets, Pass and ranks tabs ──
+// ── wallet, profile sheets, ranks tab ──
 if (want('sheets')) {
   const { ctx, page } = await newPage({ viewport: P, mobile: true });
   await page.locator('.kl-wallet').click();
@@ -363,9 +369,6 @@ if (want('sheets')) {
   await page.locator('.kl-tabs button', { hasText: 'Profile' }).click();
   await page.waitForTimeout(500);
   await shot(page, 'tab-profile');
-  await page.locator('.kl-tabs button', { hasText: 'Pass' }).click();
-  await page.waitForTimeout(500);
-  await shot(page, 'tab-pass');
   await page.locator('.kl-tabs button', { hasText: 'Ranks' }).click();
   await page.waitForTimeout(500);
   await shot(page, 'tab-ranks');
