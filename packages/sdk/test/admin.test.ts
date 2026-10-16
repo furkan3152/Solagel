@@ -17,6 +17,7 @@ import {
   UsageError,
   buildSetTokenInstructions,
   defaultArenaParams,
+  flag,
   formatStatus,
   inferCluster,
   int,
@@ -63,6 +64,15 @@ describe('parseArgs', () => {
     expect(inferCluster('https://api.devnet.solana.com')).toBe('devnet');
     expect(inferCluster('https://mainnet.helius-rpc.com')).toBe('mainnet-beta');
     expect(inferCluster('http://127.0.0.1:8899')).toBe('localnet');
+  });
+});
+
+describe('flag', () => {
+  it('accepts --x and --x=true, not false or absent', () => {
+    expect(flag(opts('--defaults'), 'defaults')).toBe(true);
+    expect(flag(opts('--defaults=true'), 'defaults')).toBe(true);
+    expect(flag(opts('--defaults=false'), 'defaults')).toBe(false);
+    expect(flag(opts(), 'defaults')).toBe(false);
   });
 });
 

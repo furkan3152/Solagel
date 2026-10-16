@@ -126,6 +126,12 @@ export function int(opts: Opts, name: string, min: number, max: number): number 
   return n;
 }
 
+/** A switch: `--force` or `--force=true`. */
+export function flag(opts: Opts, name: string): boolean {
+  const v = opts.get(name);
+  return v === true || v === 'true';
+}
+
 export function bool(opts: Opts, name: string): boolean | undefined {
   const v = str(opts, name);
   if (v === undefined) return undefined;
