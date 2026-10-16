@@ -110,8 +110,8 @@ if [[ ! -f "$SERVER_KEYPAIR" ]]; then solana-keygen new --no-bip39-passphrase --
 stop_validator
 if rpc_healthy; then die "another validator already answers on $RPC_URL — stop it first"; fi
 
-# A fresh ledger gets a fresh token mint (older versions left a Pass seed and a treasury keypair here).
-rm -f "$MINT_KEYPAIR" "$STATE/pass-seed.json" "$STATE/treasury.json"
+# A fresh ledger gets a fresh token mint.
+rm -f "$MINT_KEYPAIR"
 solana-keygen new --no-bip39-passphrase --silent --outfile "$MINT_KEYPAIR"
 ADMIN="$(solana-keygen pubkey "$ADMIN_KEYPAIR")"
 SERVER="$(solana-keygen pubkey "$SERVER_KEYPAIR")"

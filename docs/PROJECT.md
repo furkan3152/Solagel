@@ -23,8 +23,10 @@ section links to the detailed document where one exists.
   - When the bell rings, everyone still alive is paid their till on-chain, and a fee is taken from the profit only.
 - **Re-entry:** if you are eaten, you can buy back in at the same fee while joins are open. Joins close in the last minute
   of a round.
-- **Slana Pass:** a free-mint NFT. It opens the Pass arenas, lowers the fee from 5 % to 2 %, makes you eligible for
-  season prizes and gives you +15 % start mass.
+- **One simple model:** no NFT, no seasons, no prizes. Four arenas, open to everyone, differ only by their entry fee, and
+  the fee is a flat 5 % of profit.
+- **The token is set after deploy:** until the admin sets the $SLANA mint on-chain (once), the arenas read "Opening
+  soon" and only practice is open.
 
 ## 2. Game mechanics
 
@@ -33,7 +35,7 @@ section links to the detailed document where one exists.
 | Rule | Value (source: `packages/shared/src/constants.ts`, `RULES`) |
 |---|---|
 | Simulation and snapshot rate | 30 ticks per second, authoritative server |
-| Start mass | 20 (with a Pass, × 1.15 in arenas) |
+| Start mass | 20 |
 | Eating | needs at least **1.25 ×** the victim's mass and enough overlap (the victim must be mostly covered) |
 | Speed | `1900 · r^-0.44`, so bigger coins are slower |
 | Split (`Space`) | needs at least 35 mass; up to 16 cells; launch speed 1250; halves merge back after 12 s + 15 ms per unit of mass |
@@ -77,7 +79,7 @@ section links to the detailed document where one exists.
 | Eaten | you get 0 for that ticket; buy back in at the same fee while joins are open |
 | Disconnect (AFK) | your cells stay in the arena until they are eaten or the bell rings, so leaving is not an early exit |
 | The bell | every live ticket, connected or AFK, is settled at its current value; the world resets and a new round starts at once |
-| Floor loot at the bell | collected and moved to the current season pool with `sweep_loot` |
+| Floor loot at the bell | collected and **burned** with `sweep_loot` |
 | Exits that still settle at the current value | admin kick and server shutdown (operator actions, not player choices) |
 
 On screen:
@@ -92,35 +94,34 @@ On screen:
 
 ### 2.5 Arenas
 
-| Arena | Entry fee | Needs a Pass |
-|---|---|---|
-| Penny Pond | 1,000 $SLANA | no |
-| Silver Creek | 10,000 $SLANA | no |
-| Gold Lake | 50,000 $SLANA | yes |
-| Whale Bay | 250,000 $SLANA | yes |
+| Arena | Entry fee |
+|---|---|
+| Penny Pond | 1,000 $SLANA |
+| Silver Creek | 10,000 $SLANA |
+| Gold Lake | 50,000 $SLANA |
+| Whale Bay | 250,000 $SLANA |
 
-These are the defaults created by `pnpm admin create-arena --defaults`. Each arena can hold 300 open tickets. A new
-50-player instance opens on the same vault when the existing ones are full.
+These are the defaults created by `pnpm admin create-arena --defaults`, and all four are open to everyone. Each arena can
+hold 300 open tickets. A new 50-player instance opens on the same vault when the existing ones are full. Arenas can be
+created only after the token is set; before that the lobby shows the four defaults as "Opening soon".
 
 ## 3. Money
 
 ### 3.1 Fees
 
-The fee is charged on profit only, and the rate is fixed when you buy the ticket.
+The fee is charged on profit only, and the rate is fixed when you buy the ticket. It is a flat 5 % by default (500 bps; the
+admin can change it, at most 10 %), and **all of it is paid to the fee wallet**, which defaults to the admin wallet. There
+is no treasury vault, no season pool and no on-chain burn split; the owner burns tokens off-chain by hand (the plan is 75 %
+burned, 25 % kept).
 
 ```
-profit   = max(0, payout - entry_fee)
-fee      = floor(profit x bps / 10 000)        5 % (500 bps), 2 % (200 bps) with a Pass; max 10 %
-treasury = 50 % of the fee, season pool = 30 %, burned = 20 %
-player   = payout - fee
+profit = max(0, payout - entry_fee)
+fee    = floor(profit x bps / 10 000)        5 % (500 bps) by default; max 10 %
+player = payout - fee
 ```
 
-Example with a 1,000 ticket and a till of 2,000 at the bell:
-
-| | Profit | Fee | Fee split | Player gets |
-|---|---|---|---|---|
-| Without a Pass | 1,000 | 50 | treasury 25, season 15, burn 10 | **1,950** |
-| With a Pass | 1,000 | 20 | treasury 10, season 6, burn 4 | **1,980** |
+Example with a 1,000 ticket and a till of 2,000 at the bell: profit 1,000, fee 50 (to the fee wallet), the player gets
+**1,950**.
 
 ### 3.2 Where tokens live
 
@@ -128,13 +129,9 @@ Example with a 1,000 ticket and a till of 2,000 at the bell:
 flowchart LR
   P["Player wallet"] -- "join_arena: entry fee" --> AV["Arena vault (PDA)"]
   AV -- "settle_session at the bell: payout - fee" --> P
-  AV -- "fee share" --> TV["Treasury vault"]
-  AV -- "fee share" --> SV["Season vault"]
-  AV -- "fee share" --> B(("Burned"))
-  AV -- "sweep_loot: floor loot at the bell (server key)" --> SV
-  AV -- "sweep_arena: disabled and idle arena (admin)" --> SV
-  SV -- "claim_season_reward: top 10" --> P
-  TV -- "withdraw_treasury (admin)" --> A["Admin"]
+  AV -- "settle_session: the whole fee" --> FW["Fee wallet token account"]
+  AV -- "sweep_loot: floor loot at the bell (server key)" --> B(("Burned"))
+  AV -- "sweep_arena: disabled and idle arena (admin)" --> FW
 ```
 
 - **Two-phase settle.** If a player has no token account, or their account refuses the transfer, the payout stays in
@@ -146,53 +143,41 @@ flowchart LR
   fees taken minus the payouts already settled. The server writes this to a crash-safe journal (write to a temp file, then
   rename).
 
-### 3.3 Seasons
+### 3.3 The token
 
-- **Points:** only Pass tickets earn season points. The program keeps the top 20 on-chain.
-- **Prizes:** the top 10 share the season pool: 30 / 20 / 14 / 10 / 8 / 6 / 4.5 / 3 / 2.5 / 2 %.
-- **Claiming:** winners have 30 days to claim, then the season can be rolled over.
-- **Where the pool comes from:** the 30 % season share of every fee, `sweep_loot` (floor loot from each round),
-  `sweep_arena`, and rollovers.
-
-### 3.4 Slana Pass
-
-- **The NFT:** a Metaplex Core NFT. Minting is free (you pay only rent and the network fee), the supply is 3,333 and
-  each wallet can mint one.
-- **Fair reveal (commit–reveal):**
-  1. The admin commits a seed hash before the mint, and the supply is locked once the mint opens.
-  2. After the mint ends, the admin reveals the seed.
-  3. About 150 slots later, anyone can capture the hash of that slot (`capture_pass_entropy`).
-  4. Traits come from `sha256(seed ‖ slot hash)`.
-  5. Nobody, the team included, can know a Pass's traits while minting is still possible.
-- **Perks:** the Pass arenas, a 2 % fee, season points and prizes, and +15 % start mass. These perks are stated on every
-  ticket and in the guide.
-- Art and traits are described in [PASS-ART.md](PASS-ART.md).
+- The program is deployed and initialized **without** a token. The admin sets it once with
+  `pnpm admin set-token --mint <CA>`; the same transaction creates the fee wallet's token account.
+- Setting the token is final. The program has no way to change it; a wrong contract address means closing the program and
+  redeploying.
+- The server and the web read the token from the chain: no restart and no rebuild. Until it is set, the server reports
+  `tokenReady: false` and plays practice only, and the arenas show "Opening soon".
+- The fee wallet must keep its token account. If it is closed or unusable, the server holds every settlement (with a loud
+  `!!!` log) until it is recreated.
 
 ## 4. Architecture
 
 **Hybrid model.** The server runs the real-time physics. The Solana program enforces the money rules. The browser signs
-its own transactions; the server key signs only `settle_session` and `sweep_loot` (and, permissionlessly,
-`capture_pass_entropy`).
+its own transactions; the server key signs only `settle_session` and `sweep_loot`.
 
 ```
 Browser (apps/web)  --WebSocket, binary 30 Hz-->  Game server (apps/server)  --settle / sweep-->  Solana program
-       \__________________ signs join / mint / claim / refund / collect ___________________________/
+       \__________________ signs join / refund / collect ___________________________/
 ```
 
 ### 4.1 Repository layout
 
 | Path | What it is |
 |---|---|
-| `programs/slana-lean` | **The deployed program** (Pinocchio, `no_std`). 59,896 bytes, which locks about ◎0.418 of rent; the CI gate fails above 71,000 bytes. |
+| `programs/slana-lean` | **The deployed program** (Pinocchio, `no_std`). 36,408 bytes, which locks about ◎0.2546 of rent; the CI gate fails above 71,000 bytes. |
 | `programs/slana-ref` | Anchor reference program. It is **never deployed**; it is the source of the IDL and TypeScript types and the conformance oracle. The LiteSVM test suite runs against both programs (`SLANA_IMPL=ref\|lean`). |
-| `packages/shared` | Game rules (`RULES`), the binary protocol (version 3), arena metadata, the round math, token formatting |
+| `packages/shared` | Game rules (`RULES`), the binary protocol (version 4), arena metadata, the round math, token formatting |
 | `packages/sdk` | TypeScript client: PDAs, instruction builders, account readers, fee math, and the **admin CLI** (`pnpm admin`) |
-| `packages/art` | Pass traits, risograph coin and Pass drawing, the `pnpm pass:*` generator |
+| `packages/art` | The risograph coin drawing used by the web renderer |
 | `apps/server` | Node 22 game server (see 4.3) |
 | `apps/web` | Vite + React client in the "Paper Ticket" design system (see 4.4) |
 | `scripts/` | build, deploy, close, localnet, demo, recorder, IDL sync, program tests |
 | `media/` | Sources of the promo, gameplay and how-to-play videos (renders go to `out/videos/`, which git ignores) |
-| `docs/` | This page, [ARCHITECTURE](ARCHITECTURE.md), [DEPLOY](DEPLOY.md), [OPERATIONS](OPERATIONS.md), [PASS-ART](PASS-ART.md), and the design specs and plans under `docs/superpowers/` |
+| `docs/` | This page, [ARCHITECTURE](ARCHITECTURE.md), [DEPLOY](DEPLOY.md), [OPERATIONS](OPERATIONS.md), and the design specs and plans under `docs/superpowers/` |
 
 ### 4.2 On-chain program
 
@@ -200,12 +185,10 @@ Browser (apps/web)  --WebSocket, binary 30 Hz-->  Game server (apps/server)  --s
 
 | Area | Instructions |
 |---|---|
-| Setup and admin | `initialize`, `update_config`, `create_arena`, `update_arena`, `withdraw_treasury` |
+| Setup and admin | `initialize` (no token), `set_token_mint` (once), `update_config`, `create_arena`, `update_arena` |
 | Players | `register_player`, `update_profile` |
-| Tickets | `join_arena` (and its Pass variant), `settle_session` (server), `refund_session` (player: collect what is owed, or refund after 24 h) |
-| Vault sweeps | `sweep_arena` (admin, arena disabled and idle), `sweep_loot` (server, floor loot at each bell) |
-| Seasons | `end_season`, `claim_season_reward`, `rollover_season` |
-| Pass | `set_pass_collection`, `set_pass_seed_hash`, `mint_pass`, `close_pass_mint`, `reveal_pass`, `capture_pass_entropy` |
+| Tickets | `join_arena`, `settle_session` (server), `refund_session` (player: collect what is owed, or refund after 24 h) |
+| Vault sweeps | `sweep_arena` (admin, arena disabled and idle: the vault goes to the fee wallet), `sweep_loot` (server: burns floor loot at each bell) |
 
 **Accounts (PDAs):**
 
@@ -215,19 +198,17 @@ Browser (apps/web)  --WebSocket, binary 30 Hz-->  Game server (apps/server)  --s
 | Arena | `arena` + id |
 | Arena vault | `vault` + arena |
 | Session | `session` + arena + player |
-| Pass lock | `pass_lock` + asset |
 | Profile | `profile` + player |
-| Season | `season` + id |
-| Treasury vault | `treasury_vault` |
-| Season vault | `season_vault` |
 
 **Main on-chain guarantees:**
 
 - A payout can never exceed the vault.
-- A player has at most one open ticket per arena, and a Pass backs at most one open ticket.
+- A player has at most one open ticket per arena.
 - Payouts cannot be replayed: the session id is checked.
 - The fee rate is fixed at join and capped at 10 %.
-- The token mint is fixed at `initialize`, and risky Token-2022 extensions are refused.
+- The token mint is set once, after deploy, and cannot be changed; mints with a freeze authority and risky Token-2022 extensions are refused.
+- The whole fee is paid to the fee wallet's token account, and a wrong account fails the settlement.
+- Floor loot is only ever burned (`sweep_loot`), never moved to a wallet.
 - A pause blocks joins only; settlements and refunds keep working.
 
 ### 4.3 Game server (`apps/server/src`)
@@ -238,10 +219,9 @@ Browser (apps/web)  --WebSocket, binary 30 Hz-->  Game server (apps/server)  --s
 | `bots/` | Bot brains, personalities and steering |
 | `rooms/` | `manager.ts` (instances, matchmaking, the vault guard), `room.ts` (a room, round end, settlement), `round-clock.ts` (the single round clock), `visibility.ts` |
 | `stake/` | `ledger.ts` (in-game value transfers, loot spill) and `journal.ts` (the crash-safe record of live values, loot, pending settlements and loot sweeps) |
-| `chain/` | `solana.ts`: the settlement and sweep worker (retries, a two-phase settle, a sweep resent only after its blockhash expires, and a sweeper that refunds stale tickets). `dev-fake.ts`: an in-memory chain for development. |
+| `chain/` | `solana.ts`: the token watcher (re-reads the config every 30 s until the token is set), the settlement and loot-burn worker (retries, a two-phase settle, a fee wallet account guard, a sweep resent only after its blockhash expires, and a sweeper that refunds stale tickets). `dev-fake.ts`: an in-memory chain for development. |
 | `net/` | WebSocket gateway: sign-in, join and refusal codes such as `round_closed`, `round_ended` and `no_cashout` |
-| `pass/` | Pass metadata and image endpoints |
-| `http.ts` | REST endpoints: `/api/health`, `/api/rooms`, `/api/leaderboard`, `/api/season`, `/api/config`, `/api/auth/nonce`, `/api/pending`, `/pass/*` |
+| `http.ts` | REST endpoints: `/api/health`, `/api/rooms`, `/api/leaderboard`, `/api/config`, `/api/auth/nonce`, `/api/pending` |
 
 Sign-in uses SIWS (Sign-In With Solana) with a nonce that the server issues and checks line by line.
 
@@ -251,17 +231,18 @@ Sign-in uses SIWS (Sign-In With Solana) with a nonce that the server issues and 
 |---|---|
 | `game/` | Engine, network, input, server clock offset, held-ticket auto-join |
 | `render/` | Canvas renderer for the riso world, coins and effects |
-| `ui/` | Screens: `lobby/`, `game/` (HUD, round chip, death sheet, Round over sheet), `pass/`, `profile/`, `news/` (season claim), `docs/` (the in-app guide at `/docs`) |
+| `ui/` | Screens: `lobby/`, `game/` (HUD, round chip, death sheet, Round over sheet), `profile/`, `news/` (standings), `docs/` (the in-app guide at `/docs`) |
 | `design/` | The "Paper Ticket" design system and motion presets: ticket punch, paper wipe, page turn, stamps |
 | `audio/` | Synthesized WebAudio: mixer buses (master, music, sfx, voice), sound effects, procedural lo-fi music, a speech-synthesis announcer |
-| `solana/` | Wallet adapter and the transaction builders for tickets, mint, claim and collect |
+| `solana/` | Wallet adapter and the transaction builders for tickets, refund and collect |
 | `i18n/en.ts` | All UI copy. The project is English-only, and CI enforces it. |
 
 ## 5. Run, test, deploy, operate
 
 ```bash
 corepack enable && pnpm install
-pnpm demo                        # full stack on a fake chain: lobby, sign-in, tickets, rounds, Pass mint
+pnpm demo                        # full stack on a fake chain: lobby, sign-in, tickets, rounds (token set)
+DEV_FAKE_TOKEN=0 pnpm demo       # the same with the token unset: "Opening soon" until POST /api/dev/token
 ROUND_SECONDS=90 pnpm demo       # same, with short rounds so you see the bell quickly
 pnpm demo:localnet               # the same UI against a real local validator and the lean program
 pnpm demo:record                 # regenerate the walkthrough video
@@ -271,8 +252,8 @@ pnpm program:test                # LiteSVM suite on both programs, clippy, size 
 
 | Topic | Where |
 |---|---|
-| Keys, token, deploy and upgrade order (upgrade the program before rolling out a server that uses `sweep_loot`) | [DEPLOY.md](DEPLOY.md) |
-| Admin CLI, monitoring, log lines, emergency pause and program close (`scripts/close-program.sh`) | [OPERATIONS.md](OPERATIONS.md) |
+| Keys, the deploy, `init`, `set-token`, `create-arena --defaults` order and the costs | [DEPLOY.md](DEPLOY.md) |
+| Admin CLI, the fee wallet, monitoring, log lines, emergency pause and program close (`scripts/close-program.sh`) | [OPERATIONS.md](OPERATIONS.md) |
 | Money flow, invariants, trust model, server internals | [ARCHITECTURE.md](ARCHITECTURE.md) |
 
 The admin wallet is `D2Ts7yCiVjedo6uwqpkM44QA8J45NdVU1J3k5m6iWtvm` (`scripts/admin.env`). It is the program's upgrade
@@ -283,10 +264,11 @@ its rent.
 
 | Actor | Can | Cannot |
 |---|---|---|
-| Player | buy tickets, collect what is owed, refund an unsettled ticket after 24 h, mint, claim | settle a ticket, undo a result |
-| Server key | settle tickets with any payout up to the vault balance; sweep up to the vault balance into the season pool | touch the treasury, the config or the season vault's payouts |
-| Admin | fees (≤ 10 %), arenas, pause, seasons, treasury, Pass setup and reveal, replace the server key | change the token, raise an open ticket's fee, change the Pass supply after the mint opened |
+| Player | buy tickets, collect what is owed, refund an unsettled ticket after 24 h | settle a ticket, undo a result |
+| Server key | settle tickets with any payout up to the vault balance; burn up to the vault balance of floor loot with `sweep_loot` | touch the fee wallet or the config, move tokens to a wallet |
+| Admin | set the token once, fees (≤ 10 %), arenas, pause, the fee wallet, replace the server key | change the token after it is set, raise an open ticket's fee |
 | Upgrade authority (the admin wallet) | replace or close the program | — |
 
 The game outcome (who ate whom, and each player's value at the bell) trusts the authoritative server. The admin can
-replace the server key, so trusting the server means trusting the admin.
+replace the server key, so trusting the server means trusting the admin. `sweep_loot` burns and is capped only by the
+vault balance, the same trust as a payout, so the server key must be protected.
