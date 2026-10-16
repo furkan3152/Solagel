@@ -68,6 +68,7 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
   const reduced = useReducedMotion();
   const nameId = useId();
   const serverBps = useUi((s) => s.chain?.feeBps ?? null);
+  const tokenReady = useUi((s) => s.chain?.tokenReady === true);
 
   const [phase, setPhase] = useState<Phase>('review');
   const [error, setError] = useState<string | null>(null);
@@ -300,7 +301,7 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
   const priceOk = !ticket.soon && (data.fake || (chainArena !== undefined && chainArena.entryFee === ticket.entryFee));
   const maintenance = mode === 'buy' && blockedArenas.includes(arenaId);
   const canConfirm =
-    !!owner && !!config && !busy && !maintenance && (mode === 'buy' ? priceOk && nameOk : session !== null && (mode !== 'collect' || !!session.finalized));
+    !!owner && !!config && tokenReady && !busy && !maintenance && (mode === 'buy' ? priceOk && nameOk : session !== null && (mode !== 'collect' || !!session.finalized));
   const confirmLabel =
     mode === 'buy'
       ? t('tf.confirm', { fee: tok.exact(fee), sym: tok.symbol })
