@@ -16,19 +16,8 @@ export const RISO = {
 
 export type RisoInk = keyof typeof RISO;
 
-/** Dark ink used for outlines, faces and digits. */
+/** Dark ink used for outlines and faces. */
 export const INK = '#1E1B2E';
 
 /** Card paper (lighter than the page paper); used for highlights / knock-outs. */
 export const CARD_PAPER = '#FFFCF4';
-
-export const PAPERS = {
-  cream: '#F1EADB',
-  pink: '#F9DCE4',
-  mint: '#DDF2E8',
-  sky: '#DCE8F7',
-  butter: '#F8EDC6',
-  lilac: '#E9E0F7',
-} as const;
-
-export type PaperKind = keyof typeof PAPERS;

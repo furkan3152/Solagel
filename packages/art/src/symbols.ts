@@ -1,4 +1,4 @@
-import type { SymbolKind } from './traits';
+import type { SymbolKind } from './looks';
 
 const TAU = Math.PI * 2;
 

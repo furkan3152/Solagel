@@ -129,19 +129,16 @@ importers:
 
   packages/art:
     dependencies:
-      '@napi-rs/canvas':
-        specifier: ^1.0.0
-        version: 1.0.11
       '@slana/shared':
         specifier: workspace:*
         version: link:../shared
     devDependencies:
+      '@napi-rs/canvas':
+        specifier: ^1.0.0
+        version: 1.0.11
       '@types/node':
         specifier: ^22.19.0
         version: 22.20.5
-      tsx:
-        specifier: ^4.23.15
-        version: 4.23.15
       typescript:
         specifier: ~5.9.3
         version: 5.9.3

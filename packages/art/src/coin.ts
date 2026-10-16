@@ -1,5 +1,5 @@
 import { CellFlag } from '@slana/shared';
-import { drawAccessoryBack, drawAccessoryFront, symbolAnchor, twinkle } from './accessories';
+import { drawAccessoryBack, drawAccessoryFront, symbolAnchor } from './accessories';
 import { drawFace, type Expression } from './faces';
 import type { CoinLook } from './looks';
 import { CARD_PAPER, INK, RISO } from './palette';
@@ -67,7 +67,7 @@ function blushFor(body: string): string {
 /**
  * Draws a risograph coin character at the origin with radius r.
  * Layers: back accessories → overprint (misregistered second ink, multiply)
- * → body ink (multiply) → ink rim → halftone shade → specials → symbol →
+ * → body ink (multiply) → ink rim → halftone shade → symbol →
  * face → front accessories → flag effects. No filters and no text, so it
  * renders the same in browsers and in @napi-rs/canvas.
  */
@@ -129,8 +129,7 @@ export function drawRisoCoin(ctx: CanvasRenderingContext2D, look: CoinLook, r: n
 
   // 2. body ink, over a paper base so it reads the same on any background.
   // `fastBody` (web renderer only): an opaque body is one flat fill of ink × paper
-  // instead of a paper fill plus a multiply blend. Pass images keep the exact
-  // two-step print so their bytes never change.
+  // instead of a paper fill plus a multiply blend.
   bodyPath(ctx, r, state.jelly, detail);
   if (state.fastBody && ctx.globalAlpha >= 0.999) {
     ctx.fillStyle = inkOnPaper(look.body);
@@ -146,8 +145,7 @@ export function drawRisoCoin(ctx: CanvasRenderingContext2D, look: CoinLook, r: n
   }
 
   // 3. ink rim (+ the coin's inner groove)
-  const gold = look.special === 'gold' || (look.special?.startsWith('oneOfOne') ?? false);
-  if (detail > 10 && !gold) {
+  if (detail > 10) {
     ctx.save();
     ctx.globalAlpha *= 0.4;
     ctx.strokeStyle = INK;
@@ -179,16 +177,6 @@ export function drawRisoCoin(ctx: CanvasRenderingContext2D, look: CoinLook, r: n
     else drawHalftoneDots(ctx, r, spacing);
     ctx.restore();
   }
-
-  // specials
-  if (look.special === 'holo' || (look.special && look.special.startsWith('oneOfOne'))) {
-    ctx.save();
-    bodyPath(ctx, r - rimW * 0.5, state.jelly, detail);
-    ctx.clip();
-    drawHolo(ctx, r, time);
-    ctx.restore();
-  }
-  if (gold) drawGoldLeaf(ctx, r, rimW, lineW, time);
 
   // 5. symbol
   const anchor = symbolAnchor(look.accessory, r);
@@ -286,45 +274,6 @@ export function drawHalftoneDots(ctx: CanvasRenderingContext2D, r: number, sp: n
       ctx.fill();
     }
   }
-}
-
-/** Iridescent diagonal bands (holo foil). */
-function drawHolo(ctx: CanvasRenderingContext2D, r: number, time: number): void {
-  const bands = ['#9FF0F5', '#D9C9FF', '#FFC6DA', '#C6F5DE', '#FFF1B0'];
-  const w = r * 0.32;
-  const shift = ((time / 40) % (w * bands.length)) - w * bands.length;
-  ctx.save();
-  ctx.globalAlpha *= 0.3;
-  ctx.rotate(-Math.PI / 5);
-  for (let k = 0, x = -r * 2 + shift; x < r * 2; x += w, k++) {
-    ctx.fillStyle = bands[k % bands.length];
-    ctx.fillRect(x, -r * 1.5, w * 0.62, r * 3);
-  }
-  ctx.restore();
-}
-
-/** Gold-leaf edge: a mustard band between two ink lines, with twinkles. */
-function drawGoldLeaf(ctx: CanvasRenderingContext2D, r: number, rimW: number, lineW: number, time: number): void {
-  ctx.save();
-  ctx.strokeStyle = INK;
-  ctx.lineWidth = r * 0.1 + lineW * 1.6;
-  ctx.beginPath();
-  ctx.arc(0, 0, r * 0.84, 0, TAU);
-  ctx.stroke();
-  ctx.strokeStyle = RISO.mustard;
-  ctx.lineWidth = r * 0.1;
-  ctx.stroke();
-  ctx.strokeStyle = CARD_PAPER;
-  ctx.globalAlpha *= 0.85;
-  ctx.lineWidth = r * 0.025;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.arc(0, 0, r * 0.84, 1.08 * Math.PI, 1.38 * Math.PI);
-  ctx.stroke();
-  ctx.restore();
-  const p = 0.75 + 0.25 * Math.sin(time / 260);
-  twinkle(ctx, -r * 0.86, -r * 0.62, r * 0.13 * p, RISO.mustard, rimW * 0.45);
-  twinkle(ctx, r * 0.92, r * 0.5, r * 0.09 * (1.75 - p), RISO.mustard, rimW * 0.45);
 }
 
 function drawShield(ctx: CanvasRenderingContext2D, r: number, time: number, lineW: number): void {
