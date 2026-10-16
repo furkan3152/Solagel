@@ -79,7 +79,7 @@ money, tickets and fees live in the Solana program. Details, the money-flow diag
 | Folder | Contents |
 |---|---|
 | `programs/slana-ref` | Anchor 1.2.1 reference (not deployed; the IDL source and the conformance oracle): token arenas (SPL Token / Token-2022), sessions, the flat fee, loot burn, `set_token_mint` + LiteSVM tests |
-| `programs/slana-lean` | The deployed Pinocchio program (`target/deploy/slana_lean.so`, 36,408 bytes, size gate 71,000), wire-compatible with the reference; `scripts/build-lean.sh` |
+| `programs/slana-lean` | The deployed Pinocchio program (`target/deploy/slana_lean.so`, 39,032 bytes, size gate 71,000), wire-compatible with the reference; `scripts/build-lean.sh` |
 | `packages/shared` | Game rules, binary protocol (v4), arena data, token formatting |
 | `packages/sdk` | TypeScript client (PDAs, instructions, account reads, fee math) + **admin CLI** (`pnpm admin`) |
 | `packages/art` | The risograph coin drawing used by the web renderer |
@@ -185,7 +185,7 @@ means closing the program and redeploying it (see OPERATIONS, "Emergency stop / 
 
 ### Program build and deploy
 
-The deployed program is the Pinocchio build `programs/slana-lean` (36,408 bytes, size gate 71,000). The Anchor crate
+The deployed program is the Pinocchio build `programs/slana-lean` (39,032 bytes, size gate 71,000). The Anchor crate
 `programs/slana-ref` is only the IDL source and the conformance oracle in the tests, and is **never deployed**.
 
 ```bash
@@ -197,7 +197,7 @@ scripts/close-program.sh <cluster-url> <admin-keypair>   # emergency: permanentl
 ```
 
 Never use `anchor deploy`: it would ship the ~450 KB reference. The lean program locks
-254,603,760 lamports (about ◎0.2546) of ProgramData rent, and the deploy briefly needs about ◎0.51 because of the
+272,866,800 lamports (about ◎0.2729) of ProgramData rent, and the deploy briefly needs about ◎0.55 because of the
 temporary buffer. The full cost table is in [docs/DEPLOY.md](docs/DEPLOY.md#10-mainnet-costs).
 
 ### Localnet and end-to-end test
@@ -274,8 +274,8 @@ Extra tools: `pnpm -F @slana/server sim` (bot balance), `pnpm -F @slana/web shot
 - **The token is set after deploy** with `pnpm admin set-token --mint <CA>` (once). Until then the arenas show "Opening
   soon" and only practice is open; the server and the web follow the chain with no restart.
 - **Architecture:** a hybrid model. The authoritative Node server runs the 30 Hz simulation and settles tickets on-chain;
-  the Solana program holds the money rules. The deployed program is a Pinocchio build (`programs/slana-lean`, 36,408
-  bytes, about ◎0.2546 of rent). It is wire-compatible with the Anchor reference (`programs/slana-ref`), which supplies
+  the Solana program holds the money rules. The deployed program is a Pinocchio build (`programs/slana-lean`, 39,032
+  bytes, about ◎0.2729 of rent). It is wire-compatible with the Anchor reference (`programs/slana-ref`), which supplies
   the IDL and is checked against it by the same LiteSVM suite, but is never deployed. Build with
   `bash scripts/build-lean.sh`, deploy with `scripts/deploy-lean.sh <cluster-url> <keypair>`,
   never `anchor deploy`. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
