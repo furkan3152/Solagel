@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
-import { CAPACITY, RULES, TOKEN_SYMBOL_DEFAULT, type ChainStatus, type MarketUrls } from '@slana/shared';
+import { CAPACITY, RULES, TOKEN_SYMBOL_DEFAULT } from '@slana/shared';
 import type { BotManagerOptions } from './bots/manager';
 
 export interface ServerConfig {
@@ -10,8 +10,8 @@ export interface ServerConfig {
   corsOrigin: string;
   dataDir: string;
   /**
-   * Public base URL of this server (`PUBLIC_URL`, no trailing slash), used in Pass metadata
-   * image links. Null: derived from the request's Host header, else `http://localhost:<PORT>`.
+   * Public base URL of this server (`PUBLIC_URL`, no trailing slash), the origin wallet logins
+   * (SIWS) are bound to. Null: derived from the request's Host header, else `http://localhost:<PORT>`.
    */
   publicUrl: string | null;
   /** Optional path to the built web app (apps/web/dist) to serve statically. */
@@ -25,8 +25,6 @@ export interface ServerConfig {
   arenaInstanceCap: number;
   /** Bot population per room kind. */
   bots: { practiceRookie: BotManagerOptions; practicePro: BotManagerOptions; arena: BotManagerOptions; private: BotManagerOptions };
-  /** Slana Pass power (`PASS_START_MASS_MUL`, `PASS_CASHOUT_MS`; the cash-out time is unused since arenas play rounds). */
-  pass: { startMassMul: number; cashoutMs: number };
   /**
    * Arena round clock (`ROUND_SECONDS`, `ROUND_JOIN_CLOSE_SECONDS`; defaults `RULES.roundMs` /
    * `RULES.roundJoinCloseMs`). Tests, the localnet e2e and demo recordings shorten it;
@@ -43,17 +41,11 @@ export interface ServerConfig {
    */
   devFakeChain: boolean;
   /**
-   * Fake chain's Pass collection (`DEV_FAKE_PASS`): `mint` (default) starts with the
-   * mint open and unrevealed and no Pass in any wallet, so the mint can be shown;
-   * `revealed` gives every wallet one revealed Pass (the earlier behaviour).
+   * `DEV_FAKE_TOKEN=1`: the fake chain starts with its game token set (arenas open at once).
+   * Without it the token starts unset (practice only, "Opening soon") and the dev-only
+   * `POST /api/dev/token` sets it, to show the transition.
    */
-  devFakePass: 'mint' | 'revealed';
-  /**
-   * Slana Pass collection pages on the marketplaces, shown on the Pass page
-   * (`MARKET_URLS` JSON and/or `MARKET_URL_MAGICEDEN` / `_TENSOR` / `_OPENSEA`).
-   * Only https URLs are kept; an empty object hides every link.
-   */
-  markets: MarketUrls;
+  devFakeToken: boolean;
   chain: {
     cluster: string;
     /** RPC used by the server (may contain a private API key). */
@@ -94,49 +86,6 @@ const num = (v: string | undefined, d: number): number => {
   const n = Number(v);
   return v !== undefined && v.trim() !== '' && Number.isFinite(n) ? n : d;
 };
-
-const MARKET_KEYS: Record<string, keyof MarketUrls> = { magiceden: 'magicEden', tensor: 'tensor', opensea: 'opensea' };
-
-/** An absolute https URL, else null (never `http:`, `javascript:` or a relative link on the page). */
-function httpsUrl(v: unknown): string | null {
-  if (typeof v !== 'string' || v.trim() === '') return null;
-  try {
-    const u = new URL(v.trim());
-    return u.protocol === 'https:' ? u.toString() : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Marketplace links: `MARKET_URLS` (JSON object, keys `magicEden` / `tensor` /
- * `opensea`, case and `_` insensitive) overridden by `MARKET_URL_MAGICEDEN`,
- * `MARKET_URL_TENSOR` and `MARKET_URL_OPENSEA`. Anything but an https URL is dropped.
- */
-export function parseMarketUrls(env: NodeJS.ProcessEnv): MarketUrls {
-  const out: MarketUrls = {};
-  const raw = env.MARKET_URLS?.trim();
-  if (raw) {
-    let parsed: unknown = null;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      parsed = null;
-    }
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
-        const key = MARKET_KEYS[k.toLowerCase().replace(/[^a-z]/g, '')];
-        const url = httpsUrl(v);
-        if (key && url) out[key] = url;
-      }
-    }
-  }
-  for (const [suffix, key] of Object.entries({ MAGICEDEN: 'magicEden', TENSOR: 'tensor', OPENSEA: 'opensea' } as const)) {
-    const url = httpsUrl(env[`MARKET_URL_${suffix}`]);
-    if (url) out[key] = url;
-  }
-  return out;
-}
 
 /** `ROUND_SECONDS` / `ROUND_JOIN_CLOSE_SECONDS`: whole seconds, a round of at least 2 s, joins closed for at most half of it. */
 export function parseRoundConfig(env: NodeJS.ProcessEnv): { roundMs: number; closeMs: number } {
@@ -189,16 +138,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
         mix: 'standard',
       },
     },
-    pass: {
-      startMassMul: Math.max(1, num(env.PASS_START_MASS_MUL, RULES.passStartMassMul)),
-      cashoutMs: Math.max(0, int(env.PASS_CASHOUT_MS, RULES.passCashoutMs)),
-    },
     round: parseRoundConfig(env),
     authSecret: secret,
     nodeEnv: env.NODE_ENV?.trim() || null,
     devFakeChain: bool(env.DEV_FAKE_CHAIN, false),
-    devFakePass: env.DEV_FAKE_PASS?.trim() === 'revealed' ? 'revealed' : 'mint',
-    markets: parseMarketUrls(env),
+    devFakeToken: bool(env.DEV_FAKE_TOKEN, false),
     chain: {
       cluster: env.SOLANA_CLUSTER ?? 'localnet',
       rpcUrl: env.SOLANA_RPC_URL ?? null,
@@ -219,16 +163,4 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       staleSweepAck: bool(env.STALE_SWEEP_ACK, false),
     },
   };
-}
-
-/**
- * The chain status sent to browsers (`welcome`, `/api/config`): the gateway's view plus the
- * marketplace links and the Pass power this server applies (I3: the web discloses these
- * numbers, not its built-in defaults).
- */
-export function publicChainStatus(status: ChainStatus, cfg: Pick<ServerConfig, 'markets'> & Partial<Pick<ServerConfig, 'pass'>>): ChainStatus {
-  let out = status;
-  if (Object.keys(cfg.markets).length > 0) out = { ...out, markets: { ...cfg.markets } };
-  if (cfg.pass) out = { ...out, passPower: { startMassMul: cfg.pass.startMassMul, cashoutMs: cfg.pass.cashoutMs } };
-  return out;
 }

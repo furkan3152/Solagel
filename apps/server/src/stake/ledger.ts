@@ -13,8 +13,6 @@ export interface ArenaEntry {
   value: number;
   /** On-chain session open time (unix seconds). */
   openedAt: number;
-  /** The player held a Slana Pass when the session was opened. */
-  hasPass: boolean;
 }
 
 /**

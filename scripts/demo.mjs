@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // One-command Slana demo.
-//   pnpm demo            fake chain: server (NODE_ENV=development DEV_FAKE_CHAIN=1) + web dev server
+//   pnpm demo            fake chain: server (NODE_ENV=development DEV_FAKE_CHAIN=1 DEV_FAKE_TOKEN=1) + web dev server
 //   pnpm demo:localnet   real local validator + slana_lean.so + production-built server + web dev server
 // Flags: --browser  also open a Chromium with the Dev Wallet (a local keypair; needs a display)
 //        --no-build (localnet) skip building missing pieces and fail instead
@@ -158,18 +158,11 @@ function parseEnvFile(path) {
 
 async function buildMissing() {
   const lean = join(ROOT, 'target/deploy/slana_lean.so');
-  const core = join(ROOT, 'target/programs/mpl_core.so');
   const need = (what, hint) => fail(`${what} is missing and --no-build was given.`, hint);
   if (!existsSync(lean)) {
     if (NO_BUILD) need('target/deploy/slana_lean.so', 'Run: scripts/build-lean.sh');
     if (!hasCommand('cargo-build-sbf', ENV)) fail('target/deploy/slana_lean.so is missing and cargo-build-sbf is not installed.', 'Install the Agave/Solana build tools, then run: scripts/build-lean.sh');
     if ((await runStep('building the Slana program (scripts/build-lean.sh, a few minutes the first time)', join(ROOT, 'scripts/build-lean.sh'), [])) !== 0) fail('The program build failed.', 'Fix the error above, or run scripts/build-lean.sh yourself.');
-  }
-  if (!existsSync(core)) {
-    if (NO_BUILD) need('target/programs/mpl_core.so (Metaplex Core)', 'Run: scripts/fetch-programs.sh   (or copy mpl_core.so there)');
-    if ((await runStep('downloading Metaplex Core (scripts/fetch-programs.sh, needs network access to a Solana mainnet RPC)', join(ROOT, 'scripts/fetch-programs.sh'), [])) !== 0) {
-      fail('Could not download Metaplex Core.', `The fetch needs a reachable mainnet RPC. Use another one:  MAINNET_RPC=<url> pnpm demo:localnet\nor copy a dumped mpl_core.so to ${core}\n(dump it elsewhere with: solana program dump -u mainnet-beta CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d mpl_core.so)`);
-    }
   }
   if ((await runStep('building the game server (tsup)', 'pnpm', ['-F', '@slana/server', 'build'])) !== 0) fail('The server build failed.', 'Run: pnpm -F @slana/server build');
 }
@@ -186,14 +179,15 @@ async function main() {
     const data = join(ROOT, 'out/demo-data');
     rmSync(data, { recursive: true, force: true });
     mkdirSync(data, { recursive: true });
-    serverEnv = { ...ENV, NODE_ENV: 'development', DEV_FAKE_CHAIN: '1', DATA_DIR: data };
+    // DEV_FAKE_TOKEN=1: the game token starts set, so the arenas are playable at once
+    serverEnv = { ...ENV, NODE_ENV: 'development', DEV_FAKE_CHAIN: '1', DEV_FAKE_TOKEN: '1', DATA_DIR: data };
     delete serverEnv.PROGRAM_ID; // the fake chain refuses to start next to a real chain config
     delete serverEnv.SERVER_KEYPAIR;
     serverCmd = ['pnpm', ['-F', '@slana/server', 'dev']];
   } else {
     await buildMissing();
     walletKeypair = join(ROOT, '.localnet/dev-wallet.json');
-    // The browser talks to the web dev server (it proxies /api and /ws), so SIWS and the Pass links name it.
+    // The browser talks to the web dev server (it proxies /api and /ws), so SIWS names it.
     const rc = await runStep('starting the validator and setting up the chain (scripts/localnet.sh)', join(ROOT, 'scripts/localnet.sh'), [], { env: { ...ENV, GAME_URL: WEB_URL } });
     if (rc !== 0) {
       spawnSync(join(ROOT, 'scripts/localnet.sh'), ['--stop'], { env: ENV, stdio: 'ignore' });
@@ -230,7 +224,6 @@ async function main() {
     console.log('                       scripts/localnet-fund.sh <WALLET_ADDRESS>');
   } else {
     console.log('  wallet:            any Wallet Standard wallet signs in (no funds needed), or run with --browser for a Dev Wallet.');
-    console.log('  Pass mint:         open and unrevealed. Reveal it with:  curl -X POST localhost:8787/api/dev/pass/reveal');
   }
   const rs = Number(ENV.ROUND_SECONDS) || 300;
   console.log(`  arena rounds:      ${rs} s each, no cash-out (set ROUND_SECONDS=90 for a quicker bell)`);

@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { CAPACITY, RULES, WORLD_PRESETS, type League, type RoomMode } from '../src';
 
 describe('v2 economy constants', () => {
-  it('adds the Pass and loot rules', () => {
+  it('adds the loot rules (no Pass rules: Slana Simple)', () => {
+    expect('passStartMassMul' in RULES).toBe(false);
+    expect('passCashoutMs' in RULES).toBe(false);
     expect(RULES).toMatchObject({
-      passStartMassMul: 1.15,
-      passCashoutMs: 2000,
       lootPiecesMin: 3,
       lootPiecesMax: 24,
       lootPieceEntryFraction: 0.25,
@@ -19,8 +19,6 @@ describe('v2 economy constants', () => {
     expect(RULES.startMass).toBe(20);
     expect(RULES.cashoutMs).toBe(3000);
     expect(RULES.afkGraceMs).toBe(45_000);
-    // a Pass cashes out faster than a normal ticket, never slower
-    expect(RULES.passCashoutMs).toBeLessThan(RULES.cashoutMs);
     expect(RULES.lootPiecesMin).toBeLessThanOrEqual(RULES.lootPiecesMax);
   });
 

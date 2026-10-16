@@ -96,7 +96,6 @@ const live = (session: string, value: number): LiveStake => ({
   value,
   score: 100,
   kills: 2,
-  hasPass: false,
 });
 
 describe('settlement journal', () => {

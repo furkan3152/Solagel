@@ -8,10 +8,7 @@ import {
   pdas,
   type ArenaView,
   type ConfigView,
-  type CoreAsset,
-  type OwnedPass,
   type ProfileView,
-  type SeasonView as SdkSeasonView,
   type SessionView,
 } from '@slana/sdk';
 import { Connection, Keypair, PublicKey, TransactionInstruction } from '@solana/web3.js';
@@ -25,6 +22,9 @@ import { Journal, sweepKey, type SettlementItem, type SweepItem } from '../src/s
 const PROGRAM = new PublicKey('5skf5Twyqr8M84dJ8RLGfz1NU6fR3zPDRLUvGd5y7472');
 const T0 = 1_760_000_000_000;
 const wallet = () => Keypair.generate().publicKey.toBase58();
+const MINT = wallet();
+/** The fee wallet (defaults to the admin in `pnpm admin init`). */
+const FEE_WALLET = wallet();
 
 function chainConfig(overrides: Partial<ServerConfig['chain']> = {}): ServerConfig {
   const cfg = loadConfig({} as NodeJS.ProcessEnv);
@@ -44,36 +44,13 @@ function configView(server: Keypair, overrides: Partial<ConfigView> = {}): Confi
   return {
     admin: wallet(),
     serverAuthority: server.publicKey.toBase58(),
-    tokenMint: wallet(),
+    feeWallet: FEE_WALLET,
+    tokenMint: MINT,
     tokenProgram: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
     tokenDecimals: 6,
     feeBps: 500,
-    passFeeBps: 200,
-    treasuryBps: 5000,
-    seasonBps: 3000,
-    burnBps: 2000,
     settleFeeLamports: 20_000,
-    currentSeason: 3,
     paused: false,
-    passCollection: null,
-    passBaseUri: '',
-    passSupply: 3333,
-    passMinted: 0,
-    passPerWallet: 1,
-    passMinTokens: 0n,
-    passMintOpen: false,
-    passMintStartTs: 0,
-    passMintOpened: false,
-    passMintEnded: false,
-    passSeedHash: null,
-    passSeed: null,
-    passRevealed: false,
-    passSeedRevealed: false,
-    passEntropyTargetSlot: 0,
-    passEntropyCaptured: false,
-    passEntropy: null,
-    passEntropySlot: 0,
-    passFinalSeed: null,
     totals: { players: 0, games: 0, sessions: 0, staked: 0n, paidOut: 0n },
     ...overrides,
   };
@@ -91,8 +68,6 @@ function profileView(owner: string): ProfileView {
     kills: 0,
     bestScore: 10,
     totalScore: 10,
-    season: 3,
-    seasonPoints: 10,
     stakeGames: 0,
     totalStaked: 0n,
     totalWon: 0n,
@@ -105,7 +80,6 @@ function profileView(owner: string): ProfileView {
 const dummyIx = (tag = '') => new TransactionInstruction({ programId: PROGRAM, keys: [], data: Buffer.from(tag) });
 /** Real v2 instruction builders (no RPC is touched while building). */
 const realIx = new SlanaClient(new Connection('http://127.0.0.1:1'), PROGRAM).ix;
-const COLLECTION = new PublicKey('9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin').toBase58();
 
 class FakeClient implements ChainClient {
   readonly programId = PROGRAM;
@@ -113,7 +87,6 @@ class FakeClient implements ChainClient {
   config: ConfigView | null;
   sessions = new Map<string, SessionView>();
   profiles = new Map<string, ProfileView>();
-  seasons = new Map<number, SdkSeasonView>();
   settles: Record<string, unknown>[] = [];
   /** Real `settle_session` instructions built from the same params. */
   built: TransactionInstruction[] = [];
@@ -124,16 +97,12 @@ class FakeClient implements ChainClient {
   missing = new Set<string>();
   /** Raw mint supply. */
   mintSupply = 1_000_000_000_000_000n;
-  assets = new Map<string, CoreAsset>();
-  owned = new Map<string, OwnedPass[]>();
-  assetFetches = 0;
-  ownedFetches = 0;
+  supplyFetches = 0;
+  configFetches = 0;
   arenas: ArenaView[] = [];
   profileFetches = 0;
   profileError: Error | null = null;
   rpcDown = false;
-  slot = 0;
-  captures: string[] = [];
 
   constructor(server: Keypair) {
     this.config = configView(server);
@@ -147,6 +116,7 @@ class FakeClient implements ChainClient {
   }
   async fetchConfig() {
     this.check();
+    this.configFetches++;
     return this.config;
   }
   async fetchProfile(owner: string) {
@@ -164,28 +134,13 @@ class FakeClient implements ChainClient {
   async fetchSessions() {
     return [...this.sessions.values()];
   }
-  async getSlot() {
-    this.check();
-    return this.slot;
-  }
-  async fetchSeason(id: number) {
-    return this.seasons.get(id) ?? null;
-  }
   async fetchMintSupply() {
     this.check();
+    this.supplyFetches++;
     return this.mintSupply;
   }
   async accountExists(address: string) {
     return !this.missing.has(address);
-  }
-  async fetchCoreAsset(asset: string) {
-    this.assetFetches++;
-    return this.assets.get(asset) ?? null;
-  }
-  async listOwnedPasses(owner: string, collection: string) {
-    this.ownedFetches++;
-    expect(collection).toBe(COLLECTION);
-    return this.owned.get(owner) ?? [];
   }
   addSession(player: string, opts: Partial<SessionView> = {}): SessionView {
     const s: SessionView = {
@@ -196,11 +151,9 @@ class FakeClient implements ChainClient {
       entryFee: 10_000_000n,
       openedAt: Math.floor(T0 / 1000) - 60,
       id: 7,
-      hasPass: false,
-      passAsset: null,
       settleFee: 20_000,
-      // the fee fixed at join (Pass 2 %, else 5 %)
-      feeBps: opts.hasPass ? 200 : 500,
+      // the fee fixed at join
+      feeBps: 500,
       finalized: false,
       owed: 0n,
       ...opts,
@@ -213,10 +166,6 @@ class FakeClient implements ChainClient {
       this.settles.push(p as unknown as Record<string, unknown>);
       this.built.push(await realIx.settleSession(server, p));
       return dummyIx(`${p.arenaId}:${p.player}`);
-    },
-    capturePassEntropy: async (signer: PublicKey) => {
-      this.captures.push(signer.toBase58());
-      return realIx.capturePassEntropy(signer);
     },
     sweepLoot: async (server: PublicKey, p: Parameters<ChainClient['ix']['sweepLoot']>[1]) => {
       this.sweeps.push(p as unknown as Record<string, unknown>);
@@ -328,9 +277,9 @@ describe('createChain', () => {
     const chain = await createChain(loadConfig({} as NodeJS.ProcessEnv), new Journal(null), (m) => logs.push(m));
     expect(chain.enabled).toBe(false);
     expect(chain.stakeEnabled).toBe(false);
-    expect(chain.status()).toMatchObject({ enabled: false, programId: null, arenasEnabled: false, token: null, pass: null });
+    expect(chain.status()).toEqual({ enabled: false, cluster: 'localnet', programId: null, rpcUrl: null, arenasEnabled: false, tokenReady: false, token: null, feeBps: null });
+    expect(chain.tokenReady).toBe(false);
     expect(await chain.getProfile(wallet())).toBeNull();
-    expect(await chain.season()).toBeNull();
     expect(logs.join('\n')).toMatch(/disabled/);
   });
 
@@ -371,41 +320,10 @@ describe('SolanaChain status & reads', () => {
       programId: PROGRAM.toBase58(),
       rpcUrl: 'http://127.0.0.1:8899',
       arenasEnabled: true,
-      currentSeason: 3,
-      token: { mint: h.client.config!.tokenMint, symbol: '$SLANA', decimals: 6 },
-      pass: null,
+      tokenReady: true,
+      token: { mint: MINT, symbol: '$SLANA', decimals: 6 },
+      feeBps: 500,
     });
-    // the collection is set: the Pass status is published
-    h.client.config = {
-      ...h.client.config!,
-      passCollection: COLLECTION,
-      passMinted: 12,
-      passMintOpen: true,
-      passMintStartTs: 1_700_000_000,
-      passSeed: null,
-    };
-    await (h.chain as unknown as { freshConfig(): Promise<unknown> }).freshConfig();
-    expect(h.chain.passStatus()).toEqual({
-      collection: COLLECTION,
-      supply: 3333,
-      minted: 12,
-      perWallet: 1,
-      mintOpen: true,
-      mintStartTs: 1_700_000_000,
-      revealed: false,
-      seedRevealed: false,
-      entropyTargetSlot: 0,
-      seed: null,
-    });
-    expect(h.chain.status().pass).toEqual(h.chain.passStatus());
-    // R23 intermediate state: the seed is public, the traits are not yet (seed stays null)
-    h.client.config = { ...h.client.config!, passMintOpen: false, passMintEnded: true, passSeedRevealed: true, passSeed: '07'.repeat(32), passEntropyTargetSlot: 900 };
-    await (h.chain as unknown as { freshConfig(): Promise<unknown> }).freshConfig();
-    expect(h.chain.passStatus()).toMatchObject({ revealed: false, seedRevealed: true, entropyTargetSlot: 900, seed: null });
-    // after the reveal the trait seed is the final seed sha256(seed || entropy), never the admin seed
-    h.client.config = { ...h.client.config!, passMintOpen: false, passMintEnded: true, passSeedRevealed: true, passEntropyCaptured: true, passRevealed: true, passSeed: '07'.repeat(32), passEntropy: '5a'.repeat(32), passFinalSeed: 'fe'.repeat(32) };
-    await (h.chain as unknown as { freshConfig(): Promise<unknown> }).freshConfig();
-    expect(h.chain.passStatus()).toMatchObject({ revealed: true, seed: 'fe'.repeat(32) });
     const h2 = await harness({ cfg: { publicRpcUrl: 'https://rpc.example', stakeEnabled: false } });
     expect(h2.chain.status()).toMatchObject({ rpcUrl: 'https://rpc.example', arenasEnabled: false });
   });
@@ -434,43 +352,6 @@ describe('SolanaChain status & reads', () => {
     expect(await h.chain.getProfile('not-a-key')).toBeNull();
   });
 
-  it('season() returns the live pool and the previous finalized season', async () => {
-    const p = wallet();
-    const h = await harness({
-      setup: (c) => {
-        c.seasons.set(3, {
-          address: 's3',
-          id: 3,
-          startedAt: 100,
-          endedAt: 0,
-          finalized: false,
-          prizePool: 0n,
-          claimedMask: 0,
-          pool: 777n,
-          entries: [{ player: p, name: 'alice', points: 50, bestScore: 40, skin: 2 }],
-        });
-        c.seasons.set(2, {
-          address: 's2',
-          id: 2,
-          startedAt: 1,
-          endedAt: 99,
-          finalized: true,
-          prizePool: 5_000n,
-          claimedMask: 0b1,
-          pool: 3_500n,
-          entries: [{ player: p, name: 'alice', points: 9, bestScore: 9, skin: 1 }],
-        });
-      },
-    });
-    expect(await h.chain.season()).toEqual({
-      id: 3,
-      startedAt: 100,
-      finalized: false,
-      prizePool: 777,
-      entries: [{ player: p, name: 'alice', skin: 2, points: 50, bestScore: 40 }],
-      previous: { id: 2, prizePool: 5_000, endedAt: 99, entries: [{ player: p, name: 'alice', skin: 1, points: 9, bestScore: 9 }], claimedMask: 1 },
-    });
-  });
 });
 
 describe('settlement worker', () => {
@@ -489,95 +370,61 @@ describe('settlement worker', () => {
       score: 420,
       kills: 2,
       xp: 50,
-      currentSeason: 3,
-      tokenMint: h.client.config!.tokenMint,
+      tokenMint: MINT,
       tokenProgram: h.client.config!.tokenProgram,
-      hasPass: false,
-      passAsset: null,
+      feeWalletToken: ata(FEE_WALLET, MINT, h.client.config!.tokenProgram!).toBase58(),
     });
+    expect(h.client.settles[0].playerToken).toBeUndefined();
     // fee on profit only: (12 345 678 − 10 000 000) × 5 %
     expect(h.settled).toEqual([{ key: s.address, player: s.player, arenaId: 1, signature: 'sig1', payout: 12_345_678, fee: 117_283 }]);
   });
 
-  it('settle builds v2 accounts with pass lock only for pass sessions', async () => {
+  it('settle pays the fee to the fee wallet token account and the rest to the player ATA', async () => {
     const h = await harness();
-    const asset = wallet();
-    const plain = h.client.addSession(wallet(), { id: 1 });
-    const withPass = h.client.addSession(wallet(), { id: 2, arenaId: 2, hasPass: true, passAsset: asset });
-    h.journal.commit({ enqueue: [settleItem(plain), settleItem(withPass, { createdAt: T0 + 1 })] });
+    const s = h.client.addSession(wallet());
+    h.journal.enqueue(settleItem(s));
     await h.chain.processPending();
-    expect(h.journal.pending).toHaveLength(0);
-    expect(h.client.settles.map((p) => [p.hasPass, p.passAsset])).toEqual([
-      [false, null],
-      [true, asset],
-    ]);
-    const lock = pdas.passLock(asset, PROGRAM);
-    const keys = h.client.built.map((ix) => ix.keys.map((k) => k.pubkey.toBase58()));
-    expect(keys[0]).not.toContain(lock.toBase58());
-    expect(keys[1]).toContain(lock.toBase58());
-    // both carry the v2 token accounts: vault, player ATA, treasury and season vaults
-    const mint = h.client.config!.tokenMint;
-    const tp = h.client.config!.tokenProgram;
-    expect(keys[0]).toContain(ata(plain.player, mint, tp).toBase58());
-    expect(keys[1]).toContain(ata(withPass.player, mint, tp).toBase58());
-    for (const k of keys) {
-      expect(k).toContain(pdas.treasuryVault(PROGRAM).toBase58());
-      expect(k).toContain(pdas.seasonVault(PROGRAM).toBase58());
-    }
-    // the Pass session pays the lower fee: (12 345 678 − 10 000 000) × 2 %
-    expect(h.settled.map((e) => e.fee)).toEqual([117_283, 46_913]);
+    const tp = h.client.config!.tokenProgram!;
+    // account order: server, config, arena, vault, session, player, player_token, profile, fee_wallet_token, mint, token program
+    const keys = h.client.built[0].keys.map((k) => k.pubkey.toBase58());
+    expect(keys[6]).toBe(ata(s.player, MINT, tp).toBase58());
+    expect(keys[8]).toBe(ata(FEE_WALLET, MINT, tp).toBase58());
+    expect(h.client.built[0].keys[8].isWritable).toBe(true);
+    expect(keys[9]).toBe(MINT);
   });
 
-  it('R22/R23: completes the reveal once the seed is public and the target slot passed, retrying on failure', async () => {
+  it('the fee wallet plays: settles without its player token account (2040) and collects through refund', async () => {
     const h = await harness();
-    const capture = () => h.chain.captureEntropyIfDue();
-    // mint still open: nothing to do
-    h.client.slot = 10_000;
-    await capture();
-    expect(h.client.captures).toHaveLength(0);
-
-    // the mint ended, but the seed is not public yet: no target, nothing to do
-    h.client.config = { ...h.client.config!, passMintEnded: true };
-    await (h.chain as unknown as { freshConfig(): Promise<unknown> }).freshConfig();
-    await capture();
-    expect(h.sent).toBe(0);
-
-    // reveal_pass published the seed at slot 1000: target 1150
-    h.client.config = { ...h.client.config!, passSeedRevealed: true, passSeed: '07'.repeat(32), passEntropyTargetSlot: 1_150 };
-    await (h.chain as unknown as { freshConfig(): Promise<unknown> }).freshConfig();
-    h.client.slot = 1_150; // not past the target yet
-    await capture();
-    expect(h.sent).toBe(0);
-
-    // past the target: the server signs and pays; the first send fails and is retried
-    h.client.slot = 1_151;
-    h.failures.push(new Error('blockhash not found'));
-    await capture();
+    // the fee wallet bought a ticket: its ATA is both the player account and the fee account
+    const s = h.client.addSession(FEE_WALLET);
+    h.journal.enqueue(settleItem(s));
+    await h.chain.processPending();
     expect(h.sent).toBe(1);
-    expect(h.client.captures).toEqual([h.server.publicKey.toBase58()]);
-    expect(h.logs.some((l) => /Pass entropy capture failed .*retrying/.test(l))).toBe(true);
-    // the real instruction: signer, config, SlotHashes sysvar
-    const ix = h.sentIxs[0][0];
-    expect(ix.keys[0].pubkey.equals(h.server.publicKey)).toBe(true);
-    expect(ix.keys[2].pubkey.toBase58()).toBe('SysvarS1otHashes111111111111111111111111111');
-
-    // the retry lands: the chain now shows the entropy, no further sends
-    expect(h.failures).toHaveLength(0);
-    h.client.config = { ...h.client.config!, passEntropyCaptured: true, passRevealed: true, passEntropy: 'ab'.repeat(32), passEntropySlot: 1_150, passFinalSeed: 'cd'.repeat(32) };
-    await capture();
-    expect(h.sent).toBe(2);
-    expect(h.logs.some((l) => /Pass entropy captured — hash of slot 1150/.test(l))).toBe(true);
-    await capture();
-    expect(h.sent).toBe(2);
+    expect(h.journal.pending).toHaveLength(0);
+    const tp = h.client.config!.tokenProgram!;
+    const feeAta = ata(FEE_WALLET, MINT, tp).toBase58();
+    expect(h.client.settles[0]).toMatchObject({ player: FEE_WALLET, playerToken: null, feeWalletToken: feeAta });
+    // the account appears once (fee_wallet_token); the optional player_token slot is the program id
+    const keys = h.client.built[0].keys.map((k) => k.pubkey.toBase58());
+    expect(keys[6]).toBe(PROGRAM.toBase58());
+    expect(keys.filter((k) => k === feeAta)).toHaveLength(1);
+    // finalized with `owed`: the player collects with refund_session
+    expect(h.settled).toMatchObject([{ key: s.address, player: FEE_WALLET, payout: 12_345_678, fee: 117_283, collect: true }]);
+    expect(h.logs.some((l) => /the player is the fee wallet/.test(l))).toBe(true);
+    // a player who is not the fee wallet is still paid directly
+    const other = h.client.addSession(wallet(), { id: 8 });
+    h.journal.enqueue(settleItem(other));
+    await h.chain.processPending();
+    expect(h.client.settles[1].playerToken).toBeUndefined();
   });
 
   it('the settled fee is the one fixed at join, not the current config', async () => {
     const h = await harness();
-    // joined at 5 % / 2 %; the admin has since raised both fees to 10 %
-    h.client.config = { ...h.client.config!, feeBps: 1_000, passFeeBps: 1_000 };
+    // joined at 5 % (and one at 2 %); the admin has since raised the fee to 10 %
+    h.client.config = { ...h.client.config!, feeBps: 1_000 };
     const plain = h.client.addSession(wallet(), { id: 1 });
-    const withPass = h.client.addSession(wallet(), { id: 2, arenaId: 2, hasPass: true, passAsset: wallet() });
-    h.journal.commit({ enqueue: [settleItem(plain), settleItem(withPass, { createdAt: T0 + 1 })] });
+    const cheap = h.client.addSession(wallet(), { id: 2, arenaId: 2, feeBps: 200 });
+    h.journal.commit({ enqueue: [settleItem(plain), settleItem(cheap, { createdAt: T0 + 1 })] });
     await h.chain.processPending();
     expect(h.settled.map((e) => e.fee)).toEqual([117_283, 46_913]);
   });
@@ -585,7 +432,7 @@ describe('settlement worker', () => {
   it('R24: a missing player ATA settles at once without the token account (finalize, no server-paid rent)', async () => {
     const h = await harness();
     const s = h.client.addSession(wallet());
-    const playerAta = ata(s.player, h.client.config!.tokenMint, h.client.config!.tokenProgram);
+    const playerAta = ata(s.player, MINT, h.client.config!.tokenProgram!);
     h.client.missing.add(playerAta.toBase58());
     h.journal.enqueue(settleItem(s));
     await h.chain.processPending();
@@ -604,7 +451,7 @@ describe('settlement worker', () => {
   it('a zero payout without an ATA is not flagged as a payout to collect', async () => {
     const h = await harness();
     const s = h.client.addSession(wallet());
-    h.client.missing.add(ata(s.player, h.client.config!.tokenMint, h.client.config!.tokenProgram).toBase58());
+    h.client.missing.add(ata(s.player, MINT, h.client.config!.tokenProgram!).toBase58());
     h.journal.enqueue(settleItem(s, { payout: 0, reason: 'death' }));
     await h.chain.processPending();
     expect(h.client.settles[0].playerToken).toBeNull();
@@ -652,7 +499,7 @@ describe('settlement worker', () => {
     expect(h.journal.pending).toHaveLength(1);
     expect(h.journal.pending[0].lastError).toMatch(/session still open/);
     // next attempt: the ATA is gone → finalize without it
-    h.client.missing.add(ata(s.player, h.client.config!.tokenMint, h.client.config!.tokenProgram).toBase58());
+    h.client.missing.add(ata(s.player, MINT, h.client.config!.tokenProgram!).toBase58());
     h.clock.now = h.journal.pending[0].nextAttemptAt;
     await h.chain.processPending();
     expect(h.journal.pending).toHaveLength(0);
@@ -692,7 +539,7 @@ describe('settlement worker', () => {
 
   it('drops items whose session is gone or belongs to a newer join', async () => {
     const h = await harness();
-    const gone = settleItem({ address: wallet(), player: wallet(), arena: wallet(), arenaId: 1, entryFee: 1n, openedAt: 1, id: 3, hasPass: false, passAsset: null, settleFee: 0, feeBps: 500, finalized: false, owed: 0n });
+    const gone = settleItem({ address: wallet(), player: wallet(), arena: wallet(), arenaId: 1, entryFee: 1n, openedAt: 1, id: 3, settleFee: 0, feeBps: 500, finalized: false, owed: 0n });
     const s = h.client.addSession(wallet(), { id: 9 });
     const old = settleItem(s, { sessionId: 8 });
     h.journal.commit({ enqueue: [gone, old] });
@@ -738,8 +585,8 @@ describe('settlement worker', () => {
     const b = h.client.addSession(wallet(), { arenaId: 2 });
     h.journal.commit({ enqueue: [settleItem(a), settleItem(b, { createdAt: T0 + 1 })] });
     h.failures.push(
-      { logs: ['Program log: AnchorError occurred. Error Code: SessionMismatch. Error Number: 6019. Error Message: x.'] },
-      { logs: ['Program log: AnchorError occurred. Error Code: SessionFinalized. Error Number: 6054. Error Message: x.'] },
+      { logs: ['Program log: AnchorError occurred. Error Code: SessionMismatch. Error Number: 6011. Error Message: x.'] },
+      { logs: ['Program log: AnchorError occurred. Error Code: SessionFinalized. Error Number: 6020. Error Message: x.'] },
     );
     await h.chain.processPending();
     expect(h.sent).toBe(2);
@@ -761,7 +608,6 @@ describe('settlement worker', () => {
     expect(await h.chain.sweepStale()).toBe(0);
   });
 
-  // v2: the treasury is a program vault, so only the rotated-key case remains.
   it('a rejected settlement re-reads the config: rotated key → keep', async () => {
     const h = await harness();
     const s = h.client.addSession(wallet());
@@ -949,47 +795,10 @@ describe('stale-session sweeper', () => {
   });
 });
 
-describe('Pass reads', () => {
-  const passConfig = (c: FakeClient) => (c.config = { ...c.config!, passCollection: COLLECTION });
-
-  it('getPass verifies the collection and the name, cached 60 s', async () => {
-    const h = await harness({ setup: passConfig });
-    const owner = wallet();
-    const good = wallet();
-    const foreign = wallet();
-    const badName = wallet();
-    h.client.assets.set(good, { owner, collection: COLLECTION, name: 'Slana Pass #42', uri: 'x' });
-    h.client.assets.set(foreign, { owner, collection: wallet(), name: 'Slana Pass #42', uri: 'x' });
-    h.client.assets.set(badName, { owner, collection: COLLECTION, name: 'Slana Pass', uri: 'x' });
-    expect(await h.chain.getPass(good)).toEqual({ owner, number: 42 });
-    expect(await h.chain.getPass(foreign)).toBeNull();
-    expect(await h.chain.getPass(badName)).toBeNull();
-    expect(await h.chain.getPass('nope')).toBeNull();
-    const fetches = h.client.assetFetches;
-    await h.chain.getPass(good);
-    expect(h.client.assetFetches).toBe(fetches);
-    h.clock.now += 61_000;
-    await h.chain.getPass(good);
-    expect(h.client.assetFetches).toBe(fetches + 1);
-  });
-
-  it('ownedPasses lists via the SDK, cached 30 s', async () => {
-    const h = await harness({ setup: passConfig });
-    const owner = wallet();
-    h.client.owned.set(owner, [{ asset: wallet(), number: 7 }]);
-    expect(await h.chain.ownedPasses(owner)).toEqual(h.client.owned.get(owner));
-    await h.chain.ownedPasses(owner);
-    expect(h.client.ownedFetches).toBe(1);
-    h.clock.now += 31_000;
-    await h.chain.ownedPasses(owner);
-    expect(h.client.ownedFetches).toBe(2);
-    expect(await h.chain.ownedPasses('nope')).toEqual([]);
-  });
-
+describe('reads', () => {
   it('getSession and listArenas return the v2 shapes', async () => {
     const h = await harness();
-    const asset = wallet();
-    const s = h.client.addSession(wallet(), { hasPass: true, passAsset: asset });
+    const s = h.client.addSession(wallet());
     expect(await h.chain.getSession(1, s.player)).toEqual({
       address: s.address,
       id: 7,
@@ -997,16 +806,14 @@ describe('Pass reads', () => {
       arenaId: 1,
       entryFee: 10_000_000,
       openedAt: s.openedAt,
-      hasPass: true,
-      passAsset: asset,
       finalized: false,
       owed: 0,
     });
     h.client.arenas = [
-      { id: 2, address: 'A2', entryFee: 5_000n, requiresPass: true, maxSessions: 64, openSessions: 3, enabled: true, vault: 'V2', pot: 15_000n },
+      { id: 2, address: 'A2', entryFee: 5_000n, maxSessions: 64, openSessions: 3, enabled: true, vault: 'V2', pot: 15_000n },
     ];
     expect(await h.chain.listArenas()).toEqual([
-      { id: 2, address: 'A2', entryFee: 5_000, requiresPass: true, maxSessions: 64, openSessions: 3, enabled: true, pot: 15_000 },
+      { id: 2, address: 'A2', entryFee: 5_000, maxSessions: 64, openSessions: 3, enabled: true, pot: 15_000 },
     ]);
   });
 });
@@ -1027,20 +834,21 @@ function sweepItem(overrides: Partial<SweepItem> = {}): SweepItem {
 }
 
 describe('loot sweeps (round end)', () => {
-  it('sends sweep_loot for exactly the journaled amount, signed by the server, once', async () => {
+  it('sends sweep_loot (a burn) for exactly the journaled amount, signed by the server, once', async () => {
     const h = await harness();
     h.journal.enqueue(sweepItem());
     await h.chain.processPending();
-    expect(h.client.sweeps).toEqual([
-      { id: 1, amount: 3_141_592, currentSeason: 3, tokenMint: h.client.config!.tokenMint, tokenProgram: h.client.config!.tokenProgram },
-    ]);
+    expect(h.client.sweeps).toEqual([{ id: 1, amount: 3_141_592, tokenMint: MINT, tokenProgram: h.client.config!.tokenProgram }]);
     const ix = h.client.sweepBuilt[0];
     expect(ix.keys[0]).toMatchObject({ isSigner: true });
     expect(ix.keys[0].pubkey.equals(h.server.publicKey)).toBe(true);
-    expect(ix.keys.map((k) => k.pubkey.toBase58())).toContain(pdas.seasonVault(PROGRAM).toBase58());
+    // the burn lowers the supply: the mint is writable; the vault is the arena's
+    const mintKey = ix.keys.find((k) => k.pubkey.toBase58() === MINT)!;
+    expect(mintKey.isWritable).toBe(true);
+    expect(ix.keys.map((k) => k.pubkey.toBase58())).toContain(pdas.vault(pdas.arena(1, PROGRAM), PROGRAM).toBase58());
     expect(h.sent).toBe(1);
     expect(h.journal.pending).toHaveLength(0);
-    expect(h.logs.some((l) => /swept .* loot of arena-1-1/.test(l))).toBe(true);
+    expect(h.logs.some((l) => /burned .* loot of arena-1-1/.test(l))).toBe(true);
     await h.chain.processPending();
     expect(h.sent).toBe(1);
   });
@@ -1161,5 +969,66 @@ describe('loot sweeps (round end)', () => {
     await t.chain.processPending();
     expect(t.sent).toBe(2);
     expect(t.journal.pending).toHaveLength(0);
+  });
+});
+
+describe('token watcher (initialized without a mint, set_token_mint later)', () => {
+  const unset = (c: FakeClient) => (c.config = { ...c.config!, tokenMint: null, tokenProgram: null, tokenDecimals: 0 });
+
+  it('runs practice only while the mint is unset: no arenas, no supply read, settlements wait', async () => {
+    const h = await harness({ setup: unset });
+    expect(h.chain.enabled).toBe(true);
+    expect(h.chain.tokenReady).toBe(false);
+    expect(h.chain.stakeEnabled).toBe(false);
+    expect(h.chain.status()).toMatchObject({ enabled: true, arenasEnabled: false, tokenReady: false, token: null, feeBps: 500 });
+    expect(h.logs.join('\n')).toMatch(/token not set/);
+    expect(h.client.supplyFetches).toBe(0);
+    h.client.arenas = [{ id: 1, address: 'A1', entryFee: 5_000n, maxSessions: 64, openSessions: 0, enabled: true, vault: 'V1', pot: 0n }];
+    expect(await h.chain.listArenas(true)).toEqual([]);
+    expect(await h.chain.sweepStale()).toBe(0);
+    const s = h.client.addSession(wallet());
+    h.journal.enqueue(settleItem(s));
+    await h.chain.processPending();
+    expect(h.sent).toBe(0);
+    expect(h.journal.pending[0].lastError).toBe('game token not set');
+  });
+
+  it('picks the mint up on the 30 s refresh without a restart and tells the listeners once', async () => {
+    const h = await harness({ setup: unset });
+    let changes = 0;
+    h.chain.onStatusChange(() => changes++);
+    await h.chain.refresh();
+    expect(changes).toBe(0);
+    expect(h.chain.tokenReady).toBe(false);
+
+    // `pnpm admin set-token --mint <CA>` lands
+    h.client.config = configView(h.server);
+    h.client.arenas = [{ id: 1, address: 'A1', entryFee: 5_000n, maxSessions: 64, openSessions: 0, enabled: true, vault: 'V1', pot: 0n }];
+    await h.chain.refresh();
+    expect(changes).toBe(1);
+    expect(h.chain.tokenReady).toBe(true);
+    expect(h.chain.stakeEnabled).toBe(true);
+    expect(h.client.supplyFetches).toBe(1);
+    expect(h.chain.status()).toMatchObject({ arenasEnabled: true, tokenReady: true, token: { mint: MINT, decimals: 6 } });
+    expect((await h.chain.listArenas()).map((a) => a.id)).toEqual([1]);
+    expect(h.logs.some((l) => /game token set — mint /.test(l))).toBe(true);
+    // later refreshes keep it (the mint is set once) and do not announce again
+    await h.chain.refresh();
+    expect(changes).toBe(1);
+    // the waiting settlement goes out now
+    const s = h.client.addSession(wallet());
+    h.journal.enqueue(settleItem(s));
+    await h.chain.processPending();
+    expect(h.sent).toBe(1);
+  });
+
+  it('an unsafe supply keeps arenas off after the mint is set (still announced as tokenReady)', async () => {
+    const h = await harness({ setup: unset });
+    h.client.mintSupply = BigInt(Number.MAX_SAFE_INTEGER) + 1n;
+    h.client.config = configView(h.server);
+    await h.chain.refresh();
+    expect(h.chain.tokenReady).toBe(true);
+    expect(h.chain.stakeEnabled).toBe(false);
+    expect(h.chain.status()).toMatchObject({ tokenReady: true, arenasEnabled: false });
   });
 });

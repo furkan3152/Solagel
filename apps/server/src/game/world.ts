@@ -364,7 +364,7 @@ export class World {
     }
   }
 
-  /** Removes every loot piece from the floor and returns their total value (round end: it goes to the season pool). */
+  /** Removes every loot piece from the floor and returns their total value (round end: it is burned). */
   takeLoot(): number {
     let sum = 0;
     for (const l of this.lootList) {

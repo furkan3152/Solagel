@@ -40,67 +40,45 @@ describe('DEV_FAKE_CHAIN', () => {
     expect(dataFileNames(loadConfig(env({})))).toEqual({ journal: 'journal.json', leaderboards: 'leaderboards.json' });
   });
 
-  it('creates the fake chain outside production', async () => {
+  it('creates the fake chain outside production, with the token unset unless DEV_FAKE_TOKEN=1', async () => {
     const cfg = loadConfig(env({ DEV_FAKE_CHAIN: '1', NODE_ENV: 'development' }));
     const chain = await createChain(cfg, new Journal(null), () => {});
     expect(chain).toBeInstanceOf(DevFakeChain);
-    const status = chain.status();
-    expect(status.arenasEnabled).toBe(true);
-    expect(status.token?.decimals).toBe(6);
-    // the default collection: mint open, unrevealed, no seed yet
-    expect(status.pass).toMatchObject({ mintOpen: true, revealed: false, seed: null });
+    expect(chain.status()).toMatchObject({ enabled: true, tokenReady: false, arenasEnabled: false, token: null, feeBps: 500 });
+    expect(chain.tokenReady).toBe(false);
+    expect(chain.stakeEnabled).toBe(false);
+    expect(await chain.listArenas()).toEqual([]);
     await chain.stop();
+
+    const ready = await createChain(loadConfig(env({ DEV_FAKE_CHAIN: '1', NODE_ENV: 'development', DEV_FAKE_TOKEN: '1' })), new Journal(null), () => {});
+    expect(ready.status()).toMatchObject({ tokenReady: true, arenasEnabled: true, token: { decimals: 6 }, feeBps: 500 });
+    expect((await ready.listArenas()).map((a) => a.id)).toEqual([1, 2, 3, 4]);
+    await ready.stop();
   });
 
-  it('DEV_FAKE_PASS=revealed keeps one revealed Pass per wallet', async () => {
-    const cfg = loadConfig(env({ DEV_FAKE_CHAIN: '1', NODE_ENV: 'development', DEV_FAKE_PASS: 'revealed' }));
-    expect(cfg.devFakePass).toBe('revealed');
-    expect(loadConfig(env({})).devFakePass).toBe('mint');
-    const chain = await createChain(cfg, new Journal(null), () => {});
-    const status = chain.status();
-    expect(status.pass?.revealed).toBe(true);
-    expect(status.pass?.seed).toMatch(/^[0-9a-f]{64}$/);
-    expect(await chain.ownedPasses(wallet())).toHaveLength(1);
-    await chain.stop();
-  });
-
-  it('mint mode: a fresh wallet has no Pass, mints one sealed Pass, then a dev reveal publishes the seed', async () => {
+  it('devSetToken sets the token once and tells the status listeners', async () => {
     const chain = new DevFakeChain(new Journal(null), () => {});
-    const w = wallet();
-    expect(await chain.ownedPasses(w)).toEqual([]);
-    // no Pass: no ticket for a Pass arena (free arenas still sell)
-    expect(await chain.getSession(3, w)).toBeNull();
-    expect(await chain.getSession(1, w)).not.toBeNull();
-    const before = chain.passStatus().minted;
-    const res = chain.devMintPass(w);
-    expect(res.ok).toBe(true);
-    if (!res.ok) return;
-    expect(res.pass.number).toBe(before + 1);
-    expect(chain.passStatus()).toMatchObject({ minted: before + 1, mintOpen: true, revealed: false, seed: null });
-    expect(await chain.ownedPasses(w)).toEqual([res.pass]);
-    expect(await chain.getPass(res.pass.asset)).toEqual({ number: res.pass.number, owner: w });
-    // one per wallet
-    expect(chain.devMintPass(w)).toEqual({ ok: false, error: 'MintLimit' });
-    // made-up assets are not Passes of the collection
-    expect(await chain.getPass(`DevPass7x${w}`)).toBeNull();
-    const revealed = chain.devRevealPasses();
-    expect(revealed).toMatchObject({ mintOpen: false, revealed: true });
-    expect(revealed.seed).toMatch(/^[0-9a-f]{64}$/);
-    expect(chain.devMintPass(wallet())).toEqual({ ok: false, error: 'MintClosed' });
+    let changes = 0;
+    chain.onStatusChange(() => changes++);
+    // no ticket can exist before the token
+    expect(await chain.getSession(1, wallet())).toBeNull();
+    expect(chain.devSetToken()).toBe(true);
+    expect(changes).toBe(1);
+    expect(chain.status()).toMatchObject({ tokenReady: true, arenasEnabled: true });
+    expect(chain.devSetToken()).toBe(false);
+    expect(changes).toBe(1);
   });
 
-  it('issues a ticket per wallet and arena, Pass arenas with the wallet Pass', async () => {
-    const chain = new DevFakeChain(new Journal(null), () => {}, undefined, 'revealed');
+  it('issues a ticket per wallet and arena once the token is set', async () => {
+    const chain = new DevFakeChain(new Journal(null), () => {}, undefined, { tokenSet: true });
     const w = wallet();
     const a = await chain.getSession(1, w);
     expect(a).not.toBeNull();
     expect(await chain.getSession(1, w)).toBe(a);
-    expect(a!.hasPass).toBe(false);
-    const b = await chain.getSession(3, w);
-    expect(b!.hasPass).toBe(true);
-    const pass = await chain.getPass(b!.passAsset!);
-    expect(pass?.owner).toBe(w);
-    expect((await chain.ownedPasses(w))[0].number).toBe(pass?.number);
+    expect('hasPass' in a!).toBe(false);
+    // every arena is open to everyone
+    expect(await chain.getSession(3, w)).not.toBeNull();
+    expect(await chain.getSession(4, w)).not.toBeNull();
     expect(await chain.getSession(99, w)).toBeNull();
   });
 
@@ -121,30 +99,16 @@ describe('DEV_FAKE_CHAIN', () => {
     createdAt: Date.now(),
   });
 
-  it('a loot sweep adds its amount to the running season pool', async () => {
+  it('a loot sweep burns its amount', async () => {
     const journal = new Journal(null);
-    const chain = new DevFakeChain(journal, () => {}, 10);
-    const pool = (await chain.season())!.prizePool;
-    expect(chain.seasonPool).toBe(pool);
+    const chain = new DevFakeChain(journal, () => {}, 10, { tokenSet: true });
     journal.enqueue({ kind: 'sweep', key: 'sweep:arena-1-1:7', arenaId: 1, roomId: 'arena-1-1', round: 7, amount: 4_321_000, attempts: 0, nextAttemptAt: 0, createdAt: Date.now() });
     chain.kick();
     chain.kick();
     await sleep(60);
     expect(journal.pending).toHaveLength(0);
-    expect((await chain.season())!.prizePool).toBe(pool + 4_321_000);
-    expect(chain.seasonPool).toBe(pool + 4_321_000);
+    expect(chain.burned).toBe(4_321_000);
     await chain.stop();
-  });
-
-  it('serves a sample season with a finalized previous season for the leaderboard', async () => {
-    const chain = new DevFakeChain(new Journal(null), () => {});
-    const season = await chain.season();
-    expect(season?.finalized).toBe(false);
-    expect(season?.entries.length).toBeGreaterThanOrEqual(10);
-    const points = season!.entries.map((e) => e.points);
-    expect([...points].sort((a, b) => b - a)).toEqual(points);
-    expect(season?.previous?.entries.length).toBeGreaterThanOrEqual(10);
-    expect(season?.previous?.prizePool).toBeGreaterThan(0);
   });
 
   it('never touches journal items it did not issue (real money stays owed)', async () => {
@@ -164,7 +128,7 @@ describe('DEV_FAKE_CHAIN', () => {
 
   it('settles journal items after a delay with the fee on profit', async () => {
     const journal = new Journal(null);
-    const chain = new DevFakeChain(journal, () => {}, 20);
+    const chain = new DevFakeChain(journal, () => {}, 20, { tokenSet: true });
     const events: SettledEvent[] = [];
     chain.onSettled((e) => events.push(e));
     const w = wallet();
@@ -220,40 +184,39 @@ describe('settled message (R16)', () => {
   });
 });
 
-describe('dev-only Pass routes', () => {
-  const start = async (devFakeChain: boolean): Promise<{ url: string; close: () => Promise<void> }> => {
+describe('dev-only token route', () => {
+  const start = async (devFakeChain: boolean): Promise<{ url: string; chain: DevFakeChain | NullChain; close: () => Promise<void> }> => {
     const cfg = loadConfig((devFakeChain ? { DEV_FAKE_CHAIN: '1', NODE_ENV: 'development' } : {}) as unknown as NodeJS.ProcessEnv);
     const chain = devFakeChain ? new DevFakeChain(new Journal(null), () => {}) : new NullChain();
     const server = createHttpServer(cfg, { chain, rooms: {} as never, leaderboards: {} as never, auth: {} as never, startedAt: Date.now() });
     await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()));
     const port = (server.address() as AddressInfo).port;
-    return { url: `http://127.0.0.1:${port}`, close: () => new Promise<void>((r) => server.close(() => r())) };
+    return { url: `http://127.0.0.1:${port}`, chain, close: () => new Promise<void>((r) => server.close(() => r())) };
   };
 
-  it('do not exist without the fake chain', async () => {
+  it('does not exist without the fake chain', async () => {
     const s = await start(false);
     try {
+      expect((await fetch(`${s.url}/api/dev/token`, { method: 'POST' })).status).toBe(404);
+      // nor do the old Pass routes
       expect((await fetch(`${s.url}/api/dev/pass/reveal`, { method: 'POST' })).status).toBe(404);
-      expect((await fetch(`${s.url}/api/dev/pass/mint?wallet=${wallet()}`, { method: 'POST' })).status).toBe(404);
     } finally {
       await s.close();
     }
   });
 
-  it('mint into a wallet and reveal the fake collection', async () => {
+  it('sets the fake token (POST only, once) and /api/config follows', async () => {
     const s = await start(true);
     try {
-      const w = wallet();
-      expect((await fetch(`${s.url}/api/dev/pass/mint?wallet=${w}`)).status).toBe(405);
-      const mint = await fetch(`${s.url}/api/dev/pass/mint?wallet=${w}`, { method: 'POST' });
-      expect(mint.status).toBe(200);
-      const body = (await mint.json()) as { ok: boolean; pass: { asset: string; number: number } };
-      expect(body.ok).toBe(true);
-      const owned = (await (await fetch(`${s.url}/api/pass/owned?wallet=${w}`)).json()) as { passes: unknown[] };
-      expect(owned.passes).toEqual([body.pass]);
-      expect((await fetch(`${s.url}/api/dev/pass/mint?wallet=${w}`, { method: 'POST' })).status).toBe(409);
-      const reveal = (await (await fetch(`${s.url}/api/dev/pass/reveal`, { method: 'POST' })).json()) as { pass: { revealed: boolean } };
-      expect(reveal.pass.revealed).toBe(true);
+      const config = async () => ((await (await fetch(`${s.url}/api/config`)).json()) as { chain: { tokenReady: boolean } }).chain;
+      expect((await config()).tokenReady).toBe(false);
+      expect((await fetch(`${s.url}/api/dev/token`)).status).toBe(405);
+      const res = await fetch(`${s.url}/api/dev/token`, { method: 'POST' });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ changed: true, chain: { tokenReady: true, arenasEnabled: true } });
+      expect((await config()).tokenReady).toBe(true);
+      expect(await (await fetch(`${s.url}/api/dev/token`, { method: 'POST' })).json()).toMatchObject({ changed: false });
+      for (const gone of ['/api/dev/pass/mint', '/api/dev/pass/reveal']) expect((await fetch(`${s.url}${gone}`, { method: 'POST' })).status).toBe(404);
     } finally {
       await s.close();
     }

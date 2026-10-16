@@ -4,10 +4,10 @@ import { join } from 'node:path';
 import {
   EntityKind,
   PROTOCOL_VERSION,
+  RULES,
   decodeSnapshot,
   encodeTarget,
   type ChainStatus,
-  type PassStatus,
   type ServerMessage,
   type SnapshotData,
   roundAt,
@@ -18,62 +18,60 @@ import nacl from 'tweetnacl';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { createApp, type App } from '../src/app';
-import type { ChainArena, ChainGateway, ChainPass, ChainProfile, ChainSession, OwnedPassInfo, SeasonView } from '../src/chain/types';
+import type { ChainArena, ChainGateway, ChainProfile, ChainSession } from '../src/chain/types';
 import { loadConfig } from '../src/config';
 
 class FakeChain implements ChainGateway {
   readonly enabled = true;
+  readonly tokenReady = true;
   readonly stakeEnabled = true;
   sessions = new Map<string, ChainSession>();
   profiles = new Map<string, ChainProfile>();
-  passes = new Map<string, ChainPass>();
   kicked = 0;
   status(): ChainStatus {
-    return { enabled: true, cluster: 'test', programId: 'Fake111', rpcUrl: null, arenasEnabled: true, currentSeason: 1, token: null, pass: null };
+    return {
+      enabled: true,
+      cluster: 'test',
+      programId: 'Fake111',
+      rpcUrl: null,
+      arenasEnabled: true,
+      tokenReady: true,
+      token: { mint: 'Mint111', symbol: '$SLANA', decimals: 6 },
+      feeBps: 500,
+    };
   }
   async getProfile(owner: string) {
     return this.profiles.get(owner) ?? null;
   }
   /** The next `getSession` fails like an RPC error. */
   failNextGetSession = false;
+  /** Runs inside `getSession` (lets a test act while a join awaits the chain). */
+  onGetSession: (() => void) | null = null;
   async getSession(arenaId: number, player: string) {
     if (this.failNextGetSession) {
       this.failNextGetSession = false;
       throw new Error('rpc down');
     }
-    return this.sessions.get(`${arenaId}:${player}`) ?? null;
-  }
-  async listArenas(): Promise<ChainArena[]> {
-    return [
-      { id: 1, address: 'Arena1', entryFee: 10_000_000, requiresPass: false, maxSessions: 10, enabled: true, openSessions: 0, pot: 0 },
-      { id: 2, address: 'Arena2', entryFee: 50_000_000, requiresPass: true, maxSessions: 10, enabled: true, openSessions: 0, pot: 0 },
-    ];
-  }
-  async season(): Promise<SeasonView | null> {
-    return null;
-  }
-  /** Runs inside `getPass` (lets a test act while a join awaits). */
-  onGetPass: (() => void) | null = null;
-  async getPass(asset: string): Promise<ChainPass | null> {
-    const hook = this.onGetPass;
-    this.onGetPass = null;
+    const hook = this.onGetSession;
+    this.onGetSession = null;
     if (hook) {
       await sleep(20);
       hook();
     }
-    return this.passes.get(asset) ?? null;
+    return this.sessions.get(`${arenaId}:${player}`) ?? null;
   }
-  async ownedPasses(wallet: string): Promise<OwnedPassInfo[]> {
-    return [...this.passes].filter(([, p]) => p.owner === wallet).map(([asset, p]) => ({ asset, number: p.number }));
-  }
-  passStatus(): PassStatus | null {
-    return null;
+  async listArenas(): Promise<ChainArena[]> {
+    return [
+      { id: 1, address: 'Arena1', entryFee: 10_000_000, maxSessions: 10, enabled: true, openSessions: 0, pot: 0 },
+      { id: 2, address: 'Arena2', entryFee: 50_000_000, maxSessions: 10, enabled: true, openSessions: 0, pot: 0 },
+    ];
   }
   kick() {
     this.kicked++;
   }
   setLiveSessionProvider() {}
   onSettled() {}
+  onStatusChange() {}
   async start() {}
   async stop() {}
 }
@@ -147,8 +145,6 @@ function session(player: string, opts: Partial<ChainSession> = {}): ChainSession
     arenaId: 1,
     entryFee: 10_000_000,
     openedAt: Math.floor(Date.now() / 1000),
-    hasPass: false,
-    passAsset: null,
     finalized: false,
     owed: 0,
     ...opts,
@@ -202,7 +198,6 @@ beforeAll(async () => {
     BOT_TARGET: '6',
     BOT_MIN: '2',
     BOT_MAX: '6',
-    MARKET_URL_TENSOR: 'https://www.tensor.trade/trade/slana_pass',
   });
   chain = new FakeChain();
   app = await createApp(cfg, { chain, log: () => {}, persist: true, now: serverNow });
@@ -229,8 +224,9 @@ describe('server over websocket', () => {
     c.send({ t: 'ping', ts: 7 });
     const pong = await c.wait('pong');
     expect(Math.abs(pong.serverNow - serverNow())).toBeLessThan(1000);
-    // marketplace links from the server config ride along with the chain status
-    expect(welcome.chain.markets).toEqual({ tensor: 'https://www.tensor.trade/trade/slana_pass' });
+    // the token and fee ride along with the chain status (no Pass, no season)
+    expect(welcome.chain).toMatchObject({ tokenReady: true, feeBps: 500, token: { decimals: 6 } });
+    expect('pass' in welcome.chain).toBe(false);
     expect(welcome.blocked).toEqual([]);
     c.close();
   });
@@ -589,8 +585,12 @@ describe('server over websocket', () => {
     expect(Array.isArray(lb.daily)).toBe(true);
     const bad = await fetch(`http://127.0.0.1:${port}/api/auth/nonce?pubkey=nope`);
     expect(bad.status).toBe(400);
-    const config = (await (await fetch(`http://127.0.0.1:${port}/api/config`)).json()) as { chain: { markets?: Record<string, string> } };
-    expect(config.chain.markets).toEqual({ tensor: 'https://www.tensor.trade/trade/slana_pass' });
+    const config = (await (await fetch(`http://127.0.0.1:${port}/api/config`)).json()) as { protocol: number; chain: ChainStatus };
+    expect(config).toEqual({ protocol: PROTOCOL_VERSION, chain: chain.status() });
+    // the Pass and season endpoints are gone
+    for (const path of ['/api/season', '/api/pass/owned?wallet=x', '/pass/collection.json', '/pass/1.png', '/api/dev/token']) {
+      expect((await fetch(`http://127.0.0.1:${port}${path}`)).status).toBe(404);
+    }
   });
 
   it('R24: a finalized session cannot be played: collect the payout first', async () => {
@@ -608,13 +608,11 @@ describe('server over websocket', () => {
   it('I1: a settlement queued while the join awaits blocks the join', async () => {
     const pubkey = newWallet();
     const c = await signedIn(pubkey);
-    const asset = newWallet();
-    chain.passes.set(asset, { owner: pubkey, number: 12 });
-    const s = session(pubkey, { hasPass: true, passAsset: asset });
+    const s = session(pubkey);
     chain.sessions.set(`1:${pubkey}`, s);
     const now = Date.now();
-    // the stale sweeper queues a refund for this session while the join awaits the Pass lookup
-    chain.onGetPass = () =>
+    // the stale sweeper queues a refund for this session while the join awaits the session lookup
+    chain.onGetSession = () =>
       app.journal.enqueue({ kind: 'settle', key: s.address, player: pubkey, arenaId: 1, session: s.address, sessionId: s.id, payout: s.entryFee, score: 0, kills: 0, xp: 0, reason: 'stale', attempts: 0, nextAttemptAt: now + 60_000, createdAt: now });
     c.send({ t: 'join', room: 'arena:1', name: 'Racer', skin: 0 });
     const err = await c.wait('error', 2000, (m) => m.code === 'no_session');
@@ -625,94 +623,35 @@ describe('server over websocket', () => {
     c.close();
   });
 
-  it('arena join requires session and applies hasPass power', async () => {
+  it('arena join requires a session; every ticket plays alike (no Pass)', async () => {
     const pubkey = newWallet();
     const c = await signedIn(pubkey);
-    c.send({ t: 'join', room: 'arena:1', name: 'Nopass', skin: 0 });
+    c.send({ t: 'join', room: 'arena:1', name: 'Noticket', skin: 0 });
     expect((await c.wait('error', 2000, (m) => m.code === 'no_session')).code).toBe('no_session');
 
-    const asset = newWallet();
-    chain.passes.set(asset, { owner: pubkey, number: 77 });
-    chain.sessions.set(`1:${pubkey}`, session(pubkey, { hasPass: true, passAsset: asset }));
-    c.send({ t: 'join', room: 'arena:1', name: 'Passer', skin: 2 });
-    const joined = await c.wait('joined');
-    expect(joined.hasPass).toBe(true);
-    expect(joined.value).toBe(10_000_000);
-    const room = app.rooms.rooms.get(joined.room.id)!;
-    const p = room.world.players.get(joined.playerId)!;
-    expect(p.hasPass).toBe(true);
-    expect(p.pass).toBe(77); // the ticket's locked Pass is worn
-    expect(app.journal.live().find((l) => l.player === pubkey)?.hasPass).toBe(true);
-
-    // a plain ticket plays without Pass power
-    const other = newWallet();
-    const d = await signedIn(other);
-    chain.sessions.set(`1:${other}`, session(other));
-    d.send({ t: 'join', room: 'arena:1', name: 'Plain', skin: 1 });
-    const j2 = await d.wait('joined');
-    expect(j2.hasPass).toBeFalsy();
-    expect(app.rooms.rooms.get(j2.room.id)!.world.players.get(j2.playerId)!.hasPass).toBe(false);
-    c.close();
-    d.close();
-  });
-
-  it('pass arena rejects session without pass', async () => {
-    const pubkey = newWallet();
-    const c = await signedIn(pubkey);
     chain.sessions.set(`2:${pubkey}`, session(pubkey, { arenaId: 2, entryFee: 50_000_000 }));
-    c.send({ t: 'join', room: 'arena:2', name: 'Nopass', skin: 0 });
-    expect((await c.wait('error', 2000, (m) => m.code === 'pass_required')).code).toBe('pass_required');
-    expect(c.msgs.some((m) => m.t === 'joined')).toBe(false);
-
-    const asset = newWallet();
-    chain.passes.set(asset, { owner: pubkey, number: 5 });
-    chain.sessions.set(`2:${pubkey}`, session(pubkey, { arenaId: 2, entryFee: 50_000_000, hasPass: true, passAsset: asset }));
-    c.send({ t: 'join', room: 'arena:2', name: 'Passer', skin: 0 });
+    c.send({ t: 'join', room: 'arena:2', name: 'Gold', skin: 2 });
     const joined = await c.wait('joined');
     expect(joined.room.arenaId).toBe(2);
-    expect(joined.hasPass).toBe(true);
+    expect(joined.value).toBe(50_000_000);
+    expect('hasPass' in joined).toBe(false);
+    const p = app.rooms.rooms.get(joined.room.id)!.world.players.get(joined.playerId)!;
+    // no Pass power: everyone starts at the same mass (a Pass used to add 15 %)
+    expect(p.totalMass()).toBeGreaterThan(RULES.startMass * 0.9);
+    expect(p.totalMass()).toBeLessThan(RULES.startMass * 1.1);
+    await sleep(200);
+    expect(playerInfo(c, joined.playerId)).toMatchObject({ skin: 2, name: 'Gold' });
+    expect('pass' in playerInfo(c, joined.playerId)!).toBe(false);
     c.close();
   });
 
-  it('equip with foreign pass falls back to basic skin with pass_invalid', async () => {
-    const pubkey = newWallet();
-    const mine = newWallet();
-    const foreign = newWallet();
-    chain.passes.set(mine, { owner: pubkey, number: 12 });
-    chain.passes.set(foreign, { owner: newWallet(), number: 13 });
-
-    const c = await signedIn(pubkey);
-    c.send({ t: 'join', room: 'practice', name: 'Thief', skin: 3, pass: foreign });
-    expect((await c.wait('error', 2000, (m) => m.code === 'pass_invalid')).code).toBe('pass_invalid');
+  it('a join that still names a Pass is played with the basic skin (the field is ignored)', async () => {
+    const c = await signedIn(newWallet());
+    c.send({ t: 'join', room: 'practice', name: 'Legacy', skin: 3, pass: newWallet() });
     const joined = await c.wait('joined');
     expect(joined.skin).toBe(3);
-    const room = app.rooms.rooms.get(joined.room.id)!;
-    const p = room.world.players.get(joined.playerId)!;
-    expect(p.pass).toBe(0);
-    expect(p.hasPass).toBe(false);
-    await sleep(200);
-    expect(playerInfo(c, joined.playerId)?.pass).toBe(0);
+    expect(c.msgs.some((m) => m.t === 'error')).toBe(false);
     c.close();
-
-    // the owner's own Pass is verified and worn (practice Pass power)
-    const d = await signedIn(pubkey);
-    d.send({ t: 'join', room: 'practice', name: 'Owner', skin: 3, pass: mine });
-    const j2 = await d.wait('joined');
-    const p2 = app.rooms.rooms.get(j2.room.id)!.world.players.get(j2.playerId)!;
-    expect(p2.pass).toBe(12);
-    expect(p2.hasPass).toBe(true);
-    await sleep(200);
-    expect(playerInfo(d, j2.playerId)?.pass).toBe(12);
-    expect(d.msgs.some((m) => m.t === 'error' && m.code === 'pass_invalid')).toBe(false);
-    d.close();
-
-    // without a wallet a Pass cannot be verified
-    const e = await signedIn(null);
-    e.send({ t: 'join', room: 'practice', name: 'Anon', skin: 1, pass: mine });
-    expect((await e.wait('error', 2000, (m) => m.code === 'pass_invalid')).code).toBe('pass_invalid');
-    const j3 = await e.wait('joined');
-    expect(app.rooms.rooms.get(j3.room.id)!.world.players.get(j3.playerId)!.pass).toBe(0);
-    e.close();
   });
 
   it('resume existing non-live session without new charge', async () => {

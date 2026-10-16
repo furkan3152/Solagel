@@ -73,7 +73,6 @@ describe('arena money conservation', () => {
           entryFee: FEE,
           value: FEE,
           openedAt: Math.floor(Date.now() / 1000),
-          hasPass: false,
         },
       });
       fees += FEE;

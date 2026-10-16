@@ -15,9 +15,9 @@ import {
   type ServerMessage,
 } from '@slana/shared';
 import { WebSocketServer, type RawData, type WebSocket } from 'ws';
-import { isValidPubkey, type Auth } from '../auth';
+import type { Auth } from '../auth';
 import type { ChainGateway, ChainProfile, SettledEvent } from '../chain/types';
-import { publicChainStatus, type ServerConfig } from '../config';
+import type { ServerConfig } from '../config';
 import type { RoomManager } from '../rooms/manager';
 import { MAX_STAKE_SESSION_AGE_S } from '../rooms/room';
 import type { Journal } from '../stake/journal';
@@ -81,6 +81,14 @@ export class Gateway {
       }
       void this.refreshProfile(e.player);
     });
+    // the token was set (or another status change clients must see): push the new chain status
+    chain.onStatusChange(() => this.broadcastChain());
+  }
+
+  /** Sends the current chain status (`chain` message) to every connection past `hello`. */
+  broadcastChain(): void {
+    const msg = { t: 'chain', chain: this.chain.status() } as const;
+    for (const c of this.rooms.conns) if (c.helloed) c.send(msg);
   }
 
   attach(server: Server): void {
@@ -205,7 +213,7 @@ export class Gateway {
           serverTime: Date.now(),
           serverNow: this.rooms.now(),
           rooms: this.rooms.list(),
-          chain: publicChainStatus(this.chain.status(), this.cfg),
+          chain: this.chain.status(),
           online: this.rooms.online(),
           blocked: this.rooms.blockedArenas(),
         });
@@ -276,29 +284,6 @@ export class Gateway {
     conn.send({ t: 'authed', pubkey: wallet, token: this.auth.issueToken(wallet), profile: profileSummary(conn.profile) });
   }
 
-  /**
-   * Number of the Pass `asset` when the signed-in wallet owns it (Core asset of
-   * our collection, read via `getPass`). Otherwise sends `pass_invalid` and
-   * returns 0: the player joins with the chosen basic skin.
-   */
-  private async verifyPass(conn: Conn, asset: unknown, opts: { limited?: boolean } = {}): Promise<number> {
-    const invalid = (message: string): number => {
-      this.error(conn, 'pass_invalid', message);
-      return 0;
-    };
-    if (!conn.wallet) return invalid('Sign in with the wallet that holds this Pass to play with it.');
-    if (!isValidPubkey(asset)) return invalid('That is not a Slana Pass.');
-    // arena joins already spent their chain-op slot on the session lookup
-    if (opts.limited !== false && !conn.allowChainOp()) {
-      this.error(conn, 'rate_limited', 'Too many requests — playing with your basic skin.');
-      return 0;
-    }
-    const pass = await this.chain.getPass(asset).catch(() => null);
-    if (!pass) return invalid('That is not a Slana Pass.');
-    if (pass.owner !== conn.wallet) return invalid('That Pass is not in your wallet — playing with your basic skin.');
-    return pass.number;
-  }
-
   private async onJoin(conn: Conn, msg: Record<string, unknown>): Promise<void> {
     if (conn.joining) return;
     const target = typeof msg.room === 'string' ? parseJoinTarget(msg.room) : null;
@@ -310,12 +295,11 @@ export class Gateway {
     try {
       const skin = Number.isInteger(msg.skin) && (msg.skin as number) >= 0 && (msg.skin as number) < SKIN_COUNT ? (msg.skin as number) : 0;
       if (conn.wallet) conn.profile = await this.chain.getProfile(conn.wallet).catch(() => conn.profile);
-      // v2: only the basic skins can be picked; a Slana Pass brings its own look
+      // only the basic skins can be picked
       if (!isBasicSkin(skin)) {
         this.error(conn, 'skin_locked', 'That skin is locked.');
         return;
       }
-      const wantPass = msg.pass === undefined || msg.pass === null || msg.pass === '' ? null : msg.pass;
       let name = sanitizeName(msg.name);
       let flags = 0;
       if (conn.profile) {
@@ -325,11 +309,9 @@ export class Gateway {
 
       if (target.mode === 'practice') {
         if (conn.player?.alive && conn.room?.opts.mode === 'practice') return; // already playing
-        const pass = wantPass === null ? 0 : await this.verifyPass(conn, wantPass);
-        if (conn.player?.alive && conn.room?.opts.mode === 'practice') return; // joined meanwhile (another message)
         const room = this.rooms.practiceRoom(this.rooms.leagueFor(conn), conn.room);
         if (conn.player?.alive) conn.room?.leave(conn, 'switch');
-        room.join(conn, { name, skin, flags, pass, hasPass: pass > 0 });
+        room.join(conn, { name, skin, flags });
         return;
       }
 
@@ -350,6 +332,11 @@ export class Gateway {
       }
 
       // stake arena
+      if (this.chain.enabled && !this.chain.tokenReady) {
+        // initialized without a mint: arenas open once `set-token` runs (picked up without a restart)
+        this.error(conn, 'token_not_set', 'Arenas are opening soon: the game token is not set yet. Practice is open.');
+        return;
+      }
       if (!this.chain.stakeEnabled) {
         this.error(conn, 'arenas_disabled', 'High-stakes arenas are offline.');
         return;
@@ -405,10 +392,6 @@ export class Gateway {
         this.error(conn, 'payout_waiting', 'Your last game in this arena is settled. Collect your payout first.');
         return;
       }
-      if (room.opts.stake?.requiresPass && !session.hasPass) {
-        this.error(conn, 'pass_required', 'This arena needs a ticket bought with a Slana Pass.');
-        return;
-      }
       if (this.journal.pending.some((p) => p.key === session.address)) {
         this.error(conn, 'no_session', 'Your previous game in this arena is still being settled.');
         return;
@@ -417,10 +400,6 @@ export class Gateway {
         this.error(conn, 'no_session', 'This arena ticket expired and will be refunded.');
         return;
       }
-      // look: the Pass locked by the ticket; without one, an optional Pass the wallet owns (no power)
-      let pass = 0;
-      if (session.hasPass && session.passAsset) pass = (await this.chain.getPass(session.passAsset).catch(() => null))?.number ?? 0;
-      else if (wantPass !== null) pass = await this.verifyPass(conn, wantPass, { limited: false });
       // the instance may have filled up or been closed during the awaits above: pick again (arena data is cached)
       room = await this.rooms.confirmArenaRoom(target.arenaId, room);
       if (!room) {
@@ -444,7 +423,6 @@ export class Gateway {
         name,
         skin,
         flags: flags | PlayerFlag.Staker,
-        pass,
         stake: {
           player: conn.wallet,
           session: session.address,
@@ -453,8 +431,6 @@ export class Gateway {
           entryFee: session.entryFee,
           value: session.entryFee,
           openedAt: session.openedAt,
-          // Pass power in arenas comes from the on-chain ticket only
-          hasPass: session.hasPass,
         },
       });
     } finally {
