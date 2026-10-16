@@ -140,6 +140,11 @@ describe('instruction builders (no RPC)', () => {
     // any token account of the fee wallet may be passed
     const other = Keypair.generate().publicKey;
     expect(keys(await client.ix.settleSession(server, { ...params, feeWalletToken: other }))[8]).toBe(other.toBase58());
+    // P4: the same account for the fee and the player is refused up front (Anchor 2040 on chain)
+    const same = ata(player, tokenMint, TOKEN_2022_PROGRAM_ID);
+    expect(() => client.ix.settleSession(server, { ...params, feeWalletToken: same })).toThrow(/same account/);
+    expect(() => client.ix.settleSession(server, { ...params, playerToken: same, feeWalletToken: same })).toThrow(/same account/);
+    await expect(client.ix.settleSession(server, { ...params, playerToken: null, feeWalletToken: same })).resolves.toBeDefined();
   });
 
   it('refundSession takes the token accounts (no lock)', async () => {

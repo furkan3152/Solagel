@@ -34,6 +34,7 @@ import {
   USAGE,
   UsageError,
   bool,
+  flag,
   buildSetTokenInstructions,
   defaultArenaParams,
   fetchTokenSymbol,
@@ -205,7 +206,6 @@ async function cmdSetToken(ctx: Ctx, opts: Opts): Promise<void> {
   const mint = pubkey(opts, 'mint');
   if (!mint) throw new UsageError('set-token needs --mint <CA>');
   const config = await requireConfig(ctx);
-  if (config.tokenMint !== null) throw new UsageError(`the game token is already set to ${config.tokenMint}; set_token_mint runs only once`);
   const admin = requireAdmin(ctx, config);
   const { program, state } = await loadMint(ctx, mint);
   if (state.freezeAuthority) throw new UsageError(`mint ${mint.toBase58()} has a freeze authority (${state.freezeAuthority.toBase58()}); the program refuses it`);
@@ -242,23 +242,24 @@ async function cmdPause(ctx: Ctx, paused: boolean): Promise<void> {
   await send(ctx, paused ? 'paused: arena joins are blocked (settlements and refunds keep working)' : 'unpaused: arena joins are open', [ix]);
 }
 
-async function createArena(ctx: Ctx, token: GameToken, id: number, entryFee: bigint, maxSessions: number): Promise<void> {
-  const ix = await ctx.client.ix.createArena(ctx.signer().publicKey, { id, entryFee, maxSessions, ...token });
+async function createArena(ctx: Ctx, admin: Keypair, token: GameToken, id: number, entryFee: bigint, maxSessions: number): Promise<void> {
+  const ix = await ctx.client.ix.createArena(admin.publicKey, { id, entryFee, maxSessions, ...token });
   await send(ctx, `created arena #${id} (${arenaMeta(id).name}) · entry ${fmtTok(entryFee, token.tokenDecimals)} · max ${maxSessions}`, [ix]);
   console.log(`  arena ${explorerAddressUrl(pdas.arena(id, ctx.client.programId).toBase58(), ctx.cluster, ctx.url)}`);
 }
 
 async function cmdCreateArena(ctx: Ctx, opts: Opts): Promise<void> {
   const config = await requireConfig(ctx);
+  const admin = requireAdmin(ctx, config);
   const token = requireGameToken(config);
-  if (opts.get('defaults') === true) {
+  if (flag(opts, 'defaults')) {
     for (const tier of defaultArenaParams(token.tokenDecimals)) {
       const existing = await ctx.client.fetchArena(tier.id);
       if (existing) {
         console.log(`• arena #${tier.id} exists (entry ${fmtTok(existing.entryFee, token.tokenDecimals)}, max ${existing.maxSessions}) — skipped`);
         continue;
       }
-      await createArena(ctx, token, tier.id, tier.entryFee, tier.maxSessions);
+      await createArena(ctx, admin, token, tier.id, tier.entryFee, tier.maxSessions);
     }
     return;
   }
@@ -270,7 +271,7 @@ async function cmdCreateArena(ctx: Ctx, opts: Opts): Promise<void> {
   }
   if (entry === 0n) throw new UsageError('--entry must be greater than zero');
   if (await ctx.client.fetchArena(id)) throw new UsageError(`arena #${id} already exists — use update-arena`);
-  await createArena(ctx, token, id, entry, maxSessions);
+  await createArena(ctx, admin, token, id, entry, maxSessions);
 }
 
 async function cmdUpdateArena(ctx: Ctx, opts: Opts): Promise<void> {
@@ -288,7 +289,7 @@ async function cmdUpdateArena(ctx: Ctx, opts: Opts): Promise<void> {
   if (changes.entryFee !== undefined && arena.openSessions > 0) {
     console.log(`! arena #${id} has ${arena.openSessions} open sessions; the program refuses entry fee changes until they settle`);
   }
-  const ix = await ctx.client.ix.updateArena(ctx.signer().publicKey, id, changes);
+  const ix = await ctx.client.ix.updateArena(requireAdmin(ctx, config).publicKey, id, changes);
   await send(ctx, `updated arena #${id}`, [ix]);
 }
 
@@ -307,7 +308,7 @@ async function cmdSweep(ctx: Ctx, opts: Opts): Promise<void> {
       `  journaled loot or pending payouts for this arena that this CLI cannot see — check the server log / journal first.\n` +
       `  A server that finds the vault short of its journal keeps the arena disabled. Never re-enable a swept arena.`,
   );
-  if (opts.get('force') !== true) throw new UsageError(`sweep refuses without --force (re-run: pnpm admin sweep --id ${id} --force)`);
+  if (!flag(opts, 'force')) throw new UsageError(`sweep refuses without --force (re-run: pnpm admin sweep --id ${id} --force)`);
   const admin = requireAdmin(ctx, config);
   const feeWalletToken = feeWalletAta(config);
   const ixs = [

@@ -322,6 +322,15 @@ function createInstructionBuilders(program: Program<Slana>, programId: PublicKey
      * (finalize; the player collects `owed` with `refundSession`).
      */
     settleSession(server: Address, p: SettleSessionParams): Promise<TransactionInstruction> {
+      if (p.playerToken !== null) {
+        const playerToken = tokenAccount(p.playerToken, p.player, p);
+        if (playerToken.equals(toPublicKey(p.feeWalletToken))) {
+          throw new Error(
+            'settleSession: feeWalletToken and playerToken are the same account (the program refuses it with 2040); ' +
+              'pass another token account of the fee wallet, or playerToken: null',
+          );
+        }
+      }
       return program.methods
         .settleSession({ sessionId: toBN(p.sessionId), payout: toBN(p.payout), score: p.score, kills: p.kills, xp: p.xp })
         .accountsPartial({
