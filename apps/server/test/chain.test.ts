@@ -14,7 +14,7 @@ import {
 import { Connection, Keypair, PublicKey, TransactionInstruction } from '@solana/web3.js';
 import { describe, expect, it } from 'vitest';
 import { createChain } from '../src/chain';
-import { SolanaChain, STALE_SESSION_AFTER_S, TOKEN_FAILURES_BEFORE_FINALIZE, type ChainClient } from '../src/chain/solana';
+import { SolanaChain, STALE_SESSION_AFTER_S, TOKEN_FAILURES_BEFORE_FINALIZE, feeAccountProblem, type ChainClient } from '../src/chain/solana';
 import type { SettledEvent } from '../src/chain/types';
 import { loadConfig, type ServerConfig } from '../src/config';
 import { Journal, sweepKey, type SettlementItem, type SweepItem } from '../src/stake/journal';
@@ -74,6 +74,15 @@ function profileView(owner: string): ProfileView {
     createdAt: 1,
     lastPlayed: 1,
   };
+}
+
+/** A 165-byte SPL token account: mint, owner, state (1 initialized, 2 frozen). */
+function tokenAccountData(mint: string, owner: string, state: number): Uint8Array {
+  const data = new Uint8Array(165);
+  data.set(new PublicKey(mint).toBytes(), 0);
+  data.set(new PublicKey(owner).toBytes(), 32);
+  data[108] = state;
+  return data;
 }
 
 /** Fake instruction; its data names the session it settles so a successful send can close it. */
@@ -141,6 +150,19 @@ class FakeClient implements ChainClient {
   }
   async accountExists(address: string) {
     return !this.missing.has(address);
+  }
+  /** Per-address overrides of `fetchAccount` (e.g. a frozen or foreign fee wallet account). */
+  accounts = new Map<string, { owner: string; data: Uint8Array }>();
+  feeAccountFetches = 0;
+  /** Every other existing address reads as a healthy token account of the fee wallet (the only account fetched). */
+  async fetchAccount(address: string) {
+    this.feeAccountFetches++;
+    this.check();
+    if (this.missing.has(address)) return null;
+    const set = this.accounts.get(address);
+    if (set) return set;
+    const c = this.config!;
+    return { owner: c.tokenProgram!, data: tokenAccountData(c.tokenMint!, c.feeWallet, 1) };
   }
   addSession(player: string, opts: Partial<SessionView> = {}): SessionView {
     const s: SessionView = {
@@ -997,6 +1019,12 @@ describe('token watcher (initialized without a mint, set_token_mint later)', () 
     const h = await harness({ setup: unset });
     let changes = 0;
     h.chain.onStatusChange(() => changes++);
+    // a settlement queued while the token is unset is held…
+    const held = h.client.addSession(wallet(), { id: 3, arenaId: 2 });
+    h.journal.enqueue(settleItem(held));
+    await h.chain.processPending();
+    expect(h.sent).toBe(0);
+    expect(h.journal.pending[0].lastError).toBe('game token not set');
     await h.chain.refresh();
     expect(changes).toBe(0);
     expect(h.chain.tokenReady).toBe(false);
@@ -1015,11 +1043,42 @@ describe('token watcher (initialized without a mint, set_token_mint later)', () 
     // later refreshes keep it (the mint is set once) and do not announce again
     await h.chain.refresh();
     expect(changes).toBe(1);
-    // the waiting settlement goes out now
-    const s = h.client.addSession(wallet());
-    h.journal.enqueue(settleItem(s));
+    // …and the same held item goes out after the flip, paid to the player directly
+    h.clock.now = h.journal.pending[0].nextAttemptAt;
     await h.chain.processPending();
     expect(h.sent).toBe(1);
+    expect(h.journal.pending).toHaveLength(0);
+    expect(h.client.settles[0]).toMatchObject({ player: held.player, sessionId: 3 });
+    expect(h.client.settles[0].playerToken).toBeUndefined();
+    expect(h.settled.map((e) => e.key)).toEqual([held.address]);
+  });
+
+  it('a server booting with the token already set does not announce a flip', async () => {
+    const h = await harness();
+    expect(h.chain.tokenReady).toBe(true);
+    expect(h.logs.some((l) => /game token set — mint /.test(l))).toBe(false);
+    let changes = 0;
+    h.chain.onStatusChange(() => changes++);
+    await h.chain.refresh();
+    expect(changes).toBe(0);
+  });
+
+  it('pushes arenasEnabled changes too (supply unsafe and back), not only the token flip', async () => {
+    const h = await harness();
+    const seen: boolean[] = [];
+    h.chain.onStatusChange(() => seen.push(h.chain.status().arenasEnabled));
+    h.client.mintSupply = BigInt(Number.MAX_SAFE_INTEGER) + 1n;
+    await h.chain.refresh();
+    expect(seen).toEqual([false]);
+    await h.chain.refresh();
+    expect(seen).toEqual([false]);
+    h.client.mintSupply = 10n ** 15n;
+    await h.chain.refresh();
+    expect(seen).toEqual([false, true]);
+    // a rotated server key turns the arenas off as well
+    h.client.config = { ...h.client.config!, serverAuthority: wallet() };
+    await h.chain.refresh();
+    expect(seen).toEqual([false, true, false]);
   });
 
   it('an unsafe supply keeps arenas off after the mint is set (still announced as tokenReady)', async () => {
@@ -1030,5 +1089,92 @@ describe('token watcher (initialized without a mint, set_token_mint later)', () 
     expect(h.chain.tokenReady).toBe(true);
     expect(h.chain.stakeEnabled).toBe(false);
     expect(h.chain.status()).toMatchObject({ tokenReady: true, arenasEnabled: false });
+  });
+});
+
+describe('fee wallet token account', () => {
+  const feeAta = () => ata(FEE_WALLET, MINT, 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA').toBase58();
+
+  it('feeAccountProblem accepts only an initialized, unfrozen account of the game mint owned by the fee wallet', () => {
+    const tp = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+    const expect_ = { tokenProgram: tp, tokenMint: MINT, feeWallet: FEE_WALLET };
+    expect(feeAccountProblem({ owner: tp, data: tokenAccountData(MINT, FEE_WALLET, 1) }, expect_)).toBeNull();
+    expect(feeAccountProblem(null, expect_)).toBe('missing');
+    expect(feeAccountProblem({ owner: tp, data: tokenAccountData(MINT, FEE_WALLET, 2) }, expect_)).toBe('frozen');
+    expect(feeAccountProblem({ owner: tp, data: tokenAccountData(MINT, FEE_WALLET, 0) }, expect_)).toBe('not initialized');
+    expect(feeAccountProblem({ owner: tp, data: tokenAccountData(wallet(), FEE_WALLET, 1) }, expect_)).toMatch(/not the game token/);
+    expect(feeAccountProblem({ owner: tp, data: tokenAccountData(MINT, wallet(), 1) }, expect_)).toMatch(/not the fee wallet/);
+    expect(feeAccountProblem({ owner: wallet(), data: tokenAccountData(MINT, FEE_WALLET, 1) }, expect_)).toMatch(/not the token program/);
+    expect(feeAccountProblem({ owner: tp, data: new Uint8Array(10) }, expect_)).toBe('not a token account');
+  });
+
+  it('missing: every settlement (and finalize) is held, never counted against the player; recreated: they flow', async () => {
+    const h = await harness();
+    h.client.missing.add(feeAta());
+    const plain = h.client.addSession(wallet(), { id: 1 });
+    const noAta = h.client.addSession(wallet(), { id: 2, arenaId: 2 });
+    h.client.missing.add(ata(noAta.player, MINT, h.client.config!.tokenProgram!).toBase58()); // would finalize
+    h.journal.commit({ enqueue: [settleItem(plain), settleItem(noAta, { createdAt: T0 + 1 })] });
+    for (let i = 0; i < TOKEN_FAILURES_BEFORE_FINALIZE + 1; i++) {
+      await h.chain.processPending();
+      h.clock.now = Math.max(...h.journal.pending.map((p) => p.nextAttemptAt));
+    }
+    expect(h.sent).toBe(0);
+    expect(h.journal.settlements()).toHaveLength(2);
+    for (const p of h.journal.settlements()) {
+      expect(p.tokenFailures).toBeUndefined();
+      expect(p.lastError).toBe('fee wallet token account missing');
+    }
+    const loud = h.logs.filter((l) => /^!!! chain: fee wallet token account .* is missing: ALL settlements are held/.test(l));
+    expect(loud).toHaveLength(1); // about once a minute, not per item
+    expect(h.logs.some((l) => /player's token account refused|settling without it/.test(l))).toBe(false);
+
+    // the admin recreates it (idempotent ATA creation): both settle, the plain player is paid directly
+    h.client.missing.delete(feeAta());
+    h.clock.now = Math.max(...h.journal.pending.map((p) => p.nextAttemptAt));
+    await h.chain.processPending();
+    expect(h.journal.pending).toHaveLength(0);
+    expect(h.sent).toBe(2);
+    expect(h.client.settles.find((p) => p.player === plain.player)!.playerToken).toBeUndefined();
+    expect(h.client.settles.find((p) => p.player === noAta.player)!.playerToken).toBeNull();
+    expect(h.logs.some((l) => /is usable again — settlements resume/.test(l))).toBe(true);
+  });
+
+  it('frozen: held as well', async () => {
+    const h = await harness();
+    h.client.accounts.set(feeAta(), { owner: h.client.config!.tokenProgram!, data: tokenAccountData(MINT, FEE_WALLET, 2) });
+    const s = h.client.addSession(wallet());
+    h.journal.enqueue(settleItem(s));
+    await h.chain.processPending();
+    expect(h.sent).toBe(0);
+    expect(h.journal.pending[0].lastError).toBe('fee wallet token account frozen');
+  });
+
+  it('closed between the check and the send: the account error is not blamed on the player', async () => {
+    const h = await harness();
+    const s = h.client.addSession(wallet());
+    h.journal.enqueue(settleItem(s));
+    // the check passed (cached for 30 s), then the fee wallet closed its account before the send
+    const fetchAccount = h.client.fetchAccount.bind(h.client);
+    let n = 0;
+    h.client.fetchAccount = async (a) => (++n > 1 ? null : fetchAccount(a));
+    h.failures.push(new Error('failed ({"err":{"InstructionError":[0,{"Custom":3012}]}})'));
+    await h.chain.processPending();
+    expect(h.sent).toBe(1);
+    expect(h.journal.pending).toHaveLength(1);
+    expect(h.journal.settlements()[0].tokenFailures).toBeUndefined();
+    expect(h.journal.pending[0].lastError).toMatch(/fee wallet token account missing/);
+    // a ConstraintTokenOwner on it is not counted either
+    const t = await harness();
+    const s2 = t.client.addSession(wallet());
+    t.journal.enqueue(settleItem(s2));
+    t.client.accounts.set(feeAta(), { owner: t.client.config!.tokenProgram!, data: tokenAccountData(MINT, FEE_WALLET, 1) });
+    let m = 0;
+    const fetch2 = t.client.fetchAccount.bind(t.client);
+    t.client.fetchAccount = async (a) => (++m > 1 ? { owner: t.client.config!.tokenProgram!, data: tokenAccountData(MINT, wallet(), 1) } : fetch2(a));
+    t.failures.push({ logs: ['Program log: AnchorError caused by account: fee_wallet_token. Error Code: ConstraintTokenOwner. Error Number: 2015. Error Message: x.'] });
+    await t.chain.processPending();
+    expect(t.journal.settlements()[0].tokenFailures).toBeUndefined();
+    expect(t.journal.pending[0].lastError).toMatch(/not the fee wallet/);
   });
 });
