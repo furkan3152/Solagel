@@ -4,15 +4,15 @@ use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 use crate::{
     constants::*,
     error::SlanaError,
-    events::LootSwept,
-    state::{Arena, Config, Season},
+    events::LootBurned,
+    state::{Arena, Config},
     token,
 };
 
-/// Server-signed: moves `amount` of an arena vault's loot (the tokens the round's losers left
-/// behind) into the season vault, credited to the current season's pool. Unlike `sweep_arena`
-/// the arena may be enabled and have open sessions; the trust model is `settle_session`'s,
-/// where the server already chooses each payout up to the vault balance.
+/// Server-signed: burns `amount` of an arena vault's loot (the tokens the round's losers left
+/// on the floor). Unlike `sweep_arena` the arena may be enabled and have open sessions; the
+/// trust model is `settle_session`'s, where the server already chooses each payout up to the
+/// vault balance.
 #[derive(Accounts)]
 pub struct SweepLoot<'info> {
     #[account(
@@ -32,19 +32,8 @@ pub struct SweepLoot<'info> {
         bump = arena.vault_bump
     )]
     pub vault: Box<InterfaceAccount<'info, TokenAccount>>,
-    #[account(
-        mut,
-        seeds = [SEASON_SEED, config.current_season.to_le_bytes().as_ref()],
-        bump = season.bump
-    )]
-    pub season: Box<Account<'info, Season>>,
-    #[account(
-        mut,
-        seeds = [SEASON_VAULT_SEED],
-        bump = config.season_vault_bump
-    )]
-    pub season_vault: Box<InterfaceAccount<'info, TokenAccount>>,
-    #[account(address = config.token_mint)]
+    /// Writable: the burn lowers its supply.
+    #[account(mut, address = config.token_mint)]
     pub token_mint: Box<InterfaceAccount<'info, Mint>>,
     #[account(address = config.token_program)]
     pub token_program: Interface<'info, TokenInterface>,
@@ -59,25 +48,17 @@ pub fn handle_sweep_loot(ctx: Context<SweepLoot>, amount: u64) -> Result<()> {
 
     let arena_id_bytes = a.arena.id.to_le_bytes();
     let arena_seeds: &[&[u8]] = &[ARENA_SEED, &arena_id_bytes, &[a.arena.bump]];
-    token::transfer_from_pda(
+    token::burn_from_pda(
         &a.token_program.to_account_info(),
         &a.vault.to_account_info(),
         &a.token_mint.to_account_info(),
-        &a.season_vault.to_account_info(),
         &a.arena.to_account_info(),
         &[arena_seeds],
         amount,
-        a.config.token_decimals,
     )?;
-    a.season.pool = a
-        .season
-        .pool
-        .checked_add(amount)
-        .ok_or(SlanaError::MathOverflow)?;
 
-    emit!(LootSwept {
+    emit!(LootBurned {
         arena_id: a.arena.id,
-        season_id: a.season.id,
         amount,
     });
     Ok(())

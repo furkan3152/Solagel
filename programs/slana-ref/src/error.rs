@@ -20,24 +20,8 @@ pub enum SlanaError {
     InsufficientPot,
     #[msg("Session cannot be refunded yet")]
     RefundTooEarly,
-    #[msg("Season is already finalized")]
-    SeasonFinalized,
-    #[msg("Season is not finalized")]
-    SeasonNotFinalized,
-    #[msg("Not eligible for a season reward")]
-    NotEligible,
-    #[msg("Reward already claimed")]
-    AlreadyClaimed,
-    #[msg("Claim window is closed")]
-    ClaimWindowClosed,
-    #[msg("Claim window is still open")]
-    ClaimWindowOpen,
-    #[msg("Invalid season")]
-    InvalidSeason,
     #[msg("Arena still has open sessions")]
     ArenaHasOpenSessions,
-    #[msg("Invalid amount")]
-    InvalidAmount,
     #[msg("Math overflow")]
     MathOverflow,
     #[msg("Settlement is for a different session")]
@@ -46,66 +30,12 @@ pub enum SlanaError {
     MintNotAllowed,
     #[msg("Token mint must not have a freeze authority")]
     FreezeAuthorityPresent,
-    #[msg("This arena requires a Slana Pass")]
-    PassRequired,
-    #[msg("Slana Pass is not owned by the player")]
-    PassNotOwned,
-    #[msg("Asset is not part of the Slana Pass collection")]
-    PassWrongCollection,
-    #[msg("Slana Pass is already used by an open session")]
-    PassInUse,
-    #[msg("Pass mint is closed")]
-    MintClosed,
-    /// Deprecated: unreachable since selling out ends the mint (later mints fail with
-    /// `MintClosed`). Kept so the following error codes keep their numbers.
-    #[msg("Pass mint is sold out")]
-    MintSoldOut,
-    #[msg("Pass mint limit per wallet reached")]
-    MintLimit,
-    #[msg("Not enough tokens to mint a Pass")]
-    MintMinTokens,
-    #[msg("Seed does not match the committed hash")]
-    SeedMismatch,
-    #[msg("Pass seed hash is not set")]
-    SeedNotSet,
-    #[msg("Pass traits are already revealed")]
-    AlreadyRevealed,
-    #[msg("Pass collection is already set")]
-    CollectionAlreadySet,
-    #[msg("Pass collection is not set")]
-    CollectionNotSet,
-    #[msg("Invalid Pass collection")]
-    BadCollection,
-    #[msg("Fee split must sum to 10000 basis points")]
-    BadSplit,
     #[msg("Arena has open sessions")]
     ArenaBusy,
-    #[msg("Invalid Pass base URI")]
-    BadBaseUri,
     #[msg("Max sessions must be between 2 and 2000")]
     InvalidMaxSessions,
     #[msg("Entry fee must be greater than zero")]
     EntryFeeZero,
-    #[msg("Pass seed hash can only change before the first mint")]
-    SeedLocked,
-    #[msg("Pass mint is still open")]
-    MintStillOpen,
-    #[msg("Pass mint has ended for good; it cannot reopen")]
-    MintEnded,
-    #[msg("Pass supply cannot change once the mint has opened")]
-    SupplyLocked,
-    #[msg("A Pass mint with minted Passes is closed with close_pass_mint")]
-    UseCloseMint,
-    #[msg("Invalid SlotHashes sysvar account")]
-    BadSlotHashes,
-    #[msg("No Pass has been minted yet")]
-    NothingMinted,
-    #[msg("The Pass entropy target slot has not passed yet")]
-    EntropyNotReady,
-    #[msg("The Pass entropy is not captured yet")]
-    EntropyNotCaptured,
-    #[msg("The Pass seed is not revealed yet")]
-    SeedNotRevealed,
     #[msg("The fee rate is above the limit the player signed")]
     FeeAboveLimit,
     #[msg("The entry fee is above the limit the player signed")]
@@ -116,4 +46,8 @@ pub enum SlanaError {
     SessionFinalized,
     #[msg("Authority must not be the default public key")]
     InvalidAuthority,
+    #[msg("The game token mint is not set yet")]
+    TokenNotSet,
+    #[msg("The game token mint is already set")]
+    TokenAlreadySet,
 }

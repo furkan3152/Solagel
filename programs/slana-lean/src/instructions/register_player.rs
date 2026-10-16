@@ -16,15 +16,15 @@
 //! | `config.total_players.checked_add(1)`                                   | `stake::add`                   | MathOverflow |
 //!
 //! Duplicate-mutable check: only `config` is a candidate (`profile` is pure `init`).
-//! Writes the profile (owner, name, skin, `season = config.current_season`, `created_at`,
-//! bump; everything else zero) and emits `PlayerRegistered`.
+//! Writes the profile (owner, name, skin, `created_at`, bump; everything else zero) and emits
+//! `PlayerRegistered`.
 
 use {
     super::{initialize::init_program_pda, stake, unix_timestamp},
     crate::error::Result,
     crate::{
         accounts::{check_writable, data, kind, parse},
-        borsh::{rd_u32, rd_u64, wr_bytes, wr_i64, wr_u32, wr_u64, wr_u8, Args},
+        borsh::{rd_u64, wr_bytes, wr_i64, wr_u64, wr_u8, Args},
         constants::PROFILE_SEED,
         events,
         logic::{check_skin, validate_name, write_name},
@@ -69,7 +69,6 @@ pub fn process(accounts: &[AccountView], args: &[u8]) -> Result {
     wr_bytes(p, profile::OWNER, owner.address().as_ref());
     write_name(p, profile::NAME, name, name_len);
     wr_u8(p, profile::SKIN, skin);
-    wr_u32(p, profile::SEASON, rd_u32(c, config::CURRENT_SEASON));
     wr_i64(p, profile::CREATED_AT, now);
     wr_u8(p, profile::BUMP, bump);
 

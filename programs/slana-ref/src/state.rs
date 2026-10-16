@@ -1,93 +1,37 @@
 use anchor_lang::prelude::*;
 
-use crate::constants::{BASE_URI_BYTES, LEADERBOARD_LEN, NAME_BYTES};
+use crate::constants::NAME_BYTES;
 
 /// Global configuration. PDA `["config"]`.
 #[account]
 #[derive(InitSpace, Debug)]
 pub struct Config {
-    /// May change the configuration, create arenas, manage seasons and withdraw the treasury.
+    /// May change the configuration, set the token mint, and create and sweep arenas.
     pub admin: Pubkey,
-    /// Game server key that signs `settle_session`.
+    /// Game server key that signs `settle_session` and `sweep_loot`.
     pub server_authority: Pubkey,
+    /// Owner of the token account that receives every fee and every swept arena vault.
+    pub fee_wallet: Pubkey,
 
-    // ----- token (fixed at `initialize`) -----------------------------------------------
-    /// The game token ($SLANA). Written once and never changed.
+    // ----- token (set once by `set_token_mint`) ----------------------------------------
+    /// The game token ($SLANA); `Pubkey::default()` until `set_token_mint`, then fixed.
     pub token_mint: Pubkey,
-    /// Token program owning `token_mint` (SPL Token or Token-2022).
+    /// Token program owning `token_mint` (SPL Token or Token-2022); default while unset.
     pub token_program: Pubkey,
+    /// Decimals of `token_mint` (0 while unset).
     pub token_decimals: u8,
 
     // ----- fees ------------------------------------------------------------------------
     /// Fee charged on stake profit, in basis points (≤ `MAX_FEE_BPS`).
     pub fee_bps: u16,
-    /// Fee charged on stake profit of a Pass session (≤ `fee_bps`).
-    pub pass_fee_bps: u16,
-    /// Shares of each fee: treasury vault, season vault, burned. They sum to `BPS`.
-    pub treasury_bps: u16,
-    pub season_bps: u16,
-    pub burn_bps: u16,
     /// Lamports a player deposits per session to pay the server's settle transaction
     /// (≤ `MAX_SETTLE_FEE_LAMPORTS`).
     pub settle_fee_lamports: u64,
 
     // ----- general -----------------------------------------------------------------------
-    /// Id of the season that is currently running.
-    pub current_season: u32,
     /// Blocks new arena joins (settlements and refunds keep working).
     pub paused: bool,
-
-    // ----- Slana Pass collection and mint --------------------------------------------------
-    /// Metaplex Core collection of the Pass (`Pubkey::default()` = not set yet).
-    pub pass_collection: Pubkey,
-    /// Base URI of Pass metadata (`pass_base_uri[..pass_base_uri_len]`, zero padded).
-    pub pass_base_uri: [u8; BASE_URI_BYTES],
-    pub pass_base_uri_len: u8,
-    /// Maximum number of Passes (≤ `MAX_PASS_SUPPLY`, ≥ `pass_minted`).
-    pub pass_supply: u32,
-    /// Passes minted so far.
-    pub pass_minted: u32,
-    /// Free mints per wallet (≤ `MAX_PASS_PER_WALLET`).
-    pub pass_per_wallet: u8,
-    /// Minimum game-token balance needed to mint (0 = no requirement).
-    pub pass_min_tokens: u64,
-    pub pass_mint_open: bool,
-    pub pass_mint_start_ts: i64,
-    /// The mint has been opened at least once: `pass_supply` is frozen from then on.
-    pub pass_mint_opened: bool,
-    /// The mint ended for good (`close_pass_mint`, or the last Pass of the supply was minted).
-    /// It never reopens; `reveal_pass` may publish the seed from then on.
-    pub pass_mint_ended: bool,
-
-    // ----- Pass trait reveal (commit / reveal) ---------------------------------------------
-    /// `sha256(pass_seed)` committed before the first mint.
-    pub pass_seed_hash: [u8; 32],
-    /// The admin's seed, public once `pass_seed_revealed` (zero before).
-    pub pass_seed: [u8; 32],
-    /// The traits are public: `capture_pass_entropy` stored `pass_final_seed`.
-    pub pass_revealed: bool,
-    /// `reveal_pass` published `pass_seed` (checked against `pass_seed_hash`) and set the
-    /// entropy target slot. The seed is public before any entropy target exists.
-    pub pass_seed_revealed: bool,
-    /// Set by `reveal_pass` (after the seed is public): `slot + ENTROPY_DELAY_SLOTS`, moved
-    /// forward again if nobody captured it while it was in the SlotHashes window. 0 before.
-    pub pass_entropy_target_slot: u64,
-    /// `pass_entropy` holds the captured hash.
-    pub pass_entropy_captured: bool,
-    /// Hash of the first slot at or after the target slot, stored by the permissionless
-    /// `capture_pass_entropy` (zero before): a chain value nobody, the admin included, can
-    /// know or choose when the mint ends.
-    pub pass_entropy: [u8; 32],
-    /// Slot of `pass_entropy`.
-    pub pass_entropy_slot: u64,
-    /// `sha256(pass_seed || pass_entropy)`, set by `capture_pass_entropy` (zero before). The
-    /// single seed every Pass trait is derived from (`passTraits(final_seed, n, supply)`).
-    pub pass_final_seed: [u8; 32],
-
-    // ----- bumps -------------------------------------------------------------------------
     pub bump: u8,
-    pub treasury_vault_bump: u8,
-    pub season_vault_bump: u8,
 
     // ----- totals ------------------------------------------------------------------------
     pub total_players: u64,
@@ -112,9 +56,6 @@ pub struct PlayerProfile {
     pub kills: u32,
     pub best_score: u32,
     pub total_score: u64,
-    /// Season that `season_points` belongs to.
-    pub season: u32,
-    pub season_points: u64,
     pub stake_games: u32,
     pub total_staked: u64,
     pub total_won: u64,
@@ -132,8 +73,6 @@ pub struct Arena {
     pub id: u16,
     /// Entry fee in base units of the game token.
     pub entry_fee: u64,
-    /// Only Slana Pass holders may join.
-    pub requires_pass: bool,
     /// Maximum number of simultaneously open sessions.
     pub max_sessions: u16,
     pub open_sessions: u16,
@@ -162,80 +101,17 @@ pub struct Session {
     /// Entry fee paid into the arena vault, in base units of the game token.
     pub entry_fee: u64,
     pub opened_at: i64,
-    /// Joined with a Slana Pass: lower fee, season points, and `pass_asset` is locked.
-    pub has_pass: bool,
-    /// The Pass asset backing the session (`Pubkey::default()` without a Pass).
-    pub pass_asset: Pubkey,
     /// Settle deposit in lamports (`Config::settle_fee_lamports` at join).
     pub settle_fee: u64,
-    /// Fee on profit in basis points, fixed at join (`Config::pass_fee_bps` with a Pass,
-    /// else `Config::fee_bps`): later fee changes never touch an open session.
+    /// Fee on profit in basis points, fixed at join (`Config::fee_bps`): later fee changes
+    /// never touch an open session.
     pub fee_bps: u16,
     pub bump: u8,
-    /// Settled without a player token account (ruling R24): the game result is final, the
-    /// fee is taken and the Pass lock is closed, but `owed` still sits in the arena vault
-    /// until the player collects it with `refund_session` (no waiting time). The session stays
-    /// open (it counts in `Arena::open_sessions`, so the vault cannot be swept meanwhile).
+    /// Settled without a player token account (R24): the game result is final and the
+    /// fee is paid, but `owed` still sits in the arena vault until the player collects it with
+    /// `refund_session` (no waiting time). The session stays open (it counts in
+    /// `Arena::open_sessions`, so the vault cannot be swept meanwhile).
     pub finalized: bool,
     /// Game tokens the player is owed by a finalized session (0 otherwise).
     pub owed: u64,
-}
-
-/// Lock of a Pass asset while it backs an open session, so one Pass backs at most one
-/// session at a time (even across transfers). PDA `["pass_lock", asset]`.
-/// Paid by the player at join and closed back to them at settlement or refund.
-#[account]
-#[derive(InitSpace, Debug)]
-pub struct PassLock {
-    pub session: Pubkey,
-    pub player: Pubkey,
-    pub bump: u8,
-}
-
-/// One row of a season leaderboard.
-#[derive(
-    AnchorSerialize, AnchorDeserialize, Clone, Copy, Default, InitSpace, PartialEq, Eq, Debug,
-)]
-pub struct LeaderEntry {
-    pub player: Pubkey,
-    pub points: u64,
-    /// Best single-game score of this player during the season.
-    pub best_score: u32,
-    pub name: [u8; NAME_BYTES],
-    pub name_len: u8,
-    pub skin: u8,
-}
-
-/// A season with its top-20 leaderboard. PDA `["season", id.to_le_bytes()]`.
-///
-/// Prize tokens live in the global season vault (`["season_vault"]`); `pool` is this
-/// season's share of it. While the season runs, settle fee shares, sweeps and rollovers add
-/// to `pool`; `end_season` freezes it into `prize_pool`; each claim takes its prize out of
-/// `pool`, and `rollover_season` moves what is left into the then-current season.
-#[account]
-#[derive(InitSpace, Debug)]
-pub struct Season {
-    pub id: u32,
-    pub started_at: i64,
-    pub ended_at: i64,
-    pub finalized: bool,
-    /// Prize pool frozen by `end_season`.
-    pub prize_pool: u64,
-    /// Game tokens of the season vault that belong to this season and are not paid out yet.
-    pub pool: u64,
-    /// Bit `rank` set ⇔ the prize of that rank was claimed.
-    pub claimed_mask: u16,
-    /// Number of used leaderboard entries.
-    pub count: u8,
-    pub bump: u8,
-    /// Sorted by `points`, descending; only `entries[..count]` are meaningful.
-    pub entries: [LeaderEntry; LEADERBOARD_LEN],
-}
-
-/// Number of Passes a wallet minted. PDA `["pass_minted", minter]`.
-#[account]
-#[derive(InitSpace, Debug)]
-pub struct MintCounter {
-    pub count: u8,
-    pub bump: u8,
 }

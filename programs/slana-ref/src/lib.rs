@@ -2,14 +2,11 @@
 //!
 //! The game loop runs on an authoritative server; this program holds everything that
 //! involves value or identity: player profiles, stake arenas paid in the $SLANA token (each
-//! arena has a token vault), session settlement with a fee on profit split between the
-//! treasury vault, the season vault and a burn, seasons with a top-20 leaderboard and a token
-//! prize pool for the top 10, and the Slana Pass (a free-mint Metaplex Core collection with a
-//! commit–reveal trait seed mixed with the hash of a future slot fixed when the mint ends).
+//! arena has a token vault), and session settlement with a fee on profit paid to the fee
+//! wallet. The program deploys and initializes without a token; the admin sets the mint once
+//! later with `set_token_mint`, and no arena can be created or joined before that.
 
 pub mod constants;
-pub mod core_asset;
-pub mod core_cpi;
 pub mod error;
 pub mod events;
 pub mod instructions;
@@ -31,30 +28,28 @@ pub mod slana {
 
     // ----- admin -----------------------------------------------------------------------
 
-    /// Creates the config, the treasury and season vaults and season 1 for the game mint.
-    /// Only the program's upgrade authority may call it.
+    /// Creates the config (no token yet). Only the program's upgrade authority may call it.
     pub fn initialize(ctx: Context<Initialize>, args: InitializeArgs) -> Result<()> {
         instructions::initialize::handle_initialize(ctx, args)
+    }
+
+    /// Sets the game token, once, while it is unset (`TokenAlreadySet` afterwards).
+    pub fn set_token_mint(ctx: Context<SetTokenMint>) -> Result<()> {
+        instructions::set_token_mint::handle_set_token_mint(ctx)
     }
 
     pub fn update_config(ctx: Context<UpdateConfig>, args: UpdateConfigArgs) -> Result<()> {
         instructions::update_config::handle_update_config(ctx, args)
     }
 
+    /// Fails with `TokenNotSet` until `set_token_mint` ran.
     pub fn create_arena(
         ctx: Context<CreateArena>,
         id: u16,
         entry_fee: u64,
         max_sessions: u16,
-        requires_pass: bool,
     ) -> Result<()> {
-        instructions::create_arena::handle_create_arena(
-            ctx,
-            id,
-            entry_fee,
-            max_sessions,
-            requires_pass,
-        )
+        instructions::create_arena::handle_create_arena(ctx, id, entry_fee, max_sessions)
     }
 
     pub fn update_arena(
@@ -62,19 +57,8 @@ pub mod slana {
         enabled: Option<bool>,
         max_sessions: Option<u16>,
         entry_fee: Option<u64>,
-        requires_pass: Option<bool>,
     ) -> Result<()> {
-        instructions::update_arena::handle_update_arena(
-            ctx,
-            enabled,
-            max_sessions,
-            entry_fee,
-            requires_pass,
-        )
-    }
-
-    pub fn withdraw_treasury(ctx: Context<WithdrawTreasury>, amount: u64) -> Result<()> {
-        instructions::withdraw_treasury::handle_withdraw_treasury(ctx, amount)
+        instructions::update_arena::handle_update_arena(ctx, enabled, max_sessions, entry_fee)
     }
 
     // ----- players -----------------------------------------------------------------------
@@ -93,11 +77,11 @@ pub mod slana {
 
     // ----- stake arenas -------------------------------------------------------------------
 
-    /// Pays the entry fee into the arena vault and opens a session (no Pass). Fails with
-    /// `FeeAboveLimit` if the fee rate fixed into the session exceeds `max_fee_bps` (the rate
-    /// the player was shown), the arena's entry fee exceeds `max_entry_fee`
-    /// (`EntryFeeAboveLimit`) or the settle deposit exceeds `max_settle_fee`
-    /// (`SettleFeeAboveLimit`).
+    /// Pays the entry fee into the arena vault and opens a session. Fails with `TokenNotSet`
+    /// before the mint is set, with `FeeAboveLimit` if the fee rate fixed into the session
+    /// exceeds `max_fee_bps` (the rate the player was shown), with `EntryFeeAboveLimit` if the
+    /// arena's entry fee exceeds `max_entry_fee`, and with `SettleFeeAboveLimit` if the settle
+    /// deposit exceeds `max_settle_fee`.
     pub fn join_arena(
         ctx: Context<JoinArena>,
         max_fee_bps: u16,
@@ -114,26 +98,11 @@ pub mod slana {
         )
     }
 
-    /// Like `join_arena`, backed by a Slana Pass that is locked until the session closes.
-    pub fn join_arena_with_pass(
-        ctx: Context<JoinArenaWithPass>,
-        max_fee_bps: u16,
-        max_entry_fee: u64,
-        max_settle_fee: u64,
-    ) -> Result<()> {
-        instructions::join_arena::handle_join_arena_with_pass(
-            ctx,
-            JoinLimits {
-                max_fee_bps,
-                max_entry_fee,
-                max_settle_fee,
-            },
-        )
-    }
-
-    /// Server-signed settlement of a stake session (a death, the round bell, or an operator exit). With the player's token account the payout
-    /// is paid and the session closed; without it (`player_token = None`) the session is
-    /// finalized with `owed` for the player to collect via `refund_session` (ruling R24).
+    /// Server-signed settlement of a stake session (a death, the round bell, or an operator
+    /// exit). The fee on profit goes to the fee wallet's token account. With the player's
+    /// token account the payout is paid and the session closed; without it
+    /// (`player_token = None`) the session is finalized with `owed` for the player to collect
+    /// via `refund_session` (R24).
     pub fn settle_session(ctx: Context<SettleSession>, args: SettleArgs) -> Result<()> {
         instructions::settle_session::handle_settle_session(ctx, args)
     }
@@ -144,63 +113,15 @@ pub mod slana {
         instructions::refund_session::handle_refund_session(ctx)
     }
 
+    /// Admin: moves the whole vault of a disabled arena with no open session to the fee
+    /// wallet's token account.
     pub fn sweep_arena(ctx: Context<SweepArena>) -> Result<()> {
         instructions::sweep_arena::handle_sweep_arena(ctx)
     }
 
-    /// Server-signed: moves `amount` (at most the vault balance) from an arena vault into the
-    /// current season's pool, while the arena runs. `amount == 0` succeeds and does nothing.
+    /// Server-signed: burns `amount` (at most the vault balance) of an arena vault's floor
+    /// loot, while the arena runs. `amount == 0` succeeds and does nothing.
     pub fn sweep_loot(ctx: Context<SweepLoot>, amount: u64) -> Result<()> {
         instructions::sweep_loot::handle_sweep_loot(ctx, amount)
-    }
-
-    // ----- Slana Pass ----------------------------------------------------------------------
-
-    /// Sets the Pass collection once (a Core collection whose update authority is the
-    /// `pass_authority` PDA).
-    pub fn set_pass_collection(ctx: Context<SetPassCollection>) -> Result<()> {
-        instructions::set_pass_collection::handle_set_pass_collection(ctx)
-    }
-
-    /// Commits `sha256(seed)` of the Pass trait seed (before the first mint).
-    pub fn set_pass_seed_hash(ctx: Context<SetPassSeedHash>, hash: [u8; 32]) -> Result<()> {
-        instructions::set_pass_seed_hash::handle_set_pass_seed_hash(ctx, hash)
-    }
-
-    /// Free mint of one Slana Pass (Core asset in the Pass collection) to the signer.
-    pub fn mint_pass(ctx: Context<MintPass>) -> Result<()> {
-        instructions::mint_pass::handle_mint_pass(ctx)
-    }
-
-    /// Ends the Pass mint for good (no entropy target yet: `reveal_pass` sets it).
-    pub fn close_pass_mint(ctx: Context<ClosePassMint>) -> Result<()> {
-        instructions::close_pass_mint::handle_close_pass_mint(ctx)
-    }
-
-    /// Permissionless: once the seed is public and the target slot has passed, stores the
-    /// entropy (hash of the first slot at or after the target) and the final seed, which
-    /// reveals the traits; re-targets if the target left the SlotHashes window.
-    pub fn capture_pass_entropy(ctx: Context<CapturePassEntropy>) -> Result<()> {
-        instructions::capture_pass_entropy::handle_capture_pass_entropy(ctx)
-    }
-
-    /// Publishes the Pass trait seed (checked against the committed hash), once, after the
-    /// mint ended, then sets the entropy target slot.
-    pub fn reveal_pass(ctx: Context<RevealPass>, seed: [u8; 32]) -> Result<()> {
-        instructions::reveal_pass::handle_reveal_pass(ctx, seed)
-    }
-
-    // ----- seasons ----------------------------------------------------------------------
-
-    pub fn end_season(ctx: Context<EndSeason>) -> Result<()> {
-        instructions::end_season::handle_end_season(ctx)
-    }
-
-    pub fn claim_season_reward(ctx: Context<ClaimSeasonReward>, season_id: u32) -> Result<()> {
-        instructions::claim_season_reward::handle_claim_season_reward(ctx, season_id)
-    }
-
-    pub fn rollover_season(ctx: Context<RolloverSeason>, season_id: u32) -> Result<()> {
-        instructions::rollover_season::handle_rollover_season(ctx, season_id)
     }
 }

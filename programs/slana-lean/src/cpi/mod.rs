@@ -14,14 +14,13 @@ use {
     },
 };
 
-/// Most accounts any CPI of this program passes.
-const MAX_CPI_ACCOUNTS: usize = 6;
+/// Most accounts any CPI of this program passes (`TransferChecked`).
+const MAX_CPI_ACCOUNTS: usize = 4;
 
 /// Invokes `program` with `metas` and the account `views` and `data`, signed by `signers`. A
 /// failing callee aborts the whole transaction. `views` may be fewer than `metas` (a meta can
-/// repeat a passed account, as Core's `CreateV2` does with its own id), never more: more
-/// views than `MAX_CPI_ACCOUNTS` or than `metas` is `InvalidArgument` (a programming error,
-/// never silently truncated).
+/// repeat a passed account), never more: more views than `MAX_CPI_ACCOUNTS` or than `metas` is
+/// `InvalidArgument` (a programming error, never silently truncated).
 ///
 /// The `views > metas` check is only a heuristic against programming errors. It does not prove
 /// that every meta has a matching view, or that the views are in meta order. Correctness

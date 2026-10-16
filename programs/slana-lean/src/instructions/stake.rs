@@ -1,21 +1,21 @@
-//! Checks and money moves shared by the arena instructions (`join_arena`,
-//! `join_arena_with_pass`, `settle_session`, `refund_session`, `sweep_arena`). Each helper
-//! is one reference constraint (or one reference helper) with its Anchor error code.
+//! Checks and money moves shared by the arena instructions (`create_arena`, `join_arena`,
+//! `settle_session`, `refund_session`, `sweep_arena`, `sweep_loot`). Each helper is one
+//! reference constraint (or one reference helper) with its Anchor error code.
 
 use {
     crate::error::Result,
     crate::{
-        accounts::{check_pda_seeds, check_writable, data, data_ref, keq},
-        borsh::{rd_bool, rd_key, rd_u16, rd_u32, rd_u8},
+        accounts::{check_pda_seeds, check_writable, data_ref, keq},
+        borsh::{rd_key, rd_u16, rd_u8},
         constants::*,
         cpi::token::transfer_checked,
         error::{
             err, require, CONSTRAINT_ADDRESS, CONSTRAINT_CLOSE,
-            CONSTRAINT_DUPLICATE_MUTABLE_ACCOUNT, MATH_OVERFLOW, PASS_IN_USE, UNAUTHORIZED,
+            CONSTRAINT_DUPLICATE_MUTABLE_ACCOUNT, CONSTRAINT_TOKEN_MINT, CONSTRAINT_TOKEN_OWNER,
+            CONSTRAINT_TOKEN_TOKEN_PROGRAM, MATH_OVERFLOW, TOKEN_NOT_SET, UNAUTHORIZED,
         },
-        instructions::withdraw_treasury::check_token_account,
-        state::{arena, config, pass_lock, profile, season, session},
-        token::ACCOUNT_LEN,
+        state::{arena, config, profile, session},
+        token::{ACCOUNT_LEN, ACCOUNT_MINT, ACCOUNT_OWNER},
         ID,
     },
     pinocchio::{
@@ -80,22 +80,6 @@ pub(crate) fn check_profile(
     )
 }
 
-/// `season: seeds = [SEASON_SEED, config.current_season LE], bump = season.bump`, `mut`.
-#[inline(never)]
-pub(crate) fn check_current_season(
-    season_acc: &AccountView,
-    s: &[u8; season::SPACE],
-    c: &[u8; config::SPACE],
-) -> Result {
-    let id = rd_u32(c, config::CURRENT_SEASON).to_le_bytes();
-    check_pda_seeds(
-        season_acc,
-        &[SEASON_SEED, &id],
-        rd_u8(s, season::BUMP),
-        true,
-    )
-}
-
 /// The session of settle/refund: `seeds = [SESSION_SEED, arena, player], bump =
 /// session.bump` (`ConstraintSeeds`), `mut`, `has_one = player @ Unauthorized`, `has_one =
 /// arena @ Unauthorized`.
@@ -138,7 +122,67 @@ pub(crate) fn check_player_token(
     check_writable(player_token)?;
     // SAFETY: the caller's `parse` checked it is a token account (≥ 165 bytes); read only.
     let d = unsafe { data_ref::<ACCOUNT_LEN>(player_token) };
-    check_token_account(player_token, d, Some(player), token_mint, token_program)
+    check_token_account(
+        player_token,
+        d,
+        player.address().as_array(),
+        token_mint,
+        token_program,
+    )
+}
+
+/// The fee wallet's token account (settle, sweep_arena): `mut`, `token::mint = token_mint`,
+/// `token::authority = config.fee_wallet`, `token::token_program = token_program`
+/// (2000 / 2015 / 2014 / 2021). Any token account of the fee wallet, not only its ATA.
+#[inline(never)]
+pub(crate) fn check_fee_wallet_token(
+    fee_wallet_token: &AccountView,
+    c: &[u8; config::SPACE],
+    token_mint: &AccountView,
+    token_program: &AccountView,
+) -> Result {
+    check_writable(fee_wallet_token)?;
+    // SAFETY: the caller's `parse` checked it is a token account (≥ 165 bytes); read only.
+    let d = unsafe { data_ref::<ACCOUNT_LEN>(fee_wallet_token) };
+    check_token_account(
+        fee_wallet_token,
+        d,
+        &rd_key(c, config::FEE_WALLET),
+        token_mint,
+        token_program,
+    )
+}
+
+/// `token::authority = authority` (`ConstraintTokenOwner`), `token::mint = mint`
+/// (`ConstraintTokenMint`), `token::token_program = token_program`
+/// (`ConstraintTokenTokenProgram`), in Anchor's order.
+#[inline(never)]
+pub(crate) fn check_token_account(
+    acc: &AccountView,
+    data: &[u8; ACCOUNT_LEN],
+    authority: &[u8; 32],
+    mint: &AccountView,
+    token_program: &AccountView,
+) -> Result {
+    require(
+        keq(&rd_key(data, ACCOUNT_OWNER), authority),
+        CONSTRAINT_TOKEN_OWNER,
+    )?;
+    require(
+        keq(&rd_key(data, ACCOUNT_MINT), mint.address().as_array()),
+        CONSTRAINT_TOKEN_MINT,
+    )?;
+    require(
+        keq(acc.owner().as_array(), token_program.address().as_array()),
+        CONSTRAINT_TOKEN_TOKEN_PROGRAM,
+    )
+}
+
+/// `config: constraint = config.token_mint != Pubkey::default() @ TokenNotSet` (create_arena,
+/// join_arena).
+#[inline(never)]
+pub(crate) fn check_token_set(c: &[u8; config::SPACE]) -> Result {
+    require(rd_key(c, config::TOKEN_MINT) != [0; 32], TOKEN_NOT_SET)
 }
 
 /// `token_mint: address = config.token_mint`, `token_program: address =
@@ -191,7 +235,7 @@ pub(crate) fn check_distinct2(a: &AccountView, b: &AccountView) -> Result {
 }
 
 /// `close = dest` on an account that must be `mut`: `ConstraintMut`, then the account may not
-/// be `dest` itself (`ConstraintClose`). Settle's and refund's Pass lock, and refund's session.
+/// be `dest` itself (`ConstraintClose`). Refund's session.
 #[inline(never)]
 pub(crate) fn check_close_to(acc: &AccountView, dest: &AccountView) -> Result {
     check_writable(acc)?;
@@ -220,40 +264,6 @@ pub(crate) fn check_session_accounts(
     check_arena(arena_acc, r, true)?;
     check_arena_vault(vault, arena_acc, r)?;
     check_session(session_acc, s, arena_acc, player)
-}
-
-/// Reference `shared::check_pass_lock`: a Pass session must come with exactly its own lock
-/// (`["pass_lock", session.pass_asset]` with the lock's stored bump, recorded for this session
-/// and its player); a session without a Pass must come with none. Else `PassInUse`.
-#[inline(never)]
-pub(crate) fn check_pass_lock(
-    session_acc: &AccountView,
-    s: &[u8; session::SPACE],
-    lock: Option<&AccountView>,
-) -> Result {
-    match (rd_bool(s, session::HAS_PASS), lock) {
-        (false, None) => Ok(()),
-        (true, Some(lock)) => {
-            // SAFETY: the caller's `parse` checked the lock holds a `PassLock`; read only.
-            let l = unsafe { data::<{ pass_lock::SPACE }>(lock) };
-            let asset = rd_key(s, session::PASS_ASSET);
-            check_pda_seeds(
-                lock,
-                &[PASS_LOCK_SEED, &asset],
-                rd_u8(l, pass_lock::BUMP),
-                false,
-            )
-            .map_err(|_| err(PASS_IN_USE))?;
-            require(
-                keq(
-                    &rd_key(l, pass_lock::SESSION),
-                    session_acc.address().as_array(),
-                ) && keq(&rd_key(l, pass_lock::PLAYER), &rd_key(s, session::PLAYER)),
-                PASS_IN_USE,
-            )
-        }
-        _ => Err(err(PASS_IN_USE)),
-    }
 }
 
 /// Reference `token::transfer_from_pda` out of the arena vault: `transfer_checked` of

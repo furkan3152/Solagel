@@ -42,7 +42,6 @@ fn register_player_validates_name_and_skin() {
     assert_eq!(usize::from(profile.name_len), name.len());
     assert_eq!(profile.skin, 7);
     assert_eq!(profile.xp, 0);
-    assert_eq!(profile.season, 1);
     assert_eq!(profile.created_at, START_TS);
     assert_eq!(profile.last_played, 0);
     assert_eq!(env.config().total_players, 1);

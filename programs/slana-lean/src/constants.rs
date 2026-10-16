@@ -9,19 +9,11 @@ pub const CONFIG_SEED: &[u8] = b"config";
 pub const PROFILE_SEED: &[u8] = b"profile";
 pub const ARENA_SEED: &[u8] = b"arena";
 pub const VAULT_SEED: &[u8] = b"vault";
-pub const TREASURY_VAULT_SEED: &[u8] = b"treasury_vault";
-pub const SEASON_VAULT_SEED: &[u8] = b"season_vault";
-pub const PASS_AUTHORITY_SEED: &[u8] = b"pass_authority";
-pub const PASS_LOCK_SEED: &[u8] = b"pass_lock";
-pub const PASS_MINTED_SEED: &[u8] = b"pass_minted";
 pub const SESSION_SEED: &[u8] = b"session";
-pub const SEASON_SEED: &[u8] = b"season";
 
 // ----- sizes ----------------------------------------------------------------------------------
 
 pub const NAME_BYTES: usize = 16;
-pub const LEADERBOARD_LEN: usize = 20;
-pub const BASE_URI_BYTES: usize = 96;
 
 // ----- money ----------------------------------------------------------------------------------
 
@@ -29,27 +21,10 @@ pub const BPS: u16 = 10_000;
 pub const MAX_FEE_BPS: u16 = 1_000;
 pub const MAX_SETTLE_FEE_LAMPORTS: u64 = 1_000_000;
 pub const MIN_ARENA_SESSIONS: u16 = 2;
-/// Number of leaderboard ranks that receive a season prize.
-pub const PRIZE_RANKS: u8 = 10;
-/// Prize share of each season rank in basis points (sums to 10 000).
-pub const PRIZE_SHARES_BPS: [u16; 10] = [3000, 2000, 1400, 1000, 800, 600, 450, 300, 250, 200];
 pub const MAX_ARENA_SESSIONS: u16 = 2_000;
-
-// ----- Slana Pass -----------------------------------------------------------------------------
-
-pub const MAX_PASS_SUPPLY: u32 = 10_000;
-pub const MAX_PASS_PER_WALLET: u8 = 10;
-pub const DEFAULT_PASS_SUPPLY: u32 = 3_333;
-pub const DEFAULT_PASS_PER_WALLET: u8 = 1;
-/// `reveal_pass` sets the entropy target this many slots after the reveal (and a missed
-/// target moves this far past the current slot).
-pub const ENTROPY_DELAY_SLOTS: u64 = 150;
 
 // ----- game -----------------------------------------------------------------------------------
 
-pub const FIRST_SEASON: u32 = 1;
-/// Season prizes can be claimed for this many seconds after the season ended (30 days).
-pub const CLAIM_WINDOW_SECS: i64 = 2_592_000;
 /// A session the server never settled can be refunded this long after the join.
 pub const SESSION_REFUND_TIMEOUT_SECS: i64 = 86_400;
 pub const MAX_XP_PER_GAME: u32 = 2_000;
@@ -80,22 +55,6 @@ pub const BPF_LOADER_UPGRADEABLE_ID: Address = Address::new_from_array([
     193, 36, 210, 192, 83, 122, 16, 4, 128, 0, 0,
 ]);
 
-/// Metaplex Core (`CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d`).
-pub const MPL_CORE_ID: Address = Address::new_from_array([
-    175, 84, 171, 16, 189, 151, 165, 66, 160, 158, 247, 179, 152, 137, 221, 12, 211, 148, 164, 204,
-    233, 223, 166, 205, 201, 126, 190, 45, 35, 91, 167, 72,
-]);
-
-/// SlotHashes sysvar (`SysvarS1otHashes111111111111111111111111111`).
-pub const SLOT_HASHES_ID: Address = Address::new_from_array([
-    6, 167, 213, 23, 25, 47, 10, 175, 198, 242, 101, 227, 251, 119, 204, 122, 218, 130, 197, 41,
-    208, 190, 59, 19, 110, 45, 0, 85, 32, 0, 0, 0,
-]);
-
-const _: () = assert!(PRIZE_SHARES_BPS.len() == PRIZE_RANKS as usize);
-const _: () = assert!(PRIZE_RANKS as usize <= LEADERBOARD_LEN);
-const _: () = assert!(PRIZE_RANKS as u32 <= u16::BITS); // claimed_mask is a u16
-
 #[cfg(test)]
 mod tests {
     use {super::*, anchor_lang::prelude::Pubkey, slana::constants as r};
@@ -106,43 +65,26 @@ mod tests {
 
     #[test]
     fn constants_match_the_reference() {
-        let seeds: [(&[u8], &[u8]); 11] = [
+        let seeds: [(&[u8], &[u8]); 5] = [
             (CONFIG_SEED, r::CONFIG_SEED),
             (PROFILE_SEED, r::PROFILE_SEED),
             (ARENA_SEED, r::ARENA_SEED),
             (VAULT_SEED, r::VAULT_SEED),
-            (TREASURY_VAULT_SEED, r::TREASURY_VAULT_SEED),
-            (SEASON_VAULT_SEED, r::SEASON_VAULT_SEED),
-            (PASS_AUTHORITY_SEED, r::PASS_AUTHORITY_SEED),
-            (PASS_LOCK_SEED, r::PASS_LOCK_SEED),
-            (PASS_MINTED_SEED, r::PASS_MINTED_SEED),
             (SESSION_SEED, r::SESSION_SEED),
-            (SEASON_SEED, r::SEASON_SEED),
         ];
         for (lean, reference) in seeds {
             assert_eq!(lean, reference);
         }
         assert_eq!(NAME_BYTES, r::NAME_BYTES);
-        assert_eq!(LEADERBOARD_LEN, r::LEADERBOARD_LEN);
-        assert_eq!(BASE_URI_BYTES, r::BASE_URI_BYTES);
         assert_eq!(BPS, r::BPS);
         assert_eq!(MAX_FEE_BPS, r::MAX_FEE_BPS);
         assert_eq!(MAX_SETTLE_FEE_LAMPORTS, r::MAX_SETTLE_FEE_LAMPORTS);
         assert_eq!(MIN_ARENA_SESSIONS, r::MIN_ARENA_SESSIONS);
         assert_eq!(MAX_ARENA_SESSIONS, r::MAX_ARENA_SESSIONS);
-        assert_eq!(MAX_PASS_SUPPLY, r::MAX_PASS_SUPPLY);
-        assert_eq!(MAX_PASS_PER_WALLET, r::MAX_PASS_PER_WALLET);
-        assert_eq!(DEFAULT_PASS_SUPPLY, r::DEFAULT_PASS_SUPPLY);
-        assert_eq!(DEFAULT_PASS_PER_WALLET, r::DEFAULT_PASS_PER_WALLET);
-        assert_eq!(FIRST_SEASON, r::FIRST_SEASON);
         assert_eq!(SESSION_REFUND_TIMEOUT_SECS, r::SESSION_REFUND_TIMEOUT_SECS);
         assert_eq!(MAX_XP_PER_GAME, r::MAX_XP_PER_GAME);
         assert_eq!(MAX_SCORE_PER_GAME, r::MAX_SCORE_PER_GAME);
         assert_eq!(BASIC_SKINS, r::BASIC_SKINS);
-        assert_eq!(ENTROPY_DELAY_SLOTS, r::ENTROPY_DELAY_SLOTS);
-        assert_eq!(PRIZE_RANKS, r::PRIZE_RANKS);
-        assert_eq!(PRIZE_SHARES_BPS, r::PRIZE_SHARES_BPS);
-        assert_eq!(CLAIM_WINDOW_SECS, r::CLAIM_WINDOW_SECS);
     }
 
     #[test]
@@ -152,7 +94,5 @@ mod tests {
         assert_eq!(key(&TOKEN_PROGRAM_ID), anchor_spl::token::ID);
         assert_eq!(key(&TOKEN_2022_PROGRAM_ID), anchor_spl::token_2022::ID);
         assert_eq!(key(&BPF_LOADER_UPGRADEABLE_ID), bpf_loader_upgradeable::ID);
-        assert_eq!(key(&MPL_CORE_ID), r::MPL_CORE_ID);
-        assert_eq!(key(&SLOT_HASHES_ID), r::SLOT_HASHES_ID);
     }
 }

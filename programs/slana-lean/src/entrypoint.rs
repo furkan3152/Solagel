@@ -54,52 +54,32 @@ fn process_instruction(program_id: &Address, accounts: &[AccountView], data: &[u
     // Compared as one u64 per arm.
     match u64::from_le_bytes(*disc) {
         INITIALIZE => ix::initialize::process(accounts, args),
+        SET_TOKEN_MINT => ix::set_token_mint::process(accounts, args),
         UPDATE_CONFIG => ix::update_config::process(accounts, args),
         CREATE_ARENA => ix::create_arena::process(accounts, args),
         UPDATE_ARENA => ix::update_arena::process(accounts, args),
-        WITHDRAW_TREASURY => ix::withdraw_treasury::process(accounts, args),
-        SET_PASS_COLLECTION => ix::set_pass_collection::process(accounts, args),
-        SET_PASS_SEED_HASH => ix::set_pass_seed_hash::process(accounts, args),
         REGISTER_PLAYER => ix::register_player::process(accounts, args),
         UPDATE_PROFILE => ix::update_profile::process(accounts, args),
-        JOIN_ARENA => ix::join_arena::process(accounts, args, false),
-        JOIN_ARENA_WITH_PASS => ix::join_arena::process(accounts, args, true),
+        JOIN_ARENA => ix::join_arena::process(accounts, args),
         SETTLE_SESSION => ix::settle_session::process(accounts, args),
         REFUND_SESSION => ix::refund_session::process(accounts, args),
         SWEEP_ARENA => ix::sweep_arena::process(accounts, args),
         SWEEP_LOOT => ix::sweep_loot::process(accounts, args),
-        END_SEASON => ix::end_season::process(accounts, args),
-        CLAIM_SEASON_REWARD => ix::claim_season_reward::process(accounts, args),
-        ROLLOVER_SEASON => ix::rollover_season::process(accounts, args),
-        MINT_PASS => ix::mint_pass::process(accounts, args),
-        CLOSE_PASS_MINT => ix::close_pass_mint::process(accounts, args),
-        REVEAL_PASS => ix::reveal_pass::process(accounts, args),
-        CAPTURE_PASS_ENTROPY => ix::capture_pass_entropy::process(accounts, args),
         EVENT_IX_TAG => Err(err(EVENT_INSTRUCTION_STUB)),
         _ => Err(err(INSTRUCTION_FALLBACK_NOT_FOUND)),
     }
 }
 
 const INITIALIZE: u64 = u64::from_le_bytes(d::INITIALIZE);
+const SET_TOKEN_MINT: u64 = u64::from_le_bytes(d::SET_TOKEN_MINT);
 const UPDATE_CONFIG: u64 = u64::from_le_bytes(d::UPDATE_CONFIG);
 const CREATE_ARENA: u64 = u64::from_le_bytes(d::CREATE_ARENA);
 const UPDATE_ARENA: u64 = u64::from_le_bytes(d::UPDATE_ARENA);
-const WITHDRAW_TREASURY: u64 = u64::from_le_bytes(d::WITHDRAW_TREASURY);
-const SET_PASS_COLLECTION: u64 = u64::from_le_bytes(d::SET_PASS_COLLECTION);
-const SET_PASS_SEED_HASH: u64 = u64::from_le_bytes(d::SET_PASS_SEED_HASH);
 const REGISTER_PLAYER: u64 = u64::from_le_bytes(d::REGISTER_PLAYER);
 const UPDATE_PROFILE: u64 = u64::from_le_bytes(d::UPDATE_PROFILE);
 const JOIN_ARENA: u64 = u64::from_le_bytes(d::JOIN_ARENA);
-const JOIN_ARENA_WITH_PASS: u64 = u64::from_le_bytes(d::JOIN_ARENA_WITH_PASS);
 const SETTLE_SESSION: u64 = u64::from_le_bytes(d::SETTLE_SESSION);
 const REFUND_SESSION: u64 = u64::from_le_bytes(d::REFUND_SESSION);
 const SWEEP_ARENA: u64 = u64::from_le_bytes(d::SWEEP_ARENA);
 const SWEEP_LOOT: u64 = u64::from_le_bytes(d::SWEEP_LOOT);
-const END_SEASON: u64 = u64::from_le_bytes(d::END_SEASON);
-const CLAIM_SEASON_REWARD: u64 = u64::from_le_bytes(d::CLAIM_SEASON_REWARD);
-const ROLLOVER_SEASON: u64 = u64::from_le_bytes(d::ROLLOVER_SEASON);
-const MINT_PASS: u64 = u64::from_le_bytes(d::MINT_PASS);
-const CLOSE_PASS_MINT: u64 = u64::from_le_bytes(d::CLOSE_PASS_MINT);
-const REVEAL_PASS: u64 = u64::from_le_bytes(d::REVEAL_PASS);
-const CAPTURE_PASS_ENTROPY: u64 = u64::from_le_bytes(d::CAPTURE_PASS_ENTROPY);
 const EVENT_IX_TAG: u64 = u64::from_le_bytes(d::EVENT_IX_TAG_LE);
