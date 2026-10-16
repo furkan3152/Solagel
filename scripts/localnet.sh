@@ -1,20 +1,19 @@
 #!/usr/bin/env bash
-# Local Solana cluster for Slana v3: solana-test-validator with the Slana program (upgrade
-# authority = your local admin key) and Metaplex Core preloaded, a Token-2022 test mint
-# ($SLANA: 6 decimals, no freeze authority, 1,000,000,000 tokens to the admin, then minting
-# disabled so the supply only shrinks by burns), Config initialized, the Slana Pass collection,
-# seed commitment and open mint, and the default arenas.
+# Local Solana cluster for Slana: solana-test-validator with the Slana program (upgrade
+# authority = your local admin key), a Token-2022 test mint ($SLANA: 6 decimals, no freeze
+# authority, 1,000,000,000 tokens to the admin, then minting disabled so the supply only shrinks
+# by burns), and the deploy order run through the admin CLI: `init` (no mint; the fee wallet is
+# the admin), `set-token --mint` (also creates the fee wallet's token account) and
+# `create-arena --defaults` (four open arenas).
 #
 #   scripts/localnet.sh          (re)start from a fresh ledger and print the game-server env
 #   scripts/localnet.sh --stop   stop the validator started by this script
 #
-# State lives in .localnet/ (server + token-mint keypairs, the secret Pass seed, ledger, logs,
-# server.env). Never commit it. Requires target/deploy/slana_lean.so (scripts/build-lean.sh: the
+# State lives in .localnet/ (server + token-mint keypairs, ledger, logs, server.env). Never commit it. Requires target/deploy/slana_lean.so (scripts/build-lean.sh: the
 # deployed Pinocchio program; the Anchor reference slana.so is never deployed), the IDL synced from `anchor build`, the Agave CLI
-# tools (solana-test-validator, solana, solana-keygen, spl-token) and target/programs/mpl_core.so
-# (scripts/fetch-programs.sh downloads it when missing).
+# tools (solana-test-validator, solana, solana-keygen, spl-token).
 # Env: ADMIN_KEYPAIR (default ~/.config/solana/id.json), RPC_PORT (default 8899),
-#      GAME_URL (game server base URL for the Pass metadata, default http://127.0.0.1:8787).
+#      GAME_URL (game server base URL, default http://127.0.0.1:8787).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -28,9 +27,6 @@ PROGRAM_KEYPAIR="$ROOT/target/deploy/slana-keypair.json"
 ADMIN_KEYPAIR="${ADMIN_KEYPAIR:-$HOME/.config/solana/id.json}"
 SERVER_KEYPAIR="$STATE/server.json"
 MINT_KEYPAIR="$STATE/token-mint.json"
-SEED_FILE="$STATE/pass-seed.json"
-MPL_CORE_SO="$ROOT/target/programs/mpl_core.so"
-MPL_CORE_ID=CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d
 GAME_URL="${GAME_URL:-http://127.0.0.1:8787}"
 TOKEN_SUPPLY=1000000000
 
@@ -80,10 +76,6 @@ for tool in solana-test-validator solana solana-keygen spl-token curl pnpm; do
   command -v "$tool" >/dev/null || die "$tool not found in PATH"
 done
 [[ -f "$PROGRAM_SO" ]] || die "$PROGRAM_SO is missing — run scripts/build-lean.sh at the repo root first"
-if [[ ! -f "$MPL_CORE_SO" ]]; then
-  say "Metaplex Core is missing — running scripts/fetch-programs.sh"
-  "$ROOT/scripts/fetch-programs.sh" || die "could not download Metaplex Core (set MAINNET_RPC, or copy mpl_core.so to $MPL_CORE_SO)"
-fi
 
 # The validator only needs the program ADDRESS (the keypair is not used to deploy here), so a fresh
 # clone without target/deploy/slana-keypair.json falls back to the SDK IDL address.
@@ -110,20 +102,19 @@ if [[ ! -f "$SERVER_KEYPAIR" ]]; then solana-keygen new --no-bip39-passphrase --
 stop_validator
 if rpc_healthy; then die "another validator already answers on $RPC_URL — stop it first"; fi
 
-# A fresh ledger gets a fresh token mint and a fresh Pass seed (v1 left a treasury keypair here).
-rm -f "$MINT_KEYPAIR" "$SEED_FILE" "$STATE/treasury.json"
+# A fresh ledger gets a fresh token mint (older versions left a Pass seed and a treasury keypair here).
+rm -f "$MINT_KEYPAIR" "$STATE/pass-seed.json" "$STATE/treasury.json"
 solana-keygen new --no-bip39-passphrase --silent --outfile "$MINT_KEYPAIR"
 ADMIN="$(solana-keygen pubkey "$ADMIN_KEYPAIR")"
 SERVER="$(solana-keygen pubkey "$SERVER_KEYPAIR")"
 TOKEN_MINT="$(solana-keygen pubkey "$MINT_KEYPAIR")"
 
-say "starting solana-test-validator (program $PROGRAM_ID, upgrade authority $ADMIN; Metaplex Core)"
+say "starting solana-test-validator (program $PROGRAM_ID, upgrade authority $ADMIN)"
 # --quiet writes the validator log into the ledger; .localnet/validator.log links to it.
 nohup solana-test-validator --reset --quiet \
   --ledger "$LEDGER" \
   --rpc-port "$RPC_PORT" \
   --upgradeable-program "$PROGRAM_ID" "$PROGRAM_SO" "$ADMIN_KEYPAIR" \
-  --bpf-program "$MPL_CORE_ID" "$MPL_CORE_SO" \
   >"$STATE/validator.stdout.log" 2>&1 &
 echo $! >"$PID_FILE"
 ln -sfn "test-ledger/validator.log" "$STATE/validator.log"
@@ -164,19 +155,10 @@ say "minted $TOKEN_SUPPLY tokens to the admin; minting disabled (the supply only
 admin() {
   (cd "$ROOT" && pnpm --silent -F @slana/sdk admin --url "$RPC_URL" --keypair "$ADMIN_KEYPAIR" --program "$PROGRAM_ID" --cluster localnet "$@")
 }
-say "initializing the program"
-admin init --mint "$TOKEN_MINT" --server "$SERVER"
-say "creating the Slana Pass collection"
-COLLECTION_OUT="$(admin create-collection --name "Slana Pass" --uri "$GAME_URL/pass/collection.json" --royalty-bps 500 --royalty-to "$ADMIN")"
-echo "$COLLECTION_OUT"
-COLLECTION="$(printf '%s\n' "$COLLECTION_OUT" | sed -n 's/^ *collection \([1-9A-HJ-NP-Za-km-z]\{32,44\}\)$/\1/p' | head -n 1)"
-[[ -n "$COLLECTION" ]] || die "create-collection printed no collection address"
-admin set-pass-collection --collection "$COLLECTION"
-say "committing the Pass seed ($SEED_FILE — secret, never commit it)"
-admin pass-seed --new --seed-file "$SEED_FILE"
-admin set-seed-hash --seed-file "$SEED_FILE"
-say "opening the Pass mint"
-admin open-mint --base-uri "$GAME_URL/pass/"
+say "initializing the program (no token yet; fee wallet = the admin)"
+admin init --server "$SERVER"
+say "setting the game token"
+admin set-token --mint "$TOKEN_MINT"
 say "creating the default arenas"
 admin create-arena --defaults
 
@@ -196,8 +178,7 @@ echo
 echo "  SOLANA_CLUSTER=localnet SOLANA_RPC_URL=$RPC_URL PROGRAM_ID=$PROGRAM_ID SERVER_KEYPAIR=$SERVER_KEYPAIR"
 echo "  TOKEN_MINT=$TOKEN_MINT PUBLIC_URL=$GAME_URL"
 echo
-echo "The admin ($ADMIN) holds the $TOKEN_SUPPLY test tokens. Pass seed: $SEED_FILE"
-echo "(after the mint ends: pnpm admin reveal --seed-file $SEED_FILE)."
+echo "The admin ($ADMIN) holds the $TOKEN_SUPPLY test tokens and is the fee wallet."
 echo
 echo "e.g.  cd apps/server && env \$(cat ../../.localnet/server.env | xargs) npx tsx src/index.ts"
 echo "      pnpm -F @slana/server e2e        (needs STALE_SESSION_AFTER_S=5 on the server)"

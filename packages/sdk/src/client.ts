@@ -4,7 +4,6 @@ import type { Buffer } from 'buffer';
 import {
   ComputeBudgetProgram,
   PublicKey,
-  SYSVAR_SLOT_HASHES_PUBKEY,
   SystemProgram,
   Transaction,
   TransactionExpiredBlockheightExceededError,
@@ -21,23 +20,16 @@ import {
   toArenaView,
   toConfigView,
   toProfileView,
-  toSeasonView,
   toSessionView,
   type ArenaView,
   type ConfigView,
   type ProfileView,
   type RawArena,
   type RawConfig,
-  type RawMintCounter,
-  type RawPassLock,
   type RawProfile,
-  type RawSeason,
   type RawSession,
-  type SeasonView,
   type SessionView,
 } from './accounts';
-import { FIRST_SEASON, MAX_BASE_URI_LEN } from './constants';
-import { MPL_CORE_ID } from './core';
 import type { IntLike } from './math';
 import { pdas } from './pda';
 import { IDL, PROGRAM_ID, toPublicKey, type Address, type Slana } from './program';
@@ -71,18 +63,21 @@ export interface BuiltTransaction {
   lastValidBlockHeight: number;
 }
 
-/** The game token accounts (`Config.tokenMint` / `Config.tokenProgram`; a `ConfigView` fits). */
+/**
+ * The game token accounts (`Config.tokenMint` / `Config.tokenProgram` once set; the result of
+ * `requireToken(config)` fits).
+ */
 export interface TokenAccounts {
   tokenMint: Address;
   tokenProgram: Address;
 }
 
-export interface InitializeParams extends TokenAccounts {
+export interface InitializeParams {
   serverAuthority: Address;
+  /** Receives the whole fee on profit and swept vaults (its token account of the game mint). */
+  feeWallet: Address;
+  /** Fee on profit, `0..=MAX_FEE_BPS`. */
   feeBps: number;
-  passFeeBps: number;
-  /** `[treasuryBps, seasonBps, burnBps]`, sums to 10 000. */
-  split: readonly [number, number, number];
   settleFeeLamports: IntLike;
 }
 
@@ -90,23 +85,10 @@ export interface InitializeParams extends TokenAccounts {
 export interface UpdateConfigParams {
   admin?: Address;
   serverAuthority?: Address;
+  feeWallet?: Address;
   feeBps?: number;
-  passFeeBps?: number;
-  /** `[treasuryBps, seasonBps, burnBps]`, sums to 10 000. */
-  split?: readonly [number, number, number];
   settleFeeLamports?: IntLike;
   paused?: boolean;
-  /** At most 96 bytes and must end with `/` (the program appends `<n>.json`). */
-  passBaseUri?: string;
-  /** `1..=MAX_PASS_SUPPLY`; frozen once the mint has opened (`SupplyLocked`). */
-  passSupply?: number;
-  passPerWallet?: number;
-  /** Token base units. */
-  passMinTokens?: IntLike;
-  /** `true` opens the mint (never after it ended); `false` only before the first mint — use `closePassMint` after. */
-  passMintOpen?: boolean;
-  /** Unix seconds. */
-  passMintStartTs?: IntLike;
 }
 
 export interface CreateArenaParams extends TokenAccounts {
@@ -114,7 +96,6 @@ export interface CreateArenaParams extends TokenAccounts {
   /** Token base units. */
   entryFee: IntLike;
   maxSessions: number;
-  requiresPass: boolean;
 }
 
 export interface UpdateArenaParams {
@@ -122,15 +103,11 @@ export interface UpdateArenaParams {
   maxSessions?: number;
   /** Token base units (only while no session is open). */
   entryFee?: IntLike;
-  requiresPass?: boolean;
 }
 
 export interface JoinArenaParams extends TokenAccounts {
   arenaId: number;
-  /**
-   * The fee rate (bps) the player was shown: the program refuses the join (`FeeAboveLimit`)
-   * if the rate it fixes into the session (`passFeeBps` with a Pass, else `feeBps`) is higher.
-   */
+  /** The fee rate (bps) the player was shown: a higher `Config.feeBps` fails with `FeeAboveLimit`. */
   maxFeeBps: number;
   /** The entry fee (token base units) the player was shown: a higher one fails with `EntryFeeAboveLimit`. */
   maxEntryFee: IntLike;
@@ -138,11 +115,6 @@ export interface JoinArenaParams extends TokenAccounts {
   maxSettleFee: IntLike;
   /** Player's game-token account (default: their ATA). */
   playerToken?: Address;
-}
-
-export interface JoinArenaWithPassParams extends JoinArenaParams {
-  /** Core asset of the Slana Pass (locked at `passLock(asset)` until settle/refund). */
-  passAsset: Address;
 }
 
 export interface SettleSessionParams extends TokenAccounts {
@@ -155,15 +127,14 @@ export interface SettleSessionParams extends TokenAccounts {
   score: number;
   kills: number;
   xp: number;
-  /** `Config.currentSeason` (selects the season PDA). */
-  currentSeason: number;
-  /** `Session.hasPass`: the Pass lock is passed (and closed) only for Pass sessions. */
-  hasPass: boolean;
-  /** `Session.passAsset`; required when `hasPass`. */
-  passAsset?: Address | null;
+  /**
+   * Token account of the game mint owned by `Config.feeWallet` that receives the fee
+   * (usually `feeWalletAta(config)`). Required even when the fee is 0.
+   */
+  feeWalletToken: Address;
   /**
    * Player's game-token account (default: their ATA). `null` settles without one (ruling
-   * R24): the fee split and stats happen, and the session is finalized with `owed` for the
+   * R24): the fee and stats happen, and the session is finalized with `owed` for the
    * player to collect via `refundSession`.
    */
   playerToken?: Address | null;
@@ -171,46 +142,25 @@ export interface SettleSessionParams extends TokenAccounts {
 
 export interface RefundSessionParams extends TokenAccounts {
   arenaId: number;
-  /**
-   * `Session.finalized`: collecting a finalized session's `owed` payout (no waiting time, no
-   * Pass lock: settlement already closed it).
-   */
-  finalized?: boolean;
-  /** `Session.passAsset` of an unsettled Pass session (its lock is closed too). Ignored when `finalized`. */
-  passAsset?: Address | null;
   playerToken?: Address;
-}
-
-export interface MintPassParams {
-  /** Fresh keypair address for the new Core asset; it must co-sign. */
-  asset: Address;
-  /** `Config.passCollection`. */
-  collection: Address;
-  /** Minter's game-token account; needed only when `Config.passMinTokens > 0`. */
-  minterToken?: Address | null;
 }
 
 export interface SweepArenaParams extends TokenAccounts {
   id: number;
-  currentSeason: number;
+  /** Token account of the game mint owned by `Config.feeWallet` (usually `feeWalletAta(config)`). */
+  feeWalletToken: Address;
 }
 
-export interface SweepLootParams extends SweepArenaParams {
-  /** Token base units, at most the vault balance (`0` succeeds and moves nothing). */
+export interface SweepLootParams extends TokenAccounts {
+  id: number;
+  /** Token base units to burn, at most the vault balance (`0` succeeds and burns nothing). */
   amount: IntLike;
 }
 
-export interface WithdrawTreasuryParams extends TokenAccounts {
-  /** Token base units. */
-  amount: IntLike;
-  /** Destination token account of the game mint. */
-  destination: Address;
-}
-
-export interface ClaimSeasonRewardParams extends TokenAccounts {
-  seasonId: number;
-  /** Claimer's game-token account (default: their ATA; create it idempotently first). */
-  claimerToken?: Address;
+export interface SetTokenMintParams {
+  tokenMint: Address;
+  /** SPL Token or Token-2022: the program that owns the mint account. */
+  tokenProgram: Address;
 }
 
 /** Error thrown by `sendAndConfirm` when a transaction landed but failed. */
@@ -229,13 +179,6 @@ const toBN = (v: IntLike): BN => {
   if (BN.isBN(v)) return v as BN;
   if (typeof v === 'number' && (!Number.isSafeInteger(v) || v < 0)) throw new RangeError(`expected a non-negative integer, got ${v}`);
   if (typeof v === 'bigint' && (v < 0n || v >= 1n << 64n)) throw new RangeError(`expected a u64, got ${v}`);
-  return new BN(v.toString());
-};
-
-/** i64 (may be negative). */
-const toI64 = (v: IntLike): BN => {
-  if (BN.isBN(v)) return v as BN;
-  if (typeof v === 'number' && !Number.isSafeInteger(v)) throw new RangeError(`expected an integer, got ${v}`);
   return new BN(v.toString());
 };
 
@@ -263,20 +206,6 @@ function checkBps(value: number): number {
   return value;
 }
 
-function bytes32(value: Uint8Array | readonly number[], what: string): number[] {
-  if (value.length !== 32) throw new RangeError(`${what} must be 32 bytes, got ${value.length}`);
-  return Array.from(value);
-}
-
-/** `RangeError` unless `uri` is a valid Pass base URI (≤ 96 bytes, ends with `/`, no control characters). */
-export function checkBaseUri(uri: string): void {
-  const len = new TextEncoder().encode(uri).length;
-  if (len > MAX_BASE_URI_LEN) throw new RangeError(`pass base URI is ${len} bytes, max ${MAX_BASE_URI_LEN}`);
-  if (!uri.endsWith('/')) throw new RangeError('pass base URI must end with "/"');
-  // eslint-disable-next-line no-control-regex
-  if (/[\u0000-\u001f\u007f]/.test(uri)) throw new RangeError('pass base URI contains control characters');
-}
-
 /** Instruction builders; every account is passed explicitly so no RPC call is needed. */
 function createInstructionBuilders(program: Program<Slana>, programId: PublicKey) {
   const config = () => pdas.config(programId);
@@ -284,34 +213,24 @@ function createInstructionBuilders(program: Program<Slana>, programId: PublicKey
   const arena = (id: number) => pdas.arena(id, programId);
   const vault = (arenaId: number) => pdas.vault(arena(arenaId), programId);
   const session = (arenaId: number, player: Address) => pdas.session(arena(arenaId), player, programId);
-  const season = (id: number) => pdas.season(id, programId);
-  const passLock = (asset: Address | null | undefined) => (asset ? pdas.passLock(asset, programId) : null);
   const systemProgram = SystemProgram.programId;
   const tokens = (t: TokenAccounts) => ({ tokenMint: toPublicKey(t.tokenMint), tokenProgram: toPublicKey(t.tokenProgram) });
   const tokenAccount = (explicit: Address | undefined, owner: Address, t: TokenAccounts) =>
     explicit ? toPublicKey(explicit) : ata(owner, t.tokenMint, t.tokenProgram);
 
   return {
-    /** `admin` must be the program's upgrade authority. */
+    /** Creates the config without a game token. `admin` must be the program's upgrade authority. */
     initialize(admin: Address, p: InitializeParams): Promise<TransactionInstruction> {
-      const [treasuryBps, seasonBps, burnBps] = p.split;
       return program.methods
         .initialize({
-          serverAuthority: toPublicKey(p.serverAuthority),
           feeBps: p.feeBps,
-          passFeeBps: p.passFeeBps,
-          treasuryBps,
-          seasonBps,
-          burnBps,
           settleFeeLamports: toBN(p.settleFeeLamports),
+          serverAuthority: toPublicKey(p.serverAuthority),
+          feeWallet: toPublicKey(p.feeWallet),
         })
         .accountsPartial({
           admin: toPublicKey(admin),
           config: config(),
-          season: season(FIRST_SEASON),
-          ...tokens(p),
-          treasuryVault: pdas.treasuryVault(programId),
-          seasonVault: pdas.seasonVault(programId),
           program: programId,
           programData: pdas.programData(programId),
           systemProgram,
@@ -319,92 +238,43 @@ function createInstructionBuilders(program: Program<Slana>, programId: PublicKey
         .instruction();
     },
 
+    /**
+     * Admin only, once: stores the game mint, its token program and decimals
+     * (`TokenAlreadySet` afterwards). The program refuses a freeze authority and denied
+     * Token-2022 extensions. Pair it with `createFeeWalletAtaIx` so the fee wallet can be paid.
+     */
+    setTokenMint(admin: Address, p: SetTokenMintParams): Promise<TransactionInstruction> {
+      return program.methods
+        .setTokenMint()
+        .accountsPartial({ admin: toPublicKey(admin), config: config(), tokenMint: toPublicKey(p.tokenMint), tokenProgram: toPublicKey(p.tokenProgram) })
+        .instruction();
+    },
+
     updateConfig(admin: Address, p: UpdateConfigParams): Promise<TransactionInstruction> {
-      if (p.passBaseUri !== undefined) checkBaseUri(p.passBaseUri);
       return program.methods
         .updateConfig({
           admin: opt(p.admin, toPublicKey),
           serverAuthority: opt(p.serverAuthority, toPublicKey),
+          feeWallet: opt(p.feeWallet, toPublicKey),
           feeBps: p.feeBps ?? null,
-          passFeeBps: p.passFeeBps ?? null,
-          split: opt(p.split, (s) => [s[0], s[1], s[2]]),
           settleFeeLamports: opt(p.settleFeeLamports, toBN),
           paused: p.paused ?? null,
-          passBaseUri: p.passBaseUri ?? null,
-          passSupply: p.passSupply ?? null,
-          passPerWallet: p.passPerWallet ?? null,
-          passMinTokens: opt(p.passMinTokens, toBN),
-          passMintOpen: p.passMintOpen ?? null,
-          passMintStartTs: opt(p.passMintStartTs, toI64),
         })
         .accountsPartial({ admin: toPublicKey(admin), config: config() })
         .instruction();
     },
 
-    /** `collection` must be a Core collection whose update authority is `pdas.passAuthority()`. */
-    setPassCollection(admin: Address, collection: Address): Promise<TransactionInstruction> {
-      return program.methods
-        .setPassCollection()
-        .accountsPartial({ admin: toPublicKey(admin), config: config(), collection: toPublicKey(collection), passAuthority: pdas.passAuthority(programId) })
-        .instruction();
-    },
-
-    /** Commits `sha256(seed)` (allowed until the first mint). */
-    setPassSeedHash(admin: Address, hash: Uint8Array | readonly number[]): Promise<TransactionInstruction> {
-      const h = bytes32(hash, 'seed hash');
-      return program.methods.setPassSeedHash(h).accountsPartial({ admin: toPublicKey(admin), config: config() }).instruction();
-    },
-
-    /** Ends the Pass mint for good and sets the entropy target slot (needs ≥ 1 minted Pass). */
-    closePassMint(admin: Address): Promise<TransactionInstruction> {
-      return program.methods.closePassMint().accountsPartial({ admin: toPublicKey(admin), config: config() }).instruction();
-    },
-
-    /**
-     * Permissionless (any signer, e.g. the game server): stores the trait entropy once
-     * `passEntropyTargetSlot` has passed, or moves the target if it left the SlotHashes window.
-     */
-    capturePassEntropy(signer: Address): Promise<TransactionInstruction> {
-      return program.methods
-        .capturePassEntropy()
-        .accountsPartial({ signer: toPublicKey(signer), config: config(), slotHashes: SYSVAR_SLOT_HASHES_PUBKEY })
-        .instruction();
-    },
-
-    /** Reveals the seed (after the mint ended and the entropy was captured); stores the final seed. */
-    revealPass(admin: Address, seed: Uint8Array | readonly number[]): Promise<TransactionInstruction> {
-      const s = bytes32(seed, 'seed');
-      return program.methods.revealPass(s).accountsPartial({ admin: toPublicKey(admin), config: config() }).instruction();
-    },
-
-    /** Free Pass mint; the `asset` keypair must sign the transaction as well as the minter. */
-    mintPass(minter: Address, p: MintPassParams): Promise<TransactionInstruction> {
-      return program.methods
-        .mintPass()
-        .accountsPartial({
-          minter: toPublicKey(minter),
-          asset: toPublicKey(p.asset),
-          config: config(),
-          collection: toPublicKey(p.collection),
-          passAuthority: pdas.passAuthority(programId),
-          mintCounter: pdas.passMinted(minter, programId),
-          minterToken: p.minterToken ? toPublicKey(p.minterToken) : null,
-          mplCoreProgram: MPL_CORE_ID,
-          systemProgram,
-        })
-        .instruction();
-    },
-
+    /** Fails with `TokenNotSet` until `setTokenMint` ran. */
     createArena(admin: Address, p: CreateArenaParams): Promise<TransactionInstruction> {
       return program.methods
-        .createArena(p.id, toBN(p.entryFee), p.maxSessions, p.requiresPass)
+        .createArena(p.id, toBN(p.entryFee), p.maxSessions)
         .accountsPartial({ admin: toPublicKey(admin), config: config(), arena: arena(p.id), vault: vault(p.id), ...tokens(p), systemProgram })
         .instruction();
     },
 
     updateArena(admin: Address, id: number, changes: UpdateArenaParams): Promise<TransactionInstruction> {
       return program.methods
-        .updateArena(changes.enabled ?? null, changes.maxSessions ?? null, opt(changes.entryFee, toBN), changes.requiresPass ?? null)
+        .updateArena(changes.enabled ?? null, changes.maxSessions ?? null, opt(changes.entryFee, toBN))
         .accountsPartial({ admin: toPublicKey(admin), config: config(), arena: arena(id) })
         .instruction();
     },
@@ -423,7 +293,7 @@ function createInstructionBuilders(program: Program<Slana>, programId: PublicKey
         .instruction();
     },
 
-    /** Pays `entryFee` tokens into the arena vault (and the settle deposit in lamports). */
+    /** Pays `entryFee` tokens into the arena vault (and the settle deposit in lamports). Fails with `TokenNotSet` until the mint is set. */
     joinArena(player: Address, p: JoinArenaParams): Promise<TransactionInstruction> {
       return program.methods
         .joinArena(checkBps(p.maxFeeBps), toBN(p.maxEntryFee), toBN(p.maxSettleFee))
@@ -441,28 +311,17 @@ function createInstructionBuilders(program: Program<Slana>, programId: PublicKey
         .instruction();
     },
 
-    /** Like `joinArena`, backed by a Slana Pass (lower fee, season points); locks `passLock(asset)`. */
-    joinArenaWithPass(player: Address, p: JoinArenaWithPassParams): Promise<TransactionInstruction> {
-      return program.methods
-        .joinArenaWithPass(checkBps(p.maxFeeBps), toBN(p.maxEntryFee), toBN(p.maxSettleFee))
-        .accountsPartial({
-          player: toPublicKey(player),
-          config: config(),
-          profile: profile(player),
-          arena: arena(p.arenaId),
-          vault: vault(p.arenaId),
-          session: session(p.arenaId, player),
-          playerToken: tokenAccount(p.playerToken, player, p),
-          ...tokens(p),
-          passAsset: toPublicKey(p.passAsset),
-          passLock: pdas.passLock(p.passAsset, programId),
-          systemProgram,
-        })
-        .instruction();
-    },
-
+    /**
+     * Server-signed settlement: the fee on profit (`splitPayout(payout, session.entryFee,
+     * session.feeBps).fee`) goes to `feeWalletToken`, the rest to `playerToken`.
+     *
+     * `feeWalletToken` and `playerToken` must be different accounts: when the player is the
+     * fee wallet itself and both resolve to its ATA, Anchor refuses the duplicate writable
+     * account (error 2040, `ConstraintDuplicateMutableAccount`). The caller then passes another
+     * token account of the fee wallet as `feeWalletToken`, or settles with `playerToken: null`
+     * (finalize; the player collects `owed` with `refundSession`).
+     */
     settleSession(server: Address, p: SettleSessionParams): Promise<TransactionInstruction> {
-      if (p.hasPass && !p.passAsset) throw new Error('settleSession: hasPass needs the session passAsset');
       return program.methods
         .settleSession({ sessionId: toBN(p.sessionId), payout: toBN(p.payout), score: p.score, kills: p.kills, xp: p.xp })
         .accountsPartial({
@@ -474,11 +333,8 @@ function createInstructionBuilders(program: Program<Slana>, programId: PublicKey
           player: toPublicKey(p.player),
           playerToken: p.playerToken === null ? null : tokenAccount(p.playerToken, p.player, p),
           profile: profile(p.player),
-          season: season(p.currentSeason),
-          treasuryVault: pdas.treasuryVault(programId),
-          seasonVault: pdas.seasonVault(programId),
+          feeWalletToken: toPublicKey(p.feeWalletToken),
           ...tokens(p),
-          passLock: p.hasPass ? passLock(p.passAsset) : null,
         })
         .instruction();
     },
@@ -498,12 +354,11 @@ function createInstructionBuilders(program: Program<Slana>, programId: PublicKey
           session: session(p.arenaId, player),
           playerToken: tokenAccount(p.playerToken, player, p),
           ...tokens(p),
-          passLock: p.finalized ? null : passLock(p.passAsset),
         })
         .instruction();
     },
 
-    /** Moves a disabled, idle arena's vault into the current season's pool. */
+    /** Admin: moves a disabled, idle arena's whole vault to the fee wallet's token account. */
     sweepArena(admin: Address, p: SweepArenaParams): Promise<TransactionInstruction> {
       return program.methods
         .sweepArena()
@@ -512,16 +367,15 @@ function createInstructionBuilders(program: Program<Slana>, programId: PublicKey
           config: config(),
           arena: arena(p.id),
           vault: vault(p.id),
-          season: season(p.currentSeason),
-          seasonVault: pdas.seasonVault(programId),
+          feeWalletToken: toPublicKey(p.feeWalletToken),
           ...tokens(p),
         })
         .instruction();
     },
 
     /**
-     * Server-signed: moves `amount` of an arena vault's loot into the current season's pool,
-     * while the arena runs (enabled, open sessions allowed).
+     * Server-signed: burns `amount` of an arena vault's loot (floor loot at the bell), while
+     * the arena runs. The mint is writable (the burn lowers the supply).
      */
     sweepLoot(server: Address, p: SweepLootParams): Promise<TransactionInstruction> {
       return program.methods
@@ -531,63 +385,7 @@ function createInstructionBuilders(program: Program<Slana>, programId: PublicKey
           config: config(),
           arena: arena(p.id),
           vault: vault(p.id),
-          season: season(p.currentSeason),
-          seasonVault: pdas.seasonVault(programId),
           ...tokens(p),
-        })
-        .instruction();
-    },
-
-    withdrawTreasury(admin: Address, p: WithdrawTreasuryParams): Promise<TransactionInstruction> {
-      return program.methods
-        .withdrawTreasury(toBN(p.amount))
-        .accountsPartial({
-          admin: toPublicKey(admin),
-          config: config(),
-          treasuryVault: pdas.treasuryVault(programId),
-          destination: toPublicKey(p.destination),
-          ...tokens(p),
-        })
-        .instruction();
-    },
-
-    /** Ends `currentSeason` and creates season `currentSeason + 1`. */
-    endSeason(admin: Address, currentSeason: number): Promise<TransactionInstruction> {
-      return program.methods
-        .endSeason()
-        .accountsPartial({
-          admin: toPublicKey(admin),
-          config: config(),
-          season: season(currentSeason),
-          nextSeason: season(currentSeason + 1),
-          systemProgram,
-        })
-        .instruction();
-    },
-
-    claimSeasonReward(claimer: Address, p: ClaimSeasonRewardParams): Promise<TransactionInstruction> {
-      return program.methods
-        .claimSeasonReward(p.seasonId)
-        .accountsPartial({
-          claimer: toPublicKey(claimer),
-          config: config(),
-          season: season(p.seasonId),
-          seasonVault: pdas.seasonVault(programId),
-          claimerToken: tokenAccount(p.claimerToken, claimer, p),
-          ...tokens(p),
-        })
-        .instruction();
-    },
-
-    /** Moves the unclaimed prizes of finalized `seasonId` into `currentSeason`. */
-    rolloverSeason(admin: Address, seasonId: number, currentSeason: number): Promise<TransactionInstruction> {
-      return program.methods
-        .rolloverSeason(seasonId)
-        .accountsPartial({
-          admin: toPublicKey(admin),
-          config: config(),
-          oldSeason: season(seasonId),
-          currentSeason: season(currentSeason),
         })
         .instruction();
     },
@@ -664,6 +462,7 @@ export class SlanaClient {
     return !!info && info.executable;
   }
 
+  /** The config, or null before `initialize`. `tokenMint` is null until `set_token_mint`. */
   async fetchConfig(): Promise<ConfigView | null> {
     const raw = this.decode<RawConfig>(ACCOUNT_NAMES.config, await this.connection.getAccountInfo(pdas.config(this.programId), COMMITMENT));
     return raw ? toConfigView(raw) : null;
@@ -688,6 +487,11 @@ export class SlanaClient {
   /** Token balance of a token account (0 when missing or not a token account). */
   private static amountOf(info: AccountInfo<Buffer> | null): bigint {
     return info && info.data.length >= 72 ? tokenAccountAmount(info.data) : 0n;
+  }
+
+  /** Token balance of any token account (0 when missing). */
+  async fetchTokenAccountAmount(address: Address): Promise<bigint> {
+    return SlanaClient.amountOf(await this.connection.getAccountInfo(toPublicKey(address), COMMITMENT));
   }
 
   async fetchArena(id: number): Promise<ArenaView | null> {
@@ -731,31 +535,6 @@ export class SlanaClient {
       if (raw) views.push(toSessionView(pubkey, raw));
     }
     return views.sort((a, b) => a.openedAt - b.openedAt || a.id - b.id);
-  }
-
-  /** The lock of a Pass asset while it backs an open session (null = free). */
-  async fetchPassLock(asset: Address): Promise<{ address: string; session: string; player: string } | null> {
-    const address = pdas.passLock(asset, this.programId);
-    const raw = this.decode<RawPassLock>(ACCOUNT_NAMES.passLock, await this.connection.getAccountInfo(address, COMMITMENT));
-    return raw ? { address: address.toBase58(), session: raw.session.toBase58(), player: raw.player.toBase58() } : null;
-  }
-
-  /** Passes minted by `wallet` so far (its `MintCounter`, 0 when none). */
-  async fetchMintedCount(wallet: Address): Promise<number> {
-    const raw = this.decode<RawMintCounter>(ACCOUNT_NAMES.mintCounter, await this.connection.getAccountInfo(pdas.passMinted(wallet, this.programId), COMMITMENT));
-    return raw ? raw.count : 0;
-  }
-
-  /** Token balance of the treasury and season vaults (base units). */
-  async fetchVaultBalances(): Promise<{ treasury: bigint; season: bigint }> {
-    const [treasury, season] = await this.getMultiple([pdas.treasuryVault(this.programId), pdas.seasonVault(this.programId)]);
-    return { treasury: SlanaClient.amountOf(treasury), season: SlanaClient.amountOf(season) };
-  }
-
-  async fetchSeason(id: number): Promise<SeasonView | null> {
-    const address = pdas.season(id, this.programId);
-    const raw = this.decode<RawSeason>(ACCOUNT_NAMES.season, await this.connection.getAccountInfo(address, COMMITMENT));
-    return raw ? toSeasonView(address, raw) : null;
   }
 
   /* ------------------------------------------------------------------ */

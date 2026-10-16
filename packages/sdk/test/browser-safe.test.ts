@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 /**
  * The SDK is bundled by Vite for the browser, so nothing reachable from src/index.ts may
- * import Node built-ins or rely on Node globals (src/admin.ts is the Node-only CLI).
+ * import Node built-ins or rely on Node globals (src/admin.ts and src/admin-lib.ts are the Node-only CLI).
  */
 const src = resolve(dirname(fileURLToPath(import.meta.url)), '../src');
 const NODE_BUILTINS = /^(node:|fs$|path$|os$|crypto$|child_process$|url$|util$|stream$|http$|https$|net$|tls$|zlib$|worker_threads$)/;
@@ -26,9 +26,9 @@ describe('browser safety', () => {
   const files = [...reachable(join(src, 'index.ts'))];
 
   it('index.ts does not reach the admin CLI', () => {
-    expect(files.some((f) => f.endsWith('admin.ts'))).toBe(false);
+    expect(files.some((f) => /\/admin[^/]*\.ts$/.test(f))).toBe(false);
     expect(files.length).toBeGreaterThan(5);
-    for (const name of ['token.ts', 'core.ts', 'passes.ts']) expect(files.some((f) => f.endsWith(name)), name).toBe(true);
+    for (const name of ['token.ts', 'client.ts', 'accounts.ts']) expect(files.some((f) => f.endsWith(name)), name).toBe(true);
   });
 
   it('no Node built-ins or Node globals in browser modules', () => {
