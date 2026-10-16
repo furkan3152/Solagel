@@ -1,6 +1,6 @@
 import { CARD_PAPER, INK, RISO } from './palette';
 import { heartPath, starPath } from './symbols';
-import type { EyesKind, MouthKind } from './traits';
+import type { EyesKind, MouthKind } from './looks';
 
 const TAU = Math.PI * 2;
 

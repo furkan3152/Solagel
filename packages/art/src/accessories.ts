@@ -1,6 +1,6 @@
 import { CARD_PAPER, INK, RISO } from './palette';
 import { starPath } from './symbols';
-import type { AccessoryKind } from './traits';
+import type { AccessoryKind } from './looks';
 
 const TAU = Math.PI * 2;
 
@@ -349,14 +349,5 @@ export function drawAccessoryFront(ctx: CanvasRenderingContext2D, kind: Accessor
     case 'none':
       break;
   }
-  ctx.restore();
-}
-
-/** Four-point twinkle (gold specials, sparkles). */
-export function twinkle(ctx: CanvasRenderingContext2D, x: number, y: number, s: number, fill: string, lineW: number): void {
-  ctx.save();
-  ctx.translate(x, y);
-  starPath(ctx, s, s * 0.32, 4, 0);
-  inked(ctx, fill, lineW);
   ctx.restore();
 }
