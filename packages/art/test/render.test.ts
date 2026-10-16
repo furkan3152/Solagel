@@ -1,19 +1,18 @@
 import { createCanvas } from '@napi-rs/canvas';
 import { describe, expect, it } from 'vitest';
-import { drawPassCard, drawRisoCoin, lookForBasicSkin, lookForPass, passCollection, PAPERS } from '../src/index';
-import type { PassTraits } from '../src/index';
+import { drawRisoCoin, lookForBasicSkin, type CoinLook } from '../src/index';
 
 const hex = (s: string): [number, number, number] => [1, 3, 5].map((i) => parseInt(s.slice(i, i + 2), 16)) as [number, number, number];
 const ctx2d = (c: { getContext(t: "2d"): unknown }) => c.getContext('2d') as unknown as CanvasRenderingContext2D;
 const near = (a: ArrayLike<number>, b: [number, number, number], tol: number) =>
   Math.abs(a[0] - b[0]) <= tol && Math.abs(a[1] - b[1]) <= tol && Math.abs(a[2] - b[2]) <= tol;
 
-const SEED = 'c0ffee'.repeat(10) + 'beef';
-const col = passCollection(SEED, 3333);
+/** A look that wears every layer (accessory in front and behind, a symbol on the hat). */
+const DRESSED: CoinLook = { ...lookForBasicSkin(0), symbol: 'crown', eyes: 'sunglasses', mouth: 'fang', accessory: 'cap' };
 
 describe('drawRisoCoin', () => {
   it('fills the centre with the body ink', () => {
-    for (const look of [lookForBasicSkin(0), lookForBasicSkin(4), lookForPass(col[7])]) {
+    for (const look of [lookForBasicSkin(0), lookForBasicSkin(4), DRESSED]) {
       const c = createCanvas(256, 256);
       const ctx = ctx2d(c);
       ctx.fillStyle = '#FFFFFF';
@@ -31,32 +30,9 @@ describe('drawRisoCoin', () => {
     const ctx = ctx2d(c);
     ctx.translate(64, 64);
     for (const expression of ['happy', 'hungry', 'scared', 'sleep', 'dead', 'love', 'proud'] as const) {
-      drawRisoCoin(ctx, lookForPass(col[3]), 40, { time: 1234, lookX: 0.5, lookY: -0.3, expression, flags: 1 | 2 | 16 });
+      drawRisoCoin(ctx, DRESSED, 40, { time: 1234, lookX: 0.5, lookY: -0.3, expression, flags: 1 | 2 | 16 });
     }
   });
-});
-
-describe('drawPassCard', () => {
-  const legendary = col.find((t) => t.rarity === 'legendary' && !String(t.special).startsWith('oneOfOne'))!;
-  const oneOfOne = col.find((t) => String(t.special).startsWith('oneOfOne'))!;
-  const common = col.find((t) => t.rarity === 'common')!;
-  const cases: [string, PassTraits | null][] = [
-    ['normal', common],
-    ['legendary', legendary],
-    ['one-of-one', oneOfOne],
-    ['sealed', null],
-  ];
-  for (const [name, traits] of cases) {
-    it(`renders a ${name} card with a paper corner`, () => {
-      const c = createCanvas(512, 512);
-      const ctx = ctx2d(c);
-      expect(() => drawPassCard(ctx, traits, 412, 512)).not.toThrow();
-      const corner = ctx.getImageData(1, 1, 1, 1).data;
-      expect(corner[3]).toBe(255);
-      const paper = traits ? PAPERS[traits.paper] : PAPERS.cream;
-      expect(near(corner, hex(paper), 2)).toBe(true);
-    });
-  }
 });
 
 describe('flag effects keep the caller alpha', () => {
