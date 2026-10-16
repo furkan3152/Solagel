@@ -5,9 +5,8 @@ use crate::{
     constants::*,
     error::SlanaError,
     events::SessionSettled,
-    instructions::shared,
     logic,
-    state::{Arena, Config, PassLock, PlayerProfile, Season, Session},
+    state::{Arena, Config, PlayerProfile, Session},
     token,
 };
 
@@ -59,8 +58,7 @@ pub struct SettleSession<'info> {
         has_one = arena @ SlanaError::Unauthorized
     )]
     pub session: Box<Account<'info, Session>>,
-    /// CHECK: the session's player (enforced by `has_one`); receives the session rent (and the
-    /// Pass lock rent).
+    /// CHECK: the session's player (enforced by `has_one`); receives the session rent.
     #[account(mut)]
     pub player: UncheckedAccount<'info>,
     /// Any token account of the game mint owned by the player (the player creates and pays
@@ -81,59 +79,38 @@ pub struct SettleSession<'info> {
         bump = profile.bump
     )]
     pub profile: Box<Account<'info, PlayerProfile>>,
+    /// Receives the fee: any token account of the game mint owned by `config.fee_wallet`
+    /// (not necessarily its associated token account). Required even when the fee is 0.
     #[account(
         mut,
-        seeds = [SEASON_SEED, config.current_season.to_le_bytes().as_ref()],
-        bump = season.bump
+        token::mint = token_mint,
+        token::authority = config.fee_wallet,
+        token::token_program = token_program
     )]
-    pub season: Box<Account<'info, Season>>,
-    #[account(
-        mut,
-        seeds = [TREASURY_VAULT_SEED],
-        bump = config.treasury_vault_bump
-    )]
-    pub treasury_vault: Box<InterfaceAccount<'info, TokenAccount>>,
-    #[account(
-        mut,
-        seeds = [SEASON_VAULT_SEED],
-        bump = config.season_vault_bump
-    )]
-    pub season_vault: Box<InterfaceAccount<'info, TokenAccount>>,
-    /// Writable: the burn share lowers its supply.
-    #[account(mut, address = config.token_mint)]
+    pub fee_wallet_token: Box<InterfaceAccount<'info, TokenAccount>>,
+    #[account(address = config.token_mint)]
     pub token_mint: Box<InterfaceAccount<'info, Mint>>,
     #[account(address = config.token_program)]
     pub token_program: Interface<'info, TokenInterface>,
-    /// Required iff the session has a Pass: its lock, closed back to the player.
-    #[account(mut, close = player)]
-    pub pass_lock: Option<Box<Account<'info, PassLock>>>,
 }
 
 pub fn handle_settle_session(ctx: Context<SettleSession>, args: SettleArgs) -> Result<()> {
     let a = &mut *ctx.accounts;
     require_eq!(a.session.id, args.session_id, SlanaError::SessionMismatch);
     require!(!a.session.finalized, SlanaError::SessionFinalized);
-    shared::check_pass_lock(&a.session, a.pass_lock.as_deref())?;
     require_gte!(a.vault.amount, args.payout, SlanaError::InsufficientPot);
     let now = Clock::get()?.unix_timestamp;
 
-    let has_pass = a.session.has_pass;
     // The fee fixed at join (a later `update_config` never changes an open session's fee).
-    let split = logic::split_payout(
-        args.payout,
-        a.session.entry_fee,
-        a.session.fee_bps,
-        a.config.treasury_bps,
-        a.config.burn_bps,
-    )?;
+    let split = logic::split_payout(args.payout, a.session.entry_fee, a.session.fee_bps)?;
 
     // The player share is paid now when there is a token account to pay into, or nothing to
     // pay. Otherwise it stays in the vault as `owed` (ruling R24).
     let pay_now = a.player_token.is_some() || split.player == 0;
     let owed = if pay_now { 0 } else { split.player };
 
-    // Tokens out of the arena vault, signed by the arena PDA. `player_token` cannot alias a
-    // vault: its authority is the player, the vaults' authorities are program PDAs.
+    // Tokens out of the arena vault, signed by the arena PDA. Neither receiving account can
+    // alias the vault: Anchor's duplicate-mutable check refuses the same key twice.
     let arena_id_bytes = a.arena.id.to_le_bytes();
     let arena_seeds: &[&[u8]] = &[ARENA_SEED, &arena_id_bytes, &[a.arena.bump]];
     let program = a.token_program.to_account_info();
@@ -141,10 +118,7 @@ pub fn handle_settle_session(ctx: Context<SettleSession>, args: SettleArgs) -> R
     let mint = a.token_mint.to_account_info();
     let arena_info = a.arena.to_account_info();
     let decimals = a.config.token_decimals;
-    let mut transfers = vec![
-        (a.treasury_vault.to_account_info(), split.treasury),
-        (a.season_vault.to_account_info(), split.season),
-    ];
+    let mut transfers = vec![(a.fee_wallet_token.to_account_info(), split.fee)];
     if let Some(player_token) = a.player_token.as_ref() {
         transfers.push((player_token.to_account_info(), split.player));
     }
@@ -160,20 +134,6 @@ pub fn handle_settle_session(ctx: Context<SettleSession>, args: SettleArgs) -> R
             decimals,
         )?;
     }
-    token::burn_from_pda(
-        &program,
-        &vault,
-        &mint,
-        &arena_info,
-        &[arena_seeds],
-        split.burn,
-    )?;
-
-    a.season.pool = a
-        .season
-        .pool
-        .checked_add(split.season)
-        .ok_or(SlanaError::MathOverflow)?;
 
     // The settle deposit pays the server either way.
     let settle_fee = a.session.settle_fee;
@@ -204,23 +164,13 @@ pub fn handle_settle_session(ctx: Context<SettleSession>, args: SettleArgs) -> R
         .total_paid_out
         .checked_add(left_vault)
         .ok_or(SlanaError::MathOverflow)?;
-    let current_season = config.current_season;
 
     let profile = &mut a.profile;
     profile.total_won = profile
         .total_won
         .checked_add(split.player)
         .ok_or(SlanaError::MathOverflow)?;
-    let result = shared::record_result(
-        profile,
-        &mut a.season,
-        current_season,
-        args.score,
-        args.kills,
-        args.xp,
-        now,
-        has_pass,
-    );
+    let result = logic::apply_game(profile, args.score, args.kills, args.xp, now);
 
     emit!(SessionSettled {
         player: a.session.player,
@@ -228,15 +178,11 @@ pub fn handle_settle_session(ctx: Context<SettleSession>, args: SettleArgs) -> R
         session_id: a.session.id,
         payout: args.payout,
         fee: split.fee,
-        burned: split.burn,
-        has_pass,
         score: result.score,
         kills: result.kills,
         owed,
     });
 
-    // The Pass lock (if any) is closed back to the player by Anchor in both cases, so the
-    // Pass is free again as soon as the game result is final.
     if pay_now {
         // Paid: the session's rent goes back to the player.
         a.session.close(a.player.to_account_info())?;

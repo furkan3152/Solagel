@@ -14,10 +14,12 @@ use crate::{
 pub struct CreateArena<'info> {
     #[account(mut)]
     pub admin: Signer<'info>,
+    /// Arenas need the game token: `TokenNotSet` until `set_token_mint` ran.
     #[account(
         seeds = [CONFIG_SEED],
         bump = config.bump,
-        has_one = admin @ SlanaError::Unauthorized
+        has_one = admin @ SlanaError::Unauthorized,
+        constraint = config.token_mint != Pubkey::default() @ SlanaError::TokenNotSet
     )]
     pub config: Box<Account<'info, Config>>,
     #[account(
@@ -51,7 +53,6 @@ pub fn handle_create_arena(
     id: u16,
     entry_fee: u64,
     max_sessions: u16,
-    requires_pass: bool,
 ) -> Result<()> {
     shared::check_entry_fee(entry_fee)?;
     shared::check_max_sessions(max_sessions)?;
@@ -60,7 +61,6 @@ pub fn handle_create_arena(
     let arena = &mut ctx.accounts.arena;
     arena.id = id;
     arena.entry_fee = entry_fee;
-    arena.requires_pass = requires_pass;
     arena.max_sessions = max_sessions;
     arena.open_sessions = 0;
     arena.enabled = true;
@@ -74,7 +74,6 @@ pub fn handle_create_arena(
         arena_id: id,
         entry_fee,
         max_sessions,
-        requires_pass,
     });
     Ok(())
 }

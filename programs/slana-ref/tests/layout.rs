@@ -8,10 +8,8 @@
 //! * Anchor's account-type and constraint errors (wrong owner, discriminator, length, PDA,
 //!   missing accounts, bad arguments, duplicate mutable accounts, pre-funded PDAs).
 //!
-//! `PlayerProfile`, `Session` (151 bytes), `PassLock` and leaderboard rows written by the
-//! player and arena instructions are checked in `stake_flow_writes_reference_layouts_and_events`;
-//! `MintCounter`, the Pass events and the reveal fields of `Config` are checked in
-//! `pass_flow_writes_reference_layouts_and_events`.
+//! `PlayerProfile` and `Session` (118 bytes) written by the player and arena instructions are
+//! checked in `stake_flow_writes_reference_layouts_and_events`.
 
 // `TxResult` is LiteSVM's own result type; its error variant is large by design.
 #![allow(clippy::result_large_err)]
@@ -29,8 +27,8 @@ use {
     slana::{
         constants::*,
         error::SlanaError,
-        events::{ArenaCreated, PassCollectionSet, TreasuryWithdrawn},
-        state::{Arena, Config, Season},
+        events::{ArenaCreated, TokenMintSet},
+        state::{Arena, Config},
         UpdateConfigArgs,
     },
     solana_signer::Signer,
@@ -63,43 +61,15 @@ fn assert_instruction_error(res: TxResult, expected: InstructionError) {
 }
 
 /// A `Config` with every field distinct from its neighbours, keeping the env's admin, mint,
-/// token program and bumps so that admin instructions still pass their checks.
+/// token program and bump so that admin instructions still pass their checks.
 fn distinctive_config(env: &TestEnv) -> Config {
     let mut c = env.config();
-    let mut uri = [0u8; BASE_URI_BYTES];
-    uri.iter_mut()
-        .enumerate()
-        .for_each(|(i, b)| *b = (i as u8) | 0x40);
     c.server_authority = Pubkey::new_from_array([0x22; 32]);
+    c.fee_wallet = Pubkey::new_from_array([0x33; 32]);
     c.token_decimals = DECIMALS;
     c.fee_bps = 900;
-    c.pass_fee_bps = 800;
-    c.treasury_bps = 7_001;
-    c.season_bps = 2_002;
-    c.burn_bps = 997;
     c.settle_fee_lamports = 123_456;
-    c.current_season = 0x0102_0304;
     c.paused = true;
-    c.pass_collection = Pubkey::default();
-    c.pass_base_uri = uri;
-    c.pass_base_uri_len = 0x5a;
-    c.pass_supply = 0x0a0b;
-    c.pass_minted = 0;
-    c.pass_per_wallet = 7;
-    c.pass_min_tokens = 0x1112_1314_1516_1718;
-    c.pass_mint_open = false;
-    c.pass_mint_start_ts = -0x2122_2324_2526_2728;
-    c.pass_mint_opened = false;
-    c.pass_mint_ended = false;
-    c.pass_seed_hash = [0x31; 32];
-    c.pass_seed = [0x32; 32];
-    c.pass_revealed = false;
-    c.pass_seed_revealed = false;
-    c.pass_entropy_target_slot = 0x4142_4344_4546_4748;
-    c.pass_entropy_captured = true;
-    c.pass_entropy = [0x33; 32];
-    c.pass_entropy_slot = 0x5152_5354_5556_5758;
-    c.pass_final_seed = [0x34; 32];
     c.total_players = 0x6162_6364_6566_6768;
     c.total_games = 0x7172_7374_7576_7778;
     c.total_sessions = 0x0811_2233_4455_6677;
@@ -113,47 +83,44 @@ fn distinctive_config(env: &TestEnv) -> Config {
 // ---------------------------------------------------------------------------------------
 
 #[test]
-fn initialize_writes_reference_layouts() {
+fn initialize_and_set_token_mint_write_reference_layouts() {
     for kind in [MintKind::Spl, MintKind::Token2022] {
-        let env = TestEnv::initialized_with(kind);
-
+        let mut env = TestEnv::initialized_without_token();
         let data = raw(&env, &config_pda());
         assert_eq!(data.len(), 8 + Config::INIT_SPACE);
         let config = env.config();
         assert_eq!(serialize(&config), data);
         let (_, config_bump) = Pubkey::find_program_address(&[CONFIG_SEED], &slana::ID);
-        let (_, treasury_bump) = Pubkey::find_program_address(&[TREASURY_VAULT_SEED], &slana::ID);
-        let (_, season_vault_bump) = Pubkey::find_program_address(&[SEASON_VAULT_SEED], &slana::ID);
+        assert_eq!(config.bump, config_bump);
         assert_eq!(
             (
-                config.bump,
-                config.treasury_vault_bump,
-                config.season_vault_bump
+                config.token_mint,
+                config.token_program,
+                config.token_decimals
             ),
-            (config_bump, treasury_bump, season_vault_bump)
+            (Pubkey::default(), Pubkey::default(), 0)
         );
-        assert_eq!(&config.pass_base_uri, &[0; BASE_URI_BYTES]);
-        assert_eq!(config.pass_seed, [0; 32]);
-        assert_eq!(config.pass_entropy_slot, 0);
-        assert_eq!(config.pass_mint_start_ts, 0);
-
-        let data = raw(&env, &season_pda(FIRST_SEASON));
-        assert_eq!(data.len(), 8 + Season::INIT_SPACE);
-        let season = env.season(FIRST_SEASON);
-        assert_eq!(serialize(&season), data);
-        let (_, season_bump) =
-            Pubkey::find_program_address(&[SEASON_SEED, &FIRST_SEASON.to_le_bytes()], &slana::ID);
-        assert_eq!(season.bump, season_bump);
-        assert_eq!((season.ended_at, season.pool, season.count), (0, 0, 0));
-        assert!(season.entries.iter().all(|e| *e == Default::default()));
-
         // Rent-exempt at exactly the reference size.
         assert_eq!(env.balance(&config_pda()), env.rent(8 + Config::INIT_SPACE));
-        assert_eq!(
-            env.balance(&season_pda(FIRST_SEASON)),
-            env.rent(8 + Season::INIT_SPACE)
-        );
         assert_eq!(env.svm.get_account(&config_pda()).unwrap().owner, slana::ID);
+
+        // set_token_mint writes exactly mint, token program and decimals.
+        let mint = env.create_mint(kind, None);
+        let admin = env.admin.insecure_clone();
+        let mut expected = config;
+        let meta = assert_ok(env.set_token_mint_as(&admin, &mint, &kind.program()));
+        assert_event(
+            &meta,
+            &TokenMintSet {
+                mint,
+                token_program: kind.program(),
+                decimals: DECIMALS,
+            },
+        );
+        expected.token_mint = mint;
+        expected.token_program = kind.program();
+        expected.token_decimals = DECIMALS;
+        assert_eq!(raw(&env, &config_pda()), serialize(&expected));
     }
 }
 
@@ -168,7 +135,6 @@ fn create_arena_writes_the_reference_layout_and_event() {
             0x0102,
             ENTRY_FEE + 7,
             1_999,
-            true,
             &mint,
             &program,
         )],
@@ -180,7 +146,6 @@ fn create_arena_writes_the_reference_layout_and_event() {
             arena_id: 0x0102,
             entry_fee: ENTRY_FEE + 7,
             max_sessions: 1_999,
-            requires_pass: true,
         },
     );
 
@@ -192,7 +157,6 @@ fn create_arena_writes_the_reference_layout_and_event() {
     let expected = Arena {
         id: 0x0102,
         entry_fee: ENTRY_FEE + 7,
-        requires_pass: true,
         max_sessions: 1_999,
         open_sessions: 0,
         enabled: true,
@@ -232,43 +196,26 @@ fn update_config_touches_only_its_fields() {
     assert_eq!(raw(&env, &config_pda()), serialize(&expected));
 
     let new_server = Pubkey::new_from_array([0x99; 32]);
+    let new_fee_wallet = Pubkey::new_from_array([0x98; 32]);
     assert_ok(env.update_config(UpdateConfigArgs {
         server_authority: Some(new_server),
-        pass_fee_bps: Some(3),
-        split: Some([1, 2, 9_997]),
+        fee_wallet: Some(new_fee_wallet),
         settle_fee_lamports: Some(77),
         paused: Some(false),
-        pass_base_uri: Some("ipfs://x/".into()),
-        pass_supply: Some(9_999),
-        pass_per_wallet: Some(2),
-        pass_min_tokens: Some(5),
-        pass_mint_open: Some(true),
-        pass_mint_start_ts: Some(-9),
         ..Default::default()
     }));
     expected.server_authority = new_server;
-    expected.pass_fee_bps = 3;
-    expected.treasury_bps = 1;
-    expected.season_bps = 2;
-    expected.burn_bps = 9_997;
+    expected.fee_wallet = new_fee_wallet;
     expected.settle_fee_lamports = 77;
     expected.paused = false;
-    let mut uri = [0u8; BASE_URI_BYTES];
-    uri[..9].copy_from_slice(b"ipfs://x/");
-    expected.pass_base_uri = uri;
-    expected.pass_base_uri_len = 9;
-    expected.pass_supply = 9_999;
-    expected.pass_per_wallet = 2;
-    expected.pass_min_tokens = 5;
-    expected.pass_mint_open = true;
-    expected.pass_mint_opened = true;
-    expected.pass_mint_start_ts = -9;
     assert_eq!(raw(&env, &config_pda()), serialize(&expected));
 
-    // set_pass_seed_hash writes only the hash.
-    let admin = env.admin.insecure_clone();
-    assert_ok(env.set_seed_hash_as(&admin, [0x77; 32]));
-    expected.pass_seed_hash = [0x77; 32];
+    let new_admin = Pubkey::new_from_array([0x97; 32]);
+    assert_ok(env.update_config(UpdateConfigArgs {
+        admin: Some(new_admin),
+        ..Default::default()
+    }));
+    expected.admin = new_admin;
     assert_eq!(raw(&env, &config_pda()), serialize(&expected));
 }
 
@@ -283,82 +230,7 @@ fn programs_read_config_fields_at_reference_offsets() {
         f(&mut c);
         env.write_account(&config_pda(), &c);
     };
-    let uri = |s: &str| UpdateConfigArgs {
-        pass_base_uri: Some(s.into()),
-        ..Default::default()
-    };
 
-    write(&mut env, &|c| c.pass_minted = 1);
-    assert_error(env.update_config(uri("a/")), SlanaError::BadBaseUri);
-    assert_error(
-        env.set_seed_hash_as(&admin, [1; 32]),
-        SlanaError::SeedLocked,
-    );
-    write(&mut env, &|c| c.pass_mint_opened = true);
-    assert_error(
-        env.update_config(UpdateConfigArgs {
-            pass_supply: Some(5),
-            ..Default::default()
-        }),
-        SlanaError::SupplyLocked,
-    );
-    write(&mut env, &|c| c.pass_mint_ended = true);
-    assert_error(
-        env.update_config(UpdateConfigArgs {
-            pass_mint_open: Some(true),
-            ..Default::default()
-        }),
-        SlanaError::MintEnded,
-    );
-    write(&mut env, &|c| c.pass_revealed = true);
-    assert_error(
-        env.set_seed_hash_as(&admin, [1; 32]),
-        SlanaError::AlreadyRevealed,
-    );
-    write(&mut env, &|c| c.pass_seed_revealed = true);
-    assert_error(
-        env.update_config(UpdateConfigArgs {
-            pass_mint_open: Some(true),
-            ..Default::default()
-        }),
-        SlanaError::AlreadyRevealed,
-    );
-    write(&mut env, &|c| {
-        c.pass_mint_open = true;
-        c.pass_minted = 3;
-    });
-    assert_error(
-        env.update_config(UpdateConfigArgs {
-            pass_mint_open: Some(false),
-            ..Default::default()
-        }),
-        SlanaError::UseCloseMint,
-    );
-    write(&mut env, &|c| {
-        c.pass_collection = Pubkey::new_from_array([5; 32])
-    });
-    let collection = Pubkey::new_unique();
-    assert_error(
-        env.set_collection_as(&admin, &collection),
-        SlanaError::CollectionAlreadySet,
-    );
-    // `fee_bps` / `pass_fee_bps` are read back when only one of them changes.
-    write(&mut env, &|c| c.fee_bps = 10);
-    assert_error(
-        env.update_config(UpdateConfigArgs {
-            pass_fee_bps: Some(11),
-            ..Default::default()
-        }),
-        SlanaError::InvalidFee,
-    );
-    write(&mut env, &|c| c.pass_fee_bps = 12);
-    assert_error(
-        env.update_config(UpdateConfigArgs {
-            fee_bps: Some(11),
-            ..Default::default()
-        }),
-        SlanaError::InvalidFee,
-    );
     // The admin key and the config bump.
     write(&mut env, &|c| c.admin = Pubkey::new_from_array([6; 32]));
     assert_error(
@@ -370,65 +242,77 @@ fn programs_read_config_fields_at_reference_offsets() {
         env.update_config(UpdateConfigArgs::default()),
         AnchorErrorCode::ConstraintSeeds,
     );
-    // The stored mint / token program (create_arena's `address` constraints).
+    // The stored mint / token program (create_arena's `address` constraints) ...
     write(&mut env, &|c| {
         c.token_mint = Pubkey::new_from_array([7; 32])
     });
     assert_anchor_error(
-        env.create_arena(1, ENTRY_FEE, 300, false),
+        env.create_arena(1, ENTRY_FEE, 300),
         AnchorErrorCode::ConstraintAddress,
     );
     write(&mut env, &|c| {
         c.token_program = anchor_spl::token_2022::ID;
     });
     assert_anchor_error(
-        env.create_arena(1, ENTRY_FEE, 300, false),
+        env.create_arena(1, ENTRY_FEE, 300),
         AnchorErrorCode::ConstraintAddress,
     );
+    // ... the unset mint (TokenNotSet), and a set one (TokenAlreadySet).
+    write(&mut env, &|c| c.token_mint = Pubkey::default());
+    assert_error(env.create_arena(1, ENTRY_FEE, 300), SlanaError::TokenNotSet);
+    write(&mut env, &|_| {});
+    let (mint, program) = (env.mint, env.token_program);
+    assert_error(
+        env.set_token_mint_as(&admin, &mint, &program),
+        SlanaError::TokenAlreadySet,
+    );
+    // The server key (sweep_loot: the distinctive config names another server) and the
+    // pause flag (join).
+    write(&mut env, &|c| c.paused = false);
+    assert_ok(env.create_arena(1, ENTRY_FEE, 300));
+    let server = env.server.insecure_clone();
+    assert_error(env.sweep_loot_as(&server, 1, 0), SlanaError::Unauthorized);
+    let a = env.token_player("a", ENTRY_FEE);
+    write(&mut env, &|c| c.paused = true);
+    assert_error(env.join(&a, 1), SlanaError::Paused);
+    write(&mut env, &|c| c.paused = false);
+    assert_ok(env.join(&a, 1));
 }
 
 #[test]
-fn withdraw_reads_bumps_and_decimals_from_the_config() {
+fn sweep_reads_decimals_and_fee_wallet_from_the_config() {
     let mut env = TestEnv::initialized();
     let admin = env.admin.insecure_clone();
-    env.mint_to(&treasury_vault_pda(), 10 * TOKEN);
-    let to = env.create_ata(&admin.pubkey());
+    assert_ok(env.create_arena(1, ENTRY_FEE, 300));
+    assert_ok(env.update_arena(1, Some(false), None, None));
+    env.mint_to(&vault_pda(&arena_pda(1)), 10 * TOKEN);
     let base = env.config();
-
-    let mut c = base.clone();
-    c.treasury_vault_bump = c.treasury_vault_bump.wrapping_sub(1);
-    env.write_account(&config_pda(), &c);
-    assert_anchor_error(
-        env.withdraw_treasury_as(&admin, &to, TOKEN),
-        AnchorErrorCode::ConstraintSeeds,
-    );
 
     // The decimals passed to transfer_checked come from the config: a wrong value fails in
     // the token program (SPL Token `MintDecimalsMismatch` = custom error 18).
     let mut c = base.clone();
     c.token_decimals = DECIMALS + 1;
     env.write_account(&config_pda(), &c);
-    assert_instruction_error(
-        env.withdraw_treasury_as(&admin, &to, TOKEN),
-        InstructionError::Custom(18),
+    assert_instruction_error(env.sweep(1), InstructionError::Custom(18));
+
+    // Another fee wallet: the fee wallet's ATA no longer matches.
+    let mut c = base.clone();
+    c.fee_wallet = Pubkey::new_unique();
+    env.write_account(&config_pda(), &c);
+    assert_anchor_error(
+        env.sweep_as(&admin, 1),
+        AnchorErrorCode::ConstraintTokenOwner,
     );
 
     env.write_account(&config_pda(), &base);
-    let meta = assert_ok(env.withdraw_treasury_as(&admin, &to, TOKEN));
-    assert_event(
-        &meta,
-        &TreasuryWithdrawn {
-            destination: to,
-            amount: TOKEN,
-        },
-    );
-    assert_eq!(env.tokens(&to), TOKEN);
+    assert_ok(env.sweep(1));
+    assert_eq!(env.tokens(&env.fee_ata()), 10 * TOKEN);
 }
 
 #[test]
 fn update_arena_touches_only_its_fields() {
     let mut env = TestEnv::initialized();
-    assert_ok(env.create_arena(4, ENTRY_FEE, 300, false));
+    assert_ok(env.create_arena(4, ENTRY_FEE, 300));
     let mut expected = env.arena(4);
     expected.open_sessions = 0;
     expected.total_deposited = 0x0102_0304_0506_0708;
@@ -436,13 +320,12 @@ fn update_arena_touches_only_its_fields() {
     expected.vault_bump = 0x5a;
     env.write_account(&arena_pda(4), &expected);
 
-    assert_ok(env.update_arena(4, None, None, None, None));
+    assert_ok(env.update_arena(4, None, None, None));
     assert_eq!(raw(&env, &arena_pda(4)), serialize(&expected));
-    assert_ok(env.update_arena(4, Some(false), Some(1_234), Some(99), Some(true)));
+    assert_ok(env.update_arena(4, Some(false), Some(1_234), Some(99)));
     expected.enabled = false;
     expected.max_sessions = 1_234;
     expected.entry_fee = 99;
-    expected.requires_pass = true;
     assert_eq!(raw(&env, &arena_pda(4)), serialize(&expected));
 
     // `open_sessions` and the arena bump / id are read at their reference offsets.
@@ -450,21 +333,21 @@ fn update_arena_touches_only_its_fields() {
     busy.open_sessions = 0x0100;
     env.write_account(&arena_pda(4), &busy);
     assert_error(
-        env.update_arena(4, None, None, Some(1), None),
+        env.update_arena(4, None, None, Some(1)),
         SlanaError::ArenaBusy,
     );
     let mut bad = expected.clone();
     bad.bump = bad.bump.wrapping_sub(1);
     env.write_account(&arena_pda(4), &bad);
     assert_anchor_error(
-        env.update_arena(4, Some(true), None, None, None),
+        env.update_arena(4, Some(true), None, None),
         AnchorErrorCode::ConstraintSeeds,
     );
     let mut bad = expected.clone();
     bad.id = 5;
     env.write_account(&arena_pda(4), &bad);
     assert_anchor_error(
-        env.update_arena(4, Some(true), None, None, None),
+        env.update_arena(4, Some(true), None, None),
         AnchorErrorCode::ConstraintSeeds,
     );
 }
@@ -484,7 +367,7 @@ fn update_config_with(admin: &Pubkey, account: Pubkey) -> Instruction {
 fn account_type_errors_match_anchor() {
     let mut env = TestEnv::initialized();
     let admin = env.admin.insecure_clone();
-    assert_ok(env.create_arena(1, ENTRY_FEE, 300, false));
+    assert_ok(env.create_arena(1, ENTRY_FEE, 300));
 
     // Another program account type: discriminator mismatch.
     let ix = update_config_with(&admin.pubkey(), arena_pda(1));
@@ -561,16 +444,12 @@ fn argument_errors_match_anchor() {
         vec![1, 9, 9],
         // `paused: Some(2)` (bool out of range).
         {
-            let mut d = vec![0u8; 6];
+            let mut d = vec![0u8; 5];
             d.extend_from_slice(&[1, 2]);
             d
         },
-        // `pass_base_uri: Some("\xff")` (not UTF-8).
-        {
-            let mut d = vec![0u8; 7];
-            d.extend_from_slice(&[1, 1, 0, 0, 0, 0xff]);
-            d
-        },
+        // Truncated `fee_bps: Some(..)`.
+        vec![0, 0, 0, 1, 7],
     ];
     for args in cases {
         let mut ix = ix::update_config(&admin.pubkey(), UpdateConfigArgs::default());
@@ -586,50 +465,33 @@ fn argument_errors_match_anchor() {
     ix.data.extend_from_slice(&[7, 7, 7]);
     assert_ok(env.send(&[ix], &[&admin]));
 
-    // Too-short arguments of the other instructions.
+    // Too-short or malformed arguments of the other instructions.
     let (mint, program) = (env.mint, env.token_program);
-    let mut ix = ix::create_arena(&admin.pubkey(), 1, ENTRY_FEE, 300, false, &mint, &program);
+    let mut ix = ix::create_arena(&admin.pubkey(), 1, ENTRY_FEE, 300, &mint, &program);
     ix.data.pop();
     assert_anchor_error(
         env.send(&[ix], &[&admin]),
         AnchorErrorCode::InstructionDidNotDeserialize,
     );
-    let mut ix = ix::create_arena(&admin.pubkey(), 1, ENTRY_FEE, 300, false, &mint, &program);
-    *ix.data.last_mut().unwrap() = 2;
+    let mut ix = ix::update_arena(&admin.pubkey(), 1, None, None, None);
+    ix.data[8] = 2;
     assert_anchor_error(
         env.send(&[ix], &[&admin]),
         AnchorErrorCode::InstructionDidNotDeserialize,
     );
-    let mut ix = ix::set_pass_seed_hash(&admin.pubkey(), [1; 32]);
-    ix.data.pop();
+    // `register_player` with a name that is not UTF-8.
+    let p = env.funded_keypair(SOL);
+    let mut ix = ix::register_player(&p.pubkey(), "x", 0);
+    ix.data.truncate(8);
+    ix.data.extend_from_slice(&[1, 0, 0, 0, 0xff, 0]);
     assert_anchor_error(
-        env.send(&[ix], &[&admin]),
+        env.send(&[ix], &[&p]),
         AnchorErrorCode::InstructionDidNotDeserialize,
     );
-}
-
-#[test]
-fn withdraw_rejects_the_vault_as_its_own_destination() {
-    let mut env = TestEnv::initialized();
-    let admin = env.admin.insecure_clone();
-    env.mint_to(&treasury_vault_pda(), TOKEN);
-    let vault = treasury_vault_pda();
-    assert_anchor_error(
-        env.withdraw_treasury_as(&admin, &vault, 1),
-        AnchorErrorCode::ConstraintDuplicateMutableAccount,
-    );
-    // Another token account of the mint whose authority is not the config, as the vault.
-    let other = env.create_ata(&admin.pubkey());
-    let to = env.create_ata(&Pubkey::new_unique());
-    let mut ix = ix::withdraw_treasury(&admin.pubkey(), &to, &env.mint, &env.token_program, 1);
-    ix.accounts[2].pubkey = other;
-    assert_anchor_error(env.send(&[ix], &[&admin]), AnchorErrorCode::ConstraintSeeds);
-    // A mint passed as a token account.
-    let mint = env.mint;
-    assert_instruction_error(
-        env.withdraw_treasury_as(&admin, &mint, 1),
-        InstructionError::InvalidAccountData,
-    );
+    // `set_token_mint` takes no arguments: trailing bytes are ignored (and the mint is set).
+    let mut ix = ix::set_token_mint(&admin.pubkey(), &mint, &program);
+    ix.data.extend_from_slice(&[1, 2, 3]);
+    assert_error(env.send(&[ix], &[&admin]), SlanaError::TokenAlreadySet);
 }
 
 /// A system account holding `lamports` and no data.
@@ -651,54 +513,29 @@ fn prefund(env: &mut TestEnv, address: &Pubkey, lamports: u64) {
 #[test]
 fn init_accepts_prefunded_pdas_and_rejects_existing_ones() {
     let mut env = TestEnv::deployed();
-    let mint = env.create_mint(MintKind::Spl, None);
-    env.mint = mint;
     // Anyone can send lamports to a PDA before it is created (here below the rent minimum).
     prefund(&mut env, &config_pda(), 1);
-    prefund(&mut env, &treasury_vault_pda(), 5_000);
     let admin = env.admin.insecure_clone();
     let args = env.default_init_args();
     let before = env.balance(&admin.pubkey());
-    assert_ok(env.initialize_as(&admin, &mint, &MintKind::Spl.program(), args));
+    assert_ok(env.initialize_as(&admin, args));
     assert_eq!(env.balance(&config_pda()), env.rent(8 + Config::INIT_SPACE));
-    assert_eq!(env.balance(&treasury_vault_pda()), env.rent(165));
     let paid = before - env.balance(&admin.pubkey());
-    let expected =
-        env.rent(8 + Config::INIT_SPACE) - 1 + env.rent(8 + Season::INIT_SPACE) + env.rent(165) * 2
-            - 5_000;
-    assert_eq!(paid, expected);
+    assert_eq!(paid, env.rent(8 + Config::INIT_SPACE) - 1);
     assert_eq!(serialize(&env.config()), raw(&env, &config_pda()));
 
-    // A pre-funded arena PDA, then a second create of the same arena.
+    // A pre-funded arena PDA and vault PDA, then a second create of the same arena.
+    let mint = env.create_mint(MintKind::Spl, None);
+    assert_ok(env.set_token_mint_as(&admin, &mint, &MintKind::Spl.program()));
+    env.mint = mint;
     env.token_program = MintKind::Spl.program();
     prefund(&mut env, &arena_pda(9), 10 * SOL);
-    assert_ok(env.create_arena(9, ENTRY_FEE, 300, false));
+    prefund(&mut env, &vault_pda(&arena_pda(9)), 5_000);
+    assert_ok(env.create_arena(9, ENTRY_FEE, 300));
     assert_eq!(env.balance(&arena_pda(9)), 10 * SOL);
+    assert_eq!(env.balance(&vault_pda(&arena_pda(9))), env.rent(165));
     assert_eq!(env.arena(9).id, 9);
-    assert_already_in_use(env.create_arena(9, ENTRY_FEE, 300, false));
-}
-
-#[test]
-fn set_pass_collection_layout_and_event() {
-    let mut env = TestEnv::initialized();
-    load_mpl_core(&mut env.svm);
-    let admin = env.admin.insecure_clone();
-    let collection = env.create_core_collection(&pass_authority_pda());
-    let mut expected = env.config();
-    let meta = assert_ok(env.set_collection_as(&admin, &collection));
-    assert_event(&meta, &PassCollectionSet { collection });
-    expected.pass_collection = collection;
-    assert_eq!(raw(&env, &config_pda()), serialize(&expected));
-
-    // `pass_authority` must be the canonical PDA.
-    let mut fresh = TestEnv::initialized();
-    let admin = fresh.admin.insecure_clone();
-    let mut ix = ix::set_pass_collection(&admin.pubkey(), &collection);
-    ix.accounts[3].pubkey = Pubkey::new_unique();
-    assert_anchor_error(
-        fresh.send(&[ix], &[&admin]),
-        AnchorErrorCode::ConstraintSeeds,
-    );
+    assert_already_in_use(env.create_arena(9, ENTRY_FEE, 300));
 }
 
 #[test]
@@ -707,57 +544,41 @@ fn initialize_checks_the_program_accounts() {
     let mint = env.create_mint(MintKind::Spl, None);
     let admin = env.admin.insecure_clone();
     let args = env.default_init_args();
-    let program = MintKind::Spl.program();
 
     // `program` must be this program.
-    let mut ix = ix::initialize(&admin.pubkey(), &mint, &program, args.clone());
-    ix.accounts[7].pubkey = program;
+    let mut ix = ix::initialize(&admin.pubkey(), args.clone());
+    ix.accounts[2].pubkey = MintKind::Spl.program();
     assert_anchor_error(
         env.send(&[ix], &[&admin]),
         AnchorErrorCode::InvalidProgramId,
     );
     // `program_data` must be owned by the loader.
-    let mut ix = ix::initialize(&admin.pubkey(), &mint, &program, args.clone());
-    ix.accounts[8].pubkey = mint;
+    let mut ix = ix::initialize(&admin.pubkey(), args.clone());
+    ix.accounts[3].pubkey = mint;
     assert_anchor_error(
         env.send(&[ix], &[&admin]),
         AnchorErrorCode::AccountOwnedByWrongProgram,
     );
     // The program account itself is not a ProgramData.
-    let mut ix = ix::initialize(&admin.pubkey(), &mint, &program, args.clone());
-    ix.accounts[8].pubkey = slana::ID;
+    let mut ix = ix::initialize(&admin.pubkey(), args.clone());
+    ix.accounts[3].pubkey = slana::ID;
     assert_anchor_error(
         env.send(&[ix], &[&admin]),
         AnchorErrorCode::AccountNotProgramData,
     );
-    // A token program that is neither SPL Token nor Token-2022.
-    let mut ix = ix::initialize(&admin.pubkey(), &mint, &program, args.clone());
-    ix.accounts[4].pubkey = anchor_lang::solana_program::system_program::ID;
-    assert_anchor_error(
-        env.send(&[ix], &[&admin]),
-        AnchorErrorCode::InvalidProgramId,
-    );
-    // The mint owned by SPL Token, the token program Token-2022: the treasury vault's
-    // `InitializeAccount3` CPI into Token-2022 refuses the SPL Token mint (`IncorrectProgramId`).
-    let token_2022 = anchor_spl::token_2022::ID;
-    let ix = ix::initialize(&admin.pubkey(), &mint, &token_2022, args.clone());
-    assert_instruction_error(
-        env.send(&[ix], &[&admin]),
-        InstructionError::IncorrectProgramId,
-    );
     // A wrong config address.
-    let mut ix = ix::initialize(&admin.pubkey(), &mint, &program, args.clone());
+    let mut ix = ix::initialize(&admin.pubkey(), args.clone());
     ix.accounts[1].pubkey = Pubkey::new_unique();
     assert_anchor_error(env.send(&[ix], &[&admin]), AnchorErrorCode::ConstraintSeeds);
     // Missing system program.
-    let mut ix = ix::initialize(&admin.pubkey(), &mint, &program, args.clone());
-    ix.accounts.truncate(9);
+    let mut ix = ix::initialize(&admin.pubkey(), args.clone());
+    ix.accounts.truncate(4);
     assert_anchor_error(
         env.send(&[ix], &[&admin]),
         AnchorErrorCode::AccountNotEnoughKeys,
     );
     assert!(env.try_fetch::<Config>(&config_pda()).is_none());
-    assert_ok(env.initialize_as(&admin, &mint, &program, args));
+    assert_ok(env.initialize_as(&admin, args));
 }
 
 #[test]
@@ -787,20 +608,20 @@ fn dispatch_errors_match_anchor() {
 // player and arena instructions
 // ---------------------------------------------------------------------------------------
 
-/// Register → update → Pass join → finalize without a token account → collect → loot sweep →
+/// Register → update → join → finalize without a token account → collect → loot burn →
 /// sweep: every account the program writes decodes with the reference and re-serializes to
 /// exactly the stored bytes, and every event is the reference's encoding.
 #[test]
 fn stake_flow_writes_reference_layouts_and_events() {
     use slana::{
         events::{
-            ArenaJoined, ArenaSwept, LootSwept, PlayerRegistered, ProfileUpdated, SessionRefunded,
+            ArenaJoined, ArenaSwept, LootBurned, PlayerRegistered, ProfileUpdated, SessionRefunded,
             SessionSettled,
         },
-        state::{PassLock, PlayerProfile, Session},
+        state::{PlayerProfile, Session},
     };
     let mut env = TestEnv::initialized();
-    assert_ok(env.create_arena(1, ENTRY_FEE, 300, false));
+    assert_ok(env.create_arena(1, ENTRY_FEE, 300));
 
     let alice = env.funded_keypair(10 * SOL);
     let player = alice.pubkey();
@@ -833,8 +654,7 @@ fn stake_flow_writes_reference_layouts_and_events() {
 
     let ata = env.create_ata(&player);
     env.mint_to(&ata, 3 * ENTRY_FEE);
-    let (_, asset) = env.give_pass(&player);
-    let meta = assert_ok(env.join_with_pass(&alice, 1, &asset));
+    let meta = assert_ok(env.join(&alice, 1));
     let session_key = session_pda(&arena_pda(1), &player);
     let session = env.session(1, &player).expect("session");
     assert_event(
@@ -844,11 +664,10 @@ fn stake_flow_writes_reference_layouts_and_events() {
             arena_id: 1,
             session_id: session.id,
             entry_fee: ENTRY_FEE,
-            has_pass: true,
         },
     );
     let data = raw(&env, &session_key);
-    assert_eq!(data.len(), 151);
+    assert_eq!(data.len(), 118);
     assert_eq!(data.len(), 8 + Session::INIT_SPACE);
     assert_eq!(data, serialize(&session));
     let (_, bump) = Pubkey::find_program_address(
@@ -862,8 +681,6 @@ fn stake_flow_writes_reference_layouts_and_events() {
             session.arena_id,
             session.entry_fee,
             session.opened_at,
-            session.has_pass,
-            session.pass_asset,
             session.settle_fee,
             session.fee_bps,
             session.bump,
@@ -876,10 +693,8 @@ fn stake_flow_writes_reference_layouts_and_events() {
             1,
             ENTRY_FEE,
             START_TS,
-            true,
-            asset,
             SETTLE_FEE_LAMPORTS,
-            PASS_FEE_BPS,
+            FEE_BPS,
             bump,
             false,
             0,
@@ -888,17 +703,6 @@ fn stake_flow_writes_reference_layouts_and_events() {
     assert_eq!(
         env.balance(&session_key),
         env.session_rent() + SETTLE_FEE_LAMPORTS
-    );
-    let lock_key = pass_lock_pda(&asset);
-    let lock = env.pass_lock(&asset).expect("lock");
-    let data = raw(&env, &lock_key);
-    assert_eq!(data.len(), 8 + PassLock::INIT_SPACE);
-    assert_eq!(data, serialize(&lock));
-    let (_, lock_bump) =
-        Pubkey::find_program_address(&[PASS_LOCK_SEED, asset.as_ref()], &slana::ID);
-    assert_eq!(
-        (lock.session, lock.player, lock.bump),
-        (session_key, player, lock_bump)
     );
 
     // Finalize without a token account (R24): the session stays, finalized with `owed`.
@@ -911,8 +715,6 @@ fn stake_flow_writes_reference_layouts_and_events() {
             session_id: session.id,
             payout: ENTRY_FEE,
             fee: 0,
-            burned: 0,
-            has_pass: true,
             score: 1_234,
             kills: 5,
             owed: ENTRY_FEE,
@@ -922,18 +724,19 @@ fn stake_flow_writes_reference_layouts_and_events() {
     assert_eq!(raw(&env, &session_key), serialize(&finalized));
     assert!(finalized.finalized);
     assert_eq!(finalized.owed, ENTRY_FEE);
-    assert!(env.pass_lock(&asset).is_none());
-    assert_eq!(raw(&env, &profile_key), serialize(&env.profile(&player)));
-    let season = env.season(FIRST_SEASON);
-    assert_eq!(raw(&env, &season_pda(FIRST_SEASON)), serialize(&season));
-    assert_eq!(season.count, 1);
+    let profile = env.profile(&player);
+    assert_eq!(raw(&env, &profile_key), serialize(&profile));
     assert_eq!(
         (
-            season.entries[0].player,
-            season.entries[0].points,
-            season.entries[0].best_score
+            profile.games_played,
+            profile.kills,
+            profile.best_score,
+            profile.total_score,
+            profile.xp,
+            profile.last_played,
+            profile.total_won
         ),
-        (player, 1_234, 1_234)
+        (1, 5, 1_234, 1_234, 60, START_TS, ENTRY_FEE)
     );
 
     let meta = assert_ok(env.refund(&alice, 1));
@@ -952,37 +755,30 @@ fn stake_flow_writes_reference_layouts_and_events() {
     let meta = assert_ok(env.sweep_loot(1, 23));
     assert_event(
         &meta,
-        &LootSwept {
+        &LootBurned {
             arena_id: 1,
-            season_id: FIRST_SEASON,
             amount: 23,
         },
     );
-    assert_eq!(env.season(FIRST_SEASON).pool, 23);
-    assert_eq!(
-        raw(&env, &season_pda(FIRST_SEASON)),
-        serialize(&env.season(FIRST_SEASON))
-    );
 
-    assert_ok(env.update_arena(1, Some(false), None, None, None));
+    assert_ok(env.update_arena(1, Some(false), None, None));
     let meta = assert_ok(env.sweep(1));
     assert_event(
         &meta,
         &ArenaSwept {
             arena_id: 1,
-            season_id: FIRST_SEASON,
             amount: 77,
         },
     );
-    assert_eq!(env.season(FIRST_SEASON).pool, 100);
+    assert_eq!(env.tokens(&env.fee_ata()), 77);
 }
 
-/// Anchor's duplicate-mutable and seeds checks on the arena instructions.
+/// Anchor's duplicate-mutable and account-type checks on the arena instructions.
 #[test]
 fn stake_constraint_errors_match_anchor() {
     use anchor_lang::{InstructionData, ToAccountMetas};
     let mut env = TestEnv::initialized();
-    assert_ok(env.create_arena(1, ENTRY_FEE, 300, false));
+    assert_ok(env.create_arena(1, ENTRY_FEE, 300));
     let a = env.token_player("a", ENTRY_FEE);
     let (mint, program) = (env.mint, env.token_program);
     let arena = arena_pda(1);
@@ -1017,158 +813,60 @@ fn stake_constraint_errors_match_anchor() {
     );
     assert_ok(env.join(&a, 1));
 
-    // settle: treasury and season vaults swapped → 2006.
-    let session = env.session(1, &a.pubkey()).expect("session");
-    let mut settle = ix::settle_session(
-        &env.server.pubkey(),
+    // settle: the vault as the player's token account or as the fee account → 2040; the
+    // fee account read-only → 2000.
+    let server = env.server.insecure_clone();
+    let args = env.settle_args(&a.pubkey(), 1, 0, 0, 0, 0);
+    let settle = env.settle_ix(
+        &server.pubkey(),
         &a.pubkey(),
         1,
-        FIRST_SEASON,
-        slana::SettleArgs {
-            session_id: session.id,
-            payout: 0,
-            score: 0,
-            kills: 0,
-            xp: 0,
-        },
-        None,
+        args,
         Some(env.player_ata(&a.pubkey())),
-        &mint,
-        &program,
     );
-    settle.accounts[9].pubkey = season_vault_pda();
-    settle.accounts[10].pubkey = treasury_vault_pda();
-    let server = env.server.insecure_clone();
-    assert_anchor_error(
-        env.send(&[settle.clone()], &[&server]),
-        AnchorErrorCode::ConstraintSeeds,
-    );
-    // ... and the vault as the player's token account → 2040.
-    settle.accounts[9].pubkey = treasury_vault_pda();
-    settle.accounts[10].pubkey = season_vault_pda();
-    settle.accounts[6].pubkey = vault;
-    assert_anchor_error(
-        env.send(&[settle], &[&server]),
-        AnchorErrorCode::ConstraintDuplicateMutableAccount,
+    for (index, err) in [
+        (6, AnchorErrorCode::ConstraintDuplicateMutableAccount),
+        (8, AnchorErrorCode::ConstraintDuplicateMutableAccount),
+    ] {
+        let mut bad = settle.clone();
+        bad.accounts[index].pubkey = vault;
+        assert_anchor_error(env.send(&[bad], &[&server]), err);
+    }
+    let mut bad = settle.clone();
+    bad.accounts[8] = AccountMeta::new_readonly(env.fee_ata(), false);
+    assert_anchor_error(env.send(&[bad], &[&server]), AnchorErrorCode::ConstraintMut);
+    // A mint passed as the fee account does not deserialize as a token account.
+    let mut bad = settle;
+    bad.accounts[8].pubkey = mint;
+    assert_instruction_error(
+        env.send(&[bad], &[&server]),
+        InstructionError::InvalidAccountData,
     );
 
-    // sweep: the arena vault as the season vault → 2040.
-    let mut sweep = ix::sweep_arena(&env.admin.pubkey(), 1, FIRST_SEASON, &mint, &program);
-    sweep.accounts[5].pubkey = vault;
+    // sweep: the arena vault as the fee account → 2040; a mint → InvalidAccountData.
     let admin = env.admin.insecure_clone();
+    let sweep = ix::sweep_arena(&admin.pubkey(), 1, &vault, &mint, &program);
     assert_anchor_error(
         env.send(&[sweep], &[&admin]),
         AnchorErrorCode::ConstraintDuplicateMutableAccount,
     );
-
-    // sweep_loot: the same → 2040; truncated `amount` → 102.
-    let mut loot = ix::sweep_loot(&server.pubkey(), 1, FIRST_SEASON, 1, &mint, &program);
-    loot.accounts[5].pubkey = vault;
-    assert_anchor_error(
-        env.send(&[loot], &[&server]),
-        AnchorErrorCode::ConstraintDuplicateMutableAccount,
+    let sweep = ix::sweep_arena(&admin.pubkey(), 1, &mint, &mint, &program);
+    assert_instruction_error(
+        env.send(&[sweep], &[&admin]),
+        InstructionError::InvalidAccountData,
     );
-    let mut loot = ix::sweep_loot(&server.pubkey(), 1, FIRST_SEASON, 1, &mint, &program);
+
+    // sweep_loot: truncated `amount` → 102; the vault read-only → 2000.
+    let mut loot = ix::sweep_loot(&server.pubkey(), 1, 1, &mint, &program);
     loot.data.truncate(8 + 7);
     assert_anchor_error(
         env.send(&[loot], &[&server]),
         AnchorErrorCode::InstructionDidNotDeserialize,
     );
-}
-
-/// Pass mint (sell-out), reveal, a missed entropy window and the capture: the `MintCounter`
-/// and `Config` the program writes decode with the reference and re-serialize to the stored
-/// bytes, and every Pass event matches the reference's `Event::data()`.
-#[test]
-fn pass_flow_writes_reference_layouts_and_events() {
-    use slana::{
-        events::{
-            PassEntropyCaptured, PassEntropyRetargeted, PassMintEnded, PassMinted, PassRevealed,
-            PassSeedRevealed,
-        },
-        state::MintCounter,
-    };
-    let seed = [7u8; 32];
-    let mut env = TestEnv::initialized();
-    load_mpl_core(&mut env.svm);
-    let admin = env.admin.insecure_clone();
-    let collection = env.create_core_collection(&pass_authority_pda());
-    assert_ok(env.set_collection_as(&admin, &collection));
-    assert_ok(env.set_seed_hash_as(&admin, solana_sha256_hasher::hash(&seed).to_bytes()));
-    assert_ok(env.update_config(UpdateConfigArgs {
-        pass_base_uri: Some("https://slana.example/pass/".into()),
-        pass_supply: Some(1),
-        pass_mint_open: Some(true),
-        ..Default::default()
-    }));
-
-    let minter = env.funded_keypair(10 * SOL);
-    let (res, asset) = env.mint_pass(&minter);
-    let meta = assert_ok(res);
-    assert_event(
-        &meta,
-        &PassMinted {
-            minter: minter.pubkey(),
-            asset,
-            number: 1,
-        },
+    let mut loot = ix::sweep_loot(&server.pubkey(), 1, 1, &mint, &program);
+    loot.accounts[3] = AccountMeta::new_readonly(vault, false);
+    assert_anchor_error(
+        env.send(&[loot], &[&server]),
+        AnchorErrorCode::ConstraintMut,
     );
-    // The only Pass of the supply: sold out.
-    assert_event(&meta, &PassMintEnded { minted: 1 });
-    let counter_key = mint_counter_pda(&minter.pubkey());
-    let data = raw(&env, &counter_key);
-    assert_eq!(data.len(), 8 + MintCounter::INIT_SPACE);
-    let counter = env.mint_counter(&minter.pubkey()).expect("counter");
-    assert_eq!(counter.count, 1);
-    assert_eq!(data, serialize(&counter));
-
-    env.warp_to_slot(5_000);
-    let meta = assert_ok(env.reveal_as(&admin, seed));
-    let target = 5_000 + ENTROPY_DELAY_SLOTS;
-    assert_event(
-        &meta,
-        &PassSeedRevealed {
-            seed,
-            entropy_target_slot: target,
-        },
-    );
-
-    let anyone = env.funded_keypair(SOL);
-    let now = target + 700;
-    env.warp_to_slot(now);
-    env.slot_hashes_range(now - 512, now - 1);
-    let meta = assert_ok(env.capture_entropy_as(&anyone));
-    let next = now + ENTROPY_DELAY_SLOTS;
-    assert_event(
-        &meta,
-        &PassEntropyRetargeted {
-            missed_target_slot: target,
-            entropy_target_slot: next,
-        },
-    );
-
-    env.warp_to_slot(next + 3);
-    env.slot_hashes_range(next - 5, next + 2);
-    let meta = assert_ok(env.capture_entropy_as(&anyone));
-    let entropy = [next as u8; 32];
-    let final_seed = slana::logic::pass_final_seed(&seed, &entropy);
-    assert_event(
-        &meta,
-        &PassEntropyCaptured {
-            slot: next,
-            entropy,
-        },
-    );
-    assert_event(
-        &meta,
-        &PassRevealed {
-            seed,
-            entropy,
-            final_seed,
-        },
-    );
-    let config = env.config();
-    assert!(config.pass_revealed && config.pass_entropy_captured);
-    assert_eq!(config.pass_final_seed, final_seed);
-    assert_eq!(raw(&env, &config_pda()), serialize(&config));
 }

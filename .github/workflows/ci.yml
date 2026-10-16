@@ -48,8 +48,6 @@ jobs:
     name: Program (Anchor reference + lean build, size gate, LiteSVM suite on both)
     runs-on: ubuntu-latest
     env:
-      # public endpoint; scripts/fetch-programs.sh dumps Metaplex Core from it (no secrets)
-      MAINNET_RPC: https://api.mainnet-beta.solana.com
       # Agave CLI version: platform-tools and cargo-build-sbf come with it, so it is part of the cache key.
       AGAVE_VERSION: v4.3.0
     steps:
@@ -81,13 +79,6 @@ jobs:
         run: scripts/build-lean.sh
       - name: SDK IDL is in sync with the program
         run: node scripts/sync-idl.mjs && git diff --exit-code packages/sdk/src/idl
-      # Metaplex Core is a fixed mainnet program: cache the dump so CI rarely hits the public RPC
-      - uses: actions/cache@v4
-        with:
-          path: target/programs
-          key: external-programs-mpl-core-v1
-      - name: Fetch external programs (Metaplex Core, retried)
-        run: scripts/fetch-programs.sh
       # R27: no unchecked arithmetic in the deployed program.
       - name: Clippy on the lean program (warnings and arithmetic side effects are errors)
         run: cargo clippy -p slana-lean --lib -- -D warnings -D clippy::arithmetic_side_effects

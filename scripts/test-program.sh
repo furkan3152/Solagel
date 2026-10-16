@@ -9,7 +9,6 @@
 #
 #   scripts/test-program.sh [ref|lean|both]   (default both)
 #   SKIP_BUILD=1 scripts/test-program.sh      reuse existing target/deploy/*.so
-# Needs target/programs/mpl_core.so (scripts/fetch-programs.sh).
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

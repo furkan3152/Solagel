@@ -4,55 +4,35 @@
 //! unit tests in this file check them against the hash, the reference and the IDL.
 
 pub const INITIALIZE: [u8; 8] = [175, 175, 109, 31, 13, 152, 155, 237];
+pub const SET_TOKEN_MINT: [u8; 8] = [204, 233, 179, 83, 12, 31, 139, 120];
 pub const UPDATE_CONFIG: [u8; 8] = [29, 158, 252, 191, 10, 83, 219, 99];
 pub const CREATE_ARENA: [u8; 8] = [174, 236, 45, 61, 197, 215, 149, 169];
 pub const UPDATE_ARENA: [u8; 8] = [179, 14, 84, 80, 59, 23, 182, 226];
-pub const WITHDRAW_TREASURY: [u8; 8] = [40, 63, 122, 158, 144, 216, 83, 96];
 pub const REGISTER_PLAYER: [u8; 8] = [242, 146, 194, 234, 234, 145, 228, 42];
 pub const UPDATE_PROFILE: [u8; 8] = [98, 67, 99, 206, 86, 115, 175, 1];
 pub const JOIN_ARENA: [u8; 8] = [135, 217, 203, 200, 93, 181, 131, 47];
-pub const JOIN_ARENA_WITH_PASS: [u8; 8] = [145, 196, 60, 74, 142, 112, 166, 224];
 pub const SETTLE_SESSION: [u8; 8] = [156, 20, 180, 117, 117, 85, 225, 128];
 pub const REFUND_SESSION: [u8; 8] = [168, 87, 185, 45, 250, 170, 10, 85];
 pub const SWEEP_ARENA: [u8; 8] = [124, 38, 247, 190, 34, 58, 64, 7];
 pub const SWEEP_LOOT: [u8; 8] = [221, 67, 119, 145, 176, 100, 54, 6];
-pub const SET_PASS_COLLECTION: [u8; 8] = [60, 188, 194, 201, 72, 107, 78, 208];
-pub const SET_PASS_SEED_HASH: [u8; 8] = [192, 248, 24, 81, 247, 241, 216, 11];
-pub const MINT_PASS: [u8; 8] = [142, 56, 26, 197, 227, 241, 84, 174];
-pub const CLOSE_PASS_MINT: [u8; 8] = [227, 254, 103, 66, 121, 84, 65, 218];
-pub const CAPTURE_PASS_ENTROPY: [u8; 8] = [187, 128, 145, 219, 72, 180, 205, 195];
-pub const REVEAL_PASS: [u8; 8] = [233, 27, 93, 192, 147, 157, 246, 103];
-pub const END_SEASON: [u8; 8] = [167, 166, 166, 109, 166, 71, 15, 68];
-pub const CLAIM_SEASON_REWARD: [u8; 8] = [129, 96, 145, 129, 154, 203, 29, 150];
-pub const ROLLOVER_SEASON: [u8; 8] = [100, 231, 139, 192, 118, 134, 116, 197];
 
 /// `anchor_lang::event::EVENT_IX_TAG_LE`: Anchor's event-CPI instruction tag.
 pub const EVENT_IX_TAG_LE: [u8; 8] = [0xe4, 0x45, 0xa5, 0x2e, 0x51, 0xcb, 0x9a, 0x1d];
 
 /// Every instruction of the program, by its Anchor (snake_case) name.
-pub const ALL: [(&str, [u8; 8]); 22] = [
+pub const ALL: [(&str, [u8; 8]); 12] = [
     ("initialize", INITIALIZE),
+    ("set_token_mint", SET_TOKEN_MINT),
     ("update_config", UPDATE_CONFIG),
     ("create_arena", CREATE_ARENA),
     ("update_arena", UPDATE_ARENA),
-    ("withdraw_treasury", WITHDRAW_TREASURY),
     ("register_player", REGISTER_PLAYER),
     ("update_profile", UPDATE_PROFILE),
     ("join_arena", JOIN_ARENA),
-    ("join_arena_with_pass", JOIN_ARENA_WITH_PASS),
     ("settle_session", SETTLE_SESSION),
     ("refund_session", REFUND_SESSION),
     ("sweep_arena", SWEEP_ARENA),
     ("sweep_loot", SWEEP_LOOT),
-    ("set_pass_collection", SET_PASS_COLLECTION),
-    ("set_pass_seed_hash", SET_PASS_SEED_HASH),
-    ("mint_pass", MINT_PASS),
-    ("close_pass_mint", CLOSE_PASS_MINT),
-    ("capture_pass_entropy", CAPTURE_PASS_ENTROPY),
-    ("reveal_pass", REVEAL_PASS),
-    ("end_season", END_SEASON),
-    ("claim_season_reward", CLAIM_SEASON_REWARD),
-    ("rollover_season", ROLLOVER_SEASON),
 ];
 
 #[cfg(test)]
@@ -64,30 +44,20 @@ mod tests {
     }
 
     /// The reference's discriminators, from the Anchor-generated `slana::instruction` structs.
-    fn reference() -> [(&'static str, &'static [u8]); 22] {
+    fn reference() -> [(&'static str, &'static [u8]); 12] {
         [
             ("initialize", d::<i::Initialize>()),
+            ("set_token_mint", d::<i::SetTokenMint>()),
             ("update_config", d::<i::UpdateConfig>()),
             ("create_arena", d::<i::CreateArena>()),
             ("update_arena", d::<i::UpdateArena>()),
-            ("withdraw_treasury", d::<i::WithdrawTreasury>()),
             ("register_player", d::<i::RegisterPlayer>()),
             ("update_profile", d::<i::UpdateProfile>()),
             ("join_arena", d::<i::JoinArena>()),
-            ("join_arena_with_pass", d::<i::JoinArenaWithPass>()),
             ("settle_session", d::<i::SettleSession>()),
             ("refund_session", d::<i::RefundSession>()),
             ("sweep_arena", d::<i::SweepArena>()),
             ("sweep_loot", d::<i::SweepLoot>()),
-            ("set_pass_collection", d::<i::SetPassCollection>()),
-            ("set_pass_seed_hash", d::<i::SetPassSeedHash>()),
-            ("mint_pass", d::<i::MintPass>()),
-            ("close_pass_mint", d::<i::ClosePassMint>()),
-            ("capture_pass_entropy", d::<i::CapturePassEntropy>()),
-            ("reveal_pass", d::<i::RevealPass>()),
-            ("end_season", d::<i::EndSeason>()),
-            ("claim_season_reward", d::<i::ClaimSeasonReward>()),
-            ("rollover_season", d::<i::RolloverSeason>()),
         ]
     }
 

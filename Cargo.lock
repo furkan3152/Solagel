@@ -2481,7 +2481,6 @@ dependencies = [
  "solana-keypair",
  "solana-message",
  "solana-rent 4.4.0",
- "solana-sha256-hasher",
  "solana-signer",
  "solana-transaction",
  "solana-transaction-error",

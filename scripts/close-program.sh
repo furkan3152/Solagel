@@ -13,11 +13,11 @@
 #   --program <id>   program to close (default: the lean program id; for rehearsals on a throwaway id)
 #   -h, --help       print this help
 #
-# Before closing it prints the on-chain state (`pnpm admin status`: paused flag, arenas' open sessions
-# and vaults, treasury and season vaults, Pass mint) and the upgrade authority.
+# Before closing it prints the on-chain state (`pnpm admin status`: paused flag, token mint, arenas'
+# open sessions and vaults) and the upgrade authority.
 #
-# WARNING: once the program is closed, every token left in the program-owned vaults (arenas, treasury,
-# season pool) is PERMANENTLY inaccessible, and the program id can never be deployed again. Pause
+# WARNING: once the program is closed, every token left in the program-owned arena vaults is
+# PERMANENTLY inaccessible, and the program id can never be deployed again. Pause
 # (`pnpm admin update-config --paused true`) and wind down first unless it is a real emergency
 # (docs/OPERATIONS.md, "Emergency stop / close").
 set -euo pipefail
@@ -80,9 +80,9 @@ printf '\n\033[1;31m'
 cat <<EOW
 ############################################################################
 # WARNING: CLOSING THE PROGRAM IS IRREVERSIBLE.
-# Every token still in a program-owned vault (arena vaults, treasury, season
-# pool) becomes PERMANENTLY INACCESSIBLE. Open sessions can no longer settle
-# or refund. The program id $PROGRAM_ID can never be reused.
+# Every token still in a program-owned arena vault becomes PERMANENTLY
+# INACCESSIBLE. Open sessions can no longer settle or refund. The program id
+# $PROGRAM_ID can never be reused.
 ############################################################################
 EOW
 printf '\033[0m\n'

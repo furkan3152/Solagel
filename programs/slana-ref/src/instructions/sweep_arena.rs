@@ -5,12 +5,12 @@ use crate::{
     constants::*,
     error::SlanaError,
     events::ArenaSwept,
-    state::{Arena, Config, Season},
+    state::{Arena, Config},
     token,
 };
 
-/// Moves whatever is left in a disabled arena's vault into the season vault (credited to the
-/// current season's pool) once no session is open.
+/// Moves whatever is left in a disabled arena's vault to the fee wallet's token account once
+/// no session is open.
 #[derive(Accounts)]
 pub struct SweepArena<'info> {
     pub admin: Signer<'info>,
@@ -31,18 +31,14 @@ pub struct SweepArena<'info> {
         bump = arena.vault_bump
     )]
     pub vault: Box<InterfaceAccount<'info, TokenAccount>>,
+    /// Any token account of the game mint owned by `config.fee_wallet`.
     #[account(
         mut,
-        seeds = [SEASON_SEED, config.current_season.to_le_bytes().as_ref()],
-        bump = season.bump
+        token::mint = token_mint,
+        token::authority = config.fee_wallet,
+        token::token_program = token_program
     )]
-    pub season: Box<Account<'info, Season>>,
-    #[account(
-        mut,
-        seeds = [SEASON_VAULT_SEED],
-        bump = config.season_vault_bump
-    )]
-    pub season_vault: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub fee_wallet_token: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(address = config.token_mint)]
     pub token_mint: Box<InterfaceAccount<'info, Mint>>,
     #[account(address = config.token_program)]
@@ -61,21 +57,15 @@ pub fn handle_sweep_arena(ctx: Context<SweepArena>) -> Result<()> {
         &a.token_program.to_account_info(),
         &a.vault.to_account_info(),
         &a.token_mint.to_account_info(),
-        &a.season_vault.to_account_info(),
+        &a.fee_wallet_token.to_account_info(),
         &a.arena.to_account_info(),
         &[arena_seeds],
         amount,
         a.config.token_decimals,
     )?;
-    a.season.pool = a
-        .season
-        .pool
-        .checked_add(amount)
-        .ok_or(SlanaError::MathOverflow)?;
 
     emit!(ArenaSwept {
         arena_id: a.arena.id,
-        season_id: a.season.id,
         amount,
     });
     Ok(())

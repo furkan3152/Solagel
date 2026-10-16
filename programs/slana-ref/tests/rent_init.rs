@@ -3,7 +3,7 @@
 //! * SIMD-0194 sets `exemption_threshold` to 1.0 (with a doubled per-byte rate) where the
 //!   legacy cluster has 2.0. The reference computes the minimum with solana-rent; the lean
 //!   program reads the sysvar bytes and multiplies by 2 only for exactly 2.0. Each init path
-//!   (register_player → profile, join → session, mint_pass → mint counter) must fund exactly
+//!   (register_player → profile, join → session) must fund exactly
 //!   `(len + 128) × lamports_per_byte × threshold` under both, for both builds. The per-byte
 //!   rate under 1.0 is chosen so a wrong factor would show.
 //! * Anyone can send lamports to a PDA before it exists; `init` then tops it up, allocates and
@@ -14,17 +14,11 @@ mod common;
 use {
     anchor_lang::{prelude::Pubkey, solana_program::system_program, Space},
     common::*,
-    slana::{
-        state::{MintCounter, PlayerProfile, Session},
-        UpdateConfigArgs,
-    },
+    slana::state::{PlayerProfile, Session},
     solana_keypair::Keypair,
     solana_rent::Rent,
-    solana_sha256_hasher::hash,
     solana_signer::Signer,
 };
-
-const SEED: [u8; 32] = [7; 32];
 
 fn set_rent(env: &mut TestEnv, lamports_per_byte: u64, threshold: f64) {
     #[allow(deprecated)]
@@ -45,20 +39,10 @@ fn expected_rent(len: usize, lamports_per_byte: u64, factor: u64) -> u64 {
     (len as u64 + 128) * lamports_per_byte * factor
 }
 
-/// Initialized env, SPL game mint, arena 1, Core loaded and an open Pass mint.
+/// Initialized env, SPL game mint and arena 1.
 fn full_env() -> TestEnv {
     let mut env = TestEnv::initialized();
-    assert_ok(env.create_arena(1, 1_000, 300, false));
-    load_mpl_core(&mut env.svm);
-    let admin = env.admin.insecure_clone();
-    let collection = env.create_core_collection(&pass_authority_pda());
-    assert_ok(env.set_collection_as(&admin, &collection));
-    assert_ok(env.set_seed_hash_as(&admin, hash(&SEED).to_bytes()));
-    assert_ok(env.update_config(UpdateConfigArgs {
-        pass_base_uri: Some("https://slana.example/pass/".to_string()),
-        pass_mint_open: Some(true),
-        ..Default::default()
-    }));
+    assert_ok(env.create_arena(1, 1_000, 300));
     env
 }
 
@@ -79,7 +63,6 @@ fn init_paths_fund_the_rent_minimum_under_threshold_one_and_two() {
         set_rent(&mut env, rate, threshold);
         let profile_len = 8 + PlayerProfile::INIT_SPACE;
         let session_len = 8 + Session::INIT_SPACE;
-        let counter_len = 8 + MintCounter::INIT_SPACE;
         // The harness (solana-rent) agrees with the formula.
         assert_eq!(
             env.rent(profile_len),
@@ -112,16 +95,6 @@ fn init_paths_fund_the_rent_minimum_under_threshold_one_and_two() {
             before - env.balance(&p.pubkey()),
             session_rent + SETTLE_FEE_LAMPORTS
         );
-
-        // mint_pass → mint counter.
-        let (res, _) = env.mint_pass(&p);
-        assert_ok(res);
-        assert_eq!(
-            env.balance(&mint_counter_pda(&p.pubkey())),
-            expected_rent(counter_len, rate, factor),
-            "rate {rate}"
-        );
-        assert_eq!(env.mint_counter(&p.pubkey()).unwrap().count, 1);
 
         // Settling closes the session and returns its rent at the same rate.
         let before = env.balance(&p.pubkey());
@@ -177,7 +150,7 @@ fn join_initializes_a_prefunded_session() {
     let session_len = 8 + Session::INIT_SPACE;
     for extra in [1u64, 10 * SOL] {
         let mut env = TestEnv::initialized();
-        assert_ok(env.create_arena(1, 1_000, 300, false));
+        assert_ok(env.create_arena(1, 1_000, 300));
         let rent = env.rent(session_len);
         let pre = if extra == 1 { 1 } else { rent + extra };
         let p = env.token_player("early", 1_000);

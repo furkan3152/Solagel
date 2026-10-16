@@ -18,7 +18,6 @@ pub struct ArenaJoined {
     pub arena_id: u16,
     pub session_id: u64,
     pub entry_fee: u64,
-    pub has_pass: bool,
 }
 
 #[event]
@@ -27,10 +26,8 @@ pub struct SessionSettled {
     pub arena_id: u16,
     pub session_id: u64,
     pub payout: u64,
+    /// Fee on profit, paid to the fee wallet's token account.
     pub fee: u64,
-    /// Part of `fee` that was burned.
-    pub burned: u64,
-    pub has_pass: bool,
     pub score: u32,
     pub kills: u16,
     /// Player share left in the vault for the player to collect (finalized without a token
@@ -47,38 +44,17 @@ pub struct SessionRefunded {
     pub finalized: bool,
 }
 
-#[event]
-pub struct SeasonEnded {
-    pub season_id: u32,
-    pub prize_pool: u64,
-}
-
-#[event]
-pub struct RewardClaimed {
-    pub season_id: u32,
-    pub player: Pubkey,
-    pub rank: u8,
-    pub amount: u64,
-}
-
-#[event]
-pub struct SeasonRolledOver {
-    pub from: u32,
-    pub to: u32,
-    pub amount: u64,
-}
-
+/// `sweep_arena` moved `amount` from the arena vault to the fee wallet's token account.
 #[event]
 pub struct ArenaSwept {
     pub arena_id: u16,
-    pub season_id: u32,
     pub amount: u64,
 }
 
+/// `sweep_loot` burned `amount` from the arena vault.
 #[event]
-pub struct LootSwept {
+pub struct LootBurned {
     pub arena_id: u16,
-    pub season_id: u32,
     pub amount: u64,
 }
 
@@ -87,62 +63,12 @@ pub struct ArenaCreated {
     pub arena_id: u16,
     pub entry_fee: u64,
     pub max_sessions: u16,
-    pub requires_pass: bool,
 }
 
+/// `set_token_mint` stored the game token.
 #[event]
-pub struct TreasuryWithdrawn {
-    pub destination: Pubkey,
-    pub amount: u64,
-}
-
-#[event]
-pub struct PassCollectionSet {
-    pub collection: Pubkey,
-}
-
-#[event]
-pub struct PassMinted {
-    pub minter: Pubkey,
-    pub asset: Pubkey,
-    /// 1-based Pass number (`Slana Pass #<number>`).
-    pub number: u32,
-}
-
-/// The Pass mint ended for good (closed by the admin or sold out). Next: `reveal_pass`.
-#[event]
-pub struct PassMintEnded {
-    pub minted: u32,
-}
-
-/// `reveal_pass` published the seed and set the entropy target slot.
-#[event]
-pub struct PassSeedRevealed {
-    pub seed: [u8; 32],
-    pub entropy_target_slot: u64,
-}
-
-/// `capture_pass_entropy` stored the trait entropy.
-#[event]
-pub struct PassEntropyCaptured {
-    /// Slot whose hash is the entropy (the first slot with a block at or after the target).
-    pub slot: u64,
-    pub entropy: [u8; 32],
-}
-
-/// The target slot left the SlotHashes window before anyone captured it: a new future target.
-#[event]
-pub struct PassEntropyRetargeted {
-    pub missed_target_slot: u64,
-    pub entropy_target_slot: u64,
-}
-
-/// `capture_pass_entropy` stored the entropy and the final seed: the traits are public.
-#[event]
-pub struct PassRevealed {
-    /// The admin's committed seed (`sha256(seed) == pass_seed_hash`).
-    pub seed: [u8; 32],
-    pub entropy: [u8; 32],
-    /// `sha256(seed || entropy)`: the seed every Pass trait is derived from.
-    pub final_seed: [u8; 32],
+pub struct TokenMintSet {
+    pub mint: Pubkey,
+    pub token_program: Pubkey,
+    pub decimals: u8,
 }

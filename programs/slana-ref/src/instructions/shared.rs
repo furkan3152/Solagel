@@ -5,46 +5,15 @@ use anchor_lang::{
     system_program::{self, Transfer},
 };
 
-use crate::{
-    constants::*,
-    error::SlanaError,
-    events::PassMintEnded,
-    logic::{self, GameResult},
-    state::{Config, PassLock, PlayerProfile, Season, Session},
-};
-
-// ---------------------------------------------------------------------------------------
-// Pass mint end
-// ---------------------------------------------------------------------------------------
-
-/// Ends the Pass mint for good (it never reopens). Called by `close_pass_mint` and by
-/// `mint_pass` when the last Pass of the supply is minted. No entropy target is set here:
-/// `reveal_pass` sets it only after the seed is public (ruling R23).
-pub(crate) fn end_pass_mint(config: &mut Config) -> Result<()> {
-    require!(!config.pass_mint_ended, SlanaError::MintEnded);
-    config.pass_mint_ended = true;
-    config.pass_mint_open = false;
-    emit!(PassMintEnded {
-        minted: config.pass_minted,
-    });
-    Ok(())
-}
+use crate::{constants::*, error::SlanaError};
 
 // ---------------------------------------------------------------------------------------
 // Parameter validation
 // ---------------------------------------------------------------------------------------
 
-/// `fee_bps ≤ MAX_FEE_BPS` and `pass_fee_bps ≤ fee_bps`, else `InvalidFee`.
-pub(crate) fn check_fees(fee_bps: u16, pass_fee_bps: u16) -> Result<()> {
+/// `fee_bps ≤ MAX_FEE_BPS`, else `InvalidFee`.
+pub(crate) fn check_fee(fee_bps: u16) -> Result<()> {
     require!(fee_bps <= MAX_FEE_BPS, SlanaError::InvalidFee);
-    require!(pass_fee_bps <= fee_bps, SlanaError::InvalidFee);
-    Ok(())
-}
-
-/// The three fee shares must sum to exactly `BPS`, else `BadSplit`.
-pub(crate) fn check_split(treasury_bps: u16, season_bps: u16, burn_bps: u16) -> Result<()> {
-    let sum = u32::from(treasury_bps) + u32::from(season_bps) + u32::from(burn_bps);
-    require!(sum == u32::from(BPS), SlanaError::BadSplit);
     Ok(())
 }
 
@@ -54,6 +23,13 @@ pub(crate) fn check_settle_fee(settle_fee_lamports: u64) -> Result<()> {
         settle_fee_lamports <= MAX_SETTLE_FEE_LAMPORTS,
         SlanaError::InvalidFee
     );
+    Ok(())
+}
+
+/// A role key (admin, server authority, fee wallet) must not be `Pubkey::default()`, else
+/// `InvalidAuthority`.
+pub(crate) fn check_authority(key: &Pubkey) -> Result<()> {
+    require_keys_neq!(*key, Pubkey::default(), SlanaError::InvalidAuthority);
     Ok(())
 }
 
@@ -70,33 +46,6 @@ pub(crate) fn check_max_sessions(max_sessions: u16) -> Result<()> {
         SlanaError::InvalidMaxSessions
     );
     Ok(())
-}
-
-// ---------------------------------------------------------------------------------------
-// Pass locks
-// ---------------------------------------------------------------------------------------
-
-/// A Pass session must come with exactly its own lock (`["pass_lock", session.pass_asset]`,
-/// recorded for this session); a session without a Pass must come with none. Else `PassInUse`.
-pub(crate) fn check_pass_lock(
-    session: &Account<Session>,
-    lock: Option<&Account<PassLock>>,
-) -> Result<()> {
-    match (session.has_pass, lock) {
-        (false, None) => Ok(()),
-        (true, Some(lock)) => {
-            let expected = Pubkey::create_program_address(
-                &[PASS_LOCK_SEED, session.pass_asset.as_ref(), &[lock.bump]],
-                &crate::ID,
-            )
-            .map_err(|_| error!(SlanaError::PassInUse))?;
-            require_keys_eq!(lock.key(), expected, SlanaError::PassInUse);
-            require_keys_eq!(lock.session, session.key(), SlanaError::PassInUse);
-            require_keys_eq!(lock.player, session.player, SlanaError::PassInUse);
-            Ok(())
-        }
-        _ => err!(SlanaError::PassInUse),
-    }
 }
 
 // ---------------------------------------------------------------------------------------
@@ -122,37 +71,4 @@ pub(crate) fn transfer_from_wallet<'info>(
         ),
         amount,
     )
-}
-
-// ---------------------------------------------------------------------------------------
-// Games
-// ---------------------------------------------------------------------------------------
-
-/// Applies a finished game to `profile`. With `season_points` the score also counts for the
-/// current `season` and the player is upserted into its leaderboard.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn record_result(
-    profile: &mut PlayerProfile,
-    season: &mut Season,
-    current_season: u32,
-    score: u32,
-    kills: u16,
-    xp: u32,
-    now: i64,
-    season_points: bool,
-) -> GameResult {
-    let result = logic::apply_game(
-        profile,
-        current_season,
-        score,
-        kills,
-        xp,
-        now,
-        season_points,
-    );
-    if season_points {
-        let candidate = logic::leader_entry(profile, result.score);
-        logic::upsert_leaderboard(&mut season.entries, &mut season.count, candidate);
-    }
-    result
 }
