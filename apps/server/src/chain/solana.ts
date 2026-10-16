@@ -1003,7 +1003,7 @@ export class SolanaChain implements ChainGateway {
     this.warn(
       'fee-account',
       `!!! chain: fee wallet token account ${address} (fee wallet ${config.feeWallet}) is ${problem}: ALL settlements are held. ` +
-        'Recreate it (an idempotent ATA creation for the fee wallet, as `pnpm admin set-token` / `update-config --fee-wallet` do); ' +
+        'Recreate it with `pnpm admin update-config --fee-wallet <current fee wallet>` (an idempotent ATA creation, signed by the admin); ' +
         'settlements resume by themselves.',
     );
     return `fee wallet token account ${problem}`;
@@ -1043,9 +1043,18 @@ export class SolanaChain implements ChainGateway {
     const what = `settlement ${short(key)}`;
     const accountCode = code === ERR.accountNotInitialized || code === ERR.accountOwnedByWrongProgram || this.isTokenAccountFailure(err, code);
     if (accountCode && this.config && this.token()) {
-      // an account error may be the fee wallet's token account (closed after our check): if so, hold
-      // the item without counting it against the player
-      const hold = await this.feeAccountHold(this.config, feeWalletAta(this.config).toBase58(), true);
+      // an account error may be the fee wallet's token account: it may have been rotated (the send used
+      // the old one) or closed after our check. Re-read the config first, then decide blame.
+      const sentWith = feeWalletAta(this.config).toBase58();
+      const fresh = await this.freshConfig();
+      const config = fresh ?? this.config;
+      if (fresh && this.token(fresh) && feeWalletAta(fresh).toBase58() !== sentWith) {
+        this.log(`chain: ${what} — the fee wallet changed (${label}); retrying with the current one`);
+        this.journal.retryLater(key, `${label} (fee wallet changed)`, this.now());
+        return;
+      }
+      // if still the same, hold the item without counting it against the player
+      const hold = await this.feeAccountHold(config, feeWalletAta(config).toBase58(), true);
       if (hold) {
         this.journal.retryLater(key, `${label} (${hold})`, this.now());
         return;
