@@ -688,7 +688,7 @@ async function main(): Promise<void> {
   console.log('\nCompute units:');
   for (const u of units) console.log(`  ${u.label.padEnd(56)} ${String(u.used).padStart(7)}`);
   console.log(
-    `\n✅ e2e passed in ${elapsed().trim()}: init without a mint → server practice only (token_not_set) → set-token → server picks it up ` +
+    `\nPASS: e2e passed in ${elapsed().trim()}: init without a mint → server practice only (token_not_set) → set-token → server picks it up ` +
       `(no restart) → create-arena --defaults → arenas attach → 4 real tickets → hunt + bot feeding → bell → fees to the fee wallet → ` +
       `fee wallet's own ticket finalized and collected → loot burned (supply down) → vault conserved`,
   );
@@ -727,10 +727,10 @@ main().then(
     process.exit(0);
   },
   async (err) => {
-    if (err instanceof Fail) console.error(`\n❌ e2e failed: ${err.message}`);
+    if (err instanceof Fail) console.error(`\nFAIL: e2e failed: ${err.message}`);
     else {
       const d = describeError(err);
-      console.error(`\n❌ e2e failed: ${d.message}${d.name ? ` [${d.name}]` : ''}`);
+      console.error(`\nFAIL: e2e failed: ${d.message}${d.name ? ` [${d.name}]` : ''}`);
       console.error(err);
     }
     if (units.length) console.error(`compute units so far: ${j(units)}`);

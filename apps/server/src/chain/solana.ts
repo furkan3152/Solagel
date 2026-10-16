@@ -57,6 +57,29 @@ const TOKEN_ACCOUNT_CODES: readonly number[] = [2014, 2015, 2021];
 /** SPL Token and Token-2022 program ids (a failure inside them on settle is the player's account). */
 const TOKEN_PROGRAM_FAILED = /Program (TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA|TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb) failed/;
 const STOP_GRACE_MS = 5_000;
+/** A usable fee wallet token account is trusted this long before it is checked again. */
+const FEE_ACCOUNT_TTL_MS = 30_000;
+
+/**
+ * Why a token account cannot receive the fee: null when it is usable (exists, owned by the token
+ * program, holds the game mint, belongs to the fee wallet, initialized and not frozen). SPL Token
+ * and Token-2022 share the base layout: mint [0, 32), owner [32, 64), state u8 at 108.
+ */
+export function feeAccountProblem(
+  account: { owner: string; data: Uint8Array } | null,
+  expect: { tokenProgram: string; tokenMint: string; feeWallet: string },
+): string | null {
+  if (!account) return 'missing';
+  if (account.owner !== expect.tokenProgram) return `owned by ${account.owner}, not the token program`;
+  if (account.data.length < 165) return 'not a token account';
+  const key = (from: number) => new PublicKey(account.data.subarray(from, from + 32)).toBase58();
+  if (key(0) !== expect.tokenMint) return `holds mint ${key(0)}, not the game token`;
+  if (key(32) !== expect.feeWallet) return `belongs to ${key(32)}, not the fee wallet`;
+  const state = account.data[108];
+  if (state === 2) return 'frozen';
+  if (state !== 1) return 'not initialized';
+  return null;
+}
 /** How long the worker waits before re-checking a sent sweep that may still land. */
 export const SWEEP_RECHECK_MS = 5_000;
 
@@ -91,6 +114,8 @@ export interface ChainClient {
   fetchMintSupply(mint: string): Promise<bigint>;
   /** Whether an account exists (used for the player's token account). */
   accountExists(address: string): Promise<boolean>;
+  /** Owner program and data of an account, null when it does not exist (the fee wallet's token account). */
+  fetchAccount(address: string): Promise<{ owner: string; data: Uint8Array } | null>;
   readonly ix: Pick<SlanaClient['ix'], 'settleSession' | 'sweepLoot'>;
 }
 
@@ -107,6 +132,10 @@ export function sdkChainClient(sdk: SlanaClient, connection: Connection): ChainC
     fetchSessions: () => sdk.fetchSessions(),
     fetchMintSupply: async (mint) => BigInt((await connection.getTokenSupply(new PublicKey(mint), 'confirmed')).value.amount),
     accountExists: async (address) => (await connection.getAccountInfo(new PublicKey(address), 'confirmed')) !== null,
+    fetchAccount: async (address) => {
+      const info = await connection.getAccountInfo(new PublicKey(address), 'confirmed');
+      return info ? { owner: info.owner.toBase58(), data: info.data } : null;
+    },
   };
 }
 
@@ -261,8 +290,12 @@ export class SolanaChain implements ChainGateway {
   private arenaCache: { at: number; value: ChainArena[] } | null = null;
   private probing: Promise<boolean> | null = null;
   private readonly statusListeners: (() => void)[] = [];
-  /** `tokenReady` as last announced (status-change listeners fire on a flip). */
-  private announcedTokenReady = false;
+  /** `tokenReady` / `arenasEnabled` as last announced (status-change listeners fire on a change). */
+  private announced = { tokenReady: false, arenasEnabled: false };
+  /** The fee wallet token account last found usable (address and when); re-checked after the TTL. */
+  private feeAccountOk: { address: string; at: number } | null = null;
+  /** Settlements are held because the fee wallet token account is unusable (logs the recovery). */
+  private feeAccountHeld = false;
 
   private timers: NodeJS.Timeout[] = [];
   private kickScheduled = false;
@@ -308,6 +341,8 @@ export class SolanaChain implements ChainGateway {
       return;
     }
     await this.probe();
+    // the boot state is the baseline: the app attaches arenas itself after start, nobody is connected yet
+    this.announced = { tokenReady: this.tokenReady, arenasEnabled: this.stakeEnabled };
     if (this.deps.loops === false) return;
     const staleAfterS = this.staleAfterS();
     if (staleAfterS !== STALE_SESSION_AFTER_S) this.log(`chain: unplayed sessions are refunded after ${staleAfterS} s (STALE_SESSION_AFTER_S)`);
@@ -359,7 +394,6 @@ export class SolanaChain implements ChainGateway {
           `server ${this.keypair!.publicKey.toBase58()} · stake ${this.stakeEnabled ? 'on' : 'off'}`,
       );
       void this.checkBalance();
-      this.announceStatus();
       return true;
     } catch (err) {
       this.warn('probe', `chain: RPC ${where} unreachable (${firstLine(err)}) — free play only (re-checking every 30 s)`);
@@ -374,7 +408,10 @@ export class SolanaChain implements ChainGateway {
   async refresh(): Promise<void> {
     if (this.stopped || !this.client) return;
     if (!this.enabled) {
-      if (await this.probe()) this.kick();
+      if (await this.probe()) {
+        this.announceStatus();
+        this.kick();
+      }
       return;
     }
     await this.freshConfig();
@@ -395,12 +432,14 @@ export class SolanaChain implements ChainGateway {
     this.statusListeners.push(fn);
   }
 
-  /** Fires the status listeners when `tokenReady` flipped since the last announcement. */
+  /** Fires the status listeners when `tokenReady` or `arenasEnabled` changed since the last announcement. */
   private announceStatus(): void {
     const ready = this.tokenReady;
-    if (ready === this.announcedTokenReady) return;
-    this.announcedTokenReady = ready;
-    if (ready) {
+    const arenas = this.stakeEnabled;
+    const before = this.announced;
+    if (ready === before.tokenReady && arenas === before.arenasEnabled) return;
+    this.announced = { tokenReady: ready, arenasEnabled: arenas };
+    if (ready && !before.tokenReady) {
       const c = this.config!;
       this.arenaCache = null;
       this.log(`chain: game token set — mint ${c.tokenMint} (${c.tokenDecimals} decimals) · arenas ${this.stakeEnabled ? 'on' : 'off'}`);
@@ -866,6 +905,13 @@ export class SolanaChain implements ChainGateway {
     // the same ATA and the program refuses the duplicate (Anchor 2040): settle without the
     // player's account then (finalize; the fee wallet collects `owed` with `refund_session`).
     const feeWalletToken = feeWalletAta(config).toBase58();
+    // Every settle (and finalize) needs the fee wallet's token account. When it is missing or
+    // unusable, every item waits: never counted against the player, never paid for by the server.
+    const feeHold = await this.feeAccountHold(config, feeWalletToken);
+    if (feeHold) {
+      this.journal.retryLater(key, feeHold, this.now());
+      return;
+    }
     const playerAta = ata(item.player, token.tokenMint, token.tokenProgram).toBase58();
     const feeWalletPlays = playerAta === feeWalletToken;
     let ataExists = false;
@@ -928,6 +974,41 @@ export class SolanaChain implements ChainGateway {
     }
   }
 
+  /**
+   * Null when the fee wallet's token account can receive the fee (checked at most every 30 s while
+   * it is fine; `fresh` re-reads it now). Otherwise the reason to hold the item, logged loudly about
+   * once a minute. The server never creates it (the admin does, `pnpm admin set-token` /
+   * `update-config --fee-wallet` create it idempotently).
+   */
+  private async feeAccountHold(config: ConfigView, address: string, fresh = false): Promise<string | null> {
+    const ok = this.feeAccountOk;
+    if (!fresh && ok && ok.address === address && this.now() - ok.at < FEE_ACCOUNT_TTL_MS) return null;
+    const token = this.token(config);
+    if (!token) return 'game token not set';
+    let problem: string | null;
+    try {
+      problem = feeAccountProblem(await this.client!.fetchAccount(address), { ...token, feeWallet: config.feeWallet });
+    } catch (err) {
+      return `fee wallet token account lookup failed: ${firstLine(err)}`;
+    }
+    if (problem === null) {
+      if (this.feeAccountHeld) this.log(`chain: fee wallet token account ${address} is usable again — settlements resume`);
+      this.feeAccountHeld = false;
+      this.feeAccountOk = { address, at: this.now() };
+      this.lastWarn.delete('fee-account'); // a later outage is logged at once
+      return null;
+    }
+    this.feeAccountOk = null;
+    this.feeAccountHeld = true;
+    this.warn(
+      'fee-account',
+      `!!! chain: fee wallet token account ${address} (fee wallet ${config.feeWallet}) is ${problem}: ALL settlements are held. ` +
+        'Recreate it (an idempotent ATA creation for the fee wallet, as `pnpm admin set-token` / `update-config --fee-wallet` do); ' +
+        'settlements resume by themselves.',
+    );
+    return `fee wallet token account ${problem}`;
+  }
+
   /** The session is gone (or re-opened): drop the item, reporting our own earlier send if it landed. */
   private async dropFinished(item: SettlementItem, why: string): Promise<void> {
     const signature = this.sentSignatures.get(item.key);
@@ -960,6 +1041,16 @@ export class SolanaChain implements ChainGateway {
     const d = describeError(err);
     const label = `${d.name ?? 'error'}${code !== null ? ` ${code}` : ''}: ${firstLine(err)}`;
     const what = `settlement ${short(key)}`;
+    const accountCode = code === ERR.accountNotInitialized || code === ERR.accountOwnedByWrongProgram || this.isTokenAccountFailure(err, code);
+    if (accountCode && this.config && this.token()) {
+      // an account error may be the fee wallet's token account (closed after our check): if so, hold
+      // the item without counting it against the player
+      const hold = await this.feeAccountHold(this.config, feeWalletAta(this.config).toBase58(), true);
+      if (hold) {
+        this.journal.retryLater(key, `${label} (${hold})`, this.now());
+        return;
+      }
+    }
 
     if (code === ERR.sessionMismatch || code === ERR.sessionFinalized) {
       await this.dropFinished(item, label);
