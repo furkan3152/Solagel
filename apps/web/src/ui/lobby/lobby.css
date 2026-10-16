@@ -383,7 +383,7 @@
   color: var(--mustard-text);
   font-weight: 500;
 }
-.kl-ticket__perk {
+.kl-ticket__fee {
   /* verbatim sentence case ("Fee 5% of profit only"), not a caps label */
   text-transform: none;
   letter-spacing: 0.01em;
@@ -1188,7 +1188,7 @@
     font-size: 40px;
   }
   .kl-ticket .kb-ticket__meta,
-  .kl-ticket__perk {
+  .kl-ticket__fee {
     letter-spacing: 0.02em;
   }
 }

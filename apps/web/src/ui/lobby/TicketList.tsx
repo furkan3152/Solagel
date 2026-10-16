@@ -119,7 +119,7 @@ export function TicketList({
                 {meta}
               </span>
               {!practice && !closed && <RoundLine arenaId={tk.arenaId!} />}
-              {!practice && !soon && <span className="kl-ticket__perk mono">{feeLine}</span>}
+              {!practice && !soon && <span className="kl-ticket__fee mono">{feeLine}</span>}
             </Ticket>
           </motion.div>
         );
