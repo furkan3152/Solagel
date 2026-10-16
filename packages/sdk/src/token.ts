@@ -6,6 +6,7 @@ import {
   getAssociatedTokenAddressSync,
 } from '@solana/spl-token';
 import type { Commitment, Connection, PublicKey, TransactionInstruction } from '@solana/web3.js';
+import { TokenNotSetError } from './accounts';
 import { toPublicKey, type Address } from './program';
 
 export { ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID };
@@ -25,6 +26,30 @@ export function createAtaIdempotentIx(payer: Address, owner: Address, mint: Addr
     toPublicKey(tokenProgram),
     ASSOCIATED_TOKEN_PROGRAM_ID,
   );
+}
+
+/** The config fields that locate the fee wallet's token account (a `ConfigView` fits). */
+export interface FeeWalletConfig {
+  feeWallet: Address;
+  tokenMint: Address | null;
+  tokenProgram: Address | null;
+}
+
+/**
+ * The fee wallet's associated token account for the game mint: where `settle_session` pays the
+ * fee and `sweep_arena` moves a vault. The program accepts any token account of the mint owned
+ * by `config.feeWallet`; the SDK and CLI always use this ATA. Throws `TokenNotSetError` while
+ * the mint is unset.
+ */
+export function feeWalletAta(config: FeeWalletConfig): PublicKey {
+  if (config.tokenMint === null || config.tokenProgram === null) throw new TokenNotSetError();
+  return ata(config.feeWallet, config.tokenMint, config.tokenProgram);
+}
+
+/** Creates `feeWalletAta(config)` unless it already exists (`payer` pays the rent). */
+export function createFeeWalletAtaIx(payer: Address, config: FeeWalletConfig): TransactionInstruction {
+  if (config.tokenMint === null || config.tokenProgram === null) throw new TokenNotSetError();
+  return createAtaIdempotentIx(payer, config.feeWallet, config.tokenMint, config.tokenProgram);
 }
 
 /** Amount (u64 LE at offset 64) of an SPL Token / Token-2022 token account; same layout in both. */

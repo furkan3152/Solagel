@@ -15,23 +15,27 @@ describe('programErrorCode / describeError', () => {
     expect(describeError(err)).toEqual({ code: 6007, name: 'InsufficientPot', message: SLANA_ERRORS[6007].message });
   });
 
-  it('v2 codes: Pass, mint and seed errors', () => {
-    expect(SlanaErrorCode.MintNotAllowed).toBe(6020);
-    expect(SlanaErrorCode.PassInUse).toBe(6025);
-    expect(SlanaErrorCode.EntryFeeZero).toBe(6040);
-    expect(SlanaErrorCode.SeedLocked).toBe(6041);
-    expect(SlanaErrorCode.MintStillOpen).toBe(6042);
-    expect(describeError({ code: 6042, msg: 'Pass mint is still open' }).name).toBe('MintStillOpen');
-    expect([SlanaErrorCode.MintEnded, SlanaErrorCode.SupplyLocked, SlanaErrorCode.UseCloseMint, SlanaErrorCode.BadSlotHashes, SlanaErrorCode.NothingMinted, SlanaErrorCode.EntropyNotReady, SlanaErrorCode.EntropyNotCaptured, SlanaErrorCode.SeedNotRevealed, SlanaErrorCode.FeeAboveLimit]).toEqual([6043, 6044, 6045, 6046, 6047, 6048, 6049, 6050, 6051]);
-    expect([SlanaErrorCode.EntryFeeAboveLimit, SlanaErrorCode.SettleFeeAboveLimit, SlanaErrorCode.SessionFinalized, SlanaErrorCode.InvalidAuthority]).toEqual([6052, 6053, 6054, 6055]);
-    // deprecated but kept: later codes keep their numbers
-    expect(SlanaErrorCode.MintSoldOut).toBe(6027);
-    expect(describeError({ code: 6022, msg: 'x' }).name).toBe('PassRequired');
+  it('Slana Simple codes (renumbered: no Pass or season errors)', () => {
+    expect(SlanaErrorCode.ArenaHasOpenSessions).toBe(6009);
+    expect(SlanaErrorCode.MintNotAllowed).toBe(6012);
+    expect(SlanaErrorCode.FreezeAuthorityPresent).toBe(6013);
+    expect([SlanaErrorCode.FeeAboveLimit, SlanaErrorCode.EntryFeeAboveLimit, SlanaErrorCode.SettleFeeAboveLimit, SlanaErrorCode.SessionFinalized, SlanaErrorCode.InvalidAuthority]).toEqual([
+      6017, 6018, 6019, 6020, 6021,
+    ]);
+    expect([SlanaErrorCode.TokenNotSet, SlanaErrorCode.TokenAlreadySet]).toEqual([6022, 6023]);
+    expect(describeError({ code: 6022, msg: 'The game token mint is not set yet' })).toMatchObject({ name: 'TokenNotSet', message: expect.stringMatching(/not set/) });
+    expect(describeError({ code: 6023, msg: 'x' }).name).toBe('TokenAlreadySet');
+    expect(Object.keys(SlanaErrorCode).filter((n) => /Pass|Season|Mint(Closed|Limit|SoldOut)|Seed|Entropy|Claim|Collection|Split/.test(n))).toEqual([]);
   });
 
-  it('"already in use" on a pass_lock address maps to PassInUse', () => {
-    const lock = 'Lock1111111111111111111111111111111111111111';
+  it('a duplicate writable account (fee wallet token = player token) is 2040', () => {
+    const err = { logs: [`Program ${PROGRAM} invoke [1]`, 'Program log: AnchorError occurred. Error Code: ConstraintDuplicateMutableAccount. Error Number: 2040. Error Message: x.'] };
+    expect(describeError(err)).toMatchObject({ code: 2040, name: 'ConstraintDuplicateMutableAccount' });
+  });
+
+  it('"already in use" on the join session PDA maps to SessionInUse', () => {
     const session = 'Sess1111111111111111111111111111111111111111';
+    const other = 'Prof1111111111111111111111111111111111111111';
     const inUse = (address: string) => ({
       logs: [
         `Program ${PROGRAM} invoke [1]`,
@@ -40,25 +44,22 @@ describe('programErrorCode / describeError', () => {
         'Program 11111111111111111111111111111111 failed: custom program error: 0x0',
       ],
     });
-    expect(describeError(inUse(lock), { passLock: lock })).toEqual({ code: SlanaErrorCode.PassInUse, name: 'PassInUse', message: 'This Pass is already backing another open session.' });
+    expect(describeError(inUse(session), { session })).toMatchObject({ name: 'SessionInUse', message: SESSION_IN_USE_MESSAGE });
     // another account already in use stays generic
-    expect(describeError(inUse(session), { passLock: lock }).name).toBe('AccountAlreadyInUse');
-    expect(describeError(inUse(lock)).name).toBe('AccountAlreadyInUse');
-    // "already in use" on the join's session PDA: a (maybe finalized) session is still open
-    expect(describeError(inUse(session), { passLock: lock, session })).toMatchObject({ name: 'SessionInUse', message: SESSION_IN_USE_MESSAGE });
-    // Anchor names the account in its log
-    expect(describeError({ message: 'AnchorError caused by account: pass_lock. already in use' }).name).toBe('PassInUse');
+    expect(describeError(inUse(other), { session }).name).toBe('AccountAlreadyInUse');
+    expect(describeError(inUse(session)).name).toBe('AccountAlreadyInUse');
   });
 
   it('reads Anchor log lines, hex custom codes and JSON confirmation errors', () => {
     const anchorLog = {
       logs: [
         `Program ${PROGRAM} invoke [1]`,
-        'Program log: AnchorError thrown in programs/slana-ref/src/instructions/settle_session.rs:72. Error Code: SessionMismatch. Error Number: 6019. Error Message: Settlement is for a different session.',
-        `Program ${PROGRAM} failed: custom program error: 0x1783`,
+        'Program log: AnchorError thrown in programs/slana-ref/src/instructions/settle_session.rs:72. Error Code: SessionMismatch. Error Number: 6011. Error Message: Settlement is for a different session.',
+        `Program ${PROGRAM} failed: custom program error: 0x177b`,
       ],
     };
     expect(describeError(anchorLog).name).toBe('SessionMismatch');
+    expect(programErrorCode(anchorLog)).toBe(6011);
     expect(programErrorCode('Error processing Instruction 0: custom program error: 0x1777')).toBe(6007);
     expect(programErrorCode(new TransactionFailedError('sig', { InstructionError: [1, { Custom: 6016 }] }, undefined))).toBe(6016);
     expect(programErrorCode({ err: { InstructionError: [0, { Custom: 6005 }] } })).toBe(6005);
@@ -67,7 +68,7 @@ describe('programErrorCode / describeError', () => {
     expect(programErrorCode({ error: { errorCode: { code: 'ArenaFull', number: 6010 }, errorMessage: 'Arena is full' } })).toBe(6010);
     expect(programErrorCode({ code: 6012, msg: 'Session cannot be refunded yet' })).toBe(6012);
     // wallet adapters wrap the original error
-    expect(describeError({ name: 'WalletSendTransactionError', message: 'Unexpected error', error: { logs: anchorLog.logs } }).code).toBe(6019);
+    expect(describeError({ name: 'WalletSendTransactionError', message: 'Unexpected error', error: { logs: anchorLog.logs } }).code).toBe(6011);
   });
 
   it('reads SendTransactionError simulation logs', () => {
@@ -107,7 +108,7 @@ describe('programErrorCode / describeError', () => {
       errors: { code: number; name: string }[];
     };
     expect(idl.errors.map((e) => [e.code, e.name])).toEqual(Object.entries(SlanaErrorCode).map(([name, code]) => [code, name]));
-    expect(SlanaErrorCode.SessionMismatch).toBe(6019);
+    expect(SlanaErrorCode.SessionMismatch).toBe(6011);
     for (const e of idl.errors) expect(SLANA_ERRORS[e.code].name).toBe(e.name);
   });
 });

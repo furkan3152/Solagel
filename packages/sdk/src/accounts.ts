@@ -9,10 +9,6 @@ export type RawConfig = IdlAccounts<Slana>['config'];
 export type RawProfile = IdlAccounts<Slana>['playerProfile'];
 export type RawArena = IdlAccounts<Slana>['arena'];
 export type RawSession = IdlAccounts<Slana>['session'];
-export type RawSeason = IdlAccounts<Slana>['season'];
-export type RawPassLock = IdlAccounts<Slana>['passLock'];
-export type RawMintCounter = IdlAccounts<Slana>['mintCounter'];
-export type RawLeaderEntry = RawSeason['entries'][number];
 
 /** Account names in the (camelCased) IDL, as used by `program.coder.accounts`. */
 export const ACCOUNT_NAMES = {
@@ -20,65 +16,25 @@ export const ACCOUNT_NAMES = {
   profile: 'playerProfile',
   arena: 'arena',
   session: 'session',
-  season: 'season',
-  passLock: 'passLock',
-  mintCounter: 'mintCounter',
 } as const;
 
 /** Raw token amounts are `bigint` base units; lamports and counters are numbers. */
 export interface ConfigView {
   admin: string;
   serverAuthority: string;
-  tokenMint: string;
-  tokenProgram: string;
+  /** Wallet that receives the whole fee on profit (and swept arena vaults) in its token account. */
+  feeWallet: string;
+  /** Game token mint; null until the admin runs `set_token_mint` (once). */
+  tokenMint: string | null;
+  /** SPL Token or Token-2022 program of the mint; null while the mint is unset. */
+  tokenProgram: string | null;
+  /** Mint decimals (0 while the mint is unset). */
   tokenDecimals: number;
+  /** Fee on profit in basis points for new sessions (each session keeps the rate it joined with). */
   feeBps: number;
-  /** Fee on profit of a Pass session (≤ `feeBps`). */
-  passFeeBps: number;
-  /** Fee split (sums to 10 000). */
-  treasuryBps: number;
-  seasonBps: number;
-  burnBps: number;
   /** Lamports a player deposits per session for the server's settle transaction. */
   settleFeeLamports: number;
-  currentSeason: number;
   paused: boolean;
-  /** Core collection of the Pass, null until `set_pass_collection`. */
-  passCollection: string | null;
-  passBaseUri: string;
-  passSupply: number;
-  passMinted: number;
-  passPerWallet: number;
-  /** Minimum token balance to mint (0 = none). */
-  passMinTokens: bigint;
-  passMintOpen: boolean;
-  /** Unix seconds. */
-  passMintStartTs: number;
-  /** The mint has been opened at least once: `passSupply` is frozen. */
-  passMintOpened: boolean;
-  /** The mint ended for good (closed or sold out); it never reopens. `passEntropyTargetSlot` is set. */
-  passMintEnded: boolean;
-  /** Hex sha256 of the seed, null while unset. */
-  passSeedHash: string | null;
-  /** The admin's committed seed (hex), public from `reveal_pass` on (null before). Traits do NOT derive from it: use `passFinalSeed`. */
-  passSeed: string | null;
-  /** `reveal_pass` published the seed and set `passEntropyTargetSlot`; the reveal completes with `capture_pass_entropy`. */
-  passSeedRevealed: boolean;
-  /** The traits are public: `capture_pass_entropy` stored `passFinalSeed`. */
-  passRevealed: boolean;
-  /** Slot whose hash becomes the entropy (first block at or after it), set by `reveal_pass`; 0 before. */
-  passEntropyTargetSlot: number;
-  /** `capture_pass_entropy` stored `passEntropy`. */
-  passEntropyCaptured: boolean;
-  /** Hex hash of the first slot at or after the target (captured permissionlessly), null before. */
-  passEntropy: string | null;
-  /** Slot of `passEntropy` (0 before the capture). */
-  passEntropySlot: number;
-  /**
-   * The revealed seed every Pass trait derives from: `sha256(passSeed || passEntropy)` (hex),
-   * null until revealed. `passTraits(passFinalSeed, n, passSupply)`.
-   */
-  passFinalSeed: string | null;
   totals: { players: number; games: number; sessions: number; staked: bigint; paidOut: bigint };
 }
 
@@ -94,9 +50,6 @@ export interface ProfileView {
   kills: number;
   bestScore: number;
   totalScore: number;
-  /** Season that `seasonPoints` belongs to. */
-  season: number;
-  seasonPoints: number;
   stakeGames: number;
   /** Token base units. */
   totalStaked: bigint;
@@ -114,7 +67,6 @@ export interface ArenaView {
   address: string;
   /** Token base units. */
   entryFee: bigint;
-  requiresPass: boolean;
   maxSessions: number;
   openSessions: number;
   enabled: boolean;
@@ -137,48 +89,43 @@ export interface SessionView {
   entryFee: bigint;
   /** Unix seconds. */
   openedAt: number;
-  hasPass: boolean;
-  /** Locked Pass asset, null without a Pass. */
-  passAsset: string | null;
   /** Settle deposit in lamports. */
   settleFee: number;
   /** Fee on profit in basis points, fixed at join (settlement uses it, not the config). */
   feeBps: number;
   /**
-   * Settled without a player token account (ruling R24): the game result is final and the
-   * Pass lock is already closed; `owed` waits in the arena vault until the player collects it
-   * with `refund_session` (no waiting time).
+   * Settled without a player token account (R24): the game result is final; `owed`
+   * waits in the arena vault until the player collects it with `refund_session` (no waiting time).
    */
   finalized: boolean;
   /** Token base units the player can collect from a finalized session (0 otherwise). */
   owed: bigint;
 }
 
-export interface LeaderEntryView {
-  player: string;
-  name: string;
-  points: number;
-  bestScore: number;
-  skin: number;
+/** The game token as stored in the config, once set. */
+export interface GameToken {
+  tokenMint: string;
+  tokenProgram: string;
+  tokenDecimals: number;
 }
 
-export interface SeasonView {
-  /** Season PDA. */
-  address: string;
-  id: number;
-  /** Unix seconds. */
-  startedAt: number;
-  /** Unix seconds (0 while running). */
-  endedAt: number;
-  finalized: boolean;
-  /** This season's tokens in the season vault, not paid out yet (base units). */
-  pool: bigint;
-  /** Prize pool frozen by `end_season` (0 while running). */
-  prizePool: bigint;
-  /** Bit `rank` set ⇔ that rank's prize was claimed. */
-  claimedMask: number;
-  /** Leaderboard, sorted by points (only the used `count` entries). */
-  entries: LeaderEntryView[];
+/** Thrown by `requireToken` while `Config.tokenMint` is unset. */
+export class TokenNotSetError extends Error {
+  constructor() {
+    super('the game token mint is not set yet (run `pnpm admin set-token --mint <CA>`)');
+    this.name = 'TokenNotSetError';
+  }
+}
+
+/** True once `set_token_mint` stored the game mint (arenas can exist and be joined). */
+export function isTokenSet(config: Pick<ConfigView, 'tokenMint' | 'tokenProgram'>): boolean {
+  return config.tokenMint !== null && config.tokenProgram !== null;
+}
+
+/** The game token of a config; throws `TokenNotSetError` while the mint is unset. */
+export function requireToken(config: Pick<ConfigView, 'tokenMint' | 'tokenProgram' | 'tokenDecimals'>): GameToken {
+  if (config.tokenMint === null || config.tokenProgram === null) throw new TokenNotSetError();
+  return { tokenMint: config.tokenMint, tokenProgram: config.tokenProgram, tokenDecimals: config.tokenDecimals };
 }
 
 const utf8 = new TextDecoder('utf-8');
@@ -194,51 +141,19 @@ export function decodeName(bytes: ArrayLike<number>, len: number): string {
 const pk = (k: PublicKey): string => k.toBase58();
 const pkOrNull = (k: PublicKey): string | null => (k.equals(PublicKey.default) ? null : k.toBase58());
 
-/** Lowercase hex of a byte array, null when all zero. */
-export function hexOrNull(bytes: ArrayLike<number>): string | null {
-  let hex = '';
-  let any = false;
-  for (let i = 0; i < bytes.length; i++) {
-    if (bytes[i] !== 0) any = true;
-    hex += bytes[i].toString(16).padStart(2, '0');
-  }
-  return any ? hex : null;
-}
-
 export function toConfigView(raw: RawConfig): ConfigView {
+  const tokenMint = pkOrNull(raw.tokenMint);
   return {
     admin: pk(raw.admin),
     serverAuthority: pk(raw.serverAuthority),
-    tokenMint: pk(raw.tokenMint),
-    tokenProgram: pk(raw.tokenProgram),
+    feeWallet: pk(raw.feeWallet),
+    tokenMint,
+    // the program sets mint and program together; treat a half-set pair as unset
+    tokenProgram: tokenMint === null ? null : pkOrNull(raw.tokenProgram),
     tokenDecimals: raw.tokenDecimals,
     feeBps: raw.feeBps,
-    passFeeBps: raw.passFeeBps,
-    treasuryBps: raw.treasuryBps,
-    seasonBps: raw.seasonBps,
-    burnBps: raw.burnBps,
     settleFeeLamports: toNumber(raw.settleFeeLamports),
-    currentSeason: raw.currentSeason,
     paused: raw.paused,
-    passCollection: pkOrNull(raw.passCollection),
-    passBaseUri: decodeName(raw.passBaseUri, raw.passBaseUriLen),
-    passSupply: raw.passSupply,
-    passMinted: raw.passMinted,
-    passPerWallet: raw.passPerWallet,
-    passMinTokens: toBigInt(raw.passMinTokens),
-    passMintOpen: raw.passMintOpen,
-    passMintStartTs: toNumber(raw.passMintStartTs),
-    passMintOpened: raw.passMintOpened,
-    passMintEnded: raw.passMintEnded,
-    passSeedHash: hexOrNull(raw.passSeedHash),
-    passSeed: raw.passSeedRevealed ? (hexOrNull(raw.passSeed) ?? '00'.repeat(32)) : null,
-    passSeedRevealed: raw.passSeedRevealed,
-    passRevealed: raw.passRevealed,
-    passEntropyTargetSlot: toNumber(raw.passEntropyTargetSlot),
-    passEntropyCaptured: raw.passEntropyCaptured,
-    passEntropy: raw.passEntropyCaptured ? (hexOrNull(raw.passEntropy) ?? '00'.repeat(32)) : null,
-    passEntropySlot: toNumber(raw.passEntropySlot),
-    passFinalSeed: raw.passRevealed ? (hexOrNull(raw.passFinalSeed) ?? '00'.repeat(32)) : null,
     totals: {
       players: toNumber(raw.totalPlayers),
       games: toNumber(raw.totalGames),
@@ -250,20 +165,17 @@ export function toConfigView(raw: RawConfig): ConfigView {
 }
 
 export function toProfileView(address: Address, raw: RawProfile): ProfileView {
-  const xp = toNumber(raw.xp);
   return {
     address: toBase58(address),
     owner: pk(raw.owner),
     name: decodeName(raw.name, raw.nameLen),
     skin: raw.skin,
-    xp,
+    xp: toNumber(raw.xp),
     level: levelFromXp(raw.xp),
     gamesPlayed: raw.gamesPlayed,
     kills: raw.kills,
     bestScore: raw.bestScore,
     totalScore: toNumber(raw.totalScore),
-    season: raw.season,
-    seasonPoints: toNumber(raw.seasonPoints),
     stakeGames: raw.stakeGames,
     totalStaked: toBigInt(raw.totalStaked),
     totalWon: toBigInt(raw.totalWon),
@@ -278,7 +190,6 @@ export function toArenaView(address: Address, raw: RawArena, vaultAmount: bigint
     id: raw.id,
     address: toBase58(address),
     entryFee: toBigInt(raw.entryFee),
-    requiresPass: raw.requiresPass,
     maxSessions: raw.maxSessions,
     openSessions: raw.openSessions,
     enabled: raw.enabled,
@@ -296,36 +207,9 @@ export function toSessionView(address: Address, raw: RawSession): SessionView {
     arenaId: raw.arenaId,
     entryFee: toBigInt(raw.entryFee),
     openedAt: toNumber(raw.openedAt),
-    hasPass: raw.hasPass,
-    passAsset: raw.hasPass ? pkOrNull(raw.passAsset) : null,
     settleFee: toNumber(raw.settleFee),
     feeBps: raw.feeBps,
     finalized: raw.finalized,
     owed: toBigInt(raw.owed),
-  };
-}
-
-export function toLeaderEntryView(raw: RawLeaderEntry): LeaderEntryView {
-  return {
-    player: pk(raw.player),
-    name: decodeName(raw.name, raw.nameLen),
-    points: toNumber(raw.points),
-    bestScore: raw.bestScore,
-    skin: raw.skin,
-  };
-}
-
-export function toSeasonView(address: Address, raw: RawSeason): SeasonView {
-  const count = Math.max(0, Math.min(raw.count, raw.entries.length));
-  return {
-    address: toBase58(address),
-    id: raw.id,
-    startedAt: toNumber(raw.startedAt),
-    endedAt: toNumber(raw.endedAt),
-    finalized: raw.finalized,
-    pool: toBigInt(raw.pool),
-    prizePool: toBigInt(raw.prizePool),
-    claimedMask: raw.claimedMask,
-    entries: raw.entries.slice(0, count).map(toLeaderEntryView),
   };
 }

@@ -23,60 +23,24 @@ export const SlanaErrorCode = {
   ArenaFull: 6006,
   InsufficientPot: 6007,
   RefundTooEarly: 6008,
-  SeasonFinalized: 6009,
-  SeasonNotFinalized: 6010,
-  NotEligible: 6011,
-  AlreadyClaimed: 6012,
-  ClaimWindowClosed: 6013,
-  ClaimWindowOpen: 6014,
-  InvalidSeason: 6015,
-  ArenaHasOpenSessions: 6016,
-  InvalidAmount: 6017,
-  MathOverflow: 6018,
-  SessionMismatch: 6019,
-  MintNotAllowed: 6020,
-  FreezeAuthorityPresent: 6021,
-  PassRequired: 6022,
-  PassNotOwned: 6023,
-  PassWrongCollection: 6024,
-  PassInUse: 6025,
-  MintClosed: 6026,
-  /** @deprecated Unreachable: selling out ends the mint, later mints fail with `MintClosed`. Kept for its code. */
-  MintSoldOut: 6027,
-  MintLimit: 6028,
-  MintMinTokens: 6029,
-  SeedMismatch: 6030,
-  SeedNotSet: 6031,
-  AlreadyRevealed: 6032,
-  CollectionAlreadySet: 6033,
-  CollectionNotSet: 6034,
-  BadCollection: 6035,
-  BadSplit: 6036,
-  ArenaBusy: 6037,
-  BadBaseUri: 6038,
-  InvalidMaxSessions: 6039,
-  EntryFeeZero: 6040,
-  SeedLocked: 6041,
-  MintStillOpen: 6042,
-  MintEnded: 6043,
-  SupplyLocked: 6044,
-  UseCloseMint: 6045,
-  BadSlotHashes: 6046,
-  NothingMinted: 6047,
-  EntropyNotReady: 6048,
-  EntropyNotCaptured: 6049,
-  SeedNotRevealed: 6050,
-  FeeAboveLimit: 6051,
-  EntryFeeAboveLimit: 6052,
-  SettleFeeAboveLimit: 6053,
-  SessionFinalized: 6054,
-  InvalidAuthority: 6055,
+  ArenaHasOpenSessions: 6009,
+  MathOverflow: 6010,
+  SessionMismatch: 6011,
+  MintNotAllowed: 6012,
+  FreezeAuthorityPresent: 6013,
+  ArenaBusy: 6014,
+  InvalidMaxSessions: 6015,
+  EntryFeeZero: 6016,
+  FeeAboveLimit: 6017,
+  EntryFeeAboveLimit: 6018,
+  SettleFeeAboveLimit: 6019,
+  SessionFinalized: 6020,
+  InvalidAuthority: 6021,
+  TokenNotSet: 6022,
+  TokenAlreadySet: 6023,
 } as const;
 
 export type SlanaErrorName = keyof typeof SlanaErrorCode;
-
-/** Player-facing message for an "already in use" failure on a Pass lock. */
-export const PASS_IN_USE_MESSAGE = 'This Pass is already backing another open session.';
 
 /** Player-facing message for an "already in use" failure on the arena session PDA. */
 export const SESSION_IN_USE_MESSAGE =
@@ -92,56 +56,24 @@ const FRIENDLY: Record<SlanaErrorName, string> = {
   ArenaFull: 'This arena is full — try again in a moment.',
   InsufficientPot: 'The arena pot cannot cover this payout right now.',
   RefundTooEarly: 'Refunds open 24 hours after you joined the arena.',
-  SeasonFinalized: 'This season has already ended.',
-  SeasonNotFinalized: 'This season is still running.',
-  NotEligible: 'Only the top 10 of a finished season can claim a prize.',
-  AlreadyClaimed: 'You already claimed this prize.',
-  ClaimWindowClosed: 'The 30-day claim window for this season is over.',
-  ClaimWindowOpen: 'The claim window of that season is still open.',
-  InvalidSeason: 'Invalid season.',
   ArenaHasOpenSessions: 'The arena still has open sessions.',
-  InvalidAmount: 'Invalid amount.',
   MathOverflow: 'That amount is too large.',
   SessionMismatch: 'This settlement belongs to an older arena session.',
   MintNotAllowed: 'This token mint is not supported.',
   FreezeAuthorityPresent: 'The token mint must not have a freeze authority.',
-  PassRequired: 'This arena is for Slana Pass holders only.',
-  PassNotOwned: 'That Slana Pass is not in your wallet.',
-  PassWrongCollection: 'That NFT is not a Slana Pass.',
-  PassInUse: PASS_IN_USE_MESSAGE,
-  MintClosed: 'The Slana Pass mint is closed right now.',
-  MintSoldOut: 'All Slana Passes have been minted.',
-  MintLimit: 'You already minted the maximum number of Passes for one wallet.',
-  MintMinTokens: 'You need more tokens in your wallet to mint a Pass.',
-  SeedMismatch: 'The seed does not match the committed hash.',
-  SeedNotSet: 'The Pass seed hash is not set yet.',
-  AlreadyRevealed: 'Pass traits are already revealed.',
-  CollectionAlreadySet: 'The Pass collection is already set.',
-  CollectionNotSet: 'The Pass collection is not set yet.',
-  BadCollection: 'Invalid Pass collection.',
-  BadSplit: 'The fee split must add up to 100 %.',
   ArenaBusy: 'The arena has open sessions — try again when they are settled.',
-  BadBaseUri: "The Pass base URI is invalid (max 96 bytes, must end with '/', frozen after the first mint).",
   InvalidMaxSessions: 'Max sessions must be between 2 and 2000.',
   EntryFeeZero: 'The entry fee must be greater than zero.',
-  SeedLocked: 'The Pass seed hash cannot change after the first mint.',
-  MintStillOpen: 'Close the Pass mint (or sell out) before revealing.',
-  MintEnded: 'The Pass mint has ended for good and cannot reopen.',
-  SupplyLocked: 'The Pass supply cannot change once the mint has opened.',
-  UseCloseMint: 'Passes were minted: end the mint with close-mint (it fixes the trait entropy).',
-  BadSlotHashes: 'The SlotHashes sysvar account is missing or invalid.',
-  NothingMinted: 'No Pass has been minted yet.',
-  EntropyNotReady: 'The Pass entropy slot has not passed yet; try again in a minute.',
-  EntropyNotCaptured: 'The Pass entropy is not captured yet (capture-entropy).',
-  SeedNotRevealed: 'The Pass seed is not revealed yet; the reveal completes after it.',
   FeeAboveLimit: 'The fee changed a moment ago and is now higher than shown. Nothing was charged; check the ticket again.',
   EntryFeeAboveLimit: 'The entry fee changed a moment ago and is now higher than shown. Nothing was charged; check the ticket again.',
   SettleFeeAboveLimit: 'The settle deposit changed a moment ago and is now higher than shown. Nothing was charged; check the ticket again.',
   SessionFinalized: 'This game is already settled. Collect your payout.',
-  InvalidAuthority: 'The admin or server key must not be the default (all zero) key.',
+  InvalidAuthority: 'The admin, server or fee wallet key must not be the default (all zero) key.',
+  TokenNotSet: 'Arenas are opening soon: the game token is not set yet.',
+  TokenAlreadySet: 'The game token is already set; it can be set only once.',
 };
 
-/** Program errors by code (6000–6055). */
+/** Program errors by code (6000–6023). */
 export const SLANA_ERRORS: Readonly<Record<number, ErrorInfo>> = Object.fromEntries(
   (Object.keys(SlanaErrorCode) as SlanaErrorName[]).map((name) => [
     SlanaErrorCode[name],
@@ -163,6 +95,7 @@ export const ANCHOR_ERRORS: Readonly<Record<number, ErrorInfo>> = Object.fromEnt
       [2012, 'ConstraintAddress', 'Unexpected account address — please refresh and try again.'],
       [2014, 'ConstraintTokenMint', 'That token account holds a different token.'],
       [2015, 'ConstraintTokenOwner', 'That token account belongs to someone else.'],
+      [2040, 'ConstraintDuplicateMutableAccount', 'The same account was passed twice as writable (e.g. the fee wallet token account as the player token account).'],
       [3001, 'AccountDiscriminatorNotFound', 'An account has no data (not created yet).'],
       [3002, 'AccountDiscriminatorMismatch', 'An account has the wrong type.'],
       [3003, 'AccountDidNotDeserialize', 'An account could not be read (version mismatch?).'],
@@ -364,8 +297,6 @@ function plainMessage(err: unknown): string {
 }
 
 export interface DescribeContext {
-  /** `pass_lock` PDA of the transaction: "already in use" on it means the Pass is busy. */
-  passLock?: Address | null;
   /** Session PDA of a join: "already in use" on it means a session (maybe finalized) is still open. */
   session?: Address | null;
 }
@@ -379,10 +310,6 @@ export function describeError(err: unknown, ctx: DescribeContext = {}): Describe
   }
   const text = collectText(err).join('\n');
   if (/already in use/i.test(text)) {
-    const lock = ctx.passLock ? toBase58(ctx.passLock) : null;
-    if (/\bpass_lock\b/.test(text) || (lock !== null && text.includes(lock))) {
-      return { code: SlanaErrorCode.PassInUse, name: 'PassInUse', message: PASS_IN_USE_MESSAGE };
-    }
     const session = ctx.session ? toBase58(ctx.session) : null;
     if (session !== null && text.includes(session)) {
       return { code: null, name: 'SessionInUse', message: SESSION_IN_USE_MESSAGE };

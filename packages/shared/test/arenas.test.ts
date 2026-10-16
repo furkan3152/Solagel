@@ -2,12 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { ARENA_META, DEFAULT_ARENAS, arenaMeta } from '../src';
 
 describe('arena catalog', () => {
-  it('ships the four default tiers', () => {
+  it('ships the four default tiers, all open to everyone', () => {
     expect(DEFAULT_ARENAS).toEqual([
-      { id: 1, entryTokens: 1000, requiresPass: false, maxSessions: 300 },
-      { id: 2, entryTokens: 10000, requiresPass: false, maxSessions: 300 },
-      { id: 3, entryTokens: 50000, requiresPass: true, maxSessions: 300 },
-      { id: 4, entryTokens: 250000, requiresPass: true, maxSessions: 300 },
+      { id: 1, entryTokens: 1000, maxSessions: 300 },
+      { id: 2, entryTokens: 10000, maxSessions: 300 },
+      { id: 3, entryTokens: 50000, maxSessions: 300 },
+      { id: 4, entryTokens: 250000, maxSessions: 300 },
     ]);
   });
 
