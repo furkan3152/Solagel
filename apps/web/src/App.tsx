@@ -13,6 +13,7 @@ import { Lobby } from './ui/lobby/Lobby';
 import { Toasts } from './ui/Toasts';
 import { WalletModal } from './solana/WalletModal';
 import { DeathSheet, GameHud, HowToSheet, RoundOverSheet, SettingsSheet } from './ui/game';
+import { GameClosedSheet } from './ui/gate/GameClosedSheet';
 
 function GameCanvas() {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -66,6 +67,7 @@ function Screens() {
         <SettingsSheet />
         <HowToSheet />
         <WalletModal />
+        <GameClosedSheet />
         <Toasts />
       </Kb>
     </>
