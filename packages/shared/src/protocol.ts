@@ -338,7 +338,9 @@ export type ErrorCode =
   /** Paid arenas have no cash-out: everyone alive is paid at the round end. */
   | 'no_cashout'
   /** The ticket of a returning (AFK) player was settled at the bell while they were away: the till was paid. */
-  | 'round_ended';
+  | 'round_ended'
+  /** The game is not public yet (`SiteSettings.gamePublic` off): only admin wallets can enter a room. */
+  | 'game_closed';
 
 /** Parse a join target into its parts. Returns null for malformed input. */
 export function parseJoinTarget(

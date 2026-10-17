@@ -187,6 +187,8 @@ async function startServer(): Promise<ChildProcess> {
     HOST: '127.0.0.1',
     NODE_ENV: 'production',
     DATA_DIR: dataDir,
+    // the run plays as ordinary wallets: open the game to everyone (no admin-only gate)
+    GAME_PUBLIC: '1',
   };
   delete env.DEV_FAKE_CHAIN;
   const child = spawn(resolve(SERVER_DIR, 'node_modules/.bin/tsx'), ['src/index.ts'], { cwd: SERVER_DIR, env, stdio: ['ignore', 'pipe', 'pipe'] });

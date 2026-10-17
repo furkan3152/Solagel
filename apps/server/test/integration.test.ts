@@ -198,6 +198,8 @@ beforeAll(async () => {
     BOT_TARGET: '6',
     BOT_MIN: '2',
     BOT_MAX: '6',
+    // the game gate (site setting `gamePublic`) is covered in site.test.ts
+    GAME_PUBLIC: '1',
   });
   chain = new FakeChain();
   app = await createApp(cfg, { chain, log: () => {}, persist: true, now: serverNow });
