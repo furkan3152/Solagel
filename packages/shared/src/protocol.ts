@@ -168,6 +168,8 @@ export interface ChainStatus {
   token: { mint: string; symbol: string; decimals: number } | null;
   /** Fee on profit for new tickets (`Config.fee_bps`, basis points); null while the config is unknown. */
   feeBps: number | null;
+  /** Public key the server signs settlements with: set it as the program's server authority (`init` / `update-config`). */
+  serverKey?: string | null;
 }
 
 export interface ProfileSummary {

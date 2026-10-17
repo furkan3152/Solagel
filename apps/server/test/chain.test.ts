@@ -345,6 +345,7 @@ describe('SolanaChain status & reads', () => {
       tokenReady: true,
       token: { mint: MINT, symbol: '$SLANA', decimals: 6 },
       feeBps: 500,
+      serverKey: expect.any(String),
     });
     const h2 = await harness({ cfg: { publicRpcUrl: 'https://rpc.example', stakeEnabled: false } });
     expect(h2.chain.status()).toMatchObject({ rpcUrl: 'https://rpc.example', arenasEnabled: false });
