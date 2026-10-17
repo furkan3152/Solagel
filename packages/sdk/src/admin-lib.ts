@@ -1,27 +1,44 @@
 /**
  * Admin CLI building blocks (Node only, not exported from the SDK entry point): argument
- * parsing, option validation, the `set-token` transaction and the `status` report. Kept free
- * of side effects so the CLI rules are unit-tested; `admin.ts` wires them to the RPC.
+ * parsing and the `status` report. Validation, the mint check, the status read and the
+ * instruction plans are shared with the web admin panel and live in `ops.ts` (browser-safe,
+ * `@slana/sdk/ops`); this file adapts them to command-line options. `admin.ts` wires them to the RPC.
  */
-import { DEFAULT_ARENAS, arenaMeta, formatToken, parseToken } from '@slana/shared';
-import { getTokenMetadata } from '@solana/spl-token';
-import { PublicKey, type Connection, type TransactionInstruction } from '@solana/web3.js';
+import { arenaMeta } from '@slana/shared';
+import { PublicKey } from '@solana/web3.js';
+import { DEFAULT_FEE_BPS, DEFAULT_SETTLE_FEE_LAMPORTS, MAX_FEE_BPS, MAX_SETTLE_FEE_LAMPORTS, PROGRAM_ID, type UpdateConfigParams } from './index';
 import {
-  DEFAULT_FEE_BPS,
-  DEFAULT_SETTLE_FEE_LAMPORTS,
-  MAX_FEE_BPS,
-  MAX_SETTLE_FEE_LAMPORTS,
-  PROGRAM_ID,
-  TOKEN_2022_PROGRAM_ID,
-  TOKEN_PROGRAM_ID,
-  createFeeWalletAtaIx,
-  lamportsToSol,
-  type ArenaView,
-  type ConfigView,
-  type InitializeParams,
-  type SlanaClient,
-  type UpdateConfigParams,
-} from './index';
+  AdminInputError,
+  fmtPct,
+  fmtSol,
+  fmtTok,
+  initParams,
+  parseBoolInput,
+  parseIntInput,
+  parsePubkeyInput,
+  parseTokenInput,
+  tokenProgramName,
+  updateConfigParams,
+  type InitPlan,
+  type StatusSnapshot,
+} from './ops';
+
+export {
+  buildSetTokenInstructions,
+  defaultArenaParams,
+  fetchTokenSymbol,
+  fmtPct,
+  fmtSol,
+  fmtTok,
+  inferCluster,
+  isTokenProgram,
+  metaplexMetadataPda,
+  MPL_TOKEN_METADATA_ID,
+  parseMetaplexMetadata,
+  tokenProgramName,
+  type MintSnapshot,
+  type StatusSnapshot,
+} from './ops';
 
 export const USAGE = `Slana admin CLI
 
@@ -63,7 +80,8 @@ Fee: ${(DEFAULT_FEE_BPS / 100).toFixed(0)} % of profit by default (at most ${MAX
 `;
 
 /** A wrong command line or a refused precondition: printed without a stack, exit code 2. */
-export class UsageError extends Error {}
+export { AdminInputError as UsageError };
+const UsageError = AdminInputError;
 
 export type Opts = Map<string, string | true>;
 
@@ -110,20 +128,12 @@ export function required(opts: Opts, name: string, command: string): string {
 
 export function pubkey(opts: Opts, name: string): PublicKey | undefined {
   const v = str(opts, name);
-  if (v === undefined) return undefined;
-  try {
-    return new PublicKey(v);
-  } catch {
-    throw new UsageError(`--${name}: not a valid public key: ${v}`);
-  }
+  return v === undefined ? undefined : parsePubkeyInput(`--${name}`, v);
 }
 
 export function int(opts: Opts, name: string, min: number, max: number): number | undefined {
   const v = str(opts, name);
-  if (v === undefined) return undefined;
-  const n = Number(v.replace(/_/g, ''));
-  if (v.trim() === '' || !Number.isInteger(n) || n < min || n > max) throw new UsageError(`--${name} must be an integer between ${min} and ${max}`);
-  return n;
+  return v === undefined ? undefined : parseIntInput(`--${name}`, v, min, max);
 }
 
 /** A switch: `--force` or `--force=true`. */
@@ -134,182 +144,48 @@ export function flag(opts: Opts, name: string): boolean {
 
 export function bool(opts: Opts, name: string): boolean | undefined {
   const v = str(opts, name);
-  if (v === undefined) return undefined;
-  if (v === 'true') return true;
-  if (v === 'false') return false;
-  throw new UsageError(`--${name} must be true or false`);
+  return v === undefined ? undefined : parseBoolInput(`--${name}`, v);
 }
 
 /** Whole tokens (`1000`, `0.5`, `1_000`) → base units. */
 export function tokens(opts: Opts, name: string, decimals: number): bigint | undefined {
   const v = str(opts, name);
-  if (v === undefined) return undefined;
-  try {
-    return parseToken(v.replace(/_/g, ''), decimals);
-  } catch (err) {
-    throw new UsageError(`--${name}: ${(err as Error).message}`);
-  }
-}
-
-export function inferCluster(url: string): string {
-  if (/devnet/i.test(url)) return 'devnet';
-  if (/testnet/i.test(url)) return 'testnet';
-  if (/mainnet/i.test(url)) return 'mainnet-beta';
-  return 'localnet';
+  return v === undefined ? undefined : parseTokenInput(`--${name}`, v, decimals);
 }
 
 /** `init` options; the fee wallet defaults to the admin signer. */
-export function parseInitOptions(opts: Opts, admin: PublicKey): InitializeParams & { feeWallet: PublicKey; serverAuthority: PublicKey } {
+export function parseInitOptions(opts: Opts, admin: PublicKey): InitPlan {
   if (opts.has('mint')) throw new UsageError('init no longer takes a mint: run `pnpm admin set-token --mint <CA>` after init');
   const serverAuthority = pubkey(opts, 'server');
   if (!serverAuthority) throw new UsageError('init needs --server <pubkey> (see `pnpm admin help`)');
-  const feeWallet = pubkey(opts, 'fee-wallet') ?? admin;
-  if (feeWallet.equals(PublicKey.default) || serverAuthority.equals(PublicKey.default)) {
-    throw new UsageError('the server and fee wallet must not be the default (all zero) key');
-  }
-  return {
-    serverAuthority,
-    feeWallet,
-    feeBps: int(opts, 'fee-bps', 0, MAX_FEE_BPS) ?? DEFAULT_FEE_BPS,
-    settleFeeLamports: int(opts, 'settle-fee-lamports', 0, MAX_SETTLE_FEE_LAMPORTS) ?? DEFAULT_SETTLE_FEE_LAMPORTS,
-  };
+  return initParams(
+    {
+      serverAuthority,
+      feeWallet: pubkey(opts, 'fee-wallet'),
+      feeBps: int(opts, 'fee-bps', 0, MAX_FEE_BPS),
+      settleFeeLamports: int(opts, 'settle-fee-lamports', 0, MAX_SETTLE_FEE_LAMPORTS),
+    },
+    admin,
+  );
 }
 
 /** `update-config` options (only the given ones); refuses an empty change. */
 export function parseUpdateConfigOptions(opts: Opts): UpdateConfigParams {
-  const changes: UpdateConfigParams = {
+  const changes = updateConfigParams({
     admin: pubkey(opts, 'admin'),
     serverAuthority: pubkey(opts, 'server'),
     feeWallet: pubkey(opts, 'fee-wallet'),
     feeBps: int(opts, 'fee-bps', 0, MAX_FEE_BPS),
     settleFeeLamports: int(opts, 'settle-fee-lamports', 0, MAX_SETTLE_FEE_LAMPORTS),
     paused: bool(opts, 'paused'),
-  };
-  for (const [k, v] of Object.entries(changes)) if (v === undefined) delete (changes as Record<string, unknown>)[k];
+  });
   if (Object.keys(changes).length === 0) throw new UsageError('update-config: nothing to change (see `pnpm admin help`)');
-  for (const key of ['admin', 'serverAuthority', 'feeWallet'] as const) {
-    const v = changes[key];
-    if (v !== undefined && new PublicKey(v).equals(PublicKey.default)) throw new UsageError(`${key} must not be the default (all zero) key`);
-  }
   return changes;
-}
-
-/** The `create-arena --defaults` arenas in base units of a mint with `decimals`. */
-export function defaultArenaParams(decimals: number): { id: number; entryFee: bigint; maxSessions: number }[] {
-  const scale = 10n ** BigInt(decimals);
-  return DEFAULT_ARENAS.map((a) => ({ id: a.id, entryFee: BigInt(a.entryTokens) * scale, maxSessions: a.maxSessions }));
-}
-
-export const isTokenProgram = (program: PublicKey): boolean => program.equals(TOKEN_PROGRAM_ID) || program.equals(TOKEN_2022_PROGRAM_ID);
-
-export function tokenProgramName(program: string | PublicKey | null): string {
-  if (program === null) return 'not set';
-  const p = typeof program === 'string' ? program : program.toBase58();
-  if (p === TOKEN_2022_PROGRAM_ID.toBase58()) return 'Token-2022';
-  if (p === TOKEN_PROGRAM_ID.toBase58()) return 'SPL Token';
-  return p;
-}
-
-/**
- * The `set-token` transaction: create the fee wallet's associated token account idempotently
- * (the admin pays), then `set_token_mint`. `mintOwner` is the program owning the mint account,
- * which picks SPL Token or Token-2022. Refuses when the config already has a mint (the program
- * would fail with `TokenAlreadySet`) or the owner is not a token program.
- */
-export async function buildSetTokenInstructions(
-  client: SlanaClient,
-  admin: PublicKey,
-  config: Pick<ConfigView, 'tokenMint' | 'feeWallet'>,
-  mint: PublicKey,
-  mintOwner: PublicKey,
-): Promise<TransactionInstruction[]> {
-  if (config.tokenMint !== null) {
-    throw new UsageError(`the game token is already set to ${config.tokenMint}; set_token_mint runs only once`);
-  }
-  if (!isTokenProgram(mintOwner)) {
-    throw new UsageError(`${mint.toBase58()} is not an SPL Token / Token-2022 mint (owner ${mintOwner.toBase58()})`);
-  }
-  return [
-    createFeeWalletAtaIx(admin, { feeWallet: config.feeWallet, tokenMint: mint, tokenProgram: mintOwner }),
-    await client.ix.setTokenMint(admin, { tokenMint: mint, tokenProgram: mintOwner }),
-  ];
-}
-
-/** Metaplex Token Metadata program (pump.fun and most SPL Token mints carry their symbol there). */
-export const MPL_TOKEN_METADATA_ID = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
-
-export function metaplexMetadataPda(mint: PublicKey): PublicKey {
-  return PublicKey.findProgramAddressSync([new TextEncoder().encode('metadata'), MPL_TOKEN_METADATA_ID.toBytes(), mint.toBytes()], MPL_TOKEN_METADATA_ID)[0];
-}
-
-/** Name and symbol of a Metaplex `MetadataV1` account (`key | update authority | mint | name | symbol | …`); null otherwise. */
-export function parseMetaplexMetadata(data: Uint8Array): { name: string; symbol: string } | null {
-  const KEY_METADATA_V1 = 4;
-  if (data.length < 65 + 4 || data[0] !== KEY_METADATA_V1) return null;
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  let offset = 65;
-  const read = (): string | null => {
-    if (data.length < offset + 4) return null;
-    const len = view.getUint32(offset, true);
-    offset += 4;
-    if (len > 200 || data.length < offset + len) return null;
-    const s = new TextDecoder().decode(data.subarray(offset, offset + len));
-    offset += len;
-    return s.replace(/\0+$/, '').trim();
-  };
-  const name = read();
-  const symbol = name === null ? null : read();
-  return name === null || symbol === null ? null : { name, symbol };
-}
-
-/** Best effort: the mint's symbol from Token-2022 metadata or Metaplex metadata; null when none. */
-export async function fetchTokenSymbol(connection: Connection, mint: PublicKey, tokenProgram: PublicKey): Promise<string | null> {
-  try {
-    if (tokenProgram.equals(TOKEN_2022_PROGRAM_ID)) {
-      const meta = await getTokenMetadata(connection, mint, 'confirmed', TOKEN_2022_PROGRAM_ID);
-      if (meta?.symbol) return meta.symbol;
-    }
-    const info = await connection.getAccountInfo(metaplexMetadataPda(mint), 'confirmed');
-    const parsed = info && info.owner.equals(MPL_TOKEN_METADATA_ID) ? parseMetaplexMetadata(info.data) : null;
-    return parsed?.symbol || null;
-  } catch {
-    return null;
-  }
 }
 
 /* -------------------------------------------------------------------- */
 /* status                                                                */
 /* -------------------------------------------------------------------- */
-
-export interface MintSnapshot {
-  supply: bigint;
-  mintAuthority: string | null;
-  freezeAuthority: string | null;
-  symbol: string | null;
-}
-
-/** Everything `status` prints, read beforehand (pure formatting below). */
-export interface StatusSnapshot {
-  url: string;
-  cluster: string;
-  programId: string;
-  deployed: boolean;
-  configAddress: string;
-  config: ConfigView | null;
-  /** Lamports of the server authority. */
-  serverBalance?: number;
-  /** Fee wallet's associated token account (null while the token is unset). */
-  feeWalletToken?: string | null;
-  /** Its balance in base units; null when the account does not exist. */
-  feeWalletBalance?: bigint | null;
-  /** The mint account, null when unreadable or unset. */
-  mint?: MintSnapshot | null;
-  arenas?: ArenaView[];
-}
-
-export const fmtSol = (lamports: number): string => `◎${lamportsToSol(lamports).toLocaleString('en-US', { maximumFractionDigits: 9 })}`;
-export const fmtPct = (bps: number): string => `${(bps / 100).toFixed(2)} %`;
-export const fmtTok = (raw: bigint, decimals: number): string => formatToken(raw, decimals, { maxFrac: Math.min(decimals, 6) });
 
 const row = (label: string, value: string): string => `  ${`${label}:`.padEnd(18)} ${value}`;
 
