@@ -1,6 +1,6 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import {
   SlanaClient,
   SlanaErrorCode,
@@ -167,9 +167,22 @@ export interface SolanaChainDeps {
 /* Helpers                                                             */
 /* ------------------------------------------------------------------ */
 
-/** Reads the server keypair from a JSON file path or from the JSON array itself. */
-export function loadServerKeypair(spec: string): Keypair {
+/**
+ * Reads the server keypair from a JSON file path or from the JSON array itself. `auto` keeps the key in
+ * `<dataDir>/server-keypair.json`, creating it (mode 0600) on the first start, so a host never has to be given the
+ * secret: the operator reads the public key from the log or `/api/health` and sets it as the server authority.
+ */
+export function loadServerKeypair(spec: string, dataDir?: string): Keypair {
   const trimmed = spec.trim();
+  if (trimmed === 'auto') {
+    if (!dataDir) throw new Error('SERVER_KEYPAIR=auto needs DATA_DIR');
+    const path = join(dataDir, 'server-keypair.json');
+    if (!existsSync(path)) {
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, JSON.stringify(Array.from(Keypair.generate().secretKey)), { mode: 0o600, flag: 'wx' });
+    }
+    return loadServerKeypair(path);
+  }
   let raw: string;
   if (trimmed.startsWith('[')) {
     raw = trimmed;
@@ -322,7 +335,7 @@ export class SolanaChain implements ChainGateway {
     this.started = true;
     this.stopped = false;
     try {
-      this.keypair = this.deps.keypair ?? loadServerKeypair(this.cfg.chain.serverKeypair ?? '');
+      this.keypair = this.deps.keypair ?? loadServerKeypair(this.cfg.chain.serverKeypair ?? '', this.cfg.dataDir);
       if (this.deps.client) {
         this.client = this.deps.client;
       } else {
@@ -573,6 +586,7 @@ export class SolanaChain implements ChainGateway {
       tokenReady: token !== null,
       token: token ? { mint: token.tokenMint, symbol: this.cfg.chain.tokenSymbol || TOKEN_SYMBOL_DEFAULT, decimals: token.tokenDecimals } : null,
       feeBps: this.config?.feeBps ?? null,
+      serverKey: this.keypair?.publicKey.toBase58() ?? null,
     };
   }
 
