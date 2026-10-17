@@ -578,6 +578,14 @@ export class GameEngine {
           return;
         }
         this.ticketRetry = null;
+        if (m.code === 'game_closed') {
+          // the game is admin-only for now: no toast loop, one friendly "opens soon" sheet
+          this.heldTicket.refused();
+          this.wasArena = null;
+          if (useUi.getState().screen !== 'lobby') this.backToLobby();
+          useUi.setState({ gameClosed: true });
+          return;
+        }
         // a held join refused for any other reason: the hold lets go (the lobby offers the ticket again)
         this.heldTicket.refused();
         const key = `err.${m.code}` as const;

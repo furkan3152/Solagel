@@ -45,6 +45,7 @@ export const en = {
   'err.round_closed': 'Joins are closed for the last minute of the round. Your ticket waits for the next one.',
   'err.no_cashout': 'Ticket rooms have no cash-out: everyone alive is paid when the round ends.',
   'err.round_ended': 'The round ended while you were away — your till was paid.',
+  'err.game_closed': 'The arena opens soon. Follow @slanaio for the launch.',
 
   'tx.sent': 'Transaction sent',
   'tx.confirmed': 'Confirmed on Solana',

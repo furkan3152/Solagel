@@ -1,8 +1,9 @@
+import '../polyfills';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { StrictMode, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Kb, StampSpinner } from '../design';
-import { AdminPanel } from './AdminPanel';
+import { AdminHome } from './site/AdminHome';
 import { fetchServerChain, resolveNetwork, type AdminNetwork } from './net';
 
 function AdminApp() {
@@ -21,7 +22,7 @@ function AdminApp() {
       {net ? (
         <ConnectionProvider endpoint={net.rpcUrl} config={{ commitment: 'confirmed' }}>
           <WalletProvider wallets={wallets} autoConnect onError={(e) => console.warn('wallet error', e)}>
-            <AdminPanel net={net} />
+            <AdminHome net={net} />
           </WalletProvider>
         </ConnectionProvider>
       ) : (
@@ -33,7 +34,7 @@ function AdminApp() {
   );
 }
 
-/** `/admin`: the operator's panel, a separate lazily loaded entry (main.tsx), never linked from the lobby. */
+/** `/admin`: the operator's panel (chain admin + slana.io site tabs), a separate lazily loaded entry (main.tsx). */
 export function mount(root: HTMLElement): void {
   document.title = 'Slana admin';
   createRoot(root).render(

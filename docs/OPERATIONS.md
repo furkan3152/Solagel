@@ -43,6 +43,32 @@ An admin transfer refuses the current admin, the program, the config, the server
 the new address typed again and an explicit acknowledgement. Hand the program to a multisig with the CLI instead
 (`update-config --admin`), because a Squads vault is a program-derived address.
 
+## WL and collabs (slana.io)
+
+The site's applications are run from `/admin` with an admin wallet (`ADMIN_WALLETS`) signed in: connect it, press
+**Sign in** (free, no transaction), then use the tabs. Nothing here touches the chain.
+
+| Task | In `/admin` |
+|---|---|
+| Open or close the WL, collabs, the game; the X handle | **Settings** (`wlOpen`, `collabOpen`, `gamePublic`, X handle). When `GAME_PUBLIC=1` is set on the server the game is open whatever the switch says |
+| Play before launch | **Play** → Open the arena |
+| Review WL entries | **WL**: counts, filter by status, search (wallet, handle, note or id), **Open** an entry for its answers (every link clickable), approve / reject / reset, a note |
+| Approve many at once | **WL**: tick rows (or the header box for the page), then Approve / Reject / Reset selected (up to 500) |
+| Export the allowlist | **WL** → CSV: approved (or CSV: all). Columns `wallet,x_handle,status,created_at,dup_collabs,note` |
+| Edit the WL steps | **Tasks**: add, edit, reorder (Up / Down), enable or disable, delete. Entries already sent keep the tasks they answered |
+| Open the like / repost / reply step | **Tasks** → Launch post: paste the pinned post's link. Until then the step reads "opens when the post is live" and is not required |
+| Review a community | **Collabs** → Open: every field and link, then **Approve** with spots and a deadline, or **Reject** |
+| More time or more spots | **Collabs** → Open → Extend (an approved or submitted collab; a submitted list stays locked) |
+| Let a community fix its list | **Collabs** → Open → Unlock list (the wallets are kept) |
+| Export collab wallets | **Collabs** → Open → CSV (one collab), or CSV: all submitted wallets. Columns `collab_id,community,name,wallet,dup_wl,dup_collabs` |
+
+**Duplicates are flagged, never dropped.** A collab wallet that is also on the WL (`dup_wl`) or in another collab's list
+(`dup_collabs`) is marked in the collab detail and the CSVs; the WL list shows `dup` for an entry whose wallet sits in a
+collab list. Decide by hand before the mint.
+
+The files are `DATA_DIR/site/{settings,tasks,wl,collab}.json`, written atomically. Back them up with the journal (see
+[Journal backup](#journal-backup)). Tasks are verified by hand: there is no X API.
+
 ## Monitoring
 
 - `GET /api/health`: `ok`, uptime, players online, room count (the Docker health check uses it).

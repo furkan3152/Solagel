@@ -140,6 +140,8 @@ export interface UiState {
   /** Death / receipt "New ticket": the lobby selects this ticket and opens its confirm sheet. */
   lobbyIntent: { ticket: 'practice' | `arena:${number}`; open: boolean; at: number } | null;
   auth: AuthState | null;
+  /** The server refused a room entry with `game_closed`: the game is admin-only and this session is no admin. */
+  gameClosed: boolean;
   settings: Settings;
 }
 
@@ -211,6 +213,7 @@ export const useUi = create<UiState>(() => ({
   page: pageFromLocation(),
   lobbyIntent: null,
   auth: null,
+  gameClosed: false,
   settings: loadSettings(),
 }));
 

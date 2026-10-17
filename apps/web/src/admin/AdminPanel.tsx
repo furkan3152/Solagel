@@ -37,7 +37,7 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function WalletBox() {
+export function WalletBox() {
   const { wallets, select, publicKey, connected, connecting, disconnect, wallet } = useWallet();
   if (connected && publicKey) {
     return (
@@ -260,7 +260,7 @@ function Gate({ role, status }: { role: Role; status: StatusSnapshot | null }) {
  * `pnpm admin` for the config admin (or, before `initialize`, the upgrade authority), signed by
  * the connected browser wallet. Each action shows the decoded instructions before the wallet prompt.
  */
-export function AdminPanel({ net: claimed }: { net: AdminNetwork }) {
+export function AdminPanel({ net: claimed, embedded = false }: { net: AdminNetwork; embedded?: boolean }) {
   const { connection } = useConnection();
   const [genesis, setGenesis] = useState<string | null | undefined>(undefined);
   useEffect(() => {
@@ -289,7 +289,7 @@ export function AdminPanel({ net: claimed }: { net: AdminNetwork }) {
   const config: ConfigView | null = status?.config ?? null;
 
   return (
-    <div className="ad-page">
+    <div className={embedded ? 'ad-embedded' : 'ad-page'}>
       {hardBlockers.length > 0 && (
         <div className="ad-blocked" role="alert">
           <strong>SIGNING BLOCKED.</strong>
@@ -306,13 +306,13 @@ export function AdminPanel({ net: claimed }: { net: AdminNetwork }) {
       <header className="ad-head">
         <div>
           <span className="mono ad-kicker">Slana · operator copy</span>
-          <h1 className="ad-title">Admin panel</h1>
+          {embedded ? <h2 className="ad-title">Chain</h2> : <h1 className="ad-title">Admin panel</h1>}
           <p className="ad-deck">The operations of the admin CLI (pnpm admin), signed by your browser wallet (Phantom, Solflare, or a Ledger through either). The program checks every signer itself.</p>
         </div>
         <Stamp text={check.verified ? net.cluster : 'unverified'} sub="cluster" tone={check.verified && isMainnet(net) ? 'red' : check.verified ? 'teal' : 'mustard'} round size="md" rotate={-6} />
       </header>
       <Rule variant="double" />
-      <WalletBox />
+      {!embedded && <WalletBox />}
       <Gate role={role} status={status} />
       <StatusCard status={status} check={check} genesis={genesis} loading={loading} error={error} onRefresh={() => void refresh()} />
 
