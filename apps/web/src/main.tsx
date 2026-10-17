@@ -9,7 +9,10 @@ import './design/paper.css';
 const root = document.getElementById('root')!;
 const params = new URLSearchParams(location.search);
 
-if (params.has('gallery')) {
+if (/^\/admin\/?$/.test(location.pathname)) {
+  // Operator panel (not linked from the lobby): its own lazy chunk, so the game bundle does not carry it.
+  void import('./admin/mount').then((m) => m.mount(root));
+} else if (params.has('gallery')) {
   // Design-system proof sheet (every component, both themes).
   void import('./design/Gallery').then((m) => m.startDesignGallery(root));
 } else if (params.has('coins')) {
