@@ -34,8 +34,14 @@ account), then the wallet prompt; the result shows the signature with an explore
 | Shut an arena down | Sweep arena (disabled and idle arenas only; acknowledgement required) | `sweep --id N --force` |
 | Recreate the fee wallet's token account | Fee wallet token account → Recreate | `update-config --fee-wallet <same>` |
 
-On mainnet a red banner stays at the top. The RPC, program id and cluster come from the game server's `/api/config`,
-or from the web build's `VITE_RPC_URL`, `VITE_PROGRAM_ID` and `VITE_SOLANA_CLUSTER`.
+The program id is pinned in the build (the SDK's `PROGRAM_ID`), and the cluster is read from the RPC's genesis hash.
+If the game server reports another program id, or the genesis hash is unknown or does not match the claimed cluster
+(`SOLANA_CLUSTER` / `VITE_SOLANA_CLUSTER`), signing is blocked and a red banner says why. On a verified mainnet a red
+MAINNET banner stays at the top.
+
+An admin transfer refuses the current admin, the program, the config, the server key and off-curve addresses. It needs
+the new address typed again and an explicit acknowledgement. Hand the program to a multisig with the CLI instead
+(`update-config --admin`), because a Squads vault is a program-derived address.
 
 ## Monitoring
 

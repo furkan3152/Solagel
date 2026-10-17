@@ -56,10 +56,22 @@ Open `/admin` on the deployed web app (or `http://localhost:5173/admin` with `pn
   token account. Each one first shows a review sheet with every instruction it will sign (program, decoded values,
   every account with its signer / writable flags) and asks for confirmation before the wallet prompt. Afterwards it
   shows the signature with an explorer link and re-reads the status.
-- **Network.** The page follows the game server's `/api/config` (cluster, public RPC, program id). The web build can
-  override each value: `VITE_RPC_URL`, `VITE_PROGRAM_ID`, `VITE_SOLANA_CLUSTER`; `VITE_PRIORITY_MICROLAMPORTS` sets the
-  compute-unit price of admin transactions (default 20,000 micro-lamports, as for tickets). On mainnet a red banner
-  stays at the top of the page.
+- **Network safety.**
+  - **The program id is pinned.** It is the SDK's `PROGRAM_ID`, compiled into the build from the IDL (`anchor keys
+    sync`, then `pnpm -F @slana/sdk sync-idl`, section 1). The status card shows it as "Pinned program id". If the game
+    server's `/api/config` reports another program id, a red "SIGNING BLOCKED" banner appears and every Sign button is
+    disabled.
+  - **The cluster comes from the RPC's genesis hash** (mainnet-beta, devnet or testnet). The MAINNET banner and every
+    cluster label use it.
+  - **Signing is blocked when the genesis hash is unknown, or does not match the cluster that is claimed.** The claim is
+    `VITE_SOLANA_CLUSTER`, or else the server's `SOLANA_CLUSTER`. **Set `SOLANA_CLUSTER=mainnet-beta` on a mainnet
+    server**: its default, `localnet`, blocks the panel.
+  - A validator on the same machine (`127.0.0.1`) counts as localnet when localnet is claimed.
+- **RPC and fees.** The RPC is `VITE_RPC_URL`, else the server's public RPC. `VITE_PRIORITY_MICROLAMPORTS` sets the
+  compute-unit price of admin transactions: the default is 20,000 micro-lamports and the maximum 200,000. The review
+  sheet shows the highest possible fee in SOL.
+- **Retries.** After an unknown outcome (a timeout, or an RPC error after the send), "Check and retry" looks up the
+  previous signature first. It signs again only once that transaction failed or expired.
 
 The panel and the CLI share their validation and instruction building (`packages/sdk/src/ops.ts`).
 
@@ -349,9 +361,9 @@ check is `GET /api/health`. The server returns `index.html` for client paths suc
 at `https://<domain>/docs`.
 
 To host the web client separately, the build arguments are `VITE_SERVER_URL` (the game server's address) and
-`VITE_RPC_URL` (the browser's RPC). The admin panel also reads `VITE_PROGRAM_ID`, `VITE_SOLANA_CLUSTER` and
-`VITE_PRIORITY_MICROLAMPORTS` when they are set (otherwise it follows the game server). The static host must also fall
-back to `index.html` for `/admin`. The static host must also fall back to `index.html` for `/docs` (SPA fallback).
+`VITE_RPC_URL` (the browser's RPC). The admin panel also reads `VITE_SOLANA_CLUSTER` (the claimed cluster) and
+`VITE_PRIORITY_MICROLAMPORTS`; its program id is always the SDK's compiled `PROGRAM_ID`. The static host must also fall
+back to `index.html` for `/admin` and `/docs` (SPA fallback).
 
 ## 9. Mainnet
 
