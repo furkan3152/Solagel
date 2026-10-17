@@ -8,7 +8,9 @@ import type { ChainGateway } from './chain/types';
 import type { ServerConfig } from './config';
 import type { Leaderboards } from './leaderboards';
 import { clientIp } from './net/gateway';
+import { Limiter } from './net/limiter';
 import type { RoomManager } from './rooms/manager';
+import type { SiteApi } from './site/routes';
 import type { Journal } from './stake/journal';
 
 const MIME: Record<string, string> = {
@@ -36,6 +38,10 @@ interface Ctx {
   startedAt: number;
   /** Settlements owed (for `/api/pending`). */
   journal?: Journal;
+  /** The slana.io site API (`/api/site/*`, `/api/admin/*`, `/api/auth/login`, `/api/auth/me`). */
+  site?: SiteApi;
+  /** The per-IP limiter of every `/api/*` request (default 240 a minute); tests inject a larger one. */
+  apiLimiter?: Limiter;
 }
 
 const HOST_RE = /^[A-Za-z0-9.-]+(:\d{1,5})?$|^\[[0-9A-Fa-f:.]+\](:\d{1,5})?$/;
@@ -67,25 +73,6 @@ function json(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body));
 }
 
-/** Tiny fixed-window limiter for REST endpoints (per IP). */
-class Limiter {
-  private hits = new Map<string, { n: number; reset: number }>();
-  constructor(
-    private readonly max: number,
-    private readonly windowMs: number,
-  ) {}
-  allow(key: string, now = Date.now()): boolean {
-    const h = this.hits.get(key);
-    if (!h || h.reset < now) {
-      if (this.hits.size > 10_000) this.hits.clear();
-      this.hits.set(key, { n: 1, reset: now + this.windowMs });
-      return true;
-    }
-    h.n++;
-    return h.n <= this.max;
-  }
-}
-
 function serveStatic(root: string, req: IncomingMessage, res: ServerResponse, pathname: string): boolean {
   let rel: string;
   try {
@@ -113,15 +100,15 @@ function serveStatic(root: string, req: IncomingMessage, res: ServerResponse, pa
 }
 
 export function createHttpServer(cfg: ServerConfig, ctx: Ctx): Server {
-  const apiLimiter = new Limiter(240, 60_000);
+  const apiLimiter = ctx.apiLimiter ?? new Limiter(240, 60_000);
   const nonceLimiter = new Limiter(20, 60_000);
   const trustProxy = process.env.TRUST_PROXY === '1';
 
   return createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
     res.setHeader('Access-Control-Allow-Origin', cfg.corsOrigin);
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     if (req.method === 'OPTIONS') {
       res.writeHead(204);
@@ -132,6 +119,7 @@ export function createHttpServer(cfg: ServerConfig, ctx: Ctx): Server {
     try {
       if (url.pathname.startsWith('/api/')) {
         if (!apiLimiter.allow(ip)) return json(res, 429, { error: 'rate_limited' });
+        if (ctx.site && (await ctx.site.handle(req, res, url, ip))) return;
         switch (url.pathname) {
           case '/api/health':
             return json(res, 200, {

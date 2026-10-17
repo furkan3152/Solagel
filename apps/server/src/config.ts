@@ -32,6 +32,16 @@ export interface ServerConfig {
    */
   round: { roundMs: number; closeMs: number };
   authSecret: Buffer;
+  /**
+   * Admin wallets (`ADMIN_WALLETS`, comma-separated base58 keys): a SIWS session of one of them may use
+   * `/api/admin/*` and play while the game is not public. Defaults to `DEFAULT_ADMIN_WALLET`.
+   */
+  adminWallets: string[];
+  /**
+   * `GAME_PUBLIC=1`: the game is open to everyone whatever the admin's `gamePublic` setting says.
+   * Unset: the site setting decides (default off: only admin wallets can join rooms).
+   */
+  gamePublic: boolean;
   /** `NODE_ENV` as given (null when unset). */
   nodeEnv: string | null;
   /**
@@ -75,6 +85,21 @@ export interface ServerConfig {
      */
     staleSweepAck: boolean;
   };
+}
+
+/**
+ * The project owner's admin wallet: `SLANA_ADMIN` in scripts/admin.env (a public key; a test checks the
+ * two stay equal). Used when `ADMIN_WALLETS` is unset or empty.
+ */
+export const DEFAULT_ADMIN_WALLET = 'D2Ts7yCiVjedo6uwqpkM44QA8J45NdVU1J3k5m6iWtvm';
+
+/** `ADMIN_WALLETS`: comma-separated base58 public keys; malformed entries are dropped. */
+export function parseAdminWallets(v: string | undefined): string[] {
+  const list = (v ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s));
+  return list.length > 0 ? [...new Set(list)] : [DEFAULT_ADMIN_WALLET];
 }
 
 const int = (v: string | undefined, d: number): number => {
@@ -140,6 +165,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     },
     round: parseRoundConfig(env),
     authSecret: secret,
+    adminWallets: parseAdminWallets(env.ADMIN_WALLETS),
+    gamePublic: bool(env.GAME_PUBLIC, false),
     nodeEnv: env.NODE_ENV?.trim() || null,
     devFakeChain: bool(env.DEV_FAKE_CHAIN, false),
     devFakeToken: bool(env.DEV_FAKE_TOKEN, false),
