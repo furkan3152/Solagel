@@ -4,6 +4,8 @@
 **the tokens of the player you eat move to you**. There is no NFT and there are no seasons: four arenas, open to
 everyone, differ only by their entry fee. The money rules run on-chain, the game runs on an authoritative server.
 
+Play at **[slana.io](https://slana.io)**.
+
 > **Warning.** This is a game played with a token of real value; it may need a licence where you operate. The smart
 > contract **has not been audited**.
 

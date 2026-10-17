@@ -127,16 +127,16 @@ await ctx.addInitScript(() => {
     const css = document.createElement('style');
     css.textContent = `
       #__rec-cursor{position:fixed;left:0;top:0;width:22px;height:22px;z-index:2147483647;pointer-events:none;transform:translate(-100px,-100px);will-change:transform;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.35))}
-      .__rec-ripple{position:fixed;z-index:2147483646;pointer-events:none;width:34px;height:34px;margin:-17px 0 0 -17px;border-radius:50%;border:2.5px solid #ff4f87;animation:__rec-rip .55s ease-out forwards}
+      .__rec-ripple{position:fixed;z-index:2147483646;pointer-events:none;width:34px;height:34px;margin:-17px 0 0 -17px;border-radius:50%;border:2.5px solid #fb2f85;animation:__rec-rip .55s ease-out forwards}
       @keyframes __rec-rip{from{transform:scale(.3);opacity:.95}to{transform:scale(1.5);opacity:0}}
-      #__rec-cap{position:fixed;left:22px;bottom:22px;z-index:2147483645;pointer-events:none;font:600 15px/1 "Space Mono","IBM Plex Mono",ui-monospace,monospace;letter-spacing:.06em;text-transform:uppercase;color:#1e1b2e;background:#fffaf0;border:2px solid #1e1b2e;border-radius:6px;padding:9px 13px 8px;box-shadow:3px 3px 0 #1e1b2e;opacity:0;transform:translateY(8px);transition:opacity .45s ease,transform .45s ease}
+      #__rec-cap{position:fixed;left:22px;bottom:22px;z-index:2147483645;pointer-events:none;font:600 15px/1 "Space Mono","IBM Plex Mono",ui-monospace,monospace;letter-spacing:.06em;text-transform:uppercase;color:#1b1732;background:#fffaf0;border:2px solid #1b1732;border-radius:6px;padding:9px 13px 8px;box-shadow:3px 3px 0 #1b1732;opacity:0;transform:translateY(8px);transition:opacity .45s ease,transform .45s ease}
       #__rec-cap.on{opacity:1;transform:none}
-      #__rec-cap.big{left:50%;bottom:50%;transform:translate(-50%,50%) scale(.96);font:800 64px/1 "Bricolage Grotesque",system-ui,sans-serif;text-transform:none;letter-spacing:-.03em;padding:18px 34px 22px;box-shadow:6px 6px 0 #ff4f87}
+      #__rec-cap.big{left:50%;bottom:50%;transform:translate(-50%,50%) scale(.96);font:800 64px/1 "Bricolage Grotesque",system-ui,sans-serif;text-transform:none;letter-spacing:-.03em;padding:18px 34px 22px;box-shadow:6px 6px 0 #fb2f85}
       #__rec-cap.big.on{transform:translate(-50%,50%) scale(1)}`;
     document.documentElement.appendChild(css);
     const c = document.createElement('div');
     c.id = '__rec-cursor';
-    c.innerHTML = '<svg width="22" height="22" viewBox="0 0 22 22"><path d="M3 2 L3 18 L7.6 13.8 L10.6 20.4 L13.4 19.1 L10.5 12.6 L16.8 12.6 Z" fill="#1e1b2e" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+    c.innerHTML = '<svg width="22" height="22" viewBox="0 0 22 22"><path d="M3 2 L3 18 L7.6 13.8 L10.6 20.4 L13.4 19.1 L10.5 12.6 L16.8 12.6 Z" fill="#1b1732" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>';
     document.documentElement.appendChild(c);
     const cap = document.createElement('div');
     cap.id = '__rec-cap';

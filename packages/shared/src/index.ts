@@ -5,6 +5,7 @@ export * from './protocol';
 export * from './codec';
 export * from './skins';
 export * from './emotes';
+export * from './palette';
 export * from './arenas';
 export * from './names';
 export * from './text';

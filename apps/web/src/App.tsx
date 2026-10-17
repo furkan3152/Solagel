@@ -1,3 +1,4 @@
+import { NIGHT, PAPER } from '@slana/shared';
 import { useEffect, useRef } from 'react';
 import { startAudio } from './audio';
 import { GameEngine } from './game/engine';
@@ -77,7 +78,7 @@ export function App() {
   useEffect(() => startAudio(), []);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#1B1924' : '#F1EADB');
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? NIGHT.paper : PAPER);
   }, [theme]);
   return (
     <SolanaProvider>

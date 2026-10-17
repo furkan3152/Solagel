@@ -42,8 +42,8 @@ body {
   padding: 12px 16px;
   border: 2px solid var(--ink);
   border-radius: var(--r-ticket);
-  background: var(--red);
-  color: #fffcf4;
+  background: var(--danger);
+  color: var(--on-cover);
   font-weight: 700;
   font-size: 17px;
   box-shadow: var(--off) var(--off) 0 var(--ink);
@@ -410,8 +410,8 @@ body {
   padding: 12px 16px;
   border: 2px solid var(--ink);
   border-radius: var(--r-ticket);
-  background: var(--red-ink);
-  color: #fffcf4;
+  background: var(--danger);
+  color: var(--on-cover);
   font-weight: 600;
 }
 .ad-blocked p {

@@ -8,15 +8,19 @@
  * (decoded once into an Image and drawn above the cell).
  */
 
-const INK = '#1E1B2E';
-const CARD = '#FFFCF4';
-const PINK = '#FF4F87';
-const TEAL = '#0E9C9A';
-const MUSTARD = '#F2B705';
-const BLUE = '#3B5BDB';
-const AQUA = '#3CC6E0';
-const ORANGE = '#FF7A3D';
-const MINT = '#5FD3A6';
+import { CARD_PAPER, INK as PALETTE_INK, RISO } from '@slana/art';
+
+const INK = PALETTE_INK;
+const CARD = CARD_PAPER;
+const PINK = RISO.fluoPink;
+const TEAL = RISO.teal;
+const MUSTARD = RISO.mustard;
+const BLUE = RISO.blue;
+const AQUA = RISO.aqua;
+const ORANGE = RISO.orange;
+const MINT = RISO.mint;
+/** Pale mint stock behind the rocket. */
+const MINT_PALE = '#D6F7E8';
 
 /** Stroke letters on a 10 × 14 cell (only the ones the stickers spell). */
 const GLYPHS: Record<string, { d: string; w: number }> = {
@@ -91,7 +95,7 @@ const BODIES: Record<number, string> = {
     letters('WAGMI', 32, 26.5, 10.5, INK, 2.3),
   // 2 · rocket, tilted for take-off
   2:
-    dieCut(circleBase, '#DDF2E8') +
+    dieCut(circleBase, MINT_PALE) +
     `<g transform="rotate(40 32 32)">` +
     `<path d="M27 44q5 12 5 14q0-2 5-14z" fill="${PINK}" stroke="${INK}" stroke-width="1.8" stroke-linejoin="round"/>` +
     `<path d="M29.5 44q2.5 6 2.5 8q0-2 2.5-8z" fill="${MUSTARD}"/>` +

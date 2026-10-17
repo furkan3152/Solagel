@@ -1,3 +1,4 @@
+import { INK, RISO } from './palette';
 
 export interface ArenaMeta {
   name: string;
@@ -7,10 +8,10 @@ export interface ArenaMeta {
 
 /** Display metadata for on-chain arena ids (the chain stores only numbers). */
 export const ARENA_META: Record<number, ArenaMeta> = {
-  1: { name: 'Penny Pond', ink: '#E5402B' },
-  2: { name: 'Silver Creek', ink: '#0E9C9A' },
-  3: { name: 'Gold Lake', ink: '#F2B705' },
-  4: { name: 'Whale Bay', ink: '#3B5BDB' },
+  1: { name: 'Penny Pond', ink: RISO.red },
+  2: { name: 'Silver Creek', ink: RISO.teal },
+  3: { name: 'Gold Lake', ink: RISO.mustard },
+  4: { name: 'Whale Bay', ink: RISO.blue },
 };
 
 /**
@@ -26,5 +27,5 @@ export const DEFAULT_ARENAS = [
 ] as const;
 
 export function arenaMeta(id: number): ArenaMeta {
-  return ARENA_META[id] ?? { name: `Arena #${id}`, ink: '#1E1B2E' };
+  return ARENA_META[id] ?? { name: `Arena #${id}`, ink: INK };
 }

@@ -313,7 +313,7 @@ arenas and pushes a `chain` message to every connected client; nobody has to rel
 | `AUTH_SECRET` | random | `openssl rand -hex 32`; without it players sign in again after every restart |
 | `CORS_ORIGIN` | `*` | |
 | `TRUST_PROXY` | `0` | `1` behind a reverse proxy (X-Forwarded-For / -Proto / -Host) |
-| `PUBLIC_URL` | empty | the server's public address (`https://slana.example`); the domain in the wallet login (SIWS). If the web page is served from another domain, the login message shows the game server's name. **Set it in production** |
+| `PUBLIC_URL` | empty | the server's public address (`https://slana.io`); the domain in the wallet login (SIWS). If the web page is served from another domain, the login message shows the game server's name. **Set it in production** |
 | `WEB_DIST` | empty | serves the web build from this folder (single origin) |
 | `PRACTICE_CAPACITY` | `40` | humans per practice room |
 | `PRIVATE_ROOM_CAPACITY` | `20` | |

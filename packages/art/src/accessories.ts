@@ -140,7 +140,7 @@ export function drawAccessoryFront(ctx: CanvasRenderingContext2D, kind: Accessor
       inked(ctx, c.accent, lw * 0.85);
       ctx.save();
       ctx.globalCompositeOperation = 'multiply';
-      ctx.fillStyle = 'rgba(30,27,46,0.25)';
+      ctx.fillStyle = 'rgba(27,23,50,0.25)'; // INK at 25 %
       ctx.fill();
       ctx.restore();
       domePath(ctx, r, 0.8, 0.46, 1.27);
