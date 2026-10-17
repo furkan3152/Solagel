@@ -27,7 +27,7 @@ const M = 1_000_000;
 const ICON =
   'data:image/svg+xml;base64,' +
   Buffer.from(
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#1E1B2E"/><circle cx="16" cy="16" r="8" fill="#FF4F87"/></svg>',
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#1B1732"/><circle cx="16" cy="16" r="8" fill="#FB2F85"/></svg>',
   ).toString('base64');
 
 /** Injects a Wallet Standard wallet ("Test Wallet") whose key lives in this script. */
@@ -174,6 +174,19 @@ for (const [k, viewport, mobile, theme] of [
   if (!want(`lobby-${k}`) && !want('lobby')) continue;
   const { ctx, page } = await newPage({ viewport, mobile, theme });
   await shot(page, `lobby-${k}`);
+  await ctx.close();
+}
+
+// ── standings: the Ranks tab (desktop paper, phone night) ──
+for (const [k, viewport, mobile, theme] of [
+  ['desktop-paper', D, false, 'light'],
+  ['mobile-night', P, true, 'dark'],
+]) {
+  if (!want(`ranks-${k}`) && !want('ranks')) continue;
+  const { ctx, page } = await newPage({ viewport, mobile, theme });
+  await page.getByText('Ranks', { exact: true }).first().click();
+  await page.waitForTimeout(1200);
+  await shot(page, `ranks-${k}`);
   await ctx.close();
 }
 

@@ -1,4 +1,4 @@
-import { INK, RISO } from '@slana/art';
+import { CARD_PAPER, INK, RISO } from '@slana/art';
 import {
   PowerUpType,
   arenaMeta,
@@ -247,7 +247,7 @@ export class GameEngine {
     this.sendTarget(true);
     this.net.sendBinary(encodeSplit());
     sound.split();
-    for (const c of this.world.myCells()) this.particles.dots(c.x, c.y, c.r * 0.6, '#1E1B2E', 5);
+    for (const c of this.world.myCells()) this.particles.dots(c.x, c.y, c.r * 0.6, INK, 5);
   }
 
   eject(): void {
@@ -654,7 +654,7 @@ export class GameEngine {
           if (ev.mine) {
             sound.chomp();
             this.bite(performance.now());
-            this.particles.scraps(ev.x, ev.y, ev.r, 16, [look.body, look.overprint, '#FFFCF4']);
+            this.particles.scraps(ev.x, ev.y, ev.r, 16, [look.body, look.overprint, CARD_PAPER]);
             if (!arena) this.particles.text(ev.x, ev.y, `+${Math.floor((ev.r * ev.r) / 100)}`, undefined, 24);
           } else if (ev.me) {
             sound.ouch();
@@ -666,7 +666,7 @@ export class GameEngine {
           break;
         }
         case 'virus':
-          this.particles.scraps(ev.x, ev.y, 70, ev.mine ? 26 : 10, [RISO.green, RISO.teal, '#FFFCF4', RISO.fluoPink]);
+          this.particles.scraps(ev.x, ev.y, 70, ev.mine ? 26 : 10, [RISO.green, RISO.teal, CARD_PAPER, RISO.fluoPink]);
           if (ev.mine) {
             sound.boing();
             this.particles.text(ev.x, ev.y, t('fx.rugged'), RISO.green, 26, RISO.fluoPink);

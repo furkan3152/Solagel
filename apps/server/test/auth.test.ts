@@ -6,7 +6,7 @@ import { Auth, MAX_NONCES, loginMessage, type SiwsOrigin } from '../src/auth';
 import { loadConfig } from '../src/config';
 import { siwsOrigin } from '../src/http';
 
-const origin: SiwsOrigin = { domain: 'slana.example', uri: 'https://slana.example', chainId: 'solana:mainnet' };
+const origin: SiwsOrigin = { domain: 'slana.io', uri: 'https://slana.io', chainId: 'solana:mainnet' };
 
 function signer() {
   const kp = nacl.sign.keyPair();
@@ -21,12 +21,12 @@ describe('SIWS login message (M1)', () => {
     const { pubkey, sign } = signer();
     const n = auth.issueNonce(pubkey, origin, 1_760_000_000_000);
     expect(n.message.split('\n')).toEqual([
-      'slana.example wants you to sign in with your Solana account:',
+      'slana.io wants you to sign in with your Solana account:',
       pubkey,
       '',
       'Sign this message to prove you own this wallet. It is free and does not send a transaction.',
       '',
-      'URI: https://slana.example',
+      'URI: https://slana.io',
       'Chain ID: solana:mainnet',
       `Nonce: ${n.nonce}`,
       `Issued At: ${n.issuedAt}`,
@@ -52,9 +52,9 @@ describe('SIWS login message (M1)', () => {
 
   it('takes the domain from PUBLIC_URL, else the request host', () => {
     const req = { headers: { host: 'game.local:8787' } } as never;
-    expect(siwsOrigin(loadConfig({ PUBLIC_URL: 'https://slana.gg/', SOLANA_CLUSTER: 'mainnet-beta' }), req, false)).toEqual({
-      domain: 'slana.gg',
-      uri: 'https://slana.gg',
+    expect(siwsOrigin(loadConfig({ PUBLIC_URL: 'https://slana.io/', SOLANA_CLUSTER: 'mainnet-beta' }), req, false)).toEqual({
+      domain: 'slana.io',
+      uri: 'https://slana.io',
       chainId: 'solana:mainnet',
     });
     expect(siwsOrigin(loadConfig({ SOLANA_CLUSTER: 'devnet' }), req, false)).toEqual({ domain: 'game.local:8787', uri: 'http://game.local:8787', chainId: 'solana:devnet' });
