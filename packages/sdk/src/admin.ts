@@ -10,17 +10,12 @@ import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { arenaMeta } from '@slana/shared';
-import { getMint } from '@solana/spl-token';
 import { Connection, Keypair, PublicKey, type TransactionInstruction } from '@solana/web3.js';
 import {
-  BPF_LOADER_UPGRADEABLE_ID,
   MAX_ARENA_SESSIONS,
   MIN_ARENA_SESSIONS,
   PROGRAM_ID,
   SlanaClient,
-  assertSafeSupply,
-  createAtaIdempotentIx,
-  createFeeWalletAtaIx,
   describeError,
   explorerAddressUrl,
   explorerTxUrl,
@@ -36,15 +31,12 @@ import {
   bool,
   flag,
   buildSetTokenInstructions,
-  defaultArenaParams,
-  fetchTokenSymbol,
   fmtPct,
   fmtSol,
   fmtTok,
   formatStatus,
   inferCluster,
   int,
-  isTokenProgram,
   parseArgs,
   parseInitOptions,
   parseUpdateConfigOptions,
@@ -52,10 +44,9 @@ import {
   str,
   tokenProgramName,
   tokens,
-  type MintSnapshot,
   type Opts,
-  type StatusSnapshot,
 } from './admin-lib';
+import { SWEEP_WARNING, buildCreateArenasInstructions, defaultArenaParams, buildSweepInstructions, buildUpdateConfigInstructions, fetchStatus, fetchUpgradeAuthority, inspectMint, planDefaultArenas } from './ops';
 
 function expandHome(path: string): string {
   if (path === '~' || path.startsWith('~/')) return resolve(homedir(), path.slice(2));
@@ -120,28 +111,12 @@ function requireAdmin(ctx: Ctx, config: ConfigView): Keypair {
   return signer;
 }
 
-/** Upgrade authority stored in the program's ProgramData account (null = immutable/unknown). */
-async function upgradeAuthority(ctx: Ctx): Promise<PublicKey | null> {
-  const info = await ctx.client.connection.getAccountInfo(pdas.programData(ctx.client.programId));
-  if (!info || !info.owner.equals(BPF_LOADER_UPGRADEABLE_ID) || info.data.length < 45) return null;
-  // UpgradeableLoaderState::ProgramData { slot: u64, upgrade_authority_address: Option<Pubkey> }
-  if (info.data.readUInt32LE(0) !== 3 || info.data[12] !== 1) return null;
-  return new PublicKey(info.data.subarray(13, 45));
-}
-
-/** Token program owning `mint` and its on-chain state; refuses supplies beyond 2^53 − 1. */
+/** Token program owning `mint` and its decimals, after the program's own mint check (`inspectMint`). */
 async function loadMint(ctx: Ctx, mint: PublicKey) {
-  const info = await ctx.client.connection.getAccountInfo(mint, 'confirmed');
-  if (!info) throw new UsageError(`mint ${mint.toBase58()} does not exist on ${ctx.url}`);
-  const program = info.owner;
-  if (!isTokenProgram(program)) throw new UsageError(`${mint.toBase58()} is not an SPL Token / Token-2022 mint (owner ${program.toBase58()})`);
-  const state = await getMint(ctx.client.connection, mint, 'confirmed', program);
-  try {
-    assertSafeSupply(state.supply);
-  } catch (err) {
-    throw new UsageError((err as Error).message);
-  }
-  return { program, state };
+  const m = await inspectMint(ctx.client.connection, mint);
+  if (!m.exists) throw new UsageError(`mint ${mint.toBase58()} does not exist on ${ctx.url}`);
+  if (m.refusals.length > 0) throw new UsageError(`mint ${mint.toBase58()} is refused: ${m.refusals.join('; ')}`);
+  return { program: new PublicKey(m.owner!), decimals: m.decimals!, symbol: m.symbol };
 }
 
 /* -------------------------------------------------------------------- */
@@ -149,37 +124,7 @@ async function loadMint(ctx: Ctx, mint: PublicKey) {
 /* -------------------------------------------------------------------- */
 
 async function cmdStatus(ctx: Ctx): Promise<void> {
-  const { client } = ctx;
-  const snapshot: StatusSnapshot = {
-    url: ctx.url,
-    cluster: ctx.cluster,
-    programId: client.programId.toBase58(),
-    deployed: await client.isDeployed(),
-    configAddress: pdas.config(client.programId).toBase58(),
-    config: null,
-  };
-  if (snapshot.deployed) snapshot.config = await client.fetchConfig();
-  const config = snapshot.config;
-  if (config) {
-    snapshot.serverBalance = await client.connection.getBalance(new PublicKey(config.serverAuthority));
-    snapshot.arenas = await client.fetchArenas();
-    if (config.tokenMint !== null && config.tokenProgram !== null) {
-      const mint = new PublicKey(config.tokenMint);
-      const program = new PublicKey(config.tokenProgram);
-      const feeToken = feeWalletAta(config);
-      const [state, symbol, feeInfo] = await Promise.all([
-        getMint(client.connection, mint, 'confirmed', program).catch(() => null),
-        fetchTokenSymbol(client.connection, mint, program),
-        client.connection.getAccountInfo(feeToken, 'confirmed'),
-      ]);
-      snapshot.mint = state
-        ? ({ supply: state.supply, mintAuthority: state.mintAuthority?.toBase58() ?? null, freezeAuthority: state.freezeAuthority?.toBase58() ?? null, symbol } satisfies MintSnapshot)
-        : null;
-      snapshot.feeWalletToken = feeToken.toBase58();
-      snapshot.feeWalletBalance = feeInfo ? await client.fetchTokenAccountAmount(feeToken) : null;
-    }
-  }
-  for (const line of formatStatus(snapshot)) console.log(line);
+  for (const line of formatStatus(await fetchStatus(ctx.client, ctx))) console.log(line);
 }
 
 async function cmdInit(ctx: Ctx, opts: Opts): Promise<void> {
@@ -191,9 +136,9 @@ async function cmdInit(ctx: Ctx, opts: Opts): Promise<void> {
     console.log(`config already initialized (admin ${existing.admin}, fee wallet ${existing.feeWallet}) — use \`pnpm admin update-config\``);
     return;
   }
-  const authority = await upgradeAuthority(ctx);
-  if (authority && !authority.equals(admin.publicKey)) {
-    throw new UsageError(`initialize must be signed by the program's upgrade authority ${authority.toBase58()}, not ${admin.publicKey.toBase58()}`);
+  const authority = await fetchUpgradeAuthority(ctx.client.connection, ctx.client.programId);
+  if (authority && authority !== admin.publicKey.toBase58()) {
+    throw new UsageError(`initialize must be signed by the program's upgrade authority ${authority}, not ${admin.publicKey.toBase58()}`);
   }
   const ix = await ctx.client.ix.initialize(admin.publicKey, params);
   await send(ctx, 'initialized the config (no game token yet)', [ix]);
@@ -207,13 +152,11 @@ async function cmdSetToken(ctx: Ctx, opts: Opts): Promise<void> {
   if (!mint) throw new UsageError('set-token needs --mint <CA>');
   const config = await requireConfig(ctx);
   const admin = requireAdmin(ctx, config);
-  const { program, state } = await loadMint(ctx, mint);
-  if (state.freezeAuthority) throw new UsageError(`mint ${mint.toBase58()} has a freeze authority (${state.freezeAuthority.toBase58()}); the program refuses it`);
+  const { program, decimals, symbol } = await loadMint(ctx, mint);
   const ixs = await buildSetTokenInstructions(ctx.client, admin.publicKey, config, mint, program);
-  const symbol = await fetchTokenSymbol(ctx.client.connection, mint, program);
   await send(ctx, `game token set to ${mint.toBase58()}${symbol ? ` (${symbol})` : ''}`, ixs);
   const feeToken = feeWalletAta({ feeWallet: config.feeWallet, tokenMint: mint, tokenProgram: program });
-  console.log(`  ${tokenProgramName(program)} · ${state.decimals} decimals${symbol ? ` · symbol ${symbol}` : ''}`);
+  console.log(`  ${tokenProgramName(program)} · ${decimals} decimals${symbol ? ` · symbol ${symbol}` : ''}`);
   console.log(`  fee wallet ${config.feeWallet} → token account ${feeToken.toBase58()}`);
   console.log('  next: pnpm admin create-arena --defaults');
 }
@@ -222,12 +165,8 @@ async function cmdUpdateConfig(ctx: Ctx, opts: Opts): Promise<void> {
   const changes = parseUpdateConfigOptions(opts);
   const config = await requireConfig(ctx);
   const admin = requireAdmin(ctx, config);
-  const ixs: TransactionInstruction[] = [];
   // A new fee wallet must hold a token account of the game mint before the next settlement.
-  if (changes.feeWallet !== undefined && config.tokenMint !== null) {
-    ixs.push(createFeeWalletAtaIx(admin.publicKey, { ...config, feeWallet: changes.feeWallet }));
-  }
-  ixs.push(await ctx.client.ix.updateConfig(admin.publicKey, changes));
+  const ixs = await buildUpdateConfigInstructions(ctx.client, admin.publicKey, config, changes);
   await send(ctx, `updated config (${Object.keys(changes).join(', ')})`, ixs);
 }
 
@@ -243,8 +182,8 @@ async function cmdPause(ctx: Ctx, paused: boolean): Promise<void> {
 }
 
 async function createArena(ctx: Ctx, admin: Keypair, token: GameToken, id: number, entryFee: bigint, maxSessions: number): Promise<void> {
-  const ix = await ctx.client.ix.createArena(admin.publicKey, { id, entryFee, maxSessions, ...token });
-  await send(ctx, `created arena #${id} (${arenaMeta(id).name}) · entry ${fmtTok(entryFee, token.tokenDecimals)} · max ${maxSessions}`, [ix]);
+  const ixs = await buildCreateArenasInstructions(ctx.client, admin.publicKey, token, [{ id, entryFee, maxSessions }]);
+  await send(ctx, `created arena #${id} (${arenaMeta(id).name}) · entry ${fmtTok(entryFee, token.tokenDecimals)} · max ${maxSessions}`, ixs);
   console.log(`  arena ${explorerAddressUrl(pdas.arena(id, ctx.client.programId).toBase58(), ctx.cluster, ctx.url)}`);
 }
 
@@ -253,14 +192,10 @@ async function cmdCreateArena(ctx: Ctx, opts: Opts): Promise<void> {
   const admin = requireAdmin(ctx, config);
   const token = requireGameToken(config);
   if (flag(opts, 'defaults')) {
-    for (const tier of defaultArenaParams(token.tokenDecimals)) {
-      const existing = await ctx.client.fetchArena(tier.id);
-      if (existing) {
-        console.log(`• arena #${tier.id} exists (entry ${fmtTok(existing.entryFee, token.tokenDecimals)}, max ${existing.maxSessions}) — skipped`);
-        continue;
-      }
-      await createArena(ctx, admin, token, tier.id, tier.entryFee, tier.maxSessions);
-    }
+    const existing = (await Promise.all(defaultArenaParams(0).map((a) => ctx.client.fetchArena(a.id)))).filter((a) => a !== null);
+    const plan = planDefaultArenas(token.tokenDecimals, existing);
+    for (const a of existing) console.log(`• arena #${a.id} exists (entry ${fmtTok(a.entryFee, token.tokenDecimals)}, max ${a.maxSessions}) — skipped`);
+    for (const tier of plan.create) await createArena(ctx, admin, token, tier.id, tier.entryFee, tier.maxSessions);
     return;
   }
   const id = int(opts, 'id', 0, 65_535);
@@ -304,17 +239,12 @@ async function cmdSweep(ctx: Ctx, opts: Opts): Promise<void> {
   if (arena.openSessions > 0) throw new UsageError(`arena #${id} still has ${arena.openSessions} open sessions; wait until they settle or are refunded`);
   const d = token.tokenDecimals;
   console.log(
-    `! sweep moves arena #${id}'s whole vault (${fmtTok(arena.pot, d)}) to the fee wallet ${config.feeWallet}. The game server may still hold\n` +
-      `  journaled loot or pending payouts for this arena that this CLI cannot see — check the server log / journal first.\n` +
-      `  A server that finds the vault short of its journal keeps the arena disabled. Never re-enable a swept arena.`,
+    `! sweep moves arena #${id}'s whole vault (${fmtTok(arena.pot, d)}) to the fee wallet ${config.feeWallet}.\n  ${SWEEP_WARNING}`,
   );
   if (!flag(opts, 'force')) throw new UsageError(`sweep refuses without --force (re-run: pnpm admin sweep --id ${id} --force)`);
   const admin = requireAdmin(ctx, config);
   const feeWalletToken = feeWalletAta(config);
-  const ixs = [
-    createAtaIdempotentIx(admin.publicKey, config.feeWallet, token.tokenMint, token.tokenProgram),
-    await ctx.client.ix.sweepArena(admin.publicKey, { id, feeWalletToken, ...token }),
-  ];
+  const ixs = await buildSweepInstructions(ctx.client, admin.publicKey, config, token, id);
   await send(ctx, `swept ${fmtTok(arena.pot, d)} from arena #${id} to the fee wallet token account ${feeWalletToken.toBase58()}`, ixs);
 }
 
