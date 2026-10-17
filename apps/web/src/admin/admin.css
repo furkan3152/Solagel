@@ -405,3 +405,19 @@ body {
 .ad-ix__accts td {
   overflow-wrap: anywhere;
 }
+
+.ad-blocked {
+  padding: 12px 16px;
+  border: 2px solid var(--ink);
+  border-radius: var(--r-ticket);
+  background: var(--red-ink);
+  color: #fffcf4;
+  font-weight: 600;
+}
+.ad-blocked p {
+  margin: 4px 0 0;
+}
+.ad-pinned code {
+  font-size: 15px;
+  font-weight: 700;
+}

@@ -1,10 +1,10 @@
 import { explorerTxUrl, type SlanaClient } from '@slana/sdk';
 import { describeInstruction } from '@slana/sdk/ops';
 import { ComputeBudgetProgram, type Connection, type TransactionInstruction } from '@solana/web3.js';
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { Field, InkButton, Sheet, StampSpinner } from '../design';
-import type { AdminNetwork } from './net';
-import { sendAdminTx, type AdminPhase, type AdminSigner } from './send';
+import { maxFeeLamports, type AdminNetwork } from './net';
+import { previousOutcome, sendAdminTx, type AdminPhase, type AdminSigner, type SentTx } from './send';
 
 /** One admin transaction, ready for the confirmation sheet. */
 export interface Plan {
@@ -30,9 +30,14 @@ export interface LogEntry {
   url: string;
 }
 
-type State = { phase: 'review' } | { phase: AdminPhase; signature?: string } | { phase: 'done'; signature: string } | { phase: 'error'; message: string; logs: string[] };
+type State =
+  | { phase: 'review' }
+  | { phase: AdminPhase | 'checking'; signature?: string }
+  | { phase: 'done'; signature: string }
+  | { phase: 'error'; message: string; logs: string[] };
 
-const PHASE_TEXT: Record<AdminPhase, string> = {
+const PHASE_TEXT: Record<AdminPhase | 'checking', string> = {
+  checking: 'Checking what became of the previous transaction…',
   signing: 'Approve the transaction in your wallet…',
   sending: 'Sending (the RPC simulates it first)…',
   confirming: 'Waiting for confirmation…',
@@ -44,6 +49,7 @@ export function Review({
   connection,
   wallet,
   net,
+  blockers = [],
   onClose,
   onDone,
 }: {
@@ -52,13 +58,21 @@ export function Review({
   connection: Connection;
   wallet: AdminSigner;
   net: AdminNetwork;
+  /** Network problems that block signing (pinned program id, cluster check). */
+  blockers?: string[];
   onClose: () => void;
   onDone: (entry: LogEntry) => void;
 }) {
   const [state, setState] = useState<State>({ phase: 'review' });
   const [typed, setTyped] = useState('');
   const [acked, setAcked] = useState(false);
-  const busy = state.phase === 'signing' || state.phase === 'sending' || state.phase === 'confirming';
+  // set synchronously on click, so a double click cannot start two signing flows
+  const inFlight = useRef(false);
+  const [submitting, setSubmitting] = useState(false);
+  /** A signed transaction whose outcome is unknown: checked before anything is signed again. */
+  const pending = useRef<SentTx | null>(null);
+  const busy = submitting || state.phase === 'signing' || state.phase === 'sending' || state.phase === 'confirming' || state.phase === 'checking';
+  const blocked = blockers.length > 0;
   const retypeOk = !plan.retype || typed.trim() === plan.retype.text;
   const ackOk = !plan.ack || acked;
   const preview = [
@@ -67,16 +81,56 @@ export function Review({
   ];
   const described = preview.map((ix) => describeInstruction(client, ix));
 
-  const sign = async () => {
+  const maxFee = maxFeeLamports(plan.ixs.length, net.priorityMicroLamports);
+
+  const finish = (signature: string) => {
+    pending.current = null;
+    setState({ phase: 'done', signature });
+    onDone({ at: Date.now(), label: plan.done, signature, url: explorerTxUrl(signature, net.cluster, net.rpcUrl) });
+  };
+
+  const run = async () => {
+    const prev = pending.current;
+    if (prev) {
+      // the last attempt was signed but its outcome is unknown: never sign twice blindly
+      setState({ phase: 'checking', signature: prev.signature });
+      let outcome: Awaited<ReturnType<typeof previousOutcome>>;
+      try {
+        outcome = await previousOutcome(connection, prev);
+      } catch (err) {
+        setState({ phase: 'error', message: `Cannot check the previous transaction ${prev.signature}: ${(err as Error).message}. Try again in a moment.`, logs: [] });
+        return;
+      }
+      if (outcome === 'landed') return finish(prev.signature);
+      if (outcome === 'pending') {
+        setState({ phase: 'error', message: `The previous transaction ${prev.signature} may still land. Wait about a minute, then check again.`, logs: [] });
+        return;
+      }
+      pending.current = null; // failed on chain or expired: it can never land, signing again is safe
+    }
     const res = await sendAdminTx(client, connection, wallet, plan.ixs, {
       priorityMicroLamports: net.priorityMicroLamports,
       onPhase: (phase, signature) => setState({ phase, signature }),
     });
-    if (res.ok) {
-      setState({ phase: 'done', signature: res.signature });
-      onDone({ at: Date.now(), label: plan.done, signature: res.signature, url: explorerTxUrl(res.signature, net.cluster, net.rpcUrl) });
-    } else {
-      setState({ phase: 'error', message: `${res.error.message}${res.error.name ? ` [${res.error.name}${res.error.code !== null ? ` ${res.error.code}` : ''}]` : ''}`, logs: res.logs });
+    if (res.ok) return finish(res.signature);
+    pending.current = res.sent;
+    const text = `${res.error.message}${res.error.name ? ` [${res.error.name}${res.error.code !== null ? ` ${res.error.code}` : ''}]` : ''}`;
+    setState({
+      phase: 'error',
+      message: res.sent ? `${text}. Outcome unknown for ${res.sent.signature}: "Check and retry" looks it up before anything is signed again.` : text,
+      logs: res.logs,
+    });
+  };
+
+  const sign = async () => {
+    if (inFlight.current || blocked) return;
+    inFlight.current = true;
+    setSubmitting(true);
+    try {
+      await run();
+    } finally {
+      inFlight.current = false;
+      setSubmitting(false);
     }
   };
 
@@ -90,8 +144,8 @@ export function Review({
         <InkButton variant="paper" onClick={onClose} disabled={busy}>
           {state.phase === 'error' ? 'Close' : 'Cancel'}
         </InkButton>
-        <InkButton variant="pink" lead="key" onClick={() => void sign()} disabled={busy || !retypeOk || !ackOk}>
-          {state.phase === 'error' ? 'Try again' : 'Sign with wallet'}
+        <InkButton variant="pink" lead="key" onClick={() => void sign()} disabled={busy || blocked || !retypeOk || !ackOk}>
+          {state.phase === 'error' ? (pending.current ? 'Check and retry' : 'Try again') : 'Sign with wallet'}
         </InkButton>
       </div>
     );
@@ -99,6 +153,13 @@ export function Review({
   return (
     <Sheet open onClose={busy ? () => {} : onClose} title={plan.title} kicker={`Review · ${net.cluster}`} closeLabel="Close" footer={footer} className="ad-sheet">
       <div className="ad-review">
+        {blocked && (
+          <div className="ad-err" role="alert">
+            {blockers.map((b) => (
+              <p key={b}>{b}</p>
+            ))}
+          </div>
+        )}
         {plan.warning && <div className="ad-warn">{plan.warning}</div>}
         <section aria-label="Values">
           <h3 className="ad-h3">What changes</h3>
@@ -117,7 +178,10 @@ export function Review({
             </div>
             <div>
               <dt className="mono">Priority fee</dt>
-              <dd>{net.priorityMicroLamports.toLocaleString('en-US')} micro-lamports per compute unit</dd>
+              <dd>
+                {net.priorityMicroLamports.toLocaleString('en-US')} micro-lamports per compute unit · transaction fee at most {(maxFee / 1e9).toLocaleString('en-US', { maximumFractionDigits: 9 })} SOL
+                ({maxFee.toLocaleString('en-US')} lamports)
+              </dd>
             </div>
           </dl>
         </section>
@@ -193,7 +257,7 @@ export function Review({
         <div aria-live="polite" className="ad-status">
           {busy && (
             <p className="ad-phase">
-              <StampSpinner size="sm" /> {PHASE_TEXT[state.phase as AdminPhase]}
+              <StampSpinner size="sm" /> {(PHASE_TEXT as Record<string, string>)[state.phase] ?? 'Preparing the transaction…'}
             </p>
           )}
           {state.phase === 'done' && (

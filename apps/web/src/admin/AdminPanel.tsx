@@ -2,10 +2,10 @@ import { WalletReadyState } from '@solana/wallet-adapter-base';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { SlanaClient, explorerAddressUrl, type ConfigView } from '@slana/sdk';
 import { arenaName, fmtPct, fmtSol, fmtTok, tokenProgramName, type StatusSnapshot } from '@slana/sdk/ops';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Chip, InkButton, Rule, Stamp } from '../design';
 import { CreateArenas, InitForm, PauseControl, RecreateFeeAta, SetTokenForm, SweepArena, UpdateArena, UpdateConfig, type ActionCtx } from './actions';
-import { isMainnet, type AdminNetwork } from './net';
+import { isMainnet, verifyNetwork, type AdminNetwork, type NetworkCheck } from './net';
 import { Review, type LogEntry, type Plan } from './Review';
 import { useAdminStatus } from './useAdminStatus';
 import './admin.css';
@@ -69,7 +69,22 @@ function WalletBox() {
   );
 }
 
-function StatusCard({ status, net, loading, error, onRefresh }: { status: StatusSnapshot | null; net: AdminNetwork; loading: boolean; error: string | null; onRefresh: () => void }) {
+function StatusCard({
+  status,
+  check,
+  genesis,
+  loading,
+  error,
+  onRefresh,
+}: {
+  status: StatusSnapshot | null;
+  check: NetworkCheck;
+  genesis: string | null | undefined;
+  loading: boolean;
+  error: string | null;
+  onRefresh: () => void;
+}) {
+  const net = check.net;
   const c = status?.config ?? null;
   const d = c?.tokenDecimals ?? 0;
   const sym = status?.mint?.symbol ? ` ${status.mint.symbol}` : '';
@@ -88,15 +103,39 @@ function StatusCard({ status, net, loading, error, onRefresh }: { status: Status
           {error}
         </p>
       )}
-      {net.fake && <p className="ad-warn">The game server runs the DEV_FAKE_CHAIN stand-in: there is no real program to administer. Point the panel at a cluster with VITE_RPC_URL and VITE_PROGRAM_ID.</p>}
+      {net.fake && <p className="ad-warn">The game server runs the DEV_FAKE_CHAIN stand-in: there is no real program to administer.</p>}
       <dl className="ad-kv">
-        <Row label="Cluster">{net.cluster}</Row>
+        <Row label="Pinned program id">
+          <strong className="ad-pinned">
+            <Addr value={net.programId} net={net} />
+          </strong>{' '}
+          <span className="ad-note">compiled into this build</span>
+        </Row>
+        <Row label="Server reports">
+          {net.serverProgramId === null ? (
+            <span className="ad-note">no program id (game server unreachable or chain off)</span>
+          ) : net.serverProgramId === net.programId ? (
+            <Chip tone="teal">same program id</Chip>
+          ) : (
+            <span className="ad-bad">MISMATCH: {net.serverProgramId}</span>
+          )}
+        </Row>
+        <Row label="Cluster">
+          {check.verified ? (
+            <>
+              {net.cluster} <span className="ad-note">(from the genesis hash{genesis ? ` ${genesis}` : ''})</span>
+            </>
+          ) : genesis === undefined ? (
+            'checking…'
+          ) : (
+            <span className="ad-bad">unverified</span>
+          )}
+          {net.claimedCluster && <span className="ad-note"> · claimed: {net.claimedCluster}</span>}
+        </Row>
         <Row label="RPC">
           <code>{net.rpcUrl}</code> <span className="ad-note">({net.source === 'env' ? 'build settings' : net.source === 'server' ? 'from the game server' : 'default'})</span>
         </Row>
-        <Row label="Program">
-          <Addr value={net.programId} net={net} /> {status ? (status.deployed ? <Chip tone="teal">deployed</Chip> : <Chip tone="pink">not deployed</Chip>) : null}
-        </Row>
+        <Row label="Program">{status ? status.deployed ? <Chip tone="teal">deployed</Chip> : <Chip tone="pink">not deployed</Chip> : '…'}</Row>
         {status?.deployed && <Row label="Upgrade authority">{status.upgradeAuthority ? <Addr value={status.upgradeAuthority} net={net} /> : 'none (immutable or unreadable)'}</Row>}
         {status?.deployed && <Row label="Config">{c ? <><Chip tone="teal">initialized</Chip> <Addr value={status.configAddress} net={net} /></> : <Chip tone="mustard">not initialized</Chip>}</Row>}
         {c && (
@@ -221,8 +260,23 @@ function Gate({ role, status }: { role: Role; status: StatusSnapshot | null }) {
  * `pnpm admin` for the config admin (or, before `initialize`, the upgrade authority), signed by
  * the connected browser wallet. Each action shows the decoded instructions before the wallet prompt.
  */
-export function AdminPanel({ net }: { net: AdminNetwork }) {
+export function AdminPanel({ net: claimed }: { net: AdminNetwork }) {
   const { connection } = useConnection();
+  const [genesis, setGenesis] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    let live = true;
+    setGenesis(undefined);
+    connection.getGenesisHash().then(
+      (g) => live && setGenesis(g),
+      () => live && setGenesis(null),
+    );
+    return () => {
+      live = false;
+    };
+  }, [connection]);
+  const check = useMemo(() => verifyNetwork(claimed, genesis), [claimed, genesis]);
+  const net = check.net;
+  const hardBlockers = check.blockers.filter((b) => !b.startsWith('Checking'));
   const wallet = useWallet();
   const client = useMemo(() => new SlanaClient(connection, net.programId), [connection, net.programId]);
   const { status, error, loading, refresh } = useAdminStatus(client, net);
@@ -236,7 +290,15 @@ export function AdminPanel({ net }: { net: AdminNetwork }) {
 
   return (
     <div className="ad-page">
-      {isMainnet(net) && (
+      {hardBlockers.length > 0 && (
+        <div className="ad-blocked" role="alert">
+          <strong>SIGNING BLOCKED.</strong>
+          {hardBlockers.map((b) => (
+            <p key={b}>{b}</p>
+          ))}
+        </div>
+      )}
+      {check.verified && isMainnet(net) && (
         <div className="ad-mainnet" role="alert">
           <strong>MAINNET.</strong> Every transaction signed here is final and moves real funds.
         </div>
@@ -247,12 +309,12 @@ export function AdminPanel({ net }: { net: AdminNetwork }) {
           <h1 className="ad-title">Admin panel</h1>
           <p className="ad-deck">The operations of the admin CLI (pnpm admin), signed by your browser wallet (Phantom, Solflare, or a Ledger through either). The program checks every signer itself.</p>
         </div>
-        <Stamp text={net.cluster} sub="cluster" tone={isMainnet(net) ? 'red' : 'teal'} round size="md" rotate={-6} />
+        <Stamp text={check.verified ? net.cluster : 'unverified'} sub="cluster" tone={check.verified && isMainnet(net) ? 'red' : check.verified ? 'teal' : 'mustard'} round size="md" rotate={-6} />
       </header>
       <Rule variant="double" />
       <WalletBox />
       <Gate role={role} status={status} />
-      <StatusCard status={status} net={net} loading={loading} error={error} onRefresh={() => void refresh()} />
+      <StatusCard status={status} check={check} genesis={genesis} loading={loading} error={error} onRefresh={() => void refresh()} />
 
       {ctx && (
         <div className="ad-grid">
@@ -292,6 +354,7 @@ export function AdminPanel({ net }: { net: AdminNetwork }) {
           connection={connection}
           wallet={wallet}
           net={net}
+          blockers={check.blockers}
           onClose={() => setPlan(null)}
           onDone={(entry) => {
             setLog((l) => [entry, ...l]);

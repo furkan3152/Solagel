@@ -149,6 +149,25 @@ export function updateArenaRefusal(arena: Pick<ArenaView, 'id' | 'openSessions'>
   return null;
 }
 
+/**
+ * Sanity checks of an admin transfer (`update_config` with `admin`, final and unconfirmed by the new
+ * key): the new admin must be an on-curve wallet key (a PDA, the program, the config, the server key
+ * or the current admin would leave the program without a usable admin). Returns why it is refused, or null.
+ */
+export function adminTransferRefusal(
+  newAdmin: PublicKey,
+  ctx: { programId: Address; currentAdmin: Address; serverKeys: (Address | null | undefined)[]; feeWallet?: Address },
+): string | null {
+  const is = (a: Address | null | undefined) => !!a && toPublicKey(a).equals(newAdmin);
+  if (newAdmin.equals(PublicKey.default)) return 'the new admin must not be the default (all zero) key';
+  if (is(ctx.currentAdmin)) return 'the new admin is the current admin';
+  if (is(ctx.programId)) return 'the new admin is the program id';
+  if (is(pdas.config(ctx.programId))) return 'the new admin is the config account';
+  if (ctx.serverKeys.some(is)) return 'the new admin is the server key (a hot key on the game server)';
+  if (!PublicKey.isOnCurve(newAdmin.toBytes())) return 'the new admin is not an on-curve wallet key (a program-derived address cannot sign)';
+  return null;
+}
+
 /** `sweep_arena` preconditions (the program enforces them too); returns why it is refused, or null. */
 export function sweepRefusal(arena: Pick<ArenaView, 'id' | 'enabled' | 'openSessions'>): string | null {
   if (arena.enabled) return `disable arena #${arena.id} first`;
@@ -402,17 +421,32 @@ export function token2022Symbol(data: Uint8Array): string | null {
   return null;
 }
 
+const SYMBOL_MAX = 16;
+
+/**
+ * A self-declared token symbol made safe to show: control, bidi and zero-width characters
+ * removed, whitespace collapsed, at most 16 characters. Null when nothing is left.
+ */
+export function sanitizeSymbol(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  // eslint-disable-next-line no-control-regex
+  const clean = raw.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/g, '').replace(/\s+/g, ' ').trim();
+  if (!clean) return null;
+  const chars = [...clean];
+  return chars.length > SYMBOL_MAX ? `${chars.slice(0, SYMBOL_MAX).join('')}…` : clean;
+}
+
 /** Best effort: the mint's symbol from Token-2022 metadata or Metaplex metadata; null when none. */
 export async function fetchTokenSymbol(connection: Connection, mint: PublicKey, tokenProgram: PublicKey): Promise<string | null> {
   try {
     if (tokenProgram.equals(TOKEN_2022_PROGRAM_ID)) {
       const info = await connection.getAccountInfo(mint, 'confirmed');
-      const symbol = info ? token2022Symbol(info.data) : null;
+      const symbol = sanitizeSymbol(info ? token2022Symbol(info.data) : null);
       if (symbol) return symbol;
     }
     const info = await connection.getAccountInfo(metaplexMetadataPda(mint), 'confirmed');
     const parsed = info && info.owner.equals(MPL_TOKEN_METADATA_ID) ? parseMetaplexMetadata(info.data) : null;
-    return parsed?.symbol || null;
+    return sanitizeSymbol(parsed?.symbol);
   } catch {
     return null;
   }
