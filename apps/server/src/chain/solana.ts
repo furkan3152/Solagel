@@ -574,7 +574,7 @@ export class SolanaChain implements ChainGateway {
   status(): ChainStatus {
     const { cluster, publicRpcUrl } = this.cfg.chain;
     if (!this.enabled || !this.client) {
-      return { enabled: false, cluster, programId: null, rpcUrl: null, arenasEnabled: false, tokenReady: false, token: null, feeBps: null };
+      return { enabled: false, cluster, programId: null, rpcUrl: null, arenasEnabled: false, tokenReady: false, token: null, feeBps: null, serverKey: this.keypair?.publicKey.toBase58() ?? null };
     }
     const token = this.token();
     return {
