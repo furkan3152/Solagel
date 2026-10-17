@@ -7,7 +7,7 @@ exists in `pnpm admin help`.
 The commands take `--url`, `--keypair` (default `~/.config/solana/id.json`; it must be the admin wallet
 `D2Ts7yCiVjedo6uwqpkM44QA8J45NdVU1J3k5m6iWtvm`, `SLANA_ADMIN` in `scripts/admin.env`) and `--program`; see
 [DEPLOY.md](DEPLOY.md). Every admin command is run by this wallet; the server key is a separate hot key that only
-settles sessions and burns floor loot. `pnpm admin` reads a keypair file only (no `usb://ledger`), see the hardware wallet note in DEPLOY.md. Before and after every operation:
+settles sessions and burns floor loot. `pnpm admin` reads a keypair file only (no `usb://ledger`); the admin panel below signs with a browser wallet or a Ledger instead. Before and after every operation:
 
 ```bash
 pnpm admin status
@@ -17,6 +17,25 @@ pnpm admin status
 set-token --mint <CA>\`; arenas open after it)` until it is set, then the mint, token program, decimals, symbol and
 supply), the fee wallet, its token account and balance (and a warning when that account is missing), the fee and the
 deposit, `paused`, the totals and the arenas (open tickets / cap, vault, enabled or not).
+
+## Admin panel
+
+`/admin` on the web app (not linked from the lobby) does every `pnpm admin` operation signed by the connected browser
+wallet: Phantom, Solflare, or a Ledger through either. Connect the admin wallet; any other wallet sees the status
+read-only. Each action opens a review sheet that lists every instruction to be signed (decoded values and every
+account), then the wallet prompt; the result shows the signature with an explorer link and the status is re-read.
+
+| Task | In `/admin` | CLI |
+|---|---|---|
+| Status | Status card (Refresh) | `pnpm admin status` |
+| Pause / unpause | Pause | `update-config --paused true\|false` |
+| Fee, settle fee, server key, fee wallet, admin transfer | Update config (warns when the server authority is not this server's key; an admin transfer needs an explicit acknowledgement) | `update-config ...` |
+| Enable / disable an arena, entry fee, cap | Update arena | `update-arena ...` |
+| Shut an arena down | Sweep arena (disabled and idle arenas only; acknowledgement required) | `sweep --id N --force` |
+| Recreate the fee wallet's token account | Fee wallet token account → Recreate | `update-config --fee-wallet <same>` |
+
+On mainnet a red banner stays at the top. The RPC, program id and cluster come from the game server's `/api/config`,
+or from the web build's `VITE_RPC_URL`, `VITE_PROGRAM_ID` and `VITE_SOLANA_CLUSTER`.
 
 ## Monitoring
 
@@ -53,7 +72,7 @@ off-chain by hand (the plan is 75 % burned, 25 % kept).
 
   Nothing is lost and no player is blamed: the held items wait in the journal and go out by themselves (the log says
   `fee wallet token account … is usable again — settlements resume`) as soon as the account exists again. To recreate it,
-  run `pnpm admin update-config --fee-wallet <the current fee wallet>` (it prepends the idempotent account creation), or
+  press "Recreate token account" in `/admin`, run `pnpm admin update-config --fee-wallet <the current fee wallet>` (it prepends the idempotent account creation), or
   `spl-token create-account <MINT> --owner <fee wallet> --fee-payer <keypair>` (add `--program-id` for a Token-2022 mint).
   The server never creates the account itself.
 - **Do not add Token-2022 extensions to the fee wallet's token account** (for example a required memo, `MemoTransfer`).

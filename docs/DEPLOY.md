@@ -5,6 +5,14 @@ opening the arenas and putting the game server live. For day-to-day work (the fe
 rotation, backups): [OPERATIONS.md](OPERATIONS.md). Architecture and trust model: [ARCHITECTURE.md](ARCHITECTURE.md).
 Commands are quoted from `pnpm admin help` and `apps/server/.env.example`. **Try it on devnet first.**
 
+The admin steps (init, set-token, arenas, and every later change) can be done two ways, with the same checks and the
+same instructions:
+
+- **The admin panel at `/admin`** of the web app, signed by the browser wallet (Phantom, Solflare, or a Ledger through
+  either). **Recommended**: the admin key never leaves the wallet or the Ledger. The page is not linked
+  from the lobby; open `https://<your domain>/admin`. See "The admin panel" below.
+- **The admin CLI** `pnpm admin <command>`, signed by a keypair file.
+
 > **Legal and security warning.** Slana is a game played with a token of real value and may need a licence where you
 > operate. The smart contract **has not been audited**: get an audit before opening it with real money on mainnet, and
 > start with small fees. To close the arenas without touching the chain, set `STAKE_ENABLED=false` on the server.
@@ -17,10 +25,13 @@ initialized.
 | # | Step | Command | When |
 |---|---|---|---|
 | 1 | Deploy the program | `scripts/deploy-lean.sh <cluster> target/deploy/slana-keypair.json --keypair keys/deployer.json` | any time; the script also moves the upgrade authority to the admin |
-| 2 | Initialize it | `pnpm admin init --server <server pubkey>` | right after the deploy; no mint is needed |
+| 2 | Initialize it | `/admin` → Initialize, or `pnpm admin init --server <server pubkey>` | right after the deploy; no mint is needed |
 | 3 | Start the game server | see section 7 | any time after `init`; it plays practice only until the token is set |
-| 4 | Set the token | `pnpm admin set-token --mint <CA>` | **later**, when the token contract address exists |
-| 5 | Open the arenas | `pnpm admin create-arena --defaults` | after `set-token` (the program refuses before it) |
+| 4 | Set the token | `/admin` → Set token, or `pnpm admin set-token --mint <CA>` | later, when the token contract address exists |
+| 5 | Open the arenas | `/admin` → Create the 4 default arenas, or `pnpm admin create-arena --defaults` | after `set-token` (the program refuses before it) |
+
+With `SERVER_KEYPAIR=auto` (section 7, recommended) the server creates its own key, so start it (step 3) before step 2:
+`/admin` then prefills the server authority with "this server's key".
 
 Steps 3 and 4 can happen in either order. The server re-reads the program config every 30 s until the token is set, so
 setting it needs no server restart and no web rebuild: the arenas open by themselves. Arenas created with
@@ -29,6 +40,30 @@ setting it needs no server restart and no web rebuild: the arenas open by themse
 > **`set-token` is once-only and final.** The program accepts the mint one time and has no instruction to change it. If
 > the contract address was wrong, the only way out is to close the program and redeploy it with a new program id
 > ([OPERATIONS.md](OPERATIONS.md#emergency-stop--close)). Check the address twice, on devnet first.
+
+### The admin panel (`/admin`)
+
+Open `/admin` on the deployed web app (or `http://localhost:5173/admin` with `pnpm dev`) and connect the admin wallet.
+
+- **Gate.** Before `init` only the program's upgrade authority gets the Initialize form; afterwards only the Config
+  `admin`. Any other wallet sees the status read-only and "Connect the admin wallet" with the expected address. The
+  program checks every signer itself; the gate is only for convenience.
+- **Status.** Cluster and RPC, the program (deployed or not) and its upgrade authority, the Config (admin, server
+  authority, fee wallet, fee, settle fee, paused), the token (or "not set"; else mint, program, decimals, symbol,
+  supply), the fee wallet's token account and balance, and the arenas (entry fee, enabled, open sessions, vault).
+- **Actions.** Initialize; Set token; Create the 4 default arenas or a custom one; Update arena; Update config (fee,
+  settle fee, server authority, fee wallet, admin transfer); Pause / Unpause; Sweep arena; Recreate the fee wallet's
+  token account. Each one first shows a review sheet with every instruction it will sign (program, decoded values,
+  every account with its signer / writable flags) and asks for confirmation before the wallet prompt. Afterwards it
+  shows the signature with an explorer link and re-reads the status.
+- **Network.** The page follows the game server's `/api/config` (cluster, public RPC, program id). The web build can
+  override each value: `VITE_RPC_URL`, `VITE_PROGRAM_ID`, `VITE_SOLANA_CLUSTER`; `VITE_PRIORITY_MICROLAMPORTS` sets the
+  compute-unit price of admin transactions (default 20,000 micro-lamports, as for tickets). On mainnet a red banner
+  stays at the top of the page.
+
+The panel and the CLI share their validation and instruction building (`packages/sdk/src/ops.ts`).
+
+### The admin CLI
 
 Every admin command runs as `pnpm admin <command>`; the full list is `pnpm admin help`. Common options:
 
@@ -101,7 +136,7 @@ The `keys/` folder is not tracked by git (`.gitignore`: `keys/`, `*.keypair.json
 |---|---|---|
 | Admin wallet (`SLANA_ADMIN` in `scripts/admin.env`: `D2Ts7yCiVjedo6uwqpkM44QA8J45NdVU1J3k5m6iWtvm`) | the project's main wallet; the program's upgrade authority; `init` can only be signed by it; it becomes the Config `admin`; every admin command is run by this wallet (`--keypair <its keypair file>`); it is also the default fee wallet | a wallet you control yourself; a multisig (Squads) is optional later |
 | Temporary deployer (`keys/deployer.json`) | pays for the deploy and is the upgrade authority only until `deploy-lean.sh` hands it to the admin | throwaway; keep a little SOL, delete it afterwards |
-| Server (`keys/server.json`) | signs `settle_session` and `sweep_loot` (`Config.server_authority`) | a separate **hot key** on the server that only settles sessions and burns arena floor loot (up to the vault balance); it can never withdraw to a wallet, upgrade or administer; a little SOL |
+| Server (`SERVER_KEYPAIR=auto`, or `keys/server.json`) | signs `settle_session` and `sweep_loot` (`Config.server_authority`) | a separate hot key on the server that only settles sessions and burns arena floor loot (up to the vault balance); it can never withdraw to a wallet, upgrade or administer; a little SOL |
 | Fee wallet | receives the whole fee of every settlement and the vault of a swept arena | the admin wallet by default (`init --fee-wallet <pubkey>` or `update-config --fee-wallet` choose another) |
 
 ```bash
@@ -122,9 +157,9 @@ Deploy with a temporary deployer key, hand the upgrade authority to the admin, t
    deploy or upgrade (`solana program set-upgrade-authority <ID> --new-upgrade-authority <ADMIN>
    --skip-new-upgrade-authority-signer-check`), prints the authority before and after, and skips it when the admin
    already is the authority. `--keep-authority` leaves it as the deployer (localnet and tests only).
-3. **The admin runs `init`** (section 4): the program only accepts the upgrade authority as signer, so the Config
-   `admin` becomes the admin wallet.
-4. **Later, the admin runs `set-token` and `create-arena --defaults`** (sections 5 and 6).
+3. **The admin initializes the program** (section 4) in `/admin` or with `pnpm admin init`: the program only accepts
+   the upgrade authority as signer, so the Config `admin` becomes the admin wallet.
+4. **Later, the admin sets the token and opens the arenas** (sections 5 and 6), in `/admin` or with the CLI.
 
 ```bash
 solana airdrop 5 $(solana-keygen pubkey keys/deployer.json) -u devnet   # if needed, https://faucet.solana.com
@@ -139,7 +174,12 @@ closed at any time (OPERATIONS.md, "Emergency stop / close"). Later upgrades are
 
 ## 4. Initialize the program: `init`
 
-Run this as the admin wallet (`--keypair` is the admin's keypair file; every later admin command takes it too, or
+**In the admin panel (recommended).** Open `/admin`, connect the admin wallet (the upgrade authority), fill in the
+Initialize form and sign. The server authority is prefilled with this server's key when the game server publishes it
+(`SERVER_KEYPAIR=auto` or any key: `/api/config` → `chain.serverKey`); the fee wallet defaults to the connected wallet,
+the fee to 500 bps and the settle fee to 20,000 lamports.
+
+**With the CLI.** Run this as the admin wallet (`--keypair` is the admin's keypair file; every later admin command takes it too, or
 copy it to `~/.config/solana/id.json`, the default):
 
 ```bash
@@ -148,11 +188,10 @@ pnpm admin init --keypair $ADMIN_KP --server $(solana-keygen pubkey keys/server.
 pnpm admin status --keypair $ADMIN_KP     # "token: not set (run `pnpm admin set-token --mint <CA>`; arenas open after it)"
 ```
 
-> **Hardware wallet.** `pnpm admin` (packages/sdk/src/admin.ts) loads `--keypair` only as a JSON keypair file; it does
-> **not** support `usb://ledger`. The Solana CLI steps (`deploy-lean.sh`, `set-upgrade-authority`, `close-program.sh`)
-> do. To keep the admin on a Ledger today, either import the keypair file into a secure machine for the admin session,
-> or do the upgrade-authority step with the Solana CLI and run the `pnpm admin` commands from an offline-stored
-> keypair file. SDK support for hardware signing is an open item.
+> **Hardware wallet.** The admin panel signs every admin operation with the browser wallet, so a
+> Ledger connected through Phantom or Solflare can be the admin; no keypair file is needed. (`pnpm admin` itself still
+> loads `--keypair` only as a JSON keypair file, not `usb://ledger`; the Solana CLI steps `deploy-lean.sh`,
+> `set-upgrade-authority` and `close-program.sh` take `usb://ledger` directly.)
 
 `init` creates only the Config: no mint, no vaults. It refuses `--mint` (the token is set later) and a signer that is
 not the upgrade authority. Defaults (`pnpm admin help`):
@@ -172,6 +211,13 @@ are burned off-chain by hand from the fee wallet (the plan is 75 % burned, 25 % 
 Run this when the token contract address (CA) exists. It is once-only: the program writes the mint into the Config
 one time (`TokenAlreadySet` afterwards) and nothing can change it.
 
+**In the admin panel (recommended).** Set token → paste the mint → Check mint. The panel reads the mint and shows its
+owner program, decimals, supply, mint and freeze authorities and its Token-2022 extensions, and blocks a mint the
+program would refuse, with the reason. The review sheet carries a one-time, irreversible warning and enables signing
+only after the mint address is typed again exactly.
+
+**With the CLI.**
+
 ```bash
 pnpm admin set-token --keypair $ADMIN_KP --mint <CA>
 pnpm admin status --keypair $ADMIN_KP     # mint, program, decimals, symbol, supply, the fee wallet's token account and balance
@@ -182,7 +228,8 @@ idempotent create), then `set_token_mint` stores the mint, the token program (re
 decimals. The CLI prints the program, the decimals, the symbol (Token-2022 metadata, else Metaplex Token Metadata, best
 effort) and the fee wallet's token account.
 
-Requirements (the CLI checks the owner program, the freeze authority and the supply before it signs; the program checks all of them, and only the program checks the Token-2022 extension list, so a refused extension shows as a generic program error):
+Requirements (the panel and the CLI check all of them before anything is signed, with the program's own rules; the
+program checks them again):
 
 - an SPL Token or Token-2022 mint;
 - no freeze authority (a mint with a `freeze authority` is refused);
@@ -203,6 +250,10 @@ On mainnet, use the $SLANA mint address. For a devnet trial, create a test mint 
 `spl-token create-token --decimals 6`) and mint yourself some.
 
 ## 6. Arenas: `create-arena --defaults`
+
+In the admin panel: "Create the 4 default arenas" (one transaction for the missing ones; existing ids are skipped), or
+a custom arena (id, entry fee in whole tokens, max sessions). "Update arena" enables or disables an arena and changes its
+entry fee or session cap. With the CLI:
 
 ```bash
 pnpm admin create-arena --defaults         # the four default arenas (skips existing ones); needs set-token first
@@ -229,7 +280,14 @@ about 60 s** to appear in the lobby; it appears by itself.
 Example file: `apps/server/.env.example`. The server does not read the `.env` file itself; pass the variables through
 the environment (Docker: `--env-file`, systemd: `EnvironmentFile=`, by hand: `set -a; . apps/server/.env; set +a`).
 
-Required for the chain: `PROGRAM_ID`, `SOLANA_RPC_URL`, `SERVER_KEYPAIR`. If one is missing, the server runs without a
+Required for the chain: `PROGRAM_ID`, `SOLANA_RPC_URL`, `SERVER_KEYPAIR`.
+
+**Server key: `SERVER_KEYPAIR=auto` (recommended).** On its first start the server creates its hot key in
+`DATA_DIR/server-keypair.json` (mode 0600) and keeps using it; it logs the public key and publishes it as
+`chain.serverKey` in `/api/config`. The host never has to be handed a secret, and `/admin` prefills that key as the
+server authority (Initialize) and warns in Update config while the Config's server authority differs. This **needs a
+persistent `DATA_DIR`** (the same disk as the journal): a lost disk means a new key, which must then be set with Update
+config. Fund the published address with a little SOL. A keypair file path or a JSON array still works. If one is missing, the server runs without a
 chain (practice only). The game token is not an environment variable: the server reads the mint from the program
 config at start and every 30 s until it is set. While it is unset the server plays practice only, reports
 `tokenReady: false` (`/api/config`, `welcome`), refuses arena joins with `token_not_set` and holds settlements. The web
@@ -259,7 +317,7 @@ arenas and pushes a `chain` message to every connected client; nobody has to rel
 | `SOLANA_WS_URL` | empty | optional websocket RPC (only in `config.ts`) |
 | `PUBLIC_RPC_URL` | empty | the RPC announced to browsers; **must not contain secrets** |
 | `PROGRAM_ID` | empty | the program you deployed |
-| `SERVER_KEYPAIR` | empty | keypair file path or JSON array; must equal `Config.server_authority` |
+| `SERVER_KEYPAIR` | empty | `auto` (recommended: created in `DATA_DIR` on the first start, public key logged and published as `chain.serverKey`), or a keypair file path or JSON array; must equal `Config.server_authority` |
 | `STAKE_ENABLED` | `true` | `false`: the arenas close without touching the chain (payouts go on) |
 | `STAKE_ARENA_IDS` | empty | only these arena ids (comma-separated); empty = every enabled arena on-chain |
 | `TOKEN_SYMBOL` | `$SLANA` | display only (the mint itself is read on-chain). Some env loaders expand `$NAME`; it is commented out in the example file |
@@ -291,7 +349,9 @@ check is `GET /api/health`. The server returns `index.html` for client paths suc
 at `https://<domain>/docs`.
 
 To host the web client separately, the build arguments are `VITE_SERVER_URL` (the game server's address) and
-`VITE_RPC_URL` (the browser's RPC). The static host must also fall back to `index.html` for `/docs` (SPA fallback).
+`VITE_RPC_URL` (the browser's RPC). The admin panel also reads `VITE_PROGRAM_ID`, `VITE_SOLANA_CLUSTER` and
+`VITE_PRIORITY_MICROLAMPORTS` when they are set (otherwise it follows the game server). The static host must also fall
+back to `index.html` for `/admin`. The static host must also fall back to `index.html` for `/docs` (SPA fallback).
 
 ## 9. Mainnet
 
@@ -301,10 +361,12 @@ To host the web client separately, the build arguments are `VITE_SERVER_URL` (th
    admin wallets.
 3. `bash scripts/build-lean.sh && scripts/deploy-lean.sh mainnet-beta target/deploy/slana-keypair.json --keypair keys/deployer.json`
    (never `anchor deploy`: it ships the Anchor reference). The script moves the upgrade authority to the admin wallet.
-4. `pnpm admin init` (section 4) with the mainnet RPC.
+4. Initialize (section 4): in `/admin` with the admin wallet (the mainnet banner shows), or `pnpm admin init` with the
+   mainnet RPC.
 5. Start the server with `SOLANA_CLUSTER=mainnet-beta`, a paid `SOLANA_RPC_URL` and a secret-free `PUBLIC_RPC_URL`.
    Until the token is set it serves practice only.
-6. When the token exists: `pnpm admin set-token --mint <CA>` (final), then `pnpm admin create-arena --defaults`. Watch
+6. When the token exists: Set token, then Create the 4 default arenas in `/admin` (or `pnpm admin set-token --mint
+   <CA>`, final, then `pnpm admin create-arena --defaults`). Watch
    the lobby flip to open arenas (up to about 60 s).
 7. The admin wallet already holds the upgrade authority and the Config `admin`. Optionally, later, hand both to a
    multisig (`solana program set-upgrade-authority`, `pnpm admin update-config --admin <multisig>`). **Do not make the
