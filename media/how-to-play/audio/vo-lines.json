@@ -45,7 +45,7 @@
  },
  {
   "id": "c5a",
-  "text": "Ready to play for real? Connect a wallet and buy a ticket. Every arena has a fixed entry fee. Penny Pond is one thousand Slana, Silver Creek ten thousand. Gold Lake and Whale Bay are Pass rooms."
+  "text": "Ready to play for real? Connect a wallet and buy a ticket. There are four arenas, open to everyone, and each has a fixed entry fee: Penny Pond is one thousand Slana, Silver Creek ten thousand, Gold Lake fifty thousand, and Whale Bay two hundred fifty thousand."
  },
  {
   "id": "c5b",
@@ -69,26 +69,18 @@
  },
  {
   "id": "c6e",
-  "text": "The fee is charged on profit only. Enter with one thousand, finish the round on two thousand: that's one thousand profit. The five percent fee is fifty, so you get nineteen fifty."
+  "text": "The fee is charged on profit only: a flat five percent, paid to the operator. Enter with one thousand, finish the round on two thousand: that's one thousand profit. The fee is fifty, so you get nineteen fifty."
  },
  {
   "id": "c6f",
-  "text": "With a Pass, the fee is two percent. That's twenty, and you keep nineteen eighty."
+  "text": "At a loss or break-even, there's no fee at all."
  },
  {
   "id": "c6g",
-  "text": "And any loot left on the floor at the bell goes to the season pool."
+  "text": "And any loot left on the floor at the bell is burned."
  },
  {
-  "id": "c7a",
-  "text": "The Slana Pass is a free-mint NFT. It opens the Pass rooms, drops the fee to two percent, and gives you a fifteen percent head start."
- },
- {
-  "id": "c7b",
-  "text": "Season points come only from Pass tickets, and the top ten win prizes from the season pool."
- },
- {
-  "id": "c8",
+  "id": "c7",
   "text": "Quick tips. Warm up in Practice. Only split when the catch is sure. And in the final minute, play it safe: you're only paid if you're alive at the bell."
  },
  {

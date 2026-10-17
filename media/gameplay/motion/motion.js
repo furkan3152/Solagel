@@ -12,8 +12,8 @@
   const C = {}; // component factories
   const live = [];
   const ART = window.SlanaArt;
-  const INKC = '#1e1b2e', PAPER = '#f1eadb', CARD = '#fffcf4';
-  const COL = { pink: '#ff4f87', teal: '#0e9c9a', mustard: '#f2b705', blue: '#3b5bdb', green: '#1f9d61', red: '#e5402b', ink: INKC, paper: PAPER, card: CARD, pinkInk: '#d6245f', tealInk: '#08716f' };
+  const INKC = '#1b1732', PAPER = '#fcf4df', CARD = '#fffdf6';
+  const COL = { pink: '#fb2f85', teal: '#01aca4', mustard: '#ffb413', blue: '#3055fc', green: '#17ad65', red: '#f72e1c', ink: INKC, paper: PAPER, card: CARD, pinkInk: '#d1166b', tealInk: '#0f736e' };
   const col = (c) => COL[c] || c || COL.pink;
 
   // ── easing ──
@@ -50,7 +50,7 @@
     d.style.cssText = `position:absolute;inset:0;background:${tone};`;
     if (grid) {
       const g = el('div');
-      g.style.cssText = 'position:absolute;inset:-60px;background-image:linear-gradient(rgba(59,91,219,.13) 2px,transparent 2px),linear-gradient(90deg,rgba(59,91,219,.13) 2px,transparent 2px),linear-gradient(rgba(59,91,219,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(59,91,219,.06) 1px,transparent 1px);background-size:240px 240px,240px 240px,48px 48px,48px 48px;';
+      g.style.cssText = 'position:absolute;inset:-60px;background-image:linear-gradient(rgba(48,85,252,.13) 2px,transparent 2px),linear-gradient(90deg,rgba(48,85,252,.13) 2px,transparent 2px),linear-gradient(rgba(48,85,252,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(48,85,252,.06) 1px,transparent 1px);background-size:240px 240px,240px 240px,48px 48px,48px 48px;';
       d.appendChild(g);
       d._grid = g;
     }
@@ -126,7 +126,7 @@
       parts.tagline = tagline;
       if (p.foot) {
         const foot = el('div', 'mono');
-        foot.style.cssText = `position:absolute;left:0;right:0;top:${p.footY || 820}px;text-align:center;font-size:24px;color:#5d5870;`;
+        foot.style.cssText = `position:absolute;left:0;right:0;top:${p.footY || 820}px;text-align:center;font-size:${p.footSize || 34}px;color:${INKC};font-weight:500;`;
         foot.textContent = p.foot;
         layer.appendChild(foot);
         parts.foot = foot;
@@ -158,10 +158,10 @@
       tk.innerHTML = `
         <div style="position:absolute;inset:0;background:${CARD};border:5px solid ${INKC};border-radius:22px;box-shadow:14px 14px 0 ${INKC};overflow:hidden">
           <div style="position:absolute;left:0;top:0;bottom:0;width:26px;background:${col(p.accent)};border-right:5px solid ${INKC}"></div>
-          <div class="mono" style="position:absolute;left:74px;top:52px;font-size:26px;color:#5d5870">${esc(p.kicker || '')}</div>
+          <div class="mono" style="position:absolute;left:74px;top:52px;font-size:26px;color:#5b5577">${esc(p.kicker || '')}</div>
           <div class="ttl disp" style="position:absolute;left:68px;top:108px;font-size:${p.titleSize || 128}px;white-space:nowrap">${esc(p.title)}</div>
           <div class="sub" style="position:absolute;left:74px;top:${p.titleSize > 130 ? 290 : 272}px;width:640px;font-size:38px;font-weight:600;line-height:1.18;color:${INKC}">${esc(p.sub || '')}</div>
-          <div style="position:absolute;right:186px;top:24px;bottom:24px;border-left:5px dashed rgba(30,27,46,.35)"></div>
+          <div style="position:absolute;right:186px;top:24px;bottom:24px;border-left:5px dashed rgba(27,23,50,.35)"></div>
           <div class="mono" style="position:absolute;right:0;top:0;bottom:0;width:186px;display:flex;align-items:center;justify-content:center;font-size:24px;writing-mode:vertical-rl;transform:rotate(180deg)">${esc(p.stub || 'HOW TO PLAY')}</div>
         </div>
         <div style="position:absolute;right:${186 - 19}px;top:-22px;width:42px;height:42px;border-radius:50%;background:${PAPER};border-bottom:5px solid ${INKC}"></div>
@@ -681,7 +681,7 @@
       if (r === '-') return '<div class="rule"></div>';
       if (r === '=') return '<div class="rule2"></div>';
       const [l, v, style] = r;
-      return `<div class="row" style="${style === 'dim' ? 'color:#5d5870' : style === 'pink' ? 'color:#c21e56' : style === 'teal' ? 'color:#08716f' : ''}"><span class="l">${esc(l)}</span><span class="d"></span><span class="r">${esc(v)}</span></div>`;
+      return `<div class="row" style="${style === 'dim' ? 'color:#5b5577' : style === 'pink' ? 'color:#c71466' : style === 'teal' ? 'color:#0f736e' : ''}"><span class="l">${esc(l)}</span><span class="d"></span><span class="r">${esc(v)}</span></div>`;
     });
     rc.innerHTML = `<div class="in"><h3>${esc(p.title || 'SLANA CASH-OUT')}</h3><div class="sub mono">${esc(p.sub || '')}</div>${rows.join('')}
       ${p.net ? `<div class="rule2"></div><div class="net"><span class="mono" style="font-size:22px">${esc(p.netLabel || 'NET')}</span><span><b>${esc(p.net)}</b> <span class="mono" style="font-size:20px">$SLANA</span></span></div>` : ''}</div><div class="zig"></div>`;
@@ -872,7 +872,7 @@
     const r = p.r || 26;
     root.innerHTML = `<div style="position:absolute;left:${r * 0.2}px;top:${r * 0.2}px;width:${2 * r}px;height:${2 * r}px;border-radius:50%;background:${COL.pink};mix-blend-mode:multiply"></div>
       <div style="position:absolute;left:0;top:0;width:${2 * r}px;height:${2 * r}px;box-sizing:border-box;border-radius:50%;background:${COL.mustard};border:${Math.max(3, r * 0.14)}px solid ${INKC}"></div>
-      <div style="position:absolute;left:${r * 0.4}px;top:${r * 0.4}px;width:${1.2 * r}px;height:${1.2 * r}px;box-sizing:border-box;border-radius:50%;border:${Math.max(2, r * 0.1)}px solid rgba(30,27,46,.45)"></div>`;
+      <div style="position:absolute;left:${r * 0.4}px;top:${r * 0.4}px;width:${1.2 * r}px;height:${1.2 * r}px;box-sizing:border-box;border-radius:50%;border:${Math.max(2, r * 0.1)}px solid rgba(27,23,50,.45)"></div>`;
     root.style.left = p.x - r + 'px'; root.style.top = p.y - r + 'px';
     stage.appendChild(root);
     const update = (lt, dur) => {

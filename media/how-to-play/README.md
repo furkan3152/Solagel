@@ -1,29 +1,27 @@
 # How to play Slana (Video B)
 
-A narrated tutorial, about 2:35, 1920x1080, 30 fps, H.264 + AAC, -14 LUFS, in
-eight chapters with the brand's ticket chapter cards:
+A narrated tutorial, about 2:25, 1920x1080, 30 fps, H.264 + AAC, -14 LUFS, in
+seven chapters with the brand's ticket chapter cards:
 
 1. What Slana is
 2. Start free in Practice
 3. Controls (steer, split, tip mass, stickers, chat; keycap and mouse callouts)
 4. Eat and avoid (the 1.25x rule as a diagram, running from bigger coins,
    rug cacti, loot when a bot eats you)
-5. Arenas and tickets (wallet, the four arenas and their entry fees, the
-   ticket sheet, your till)
+5. Arenas and tickets (wallet, the four arenas, open to everyone, and their
+   entry fees 1,000 / 10,000 / 50,000 / 250,000, the ticket sheet, your till)
 6. Rounds and payouts (5-minute wall-clock rounds and joining a running one;
    joins close in the final minute and a ticket bought then is held for the
    next round; eaten means buy back in at the same fee; everyone alive at the
-   bell is paid their till; the guide's worked example as two printing "Round
-   over" receipts: 1,000 in, 2,000 at the bell, fee 50 or 20 with a Pass, net
-   1,950 or 1,980; the 50/30/20 fee split; floor loot at the bell goes to the
-   season pool)
-7. The Slana Pass and seasons (Pass rooms, 2% fee, +15% head start)
-8. Tips (warm up, split only when sure, play safe in the final minute), then
-   the end card
+   bell is paid their till; the guide's worked example as a printing "Round
+   over" receipt: 1,000 in, 2,000 at the bell, fee 50 (a flat 5% of profit,
+   paid to the operator), net 1,950; no profit, no fee; floor loot left at the
+   bell is burned)
+7. Tips (warm up, split only when sure, play safe in the final minute), then
+   the end card (slana.io, @slanaio)
 
 Every rule and number on screen and in the voiceover comes from the in-app
-guide (`apps/web/src/ui/docs/content.en.ts` and `facts.ts`), the rounds spec
-(`docs/superpowers/specs/2026-10-15-slana-rounds-design.md`) and the controls
+guide (`apps/web/src/ui/docs/content.en.ts` and `facts.ts`), `docs/PROJECT.md` and the controls
 from `apps/web/src/game/input.ts`. Arenas have no cash-out key.
 
 ## Layout
