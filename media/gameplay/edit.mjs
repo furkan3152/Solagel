@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Video A: "Slana / Gameplay" (about 66 s). The edit decision list: which pieces of which takes,
 // how they are timed, reframed and ramped, the graphics on top and the sound cues.
-// One paid round in Penny Pond, told in order: a mid-round join, loot, a bot eats Daphne and she
-// buys back in, the final minute, the last ten seconds (she eats mochi_moon and takes #1), the
-// bell, the "Round over" receipt with the PAID stamp.
+// One paid round in Penny Pond, told in order: a mid-round join, loot, she eats a player, a bot
+// eats Daphne and she buys back in, the final minute, the last ten seconds, the bell, the
+// "Round over" receipt with the PAID stamp.
 // Writes cache/edit/gameplay.json (+ music.json). Cuts sit on the bar lines of the game's own
 // score (82 BPM, 4/4): bar = 2.927 s.
 //   node media/gameplay/edit.mjs
@@ -19,9 +19,9 @@ const BPM = 82, BEAT = 60 / BPM, BAR = BEAT * 4;
 const bars = (n) => n * BAR;
 
 const e = new Edit({ name: 'gameplay' });
-// arena: a whole round to the bell (buy-back, final minute, the last ten seconds, receipt);
-// arena2: a mid-round join from the lobby and a split; loot: a rival's spill swept up.
-const A = 'arena', A2 = 'arena2', SP = 'loot';
+// arena2: a whole round from a mid-round join to the bell (a player eaten, loot swept up, the
+// final minute, the last ten seconds, the receipt); arena: a bot eats Daphne and she buys back in.
+const A = 'arena', A2 = 'arena2', SP = A2;
 
 /** A kicker label in the top-left corner for a beat. */
 const kicker = (t, text, dur = 2.6) => { e.add('tag', t, dur, { text, x: 72, y: 72, size: 27, kick: true, dot: true, scramble: true }, 20); e.cue('tick', t + 0.05, 0.3); e.cue('tick', t + 0.2, 0.2); };
@@ -68,31 +68,36 @@ boxSrc(s2, s2.start + 0.55, 2.3, ...CHIP, 'ROUND CLOCK', { seed: 9, below: true,
 e.add('ring', s2.start + 0.4, 2.4, { track: e.trackMe(s2, s2.start + 0.4, 2.4), label: 'YOU', pad: 1.4 }, 25);
 e.cue('stamp', s2.start + 0.1, 0.5);
 
-// ── 3 · split (2 bars) ── Daphne splits toward bonk_bae
-const tSplit = mark(A2, 'split');
-const s3 = e.shot({ take: A2, from: tSplit - 2.4, dur: bars(2), zoom: 1.4, lag: 0.6, blend: true,
-  speed: [[0, 1], [2.1, 1], [2.4, 0.5], [3.6, 0.5], [4.0, 1], [5.85, 1]] });
-kicker(s3.start + 0.2, 'SPACE TO SPLIT', 2.4);
-const tSp = e.timeOf(s3, tSplit);
-e.add('key', tSp - 0.7, 2.2, { keys: ['SPACE'], label: 'SPLIT', x: 1180, y: 900, presses: [0.7] }, 35);
-e.cue('whoosh', tSp, 0.5, { dur: 0.35, bright: 1.6 });
-
-// ── 4 · loot (2 bars) ── value floats as Daphne sweeps up spilled loot
+// ── 3 · loot (2 bars) ── value floats as Daphne sweeps up spilled loot
 const loots = events(SP, 'value', (v) => v.reason === 'loot').map((x) => x.t);
-let lootAt = loots[0] ?? mark(SP, 'play') + 4;
+let lootAt = loots[0];
 { let best = 0; for (const t0 of loots) { const n = loots.filter((x) => x >= t0 && x < t0 + 5).length; if (n > best) { best = n; lootAt = t0; } } }
-const s4 = e.shot({ take: SP, from: Math.max(mark(SP, 'play'), lootAt - 0.6), dur: bars(2), zoom: 1.6, lag: 0.6 });
+const s4 = e.shot({ take: SP, from: lootAt - 0.6, dur: bars(2), zoom: 1.6, lag: 0.6 });
 kicker(s4.start + 0.2, 'LOOT ON THE FLOOR');
 {
   const inShot = events(SP, 'value', (v) => v.reason === 'loot').filter((x) => x.t >= s4.from && x.t <= s4.srcEnd);
-  const v0 = inShot.length ? (inShot[0].v.value - inShot[0].v.delta) / 1e9 : 1;
-  const v1 = inShot.length ? inShot[inShot.length - 1].v.value / 1e9 : 1;
-  lower(s4.start + 1.6, 4.0, 'YOUR TILL / LOOT PICKED UP', Math.round(v0 * 1000), Math.round(v1 * 1000), { countAt: 0.3, countDur: 3.2 });
+  const v0 = (inShot[0].v.value - inShot[0].v.delta) / 1e6;
+  const v1 = inShot[inShot.length - 1].v.value / 1e6;
+  lower(s4.start + 1.6, 4.0, 'YOUR TILL / LOOT PICKED UP', Math.round(v0), Math.round(v1), { countAt: 0.3, countDur: 3.2 });
   for (const ev of inShot) e.cue('coin', e.timeOf(s4, ev.t), 0.35, { pitch: 1 + Math.random() * 0.3 });
 }
 
+// ── 4 · eat a player (2 bars) ── Daphne eats a rival's coin; its tokens move into her till
+const eatsA2 = events(A2, 'value', (v) => v.reason === 'eat');
+const tEatP = eatsA2[0].t;
+const s3 = e.shot({ take: A2, from: tEatP - 2.6, dur: bars(2), zoom: 1.35, lag: 0.6, blend: true,
+  speed: [[0, 1], [2.2, 1], [2.4, 0.5], [3.4, 0.5], [3.8, 1], [5.85, 1]] });
+kicker(s3.start + 0.2, 'EAT A PLAYER', 2.4);
+{
+  const v = eatsA2[0].v;
+  const tE = e.timeOf(s3, tEatP);
+  e.cue('gulp', tE, 0.7);
+  stamp(tE + 0.1, 'GULP!', 1420, 640, 'pink', { rot: -9, size: 110 });
+  lower(tE + 0.5, s3.end - tE - 0.4, 'YOUR TILL / THEIR TOKENS', Math.round((v.value - v.delta) / 1e6), Math.round(v.value / 1e6), { countAt: 0.2, countDur: 0.9 });
+}
+
 // ── 5 · eaten by a bot, buy back in (2.5 bars) ── same round, same fee
-wipe(s4.end, ['teal', 'card'], 0.7);
+wipe(s3.end, ['teal', 'card'], 0.7);
 const tDie = events(A, 'death')[0].t;
 const s5a = e.shot({ take: A, from: tDie - 1.3, dur: bars(1.25), zoom: 1.5, lag: 0.5, punch: [[1.2, 1.15, 0.15, 1.0, 0.4]], shake: [[1.3, 16]] });
 kicker(s5a.start + 0.15, 'A BOT ATE HER: TOKENS SPILL', 2.6);
@@ -104,8 +109,8 @@ kicker(s5b.start + 0.1, 'EATEN? BUY BACK IN', 2.8);
 stamp(s5b.start + 0.95, 'SAME ROUND', 1300, 300, 'teal', { rot: 6, size: 96 });
 
 // ── 6 · the final minute (1 bar) ── joins close; the chip turns mustard
-const tFinal = mark(A, 'final');
-const s6 = e.shot({ take: A, from: tFinal - 0.6, dur: bars(1),
+const tFinal = mark(A2, 'final');
+const s6 = e.shot({ take: A2, from: tFinal - 0.6, dur: bars(1),
   cam: [[0, 960, 540, 1.15], [0.8, 960, 260, 1.6], [2.92, 960, 250, 1.65]] });
 kicker(s6.start + 0.1, 'FINAL MINUTE / JOINS CLOSED', 2.8);
 boxSrc(s6, s6.start + 0.75, 2.1, ...CHIP, 'NO NEW TICKETS', { seed: 4, below: true, color: 'mustard' });
@@ -113,27 +118,25 @@ e.cue('swell', s6.start + 0.4, 0.4, { dur: 0.6 });
 
 // ── 7 · the last ten seconds (4 bars) ── she eats mochi_moon piece by piece, takes #1
 wipe(s6.end, ['ink', 'card'], 0.6);
-const eats = events(A, 'value', (v) => v.reason === 'eat');
-const tCount = mark(A, 'count');
-const tBell = events(A, 'roundResult')[0].t;
-const s7 = e.shot({ take: A, from: tBell - bars(4) - 0.1, dur: bars(4),
+const tCount = mark(A2, 'count');
+const tBell = events(A2, 'roundResult')[0].t;
+const rr = events(A2, 'roundResult')[0].v;
+const s7 = e.shot({ take: A2, from: tBell - bars(4) - 0.1, dur: bars(4),
   cam: [[0, 960, 470, 1.25], [3.0, 950, 470, 1.35], [8.0, 950, 470, 1.4], [11.7, 960, 470, 1.3]] });
 kicker(s7.start + 0.2, 'THE LAST TEN SECONDS', 3.0);
-const v0 = (eats[0].v.value - eats[0].v.delta) / 1e9, v1 = eats[eats.length - 1].v.value / 1e9;
-const tEat0 = e.timeOf(s7, eats[0].t), tEat1 = e.timeOf(s7, eats[eats.length - 1].t);
-lower(tEat0 - 0.2, s7.end - tEat0 + 0.1, 'ATE MOCHI_MOON / A PLAYER', Math.round(v0 * 1000), Math.round(v1 * 1000), { sign: '', countAt: 0.25, countDur: tEat1 - tEat0 + 0.2, w: 700 });
-const ranks = events(A, 'rank', (v) => v.rank > 0).filter((x) => x.t > tCount - 15 && x.t < tBell);
-const rseq = [ranks[0]?.v.rank ?? 3, ...ranks.slice(1).map((x) => x.v.rank)];
-if (rseq.length > 1) {
-  const r0 = tEat0 - 0.5;
+e.add('ring', s7.start + 3.4, 3.2, { track: e.trackMe(s7, s7.start + 3.4, 3.2), label: 'STAY ALIVE', pad: 1.4 }, 25);
+lower(s7.start + 6.8, s7.end - s7.start - 6.7, `YOUR TILL / ${rr.stats?.playersEaten ?? 2} PLAYERS EATEN`, 1000, Math.round(rr.payout / 1e6), { countAt: 0.25, countDur: 1.6, w: 700 });
+const ranks = events(A2, 'rank', (v) => v.rank > 0).filter((x) => x.t > tCount - 15 && x.t < tBell);
+if (ranks.length > 1) {
+  const rseq = ranks.map((x) => x.v.rank);
+  const r0 = s7.start + 0.5;
   e.add('rank', r0, s7.end - r0 - 0.2, { label: 'YOUR RANK', seq: rseq, at: ranks.slice(1).map((x) => e.timeOf(s7, x.t) - r0), x: 140, y: 380, w: 230 }, 30);
   for (const x of ranks.slice(1)) e.cue('tick', e.timeOf(s7, x.t), 0.5).cue('pop', e.timeOf(s7, x.t), 0.4);
 }
-stamp(e.timeOf(s7, eats[6]?.t ?? eats[0].t) + 0.05, 'GULP!', 1420, 640, 'pink', { rot: -9, size: 110 });
 
 // ── 8 · the bell (3 bars) ── the frozen world, the receipt, PAID
-const tPaid = mark(A, 'paid');
-const s8 = e.shot({ take: A, from: tBell - 0.05, dur: bars(3),
+const tPaid = mark(A2, 'paid');
+const s8 = e.shot({ take: A2, from: tBell - 0.05, dur: bars(3),
   cam: [[0, 960, 500, 1.3], [1.6, 960, 520, 1.15], [2.9, 960, 540, 1.0], [3.6, 800, 520, 1.45], [8.78, 790, 520, 1.55]] });
 e.add('flash', s8.start, 0.35, { color: 'card', peak: 0.55 }, 60);
 stamp(s8.start + 0.08, 'BELL!', 1320, 330, 'mustard', { rot: -10, size: 120, dur: 1.4 });
@@ -142,7 +145,6 @@ kicker(s8.start + 2.6, 'ALIVE AT THE BELL: PAID', 3.2);
 e.cue('printer', s8.start + 2.7, 0.4, { dur: 1.2 });
 e.cue('kaching', tStamp, 0.6).cue('impact', tStamp, 0.4);
 {
-  const rr = events(A, 'roundResult')[0].v;
   // the receipt's own sum: the till at the bell minus 5% of the profit over the 1,000 entry
   const till = rr.payout / 1e6;
   lower(tStamp + 0.4, s8.end - tStamp - 0.3, 'ROUND OVER / FEE ON PROFIT ONLY', 0, Math.round((till - (till - 1000) * 0.05) * 100) / 100, { stub: 'PAID', countDur: 1.2, accent: 'teal', w: 720, dec: 2 });
@@ -153,7 +155,7 @@ wipe(s8.end, ['pink', 'card']);
 const tOut = s8.end;
 e.add('card', tOut - 0.05, bars(3) + 0.05, {
   variant: 'outro', kicker: 'SLANA / ON SOLANA', tagline: 'Eat. Grow. Last the round.', tagAccent: 4, tagAt: 0.9, tagGap: 0.3,
-  foot: 'PRACTICE IS FREE  /  5-MINUTE ROUNDS  /  SLANA.XYZ', footAt: 2.0, footY: 812,
+  foot: 'PRACTICE IS FREE  /  SLANA.IO  /  @SLANAIO', footAt: 2.0, footY: 812,
 }, 50);
 for (let i = 0; i < 3; i++) e.cue('stamp', tOut + 0.9 + i * 0.3 + 0.1, 0.6);
 e.cue('sub', tOut + 0.4, 0.5);

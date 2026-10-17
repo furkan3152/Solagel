@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Take "lobby": the paper lobby as a new player meets it. Ticket list (Practice, the four arenas),
-// connect the wallet, a Penny Pond ticket sheet (entry fee, fee on profit, deposit), a Pass room,
-// the Pass page (free mint, sealed envelope, reveal), Ranks (season standings, prizes) and the
-// Guide (controls table, fee example receipts). Each beat is marked for the edit.
+// connect the wallet, a Penny Pond ticket sheet (entry fee, fee on profit, deposit), the four
+// arenas and their entry fees, Ranks (Today / All-time standings) and the Guide (controls table,
+// rooms table, value flow, the fee example receipt). Each beat is marked for the edit.
 //   node media/gameplay/capture/take-lobby.mjs [--name lobby] [--fresh]
 import { rmSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -76,45 +76,12 @@ try {
     await hero.page.keyboard.press('Escape');
     await hero.wait(1200);
   });
-  await beat('pass-room', async () => {
-    await hero.click('[role="radio"][data-kb-value="arena:3"]', { fx: 0.45 });
-    await hero.wait(900);
-    await hero.hover('.kl-cta', { pause: 2200 });
-    await hero.click('[role="radio"][data-kb-value="arena:1"]', { fx: 0.45 });
-    await hero.wait(600);
-  });
-  await beat('pass', async () => {
-    await section('Pass');
-    await hero.wait(2200);
-    const mint = await hero.page.locator('.pp-mint .kb-btn, .pp-again').count();
-    if (mint) {
-      rec.mark('mint');
-      await hero.click('.pp-mint .kb-btn, .pp-again');
-      await hero.page.waitForSelector('.mt-sheet', { timeout: 6000 });
-      await hero.wait(2000);
-      await hero.ui(() => { if (window.__slanaChain?.fakeWallet) window.__slanaChain.fakeWallet.delayMs = 1200; });
-      await hero.click('.mt-sheet .kb-btn--pink', { before: 600 });
-      await hero.page.waitForSelector('.rv-env.is-open, .mt-sheet .kb-btn--pink', { timeout: 10000 }).catch(() => {});
-      await hero.wait(4500);
-      rec.mark('minted');
-      await hero.click('.mt-sheet .kb-btn--pink').catch(() => hero.page.keyboard.press('Escape'));
-      await hero.wait(1800);
+  await beat('arenas', async () => {
+    for (const v of [2, 3, 4, 1]) {
+      await hero.click(`[role="radio"][data-kb-value="arena:${v}"]`, { fx: 0.45 });
+      await hero.wait(1100);
     }
-    // reveal the collection (dev endpoint of the fake chain) and open the envelope
-    await fetch('http://127.0.0.1:8787/api/dev/pass/reveal', { method: 'POST' }).catch(() => {});
-    await hero.wait(2500);
-    const sealed = await hero.page.locator('.pp-card.is-sealed .kb-btn--pink').count();
-    if (sealed) {
-      rec.mark('reveal');
-      await hero.hover('.pp-card', { fx: 0.4, fy: 0.4, pause: 900 });
-      await hero.click('.pp-card.is-sealed .kb-btn--pink', { before: 600 });
-      await hero.wait(4200);
-      rec.mark('revealed');
-    }
-    await hero.hover('.pp-card', { fx: 0.6, fy: 0.5, pause: 1500 }).catch(() => {});
-    await hero.wheel(450, 60, 60);
-    await hero.wait(2200);
-    await hero.wheel(-900, 120, 30);
+    await hero.hover('.kl-cta', { pause: 1200 });
   });
   await beat('ranks', async () => {
     await section('Ranks');
@@ -124,10 +91,7 @@ try {
     for (let i = 1; i < n; i++) await hero.hover(rows.nth(i), { fx: 0.3, pause: 500 }).catch(() => {});
     await hero.wheel(420, 60, 60);
     await hero.wait(2400);
-    rec.mark('prizes');
-    await hero.wheel(420, 60, 60);
-    await hero.wait(2400);
-    await hero.wheel(-1200, 120, 30);
+    await hero.wheel(-600, 120, 30);
   });
   await beat('guide', async () => {
     await section('Guide');
@@ -144,13 +108,7 @@ try {
     await hero.wait(3000);
     rec.mark('guide-fee');
     await scrollTo('#docs-payout .dc-fee', 140);
-    await hero.wait(3800);
-    rec.mark('guide-pass');
-    await scrollTo('#docs-pass .dc-perks', 160);
-    await hero.wait(3200);
-    rec.mark('guide-prizes');
-    await scrollTo('#docs-seasons .dc-prizes', 160);
-    await hero.wait(3000);
+    await hero.wait(4200);
   });
   await beat('home', async () => {
     await hero.wheel(-9000, 600, 15);

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Bundles packages/art (coin characters, Pass cards) into cache/art.js as the global `SlanaArt`.
+// Bundles packages/art (coin characters) into cache/art.js as the global `SlanaArt`.
 import { spawnSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
