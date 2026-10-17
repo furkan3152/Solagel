@@ -5,12 +5,12 @@
 
 const W = 1920, H = 1080, TAU = Math.PI * 2;
 const C = {
-  paper: '#F1EADB', card: '#FFFCF4', ink: '#1E1B2E', ink2: '#5D5870',
-  pink: '#FF4F87', pinkInk: '#D6245F', pinkText: '#C21E56',
-  teal: '#0E9C9A', tealInk: '#08716F', mustard: '#F2B705', mustardInk: '#8A6500',
-  blue: '#3B5BDB', green: '#1F9D61', red: '#E5402B', orange: '#FF7A3D', purple: '#7B4FD6',
-  night: '#1B1924', nightCard: '#262331', nightInk: '#F1EADB', nightInk2: '#B3ADC2', nightPink: '#FF7FA6',
-  cover: '#08716F', line: 'rgba(30,27,46,0.35)', tape: 'rgba(242,183,5,0.5)',
+  paper: '#FCF4DF', card: '#FFFDF6', ink: '#1B1732', ink2: '#5B5577',
+  pink: '#FB2F85', pinkInk: '#D1166B', pinkText: '#C71466',
+  teal: '#01ACA4', tealInk: '#0F736E', mustard: '#FFB413', mustardInk: '#90650E',
+  blue: '#3055FC', green: '#17AD65', red: '#F72E1C', orange: '#FF7024', purple: '#7F39F4',
+  night: '#19142E', nightCard: '#251F3D', nightInk: '#F5EEDC', nightInk2: '#B1ACCC', nightPink: '#FC739F',
+  cover: '#0F736E', line: 'rgba(27,23,50,0.35)', tape: 'rgba(255,180,19,0.5)',
 };
 const FONT = { display: '"Brico", sans-serif', mono: '"DMMono", monospace' };
 
@@ -141,19 +141,19 @@ function dashed(ctx, x1, y1, x2, y2, color = C.line, w = 2.5, dash = [7, 7]) {
 /** Paper drop shadow: a soft ambient one plus the brand's hard 1.5px ink lip. */
 function paperShadow(ctx, pathFn, lift = 1, hard = 0.28) {
   ctx.save();
-  ctx.shadowColor = `rgba(30,27,46,${0.16 * lift})`;
+  ctx.shadowColor = `rgba(27,23,50,${0.16 * lift})`;
   ctx.shadowBlur = 30 * lift;
   ctx.shadowOffsetY = 14 * lift;
   ctx.shadowOffsetX = 4 * lift;
   pathFn();
-  ctx.fillStyle = 'rgba(30,27,46,1)';
+  ctx.fillStyle = 'rgba(27,23,50,1)';
   ctx.fill();
   ctx.restore();
   if (hard > 0) {
     ctx.save();
     ctx.translate(0, 2);
     pathFn();
-    ctx.fillStyle = `rgba(30,27,46,${hard})`;
+    ctx.fillStyle = `rgba(27,23,50,${hard})`;
     ctx.fill();
     ctx.restore();
   }
@@ -171,28 +171,28 @@ function buildTextures() {
     const x = r() * n, y = r() * n, rad = 40 + r() * 160;
     const grd = g.createRadialGradient(x, y, 0, x, y, rad);
     const a = 0.006 + r() * 0.008;
-    grd.addColorStop(0, r() < 0.5 ? `rgba(30,27,46,${a})` : `rgba(255,252,244,${a * 2.0})`);
+    grd.addColorStop(0, r() < 0.5 ? `rgba(27,23,50,${a})` : `rgba(255,253,246,${a * 2.0})`);
     grd.addColorStop(1, 'rgba(0,0,0,0)');
     g.fillStyle = grd;
     for (const ox of [-n, 0, n]) for (const oy of [-n, 0, n]) { g.save(); g.translate(ox, oy); g.fillRect(x - rad, y - rad, rad * 2, rad * 2); g.restore(); }
   }
   for (let i = 0; i < 2600; i++) {
     const x = r() * n, y = r() * n, l = 3 + r() * 12, a = r() * TAU;
-    g.strokeStyle = `rgba(30,27,46,${0.02 + r() * 0.035})`;
+    g.strokeStyle = `rgba(27,23,50,${0.02 + r() * 0.035})`;
     g.lineWidth = 0.6 + r() * 0.7;
     g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); g.stroke();
   }
   for (let i = 0; i < 9000; i++) {
-    g.fillStyle = `rgba(30,27,46,${0.04 + r() * 0.08})`;
+    g.fillStyle = `rgba(27,23,50,${0.04 + r() * 0.08})`;
     g.fillRect(r() * n, r() * n, 1 + r(), 1 + r());
   }
   TEX.fibre = p;
 
   // dot screen (7px and 11px grids)
   const d = mkCanvas(77, 77), dg = d.getContext('2d');
-  dg.fillStyle = 'rgba(30,27,46,0.07)';
+  dg.fillStyle = 'rgba(27,23,50,0.07)';
   for (let x = 0; x < 77; x += 7) for (let y = 0; y < 77; y += 7) { dg.beginPath(); dg.arc(x + 1, y + 1, 1.1, 0, TAU); dg.fill(); }
-  dg.fillStyle = 'rgba(30,27,46,0.045)';
+  dg.fillStyle = 'rgba(27,23,50,0.045)';
   for (let x = 0; x < 77; x += 11) for (let y = 0; y < 77; y += 11) { dg.beginPath(); dg.arc(x + 4, y + 6, 1.1, 0, TAU); dg.fill(); }
   TEX.dots = d;
 
@@ -262,7 +262,7 @@ function drawGrainAndVignette(ctx, t, dark = false) {
   ctx.globalCompositeOperation = 'source-over';
   ctx.globalAlpha = 1;
   const v = ctx.createRadialGradient(W / 2, H / 2, H * 0.45, W / 2, H / 2, H * 1.05);
-  v.addColorStop(0, 'rgba(30,27,46,0)');
+  v.addColorStop(0, 'rgba(27,23,50,0)');
   v.addColorStop(1, dark ? 'rgba(5,4,10,0.55)' : 'rgba(60,42,20,0.16)');
   ctx.fillStyle = v;
   ctx.fillRect(0, 0, W, H);
@@ -525,7 +525,7 @@ function brandMark(ctx, x, y, r, misreg = 1, alpha = 1) {
   ctx.fillStyle = '#0E3052';
   ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
   ctx.restore();
-  ctx.strokeStyle = 'rgba(30,27,46,0.5)';
+  ctx.strokeStyle = 'rgba(27,23,50,0.5)';
   ctx.lineWidth = r * 0.107;
   ctx.beginPath(); ctx.arc(x, y, r * 0.667, 0, TAU); ctx.stroke();
   ctx.restore();

@@ -2,7 +2,7 @@
 
 Playful lo-fi electronic at 100 BPM (one beat = 0.6 s = 36 video frames), scored
 to the cut list in ../timeline.json: a held breath before the logo drop, a
-drop-out when the bots arrive, a whip crash into the season, a second breath
+drop-out when the bots arrive, a whip crash into the join desk, a second breath
 before the end card and a final sting.
 
   python music.py OUT.wav
@@ -408,7 +408,7 @@ def build():
     place(drums, impact(0.7), 28.8)
     groove(28.8, 30.6, kick_pat="half", half=True, open_hats=False, stabs=False, dark=True, hats=True)
     place(fx, noise_riser(0.62, 0.8, 600, 7000), 30.55)
-    # bright Pass section
+    # bright arenas section
     place(drums, crash(0.7), 31.2, 1.0, 0.2)
     groove(31.2, 36.9, bells=True, shakers=True, cutoff=3400)
     place(fx, noise_riser(0.35, 0.9, 1500, 12000), 36.85)

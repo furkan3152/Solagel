@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Video B: "How to play Slana" (about 2:25). Narrated, in eight chapters. The layout follows the
+// Video B: "How to play Slana" (about 2:25). Narrated, in seven chapters. The layout follows the
 // voiceover: each line gets its stretch of picture, and the chapter cards sit between them.
 // Footage and the render kit are shared with the gameplay video (media/gameplay).
 // Writes cache/edit/howto.json and howto-music.json.
@@ -14,19 +14,21 @@ const OUT = resolve(HERE, 'cache/edit');
 mkdirSync(OUT, { recursive: true });
 const DUR = JSON.parse(readFileSync(resolve(HERE, 'cache/vo-raw/durations.json'), 'utf8'));
 const e = new Edit({ name: 'howto' });
-const A = 'arena', A2 = 'arena2', H = 'held', L = 'lobby', P = 'practice', C = 'controls', S = 'spill';
+// arena2: a round Daphne survives to the bell; arena: a round where a bot eats her and she buys back in
+const A = 'arena2', A2 = 'arena2', D = 'arena', H = 'held', L = 'lobby', P = 'practice', C = 'controls', S = 'spill';
 const has = (t) => { try { take(t); return true; } catch { return false; } };
 
 // ── helpers ──
 const GAP = 0.25; // breath between lines
 let chapterN = 0;
-const ACCENT = ['pink', 'teal', 'mustard', 'blue', 'pink', 'teal', 'mustard', 'blue'];
+const ACCENT = ['pink', 'teal', 'mustard', 'blue', 'pink', 'teal', 'mustard'];
+const NCH = String(ACCENT.length).padStart(2, '0');
 /** A chapter card (1.5 s); its line starts while the card lifts away. Returns the line's start. */
 function chapter(n, title, sub, opts = {}) {
   chapterN = n;
   const t0 = e.t;
   const d = opts.dur ?? 1.4;
-  e.add('card', t0, d + 0.3, { variant: 'chapter', num: String(n).padStart(2, '0'), kicker: `CHAPTER ${String(n).padStart(2, '0')} / 08`, title, sub, accent: ACCENT[n - 1], titleSize: opts.titleSize || 116, stamp: opts.stamp, stub: 'HOW TO PLAY' }, 50);
+  e.add('card', t0, d + 0.3, { variant: 'chapter', num: String(n).padStart(2, '0'), kicker: `CHAPTER ${String(n).padStart(2, '0')} / ${NCH}`, title, sub, accent: ACCENT[n - 1], titleSize: opts.titleSize || 116, stamp: opts.stamp, stub: 'HOW TO PLAY' }, 50);
   e.add('wipe', t0 + d - 0.05, 0.7, { colors: [ACCENT[n - 1], 'card'], skew: -6 }, 90);
   e.cue('whoosh', t0, 0.35, { dur: 0.5 }).cue('stamp', t0 + 0.18, 0.5).cue('paper', t0 + d - 0.05, 0.4);
   if (opts.stamp) e.cue('stamp', t0 + 1.0, 0.45);
@@ -60,7 +62,7 @@ function fill(t, dur, specs) {
 }
 
 // ── intro card ──
-e.add('card', 0, 3.15, { variant: 'intro', kicker: 'HOW TO PLAY / 8 CHAPTERS', tagline: 'The two-minute guide.', tagAccent: 1, tagAt: 1.3, tagGap: 0.14 }, 50);
+e.add('card', 0, 3.15, { variant: 'intro', kicker: 'HOW TO PLAY / 7 CHAPTERS', tagline: 'The two-minute guide.', tagAccent: 1, tagAt: 1.3, tagGap: 0.14 }, 50);
 e.add('wipe', 2.8, 0.7, { colors: ['pink', 'card'] }, 90);
 e.cue('riser', 0, 0.25, { dur: 1.1 }).cue('stamp', 1.02, 0.6).cue('paper', 2.8, 0.45);
 for (let i = 0; i < 4; i++) e.cue('stamp', 1.3 + i * 0.14 + 0.1, 0.25);
@@ -74,7 +76,7 @@ const eats = events(A, 'value', (v) => v.reason === 'eat');
 const tBell = events(A, 'roundResult')[0].t, tPaid = mark(A, 'paid');
 {
   const [a, b, c] = fill(e.t, end + 0.42 - e.t, [
-    { take: A, from: 20.5, d: 3.2, zoom: 1.1, lag: 0.8 },
+    { take: A, from: 139.0, d: 3.2, zoom: 1.1, lag: 0.8 },
     { take: A, from: eats[0].t - 0.8, d: 3.0, cam: [[0, 950, 480, 1.4], [3, 950, 480, 1.45]] },
     { take: A, from: tPaid - 1.2, d: 3.3, cam: [[0, 800, 520, 1.45], [3.3, 790, 520, 1.55]] },
   ]);
@@ -94,9 +96,9 @@ end = say('c2', t);
   const enter = mark(src, 'enter');
   const [a, b] = fill(e.t, end + 0.42 - e.t, [
     { take: src, from: 0.6, d: 5.4, speed: (enter - 0.6) / 5.4 > 1 ? [[0, 1], [3.6, 1], [4.2, Math.min(3, (enter - 0.6 - 3.6) / 1.6)], [5.4, Math.min(3, (enter - 0.6 - 3.6) / 1.6)]] : 1, cam: [[0, 960, 540, 1.0], [1.2, 520, 560, 1.75], [5.4, 520, 560, 1.8]] },
-    { take: src, from: enter + 0.2, d: 4.6, zoom: 1.25 },
+    { take: P, from: 29.5, d: 4.6, zoom: 1.25 },
   ]);
-  boxSrc(a, a.start + 1.4, 2.6, 270, 330, 712, 420, 'PRACTICE / FREE', { seed: 4 });
+  boxSrc(a, a.start + 1.4, 2.6, 272, 320, 702, 406, 'PRACTICE / FREE', { seed: 4 });
   caption(a.start + 1.6, 3.0, 'Pick *Practice*, press Quick Play.');
   caption(b.start + 0.4, b.dur - 0.5, 'No wallet. No tokens. *Just bots.*');
 }
@@ -149,8 +151,7 @@ e.at(end + 0.6);
 let tt = e.t + 0.1;
 end = say('c4b', tt);
 {
-  const s = e.shot({ take: A2, from: 135.5, dur: end + 0.42 - e.t, zoom: 1.15, lag: 0.8, speed: 1.2 });
-  e.add('ring', s.start + 0.4, s.dur - 0.5, { track: e.trackMe(s, s.start + 0.4, s.dur - 0.5), label: 'YOU', pad: 1.4 }, 40);
+  const s = e.shot({ take: D, from: events(D, 'death')[0].t - 5.4, dur: end + 0.42 - e.t, zoom: 1.15, lag: 0.8, speed: 1.2 });
   caption(s.start + 0.5, s.dur - 0.6, 'Bigger coins hunt you. *Run.*');
 }
 tt = e.t + 0.1;
@@ -186,13 +187,13 @@ end = say('c5a', t);
 {
   const [w, l, s] = fill(e.t, end + 0.42 - e.t, [
     { take: L, from: mark(L, 'wallet') + 1.1, d: 3.0, cam: [[0, 960, 540, 1.0], [1.2, 1180, 400, 1.6], [3, 1180, 400, 1.6]] },
-    { take: L, from: mark(L, 'tickets') + 1.8, d: 5.4, cam: [[0, 520, 600, 1.75], [5.4, 520, 610, 1.8]], speed: 0.9 },
+    { take: L, from: mark(L, 'tickets') + 1.8, d: 6.4, cam: [[0, 620, 650, 1.5], [6.4, 620, 660, 1.55]], speed: 0.9 },
     { take: L, from: mark(L, 'ticket-scroll') + 0.8, d: 4.4, cam: [[0, 960, 520, 1.45], [4.4, 960, 540, 1.6]] },
   ]);
   caption(w.start + 0.3, w.dur - 0.4, 'Connect a wallet.');
   // the four arenas in the list (source px rows)
-  const rows = [[430, 'PENNY POND / 1,000'], [530, 'SILVER CREEK / 10,000'], [630, 'GOLD LAKE / PASS'], [740, 'WHALE BAY / PASS']];
-  rows.forEach(([y, lab], i) => boxSrc(l, l.start + 0.6 + i * 1.1, l.end - (l.start + 0.6 + i * 1.1) - 0.05, 272, y - 44, 712, y + 44, lab, { seed: 7 + i, color: i > 1 ? 'mustard' : 'pink' }));
+  const rows = [[479, 'PENNY POND / 1,000'], [616, 'SILVER CREEK / 10,000'], [753, 'GOLD LAKE / 50,000'], [890, 'WHALE BAY / 250,000']];
+  rows.forEach(([y, lab], i) => boxSrc(l, l.start + 0.6 + i * 1.2, l.end - (l.start + 0.6 + i * 1.2) - 0.05, 272, y - 64, 702, y + 64, lab, { seed: 7 + i, color: ['pink', 'teal', 'mustard', 'blue'][i] }));
   caption(s.start + 0.3, s.dur - 0.4, 'Buy a ticket: the fee is fixed and shown up front.');
 }
 tt = e.t + 0.1;
@@ -229,7 +230,7 @@ end = say('c6b', tt);
     { take: H, from: mark(H, 'closed') - 0.8, d: 3.0, cam: [[0, 520, 480, 1.8], [3.0, 520, 480, 1.85]] },
     { take: H, from: mark(H, 'held') + 2.0, d: 3.4, cam: [[0, 960, 540, 1.0], [0.8, 520, 470, 1.7], [3.4, 520, 470, 1.75]] },
   ]);
-  boxSrc(b, b.start + 0.9, b.dur - 1.0, 278, 342, 702, 446, 'TICKET HELD', { seed: 8, below: true });
+  boxSrc(b, b.start + 0.9, b.dur - 1.0, 274, 256, 710, 402, 'TICKET HELD', { seed: 8, below: true });
   boxSrc(a, a.start + 0.9, a.dur - 1.0, 280, 418, 700, 538, 'JOINS CLOSED', { seed: 4, color: 'mustard' });
   caption(b.start + 0.3, b.dur - 0.4, 'Bought in the final minute? Your ticket is *held*.', { y: 930 });
 }
@@ -237,8 +238,8 @@ end = say('c6b', tt);
 tt = e.t + 0.1;
 end = say('c6c', tt);
 {
-  const tBuy = mark(A, 'buyback');
-  const s = e.shot({ take: A, from: tBuy - 1.6, dur: Math.max(4.4, end + 0.42 - e.t), speed: [[0, 1], [2.2, 1], [2.6, 2.6], [9, 2.6]],
+  const tBuy = mark(D, 'buyback');
+  const s = e.shot({ take: D, from: tBuy - 1.6, dur: Math.max(4.4, end + 0.42 - e.t), speed: [[0, 1], [2.2, 1], [2.6, 2.6], [9, 2.6]],
     cam: [[0, 960, 600, 1.5], [1.2, 1150, 820, 1.95], [2.4, 1150, 820, 1.95], [2.8, 960, 540, 1.2], [9, 960, 540, 1.25]] });
   caption(s.start + 0.3, s.dur - 0.4, 'Eaten? *Buy back in*, same round, same fee.');
 }
@@ -251,81 +252,61 @@ end = say('c6d', tt);
   e.cue('printer', e.timeOf(s, tBell) + 2.7, 0.35, { dur: 1.0 }).cue('kaching', e.timeOf(s, tPaid) + 0.35, 0.4);
   caption(s.start + 2.6, s.dur - 2.7, 'Alive at the bell: you are *paid your till*.', { y: 930 });
 }
-// the worked fee example of the guide
+// the worked fee example of the guide: a flat 5% of profit, paid to the operator
 tt = e.t + 0.1;
 end = say('c6e', tt);
 let end2 = say('c6f', end + GAP);
 {
   const b0 = e.t, bd = end2 + 0.7 - e.t;
-  e.add('board', b0, bd, { kicker: 'EXAMPLE / DEFAULT SETTINGS', title: 'Fee on *profit* only.', titleSize: 78 }, 48);
-  e.add('receipt', b0 + 0.4, bd - 0.4, { x: 300, y: 300, w: 560, title: 'ROUND OVER', sub: 'NO PASS / FEE 5%', rows: [['ENTRY FEE', '1,000'], ['VALUE AT THE BELL', '2,000'], ['PROFIT', '1,000'], ['FEE 5% OF PROFIT', '-50', 'pink']], net: '1,950', netLabel: 'TO YOUR WALLET', stamp: 'PAID', printDur: 3.2, stampAt: 6.6, rot: -1.5 }, 49);
+  e.add('board', b0, bd, { kicker: 'EXAMPLE / FLAT FEE', title: 'Fee on *profit* only.', titleSize: 78 }, 48);
+  e.add('receipt', b0 + 0.4, bd - 0.4, { x: 240, y: 300, w: 580, title: 'ROUND OVER', sub: 'PENNY POND / FEE 5% OF PROFIT', rows: [['ENTRY FEE', '1,000'], ['TILL AT THE BELL', '2,000'], ['PROFIT', '1,000'], ['FEE 5% OF PROFIT', '-50', 'pink']], net: '1,950', netLabel: 'TO YOUR WALLET', stamp: 'PAID', printDur: 3.2, stampAt: 11.6, rot: -1.5 }, 49);
+  e.add('splitbar', b0 + 3.6, bd - 3.6, { x: 960, y: 440, w: 720, title: 'THE PROFIT AT THE BELL', parts: [{ pct: 95, label: 'YOURS', color: 'teal' }, { pct: 5, label: 'FEE / OPERATOR', color: 'pink' }] }, 49);
   const pt = end + GAP - b0;
-  e.add('receipt', b0 + pt - 0.3, bd - pt + 0.3, { x: 1080, y: 300, w: 560, title: 'ROUND OVER', sub: 'WITH A PASS / FEE 2%', rows: [['ENTRY FEE', '1,000'], ['VALUE AT THE BELL', '2,000'], ['PROFIT', '1,000'], ['FEE 2% OF PROFIT', '-20', 'teal']], net: '1,980', netLabel: 'TO YOUR WALLET', stamp: 'PASS', stampColor: 'pink', printDur: 1.6, stampAt: 2.6, rot: 1.5 }, 49);
-  e.cue('printer', b0 + 0.65, 0.35, { dur: 3.1 }).cue('stamp', b0 + 0.4 + 6.6, 0.6).cue('printer', b0 + pt, 0.35, { dur: 1.5 }).cue('stamp', b0 + pt - 0.3 + 2.6, 0.6);
+  e.add('tag', b0 + pt + 0.2, bd - pt - 0.4, { text: 'NO PROFIT = NO FEE', x: 1320, y: 780, size: 40, ink: true, rot: -2 }, 50);
+  e.cue('printer', b0 + 0.65, 0.35, { dur: 3.1 }).cue('pop', b0 + 3.9, 0.3).cue('pop', b0 + 4.3, 0.3).cue('stamp', b0 + 0.4 + 11.6, 0.6).cue('stamp', b0 + pt + 0.2, 0.5);
   e.at(b0 + bd);
 }
-// floor loot at the bell goes to the season pool
+// floor loot at the bell is burned
 tt = e.t + 0.1;
 end = say('c6g', tt);
 {
-  const b0 = e.t, bd = end + 0.7 - e.t;
-  e.add('board', b0, bd, { kicker: 'AT THE BELL', title: 'Floor loot goes to the *season pool*.', titleSize: 78 }, 48);
+  // overlaps the fee board's fade-out, so no bare paper shows between the two boards
+  const b0 = e.t - 0.35, bd = end + 1.0 - b0;
+  e.add('board', b0, bd, { kicker: 'AT THE BELL', title: 'Floor loot is *burned*.', titleSize: 78 }, 48);
   for (let i = 0; i < 7; i++) e.add('loot', b0 + 0.3 + i * 0.11, bd - 0.4 - i * 0.11, { r: 34, x: 260 + i * 120, y: 560 + (i % 2) * 30 }, 49);
-  e.add('tag', b0 + 1.3, bd - 1.4, { text: 'SEASON POOL', x: 1200, y: 540, size: 52, ink: true, rot: -2 }, 50);
+  e.add('stamp', b0 + 1.3, bd - 1.4, { text: 'BURNED', x: 1300, y: 560, size: 96, color: 'red', rot: -6 }, 50);
   [0.3, 0.5, 0.7, 0.9].forEach((d, i) => e.cue('coin', b0 + d, 0.3, { pitch: 1 + i * 0.1 }));
-  e.cue('stamp', b0 + 1.3, 0.45);
+  e.cue('stamp', b0 + 1.3, 0.6);
   e.at(b0 + bd);
 }
 chips.push([6, 'ROUNDS AND PAYOUTS', t, e.t]);
 
-// ── 07 · the Slana Pass and seasons ──
-t = chapter(7, 'The Slana Pass', 'Free mint. Pass rooms. Seasons.', { titleSize: 104 });
-end = say('c7a', t);
-{
-  const [a, b, c] = fill(e.t, end + 0.42 - e.t, [
-    { take: L, from: mark(L, 'mint') + 1.6, d: 3.2, cam: [[0, 960, 540, 1.0], [1.0, 770, 520, 1.45], [3.2, 770, 520, 1.5]] },
-    { take: L, from: mark(L, 'minted') - 4.4, d: 3.6, cam: [[0, 940, 540, 1.45], [3.6, 940, 520, 1.6]] },
-    { take: L, from: mark(L, 'reveal') + 4.5, d: 3.4, cam: [[0, 960, 540, 1.0], [3.4, 960, 500, 1.15]] },
-  ]);
-  const perks = ['PASS ROOMS', '2% FEE', '+15% HEAD START'];
-  const p0 = a.start + 2.2;
-  perks.forEach((p, i) => { e.add('tag', p0 + i * 1.25, end - (p0 + i * 1.25) + 0.3, { text: p, x: 1840, y: 250 + i * 92, size: 30, ink: i % 2 === 1, anchor: 'tr', rot: i % 2 ? 2 : -2 }, 46); e.cue('stamp', p0 + i * 1.25, 0.35); });
-  caption(a.start + 0.3, 2.2, 'A *free-mint* NFT.');
-}
-tt = e.t + 0.1;
-end = say('c7b', tt);
-{
-  const s = e.shot({ take: L, from: mark(L, 'ranks') + 3.0, dur: end + 0.5 - e.t, cam: [[0, 960, 560, 1.15], [5.5, 960, 600, 1.35]] });
-  caption(s.start + 0.3, s.dur - 0.4, 'Pass tickets score points. The *top 10* win prizes.');
-}
-chips.push([7, 'PASS AND SEASONS', t, e.t]);
-
-// ── 08 · tips ──
-t = chapter(8, 'Quick tips', 'Play smart. Last the round.', { titleSize: 116 });
-end = say('c8', t);
+// ── 07 · tips ──
+t = chapter(7, 'Quick tips', 'Play smart. Last the round.', { titleSize: 116 });
+end = say('c7', t);
 {
   const src = has(C) ? C : P;
   const [a, b, c] = fill(e.t, end + 0.42 - e.t, [
-    { take: src, from: mark(src, 'enter') + 2.5, d: 2.2, zoom: 1.2 },
-    { take: A2, from: mark(A2, 'split') - 1.2, d: 2.6, zoom: 1.3, lag: 0.6 },
+    { take: P, from: 31.0, d: 2.2, zoom: 1.2 },
+    { take: src, from: mark(src, 'split') + 1.0, d: 2.6, zoom: 1.3, lag: 0.6 },
     { take: A, from: mark(A, 'final') - 0.3, d: 3.2, cam: [[0, 960, 380, 1.3], [3.2, 960, 360, 1.35]] },
   ]);
   kick(a.start + 0.1, 'WARM UP IN PRACTICE', a.dur);
   kick(b.start + 0.1, 'SPLIT ONLY WHEN SURE', b.dur);
   kick(c.start + 0.1, 'FINAL MINUTE: PLAY SAFE', c.dur);
 }
-chips.push([8, 'TIPS', t, e.t]);
+chips.push([7, 'TIPS', t, e.t]);
 
 // ── outro ──
 const tOut = e.t;
 e.add('wipe', tOut - 0.35, 0.7, { colors: ['pink', 'card'] }, 90);
 e.cue('paper', tOut - 0.35, 0.45);
-e.add('card', tOut, 4.3, { variant: 'outro', kicker: 'SLANA / ON SOLANA', tagline: 'Eat. Grow. Last the round.', tagAccent: 4, tagAt: 0.75, tagGap: 0.42, foot: 'START FREE IN PRACTICE  /  SLANA.XYZ', footAt: 2.0, footY: 812 }, 50);
+e.add('card', tOut, 4.3, { variant: 'outro', kicker: 'SLANA / ON SOLANA', tagline: 'Eat. Grow. Last the round.', tagAccent: 4, tagAt: 0.75, tagGap: 0.42, foot: 'START FREE IN PRACTICE  /  SLANA.IO  /  @SLANAIO', footAt: 2.0, footY: 812 }, 50);
 for (let i = 0; i < 3; i++) e.cue('stamp', tOut + 0.75 + i * 0.42 + 0.1, 0.55);
 say('outro', tOut + 0.55);
 e.at(tOut + 4.3);
 
-for (const [n, label, a, b] of chips) e.add('chip', a + 0.6, b - a - 0.9, { n: String(n).padStart(2, '0'), total: '08', label }, 44);
+for (const [n, label, a, b] of chips) e.add('chip', a + 0.6, b - a - 0.9, { n: String(n).padStart(2, '0'), total: NCH, label }, 44);
 
 const data = e.build(resolve(OUT, 'howto.json'));
 // the bed: the game's in-room score (calm), under everything, ducked by the voice in the mixer

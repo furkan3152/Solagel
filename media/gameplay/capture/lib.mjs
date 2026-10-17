@@ -362,7 +362,7 @@ export class Player {
   }
 
   /** Buys an arena ticket through the lobby sheet and waits for the room. */
-  async buyTicket(arena = 1, { slow = false, pass = null, signDelay = 900, held = false } = {}) {
+  async buyTicket(arena = 1, { slow = false, signDelay = 900, held = false } = {}) {
     // "Buy back in" on the death sheet opens the ticket sheet by itself
     const open = await this.page.locator('.tf-sheet').isVisible().catch(() => false);
     if (!open) {
@@ -372,10 +372,6 @@ export class Player {
     }
     await this.page.waitForSelector('.tf-sheet', { timeout: 8000 });
     await this.wait(slow ? 1400 : 500);
-    if (pass !== null) {
-      const tog = this.page.getByText('Enter with my Pass');
-      if (await tog.count()) { const on = await tog.first().isChecked().catch(() => null); if (on !== pass) await this.click(tog.first()); }
-    }
     if (slow && this.onSheet) await this.onSheet(this);
     await this.ui((ms) => { if (window.__slanaChain?.fakeWallet) window.__slanaChain.fakeWallet.delayMs = ms; }, signDelay);
     await this.click('.tf-sheet .kb-btn--pink', { before: slow ? 600 : 200 });

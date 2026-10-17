@@ -32,16 +32,16 @@
   "text": "Bots carry no value. But when a bot eats you, your tokens spill as loot."
  },
  {
-  "id": "pass",
-  "text": "The Slana Pass is free to mint. Lower fees, Pass rooms, and a head start."
+  "id": "arenas",
+  "text": "Four arenas, open to everyone. From one thousand to two hundred fifty thousand Slana."
  },
  {
-  "id": "season",
-  "text": "Every season, the top ten split the pool."
+  "id": "join",
+  "text": "Join a round that's already running. Eaten? Buy back in, same fee."
  },
  {
-  "id": "split",
-  "text": "Fees split three ways. A fifth is burned. Players pay players."
+  "id": "fee",
+  "text": "One flat fee: five percent of profit. Floor loot left at the bell is burned."
  },
  {
   "id": "end",

@@ -29,9 +29,9 @@ SPEED = {
     "rounds_a": 0.98,
     "rounds_b": 1.04,
     "bots": 1.08,
-    "pass": 1.06,
-    "season": 1.0,
-    "split": 1.04,
+    "arenas": 1.06,
+    "join": 1.04,
+    "fee": 1.16,
 }
 
 BRAND = "slˈɑːnə"
