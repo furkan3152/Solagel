@@ -4,9 +4,11 @@ Slana is a coin-themed, multiplayer Agar.io game on Solana. The money is on-chai
 This page explains how the game plays, how money moves, how the code is laid out and how you run and operate it. Each
 section links to the detailed document where one exists.
 
-> **Status.** The code is complete and tested, including on a local Solana validator. Nothing has been deployed to
-> mainnet, and the program has **not been audited**. A game played with a token of real value may need a licence where
-> you operate.
+> **Status (2026-10-17).** The program is deployed on Solana mainnet and the server runs at https://slana.io
+> (section 7). The program is not initialized yet: the admin wallet signs `initialize` in `/admin`, then sets the
+> $SLANA token and creates the arenas when the token exists. For now the game is admin-only and the public site is a landing
+> page with the NFT allowlist (WL) and collab applications (section 8). The program has not been audited, and a game
+> played with a token of real value may need a licence where you operate.
 
 ---
 
@@ -168,7 +170,7 @@ Browser (apps/web)  --WebSocket, binary 30 Hz-->  Game server (apps/server)  --s
 
 | Path | What it is |
 |---|---|
-| `programs/slana-lean` | **The deployed program** (Pinocchio, `no_std`). 39,032 bytes, which locks about ◎0.2729 of rent; the CI gate fails above 71,000 bytes. |
+| `programs/slana-lean` | The deployed program (Pinocchio, `no_std`). The mainnet build is 36,408 bytes and locks ◎0.1858 of rent (the size varies a little with the platform-tools version; CI's size gate prints its own figure and fails above 71,000 bytes). |
 | `programs/slana-ref` | Anchor reference program. It is never deployed; it is the source of the IDL and TypeScript types and the conformance oracle. The LiteSVM test suite runs against both programs (`SLANA_IMPL=ref\|lean`). |
 | `packages/shared` | Game rules (`RULES`), the binary protocol (version 4), arena metadata, the round math, token formatting |
 | `packages/sdk` | TypeScript client: PDAs, instruction builders, account readers, fee math, and the admin CLI (`pnpm admin`) |
@@ -176,6 +178,7 @@ Browser (apps/web)  --WebSocket, binary 30 Hz-->  Game server (apps/server)  --s
 | `apps/server` | Node 22 game server (see 4.3) |
 | `apps/web` | Vite + React client in the "Paper Ticket" design system (see 4.4) |
 | `scripts/` | build, deploy, close, localnet, demo, recorder, IDL sync, program tests |
+| `brand/` | Social art: the X profile picture, banner, previews and the OG card, with their generator (section 9) |
 | `media/` | Sources of the promo, gameplay and how-to-play videos (renders go to `out/videos/`, which git ignores) |
 | `docs/` | This page, [ARCHITECTURE](ARCHITECTURE.md), [DEPLOY](DEPLOY.md), [OPERATIONS](OPERATIONS.md), and the design specs and plans under `docs/superpowers/` |
 
@@ -221,7 +224,7 @@ Browser (apps/web)  --WebSocket, binary 30 Hz-->  Game server (apps/server)  --s
 | `stake/` | `ledger.ts` (in-game value transfers, loot spill) and `journal.ts` (the crash-safe record of live values, loot, pending settlements and loot sweeps) |
 | `chain/` | `solana.ts`: the token watcher (re-reads the config every 30 s until the token is set), the settlement and loot-burn worker (retries, a two-phase settle, a fee wallet account guard, a sweep resent only after its blockhash expires, and a sweeper that refunds stale tickets). `dev-fake.ts`: an in-memory chain for development. |
 | `net/` | WebSocket gateway: sign-in, join and refusal codes such as `round_closed`, `round_ended` and `no_cashout` |
-| `http.ts` | REST endpoints: `/api/health`, `/api/rooms`, `/api/leaderboard`, `/api/config`, `/api/auth/nonce`, `/api/pending` |
+| `http.ts` | REST endpoints: `/api/health`, `/api/rooms`, `/api/leaderboard`, `/api/config`, `/api/auth/*` (nonce, login, me), `/api/pending`, the site API `/api/site/*` and the admin API `/api/admin/*` (section 8) |
 
 Sign-in uses SIWS (Sign-In With Solana) with a nonce that the server issues and checks line by line.
 
@@ -272,3 +275,114 @@ its rent.
 The game outcome (who ate whom, and each player's value at the bell) trusts the authoritative server. The admin can
 replace the server key, so trusting the server means trusting the admin. `sweep_loot` burns and is capped only by the
 vault balance, the same trust as a payout, so the server key must be protected.
+
+
+## 7. Live deployment
+
+| Item | Value |
+|---|---|
+| Cluster | Solana mainnet-beta |
+| Program id | `5skf5Twyqr8M84dJ8RLGfz1NU6fR3zPDRLUvGd5y7472` |
+| ProgramData | `DXbwrkCGaqZK6mVLBCERoDSFrmbgFrQakpWgaHWeTPpL` (36,408 bytes, ◎0.1858 rent) |
+| Deploy transaction | `4nHjc5fVNMfvopsWnr2LGZBpDLZsdqyKkoLMwfWH6hDeHwpBrtH8gWqJkftLvuAPzPqsBUmurEgR11LRgiVs4bnq` (slot 457,994,653) |
+| Upgrade authority | the admin wallet `D2Ts7yCiVjedo6uwqpkM44QA8J45NdVU1J3k5m6iWtvm` (moved there right after the deploy) |
+| Server key (`Config.server_authority` to be) | `FiXUZ8xUUGDhsvDLjdTLix6EoFrKTZkmhYJRYe4THBdh`, created by the server itself (`SERVER_KEYPAIR=auto`) and kept on the persistent disk; funded with ◎0.1 for settlement fees |
+| Fee wallet | the admin wallet (default of `initialize`) |
+| Config | not initialized yet: next step is `initialize` in `/admin` |
+| Token | not set yet (`set_token_mint` once, when $SLANA exists) |
+
+**Hosting.**
+
+| Piece | Where |
+|---|---|
+| Game server + web (one Docker container) | Render web service `slana` (`srv-db9jejmq1p3s738fsncg`), Frankfurt, Starter plan, auto-deploys the default branch |
+| Persistent disk | 2 GB at `/data`: the server key, the money journal, standings and the site data (WL, collabs, tasks, settings). The Docker entrypoint makes the disk writable for the `node` user |
+| RPC | a QuickNode Solana mainnet endpoint (URL only in the Render environment); the same endpoint is handed to browsers, so restrict it to the slana.io referrer in QuickNode |
+| Domain | slana.io, registered at Vercel; Vercel DNS has `A @ 216.24.57.1` and `CNAME www slana-wo00.onrender.com`; Render holds the custom domain and its TLS certificate. Add `www.slana.io` in Render too for its certificate |
+| Fallback URL | https://slana-wo00.onrender.com |
+
+**Render environment.** `NODE_ENV=production`, `SOLANA_CLUSTER=mainnet-beta`, `SOLANA_RPC_URL`, `PUBLIC_RPC_URL`,
+`VITE_RPC_URL`, `PROGRAM_ID`, `SERVER_KEYPAIR=auto`, `DATA_DIR=/data`, `TOKEN_SYMBOL=$SLANA`,
+`PUBLIC_URL=https://slana.io` (the sign-in domain). Optional: `ADMIN_WALLETS` (defaults to the admin wallet),
+`GAME_PUBLIC=1` (opens the game to everyone), `ROUND_SECONDS` (demos only). A disk-backed Render service restarts briefly
+on every deploy; the journal keeps every value, but players in a room reconnect, so deploy at quiet hours.
+
+**Deploy notes.** The first deploy attempt failed on direct TPU sends; `--use-rpc` through the QuickNode endpoint
+worked. A half-written buffer was closed and its SOL recovered. The temporary deployer key is empty and
+retired; leftover SOL went back to the admin wallet.
+
+## 8. Website, allowlist, collabs and the admin panel
+
+Design source: `docs/superpowers/specs/2026-10-17-slana-site-wl-collab-design.md`.
+
+| Route | Who | What |
+|---|---|---|
+| `/` | everyone | Animated landing in the vivid Paper Ticket style: living coins, the wordmark, how a round works, the coin gallery, the NFT "coming soon" teaser, FAQ, X @slanaio. CTAs: Join the WL, Collab |
+| `/wl` | everyone | NFT allowlist: a stepper of admin-defined tasks (follow @slanaio, post about Slana, like/repost/reply to the launch post, X handle, Solana wallet). The wallet is proven by a free sign-in signature; one entry per wallet and per X handle; a shareable riso ticket card |
+| `/collab` | communities | fhecat-style flow: apply (community, type, members, community X, your X, Discord, role, post link, pitch) → in review → approved with spots and a deadline → raffle on X → add winners' Solana wallets (paste a list) → submit with the raffle link (locks) |
+| `/play` | admin only (for now) | The game. The server refuses every room join from non-admin sessions with `game_closed` until `gamePublic` is switched on |
+| `/admin` | admin wallet | Chain: status, `initialize`, set token, arenas, config, pause, sweep. Site: Play, WL review (approve/reject/bulk/notes/CSV), Tasks editor (add, edit, reorder, launch post link), Collabs (approve with spots and deadline, extend, unlock, wallets, duplicate flags, CSV), Settings (`wlOpen`, `collabOpen`, `gamePublic`, X handle) |
+| `/docs` | everyone | The player guide |
+
+**Admin panel safety.** The program id is pinned in the bundle and signing is blocked if the server reports another one;
+the cluster comes from the RPC's genesis hash, with a MAINNET banner; every transaction is shown before the wallet prompt;
+the token address must be typed twice; an admin transfer needs the new address retyped and rejects obvious mistakes; a
+double click cannot send twice. Site admin endpoints require a sign-in session whose wallet is in `ADMIN_WALLETS`.
+
+**Site data.** JSON files under `/data/site/` (written atomically). WL and collab tasks are verified by hand: there is no
+X API. Rate limits, a honeypot field and strict link and address validation keep spam out.
+
+## 9. Brand
+
+- Look: the "Paper Ticket" style, riso print on bright paper, ink misregistration (pink and teal ghosts), halftone, tickets,
+  stamps and tape, cute coin characters.
+- Palette (`docs/design/palette.md`, single source `packages/shared/src/palette.ts`): ink `#1B1732`, paper
+  `#FCF4DF`, card `#FFFDF6`, riso pink `#FB2F85`, riso teal `#01ACA4`, gold `#FFB413`, arena inks Penny Pond red
+  `#F72E1C`, Silver Creek teal `#01ACA4`, Gold Lake gold `#FFB413`, Whale Bay blue `#3055FC`; night paper `#19142E`.
+  Every text/background pair is at least 4.5:1 (tested).
+- X (@slanaio): `brand/x/pfp.png` (400) and `pfp-1000.png`, `banner.png` (1500×500) and `banner@2x.png`, safe-area
+  previews, and `og.png` (1200×630) for link cards. Re-generate with `node brand/x/generate.mjs`.
+- Type: Bricolage Grotesque (display), DM Mono (labels and numbers).
+
+## 10. Media
+
+Three videos, sources in `media/` and renders in `out/videos/` (1920×1080, H.264 + AAC, −14 LUFS, a master plus a web
+copy under 30 MB):
+
+| Video | Length | Content |
+|---|---|---|
+| Promo | ~53 s | Studio-style film: wordmark, arenas, rounds and the bell, the Round over receipt, slana.io |
+| Gameplay | ~64 s | A real round in Penny Pond: join mid-round, loot, buy back, final minute, the bell, PAID |
+| How to play | ~2:40 | Narrated chapters: what Slana is, practice, controls, eat and avoid, arenas and tickets, rounds and payouts |
+
+Voice: Kokoro TTS (`af_heart`); music and sound are synthesized. They are being re-cut for the vivid palette and the
+simple model (no Pass, no seasons).
+
+## 11. Launch checklist
+
+| Step | State |
+|---|---|
+| Program deployed to mainnet, upgrade authority moved to the admin wallet | done |
+| Server on Render with a persistent disk, server key funded | done |
+| slana.io pointed at Render with TLS | done (add `www` in Render) |
+| `initialize` in `/admin` (server authority prefilled) | next |
+| New site (landing, WL, collab, admin tabs, admin-only game) | building |
+| Videos re-cut | building |
+| X art uploaded to @slanaio | ready to upload |
+| $SLANA mint exists → **Set token** in `/admin` (once, check the CA twice) | later |
+| **Create 4 arenas** in `/admin` | after the token |
+| Test rounds in `/play` as admin, then switch `gamePublic` on | after the arenas |
+| Restrict the QuickNode endpoint to slana.io | recommended |
+| Security audit; legal review for a real-money game | recommended before opening |
+
+## 12. Decision log
+
+| Date | Decision |
+|---|---|
+| 2026-10-14 | v2: $SLANA token arenas, a Pass NFT, seasons, the Paper Ticket design |
+| 2026-10-15 | v3: lean Pinocchio program (rent under ◎0.5), English-only project |
+| 2026-10-15 | Motion and synthesized sound; one-command demo |
+| 2026-10-15 | Paid arenas play 5-minute rounds: no cash-out, late join and buy-back, paid at the bell |
+| 2026-10-16 | Slana Simple: no Pass, no seasons; flat 5 % fee to the fee wallet; floor loot burned; token set after deploy |
+| 2026-10-17 | Mainnet deploy, Render hosting with `SERVER_KEYPAIR=auto`, browser-wallet admin panel, slana.io |
+| 2026-10-17 | Vivid palette; X art; the site becomes a landing page with WL and collab applications; the game is admin-only for now |
