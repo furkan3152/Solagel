@@ -74,6 +74,8 @@ const ON_FILL: [string, string][] = [
   ['--pink-sub', '--pink'],
   ['--on-cover', '--danger'],
   ['--ink-fixed', '--paper-fixed'],
+  // slana.io landing: the gold kicker on the ink band (NFT teaser)
+  ['--mustard', '--ink-fixed'],
 ];
 const AA = 4.5;
 

@@ -1,0 +1,156 @@
+/* Admin: the slana.io tabs (WL, tasks, collabs, settings, play). Same operator sheet as admin.css. */
+
+.ad-embedded {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.ad-tabs {
+  overflow-x: auto;
+}
+.ad-panel {
+  outline: none;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.ad-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.ad-session .ad-wallet {
+  padding: 0;
+}
+.ad-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0;
+}
+.ad-counts > div {
+  min-width: 96px;
+  padding: 8px 12px;
+  border: 2px solid var(--ink);
+  border-radius: var(--r-chip);
+  background: var(--paper);
+}
+.ad-counts dt {
+  font-size: var(--t-label);
+  color: var(--ink-2);
+}
+.ad-counts dd {
+  margin: 2px 0 0;
+  font-size: 24px;
+  font-weight: 800;
+}
+.ad-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+.ad-search {
+  flex: 1 1 260px;
+  max-width: 420px;
+}
+.ad-bulk {
+  padding: 8px 0;
+  border-top: 1px dashed var(--line);
+  border-bottom: 1px dashed var(--line);
+}
+.ad-box {
+  width: 22px;
+  height: 22px;
+  margin: 10px 0;
+  accent-color: var(--pink-ink);
+}
+.ad-wltable td {
+  vertical-align: middle;
+}
+.ad-answers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.ad-answers li {
+  display: grid;
+  gap: 2px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed var(--line);
+}
+.ad-tasks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.ad-task {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 2px solid var(--ink);
+  border-radius: var(--r-ticket);
+  background: var(--paper);
+}
+.ad-task.is-off {
+  border-style: dashed;
+  opacity: 0.8;
+}
+.ad-task__main {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.ad-task__no {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  font-size: 12px;
+}
+.ad-task__main .ad-chips {
+  margin-top: 6px;
+}
+.ad-task__main p {
+  margin: 6px 0 0;
+}
+.ad-taskform {
+  width: 100%;
+}
+.ad-flash {
+  min-height: 1.4em;
+  margin: 0;
+}
+.ad-playbtn {
+  text-decoration: none;
+  color: var(--ink-fixed) !important;
+}
+.st-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  font: inherit;
+  color: var(--ink);
+  background: var(--card);
+  border: 2px solid var(--ink);
+  border-radius: 8px;
+}
+textarea.st-input {
+  min-height: 80px;
+  resize: vertical;
+}
+select.st-input {
+  appearance: auto;
+}
+label.ad-cap {
+  display: block;
+  margin-bottom: 6px;
+}

@@ -44,8 +44,10 @@ export default defineConfig({
         // long-term cacheable vendor chunks
         manualChunks(id: string) {
           if (!id.includes('node_modules')) return undefined;
-          if (/[\\/](@solana|@anchor-lang|@wallet-standard|bn\.js|borsh|buffer|bs58|superstruct|@noble|rpc-websockets|jayson|eventemitter3)/.test(id)) return 'solana';
-          if (/[\\/](react|react-dom|scheduler|zustand)[\\/]/.test(id)) return 'react';
+          // package roots only (`node_modules/<pkg>/`): a bare `/buffer` also matched motion-dom's stats/buffer.mjs and
+          // pulled the whole Solana chunk into the landing
+          if (/node_modules[\\/](@solana|@anchor-lang|@wallet-standard|bn\.js|borsh|buffer|bs58|base-x|superstruct|@noble|rpc-websockets|jayson|eventemitter3)[\\/]/.test(id)) return 'solana';
+          if (/node_modules[\\/](react|react-dom|scheduler|zustand)[\\/]/.test(id)) return 'react';
           return undefined;
         },
       },

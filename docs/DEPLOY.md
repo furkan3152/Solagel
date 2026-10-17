@@ -75,6 +75,22 @@ Open `/admin` on the deployed web app (or `http://localhost:5173/admin` with `pn
 
 The panel and the CLI share their validation and instruction building (`packages/sdk/src/ops.ts`).
 
+### slana.io: the site, the WL, collabs and the game gate
+
+The web app is now the public site: `/` is the landing, `/wl` the WL application, `/collab` the collab application and
+`/docs` the player guide. The game lives at `/play` and stays **admin-only** until it is made public (`GAME_PUBLIC=1`, or
+Settings → Game public in `/admin`).
+
+- **Admin wallets.** Set `ADMIN_WALLETS` on the server (default: the `SLANA_ADMIN` wallet). In `/admin`, connect that
+  wallet and press **Sign in** (one free message, no transaction): the tabs **Play**, **WL**, **Tasks**, **Collabs** and
+  **Settings** open next to **Chain** (the program admin above). Every call carries that session as a Bearer token.
+- **Playing before launch.** `/admin` → Play → **Open the arena**. `/play` checks the same session (`/api/auth/me`) and
+  the server checks it again on every room entry.
+- **Data.** WL entries, collabs, tasks and settings are JSON files under `DATA_DIR/site/`: keep `DATA_DIR` on the
+  persistent disk (it already holds the journal).
+- **Behind a proxy** set `TRUST_PROXY=1`, or every visitor shares the proxy's IP for the site's rate limits.
+- **Launch day.** Settings → Game public (or `GAME_PUBLIC=1` and a restart). The landing then shows a **Play** button.
+
 ### The admin CLI
 
 Every admin command runs as `pnpm admin <command>`; the full list is `pnpm admin help`. Common options:
@@ -336,6 +352,8 @@ arenas and pushes a `chain` message to every connected client; nobody has to rel
 | `PRIORITY_FEE_MICROLAMPORTS` | `5000` | priority fee of the payout transactions |
 | `STALE_SESSION_AFTER_S` | `900` | wait (s) before refunding a ticket that was never played; shorter values are for tests only (localnet e2e: `5`) |
 | `STALE_SWEEP_ACK` | empty | `1`: a quarantined journal (`journal.json.corrupt-*`) has been inspected and the stale-ticket sweeper may run again (see OPERATIONS) |
+| `ADMIN_WALLETS` | `D2Ts7yCiVjedo6uwqpkM44QA8J45NdVU1J3k5m6iWtvm` (`SLANA_ADMIN`) | comma-separated base58 wallets that may use `/api/admin/*` (the WL, collab, task and site settings tabs of `/admin`) and enter the game while it is not public. A wallet proves itself with the free sign-in message (SIWS); malformed entries are dropped |
+| `GAME_PUBLIC` | `0` | `1` opens the game (practice, arenas, private rooms, spectating) to everyone. Without it the game is admin-only unless the admin turns on **Game public** in `/admin` → Settings; everyone else sees "The arena opens soon" on `/play` and the WebSocket answers room entries with `game_closed` |
 | `DEV_FAKE_CHAIN` | empty | **development only**: needs `NODE_ENV=development`, refuses to start while `PROGRAM_ID`/`SERVER_KEYPAIR` is set |
 | `DEV_FAKE_TOKEN` | empty | with `DEV_FAKE_CHAIN` only: `1` starts with the game token already set; unset, the fake chain waits for `POST /api/dev/token` |
 
