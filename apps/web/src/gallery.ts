@@ -1,4 +1,4 @@
-import { CellFlag, PowerUpType, SKINS, getSkin } from '@slana/shared';
+import { CellFlag, INK, PAPER, PowerUpType, SKINS, getSkin } from '@slana/shared';
 import { drawCoin } from './render/coin';
 import type { Expression } from '@slana/art';
 import { JellyBody } from './render/jelly';
@@ -7,7 +7,7 @@ import { SpriteCache, drawSprite } from './render/sprites';
 /** Design sheet: every skin, expression and world item (open with ?coins). */
 export function startGallery(root: HTMLElement): void {
   document.body.style.margin = '0';
-  document.body.style.background = '#FFF6E9';
+  document.body.style.background = PAPER;
   const canvas = document.createElement('canvas');
   root.appendChild(canvas);
   const ctx = canvas.getContext('2d')!;
@@ -34,7 +34,7 @@ export function startGallery(root: HTMLElement): void {
     last = now;
     const w = window.innerWidth;
     ctx.clearRect(0, 0, w, 1180);
-    ctx.fillStyle = '#3D2C5E';
+    ctx.fillStyle = INK;
     ctx.font = '700 28px Fredoka, system-ui, sans-serif';
     ctx.textAlign = 'left';
     ctx.fillText('Slana · skin sheet', 24, 40);
@@ -56,7 +56,7 @@ export function startGallery(root: HTMLElement): void {
         seed: i,
         flags: i === 16 ? CellFlag.Shield : 0,
       });
-      ctx.fillStyle = '#3D2C5E';
+      ctx.fillStyle = INK;
       ctx.font = '600 14px Fredoka, system-ui, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(`${skin.id} · ${skin.name}`, cx, cy + r + 30);
@@ -69,7 +69,7 @@ export function startGallery(root: HTMLElement): void {
     exprs.forEach((e, i) => {
       const cx = 70 + i * 120;
       drawCoin(ctx, cx, ey + 70, 46, getSkin(i === 3 ? 4 : 0), { time: now, lookX: 0.6, lookY: 0.2, expression: e, pxPerUnit: 1, seed: 3 });
-      ctx.fillStyle = '#3D2C5E';
+      ctx.fillStyle = INK;
       ctx.font = '600 13px Fredoka, system-ui, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(e, cx, ey + 140);

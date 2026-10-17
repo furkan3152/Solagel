@@ -25,6 +25,17 @@ describe('drawRisoCoin', () => {
     }
   });
 
+  it('is deterministic: the same look and state give the same bytes', () => {
+    const shot = (look: CoinLook) => {
+      const c = createCanvas(160, 160);
+      const ctx = ctx2d(c);
+      ctx.translate(80, 80);
+      drawRisoCoin(ctx, look, 60, { time: 777, lookX: 0.2, lookY: -0.1, expression: 'proud', seed: 42, flags: 1 | 2 | 4 | 16 });
+      return Buffer.from(ctx.getImageData(0, 0, 160, 160).data);
+    };
+    for (const look of [lookForBasicSkin(1), lookForBasicSkin(7), DRESSED]) expect(shot(look).equals(shot(look))).toBe(true);
+  });
+
   it('draws every expression without throwing', () => {
     const c = createCanvas(128, 128);
     const ctx = ctx2d(c);

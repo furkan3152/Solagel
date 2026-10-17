@@ -1,4 +1,4 @@
-import { CARD_PAPER, INK, RISO, type CoinLook } from '@slana/art';
+import { CARD_PAPER, INK, INK_2, NIGHT, PAPER, RISO, type CoinLook } from '@slana/art';
 import { EntityKind, PlayerFlag } from '@slana/shared';
 import { DROP_LAND, dropScale } from '../design/curves';
 import type { Camera } from '../game/camera';
@@ -23,6 +23,8 @@ export interface WorldTheme {
   hatch: string;
   gridMinor: string;
   gridMajor: string;
+  /** Sector grid of the minimap sheet. */
+  minimapGrid: string;
   /** Map edge cut line. */
   edge: string;
   edgeOver: string;
@@ -33,29 +35,31 @@ export interface WorldTheme {
 
 export const WORLD_THEMES: Record<'light' | 'dark', WorldTheme> = {
   light: {
-    paper: '#F1EADB',
-    outside: '#E4DCCB',
-    hatch: 'rgba(30,27,46,0.11)',
-    // light-blue millimetre paper
-    gridMinor: 'rgba(60,140,220,0.16)',
-    gridMajor: 'rgba(60,140,220,0.34)',
+    paper: PAPER,
+    outside: '#EBE1CC',
+    hatch: 'rgba(27,23,50,0.11)',
+    // light-blue millimetre paper (tokens.css --grid)
+    gridMinor: 'rgba(40,130,235,0.15)',
+    gridMajor: 'rgba(40,130,235,0.32)',
+    minimapGrid: 'rgba(40,130,235,0.38)',
     edge: INK,
     edgeOver: RISO.fluoPink,
     label: INK,
     labelHalo: CARD_PAPER,
-    labelSub: '#5D5870',
+    labelSub: INK_2,
   },
   dark: {
-    paper: '#1B1924',
-    outside: '#131119',
-    hatch: 'rgba(241,234,219,0.07)',
-    gridMinor: 'rgba(110,170,255,0.08)',
-    gridMajor: 'rgba(110,170,255,0.19)',
-    edge: '#F1EADB',
+    paper: NIGHT.paper,
+    outside: '#0E0A1F',
+    hatch: 'rgba(245,238,220,0.07)',
+    gridMinor: 'rgba(120,160,255,0.09)',
+    gridMajor: 'rgba(120,160,255,0.21)',
+    minimapGrid: 'rgba(120,160,255,0.24)',
+    edge: NIGHT.ink,
     edgeOver: RISO.fluoPink,
-    label: '#F1EADB',
-    labelHalo: '#1B1924',
-    labelSub: '#B3ADC2',
+    label: NIGHT.ink,
+    labelHalo: NIGHT.paper,
+    labelSub: NIGHT.ink2,
   },
 };
 
@@ -588,13 +592,14 @@ export class Renderer {
       mm.width = Math.round(size * dpr);
       mm.height = Math.round(size * dpr);
     }
-    const ink = f.dark ? '#F1EADB' : INK;
-    const ink2 = f.dark ? '#B3ADC2' : '#5D5870';
+    const wt = WORLD_THEMES[f.dark ? 'dark' : 'light'];
+    const ink = wt.label;
+    const ink2 = wt.labelSub;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, size, size);
     const s = size / Math.max(f.world.width, f.world.height);
     // sector grid
-    ctx.strokeStyle = f.dark ? 'rgba(110,170,255,0.22)' : 'rgba(60,140,220,0.38)';
+    ctx.strokeStyle = wt.minimapGrid;
     ctx.lineWidth = 1;
     ctx.beginPath();
     for (let i = 1; i < 5; i++) {

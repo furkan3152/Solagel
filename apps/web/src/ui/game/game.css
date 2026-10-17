@@ -718,8 +718,8 @@
   border-radius: 50%;
   background-color: color-mix(in srgb, var(--card) 72%, transparent);
   background-image:
-    linear-gradient(rgba(60, 140, 220, 0.32) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(60, 140, 220, 0.32) 1px, transparent 1px);
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
   background-size: 17px 17px;
   background-position: center;
   box-shadow: 4px 4px 0 color-mix(in srgb, var(--ink) 80%, transparent);
@@ -752,7 +752,7 @@
   content: '';
   position: absolute;
   inset: 8px;
-  border: 1.5px dashed rgba(30, 27, 46, 0.5);
+  border: 1.5px dashed color-mix(in srgb, var(--ink-fixed) 50%, transparent);
   border-radius: 50%;
 }
 .g-touch {

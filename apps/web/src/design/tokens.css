@@ -1,62 +1,72 @@
 /* ─────────────────────────── Paper Ticket · tokens ───────────────────────────
- * Spec §7.1. The tokens sit on `:root` (the page itself, body background,
- * the canvas stage) and again on every `.kb` root, so a `<Kb theme>` subtree
- * keeps its own paper / night print whatever the page around it uses.
+ * Fresh riso inks on bright paper (docs/design/palette.md). The tokens sit
+ * on `:root` (the page itself, body background, the canvas stage) and again on
+ * every `.kb` root, so a `<Kb theme>` subtree keeps its own paper / night
+ * print whatever the page around it uses.
  * `:root[data-theme='dark']` (the app's night setting) prints the page itself
  * at night.
  *
- * Contrast notes (WCAG, measured):
- *   --ink-2 on --paper 5.66, on --card 6.62 | night: 8.0 / 7.1
- *   --pink-ink (spec) is 4.10 on --paper and --mustard-ink (spec) 4.45, so
- *   they stay for fills, strokes and large type only. All small pink/mustard
- *   TEXT uses --pink-text / --mustard-text:
- *     --pink-text    #C21E56  paper 4.85  card 5.67 | night #FF7FA6 7.30 / 6.46
- *     --mustard-text #7D5A00  paper 5.26  card 6.14 | night #F2B705 9.54 / 8.45
- *   --teal-ink on --paper 4.87. Light text on a teal panel needs --teal-ink
- *   (5.69); plain --teal with --card text is 3.28 (large text only).
+ * The ink values repeat `@slana/shared` palette.ts (the canvas art reads that
+ * file). apps/web/test/palette.test.ts keeps both in step and checks every
+ * text / background pair below for >= 4.5:1 (WCAG), in both prints:
+ *   --ink, --ink-2 and every *-ink / *-text accent on --paper and --card;
+ *   --on-ink / --on-ink-2 on --ink; --ink-fixed on the pink, teal, mustard
+ *   and green fills; --pink-sub on --pink; --on-cover on --danger.
+ * The bright fills (--pink, --teal, ...) are for fills, strokes and large type
+ * only; small accent TEXT uses the *-ink / *-text pairs.
  * ------------------------------------------------------------------------- */
 
 :root,
 .kb {
   /* paper & ink */
-  --paper: #f1eadb;
-  --card: #fffcf4;
-  --ink: #1e1b2e;
-  --ink-2: #5d5870;
+  --paper: #fcf4df;
+  --card: #fffdf6;
+  --ink: #1b1732;
+  --ink-2: #5b5577;
 
   /* riso accents (fills) and their text-safe "ink" pairs */
-  --pink: #ff4f87;
-  --pink-ink: #d6245f;
-  --teal: #0e9c9a;
-  --teal-ink: #08716f;
-  --mustard: #f2b705;
-  --mustard-ink: #8a6500;
+  --pink: #fb2f85;
+  --pink-ink: #d1166b;
+  --teal: #01aca4;
+  --teal-ink: #0f736e;
+  --mustard: #ffb413;
+  --mustard-ink: #90650e;
   /* small-text-safe pink / mustard (>= 4.5:1 on paper and card) */
-  --pink-text: #c21e56;
-  --mustard-text: #7d5a00;
-  --blue: #3b5bdb;
-  --green: #1f9d61;
-  --red: #e5402b;
-  /* text-safe pairs for the riso blue/green/red (not in the spec palette;
-   * the fills fail 4.5:1 as small text on paper) */
-  --blue-ink: #3b5bdb;
-  --green-ink: #157347;
-  --red-ink: #b42318;
+  --pink-text: #c71466;
+  --mustard-text: #885f0d;
+  --blue: #3055fc;
+  --green: #17ad65;
+  --red: #f72e1c;
+  --orange: #ff7024;
+  --purple: #7f39f4;
+  --aqua: #1ac9e7;
+  /* text-safe pairs for the riso blue/green/red */
+  --blue-ink: #2f53f9;
+  --green-ink: #0f7644;
+  --red-ink: #cb1c0d;
   /* fixed print ink: text/art on accent fills, same in both themes */
-  --ink-fixed: #1e1b2e;
+  --ink-fixed: #1b1732;
+  /* secondary text on a --pink fill (button sub-labels), both themes */
+  --pink-sub: #3c0c26;
+  /* paper stock that stays paper in both themes (photo mats) */
+  --paper-fixed: #fcf4df;
+  /* light-blue millimetre grid (the arena sheet) */
+  --grid: rgba(40, 130, 235, 0.3);
   /* text on a fixed dark stock (same in both themes) */
-  --on-cover: #fffcf4;
+  --on-cover: #fffdf6;
+  /* alert stock (same in both themes) and its text */
+  --danger: #cb1c0d;
 
   /* derived */
-  --on-ink: #fffcf4; /* text on an --ink fill */
-  --on-ink-2: #c9c4d9; /* secondary text on an --ink fill (9.9:1) */
-  --line: rgba(30, 27, 46, 0.35); /* perforation / hairlines */
-  --line-soft: rgba(30, 27, 46, 0.14);
-  --grain-a: rgba(30, 27, 46, 0.07);
-  --grain-b: rgba(30, 27, 46, 0.045);
-  --halftone-dot: rgba(30, 27, 46, 0.22);
-  --scrim: rgba(30, 27, 46, 0.42);
-  --tape: rgba(242, 183, 5, 0.42);
+  --on-ink: #fffdf6; /* text on an --ink fill */
+  --on-ink-2: #cac6e3; /* secondary text on an --ink fill */
+  --line: rgba(27, 23, 50, 0.35); /* perforation / hairlines */
+  --line-soft: rgba(27, 23, 50, 0.14);
+  --grain-a: rgba(27, 23, 50, 0.055);
+  --grain-b: rgba(27, 23, 50, 0.035);
+  --halftone-dot: rgba(27, 23, 50, 0.22);
+  --scrim: rgba(27, 23, 50, 0.42);
+  --tape: color-mix(in srgb, var(--mustard) 45%, transparent);
   --stamp-blend: multiply;
   --focus: var(--pink-ink);
 
@@ -94,34 +104,34 @@
   color-scheme: light;
 }
 
-/* Night print: same accents, inverted stock. Text-safe accent inks are
- * lightened so they keep >= 4.5:1 on the dark paper and card. */
+/* Night print: same bright accents on a deep violet stock. Text-safe accent
+ * inks are lightened so they keep >= 4.5:1 on the dark paper and card. */
 :root[data-theme='dark'],
 .kb[data-theme='night'],
 [data-theme='night'] .kb {
-  --paper: #1b1924;
-  --card: #262331;
-  --ink: #f1eadb;
-  --ink-2: #b3adc2;
+  --paper: #19142e;
+  --card: #251f3d;
+  --ink: #f5eedc;
+  --ink-2: #b1accc;
 
-  --pink-ink: #ff7fa6;
-  --teal-ink: #3cc9c6;
-  --mustard-ink: #f2b705;
-  --pink-text: #ff7fa6;
-  --mustard-text: #f2b705;
-  --blue-ink: #8fa6ff;
-  --green-ink: #5bd69a;
-  --red-ink: #ff8a75;
+  --pink-ink: #fc739f;
+  --teal-ink: #21c2b9;
+  --mustard-ink: #ffb413;
+  --pink-text: #fc739f;
+  --mustard-text: #ffb413;
+  --blue-ink: #7a9efb;
+  --green-ink: #21c776;
+  --red-ink: #fc7b68;
 
-  --on-ink: #1b1924;
-  --on-ink-2: #4a4558;
-  --line: rgba(241, 234, 219, 0.32);
-  --line-soft: rgba(241, 234, 219, 0.12);
-  --grain-a: rgba(241, 234, 219, 0.055);
-  --grain-b: rgba(241, 234, 219, 0.035);
+  --on-ink: #19142e;
+  --on-ink-2: #4d4866;
+  --line: rgba(245, 238, 220, 0.32);
+  --line-soft: rgba(245, 238, 220, 0.12);
+  --grain-a: rgba(245, 238, 220, 0.055);
+  --grain-b: rgba(245, 238, 220, 0.035);
   --halftone-dot: rgba(0, 0, 0, 0.55);
-  --scrim: rgba(8, 7, 12, 0.62);
-  --tape: rgba(242, 183, 5, 0.3);
+  --scrim: rgba(7, 5, 18, 0.62);
+  --tape: color-mix(in srgb, var(--mustard) 32%, transparent);
   --stamp-blend: screen;
 
   color-scheme: dark;

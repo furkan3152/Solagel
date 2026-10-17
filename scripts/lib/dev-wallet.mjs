@@ -12,7 +12,7 @@ const bs58 = serverRequire('bs58').default ?? serverRequire('bs58');
 const ICON =
   'data:image/svg+xml;base64,' +
   Buffer.from(
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#1E1B2E"/><circle cx="16" cy="16" r="8" fill="#FF4F87"/></svg>',
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#1B1732"/><circle cx="16" cy="16" r="8" fill="#FB2F85"/></svg>',
   ).toString('base64');
 
 /** Loads a Solana-CLI-format keypair file (JSON array of 64 bytes), creating it when missing. */
