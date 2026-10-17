@@ -85,6 +85,8 @@ beforeAll(async () => {
     ARENA_BOT_TARGET: '2',
     ARENA_BOT_MIN: '0',
     ARENA_BOT_MAX: '2',
+    // the game gate (site setting `gamePublic`) is covered in site.test.ts
+    GAME_PUBLIC: '1',
   });
   app = await createApp(cfg, { log: () => {}, persist: false });
   port = await app.listen();

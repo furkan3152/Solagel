@@ -65,6 +65,8 @@ export class Gateway {
   private readonly perIp = new Map<string, number>();
   private readonly alive = new WeakMap<WebSocket, boolean>();
   private timers: NodeJS.Timeout[] = [];
+  /** Who may enter a room (join or spectate); null: everyone (unit tests that build a bare gateway). */
+  private gameGate: ((wallet: string | null) => boolean) | null = null;
 
   constructor(
     private readonly cfg: ServerConfig,
@@ -83,6 +85,18 @@ export class Gateway {
     });
     // the token was set (or another status change clients must see): push the new chain status
     chain.onStatusChange(() => this.broadcastChain());
+  }
+
+  /** Sets who may enter rooms (the site's game gate: public, or an admin wallet). */
+  setGameGate(gate: ((wallet: string | null) => boolean) | null): void {
+    this.gameGate = gate;
+  }
+
+  /** Refuses (`game_closed`) a room entry while the game is not public and the session is no admin. */
+  private gameClosed(conn: Conn): boolean {
+    if (!this.gameGate || this.gameGate(conn.wallet)) return false;
+    this.error(conn, 'game_closed', 'The game is not open yet. Follow @slanaio for the launch.');
+    return true;
   }
 
   /** Sends the current chain status (`chain` message) to every connection past `hello`. */
@@ -230,6 +244,7 @@ export class Gateway {
         await this.onJoin(conn, msg);
         return;
       case 'spectate': {
+        if (this.gameClosed(conn)) return;
         const room =
           typeof msg.room === 'string' ? this.rooms.rooms.get(msg.room) : (conn.room ?? this.rooms.lobbyRoom());
         if (!room) {
@@ -286,6 +301,8 @@ export class Gateway {
 
   private async onJoin(conn: Conn, msg: Record<string, unknown>): Promise<void> {
     if (conn.joining) return;
+    // every room entry (practice, private, arena ticket) is gated before anything else is looked at
+    if (this.gameClosed(conn)) return;
     const target = typeof msg.room === 'string' ? parseJoinTarget(msg.room) : null;
     if (!target) {
       this.error(conn, 'bad_request', 'Unknown room');

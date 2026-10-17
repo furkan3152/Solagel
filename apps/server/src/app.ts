@@ -6,8 +6,11 @@ import type { ChainGateway } from './chain/types';
 import type { ServerConfig } from './config';
 import { createHttpServer } from './http';
 import { Leaderboards } from './leaderboards';
+import type { Limiter } from './net/limiter';
 import { Gateway } from './net/gateway';
 import { RoomManager } from './rooms/manager';
+import { SiteApi, type SiteLimits } from './site/routes';
+import { SiteStore } from './site/store';
 import { Journal } from './stake/journal';
 
 export interface App {
@@ -17,6 +20,8 @@ export interface App {
   journal: Journal;
   auth: Auth;
   leaderboards: Leaderboards;
+  /** The slana.io site: settings, WL tasks and entries, collabs, admin API, game gate. */
+  site: SiteApi;
   /** Resolves once the HTTP server is listening; returns the bound port. */
   listen(): Promise<number>;
   close(): Promise<void>;
@@ -30,6 +35,12 @@ export async function createApp(
     persist?: boolean;
     /** Wall clock for the arena rounds (Unix ms); tests inject one. Defaults to `Date.now`. */
     now?: () => number;
+    /** Wall clock of the site store (collab deadlines); tests inject one. Defaults to `Date.now`. */
+    siteNow?: () => number;
+    /** Rate limiters of the site API; tests inject small ones. */
+    siteLimits?: SiteLimits;
+    /** The per-IP limiter of every `/api/*` request; tests inject a larger one. */
+    apiLimiter?: Limiter;
   } = {},
 ): Promise<App> {
   const log = opts.log ?? ((m: string) => console.log(`[${new Date().toISOString()}] ${m}`));
@@ -45,6 +56,8 @@ export async function createApp(
   const leaderboards = new Leaderboards(persist ? join(cfg.dataDir, files.leaderboards) : null);
   const chain = opts.chain ?? (await createChain(cfg, journal, log));
   const auth = new Auth(cfg.authSecret);
+  const siteStore = new SiteStore(persist ? cfg.dataDir : null, { now: opts.siteNow, log });
+  const site = new SiteApi(cfg, auth, siteStore, opts.siteLimits);
 
   const rooms = new RoomManager(
     cfg,
@@ -66,8 +79,10 @@ export async function createApp(
   await chain.start();
   await rooms.ensureArenaRooms();
 
-  const server = createHttpServer(cfg, { rooms, leaderboards, chain, auth, journal, startedAt: Date.now() });
+  const server = createHttpServer(cfg, { rooms, leaderboards, chain, auth, journal, site, apiLimiter: opts.apiLimiter, startedAt: Date.now() });
   const gateway = new Gateway(cfg, rooms, auth, chain, journal, log);
+  // the game is admin-only until `gamePublic` (setting) or `GAME_PUBLIC=1`: every room entry asks
+  gateway.setGameGate((wallet) => site.gameOpenFor(wallet));
   gateway.attach(server);
   const flushTimer = setInterval(() => leaderboards.flush(), 30_000);
   flushTimer.unref();
@@ -83,6 +98,7 @@ export async function createApp(
     journal,
     auth,
     leaderboards,
+    site,
     listen: () =>
       new Promise((resolve) => {
         server.listen(cfg.port, cfg.host, () => {
