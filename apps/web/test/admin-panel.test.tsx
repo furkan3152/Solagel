@@ -22,6 +22,10 @@ import { Kb } from '../src/design';
 /* ------------------------------------------------------------------ */
 
 const sdk = new SlanaClient(new Connection('http://127.0.0.1:1'));
+const DEVNET_GENESIS = 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG';
+const MAINNET_GENESIS = '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d';
+const genesis = { hash: DEVNET_GENESIS };
+
 const coder = {
   accounts: sdk.program.coder.accounts,
   // BorshInstructionCoder decodes; the public type only declares encode
@@ -58,6 +62,7 @@ const connection = {
   }),
   getSignatureStatuses: vi.fn(async () => ({ value: [{ confirmationStatus: 'confirmed', err: null }] })),
   getBlockHeight: vi.fn(async () => 1),
+  getGenesisHash: vi.fn(async () => genesis.hash),
 } as unknown as Connection;
 
 const admin = Keypair.generate();
@@ -115,7 +120,17 @@ function mintAccount(program: PublicKey, o: { freeze?: PublicKey; extensions?: n
 
 /* ------------------------------------------------------------------ */
 
-const net: AdminNetwork = { rpcUrl: 'http://fake', cluster: 'devnet', programId: PROGRAM_ID.toBase58(), serverKey: server.toBase58(), fake: false, source: 'env', priorityMicroLamports: 20_000 };
+const net: AdminNetwork = {
+  rpcUrl: 'http://fake',
+  cluster: 'devnet',
+  programId: PROGRAM_ID.toBase58(),
+  serverProgramId: PROGRAM_ID.toBase58(),
+  claimedCluster: 'devnet',
+  serverKey: server.toBase58(),
+  fake: false,
+  source: 'env',
+  priorityMicroLamports: 20_000,
+};
 
 const signTransaction = vi.fn(async (tx: Transaction) => {
   tx.partialSign(admin);
@@ -151,6 +166,7 @@ const field = (label: RegExp | string) => screen.getByLabelText(label) as HTMLIn
 const type = (label: RegExp | string, value: string) => fireEvent.change(field(label), { target: { value } });
 
 beforeEach(() => {
+  genesis.hash = DEVNET_GENESIS;
   accounts.clear();
   sent.length = 0;
   signTransaction.mockClear();
@@ -180,9 +196,17 @@ describe('admin panel: the gate', () => {
     expect(screen.queryByRole('heading', { name: 'Connect the admin wallet' })).toBeNull();
   });
 
-  it('a mainnet network shows the banner', async () => {
-    renderPanel(null, { ...net, cluster: 'mainnet-beta' });
-    expect((await screen.findAllByRole('alert')).some((el) => /MAINNET/.test(el.textContent ?? ''))).toBe(true);
+  it('the MAINNET banner comes from the genesis hash, not from the claim', async () => {
+    genesis.hash = MAINNET_GENESIS;
+    const { unmount } = renderPanel(null, { ...net, cluster: 'mainnet-beta', claimedCluster: 'mainnet-beta' });
+    expect(await screen.findByText(/Every transaction signed here is final/)).toBeTruthy();
+    expect(screen.getByText(/from the genesis hash/)).toBeTruthy();
+    unmount();
+    // claims mainnet, RPC is devnet: no banner, signing blocked
+    genesis.hash = DEVNET_GENESIS;
+    renderPanel(null, { ...net, cluster: 'mainnet-beta', claimedCluster: 'mainnet-beta' });
+    expect(await screen.findByText(/The RPC is devnet \(genesis hash\), but the configuration claims mainnet-beta/)).toBeTruthy();
+    expect(screen.queryByText(/Every transaction signed here is final/)).toBeNull();
   });
 });
 
@@ -333,19 +357,126 @@ describe('admin panel: config and arenas', () => {
       ['createArena', 4],
     ]);
   });
+});
 
-  it('an admin transfer needs the acknowledgement', async () => {
-    deploy(admin.publicKey);
-    await initConfig({ admin: admin.publicKey });
-    renderPanel(admin);
-    await screen.findByRole('heading', { name: 'Update config' });
-    type('Admin (transfer)', Keypair.generate().publicKey.toBase58());
-    fireEvent.click(screen.getByRole('button', { name: 'Review config update' }));
-    const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByText('ADMIN TRANSFER')).toBeTruthy();
+describe('admin panel: network pinning', () => {
+  beforeEach(() => deploy(admin.publicKey));
+
+  async function openInitReview(n: AdminNetwork) {
+    renderPanel(admin, n);
+    await screen.findByRole('button', { name: /Review initialize/ });
+    fireEvent.click(screen.getByRole('button', { name: /Review initialize/ }));
+    return screen.findByRole('dialog');
+  }
+
+  it('the pinned program id is shown; a different server program id blocks signing', async () => {
+    const other = Keypair.generate().publicKey.toBase58();
+    const dialog = await openInitReview({ ...net, serverProgramId: other });
+    expect(screen.getAllByText(/SIGNING BLOCKED/).length).toBeGreaterThan(0);
+    expect(screen.getByText(`MISMATCH: ${other}`)).toBeTruthy();
+    expect(screen.getAllByText(PROGRAM_ID.toBase58()).length).toBeGreaterThan(0);
+    expect(screen.getByText('Pinned program id')).toBeTruthy();
     const sign = within(dialog).getByRole('button', { name: 'Sign with wallet' }) as HTMLButtonElement;
     expect(sign.disabled).toBe(true);
+    fireEvent.click(sign);
+    expect(signTransaction).not.toHaveBeenCalled();
+  });
+
+  it('an unknown genesis hash blocks signing; a matching one allows it', async () => {
+    genesis.hash = Keypair.generate().publicKey.toBase58();
+    const dialog = await openInitReview(net);
+    expect(within(dialog).getByText(/Unknown genesis hash/)).toBeTruthy();
+    expect((within(dialog).getByRole('button', { name: 'Sign with wallet' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('signing waits for the genesis check and is enabled once it matches', async () => {
+    const dialog = await openInitReview(net);
+    await waitFor(() => expect((within(dialog).getByRole('button', { name: 'Sign with wallet' }) as HTMLButtonElement).disabled).toBe(false));
+    expect(screen.queryByText(/SIGNING BLOCKED/)).toBeNull();
+  });
+});
+
+describe('admin panel: admin transfer checks', () => {
+  beforeEach(async () => {
+    deploy(admin.publicKey);
+    await initConfig({ admin: admin.publicKey });
+  });
+
+  async function review(newAdmin: string) {
+    renderPanel(admin);
+    await screen.findByRole('heading', { name: 'Update config' });
+    type('Admin (transfer)', newAdmin);
+    fireEvent.click(screen.getByRole('button', { name: 'Review config update' }));
+  }
+
+  it('refuses a PDA, the program id and the server key', async () => {
+    await review(pdas.config(PROGRAM_ID).toBase58());
+    expect(await screen.findByText(/Admin transfer refused: the new admin is the config account/)).toBeTruthy();
+    type('Admin (transfer)', PROGRAM_ID.toBase58());
+    fireEvent.click(screen.getByRole('button', { name: 'Review config update' }));
+    expect(await screen.findByText(/the new admin is the program id/)).toBeTruthy();
+    type('Admin (transfer)', server.toBase58());
+    fireEvent.click(screen.getByRole('button', { name: 'Review config update' }));
+    expect(await screen.findByText(/the new admin is the server key/)).toBeTruthy();
+    const offCurve = PublicKey.findProgramAddressSync([Buffer.from('x')], PROGRAM_ID)[0].toBase58();
+    type('Admin (transfer)', offCurve);
+    fireEvent.click(screen.getByRole('button', { name: 'Review config update' }));
+    expect(await screen.findByText(/not an on-curve wallet key/)).toBeTruthy();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('needs the new admin retyped and the acknowledgement', async () => {
+    const next = Keypair.generate().publicKey.toBase58();
+    await review(next);
+    const dialog = await screen.findByRole('dialog');
+    const sign = within(dialog).getByRole('button', { name: 'Sign with wallet' }) as HTMLButtonElement;
+    await waitFor(() => expect(within(dialog).queryByText(/Checking the cluster/)).toBeNull());
     fireEvent.click(within(dialog).getByRole('checkbox'));
+    expect(sign.disabled).toBe(true);
+    const retype = within(dialog).getByLabelText('Type the new admin address again to confirm');
+    fireEvent.change(retype, { target: { value: next.slice(0, -1) } });
+    expect(sign.disabled).toBe(true);
+    fireEvent.change(retype, { target: { value: next } });
     await waitFor(() => expect(sign.disabled).toBe(false));
+  });
+});
+
+describe('admin panel: arena update sends only edited fields', () => {
+  it('disabling an arena with open sessions does not send an entry fee', async () => {
+    const mint = Keypair.generate().publicKey;
+    deploy(admin.publicKey);
+    await initConfig({ admin: admin.publicKey, mint, tokenProgram: TOKEN_PROGRAM_ID, decimals: 9 });
+    accounts.set(mint.toBase58(), mintAccount(TOKEN_PROGRAM_ID));
+    const arena = pdas.arena(1, PROGRAM_ID);
+    const vault = pdas.vault(arena, PROGRAM_ID);
+    // 1,000.123456789 tokens: finer than the 6 digits the status shows
+    const data = await coder.accounts.encode('arena', {
+      id: 1,
+      entryFee: new BN(1_000_123_456_789),
+      maxSessions: 300,
+      openSessions: 2,
+      enabled: true,
+      vault,
+      vaultBump: 255,
+      totalDeposited: new BN(0),
+      totalPaidOut: new BN(0),
+      bump: 255,
+    });
+    accounts.set(arena.toBase58(), acc(PROGRAM_ID, data));
+    renderPanel(admin);
+    await screen.findByRole('heading', { name: 'Update arena' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Disabled' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Review arena update' }));
+    const dialog = await screen.findByRole('dialog');
+    await waitFor(() => expect((within(dialog).getByRole('button', { name: 'Sign with wallet' }) as HTMLButtonElement).disabled).toBe(false));
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Sign with wallet' }));
+    });
+    await within(dialog).findByText(/Confirmed/);
+    const d = coder.instruction.decode(sent[0].instructions[1].data) as { name: string; data: { enabled: boolean | null; maxSessions: number | null; entryFee: unknown } };
+    expect(d.name).toBe('updateArena');
+    expect(d.data.enabled).toBe(false);
+    expect(d.data.entryFee).toBeNull();
+    expect(d.data.maxSessions).toBeNull();
   });
 });

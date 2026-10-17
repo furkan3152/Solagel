@@ -1,6 +1,8 @@
+import { formatToken } from '@slana/shared';
 import { MAX_ARENA_SESSIONS, MAX_FEE_BPS, MAX_SETTLE_FEE_LAMPORTS, MIN_ARENA_SESSIONS, createFeeWalletAtaIx, feeWalletAta, requireToken, type ArenaView, type ConfigView, type SlanaClient, type UpdateConfigParams } from '@slana/sdk';
 import {
   AdminInputError,
+  adminTransferRefusal,
   SWEEP_WARNING,
   arenaName,
   buildCreateArenasInstructions,
@@ -24,7 +26,7 @@ import {
   type StatusSnapshot,
 } from '@slana/sdk/ops';
 import { PublicKey, type Connection } from '@solana/web3.js';
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Chip, Field, InkButton } from '../design';
 import type { AdminNetwork } from './net';
 import type { Plan } from './Review';
@@ -164,7 +166,7 @@ export function MintReport({ m }: { m: MintInspection }) {
           <dd>{m.supply === null || m.decimals === null ? 'n/a' : `${fmtTok(m.supply, m.decimals)}${m.symbol ? ` ${m.symbol}` : ''} (${m.supply} base units)`}</dd>
         </div>
         <div>
-          <dt className="mono">Symbol</dt>
+          <dt className="mono">Symbol (self-declared)</dt>
           <dd>{m.symbol ?? 'unknown'}</dd>
         </div>
         <div>
@@ -212,20 +214,24 @@ export function SetTokenForm({ ctx, config }: { ctx: ActionCtx; config: ConfigVi
   const [error, setError] = useState<string>();
   const [report, setReport] = useState<MintInspection | null>(null);
   const [busy, setBusy] = useState(false);
+  /** Bumped on every check and every edit: a late result for an older input is dropped. */
+  const seq = useRef(0);
 
   const check = async (e: FormEvent) => {
     e.preventDefault();
+    const mine = ++seq.current;
     setReport(null);
     const [key, err] = attempt(() => parsePubkeyInput('Mint address', mint));
     setError(mint.trim() === '' ? 'Mint address is required' : err);
     if (!key) return;
     setBusy(true);
     try {
-      setReport(await inspectMint(ctx.connection, key));
+      const r = await inspectMint(ctx.connection, key);
+      if (mine === seq.current) setReport(r);
     } catch (err2) {
-      setError(`Cannot read the mint: ${(err2 as Error).message}`);
+      if (mine === seq.current) setError(`Cannot read the mint: ${(err2 as Error).message}`);
     } finally {
-      setBusy(false);
+      if (mine === seq.current) setBusy(false);
     }
   };
 
@@ -250,7 +256,7 @@ export function SetTokenForm({ ctx, config }: { ctx: ActionCtx; config: ConfigVi
         ['Mint', code(report.address)],
         ['Token program', `${report.ownerName} (${report.owner})`],
         ['Decimals', String(report.decimals)],
-        ['Symbol', report.symbol ?? 'unknown'],
+        ['Symbol (self-declared)', report.symbol ?? 'unknown'],
         ['Fee wallet token account', <>{code(feeToken.toBase58())} (created if missing; this wallet pays the rent)</>],
       ],
       ixs,
@@ -267,8 +273,10 @@ export function SetTokenForm({ ctx, config }: { ctx: ActionCtx; config: ConfigVi
           label="Mint address (CA)"
           value={mint}
           onChange={(e) => {
+            seq.current++;
             setMint(e.target.value);
             setReport(null);
+            setBusy(false);
           }}
           error={error}
           spellCheck={false}
@@ -397,20 +405,23 @@ export function UpdateArena({ ctx, config }: { ctx: ActionCtx; config: ConfigVie
 
 function UpdateArenaForm({ ctx, arena, decimals }: { ctx: ActionCtx; arena: ArenaView; decimals: number }) {
   const [enabled, setEnabled] = useState(arena.enabled);
-  const [entry, setEntry] = useState(fmtTok(arena.entryFee, decimals).replace(/,/g, ''));
+  // full precision, no grouping: the untouched field reads back exactly as the stored fee
+  const initialEntry = formatToken(arena.entryFee, decimals, { maxFrac: decimals }).replace(/,/g, '');
+  const [entry, setEntry] = useState(initialEntry);
   const [max, setMax] = useState(String(arena.maxSessions));
   const [errors, setErrors] = useState<Record<string, string | undefined>>({});
   const [general, setGeneral] = useState<string>();
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    const [fee, eE] = attempt(() => parseTokenInput('Entry fee', entry, decimals));
+    const entryEdited = entry.trim() !== initialEntry;
+    const [fee, eE] = entryEdited ? attempt(() => parseTokenInput('Entry fee', entry, decimals)) : [arena.entryFee, undefined];
     const [m, eM] = attempt(() => parseIntInput('Max sessions', max, MIN_ARENA_SESSIONS, MAX_ARENA_SESSIONS));
     setErrors({ entry: eE, max: eM });
     if (eE || eM) return;
     const changes = {
       enabled: enabled !== arena.enabled ? enabled : undefined,
-      entryFee: fee !== arena.entryFee ? fee : undefined,
+      entryFee: entryEdited && fee !== arena.entryFee ? fee : undefined,
       maxSessions: m !== arena.maxSessions ? m : undefined,
     };
     const refusal = updateArenaRefusal(arena, changes);
@@ -498,6 +509,18 @@ export function UpdateConfig({ ctx, config }: { ctx: ActionCtx; config: ConfigVi
       setGeneral('Nothing to change: edit a value first.');
       return;
     }
+    if (changes.admin !== undefined) {
+      const refusal = adminTransferRefusal(new PublicKey(changes.admin as PublicKey), {
+        programId: ctx.client.programId,
+        currentAdmin: config.admin,
+        serverKeys: [config.serverAuthority, ctx.net.serverKey, changes.serverAuthority as PublicKey | undefined],
+        feeWallet: config.feeWallet,
+      });
+      if (refusal) {
+        setErrors((e2) => ({ ...e2, admin: `Admin transfer refused: ${refusal}` }));
+        return;
+      }
+    }
     setGeneral(undefined);
     const ixs = await buildUpdateConfigInstructions(ctx.client, ctx.signer, config, changes);
     const pk = (v: unknown) => code(new PublicKey(v as PublicKey).toBase58());
@@ -520,6 +543,7 @@ export function UpdateConfig({ ctx, config }: { ctx: ActionCtx; config: ConfigVi
           </>
         ) : undefined,
       ack: changes.admin !== undefined ? 'I control the new admin address and understand this wallet loses admin rights.' : undefined,
+      retype: changes.admin !== undefined ? { label: 'Type the new admin address again to confirm', text: new PublicKey(changes.admin as PublicKey).toBase58() } : undefined,
       summary,
       ixs,
       done: `Updated config (${Object.keys(changes).join(', ')})`,

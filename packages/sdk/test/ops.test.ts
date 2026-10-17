@@ -184,3 +184,28 @@ describe('token2022Symbol', () => {
     expect(token2022Symbol(new Uint8Array(82))).toBeNull();
   });
 });
+
+describe('admin transfer and symbol hygiene', () => {
+  it('adminTransferRefusal', async () => {
+    const { adminTransferRefusal } = await import('../src/ops');
+    const { PROGRAM_ID } = await import('../src');
+    const current = k();
+    const serverKey = k();
+    const ctx = { programId: PROGRAM_ID, currentAdmin: current, serverKeys: [serverKey] };
+    expect(adminTransferRefusal(k(), ctx)).toBeNull();
+    expect(adminTransferRefusal(current, ctx)).toMatch(/current admin/);
+    expect(adminTransferRefusal(PROGRAM_ID, ctx)).toMatch(/program id/);
+    expect(adminTransferRefusal(pdas.config(PROGRAM_ID), ctx)).toMatch(/config account/);
+    expect(adminTransferRefusal(serverKey, ctx)).toMatch(/server key/);
+    expect(adminTransferRefusal(pdas.arena(1, PROGRAM_ID), ctx)).toMatch(/on-curve/);
+    expect(adminTransferRefusal(PublicKey.default, ctx)).toMatch(/default/);
+  });
+
+  it('sanitizeSymbol strips bidi and control characters and caps the length', async () => {
+    const { sanitizeSymbol } = await import('../src/ops');
+    expect(sanitizeSymbol('SLANA')).toBe('SLANA');
+    expect(sanitizeSymbol('US‮DC\u0000')).toBe('USDC');
+    expect(sanitizeSymbol('​ ⁦')).toBeNull();
+    expect(sanitizeSymbol('A'.repeat(40))).toBe(`${'A'.repeat(16)}…`);
+  });
+});
