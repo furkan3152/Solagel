@@ -19,7 +19,6 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # Words the G2P should not guess.
 FIXED = {
     "Slana": "slˈɑːnə",
-    "agar dot io": "ˈeɪɡɑːɹ dˈɑːt ˌaɪˈoʊ",
 }
 # Per-line speed tweaks (1.0 = the global speed).
 SPEED = {"intro": 0.98, "c3a": 0.96, "c3c": 0.96, "outro": 0.9}

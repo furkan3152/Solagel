@@ -70,7 +70,7 @@ say('intro', 0.75);
 e.at(3.15);
 
 // ── 01 · what Slana is ──
-let t = chapter(1, 'What Slana is', 'agar.io, on-chain, on Solana.');
+let t = chapter(1, 'What Slana is', 'On-chain coin arenas on Solana.');
 let end = say('c1', t);
 const eats = events(A, 'value', (v) => v.reason === 'eat');
 const tBell = events(A, 'roundResult')[0].t, tPaid = mark(A, 'paid');

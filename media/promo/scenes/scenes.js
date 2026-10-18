@@ -72,7 +72,7 @@ function hud(ctx, t, idx, dark = false, alpha = 1) {
   ctx.letterSpacing = '3px';
   ctx.fillStyle = col;
   ctx.textBaseline = 'middle';
-  ctx.fillText('SLANA  /  ON-CHAIN AGAR.IO', 64, H - 46);
+  ctx.fillText('SLANA  /  ON-CHAIN COIN ARENAS', 64, H - 46);
   ctx.textAlign = 'right';
   ctx.fillText(String(idx).padStart(2, '0') + ' / 09', W - 64 - 96, H - 46);
   [C.pink, C.teal, C.mustard].forEach((c, i) => {
@@ -254,7 +254,7 @@ function sceneHook(ctx, t) {
   ctx.restore();
 
   // type (screen space, no push so it stays crisp)
-  kicker(ctx, 'ON-CHAIN AGAR.IO  /  SOLANA', 150, 300, t, 0.2, { out: 3.55 });
+  kicker(ctx, 'ON-CHAIN COIN ARENAS  /  SOLANA', 150, 300, t, 0.2, { out: 3.55 });
   headline(ctx, [
     { text: 'Eat a player.', at: 0.45 },
     { text: 'Keep their tokens.', at: 2.5, color: C.pink },
