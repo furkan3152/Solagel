@@ -7,6 +7,7 @@ import {
   clamp,
   decodeClientInput,
   isBasicSkin,
+  isFingerprint,
   levelFromXp,
   parseJoinTarget,
   sanitizeName,
@@ -67,6 +68,8 @@ export class Gateway {
   private timers: NodeJS.Timeout[] = [];
   /** Who may enter a room (join or spectate); null: everyone (unit tests that build a bare gateway). */
   private gameGate: ((wallet: string | null) => boolean) | null = null;
+  /** Wallets the admin banned from arenas (integrity); null: nobody (bare unit tests). */
+  private banGate: ((wallet: string) => boolean) | null = null;
 
   constructor(
     private readonly cfg: ServerConfig,
@@ -90,6 +93,11 @@ export class Gateway {
   /** Sets who may enter rooms (the site's game gate: public, or an admin wallet). */
   setGameGate(gate: ((wallet: string | null) => boolean) | null): void {
     this.gameGate = gate;
+  }
+
+  /** Sets who is banned from arena joins (the integrity ban list). Practice is never gated by it. */
+  setBanGate(gate: ((wallet: string) => boolean) | null): void {
+    this.banGate = gate;
   }
 
   /** Refuses (`game_closed`) a room entry while the game is not public and the session is no admin. */
@@ -309,6 +317,8 @@ export class Gateway {
       return;
     }
     conn.joining = true;
+    // integrity evidence only: kept when well-formed, never trusted as an identity
+    conn.fp = isFingerprint(msg.fp) ? msg.fp : null;
     try {
       const skin = Number.isInteger(msg.skin) && (msg.skin as number) >= 0 && (msg.skin as number) < SKIN_COUNT ? (msg.skin as number) : 0;
       if (conn.wallet) conn.profile = await this.chain.getProfile(conn.wallet).catch(() => conn.profile);
@@ -360,6 +370,12 @@ export class Gateway {
       }
       if (!conn.wallet) {
         this.error(conn, 'auth_required', 'Connect and sign in with your wallet first.');
+        return;
+      }
+      // banned wallets cannot start new arena games (a live ticket can still be resumed below: it is their money)
+      const banned = this.banGate?.(conn.wallet) === true;
+      if (banned && !this.rooms.findArenaStake(target.arenaId, conn.wallet)) {
+        this.error(conn, 'banned', 'This wallet is banned from paid arenas after an integrity review. Practice is open.');
         return;
       }
       let room = await this.rooms.arenaRoom(target.arenaId);
@@ -435,6 +451,11 @@ export class Gateway {
       }
       // the awaits above may have crossed into the closed window
       if (this.roundClosed(conn)) return;
+      // a new arena game (not a resumed ticket): refused for a banned wallet (the ban may be new since the check above)
+      if (this.banGate?.(conn.wallet) === true) {
+        this.error(conn, 'banned', 'This wallet is banned from paid arenas after an integrity review. Practice is open.');
+        return;
+      }
       if (conn.player?.alive) conn.room?.leave(conn, 'switch');
       room.join(conn, {
         name,

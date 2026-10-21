@@ -62,6 +62,8 @@ export interface TickEvents {
   coinRain: 'start' | 'end' | null;
   /** Loot picked up by human players this tick. */
   lootPicked: { pid: number; lootId: number; value: number }[];
+  /** Ejected blobs eaten by another player's cell this tick (integrity telemetry: who fed whom). */
+  ejectsEaten: { ownerId: number; eaterId: number }[];
 }
 
 const FOOD_RADIUS = [10, 10, 10, 10, 10, 10, 12, 16];
@@ -71,7 +73,7 @@ const POWERUP_LIFETIME_MS = 45_000;
 const COIN_RAIN_MS = 25_000;
 const COIN_RAIN_EVERY_MS = 240_000;
 
-const emptyEvents = (): TickEvents => ({ kills: [], cellsEaten: [], pops: [], pickups: [], airdrops: [], coinRain: null, lootPicked: [] });
+const emptyEvents = (): TickEvents => ({ kills: [], cellsEaten: [], pops: [], pickups: [], airdrops: [], coinRain: null, lootPicked: [], ejectsEaten: [] });
 
 export interface AddPlayerOptions {
   name: string;
@@ -830,6 +832,7 @@ export class World {
           a.setMass(a.mass + b.mass);
           a.version = this.tickCount;
           this.removeEject(b, a.id);
+          if (b.ownerId !== ap.id) this.events.ejectsEaten.push({ ownerId: b.ownerId, eaterId: ap.id });
           return;
         }
         // other player's cell

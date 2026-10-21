@@ -154,3 +154,81 @@ label.ad-cap {
   display: block;
   margin-bottom: 6px;
 }
+
+/* Integrity tab */
+.ad-int__wallet {
+  white-space: nowrap;
+}
+.ad-int__walletrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.ad-int__walletrow code {
+  overflow-wrap: anywhere;
+}
+.ad-int__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.ad-int__narrow {
+  max-width: 140px;
+}
+.ad-int__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+.ad-int__details summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+.ad-int__bar {
+  display: inline-block;
+  height: 10px;
+  background: var(--pink-ink);
+  border: 1.5px solid var(--ink);
+  border-radius: 2px;
+  box-shadow: 2px 2px 0 var(--teal);
+}
+.ad-int__timeline {
+  display: grid;
+  gap: 8px;
+}
+.ad-int__bans {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.ad-int__bans li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 2px dashed var(--ink);
+  border-radius: var(--r-ticket);
+  background: var(--paper);
+}
+.ad-int__bans code {
+  overflow-wrap: anywhere;
+}
+.ad-int__banform {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 2fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+@media (max-width: 639px) {
+  .ad-int__banform {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,6 +1,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { SITE_LIMITS, type SiteError, type SiteSettings } from '@slana/shared';
 import type { Auth } from '../auth';
+import { integrityRoutes } from '../integrity/routes';
+import type { IntegrityService } from '../integrity/service';
 import type { ServerConfig } from '../config';
 import { Limiter } from '../net/limiter';
 import type { SiteStore } from './store';
@@ -73,6 +75,8 @@ export function bearerWallet(auth: Auth, req: IncomingMessage): string | null {
  */
 export class SiteApi {
   private readonly admins: Set<string>;
+  /** Cheat and collusion detection (`/api/admin/integrity/*`); absent in bare unit tests. */
+  private integrity: IntegrityService | null = null;
 
   constructor(
     private readonly cfg: ServerConfig,
@@ -81,6 +85,10 @@ export class SiteApi {
     private readonly limits: SiteLimits = defaultSiteLimits(),
   ) {
     this.admins = new Set(cfg.adminWallets);
+  }
+
+  setIntegrity(svc: IntegrityService | null): void {
+    this.integrity = svc;
   }
 
   isAdmin(wallet: string | null | undefined): boolean {
@@ -204,6 +212,17 @@ export class SiteApi {
       case 'counts':
         this.method(req, 'GET');
         return send(res, 200, s.counts());
+      case 'integrity':
+        if (!this.integrity) break;
+        return integrityRoutes(
+          this.integrity,
+          { send, sendCsv, method: (r, ...m) => this.method(r, ...m), readJson: (r) => readJson(r) },
+          req,
+          res,
+          seg.slice(1),
+          q,
+          wallet,
+        );
       case 'settings':
         if (seg.length !== 1) break;
         if (this.method(req, 'GET', 'PUT') === 'PUT') s.updateSettings(await readJson(req));

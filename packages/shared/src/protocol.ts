@@ -192,6 +192,8 @@ export type ClientMessage =
       room: JoinTarget | string;
       name: string;
       skin: number;
+      /** Optional browser fingerprint (`isFingerprint`): integrity evidence only, untrusted. */
+      fp?: string;
     }
   | { t: 'spectate'; room?: string; next?: boolean }
   | { t: 'leave' }
@@ -340,7 +342,9 @@ export type ErrorCode =
   /** The ticket of a returning (AFK) player was settled at the bell while they were away: the till was paid. */
   | 'round_ended'
   /** The game is not public yet (`SiteSettings.gamePublic` off): only admin wallets can enter a room. */
-  | 'game_closed';
+  | 'game_closed'
+  /** The admin banned this wallet from arenas (integrity review). Practice still works. */
+  | 'banned';
 
 /** Parse a join target into its parts. Returns null for malformed input. */
 export function parseJoinTarget(

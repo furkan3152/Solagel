@@ -223,7 +223,8 @@ Browser (apps/web)  --WebSocket, binary 30 Hz-->  Game server (apps/server)  --s
 | `rooms/` | `manager.ts` (instances, matchmaking, the vault guard), `room.ts` (a room, round end, settlement), `round-clock.ts` (the single round clock), `visibility.ts` |
 | `stake/` | `ledger.ts` (in-game value transfers, loot spill) and `journal.ts` (the crash-safe record of live values, loot, pending settlements and loot sweeps) |
 | `chain/` | `solana.ts`: the token watcher (re-reads the config every 30 s until the token is set), the settlement and loot-burn worker (retries, a two-phase settle, a fee wallet account guard, a sweep resent only after its blockhash expires, and a sweeper that refunds stale tickets). `dev-fake.ts`: an in-memory chain for development. |
-| `net/` | WebSocket gateway: sign-in, join and refusal codes such as `round_closed`, `round_ended` and `no_cashout` |
+| `net/` | WebSocket gateway: sign-in, join and refusal codes such as `round_closed`, `round_ended`, `no_cashout` and `banned` |
+| `integrity/` | Cheat and collusion detection: per-ticket telemetry, pure detectors, flags, bans, the optional payout auto-hold, `/api/admin/integrity/*` |
 | `http.ts` | REST endpoints: `/api/health`, `/api/rooms`, `/api/leaderboard`, `/api/config`, `/api/auth/*` (nonce, login, me), `/api/pending`, the site API `/api/site/*` and the admin API `/api/admin/*` (section 8) |
 
 Sign-in uses SIWS (Sign-In With Solana) with a nonce that the server issues and checks line by line.
@@ -321,13 +322,20 @@ Design source: `docs/superpowers/specs/2026-10-17-slana-site-wl-collab-design.md
 | `/wl` | everyone | NFT allowlist: a stepper of admin-defined tasks (follow @slanaio, post about Slana, like/repost/reply to the launch post, X handle, Solana wallet). The wallet is proven by a free sign-in signature; one entry per wallet and per X handle; a shareable riso ticket card |
 | `/collab` | communities | fhecat-style flow: apply (community, type, members, community X, your X, Discord, role, post link, pitch) → in review → approved with spots and a deadline → raffle on X → add winners' Solana wallets (paste a list) → submit with the raffle link (locks) |
 | `/play` | admin only (for now) | The game. The server refuses every room join from non-admin sessions with `game_closed` until `gamePublic` is switched on |
-| `/admin` | admin wallet | Chain: status, `initialize`, set token, arenas, config, pause, sweep. Site: Play, WL review (approve/reject/bulk/notes/CSV), Tasks editor (add, edit, reorder, launch post link), Collabs (approve with spots and deadline, extend, unlock, wallets, duplicate flags, CSV), Settings (`wlOpen`, `collabOpen`, `gamePublic`, X handle) |
+| `/admin` | admin wallet | Chain: status, `initialize`, set token, arenas, config, pause, sweep. Site: Play, WL review (approve/reject/bulk/notes/CSV), Tasks editor (add, edit, reorder, launch post link), Collabs (approve with spots and deadline, extend, unlock, wallets, duplicate flags, CSV), Integrity (flags, bans, held payouts, detector settings), Settings (`wlOpen`, `collabOpen`, `gamePublic`, X handle) |
 | `/docs` | everyone | The player guide |
 
 **Admin panel safety.** The program id is pinned in the bundle and signing is blocked if the server reports another one;
 the cluster comes from the RPC's genesis hash, with a MAINNET banner; every transaction is shown before the wallet prompt;
 the token address must be typed twice; an admin transfer needs the new address retyped and rejects obvious mistakes; a
 double click cannot send twice. Site admin endpoints require a sign-in session whose wallet is in `ADMIN_WALLETS`.
+
+**Integrity.** The **Integrity** tab of `/admin` shows cheat and collusion flags from arena play (repeated value between
+the same wallets, eject and suicide feeding, several wallets on one IP or browser, bot-like input, round-bell patterns),
+each with a score, its evidence and a timeline of value transfers. The admin can ban a wallet from paid arenas (error
+`banned`; practice still works) and unban it. An optional auto-hold (off by default) keeps a high-risk payout in the
+journal for review; the admin releases it or settles it at 0 with a reason, and the books stay balanced. Nothing on chain
+changes. Details: [OPERATIONS.md](OPERATIONS.md#integrity-cheat-and-collusion-detection).
 
 **Site data.** JSON files under `/data/site/` (written atomically). WL and collab tasks are verified by hand: there is no
 X API. Rate limits, a honeypot field and strict link and address validation keep spam out.

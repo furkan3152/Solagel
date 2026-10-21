@@ -34,6 +34,26 @@ export interface SettlementItem {
    * the account and the session is finalized with `owed` (R24).
    */
   tokenFailures?: number;
+  /**
+   * Integrity auto-hold: the settlement waits for an admin decision (`Journal.release` or
+   * `Journal.settleZero`). The chain worker never sends a held item; it still counts as owed.
+   */
+  held?: { at: number; score: number; why: string; flags: string[] };
+}
+
+/**
+ * Value an admin forfeited from a held settlement ("settle at 0"): the ticket is settled on chain
+ * with payout 0 and this much stays in the arena vault, owed to nobody. Kept for good so the
+ * books still add up: Σ live + Σ loot + Σ pending + Σ forfeited = Σ entry fees − Σ paid.
+ */
+export interface ForfeitRecord {
+  key: string;
+  player: string;
+  arenaId: number | null;
+  amount: number;
+  reason: string;
+  by: string;
+  at: number;
 }
 
 /**
@@ -105,6 +125,8 @@ interface JournalFile {
   pending: JournalItem[];
   live: LiveStake[];
   loot: LootRecord[];
+  /** Integrity: value forfeited from held settlements (absent in older files). */
+  forfeits?: ForfeitRecord[];
   updatedAt: number;
 }
 
@@ -136,6 +158,7 @@ export class Journal {
   private pendingItems: JournalItem[] = [];
   private liveByRoom = new Map<string, LiveStake[]>();
   private lootByRoom = new Map<string, LootRecord[]>();
+  private forfeitList: ForfeitRecord[] = [];
   /** Arenas whose loot was already adopted in this process (restored once only). */
   private readonly adopted = new Set<number>();
   /** `load` quarantined an unreadable file in this process. */
@@ -169,6 +192,7 @@ export class Journal {
         list.push(l);
         this.lootByRoom.set(l.roomId, list);
       }
+      this.forfeitList = data.forfeits ?? [];
       if (legacy > 0) this.persist();
     } catch (err) {
       this.quarantinedHere = true;
@@ -329,6 +353,59 @@ export class Journal {
     this.persist();
   }
 
+  /* ---------------------------------------------------------------- */
+  /* Integrity holds                                                  */
+  /* ---------------------------------------------------------------- */
+
+  /** Settlements held for an admin decision. */
+  held(): SettlementItem[] {
+    return this.pendingItems.filter((p): p is SettlementItem => p.kind === 'settle' && !!p.held);
+  }
+
+  forfeits(): readonly ForfeitRecord[] {
+    return this.forfeitList;
+  }
+
+  /** Σ value forfeited from held settlements of an arena (stays in its vault, owed to nobody). */
+  forfeitedByArena(arenaId: number): number {
+    let sum = 0;
+    for (const f of this.forfeitList) if (f.arenaId === arenaId) sum += f.amount;
+    return sum;
+  }
+
+  private heldItem(key: string): SettlementItem {
+    const item = this.pendingItems.find((p) => p.key === key);
+    if (!item || item.kind !== 'settle' || !item.held) throw new Error('not_held');
+    return item;
+  }
+
+  /**
+   * Releases a held settlement: the worker pays it as it was (same payout, due now).
+   * Nothing moves between buckets, so the books are unchanged.
+   */
+  release(key: string, now = Date.now()): SettlementItem {
+    const item = this.heldItem(key);
+    delete item.held;
+    item.nextAttemptAt = now;
+    this.persist();
+    return item;
+  }
+
+  /**
+   * Settles a held settlement at 0: its payout moves to a forfeit record in the same atomic write,
+   * and the worker settles the ticket on chain with payout 0 (the value stays in the vault).
+   */
+  settleZero(key: string, reason: string, by: string, now = Date.now()): { item: SettlementItem; forfeit: ForfeitRecord } {
+    const item = this.heldItem(key);
+    const forfeit: ForfeitRecord = { key, player: item.player, arenaId: item.arenaId ?? null, amount: item.payout ?? 0, reason, by, at: now };
+    this.forfeitList.push(forfeit);
+    item.payout = 0;
+    delete item.held;
+    item.nextAttemptAt = now;
+    this.persist();
+    return { item, forfeit };
+  }
+
   /** Marks an item as done (settled on-chain or no longer applicable). */
   remove(key: string): void {
     const before = this.pendingItems.length;
@@ -373,6 +450,7 @@ export class Journal {
       pending: this.pendingItems,
       live: this.live(),
       loot: [...this.lootByRoom.values()].flat(),
+      ...(this.forfeitList.length > 0 ? { forfeits: this.forfeitList } : {}),
       updatedAt: Date.now(),
     };
     mkdirSync(dirname(this.path), { recursive: true });
@@ -395,6 +473,10 @@ function migrate(data: JournalFile | JournalFileV1): JournalFile {
     };
   }
   if (data.version !== 2 || !Array.isArray(data.loot)) throw new Error('bad journal shape');
+  if (data.forfeits !== undefined) {
+    if (!Array.isArray(data.forfeits)) throw new Error('bad journal shape');
+    for (const f of data.forfeits) if (typeof f?.key !== 'string' || !Number.isSafeInteger(f.amount) || f.amount < 0) throw new Error('bad forfeit record');
+  }
   for (const p of data.pending) {
     if ((p as { kind: string }).kind !== 'sweep') continue;
     const sw = p as SweepItem;

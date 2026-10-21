@@ -5,19 +5,21 @@ import { AdminPanel } from '../AdminPanel';
 import type { AdminNetwork } from '../net';
 import { AdminSessionBar, useAdminSession } from './AdminSession';
 import { CollabsTab } from './CollabsTab';
+import { IntegrityTab } from './IntegrityTab';
 import { PlayTab } from './PlayTab';
 import { SettingsTab } from './SettingsTab';
 import { TasksTab } from './TasksTab';
 import { WlTab } from './WlTab';
 import './admin-site.css';
 
-export type AdminTab = 'chain' | 'play' | 'wl' | 'tasks' | 'collabs' | 'settings';
+export type AdminTab = 'chain' | 'play' | 'wl' | 'tasks' | 'collabs' | 'integrity' | 'settings';
 const TABS: TabItem<AdminTab>[] = [
   { id: 'chain', label: 'Chain' },
   { id: 'play', label: 'Play' },
   { id: 'wl', label: 'WL' },
   { id: 'tasks', label: 'Tasks' },
   { id: 'collabs', label: 'Collabs' },
+  { id: 'integrity', label: 'Integrity' },
   { id: 'settings', label: 'Settings' },
 ];
 const IDS = TABS.map((t) => t.id);
@@ -51,13 +53,14 @@ export function AdminHome({ net }: { net: AdminNetwork | null }) {
     panel = (
       <section className="ad-gate" role="status">
         <h2 className="ad-gate__title">{state.kind === 'checking' ? 'Checking the session…' : 'Sign in as the admin'}</h2>
-        <p>The WL, collab, task and site settings tabs need the admin wallet signed in (above).</p>
+        <p>The WL, collab, task, integrity and site settings tabs need the admin wallet signed in (above).</p>
       </section>
     );
   else if (tab === 'play') panel = <PlayTab api={api} />;
   else if (tab === 'wl') panel = <WlTab api={api} />;
   else if (tab === 'tasks') panel = <TasksTab api={api} />;
   else if (tab === 'collabs') panel = <CollabsTab api={api} />;
+  else if (tab === 'integrity') panel = <IntegrityTab api={api} />;
   else panel = <SettingsTab api={api} />;
 
   return (
