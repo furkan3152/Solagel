@@ -17,6 +17,7 @@ import {
 import { SERVER } from '../config';
 import { DROP_LAND, DUR, SLOWMO_TOTAL, slowmoScale } from '../design/curves';
 import { t } from '../i18n';
+import { FrameGovernor } from '../render/governor';
 import { Renderer } from '../render/renderer';
 import { FOOD_COLORS } from '../render/sprites';
 import { toast, useUi, type Screen } from '../store';
@@ -49,6 +50,8 @@ export class GameEngine {
   readonly particles = new Particles();
   readonly input: Input;
   private readonly renderer: Renderer;
+  /** Automatic quality drop while frames stay slow (resolution first, then the low look). */
+  readonly governor = new FrameGovernor();
   private readonly net: Net;
   private raf = 0;
   private last = performance.now();
@@ -139,8 +142,18 @@ export class GameEngine {
     );
     const applySettings = () => {
       const s = useUi.getState().settings;
-      this.particles.lowQuality = s.quality === 'low';
+      if (s.quality !== this.quality) {
+        this.quality = s.quality;
+        this.syncCanvas();
+      }
+      this.particles.lowQuality = s.quality === 'low' || this.renderer.autoLow;
     };
+    // `localStorage['slana.autoQuality'] = 'off'` keeps full quality whatever the frame rate (testing)
+    try {
+      this.governor.enabled = localStorage.getItem('slana.autoQuality') !== 'off';
+    } catch {
+      /* storage blocked: keep the default */
+    }
     applySettings();
     this.unsub = useUi.subscribe((s, prev) => {
       if (s.settings !== prev.settings) applySettings();
@@ -148,7 +161,8 @@ export class GameEngine {
     this.reducedQuery = typeof window.matchMedia === 'function' ? window.matchMedia(REDUCED_QUERY) : null;
     this.reducedQuery?.addEventListener?.('change', this.onReducedChange);
     this.onReducedChange();
-    if (import.meta.env.DEV) (window as unknown as { __slana?: unknown }).__slana = { engine: this, useUi };
+    // dev builds, and production builds made for the perf benchmark (scripts/perf.mjs --prod)
+    if (import.meta.env.DEV || import.meta.env.VITE_PERF_HOOK === '1') (window as unknown as { __slana?: unknown }).__slana = { engine: this, useUi };
     this.resize();
     window.addEventListener('resize', this.resize);
     this.net.connect();
@@ -175,13 +189,24 @@ export class GameEngine {
     return this.rngState / 2147483647;
   };
 
+  private quality = useUi.getState().settings.quality;
+
   private resize = (): void => {
     const w = window.innerWidth;
     const h = window.innerHeight;
     this.camera.resize(w, h);
-    this.renderer.resize(w, h);
+    this.syncCanvas();
     this.net.send({ t: 'viewport', w, h });
   };
+
+  /** Canvas size and pixel ratio for the window, the quality setting and the automatic level. */
+  private syncCanvas(): void {
+    this.renderer.resize(window.innerWidth, window.innerHeight, this.quality);
+    this.governor.maxLevel = this.renderer.levels.length - 1;
+    this.governor.reset(performance.now());
+    this.renderer.setLevel(this.governor.level);
+    this.particles.lowQuality = this.quality === 'low' || this.renderer.autoLow;
+  }
 
   setMinimap(el: HTMLCanvasElement | null): void {
     this.minimap = el;
@@ -799,6 +824,13 @@ export class GameEngine {
       if (ui.powerups.some((p) => p.until <= wall)) useUi.setState({ powerups: ui.powerups.filter((p) => p.until > wall) });
       if (ui.banner && ui.banner.until <= wall) useUi.setState({ banner: null });
       if (ui.killfeed.length && wall - ui.killfeed[0].at > 6000) useUi.setState({ killfeed: ui.killfeed.filter((k) => wall - k.at <= 6000) });
+    }
+
+    // automatic quality: measured while the world is what is on screen
+    const active = (ui.screen === 'playing' || ui.screen === 'spectating' || ui.screen === 'dead') && !this.camera.introducing && document.visibilityState !== 'hidden';
+    if (this.governor.frame(now, active)) {
+      this.renderer.setLevel(this.governor.level);
+      this.particles.lowQuality = this.quality === 'low' || this.renderer.autoLow;
     }
 
     this.raf = requestAnimationFrame(this.frame);

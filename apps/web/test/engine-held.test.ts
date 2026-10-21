@@ -4,7 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // The engine without a canvas renderer or a real socket: the test drives the server side.
 vi.mock('../src/render/renderer', () => ({
   Renderer: class {
+    levels = [{ dpr: 1, low: false }];
+    autoLow = false;
     resize() {}
+    setLevel() {}
     draw() {}
     drawMinimap() {}
     lookFor() {

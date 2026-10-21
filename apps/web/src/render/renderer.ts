@@ -1,10 +1,11 @@
-import { CARD_PAPER, INK, INK_2, NIGHT, PAPER, RISO, type CoinLook } from '@slana/art';
+import { CARD_PAPER, INK, INK_2, NIGHT, PAPER, RISO, type CoinInterior, type CoinLook } from '@slana/art';
 import { EntityKind, PlayerFlag } from '@slana/shared';
 import { DROP_LAND, dropScale } from '../design/curves';
 import type { Camera } from '../game/camera';
 import type { Particles } from '../game/particles';
 import type { CEntity, ClientWorld } from '../game/state';
-import type { Settings } from '../store';
+import type { Quality, Settings } from '../store';
+import { qualityLevels, type QualityLevel } from './governor';
 import { stickerImage } from '../ui/game/stickers';
 import { drawCoinLook } from './coin';
 import type { Neighbour } from './jelly';
@@ -66,11 +67,15 @@ export const WORLD_THEMES: Record<'light' | 'dark', WorldTheme> = {
 /**
  * Canvas pixel ratio: capped at 2, and at 1.5 on coarse pointers (phones),
  * where fill rate is the limit and 1.5× still looks sharp at arm's length.
+ * The low-quality setting caps it lower (1.5, and 1.25 on phones).
  */
-export function canvasDpr(): number {
+export function canvasDpr(quality: Quality = 'high'): number {
   const coarse = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
-  return Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : 2);
+  const cap = quality === 'low' ? (coarse ? 1.25 : 1.5) : coarse ? 1.5 : 2;
+  return Math.min(window.devicePixelRatio || 1, cap);
 }
+
+const byRadius = (a: CEntity, b: CEntity): number => a.r - b.r;
 
 /** Loot is drawn bigger by size tier (0 crumb … 3 jackpot). */
 const LOOT_SCALE = [0.8, 1, 1.3, 1.75];
@@ -106,22 +111,73 @@ export class Renderer {
   private readonly ctx: CanvasRenderingContext2D;
   readonly sprites = new SpriteCache();
   private dpr = 1;
+  private cssW = 1;
+  private cssH = 1;
+  private quality: Quality = 'high';
+  /** Automatic quality levels for this screen and setting (see `FrameGovernor`); 0 = full. */
+  levels: QualityLevel[] = qualityLevels(1);
+  private level = 0;
   private rain: RainCoin[] = [];
   private hatch: CanvasPattern | null = null;
   private hatchNight: boolean | null = null;
   private readonly looks = new LookCache();
   private readonly labels = new LabelCache();
+  // per-frame scratch (reused, so drawing allocates nothing in the steady state)
+  private readonly food: CEntity[] = [];
+  private readonly ejects: CEntity[] = [];
+  private readonly loot: CEntity[] = [];
+  private readonly powerUps: CEntity[] = [];
+  private readonly bodies: CEntity[] = [];
+  private readonly cells: CEntity[] = [];
+  private readonly nbs: Neighbour[] = [];
+  private readonly emoteBest = new Map<number, CEntity>();
+  /** Device px per world unit of the frame being drawn. */
+  private ppu = 1;
+  private readonly halftone = (r: number, sp: number) => this.sprites.halftone(r, sp, this.ppu);
+  private readonly interior = (look: CoinLook, r: number) => this.sprites.coinInterior(look, r, this.ppu);
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext('2d', { alpha: false })!;
+    // a minimap sheet drawn before the mono web font arrived keeps the fallback face: redraw it
+    if (typeof document !== 'undefined' && document.fonts) {
+      const reset = () => {
+        if (this.sheet) this.sheet.key = '';
+      };
+      void document.fonts.ready.then(reset);
+      document.fonts.addEventListener?.('loadingdone', reset);
+    }
   }
 
-  resize(w: number, h: number): void {
-    this.dpr = canvasDpr();
-    this.canvas.width = Math.round(w * this.dpr);
-    this.canvas.height = Math.round(h * this.dpr);
-    this.canvas.style.width = `${w}px`;
-    this.canvas.style.height = `${h}px`;
+  resize(w: number, h: number, quality: Quality = this.quality): void {
+    this.cssW = w;
+    this.cssH = h;
+    this.quality = quality;
+    this.levels = qualityLevels(canvasDpr(quality));
+    this.level = Math.min(this.level, this.levels.length - 1);
+    this.applySize();
+  }
+
+  /** Automatic quality level (index into `levels`); resizes the canvas when its pixel ratio changes. */
+  setLevel(level: number): void {
+    const next = Math.max(0, Math.min(level, this.levels.length - 1));
+    if (next === this.level) return;
+    this.level = next;
+    this.applySize();
+  }
+
+  /** The automatic drop asks for the low look (no jelly, no coin rain). */
+  get autoLow(): boolean {
+    return this.levels[this.level].low;
+  }
+
+  private applySize(): void {
+    this.dpr = this.levels[this.level].dpr;
+    const cw = Math.round(this.cssW * this.dpr);
+    const ch = Math.round(this.cssH * this.dpr);
+    if (this.canvas.width !== cw) this.canvas.width = cw;
+    if (this.canvas.height !== ch) this.canvas.height = ch;
+    this.canvas.style.width = `${this.cssW}px`;
+    this.canvas.style.height = `${this.cssH}px`;
   }
 
   /** Coin look of a player (its basic skin), cached. */
@@ -135,7 +191,7 @@ export class Renderer {
     const theme = WORLD_THEMES[f.settings.theme];
     const night = f.settings.theme === 'dark';
     const z = cam.zoom;
-    const low = f.settings.quality === 'low';
+    const low = f.settings.quality === 'low' || this.autoLow;
     const still = low || f.reduced;
 
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
@@ -146,12 +202,9 @@ export class Renderer {
     const view = cam.visibleRect(60);
     this.drawPaper(view, f, theme, night);
 
-    // collect visible entities
-    const food: CEntity[] = [];
-    const ejects: CEntity[] = [];
-    const loot: CEntity[] = [];
-    const powerUps: CEntity[] = [];
-    const bodies: CEntity[] = [];
+    // collect visible entities (into arrays reused across frames: no per-frame garbage)
+    const { food, ejects, loot, powerUps, bodies, cells } = this;
+    food.length = ejects.length = loot.length = powerUps.length = bodies.length = cells.length = 0;
     for (const e of f.world.entities.values()) {
       const pad = e.r * 1.8;
       if (e.x + pad < view.x0 || e.x - pad > view.x1 || e.y + pad < view.y0 || e.y - pad > view.y1) continue;
@@ -198,16 +251,17 @@ export class Renderer {
     for (const e of powerUps) this.drawPowerUp(e, f, still);
 
     // cells and cacti: small first so bigger ones cover them
-    bodies.sort((a, b) => a.r - b.r);
-    const cells = bodies.filter((b) => b.kind === EntityKind.Cell);
-    const halftone = (r: number, sp: number) => this.sprites.halftone(r, sp, z * this.dpr);
+    bodies.sort(byRadius);
+    for (const b of bodies) if (b.kind === EntityKind.Cell) cells.push(b);
+    this.ppu = z * this.dpr;
+    const { halftone, interior } = this;
     for (const e of bodies) {
       if (e.kind === EntityKind.Virus) {
         const wob = still ? 0 : Math.sin(f.now / 700 + e.seed * 10) * 0.04;
         drawSprite(ctx, this.sprites.cactusSprite(), e.x, e.y, e.r, wob);
         continue;
       }
-      this.drawCell(e, f, cells, halftone);
+      this.drawCell(e, f, cells, halftone, interior);
     }
 
     // emote stickers on top of everything
@@ -409,6 +463,7 @@ export class Renderer {
     f: FrameInput,
     cells: CEntity[],
     halftone: (r: number, sp: number) => CanvasImageSource | null,
+    interior: (look: CoinLook, r: number) => CoinInterior | null,
   ): void {
     const { ctx } = this;
     const z = f.camera.zoom;
@@ -438,16 +493,23 @@ export class Renderer {
     }
 
     // jelly simulation (neighbours = overlapping cells)
-    const jellyOn = f.settings.quality === 'high' && !f.reduced;
+    const jellyOn = f.settings.quality === 'high' && !this.autoLow && !f.reduced;
     if (jellyOn && e.jelly && screenR > 14) {
-      const nbs: Neighbour[] = [];
+      const nbs = this.nbs;
+      let n = 0;
       for (const o of cells) {
         if (o === e) continue;
         const dx = o.x - e.x;
         const dy = o.y - e.y;
         if (Math.abs(dx) > e.r + o.r || Math.abs(dy) > e.r + o.r) continue;
-        if (Math.hypot(dx, dy) < e.r + o.r) nbs.push({ dx, dy, r: o.r });
+        if (Math.hypot(dx, dy) < e.r + o.r) {
+          const nb = (nbs[n++] ??= { dx: 0, dy: 0, r: 0 });
+          nb.dx = dx;
+          nb.dy = dy;
+          nb.r = o.r;
+        }
       }
+      nbs.length = n;
       const sp = Math.hypot(e.vx, e.vy);
       e.jelly.update(f.dt, e.r, screenR, sp > 1 ? (e.vx / sp) * Math.min(1, sp / 300) : 0, sp > 1 ? (e.vy / sp) * Math.min(1, sp / 300) : 0, nbs, f.rand);
     }
@@ -477,6 +539,7 @@ export class Renderer {
       flags: e.flags,
       seed: e.seed * 10 + e.playerId,
       halftone,
+      interior,
       // live renderer speed-ups: one flat body fill,
       // and no multiply overprint / halftone on coins under ~25 px radius
       fastBody: true,
@@ -502,7 +565,8 @@ export class Renderer {
   private drawEmotes(f: FrameInput, cells: CEntity[]): void {
     const { ctx } = this;
     const z = f.camera.zoom;
-    const best = new Map<number, CEntity>();
+    const best = this.emoteBest;
+    best.clear();
     for (const c of cells) {
       const p = f.world.players.get(c.playerId);
       if (!p?.emote) continue;
@@ -535,7 +599,7 @@ export class Renderer {
   private drawCoinRain(f: FrameInput): void {
     const { ctx } = this;
     const cam = f.camera;
-    if (f.coinRain && f.settings.quality === 'high' && !f.reduced && this.rain.length < 70) {
+    if (f.coinRain && f.settings.quality === 'high' && !this.autoLow && !f.reduced && this.rain.length < 70) {
       for (let i = 0; i < 2; i++) {
         this.rain.push({
           x: f.rand() * cam.w,
@@ -575,6 +639,38 @@ export class Renderer {
     this.rain.length = w;
   }
 
+  private sheet: { canvas: HTMLCanvasElement; key: string } | null = null;
+
+  /** The minimap's static layer: blue sector grid with mono sector labels. */
+  private minimapSheet(px: number, size: number, dpr: number, wt: WorldTheme): HTMLCanvasElement {
+    const key = `${px}|${size}|${dpr}|${wt.minimapGrid}|${wt.labelSub}`;
+    if (this.sheet?.key === key) return this.sheet.canvas;
+    const canvas = this.sheet?.canvas ?? document.createElement('canvas');
+    canvas.width = canvas.height = px;
+    const ctx = canvas.getContext('2d')!;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, size, size);
+    ctx.strokeStyle = wt.minimapGrid;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let i = 1; i < 5; i++) {
+      const p = Math.round((size * i) / 5) + 0.5;
+      ctx.moveTo(p, 0);
+      ctx.lineTo(p, size);
+      ctx.moveTo(0, p);
+      ctx.lineTo(size, p);
+    }
+    ctx.stroke();
+    ctx.fillStyle = wt.labelSub;
+    ctx.globalAlpha = 0.7;
+    ctx.font = `500 8.5px ${MONO_FONT}`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    for (let cx = 0; cx < 5; cx++) for (let cy = 0; cy < 5; cy++) ctx.fillText(`${'ABCDE'[cy]}${cx + 1}`, cx * (size / 5) + 3, cy * (size / 5) + 3);
+    this.sheet = { canvas, key };
+    return canvas;
+  }
+
   /**
    * Minimap as a map sheet ("pafta"): card stock, blue sector grid with mono
    * sector labels, dashed view frame, mustard crowns for the leaders and a
@@ -594,29 +690,12 @@ export class Renderer {
     }
     const wt = WORLD_THEMES[f.dark ? 'dark' : 'light'];
     const ink = wt.label;
-    const ink2 = wt.labelSub;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, mm.width, mm.height);
+    // the sheet (sector grid and labels) never changes: drawn once per size and theme, then copied
+    ctx.drawImage(this.minimapSheet(mm.width, size, dpr, wt), 0, 0);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, size, size);
     const s = size / Math.max(f.world.width, f.world.height);
-    // sector grid
-    ctx.strokeStyle = wt.minimapGrid;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    for (let i = 1; i < 5; i++) {
-      const p = Math.round((size * i) / 5) + 0.5;
-      ctx.moveTo(p, 0);
-      ctx.lineTo(p, size);
-      ctx.moveTo(0, p);
-      ctx.lineTo(size, p);
-    }
-    ctx.stroke();
-    ctx.fillStyle = ink2;
-    ctx.globalAlpha = 0.7;
-    ctx.font = `500 8.5px ${MONO_FONT}`;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    for (let cx = 0; cx < 5; cx++) for (let cy = 0; cy < 5; cy++) ctx.fillText(`${'ABCDE'[cy]}${cx + 1}`, cx * (size / 5) + 3, cy * (size / 5) + 3);
-    ctx.globalAlpha = 1;
 
     // camera view: dashed frame
     const v = f.camera.visibleRect();

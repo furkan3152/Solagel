@@ -96,6 +96,23 @@ export class JellyBody {
     ctx.closePath();
   }
 
+  /** Smallest and largest displacement right now (fraction of r); 0/0 before the first update. */
+  extent(): { min: number; max: number } {
+    let min = 0;
+    let max = 0;
+    const d = this.d;
+    for (let i = 0; i < this.n; i++) {
+      const x = d[i];
+      if (x < min) min = x;
+      else if (x > max) max = x;
+    }
+    this.ext.min = min;
+    this.ext.max = max;
+    return this.ext;
+  }
+
+  private readonly ext = { min: 0, max: 0 };
+
   /** Kicks the jelly (split, pop, bounce). */
   poke(strength: number, rand: () => number): void {
     for (let i = 0; i < this.n; i++) this.v[i] += (rand() - 0.5) * strength;

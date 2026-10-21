@@ -1,5 +1,5 @@
 import { CellFlag } from '@slana/shared';
-import { drawAccessoryBack, drawAccessoryFront, symbolAnchor } from './accessories';
+import { drawAccessoryBack, drawAccessoryFront, symbolAnchor, type AccessoryColors } from './accessories';
 import { drawFace, type Expression } from './faces';
 import type { CoinLook } from './looks';
 import { CARD_PAPER, INK, RISO } from './palette';
@@ -14,7 +14,29 @@ const TAU = Math.PI * 2;
 export interface JellyLike {
   /** Adds the wobbly outline for radius r as a closed sub-path (no beginPath). */
   trace(ctx: CanvasRenderingContext2D, r: number): void;
+  /**
+   * Smallest and largest radial displacement of the outline right now, as a
+   * fraction of r (optional; without it a cached interior is never used).
+   */
+  extent?(): { min: number; max: number };
 }
+
+/** A cached coin interior (see `CoinState.interior` and `drawCoinInterior`). */
+export interface CoinInterior {
+  image: CanvasImageSource;
+  /** Width and height of the (square) image, px. */
+  size: number;
+  /** The coin radius it was drawn at, px (the image centre is the coin centre). */
+  radius: number;
+}
+
+/**
+ * Interior disc radius (fraction of r) of a cached interior. The rim (±3.5 % of
+ * r, drawn after it) covers the disc edge while the jelly outline stays within
+ * JELLY_SAFE of the circle, so the disc never shows past the outline or leaves a gap.
+ */
+const INTERIOR_DISC = 0.995;
+const JELLY_SAFE = { min: -0.03, max: 0.02 };
 
 export interface CoinState {
   /** Milliseconds; drives blinking, spinning props and flag effects. 0 = still frame. */
@@ -50,6 +72,65 @@ export interface CoinState {
    * skipped (they are invisible that small). 0 / unset: always drawn.
    */
   minPrintPx?: number;
+  /**
+   * Optional cache for the coin's static interior: the body disc, dashed groove,
+   * halftone shade and symbol in one image (`drawCoinInterior` rendered at about
+   * r × pxPerUnit px). Return null to draw the layers directly. Used only for
+   * opaque, fully printed coins (`fastBody`, not `small`), when the jelly
+   * outline stays close to the circle; the result looks the same.
+   */
+  interior?: (look: CoinLook, r: number) => CoinInterior | null;
+}
+
+/**
+ * The static interior of a coin of radius r px at the origin, for caching
+ * (`CoinState.interior`): body disc (ink on paper), dashed groove, halftone
+ * shade (clipped to the disc) and the symbol when it sits on the face. Drawn
+ * at one screen px per unit, like `drawRisoCoin` with pxPerUnit 1.
+ */
+export function drawCoinInterior(ctx: CanvasRenderingContext2D, look: CoinLook, r: number): void {
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(0, 0, r * INTERIOR_DISC, 0, TAU);
+  ctx.fillStyle = inkOnPaper(look.body);
+  ctx.fill();
+  drawGroove(ctx, r, 1);
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(0, 0, r * INTERIOR_DISC, 0, TAU);
+  ctx.clip();
+  ctx.globalAlpha *= 0.3;
+  drawHalftoneDots(ctx, r, Math.max(r * 0.075, 3));
+  ctx.restore();
+  const anchor = symbolAnchor(look.accessory, r);
+  if (!anchor.onTop) drawCoinSymbol(ctx, look, anchor, 1);
+  ctx.restore();
+}
+
+function drawGroove(ctx: CanvasRenderingContext2D, r: number, minPx: number): void {
+  ctx.save();
+  ctx.globalAlpha *= 0.4;
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = Math.max(r * 0.03, minPx);
+  ctx.setLineDash([r * 0.09, r * 0.06]);
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.8, 0, TAU);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawCoinSymbol(ctx: CanvasRenderingContext2D, look: CoinLook, anchor: { x: number; y: number; s: number }, minPx: number): void {
+  ctx.save();
+  ctx.translate(anchor.x, anchor.y);
+  drawSymbol(ctx, look.symbol, anchor.s, {
+    fill: CARD_PAPER,
+    ink: INK,
+    overprint: look.overprint,
+    lineW: Math.max(anchor.s * 0.2, minPx),
+    offX: (look.offset.dx * anchor.s) / 22,
+    offY: (look.offset.dy * anchor.s) / 22,
+  });
+  ctx.restore();
 }
 
 function bodyPath(ctx: CanvasRenderingContext2D, r: number, jelly: JellyLike | null | undefined, detail: number): void {
@@ -76,7 +157,6 @@ export function drawRisoCoin(ctx: CanvasRenderingContext2D, look: CoinLook, r: n
   const detail = r * ppu;
   const flags = state.flags ?? 0;
   const afk = (flags & CellFlag.Afk) !== 0;
-  const seed = state.seed ?? 0;
   const minPx = 1 / ppu;
   const rimW = Math.max(r * 0.07, 1.5 * minPx);
   const lineW = Math.max(r * 0.045, 1.2 * minPx);
@@ -104,6 +184,30 @@ export function drawRisoCoin(ctx: CanvasRenderingContext2D, look: CoinLook, r: n
   const ox = (look.offset.dx * r) / 40;
   const oy = (look.offset.dy * r) / 40;
   const small = detail < (state.minPrintPx ?? 0);
+  const anchor = symbolAnchor(look.accessory, r);
+  const cached = !small && detail > 22 && state.fastBody && ctx.globalAlpha >= 0.999 && jellyCalm(state.jelly) ? (state.interior?.(look, r) ?? null) : null;
+  if (cached) {
+    // cached interior: overprint (multiply, under the disc), the interior image, then the
+    // rim over the disc edge. Opaque coins only, so no clip is needed under the body.
+    ctx.save();
+    ctx.translate(ox, oy);
+    ctx.globalCompositeOperation = 'multiply';
+    bodyPath(ctx, r, state.jelly, detail);
+    ctx.fillStyle = look.overprint;
+    ctx.fill();
+    ctx.restore();
+    const k = r / cached.radius;
+    const half = (cached.size / 2) * k;
+    ctx.drawImage(cached.image, -half, -half, cached.size * k, cached.size * k);
+    bodyPath(ctx, r, state.jelly, detail);
+    ctx.lineWidth = rimW;
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = INK;
+    ctx.stroke();
+    drawFront(ctx, look, r, state, detail, anchor, acc, minPx, lineW);
+    ctx.restore();
+    return;
+  }
   if (small) {
     // tiny on screen: a plain offset fill under the body reads the same (no clip, no blend)
     ctx.save();
@@ -145,17 +249,7 @@ export function drawRisoCoin(ctx: CanvasRenderingContext2D, look: CoinLook, r: n
   }
 
   // 3. ink rim (+ the coin's inner groove)
-  if (detail > 10) {
-    ctx.save();
-    ctx.globalAlpha *= 0.4;
-    ctx.strokeStyle = INK;
-    ctx.lineWidth = Math.max(r * 0.03, minPx);
-    ctx.setLineDash([r * 0.09, r * 0.06]);
-    ctx.beginPath();
-    ctx.arc(0, 0, r * 0.8, 0, TAU);
-    ctx.stroke();
-    ctx.restore();
-  }
+  if (detail > 10) drawGroove(ctx, r, minPx);
   bodyPath(ctx, r, state.jelly, detail);
   ctx.lineWidth = rimW;
   ctx.lineJoin = 'round';
@@ -178,24 +272,34 @@ export function drawRisoCoin(ctx: CanvasRenderingContext2D, look: CoinLook, r: n
     ctx.restore();
   }
 
-  // 5. symbol
-  const anchor = symbolAnchor(look.accessory, r);
-  const sym = () => {
-    if (detail <= 22) return;
-    ctx.save();
-    ctx.translate(anchor.x, anchor.y);
-    drawSymbol(ctx, look.symbol, anchor.s, {
-      fill: CARD_PAPER,
-      ink: INK,
-      overprint: look.overprint,
-      lineW: Math.max(anchor.s * 0.2, minPx),
-      offX: (look.offset.dx * anchor.s) / 22,
-      offY: (look.offset.dy * anchor.s) / 22,
-    });
-    ctx.restore();
-  };
-  if (!anchor.onTop) sym();
+  // 5. symbol (6. face, 7. front accessory, 8. flag effects in drawFront)
+  if (!anchor.onTop && detail > 22) drawCoinSymbol(ctx, look, anchor, minPx);
+  drawFront(ctx, look, r, state, detail, anchor, acc, minPx, lineW);
+  ctx.restore();
+}
 
+/** True when there is no jelly, or its outline stays close enough to the circle for a cached interior. */
+function jellyCalm(jelly: JellyLike | null | undefined): boolean {
+  if (!jelly) return true;
+  const e = jelly.extent?.();
+  return !!e && e.min >= JELLY_SAFE.min && e.max <= JELLY_SAFE.max;
+}
+
+/** Face, front accessory, a symbol worn on the hat and the flag effects (on top of the body). */
+function drawFront(
+  ctx: CanvasRenderingContext2D,
+  look: CoinLook,
+  r: number,
+  state: CoinState,
+  detail: number,
+  anchor: { x: number; y: number; s: number; onTop: boolean },
+  acc: AccessoryColors,
+  minPx: number,
+  lineW: number,
+): void {
+  const flags = state.flags ?? 0;
+  const afk = (flags & CellFlag.Afk) !== 0;
+  const time = state.time;
   // 6. face
   if (detail > 8) {
     drawFace(ctx, r, {
@@ -205,7 +309,7 @@ export function drawRisoCoin(ctx: CanvasRenderingContext2D, look: CoinLook, r: n
       lookX: state.lookX,
       lookY: state.lookY,
       time,
-      seed,
+      seed: state.seed ?? 0,
       detail,
       blush: blushFor(look.body),
     });
@@ -213,15 +317,13 @@ export function drawRisoCoin(ctx: CanvasRenderingContext2D, look: CoinLook, r: n
 
   // 7. accessory
   if (detail > 14) drawAccessoryFront(ctx, look.accessory, r, acc, time);
-  if (anchor.onTop) sym();
+  if (anchor.onTop && detail > 22) drawCoinSymbol(ctx, look, anchor, minPx);
 
   // 8. flag effects
   if (flags & CellFlag.Shield) drawShield(ctx, r, time, lineW);
   if (flags & CellFlag.CashingOut) drawCashout(ctx, r, state.cashout ?? ((time / 2000) % 1), lineW);
   if (flags & CellFlag.Magnet) drawMagnet(ctx, r, time, lineW);
   if (afk) drawZzz(ctx, r, time, lineW);
-
-  ctx.restore();
 }
 
 const paperInk = new Map<string, string>();
