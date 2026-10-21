@@ -1,4 +1,4 @@
-import { CARD_PAPER, INK, RISO, drawHalftoneDots, heartPath, lookForBasicSkin, starPath } from '@slana/art';
+import { CARD_PAPER, INK, RISO, drawCoinInterior, drawHalftoneDots, heartPath, lookForBasicSkin, starPath, type CoinInterior, type CoinLook } from '@slana/art';
 import { PowerUpType } from '@slana/shared';
 
 const TAU = Math.PI * 2;
@@ -475,6 +475,14 @@ const HALFTONE_MAX_PX = 256;
 const HALFTONE_MAX_BUCKET = Math.floor(Math.log(HALFTONE_MAX_PX) / Math.log(HALFTONE_STEP));
 const HALFTONE_MAX_BYTES = 16 * 1024 * 1024;
 
+/** Coin interiors are cached per look in ≈ 6 % radius steps (drawn at most ±3 % scaled). */
+const INTERIOR_STEP = 1.06;
+const INTERIOR_LOG = Math.log(INTERIOR_STEP);
+/** Smallest and largest cached interior radius, device px (outside: drawn directly). */
+const INTERIOR_MIN_PX = 20;
+const INTERIOR_MAX_PX = 420;
+const INTERIOR_MAX_BYTES = 48 * 1024 * 1024;
+
 /** Lazily created, cached sprites. Must only be used in the browser. */
 export class SpriteCache {
   private food: Sprite[][] | null = null;
@@ -485,6 +493,52 @@ export class SpriteCache {
   private ejects = new Map<number, Sprite>();
   private halftones = new Map<number, HTMLCanvasElement>();
   private halftoneBytes = 0;
+  /** Coin interiors by look, then radius bucket (LRU over all looks by insertion order). */
+  private interiors = new Map<CoinLook, Map<number, CoinInterior>>();
+  private interiorLru = new Map<CoinInterior, Map<number, CoinInterior>>();
+  private interiorBytes = 0;
+
+  /**
+   * `CoinState.interior` provider: the coin's static interior (`drawCoinInterior`)
+   * rendered once per look and on-screen radius bucket. `ppu` is device px per
+   * world unit. Null outside the cached size range (the coin draws it directly).
+   */
+  coinInterior(look: CoinLook, r: number, ppu: number): CoinInterior | null {
+    const px = r * ppu;
+    if (px < INTERIOR_MIN_PX || px > INTERIOR_MAX_PX) return null;
+    const bucket = Math.round(Math.log(px) / INTERIOR_LOG);
+    let byBucket = this.interiors.get(look);
+    if (!byBucket) {
+      byBucket = new Map();
+      this.interiors.set(look, byBucket);
+    }
+    let it = byBucket.get(bucket);
+    if (it) {
+      // refresh its LRU position
+      this.interiorLru.delete(it);
+      this.interiorLru.set(it, byBucket);
+      return it;
+    }
+    const radius = INTERIOR_STEP ** bucket;
+    const size = Math.ceil(radius * 2) + 4;
+    const c = document.createElement('canvas');
+    c.width = c.height = size;
+    const ctx = c.getContext('2d')!;
+    ctx.translate(size / 2, size / 2);
+    drawCoinInterior(ctx, look, radius);
+    it = { image: c, size, radius };
+    byBucket.set(bucket, it);
+    this.interiorLru.set(it, byBucket);
+    this.interiorBytes += size * size * 4;
+    for (const [old, owner] of this.interiorLru) {
+      if (this.interiorBytes <= INTERIOR_MAX_BYTES) break;
+      if (old === it) continue;
+      this.interiorLru.delete(old);
+      for (const [b, v] of owner) if (v === old) owner.delete(b);
+      this.interiorBytes -= old.size * old.size * 4;
+    }
+    return it;
+  }
 
   /** Food sprite for a variant; `seed` (0..1) picks one of the pre-rendered rotations. */
   foodSprite(variant: number, seed = 0): Sprite {

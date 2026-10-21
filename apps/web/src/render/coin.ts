@@ -1,4 +1,4 @@
-import { drawRisoCoin, lookForBasicSkin, type CoinLook, type Expression, type JellyLike } from '@slana/art';
+import { drawRisoCoin, lookForBasicSkin, type CoinInterior, type CoinLook, type Expression, type JellyLike } from '@slana/art';
 import type { SkinDef } from '@slana/shared';
 
 export interface CoinOpts {
@@ -14,6 +14,8 @@ export interface CoinOpts {
   alpha?: number;
   /** Cached halftone shade provider (see `SpriteCache.halftone`). */
   halftone?: (r: number, spacing: number) => CanvasImageSource | null;
+  /** Cached interior provider (see `SpriteCache.coinInterior`). */
+  interior?: (look: CoinLook, r: number) => CoinInterior | null;
   /** Live-renderer speed-ups (see `CoinState` in @slana/art). */
   fastBody?: boolean;
   minPrintPx?: number;

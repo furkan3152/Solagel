@@ -107,10 +107,19 @@ export class ClientWorld {
 
   apply(s: SnapshotData, now: number): void {
     this.lastSnapshotAt = now;
-    this.serverView = { ...s.view, at: now };
+    const v = this.serverView;
+    v.x = s.view.x;
+    v.y = s.view.y;
+    v.h = s.view.h;
+    v.at = now;
     for (const p of s.players) {
+      // updated in place: a snapshot carries every visible player 30 times a second
       const existing = this.players.get(p.id);
-      this.players.set(p.id, { ...p, emote: existing?.emote ?? null });
+      if (existing) {
+        existing.skin = p.skin;
+        existing.flags = p.flags;
+        existing.name = p.name;
+      } else this.players.set(p.id, { ...p, emote: null });
     }
     for (const u of s.upserts) {
       const e = this.entities.get(u.id);
