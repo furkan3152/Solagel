@@ -34,9 +34,29 @@ export function take(name) {
     const ev = JSON.parse(readFileSync(resolve(TAKES, name, 'events.json'), 'utf8'));
     let frames = [];
     try { frames = JSON.parse(readFileSync(resolve(TAKES, name, 'frames.json'), 'utf8')); } catch {}
-    takeCache.set(name, { ...ev, frameTimes: frames });
+    let fs = null;
+    try { fs = JSON.parse(readFileSync(resolve(TAKES, name, 'fsamples.json'), 'utf8')); } catch {}
+    takeCache.set(name, { ...ev, frameTimes: frames, fsamples: fs });
   }
   return takeCache.get(name);
+}
+/** Per-frame telemetry of a replayed take nearest to source time t (null for screencast takes). */
+export function frameSample(name, t) {
+  const T = take(name);
+  if (!T.fsamples) return null;
+  const ft = T.frameTimes;
+  let lo = 0, hi = ft.length - 1;
+  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (ft[mid] <= t) lo = mid; else hi = mid; }
+  const k = Math.abs(ft[hi] - t) < Math.abs(ft[lo] - t) ? hi : lo;
+  return Math.abs(ft[k] - t) < 0.05 ? T.fsamples[k] : null;
+}
+/** The world's rectangle on screen (CSS px) at source time t, while a game is on screen; else null. */
+export function worldRect(name, t) {
+  const f = frameSample(name, t);
+  if (!f || !f.cam || !f.world || !['playing', 'dead', 'roundover'].includes(f.screen)) return null;
+  const T = take(name), W = T.w || 1920, H = T.h || 1080;
+  const [x, y, z] = f.cam;
+  return [(0 - x) * z + W / 2, (0 - y) * z + H / 2, (f.world[0] - x) * z + W / 2, (f.world[1] - y) * z + H / 2];
 }
 /** Time of a mark (label) in a take. */
 export function mark(name, label, nth = 0) {
@@ -50,6 +70,9 @@ export function events(name, k, pred = () => true) {
 }
 /** The telemetry sample at source time t (linear between samples). */
 export function sampleAt(name, t) {
+  // a replayed take knows every frame exactly
+  const fsm = take(name).fsamples ? frameSample(name, t) : null;
+  if (fsm && fsm.screen) return { t, ...fsm };
   const ss = take(name).samples;
   let lo = 0, hi = ss.length - 1;
   while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (ss[mid].t <= t) lo = mid; else hi = mid; }
@@ -168,8 +191,20 @@ export class Edit {
         vx += ax * dt; vy += ay * dt; cx += vx * dt; cy += vy * dt;
       } else { cx = tx; cy = ty; }
       const [sx, sy] = shakeAt(s.shake, u);
-      const cw = W / zoom, ch = H / zoom;
-      const fx = clamp(cx, cw / 2, W - cw / 2) - sx / zoom, fy = clamp(cy, ch / 2, H - ch / 2) - sy / zoom;
+      // never past the world's edge (the grey void around the map): zoom in enough and slide inside it
+      // (the output frame may differ from the source frame: a vertical cut crops a 1080x1920 window)
+      const OW = this.w, OH = this.h;
+      zoom = Math.max(zoom, OW / W, OH / H);
+      let bx0 = 0, by0 = 0, bx1 = W, by1 = H;
+      const wr = s.edge === false ? null : worldRect(s.take, src);
+      if (wr) {
+        bx0 = Math.max(0, wr[0]); by0 = Math.max(0, wr[1]); bx1 = Math.min(W, wr[2]); by1 = Math.min(H, wr[3]);
+        const z0 = zoom;
+        zoom = Math.max(zoom, OW / Math.max(1, bx1 - bx0), OH / Math.max(1, by1 - by0));
+        s.edgeZoom = Math.max(s.edgeZoom || 1, zoom / z0);
+      }
+      const cw = OW / zoom, ch = OH / zoom;
+      const fx = clamp(cx, bx0 + cw / 2, bx1 - cw / 2) - sx / zoom, fy = clamp(cy, by0 + ch / 2, by1 - ch / 2) - sy / zoom;
       s.frames.push([+src.toFixed(4), +fx.toFixed(2), +fy.toFixed(2), +zoom.toFixed(4)]);
       src += speedAt(s.speed, u + dt / 2) * dt;
     }

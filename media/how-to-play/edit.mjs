@@ -14,9 +14,17 @@ const OUT = resolve(HERE, 'cache/edit');
 mkdirSync(OUT, { recursive: true });
 const DUR = JSON.parse(readFileSync(resolve(HERE, 'cache/vo-raw/durations.json'), 'utf8'));
 const e = new Edit({ name: 'howto' });
-// arena2: a round Daphne survives to the bell; arena: a round where a bot eats her and she buys back in
-const A = 'arena2', A2 = 'arena2', D = 'arena', H = 'held', L = 'lobby', P = 'practice', C = 'controls', S = 'spill';
+// arena: a round Daphne survives to the bell; spill: a bot eats her and she buys back in.
+// Every take is a journal replayed frame by frame (media/gameplay/capture/replay.mjs).
+const A = 'arena', D = 'spill', H = 'held', L = 'lobby', P = 'practice', C = 'controls', S = 'spill';
 const has = (t) => { try { take(t); return true; } catch { return false; } };
+
+// ── moments found in the telemetry ──
+const fs = (t) => take(t).samples.filter((x) => x.me && x.screen === 'playing');
+/** A busy stretch: the most coins near Daphne, at least 30 s into the take. */
+function busyAt(tk) { let best = null; for (const x of fs(tk)) { if (x.t < 30 || x.t > mark(tk, 'final')) continue; const n = (x.near || []).filter((q) => q[0] !== 'v').length; if (!best || n > best.n) best = { t: x.t, n }; } return (best?.t ?? 60) - 1.2; }
+/** A bigger coin close to Daphne (she runs). */
+function threatAt(tk) { let best = null; for (const x of fs(tk)) { for (const q of x.near || []) { if (q[0] !== 'T') continue; const d = Math.hypot(q[1] - x.me.x, q[2] - x.me.y) - q[3] - x.me.r; if (d > 0 && (!best || d < best.d)) best = { t: x.t, d }; } } return (best?.t ?? 60) - 2.0; }
 
 // ── helpers ──
 const GAP = 0.25; // breath between lines
@@ -62,7 +70,7 @@ function fill(t, dur, specs) {
 }
 
 // ── intro card ──
-e.add('card', 0, 3.15, { variant: 'intro', kicker: 'HOW TO PLAY / 7 CHAPTERS', tagline: 'The two-minute guide.', tagAccent: 1, tagAt: 1.3, tagGap: 0.14 }, 50);
+e.add('card', 0, 3.15, { variant: 'intro', kicker: 'HOW TO PLAY / 7 CHAPTERS', tagline: 'The quick guide.', tagAccent: 1, tagAt: 1.3, tagGap: 0.14 }, 50);
 e.add('wipe', 2.8, 0.7, { colors: ['pink', 'card'] }, 90);
 e.cue('riser', 0, 0.25, { dur: 1.1 }).cue('stamp', 1.02, 0.6).cue('paper', 2.8, 0.45);
 for (let i = 0; i < 4; i++) e.cue('stamp', 1.3 + i * 0.14 + 0.1, 0.25);
@@ -73,12 +81,14 @@ e.at(3.15);
 let t = chapter(1, 'What Slana is', 'On-chain coin arenas on Solana.');
 let end = say('c1', t);
 const eats = events(A, 'value', (v) => v.reason === 'eat');
-const tBell = events(A, 'roundResult')[0].t, tPaid = mark(A, 'paid');
+// the bell and the receipt come from arena2 (a last gulp before the bell, till 3,250)
+const A2 = 'arena2';
+const tBell = events(A2, 'roundResult')[0].t, tPaid = mark(A2, 'paid');
 {
   const [a, b, c] = fill(e.t, end + 0.42 - e.t, [
-    { take: A, from: 139.0, d: 3.2, zoom: 1.1, lag: 0.8 },
-    { take: A, from: eats[0].t - 0.8, d: 3.0, cam: [[0, 950, 480, 1.4], [3, 950, 480, 1.45]] },
-    { take: A, from: tPaid - 1.2, d: 3.3, cam: [[0, 800, 520, 1.45], [3.3, 790, 520, 1.55]] },
+    { take: A, from: busyAt(A), d: 3.2, zoom: 1.15, lag: 0.8 },
+    { take: A, from: eats[0].t - 1.4, d: 3.0, zoom: 1.4, lag: 0.5, speed: [[0, 1], [1.0, 1], [1.2, 0.5], [2.2, 0.5], [2.5, 1]] },
+    { take: A2, from: tPaid - 1.2, d: 3.3, cam: [[0, 800, 520, 1.45], [3.3, 790, 520, 1.55]] },
   ]);
   caption(a.start + 0.4, a.dur - 0.5, 'You are a coin in a *live* arena.');
   caption(b.start + 0.2, b.dur - 0.3, 'Eat players. *Take their tokens.*');
@@ -95,11 +105,11 @@ end = say('c2', t);
   const src = has(C) ? C : P;
   const enter = mark(src, 'enter');
   const [a, b] = fill(e.t, end + 0.42 - e.t, [
-    { take: src, from: 0.6, d: 5.4, speed: (enter - 0.6) / 5.4 > 1 ? [[0, 1], [3.6, 1], [4.2, Math.min(3, (enter - 0.6 - 3.6) / 1.6)], [5.4, Math.min(3, (enter - 0.6 - 3.6) / 1.6)]] : 1, cam: [[0, 960, 540, 1.0], [1.2, 520, 560, 1.75], [5.4, 520, 560, 1.8]] },
-    { take: P, from: 29.5, d: 4.6, zoom: 1.25 },
+    { take: src, from: 0.6, d: 5.4, speed: 0.75, cam: [[0, 960, 540, 1.0], [1.2, 520, 560, 1.75], [5.4, 520, 560, 1.8]] },
+    { take: P, from: mark(P, 'enter') + 2.8, d: 4.6, zoom: 1.5, lag: 0.8 },
   ]);
   boxSrc(a, a.start + 1.4, 2.6, 272, 320, 702, 406, 'PRACTICE / FREE', { seed: 4 });
-  caption(a.start + 1.6, 3.0, 'Pick *Practice*, press Quick Play.');
+  caption(a.start + 1.6, 3.0, 'Pick *Practice*, press Start practice.');
   caption(b.start + 0.4, b.dur - 0.5, 'No wallet. No tokens. *Just bots.*');
 }
 chips.push([2, 'START FREE', t, e.t]);
@@ -112,31 +122,31 @@ t = chapter(3, 'Controls', 'Steer, split, tip mass, stickers, chat.', { titleSiz
   // steer
   let tt = t + 0.15;
   end = say('c3a', tt);
-  const s1 = e.shot({ start: e.t, take: src, from: m('steer') + 0.4, dur: end + 1.6 - e.t, zoom: 1.2, lag: 1.2 });
+  const s1 = e.shot({ start: e.t, take: src, from: m('steer') + 0.4, dur: end + 1.6 - e.t, zoom: 1.7, lag: 1.0 });
   e.add('mouse', s1.start + 0.3, s1.dur - 0.3, { x: 1260, y: 830, label: 'MOVE THE MOUSE' }, 46);
   e.at(s1.end);
   // split
   tt = e.t + 0.1;
   end = say('c3b', tt);
   const sp = take(src).keys.find((k) => k.code === 'Space' && k.t > m('split')) || { t: m('split') + 1 };
-  const s2 = e.shot({ start: e.t, take: src, from: sp.t - 1.5, dur: Math.max(3.6, end + 0.42 - e.t), zoom: 1.3, lag: 0.8, blend: true, speed: [[0, 1], [1.3, 1], [1.5, 0.6], [2.6, 0.6], [2.9, 1]] });
+  const s2 = e.shot({ start: e.t, take: src, from: sp.t - 1.5, dur: Math.max(3.6, end + 0.42 - e.t), zoom: 1.75, lag: 0.7, speed: [[0, 1], [1.3, 1], [1.5, 0.6], [2.6, 0.6], [2.9, 1]] });
   key(s2.start + 0.3, s2.dur - 0.4, ['SPACE'], 'SPLIT', [e.timeOf(s2, sp.t) - s2.start - 0.3], { x: 1180, y: 860 });
   e.at(s2.end);
   // eject
   tt = e.t + 0.1;
   end = say('c3c', tt);
   const w = take(src).keys.find((k) => k.code === 'KeyW' && k.t > m('eject')) || { t: m('eject') + 0.5 };
-  const s3 = e.shot({ start: e.t, take: src, from: w.t - 0.8, dur: Math.max(3.0, end + 0.5 - e.t), zoom: 1.45, lag: 0.8 });
+  const s3 = e.shot({ start: e.t, take: src, from: w.t - 0.8, dur: Math.max(3.0, end + 0.5 - e.t), zoom: 1.9, lag: 0.7 });
   key(s3.start + 0.2, s3.dur - 0.3, ['W'], 'HOLD TO TIP MASS', [[e.timeOf(s3, w.t) - s3.start - 0.2, 1.3]], { x: 1250, y: 860 });
   e.at(s3.end);
   // stickers and chat
   tt = e.t + 0.1;
   end = say('c3d', tt);
-  const s4 = e.shot({ start: e.t, take: src, from: m('emotes') - 0.3, dur: Math.max(4.2, end + 0.5 - e.t), zoom: 1.35, lag: 0.8, speed: 1.15 });
+  const s4 = e.shot({ start: e.t, take: src, from: m('emotes') - 0.3, dur: Math.max(4.2, end + 0.5 - e.t), zoom: 1.9, lag: 0.7, speed: 1.15 });
   const emoteKeys = take(src).keys.filter((k) => /^Digit/.test(k.code) && k.t > m('emotes') && k.t < m('emotes') + 8);
   key(s4.start + 0.2, 2.3, ['1', '-', '8'], 'STICKERS', emoteKeys.slice(0, 3).map((k) => [e.timeOf(s4, k.t) - s4.start - 0.2, 0.12, 0]), { x: 1160, y: 860 });
   e.at(s4.end);
-  const s5 = e.shot({ take: src, from: m('chat') - 0.2, dur: 2.6, zoom: 1.2, lag: 0.8, speed: 1.3 });
+  const s5 = e.shot({ take: src, from: m('chat') - 0.2, dur: 2.6, zoom: 1.7, lag: 0.7, speed: 1.3 });
   key(s5.start + 0.1, s5.dur - 0.1, ['ENTER'], 'CHAT', [0.25, 2.0], { x: 1180, y: 860 });
 }
 chips.push([3, 'CONTROLS', t, e.t]);
@@ -151,15 +161,15 @@ e.at(end + 0.6);
 let tt = e.t + 0.1;
 end = say('c4b', tt);
 {
-  const s = e.shot({ take: D, from: events(D, 'death')[0].t - 5.4, dur: end + 0.42 - e.t, zoom: 1.15, lag: 0.8, speed: 1.2 });
+  const s = e.shot({ take: A, from: threatAt(A), dur: end + 0.42 - e.t, zoom: 1.2, lag: 0.8 });
   caption(s.start + 0.5, s.dur - 0.6, 'Bigger coins hunt you. *Run.*');
 }
 tt = e.t + 0.1;
 end = say('c4c', tt);
 {
-  // Daphne runs into a rug cactus in arena2 and pops into pieces ("RUGGED!")
-  const pop = events(A2, 'cells', (v) => v >= 9)[0].t;
-  const s = e.shot({ take: A2, from: pop - 2.2, dur: end + 0.42 - e.t, zoom: 1.35, lag: 0.6, punch: [[2.1, 1.15, 0.15, 0.8, 0.4]], shake: [[2.2, 14]] });
+  // Daphne runs into a rug cactus in Practice and pops into pieces ("RUGGED!")
+  const pop = events(P, 'cells', (v) => v >= 4).find((x) => x.t > mark(P, 'cactus'))?.t ?? mark(P, 'popped') - 1;
+  const s = e.shot({ take: P, from: pop - 2.2, dur: end + 0.42 - e.t, zoom: 1.35, lag: 0.6, punch: [[2.1, 1.15, 0.15, 0.8, 0.4]], shake: [[2.2, 14]] });
   caption(s.start + 0.3, s.dur - 0.4, 'Rug cacti pop *big* coins.');
   e.cue('impact', s.start + 2.2, 0.4);
 }
@@ -169,7 +179,7 @@ end = say('c4d', tt);
   let s;
   if (has(S) && take(S).marks.some((m) => m.label === 'eaten')) {
     const dth = events(S, 'death')[0]?.t ?? mark(S, 'eaten');
-    s = e.shot({ take: S, from: dth - 2.6, dur: end + 0.5 - e.t, zoom: 1.3, lag: 0.6, punch: [[2.5, 1.2, 0.2, 1.0, 0.5]] });
+    s = e.shot({ take: S, from: dth - 2.6, dur: end + 0.5 - e.t, zoom: 2.0, lag: 0.5, punch: [[2.5, 1.15, 0.2, 1.0, 0.5]] });
     caption(s.start + 0.3, 2.6, 'Bots carry *no value*.');
     caption(s.start + 3.1, s.dur - 3.2, 'Eaten by a bot? Your tokens spill as *loot*.');
   } else {
@@ -200,8 +210,8 @@ tt = e.t + 0.1;
 end = say('c5b', tt);
 {
   const [a, b] = fill(e.t, end + 0.5 - e.t, [
-    { take: A2, from: mark(A2, 'enter') + 4.0, d: 2.6, cam: { x: 150, y: 70 }, zoom: 3.2 },
-    { take: A, from: eats[0].t - 0.6, d: 3.6, cam: [[0, 950, 480, 1.3], [3.6, 950, 480, 1.4]] },
+    { take: A, from: mark(A, 'enter') + 4.0, d: 2.6, cam: { x: 150, y: 70 }, zoom: 3.2 },
+    { take: A, from: eats[0].t - 1.0, d: 3.6, zoom: 1.35, lag: 0.5 },
   ]);
   e.add('arrow', a.start + 0.3, a.dur - 0.35, { from: [900, 760], to: [700, 470], label: 'YOUR TILL', bend: -0.2 }, 40);
   caption(b.start + 0.3, b.dur - 0.4, 'Eat a player: their tokens move into your till.');
@@ -215,8 +225,8 @@ t = chapter(6, 'Rounds and payouts', 'Five minutes. Alive at the bell? Paid.', {
 end = say('c6a', t);
 {
   const [a, b] = fill(e.t, end + 0.42 - e.t, [
-    { take: A2, from: 0.9, d: 3.4, cam: [[0, 960, 540, 1.0], [1.0, 520, 480, 1.8], [3.4, 520, 480, 1.85]] },
-    { take: A2, from: mark(A2, 'enter') + 0.3, d: 3.2, cam: [[0, 960, 540, 1.0], [0.8, 960, 300, 1.45], [3.2, 960, 300, 1.5]] },
+    { take: A, from: mark(A, 'lobby') + 0.4, d: 3.4, cam: [[0, 960, 540, 1.0], [1.0, 520, 480, 1.8], [3.4, 520, 480, 1.85]] },
+    { take: A, from: 179.6, d: 3.2, cam: [[0, 960, 380, 1.3], [3.2, 960, 370, 1.38]] },
   ]);
   boxSrc(a, a.start + 1.2, a.dur - 1.3, 280, 418, 700, 538, 'EVERY ARENA, SAME CLOCK', { seed: 6 });
   boxSrc(b, b.start + 0.8, b.dur - 0.9, 884, 12, 1036, 66, 'ROUND CLOCK', { seed: 9, below: true, color: 'mustard' });
@@ -247,7 +257,7 @@ end = say('c6c', tt);
 tt = e.t + 0.1;
 end = say('c6d', tt);
 {
-  const s = e.shot({ take: A, from: tBell - 2.4, dur: Math.max(5.6, end + 0.5 - e.t),
+  const s = e.shot({ take: A2, from: tBell - 2.4, dur: Math.max(5.6, end + 0.5 - e.t),
     cam: [[0, 960, 420, 1.3], [2.4, 960, 500, 1.2], [3.2, 960, 540, 1.0], [4.0, 800, 520, 1.45], [9, 790, 520, 1.55]] });
   e.cue('printer', e.timeOf(s, tBell) + 2.7, 0.35, { dur: 1.0 }).cue('kaching', e.timeOf(s, tPaid) + 0.35, 0.4);
   caption(s.start + 2.6, s.dur - 2.7, 'Alive at the bell: you are *paid your till*.', { y: 930 });
@@ -287,9 +297,9 @@ end = say('c7', t);
 {
   const src = has(C) ? C : P;
   const [a, b, c] = fill(e.t, end + 0.42 - e.t, [
-    { take: P, from: 31.0, d: 2.2, zoom: 1.2 },
+    { take: P, from: mark(P, 'split-end') + 1.3, d: 2.2, zoom: 1.6, lag: 0.8 },
     { take: src, from: mark(src, 'split') + 1.0, d: 2.6, zoom: 1.3, lag: 0.6 },
-    { take: A, from: mark(A, 'final') - 0.3, d: 3.2, cam: [[0, 960, 380, 1.3], [3.2, 960, 360, 1.35]] },
+    { take: A2, from: mark(A2, 'final') - 0.3, d: 3.2, cam: [[0, 960, 380, 1.3], [3.2, 960, 360, 1.35]] },
   ]);
   kick(a.start + 0.1, 'WARM UP IN PRACTICE', a.dur);
   kick(b.start + 0.1, 'SPLIT ONLY WHEN SURE', b.dur);

@@ -10,7 +10,7 @@ import { CACHE, Player, Recorder, launch, log } from './lib.mjs';
 const argv = process.argv.slice(2);
 const NAME = argv.includes('--name') ? argv[argv.indexOf('--name') + 1] : 'held';
 const browser = await launch();
-const hero = new Player(browser, { name: 'Daphne', skin: 4, audio: 'sfx', keyPath: resolve(CACHE, 'keys/held.json') });
+const hero = new Player(browser, { name: 'Daphne', skin: 4, audio: 'sfx', keyPath: resolve(CACHE, 'keys/held.json'), journal: resolve(CACHE, `journal-${NAME}.jsonl`) });
 let rec;
 try {
   await hero.open();
@@ -35,7 +35,7 @@ try {
   await hero.page.waitForFunction(() => window.__slana.useUi.getState().screen === 'playing', null, { timeout: 75_000 });
   rec.mark('joined', { left: (await hero.round(1))?.left });
   await hero.wait(1200);
-  await hero.wheel(-300, 60, 60);
+  await hero.wheel(-460, 60, 60);
   await hero.drive(7_000, { mode: 'free', humans: 0, loot: 10, margin: 400 });
   rec.mark('end');
 } catch (e) {

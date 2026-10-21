@@ -7,8 +7,11 @@
 // No CSS animations or timers: the same t always gives the same picture, so frames can be captured
 // in any order. Every visible string is ASCII.
 (() => {
-  const W = 1920, H = 1080;
+  // the frame size comes from the page URL (?w=1080&h=1920 for a vertical cut); landscape by default
+  const Q = new URLSearchParams(location.search);
+  const W = Number(Q.get('w')) || 1920, H = Number(Q.get('h')) || 1080;
   const stage = document.getElementById('stage');
+  stage.style.width = W + 'px'; stage.style.height = H + 'px';
   const C = {}; // component factories
   const live = [];
   const ART = window.SlanaArt;
@@ -265,7 +268,7 @@
       }
       // exit: the card lifts slightly before the cut (the wipe covers it)
       const out = seg(lt, dur - 0.35, dur);
-      layer.style.transform = `translateY(${-E.inCubic(out) * 60}px) scale(${1 + E.inCubic(out) * 0.03})`;
+      layer.style.transform = `translateY(${(p.oy || 0) - E.inCubic(out) * 60}px) scale(${1 + E.inCubic(out) * 0.03})`;
     };
     return { root, update, opaque: true };
   };
@@ -409,6 +412,94 @@
       const shake = lt > 0.13 && lt < 0.32 ? Math.sin(lt * 120) * 4 * (1 - seg(lt, 0.13, 0.32)) : 0;
       root.style.opacity = (a > 0 ? 0.95 : 0) * (1 - o);
       root.style.transform = `translate(${shake}px, ${shake * 0.5}px) rotate(${p.rot ?? -8}deg) scale(${lerp(2.6, 1, E.outCubic(a)) + o * 0.08})`;
+    };
+    return { root, update };
+  };
+
+  /** A value float: a big riso number ("+1,000") popping off the coin that ate, rising, fading.
+   * props: text, sub ('$SLANA'), x/y or track [[lt, x, y, r], ...] (follows a coin), color, size. */
+  C.float = (p) => {
+    const root = el('div', 'it disp');
+    const size = p.size || 132;
+    const c = col(p.color || 'mustard');
+    root.style.cssText += `font-size:${size}px;line-height:1;white-space:nowrap;text-align:center;letter-spacing:-0.02em;`;
+    const mk = (color, stroke) => { const d = el('div'); d.style.cssText = `position:absolute;left:0;top:0;color:${color};${stroke ? `-webkit-text-stroke:${size * 0.09}px ${INKC};paint-order:stroke fill;` : ''}`; d.textContent = p.text; return d; };
+    const ghost = mk(col(p.ghost || 'pink'), false);
+    ghost.style.mixBlendMode = 'multiply';
+    const main = mk(c, true);
+    const sub = el('div', 'mono');
+    sub.style.cssText = `position:absolute;left:0;right:0;top:${size * 1.02}px;font-size:${size * 0.2}px;letter-spacing:0.18em;color:${INKC};text-align:center;`;
+    sub.textContent = p.sub ?? '$SLANA';
+    const box = el('div');
+    box.style.cssText = 'position:relative;';
+    box.appendChild(ghost); box.appendChild(main); box.appendChild(sub);
+    // size the box from the main text
+    const sizer = mk('transparent', true); sizer.style.position = 'relative'; box.appendChild(sizer);
+    root.appendChild(box);
+    stage.appendChild(root);
+    const at = (lt) => {
+      if (!p.track || !p.track.length) return [p.x, p.y, 0];
+      let a = p.track[0], b = p.track[p.track.length - 1];
+      for (let i = 1; i < p.track.length; i++) if (p.track[i][0] >= lt) { a = p.track[i - 1]; b = p.track[i]; break; }
+      const k = b[0] === a[0] ? 0 : clamp((lt - a[0]) / (b[0] - a[0]));
+      return [lerp(a[1], b[1], k), lerp(a[2], b[2], k), lerp(a[3], b[3], k)];
+    };
+    const update = (lt, dur) => {
+      const [x, y, r] = at(lt);
+      const pop = seg(lt, 0, 0.28);
+      const sc = lt < 0.28 ? lerp(0.35, 1, E.outBack(pop, 2.6)) : 1;
+      const rise = E.outCubic(seg(lt, 0, dur)) * (p.rise ?? 110);
+      const o = 1 - E.inCubic(seg(lt, dur - 0.32, dur));
+      const reg = Math.max(0, 1 - seg(lt, 0, 0.45));
+      const w = root.offsetWidth, h = root.offsetHeight;
+      root.style.left = `${x - w / 2}px`;
+      root.style.top = `${y - r - h - 18 - rise}px`;
+      root.style.opacity = o;
+      root.style.transform = `rotate(${p.rot ?? -4}deg) scale(${sc})`;
+      ghost.style.transform = `translate(${6 + reg * 14}px, ${6 + reg * 8}px)`;
+    };
+    return { root, update };
+  };
+
+  /** The promo's kinetic headline: words rise out of a mask, staggered, with a riso misregistration
+   * (pink and mustard plates) that springs into register. props: lines [{text, at, color}], x, y,
+   * size, lh, align ('left' | 'center'), out (local second the words leave), stagger. */
+  C.headline = (p) => {
+    const root = el('div', 'it');
+    root.style.cssText += `width:${W}px;height:${H}px;`;
+    const size = p.size || 120, lh = size * (p.lh || 1.02);
+    const words = [];
+    (p.lines || []).forEach((ln, li) => {
+      const row = el('div', 'disp');
+      row.style.cssText = `position:absolute;left:0;right:0;top:${p.y + li * lh}px;font-size:${size}px;white-space:nowrap;text-align:${p.align || 'left'};${p.align === 'center' ? '' : `padding-left:${p.x}px;`}`;
+      ln.text.split(' ').forEach((w, wi) => {
+        const mask = el('span');
+        mask.style.cssText = `display:inline-block;overflow:hidden;vertical-align:top;padding:0 .06em .12em;margin:0 .08em;`;
+        const inner = el('span');
+        inner.style.cssText = 'display:inline-block;position:relative;';
+        const plate = (c, blend) => { const d = el('span'); d.style.cssText = `position:absolute;left:0;top:0;color:${c};${blend ? 'mix-blend-mode:multiply;' : ''}`; d.textContent = w; return d; };
+        const pk = plate(ln.color ? COL.teal : COL.pink, true), mu = plate(COL.mustard, true);
+        const main = el('span'); main.style.cssText = `position:relative;color:${col(ln.color || 'ink')};`; main.textContent = w;
+        inner.appendChild(pk); inner.appendChild(mu); inner.appendChild(main);
+        mask.appendChild(inner);
+        row.appendChild(mask);
+        words.push({ inner, pk, mu, at: (ln.at || 0) + wi * (p.stagger ?? 0.07), k: words.length });
+      });
+      root.appendChild(row);
+    });
+    stage.appendChild(root);
+    const update = (lt) => {
+      for (const w of words) {
+        const a = E.outExpo(seg(lt, w.at, w.at + 0.62));
+        let dy = (1 - a) * size * 1.0, o = lt >= w.at ? 1 : 0;
+        if (p.out != null) { const po = E.inCubic(seg(lt, p.out + w.k * 0.03, p.out + w.k * 0.03 + 0.32)); dy -= po * size * 1.1; o *= 1 - po; }
+        const reg = lt < w.at ? 1 : 1 - E.spring(lt - w.at, 1.6, 6.5);
+        w.inner.style.transform = `translateY(${dy}px)`;
+        w.inner.style.opacity = o;
+        w.pk.style.transform = `translate(${reg * 16}px, ${reg * 9}px)`;
+        w.mu.style.transform = `translate(${-reg * 12}px, ${-reg * 6}px)`;
+        w.pk.style.opacity = w.mu.style.opacity = Math.abs(reg) > 0.01 ? 1 : 0;
+      }
     };
     return { root, update };
   };

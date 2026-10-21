@@ -123,8 +123,40 @@ def vo_layer(edit, n, vo_dir, work):
         if not os.path.exists(dst) or os.path.getmtime(dst) < os.path.getmtime(src):
             process_vo(src, dst, irp)
         x = load(dst)
-        place(out, x * (10 ** (-6 / 20)), v["at"], v.get("gain", 1))
+        # every line at the same loudness (-19 LUFS), whatever the TTS gave it
+        import pyloudnorm as pyln
+        L = pyln.Meter(SR).integrated_loudness(x) if len(x) > SR * 0.45 else -19.0
+        if np.isfinite(L):
+            x = x * (10 ** ((-19.0 - L) / 20))
+        place(out, x * (10 ** (-3 / 20)), v["at"], v.get("gain", 1))
     return out
+
+
+def duck_gain(vo, depth_db, look=0.15, hold=0.5, attack=0.09, release=0.42):
+    """Music gain (linear, per sample) under the voice: speech is detected on a 20 ms RMS, the duck
+    starts `look` s early, holds through the breaths between phrases (`hold` s) and ramps in and out
+    with one-pole smoothing in dB (no pumping on the pauses)."""
+    m = np.abs(vo).max(1)
+    hop = 240
+    nb = len(m) // hop
+    rms = np.sqrt((m[: nb * hop].reshape(nb, hop) ** 2).mean(1))
+    on = rms > 10 ** (-45 / 20)
+    k_look, k_hold = int(look * SR / hop), int(hold * SR / hop)
+    act = on.copy()
+    idx = np.nonzero(on)[0]
+    for i in idx:
+        act[max(0, i - k_look): i + k_hold] = True
+    target = np.where(act, depth_db, 0.0)
+    a_att, a_rel = np.exp(-hop / (attack * SR)), np.exp(-hop / (release * SR))
+    g = np.zeros(nb)
+    cur = 0.0
+    for i in range(nb):
+        a = a_att if target[i] < cur else a_rel
+        cur = a * cur + (1 - a) * target[i]
+        g[i] = cur
+    full = np.repeat(g, hop)
+    full = np.concatenate([full, np.full(len(m) - len(full), full[-1] if len(full) else 0.0)])
+    return 10 ** (full / 20)
 
 
 def env_follow(x, attack=0.03, release=0.35):
@@ -259,10 +291,8 @@ def main():
         mus = music_layer(json.load(open(a.music)), n, edit) * 10 ** (a.music_db / 20)
     # duck music (and a little of the game) under the voice
     if np.any(vo):
-        e = env_follow(vo, 0.04, 0.45)
-        k = np.clip(e / 0.05, 0, 1)
-        mus *= (10 ** (a.duck_db * k / 20))[:, None]
-        game *= (10 ** (a.duck_db * 0.6 * k / 20))[:, None]
+        mus *= duck_gain(vo, a.duck_db)[:, None]
+        game *= duck_gain(vo, a.duck_db * 0.6)[:, None]
     mix = game + fx + vo + mus
     if a.stems:
         os.makedirs(a.stems, exist_ok=True)

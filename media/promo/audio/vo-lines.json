@@ -1,50 +1,52 @@
 [
  {
   "id": "hook_a",
-  "text": "Eat a player."
+  "text": "Eat a player.",
+  "speed": 0.98
  },
  {
   "id": "hook_b",
-  "text": "And keep their tokens."
+  "text": "Keep their *tokens.*",
+  "speed": 1.0
  },
  {
   "id": "logo",
-  "text": "This is Slana. The on-chain arena on Solana."
+  "text": "This is Slana. || Live coin arenas, | on Solana.",
+  "speed": 1.06
  },
  {
   "id": "ticket",
-  "text": "Buy a ticket, and drop into a live round."
+  "text": "Buy a ticket. | Drop into a *live* round.",
+  "speed": 1.08
  },
  {
   "id": "play",
-  "text": "Eat smaller players... Take what they carry... and grow."
+  "text": "Eat smaller players. | Take what they carry. | And *grow.*",
+  "speed": 1.08
  },
  {
   "id": "rounds_a",
-  "text": "Five-minute rounds."
+  "text": "Five-minute rounds.",
+  "speed": 1.02
  },
  {
   "id": "rounds_b",
-  "text": "Everyone still standing at the bell gets paid."
- },
- {
-  "id": "bots",
-  "text": "Bots carry no value. But when a bot eats you, your tokens spill as loot."
+  "text": "Still standing at the bell? | You get *paid.*",
+  "speed": 1.06
  },
  {
   "id": "arenas",
-  "text": "Four arenas, open to everyone. From one thousand to two hundred fifty thousand Slana."
- },
- {
-  "id": "join",
-  "text": "Join a round that's already running. Eaten? Buy back in, same fee."
+  "text": "Four arenas, | open to everyone. || From one thousand, | to two hundred fifty thousand Slana.",
+  "speed": 1.12
  },
  {
   "id": "fee",
-  "text": "One flat fee: five percent of profit. Floor loot left at the bell is burned."
+  "text": "One flat fee: | *five percent* of profit. | Floor loot at the bell? | Burned.",
+  "speed": 1.12
  },
  {
   "id": "end",
-  "text": "Slana... Eat... Grow... Last the round."
+  "text": "Eat. | Grow. | Last the round. || slana dot io.",
+  "speed": 0.96
  }
 ]

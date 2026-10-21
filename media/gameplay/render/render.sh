@@ -14,6 +14,7 @@ WORK="$(dirname "$EDIT")/$NAME"
 OUT="$ROOT/out/videos"
 mkdir -p "$WORK" "$OUT"
 DUR=$(node -e "console.log(require('$EDIT').duration)")
+FPS=$(node -e "console.log(require('$EDIT').fps)")
 
 if [ -z "${SKIP_OVERLAYS:-}" ]; then
   rm -rf "$WORK/ov"
@@ -24,17 +25,19 @@ if [ -z "${SKIP_PICTURE:-}" ]; then
 fi
 if [ -z "${SKIP_AUDIO:-}" ]; then
   "$PY" "$HERE/audio.py" "$EDIT" "$WORK/mix.wav" --music "$MUSIC" --stems "$WORK/stems" ${VO:+--vo-dir "$VO"} ${AUDIO_ARGS:-} | tee "$WORK/loudness.json"
+  # -14 LUFS with the true peak at or below -1.5 dBTP measured after AAC encoding
+  "$PY" "$HERE/finalize.py" "$WORK/mix.wav" "$WORK/mix-final.wav" | tee -a "$WORK/loudness.json"
 fi
 
 # master: high quality
-"$FF" -hide_banner -loglevel error -y -i "$WORK/picture.mp4" -i "$WORK/mix.wav" -map 0:v -map 1:a \
-  -c:v libx264 -preset slow -crf 17 -tune animation -pix_fmt yuv420p -r 30 -g 60 -profile:v high -level 4.1 \
+"$FF" -hide_banner -loglevel error -y -i "$WORK/picture.mp4" -i "$WORK/mix-final.wav" -map 0:v -map 1:a \
+  -c:v libx264 -preset slow -crf 17 -tune animation -pix_fmt yuv420p -r $FPS -g $((FPS * 2)) -profile:v high -level 4.2 \
   -c:a aac -b:a 256k -ar 48000 -movflags +faststart -shortest "$OUT/$NAME-master.mp4"
 # web: two-pass to about 28 MB (under 30 MB) with 192 kb/s audio
 VB=$(node -e "console.log(Math.floor((26.5*8*1024*1024/$DUR - 192000*1.02)/1000))")
 cd "$WORK"
-"$FF" -hide_banner -loglevel error -y -i picture.mp4 -c:v libx264 -preset slow -tune animation -b:v ${VB}k -maxrate $((VB*2))k -bufsize $((VB*2))k -pix_fmt yuv420p -r 30 -g 60 -pass 1 -passlogfile x264 -an -f mp4 /dev/null
-"$FF" -hide_banner -loglevel error -y -i picture.mp4 -i mix.wav -map 0:v -map 1:a -c:v libx264 -preset slow -tune animation -b:v ${VB}k -maxrate $((VB*2))k -bufsize $((VB*2))k -pix_fmt yuv420p -r 30 -g 60 -pass 2 -passlogfile x264 \
+"$FF" -hide_banner -loglevel error -y -i picture.mp4 -c:v libx264 -preset slow -tune animation -b:v ${VB}k -maxrate $((VB*2))k -bufsize $((VB*2))k -pix_fmt yuv420p -r $FPS -g $((FPS * 2)) -pass 1 -passlogfile x264 -an -f mp4 /dev/null
+"$FF" -hide_banner -loglevel error -y -i picture.mp4 -i mix-final.wav -map 0:v -map 1:a -c:v libx264 -preset slow -tune animation -b:v ${VB}k -maxrate $((VB*2))k -bufsize $((VB*2))k -pix_fmt yuv420p -r $FPS -g $((FPS * 2)) -pass 2 -passlogfile x264 \
   -c:a aac -b:a 192k -ar 48000 -movflags +faststart -shortest "$OUT/$NAME.mp4"
 rm -f x264*.log x264*.mbtree
 ls -la "$OUT/$NAME.mp4" "$OUT/$NAME-master.mp4"

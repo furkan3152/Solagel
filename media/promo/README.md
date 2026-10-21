@@ -1,46 +1,80 @@
-# Slana promo (52.8 s, 1920x1080, 60 fps)
+# Slana promo (42 s, 1920x1080, 60 fps) and its vertical cut (29 s, 1080x1920)
 
-The launch film for Slana, in the Paper Ticket brand. One idea runs through
-it: **the whole film is printed**. A coin character eats another coin and
-becomes the riso dot of the wordmark. The camera pulls back to show the
-wordmark printed on a ticket. The ticket gets a PAID stamp and a punched
-hole, and the camera dives through the hole into real gameplay. A round clock
-runs down to the bell and the "Round over" receipt prints over the footage. A stamp floods the screen with ink into a night
-print, a page turn deals the four arena tickets, a whip pan crosses to the
-late-join and buy-back desk, and a paper feed brings up the fee bar: one flat
-5% of profit. The floor-loot stub catches fire, and the fire burns through to
-the end card.
+The launch film for Slana, in the Paper Ticket brand. One idea runs through it: **the whole film
+is printed**. It opens cold on real gameplay: Daphne's coin gulps a rival on the downbeat (1.2 s,
+in slow motion with a punch-in), "+1,000 $SLANA" floats off the gulp into her purse, and the camera
+pushes into the coin until it lands exactly where the printed coin of the next shot sits (match
+cut). The coin spins into the riso dot of the wordmark, the camera pulls back to show the wordmark
+printed on a ticket, the ticket gets a PAID stamp and a punched hole, and the camera dives through
+the hole into the gameplay montage. A round clock runs down to the bell and the "Round over" receipt
+prints. A page turn deals the four arena tickets, a whip pan crosses to the fee bar: one flat 5% of
+profit. The floor-loot stub catches fire, and the fire burns through to the end card (slana.io,
+@slanaio).
 
-Everything is deterministic. No CSS animation and no wall clock are used, so
-any frame can be re-rendered on its own.
+Everything is deterministic. No CSS animation and no wall clock are used, so any frame can be
+re-rendered on its own.
 
-## Beat sheet
+## The cut
 
-| Time | Beat | On screen | VO (Kokoro `af_heart`) |
+`timeline.json` keeps the scene timeline the scenes are drawn on ("scenes", "vo", "sfx", old
+seconds, 52.8 s) and lays the film out over it in `cut`: the cold open, pieces of the scene
+timeline and the transitions between them. `audioCut` splices the score and the scene SFX on the
+same beat-aligned pieces (the score is rendered on the scene timeline, then cut on bar phase), and
+`vo2` / `sfx2` are the film's own voice and cue times.
+
+| Film | Beat | On screen | VO (Kokoro `af_heart`) |
 | --- | --- | --- | --- |
-| 0:00.0 | Hook | A pink coin stalks a mint coin carrying 1,750 $SLANA, gulps it on the downbeat (2.4) and its purse rolls up. "Eat a player. / Keep their tokens." | "Eat a player. And keep their tokens." |
-| 0:03.7 | Match cut | The coin spins into the riso dot of the wordmark. 0.18 s breath. | |
-| 0:04.8 | Logo drop | The `slana` plates slam into register over a pink halftone sun. "EAT / GROW / GET PAID" | "This is Slana. The on-chain arena on Solana." |
-| 0:07.7 | Pull-back | The logo turns out to be printed on a Penny Pond ticket. | |
-| 0:08.4 | Ticket | "Buy a ticket. / Enter a live room." Tape lands, room coins pop up, PAID stamp (10.8), hole punch (11.4). | "Buy a ticket, and drop into a live round." |
-| 0:12.3 | Dive | The camera falls through the punch hole into live gameplay. | |
-| 0:14.4 | Montage | Real 1080p footage of the current build in a ticket frame, cut on the beat (15.6 / 16.8 / 18.0 / 19.2): a mid-round join, a player eaten, a rug cactus popping a coin, loot swept up. "Eat. Take. Grow." EATEN stamp (16.2). The last shot is the real "Round over" receipt getting its PAID stamp. | "Eat smaller players... take what they carry... and grow." |
-| 0:20.1 | Paper-feed wipe | A printout wipes up over the montage. | |
-| 0:20.4 | Rounds | A Penny Pond round clock spins from 5:00 down to 0:03, ticks 3, 2, 1 (the final-minute zone in mustard) and rings the bell at 22.2; the clock swings away and the "Round over" receipt prints (entry 1,000, +750, till at the bell 1,750, fee 5% of profit -37.5, paid 1,712.5), PAID (24.0), a "5% flat fee" sticker (24.6). "Five-minute rounds. / Alive at the bell? / Get paid." | "Five-minute rounds." ... (bell) ... "Everyone still standing at the bell gets paid." |
-| 0:25.75 | Ink flood | The stamp's ink floods into a night print. | |
-| 0:26.4 | Bots | "Bots carry no value. / Their kills spill loot." The bot (0 $SLANA) eats Daphne (28.8), 1,750 $SLANA spills as loot and two players sweep it up. | "Bots carry no value. But when a bot eats you, your tokens spill as loot." |
-| 0:30.5 | Page turn | | |
-| 0:31.0 | Arenas | "Four arenas. / Pick your stakes." Four tickets are dealt on the beat (31.45 / 32.05 / 32.65 / 33.25), each in its arena ink: Penny Pond 1,000, Silver Creek 10,000, Gold Lake 50,000, Whale Bay 250,000 $SLANA. OPEN stamps (34.2 to 36.0). "Same game in every room. Only the entry fee differs." | "Four arenas, open to everyone. From one thousand to two hundred fifty thousand Slana." |
-| 0:36.85 | Whip pan | | |
-| 0:37.2 | Join | "Join mid-round. / Eaten? Buy back in." A lobby row ("Round ends in 3:12") gets a JOIN stamp (38.15); the death sheet's "Buy back in / 1,000 $SLANA" button is pressed (39.95) and stamped BACK IN (40.2). "Joins close in the final minute; a ticket bought then joins the next round." | "Join a round that's already running. Eaten? Buy back in, same fee." |
-| 0:41.35 | Paper feed | | |
-| 0:42.0 | Fee | "One flat fee. / 5% of profit." The profit bar fills 95% teal (yours) and 5% pink (the fee, paid to the operator). "No profit, no fee." The floor-loot stub lands (43.55) and catches fire (44.4), BURNED. | "One flat fee: five percent of profit. Floor loot left at the bell is burned." |
-| 0:45.9 | Burn-through | The fire burns a hole into the end card. 0.18 s breath. | |
-| 0:46.8 | End card | The wordmark slams in. "Eat. Grow. Last the round." The slana.io / $SLANA ticket and "X @slanaio" appear, coins peek up, sting (51.6). | "Slana... Eat... Grow... Last the round." |
+| 0:00.0 | Cold open | Real footage (shot H): the chase, the gulp at 1.2 (slow motion, punch-in, flash, ink burst), "+1,000 $SLANA" drops into the purse (1,000 to 2,000). "Eat a player. / Keep their tokens." | "Eat a player." "Keep their tokens." |
+| 0:02.4 | Match cut | The push lands the coin on the printed coin; it spins into the riso dot. | |
+| 0:03.6 | Logo drop | The `slana` plates slam into register. "EAT / GROW / GET PAID" | "This is Slana. Live coin arenas, on Solana." |
+| 0:06.5 | Ticket | "Buy a ticket. / Enter a live room." PAID stamp, hole punch, the dive. | "Buy a ticket. Drop into a live round." |
+| 0:13.2 | Montage | Replayed 60 fps footage in a ticket frame, cut on the beat: the room, a last-second gulp (EATEN), loot swept up, a big coin, the real receipt getting PAID. "Eat. Take. Grow." | "Eat smaller players. Take what they carry. And grow." |
+| 0:19.2 | Rounds | The round clock to the bell, the "Round over" receipt, PAID, the 5% sticker. | "Five-minute rounds." ... "Still standing at the bell? You get paid." |
+| 0:24.6 | Page turn | | |
+| 0:25.2 | Arenas | Four tickets dealt on the beat: 1,000 / 10,000 / 50,000 / 250,000 $SLANA; they clear off and the four arena posters (`brand/posters`) are pinned up on the beat. | "Four arenas, open to everyone. From one thousand, to two hundred fifty thousand Slana." |
+| 0:30.6 | Whip pan | | |
+| 0:31.2 | Fee | "One flat fee. / 5% of profit." The floor-loot stub burns. | "One flat fee: five percent of profit. Floor loot at the bell? Burned." |
+| 0:36.0 | End card | The wordmark, "Eat. Grow. Last the round.", slana.io / $SLANA, X @slanaio, sting. | "Eat. Grow. Last the round. slana dot io." |
 
-Music: 100 BPM, Fmaj7 / G6 / Em7 / Am7. Silence-then-drop at 4.8 and
-46.8. The drums drop out under the ink flood. The bots get a half-time
-minor section from 28.8. A crash lands on the whip pan.
+Music: 100 BPM, Fmaj7 / G6 / Em7 / Am7, silence-then-drop into the logo and the end card.
+
+The vertical cut (`vertical.mjs`) is built with the gameplay kit at 1080x1920: the gulp with the
+riso headline, "Five-minute rounds." over the drop-in and the round clock, "Alive at the bell?"
+over the last ten seconds (a last gulp), "Get paid." over the bell and the receipt, and the end
+card with slana.io and @slanaio, on the game's 82 BPM score with the promo's voice lines.
+
+## Voice
+
+Kokoro TTS (local ONNX, `kokoro-v1.0`), voice **`af_heart`**, for every video. Three
+representative lines (the hook, the bell rule, the fee example) were auditioned in eight voices;
+the reels are in `audio/auditions/<voice>.m4a` and the measurements in
+`audio/auditions/audition.json` (`media/gameplay/render/voice.py audition`):
+
+| Voice | Kokoro grade | Read (words/min) | Pitch movement (semitones, sd) |
+| --- | --- | --- | --- |
+| **af_heart** | A | 140-169 | 3.7-4.2 |
+| af_bella | A- | 150-182 | 2.2-2.9 |
+| af_nicole | B- | 113-137 | 2.6-5.4 |
+| af_sarah | C+ | 113-170 | 3.9-4.5 |
+| am_michael | C+ | 128-154 | 3.3-4.4 |
+| am_fenrir | C+ | 137-179 | 4.2-5.1 |
+| bf_emma | B- | 125-149 | 2.1-2.6 |
+| bm_george | C | 105-130 | 4.4-5.0 |
+
+`af_heart` is chosen: the highest Kokoro grade, a natural conversational pace, and the liveliest
+intonation of the top-graded voices (af_bella and bf_emma measure flatter). The choice was made
+from these measurements and the published grades, not by ear; the reels are there for a human
+listen, and switching is one flag (`tts.py --voice`).
+
+The scripts are written for the ear: short sentences, contractions, numbers in words ("one
+thousand", "five percent", "slana dot io"). Script marks (`voice.py`): `|` a breath, `||` a beat,
+`{0.6}` a pause, `*word*` an emphasis (its own chunk, read a touch slower after a lift-in pause);
+each chunk is synthesised on its own and joined with the pauses. Fixed pronunciations: Slana
+/slˈɑːnə/, $SLANA, Solana /soʊlˈɑːnə/, "slana dot io", @slanaio. The promo reads punchier
+(per-line speeds up to 1.12x, emphasis on the payoffs) than the how-to (1.0x, more air).
+The mixer gives every line the same loudness (-19 LUFS before the bus), runs the VO chain
+(high-pass 80 Hz, mud cut, presence, air, de-esser, 3:1 compression, light room) and ducks the
+music 8 dB under the voice with a 150 ms look-ahead, a hold through the breaths and smooth ramps.
 
 ## Layout
 
@@ -53,14 +87,15 @@ minor section from 28.8. A crash lands on the whip pan.
 | `scenes/main.js` | Boot code: fonts, textures, `window.renderAt(t)` and sub-frame motion blur. |
 | `scenes/art-entry.ts` | Browser bundle entry for `packages/art` (coin characters, palette). |
 | `render/build-art.mjs` | Bundles the art package to `cache/art.js`. |
-| `render/footage-from-takes.mjs` | Cuts the gameplay shots in `timeline.json` ("footage": take, source second, duration, reframing) out of the 1080p capture takes of `media/gameplay` into `cache/footage/<id>/NNNN.jpg` (1920x1080, 30 fps), with the gameplay kit's reframing and compositor. |
+| `render/footage-from-takes.mjs` | Cuts the gameplay shots in `timeline.json` ("footage": take, source second or `align` (a source second at a local second), duration, reframing, speed ramps) out of the replayed takes of `media/gameplay` into `cache/footage/<id>/NNNN.jpg` (1920x1080, 60 fps) plus `track.json` (the coin per frame), with the gameplay kit's reframing and compositor. `--plan` only writes the shot edits for `capture/replay.mjs --edit`. |
+| `vertical.mjs` | The vertical cut's edit (gameplay kit, 1080x1920). |
 | `render/render.mjs` | Headless-Chromium frame renderer. It runs parallel workers, pipes frames to ffmpeg and writes `cache/video.mp4`. `--preview t1,t2` writes stills. |
 | `render/mux.sh` | Muxes the picture and the mix into `out/videos/`. |
 | `audio/vo-lines.json` | The VO script, one entry per cue. |
-| `audio/tts.py` | Kokoro TTS (local ONNX), voice `af_heart`. "Slana" is forced to the phonemes /slˈɑːnə/. |
+| `audio/tts.py` | The promo's voiceover (`audio/vo-lines.json`) through the shared voice kit `media/gameplay/render/voice.py`. |
 | `audio/music.py` | The original score, synthesised in numpy and scored to the cut list. |
 | `audio/sfx.py` | Procedural SFX: stamps, paper, tape, punch, printer, coins, ink, page, wax seal, fire and more. |
-| `audio/mix.py` | The VO chain (ffmpeg), sidechain ducking, stem levels, a limiter and two-pass loudnorm to -14 LUFS. |
+| `audio/mix.py` | Splices the score and the scene SFX along the cut, adds the cut's cues, the VO chain (ffmpeg), sidechain ducking, stem levels, a limiter and two-pass loudnorm to -14 LUFS. `render/mux.sh` then runs `media/gameplay/render/finalize.py` (true peak at or below -1.5 dBTP after AAC). |
 
 `cache/` is gitignored. It holds the TTS models, art bundle, footage frames,
 renders and audio stems.
@@ -69,37 +104,36 @@ renders and audio stems.
 
 ```bash
 cd media/promo
-# 0. python env (once)
-python3 -m venv cache/venv && cache/venv/bin/pip install kokoro-onnx soundfile numpy scipy pyloudnorm
-mkdir -p cache/models && cd cache/models && \
-  curl -LO https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx && \
-  curl -LO https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin && cd ../..
+# 0. python env (once): the gameplay kit's venv and Kokoro models serve both (media/gameplay/README.md)
+PY=../gameplay/cache/venv/bin/python
 
-# 1. art bundle + footage
+# 1. art bundle + footage (the takes replayed first, see media/gameplay/README.md)
 node render/build-art.mjs
-node render/footage-from-takes.mjs    # needs the take arena2 (media/gameplay/README.md)
+node render/footage-from-takes.mjs
 
 # 2. picture (about 6-8 min on 4 cores with SwiftShader)
-node render/render.mjs --preview 2.4,4.9,11.5,23.5   # spot-check stills in cache/preview/
-node render/render.mjs --workers 3                   # → cache/video.mp4
+node render/render.mjs --preview 1.2,2.4,13.6,25.0   # spot-check stills in cache/preview/
+node render/render.mjs --workers 3                   # -> cache/video.mp4 (42 s)
 
-# 3. sound
-cache/venv/bin/python audio/tts.py --models cache/models --out cache/vo-raw --voice af_heart   # all lines (it rewrites durations.json)
-cache/venv/bin/python audio/music.py cache/audio/music.wav
-cache/venv/bin/python audio/sfx.py cache/audio/sfx.wav
-cache/venv/bin/python audio/mix.py cache            # → cache/audio/final.wav (-14 LUFS)
+# 3. sound (the score and SFX on the scene timeline, then cut)
+$PY audio/tts.py --models ../gameplay/cache/models --out cache/vo-raw --voice af_heart
+$PY audio/music.py cache/audio/music.wav
+$PY audio/sfx.py cache/audio/sfx.wav
+$PY audio/sfx.py cache/audio/sfx2.wav --cues sfx2
+$PY audio/mix.py cache            # -> cache/audio/final.wav (-14 LUFS)
 
 # 4. deliverables
-render/mux.sh   # → out/videos/slana-promo.mp4 (< 30 MB) and slana-promo-master.mp4
+render/mux.sh   # -> out/videos/slana-promo.mp4 (< 30 MB) and slana-promo-master.mp4
+
+# vertical cut (from the repo root)
+node media/promo/vertical.mjs
+media/gameplay/render/render.sh media/promo/cache/vertical/vertical.json \
+  media/promo/cache/vertical/vertical-music.json slana-promo-vertical media/promo/cache/vo-raw
 ```
 
-If you change a cue in `timeline.json`, re-run the steps that read it.
-`sfx.py`, `mix.py` and `music.py` read the cue times, and the scene code
-mirrors the beats with its own literal times in `scenes.js`.
-
-The footage shot times in `timeline.json` point into the capture takes. If
-you record new takes, pick new start times with `media/gameplay/tools/peek.py`
-and update the `footage` entries.
+If you change a cue in `timeline.json`, re-run the steps that read it. The scene code mirrors the
+beats with its own literal times in `scenes.js` (scene timeline seconds); `cut` maps them to film
+time. New takes need new `footage` entries (pick moments with the takes' events).
 
 ## Brand values
 

@@ -27,11 +27,12 @@ const N = edit.frames;
 mkdirSync(outDir, { recursive: true });
 const PAGES = Number(opt('--pages', '3'));
 const preview = opt('--preview', null);
-const motionUrl = pathToFileURL(resolve(HERE, '../motion/motion.html')).href;
+const EW = edit.w || 1920, EH = edit.h || 1080;
+const motionUrl = `${pathToFileURL(resolve(HERE, '../motion/motion.html')).href}?w=${EW}&h=${EH}`;
 
 const browser = await chromium.launch({ executablePath: CHROME, args: ['--disable-gpu', '--allow-file-access-from-files', '--force-color-profile=srgb', '--font-render-hinting=none'] });
 async function openPage() {
-  const ctx = await browser.newContext({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 });
+  const ctx = await browser.newContext({ viewport: { width: EW, height: EH }, deviceScaleFactor: 1 });
   const page = await ctx.newPage();
   page.on('pageerror', (e) => console.error('[page]', e.message));
   await page.goto(motionUrl);
@@ -45,7 +46,7 @@ async function openPage() {
 if (preview) {
   const { page, cdp } = await openPage();
   const bg = opt('--bg', null);
-  if (bg) await page.evaluate((u) => { document.body.style.background = `url(${u}) 0 0 / 1920px 1080px`; }, pathToFileURL(resolve(bg)).href);
+  if (bg) await page.evaluate((u) => { document.body.style.background = `url(${u}) 0 0 / 100% 100%`; }, pathToFileURL(resolve(bg)).href);
   for (const t of preview.split(',').map(Number)) {
     await page.evaluate((t) => window.frame(t), t);
     const r = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 88 });
@@ -69,10 +70,10 @@ await Promise.all(pages.map(async ({ page, cdp }, k) => {
     if (w <= 0 || h <= 0) continue;
     // an opaque frame (a card or a board covers everything) is stored as a JPEG, the rest as PNG with alpha
     const r = res.opaque
-      ? await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 93, clip: { x: 0, y: 0, width: 1920, height: 1080, scale: 1 }, captureBeyondViewport: false })
+      ? await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 93, clip: { x: 0, y: 0, width: EW, height: EH, scale: 1 }, captureBeyondViewport: false })
       : await cdp.send('Page.captureScreenshot', { format: 'png', clip: { x: x0, y: y0, width: w, height: h, scale: 1 }, optimizeForSpeed: true, captureBeyondViewport: false });
     writeFileSync(resolve(outDir, `f${String(f).padStart(6, '0')}.${res.opaque ? 'jpg' : 'png'}`), Buffer.from(r.data, 'base64'));
-    manifest[f] = res.opaque ? [0, 0, 1920, 1080, 1] : [x0, y0, w, h, 0];
+    manifest[f] = res.opaque ? [0, 0, EW, EH, 1] : [x0, y0, w, h, 0];
     if (++done % 200 === 0) console.log(`overlays: ${done} frames, ${((Date.now() - t0) / 1000).toFixed(0)}s`);
   }
 }));

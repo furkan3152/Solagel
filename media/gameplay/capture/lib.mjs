@@ -12,7 +12,7 @@
 // Extra players (other wallets) can join the same room with a small, silent browser: the
 // staged rivals of a scene. Nothing here changes the app; it is only played.
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync, existsSync, readFileSync, renameSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,8 +23,9 @@ export const TAKES = resolve(CACHE, 'takes');
 const require = createRequire(resolve(ROOT, 'apps/web/package.json'));
 const { chromium } = require('playwright');
 const { installDevWallet, loadOrCreateKeypair } = await import(resolve(ROOT, 'scripts/lib/dev-wallet.mjs'));
+import { attachJournal } from './journal.mjs';
 
-export const BASE = process.env.SLANA_URL || 'http://localhost:5173/';
+export const BASE = process.env.SLANA_URL || 'http://localhost:5173/play';
 export const CHROME = process.env.CHROME_PATH || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 export const FFMPEG = process.env.FFMPEG || '/usr/bin/ffmpeg';
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -35,12 +36,12 @@ export const log = (...a) => console.log(`[${((Date.now() - T0) / 1000).toFixed(
 export async function launch() {
   return chromium.launch({
     executablePath: CHROME,
-    args: ['--disable-gpu', '--autoplay-policy=no-user-gesture-required', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows'],
+    args: ['--disable-gpu', '--autoplay-policy=no-user-gesture-required', '--disable-smooth-scrolling', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows'],
   });
 }
 
 // ───────────────────────────── in-page helpers (telemetry + steering brain) ─────────────────────────────
-function pageHelpers() {
+export function pageHelpers() {
   const K = { Cell: 1, Food: 2, Eject: 3, Virus: 4, PowerUp: 5, Loot: 6 };
   window.__mouse = { x: 0, y: 0 };
   window.addEventListener('mousemove', (e) => (window.__mouse = { x: e.clientX, y: e.clientY }), true);
@@ -117,7 +118,7 @@ function pageHelpers() {
       if (value <= 0) continue;
       if (threats.length && unsafe(en.x, en.y)) continue;
       const edge = Math.min(en.x, en.y, w.width - en.x, w.height - en.y);
-      if (edge < 700) value *= 0.15 + 0.85 * (edge / 700);
+      if (edge < 1300) value *= 0.1 + 0.9 * (edge / 1300);
       const sc = value / (d + 40);
       if (sc > bestScore) { bestScore = sc; best = { x: en.x, y: en.y, r: en.r, kind: en.kind, d }; }
     }
@@ -138,7 +139,7 @@ function pageHelpers() {
     }
     if (tgt) best = { ...best, ...tgt, kind: 0 };
     // walls
-    const m = 250 + big;
+    const m = 600 + big; // walls: keep the camera off the world edge
     if (mx < m) fx += (m - mx) / 120; if (my < m) fy += (m - my) / 120;
     if (mx > w.width - m) fx -= (mx - (w.width - m)) / 120; if (my > w.height - m) fy -= (my - (w.height - m)) / 120;
     let vx = 0, vy = 0;
@@ -166,7 +167,7 @@ function pageHelpers() {
     if (!best && !inDanger && flee <= 0.3) { const cx = w.width / 2 - mx, cy = w.height / 2 - my, cd = Math.hypot(cx, cy) || 1; vx = cx / cd; vy = cy / cd; }
     // a pull toward open water when near the walls
     const edgeMe = Math.min(mx, my, w.width - mx, w.height - my);
-    if (!inDanger && edgeMe < 900 && o.mode !== 'still') { const k = (900 - edgeMe) / 900 * 0.8; const cx = w.width / 2 - mx, cy = w.height / 2 - my, cd = Math.hypot(cx, cy) || 1; vx += (cx / cd) * k; vy += (cy / cd) * k; }
+    if (!inDanger && edgeMe < 1500 && o.mode !== 'still') { const k = (1500 - edgeMe) / 1500 * 1.1; const cx = w.width / 2 - mx, cy = w.height / 2 - my, cd = Math.hypot(cx, cy) || 1; vx += (cx / cd) * k; vy += (cy / cd) * k; }
     const vn = Math.hypot(vx, vy) || 1;
     const me = e.camera.toScreen(mx, my);
     const reach = o.reach ?? 340;
@@ -255,6 +256,27 @@ function pageHelpers() {
   window.__keys = keys;
 }
 
+/** The init scripts of a player's context (also used by the replay): settings, wallet, helpers. */
+export async function setupContext(ctx, o) {
+  const settings = {
+    name: o.name, skin: o.skin, theme: o.theme, quality: o.quality, showNames: true, showMass: true, showFps: false, showMinimap: o.minimap, showChat: true,
+    announcer: false,
+    ...(o.audio === 'off' ? { sound: false, volume: 0 } : { sound: true, volume: 0.8 }),
+    ...(o.audio === 'music' ? { musicOn: true, music: 0.9, sfxOn: false, sfx: 0 } : {}),
+    ...(o.audio === 'sfx' ? { musicOn: false, music: 0, sfxOn: true, sfx: 0.8 } : {}),
+    ...(o.audio === 'mix' ? { musicOn: true, music: 0.35, sfxOn: true, sfx: 0.8 } : {}),
+    ...(o.settings || {}),
+  };
+  await ctx.addInitScript((s) => {
+    if (!sessionStorage.getItem('__set')) { localStorage.setItem('slana.settings.v1', JSON.stringify(s)); sessionStorage.setItem('__set', '1'); }
+    // captures keep one look: no automatic quality drop
+    localStorage.setItem('slana.autoQuality', 'off');
+  }, settings);
+  const kp = o.keyPath ? loadOrCreateKeypair(o.keyPath) : undefined;
+  await installDevWallet(ctx, kp);
+  await ctx.addInitScript(pageHelpers);
+}
+
 // ───────────────────────────── a player (one browser context) ─────────────────────────────
 export class Player {
   constructor(browser, o) {
@@ -266,19 +288,14 @@ export class Player {
   async open() {
     const o = this.o;
     this.ctx = await this.browser.newContext({ viewport: { width: o.w, height: o.h }, locale: 'en-US' });
-    const settings = {
-      name: o.name, skin: o.skin, theme: o.theme, quality: o.quality, showNames: true, showMass: true, showFps: false, showMinimap: o.minimap, showChat: true,
-      announcer: false,
-      ...(o.audio === 'off' ? { sound: false, volume: 0 } : { sound: true, volume: 0.8 }),
-      ...(o.audio === 'music' ? { musicOn: true, music: 0.9, sfxOn: false, sfx: 0 } : {}),
-      ...(o.audio === 'sfx' ? { musicOn: false, music: 0, sfxOn: true, sfx: 0.8 } : {}),
-      ...(o.audio === 'mix' ? { musicOn: true, music: 0.35, sfxOn: true, sfx: 0.8 } : {}),
-      ...(o.settings || {}),
-    };
-    await this.ctx.addInitScript((s) => { if (!sessionStorage.getItem('__set')) { localStorage.setItem('slana.settings.v1', JSON.stringify(s)); sessionStorage.setItem('__set', '1'); } }, settings);
-    const kp = o.keyPath ? loadOrCreateKeypair(o.keyPath) : undefined;
-    await installDevWallet(this.ctx, kp);
-    await this.ctx.addInitScript(pageHelpers);
+    // a journal take: everything the page receives is logged for the frame-exact replay (journal.mjs)
+    if (o.journal) {
+      mkdirSync(dirname(o.journal), { recursive: true });
+      // the replay needs the same wallet (its address is on screen)
+      o.keyPath ||= `${o.journal}.key.json`;
+      await attachJournal(this.ctx, o.journal);
+    }
+    await setupContext(this.ctx, o);
     this.page = await this.ctx.newPage();
     this.problems = [];
     this.page.on('pageerror', (e) => this.problems.push(`[pageerror] ${e.message}`));
@@ -287,7 +304,7 @@ export class Player {
     await this.page.waitForFunction(() => !!window.__slana && window.__slana.useUi.getState().connected, null, { timeout: 30000 });
     await this.page.waitForFunction(() => !!window.__slanaChain, null, { timeout: 20000 });
     await this.page.mouse.move(this.cur.x, this.cur.y);
-    if (o.noDraw) {
+    if (o.noDraw || o.journal) {
       // a staged rival only needs to steer: skip its canvas work (a patch of this page only)
       await this.ui(() => { const e = window.__slana.engine; e.renderer.draw = () => {}; e.renderer.drawMinimap = () => {}; });
     }
@@ -339,6 +356,8 @@ export class Player {
     await this.wait(opts.after ?? 450);
   }
   async wheel(total, step = 80, gap = 45) {
+    // a journal take is replayed frame by frame: many small notches scroll smoothly at the same speed
+    if (this.o.journal) { const rate = step / gap; step = Math.max(20, Math.abs(total) / 60); gap = Math.max(8, step / rate); }
     const n = Math.max(1, Math.round(Math.abs(total) / step));
     for (let i = 0; i < n; i++) { await this.page.mouse.wheel(0, Math.sign(total) * step); await this.wait(gap); }
   }
@@ -442,7 +461,9 @@ export class Recorder {
   constructor(player, name, { video = true } = {}) {
     this.p = player;
     this.name = name;
-    this.video = video;
+    // a player with a journal records no pixels: capture/replay.mjs renders the take afterwards
+    this.journal = !!player.o.journal;
+    this.video = this.journal ? false : video;
     this.dir = resolve(TAKES, name);
   }
 
@@ -518,7 +539,14 @@ export class Recorder {
   }
 
   async encode(end, events, keys) {
-    if (!this.video) this.frames = [this.audioStart ?? this.t0];
+    if (this.journal) {
+      await this.p.page.evaluate(() => window.__journal.flush()).catch(() => {});
+      await sleep(800);
+      renameSync(this.p.o.journal, `${this.dir}/journal.jsonl`);
+      if (existsSync(`${this.p.o.journal}.key.json`)) { renameSync(`${this.p.o.journal}.key.json`, `${this.dir}/key.json`); this.p.o.keyPath = `${this.dir}/key.json`; }
+      rmSync(`${this.dir}/frames`, { recursive: true, force: true });
+      this.frames = [this.t0];
+    } else if (!this.video) this.frames = [this.audioStart ?? this.t0];
     const fr = this.frames;
     if (fr.length < 2 && this.video) throw new Error('no frames');
     const first = fr[0];
@@ -532,7 +560,7 @@ export class Recorder {
     const rel = (t) => +(t - first).toFixed(4);
     writeFileSync(`${this.dir}/frames.json`, JSON.stringify(fr.map(rel)));
     const meta = {
-      name: this.name, w: this.p.o.w, h: this.p.o.h, frames: fr.length, duration: rel(end), fps: +(fr.length / (end - first)).toFixed(1),
+      name: this.name, w: this.p.o.w, h: this.p.o.h, frames: fr.length, ...(this.journal ? { journal: 'journal.jsonl', t0: this.t0, player: this.p.o } : {}), duration: rel(end), fps: +(fr.length / (end - first)).toFixed(1),
       marks: this.marks.map((m) => ({ ...m, t: rel(m.t) })),
       events: events.map((e) => ({ ...e, t: rel(e.t) })),
       keys: keys.map((k) => ({ ...k, t: rel(k.t) })),

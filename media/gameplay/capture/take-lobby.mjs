@@ -15,7 +15,7 @@ const keyPath = resolve(CACHE, 'keys/lobby.json');
 if (argv.includes('--fresh')) rmSync(keyPath, { force: true });
 
 const browser = await launch();
-const hero = new Player(browser, { name: 'Daphne', skin: 4, audio: 'sfx', keyPath });
+const hero = new Player(browser, { name: 'Daphne', skin: 4, audio: 'sfx', keyPath, journal: resolve(CACHE, `journal-${NAME}.jsonl`) });
 let rec;
 const beat = async (name, fn) => {
   rec.mark(name);

@@ -11,7 +11,7 @@ import { CACHE, Player, Recorder, launch, log } from './lib.mjs';
 const argv = process.argv.slice(2);
 const NAME = argv.includes('--name') ? argv[argv.indexOf('--name') + 1] : 'spill';
 const browser = await launch();
-const hero = new Player(browser, { name: 'Daphne', skin: 4, audio: 'sfx', keyPath: resolve(CACHE, 'keys/spill.json') });
+const hero = new Player(browser, { name: 'Daphne', skin: 4, audio: 'sfx', keyPath: resolve(CACHE, 'keys/spill.json'), journal: resolve(CACHE, `journal-${NAME}.jsonl`) });
 let rec;
 try {
   await hero.open();
@@ -43,7 +43,7 @@ try {
   await hero.buyTicket(1, { slow: true, signDelay: 900 });
   rec.mark('reenter');
   await hero.wait(800);
-  await hero.wheel(-300, 60, 60);
+  await hero.wheel(-460, 60, 60);
   await hero.drive(9_000, { mode: 'free', humans: 0, loot: 25, margin: 400 });
   rec.mark('end');
 } catch (e) {
