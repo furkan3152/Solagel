@@ -1,7 +1,8 @@
 # How to play Slana (Video B)
 
-A narrated tutorial, about 2:25, 1920x1080, 30 fps, H.264 + AAC, -14 LUFS, in
-seven chapters with the brand's ticket chapter cards:
+A narrated tutorial, about 2:26, 1920x1080, 30 fps (every frame an exact replayed game frame), H.264 +
+AAC, -14 LUFS with the true peak at or below -1.5 dBTP after encoding, in seven chapters with the
+brand's ticket chapter cards:
 
 1. What Slana is
 2. Start free in Practice
@@ -34,8 +35,7 @@ from `apps/web/src/game/input.ts`. Arenas have no cash-out key.
 
 Footage, motion graphics, the compositor and the mixer are shared with the
 gameplay video: see `media/gameplay/README.md`. The takes it uses are `lobby`,
-`practice`, `spill`, `held`, `arena` and `arena2` (`controls` instead of
-`practice` for the controls when it exists).
+`practice`, `spill`, `held`, `arena` and `arena2`, all journals replayed frame by frame.
 
 ## Re-render
 
@@ -49,7 +49,7 @@ mkdir -p media/gameplay/cache/models && cd media/gameplay/cache/models && \
 media/gameplay/cache/venv/bin/python media/how-to-play/audio/tts.py \
   --models media/gameplay/cache/models --out media/how-to-play/cache/vo-raw --speed 1.07
 
-# 2. the edit and the render (takes recorded as in media/gameplay)
+# 2. the edit, the replayed frames it uses (media/gameplay/README.md, step 2), the render
 node media/how-to-play/edit.mjs
 media/gameplay/render/render.sh media/how-to-play/cache/edit/howto.json \
   media/how-to-play/cache/edit/howto-music.json slana-how-to-play media/how-to-play/cache/vo-raw

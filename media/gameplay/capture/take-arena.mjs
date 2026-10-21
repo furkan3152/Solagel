@@ -22,7 +22,9 @@ const argv = process.argv.slice(2);
 const opt = (n, d) => (argv.includes(n) ? argv[argv.indexOf(n) + 1] : d);
 const NAME = opt('--name', 'arena');
 const ARENA = Number(opt('--arena', '1'));
-const GROW = Number(opt('--grow', '90'));
+const GROW = Number(opt('--grow', '110'));
+/** Rivals forage up to this mass first, so the coins Daphne eats read clearly on screen. */
+const RIVAL_MASS = Number(opt('--rival-mass', '42'));
 /** Seconds before the bell at which Daphne's recording starts (she joins ~12 s later). */
 const JOIN_S = Number(opt('--join', '252'));
 /** Beats stop this many seconds before the bell; from here on she only plays safe. */
@@ -35,8 +37,10 @@ const rivals = [
   { name: 'bonk_bae', skin: 7 },
   { name: 'lil_lamport', skin: 9 },
   { name: 'rug_ruth', skin: 5, spiller: true },
+  { name: 'pixel_penny', skin: 3 },
 ].map((r) => new Player(browser, { ...r, w: 480, h: 270, audio: 'off', quality: 'low', minimap: false, tick: 90 }));
-const hero = new Player(browser, { name: 'Daphne', skin: 4, keyPath: resolve(CACHE, 'keys/daphne.json'), audio: 'sfx' });
+// Daphne is recorded as a journal (capture/journal.mjs): the frames are rendered afterwards by capture/replay.mjs
+const hero = new Player(browser, { name: 'Daphne', skin: 4, keyPath: resolve(CACHE, 'keys/daphne.json'), audio: 'sfx', journal: resolve(CACHE, `journal-${NAME}.jsonl`) });
 
 let stopAll = false;
 const heroPos = { wx: 3200, wy: 3200, big: 30, mass: 0 };
@@ -69,7 +73,7 @@ async function buyBack(p, o = {}) {
 async function rivalLoop(r) {
   while (!stopAll) {
     const f = plan.get(r);
-    const o = f ? f() : { mode: 'free', noFood: true, noCells: true, loot: 12, margin: 320 };
+    const o = f ? f() : { mode: 'free', noFood: (r.pos?.mass ?? 0) >= RIVAL_MASS, noCells: true, loot: 12, margin: 320 };
     const p = await r.brain({ reach: 44, ...o }).catch(() => ({ wait: true }));
     if (p.dead) {
       r.dead = true;
@@ -83,7 +87,7 @@ async function rivalLoop(r) {
       continue;
     }
     if (!p.wait) {
-      r.pos = { wx: p.wx, wy: p.wy, big: p.big, value: p.value };
+      r.pos = { wx: p.wx, wy: p.wy, big: p.big, value: p.value, mass: p.mass };
       await r.page.mouse.move(Math.max(4, Math.min(r.o.w - 4, p.x)), Math.max(4, Math.min(r.o.h - 4, p.y))).catch(() => {});
     }
     await sleep(r.o.tick);
@@ -119,7 +123,7 @@ async function heroWhile(ms, o, cond, { late = true } = {}) {
   }
   return 'time';
 }
-const forage = () => ({ mode: 'free', humans: 0, loot: 3, margin: 260, avoidPids: rivals.filter((r) => !r.eaten).map((r) => r.pid) });
+const forage = () => ({ mode: 'free', humans: 0, loot: 3, margin: 480, splitMargin: 520, avoidPids: rivals.filter((r) => !r.eaten).map((r) => r.pid) });
 /** A beat; if Daphne is eaten, keep the footage, buy back in, grow again and retry. */
 async function beat(name, fn, tries = 3) {
   if ((await leftS()) < SAFE_S) throw new Late(name);
@@ -134,7 +138,7 @@ async function beat(name, fn, tries = 3) {
       await buyBack(hero, { pause: 900, before: 500 });
       await hero.buyTicket(ARENA, { signDelay: 600 });
       await hero.wait(1200);
-      await hero.wheel(-300, 60, 60);
+      await hero.wheel(-460);
       rec.mark('reenter');
       await heroWhile(60_000, forage, async () => heroPos.mass < GROW);
     }
@@ -172,9 +176,9 @@ try {
   await hero.buyTicket(ARENA, { slow: true, signDelay: 1300 });
   rec.mark('enter', { left: await leftS() });
   await hero.wait(1500);
-  await hero.wheel(-300, 60, 60);
+  await hero.wheel(-460);
   hero.pid = await pidOf(hero);
-  const [r1, r2, r3] = rivals;
+  const [r1, r2, r3, , r5] = rivals;
   try {
     await beat('grow', () => heroWhile(70_000, forage, async () => heroPos.mass < GROW));
 
@@ -227,7 +231,7 @@ try {
       await heroWhile(1_800, { mode: 'free', margin: 500, humans: 0 });
     });
     // more play until the beats run out of time
-    await beat('roam', () => heroWhile(120_000, { mode: 'free', loot: 8, humans: 0.3, margin: 420 }));
+    await beat('roam', () => heroWhile(120_000, { mode: 'free', loot: 8, humans: 0.3, margin: 600, splitMargin: 700 }));
   } catch (e) {
     if (!(e instanceof Late)) throw e;
     log('beats end:', e.message);
@@ -235,14 +239,20 @@ try {
 
   // 5. the final minute: joins close, the chip turns mustard; play safe to the bell
   rec.mark('safe', { left: await leftS() });
-  const safe = { mode: 'free', loot: 6, humans: 0, margin: 700, splitMargin: 600, split: false };
+  const safe = { mode: 'free', loot: 6, humans: 0, margin: 950, splitMargin: 900, split: false };
   let res = await heroWhile(SAFE_S * 1000 - 61_000, safe, null, { late: false });
   await hero.untilRound((r) => r.phase === 'closing', 30_000, ARENA).catch(() => {});
   rec.mark('final', { left: await leftS() });
-  res = await heroWhile(48_000, safe, async () => (await leftS()) > 11.2, { late: false });
+  // the last seconds: pixel_penny (kept away all round) comes at Daphne and is eaten before the bell
+  res = await heroWhile(48_000, safe, async () => (await leftS()) > 15.5, { late: false });
+  if (!r5.dead) { plan.set(r5, bait(r5)); rec.mark('bait5'); }
+  res = await heroWhile(5_000, () => (!r5.dead && distTo(r5) < 1000 ? { mode: 'hunt', pid: r5.pid, split: false, margin: 200 } : safe), async () => (await leftS()) > 11.2, { late: false });
   rec.mark('count', { left: await leftS() });
-  stopAll = true; // rivals stop steering; their coins stay in the room until the bell
-  res = await heroWhile(16_000, safe, async () => (await hero.screen()) === 'playing', { late: false });
+  res = await heroWhile(16_000, () => (!r5.dead && distTo(r5) < 1000 ? { mode: 'hunt', pid: r5.pid, split: false, margin: 200 } : safe), async () => {
+    if (r5.dead && !stopAll) { stopAll = true; rec.mark('ate5'); } // rivals stop steering; their coins stay until the bell
+    return (await hero.screen()) === 'playing';
+  }, { late: false });
+  stopAll = true;
   // 6. the bell, the frozen world, the receipt
   await hero.page.waitForFunction(() => !!window.__slana.useUi.getState().roundResult, null, { timeout: 15000 }).catch(() => log('no round result'));
   rec.mark('bell');

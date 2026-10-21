@@ -31,14 +31,29 @@ class Source:
     def __init__(self, name, size):
         self.dir = os.path.join(TAKES, name)
         self.times = json.load(open(os.path.join(self.dir, "frames.json")))
+        meta = json.load(open(os.path.join(self.dir, "events.json")))
+        # replayed takes (capture/replay.mjs) are rendered at `scale` pixels per CSS px, at exact times
+        self.scale = meta.get("scale", 1)
+        self.exact = bool(meta.get("replayed"))
+        # the source frame: the take's own size (not the edit's: a vertical cut crops it)
+        size = (round(meta.get("w", size[0]) * self.scale), round(meta.get("h", size[1]) * self.scale))
         self.jpeg = os.path.isdir(os.path.join(self.dir, "frames"))
-        self.pts = None if self.jpeg else json.load(open(os.path.join(self.dir, "pts.json")))
+        pp = os.path.join(self.dir, "pts.json")
+        self.pts = None if self.jpeg or not os.path.exists(pp) else json.load(open(pp))
         self.size = size
         self.cache = OrderedDict()
         self.proc = None
         self.next = 0  # index of the next frame the decoder will hand out
 
     def index(self, t):
+        if self.exact:
+            # the frame nearest to t (frames sit on a 1/240 s lattice, gaps between ranges)
+            i = bisect.bisect_left(self.times, t)
+            if i >= len(self.times):
+                return len(self.times) - 1
+            if i > 0 and t - self.times[i - 1] < self.times[i] - t:
+                return i - 1
+            return i
         return max(0, min(len(self.times) - 1, bisect.bisect_right(self.times, t) - 1))
 
     def _open(self, i):
@@ -110,11 +125,22 @@ def frame(edit, sources, f, ov_dir, manifest):
         base = Image.new("RGB", (W, H), PAPER)
     else:
         ti, t, cx, cy, z, blend = m
-        src = sources[ti].at(t, blend)
+        S = sources[ti]
+        src = S.at(t, blend and not S.exact)
         sw, sh = src.size
         left, top = cx - W / (2 * z), cy - H / (2 * z)
+        k = S.scale
         if abs(z - 1) < 1e-3 and abs(left - round(left)) < 1e-3 and abs(top - round(top)) < 1e-3 and (sw, sh) == (W, H):
             base = src.copy()
+        elif k != 1:
+            # an antialiased resample of the crop box (sub-pixel), from the high-resolution render
+            bw, bh = W / z * k, H / z * k
+            x0 = min(max(left * k, 0.0), max(0.0, sw - bw))
+            y0 = min(max(top * k, 0.0), max(0.0, sh - bh))
+            box = (x0, y0, min(sw, x0 + bw), min(sh, y0 + bh))
+            base = src.resize((W, H), Image.LANCZOS, box=box)
+            if z > 1.05 * k:
+                base = base.filter(ImageFilter.UnsharpMask(radius=1.2, percent=min(60, int((z / k - 1) * 90)), threshold=2))
         else:
             base = src.transform((W, H), Image.AFFINE, (1 / z, 0, left, 0, 1 / z, top), resample=Image.BICUBIC)
             if z > 1.1:

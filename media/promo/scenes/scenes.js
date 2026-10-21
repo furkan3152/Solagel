@@ -26,7 +26,8 @@ function bg(ctx, t, color = C.paper, dark = false, par = 1) {
 /** Footage frame for a shot at local time lt (seconds). */
 function footUrl(shot, lt) {
   const sh = S.shots[shot];
-  const n = clamp(Math.floor(Math.max(0, lt) * 30), 0, Math.round(sh.dur * 30) - 1) + 1;
+  const fps = sh.fps || 30;
+  const n = clamp(Math.floor(Math.max(0, lt) * fps + 1e-6), 0, Math.round(sh.dur * fps) - 1) + 1;
   return `/cache/footage/${shot}/${String(n).padStart(4, '0')}.jpg`;
 }
 function drawFoot(ctx, shot, lt, x, y, w, h, zoom = 1, fx = 0.5, fy = 0.5) {
@@ -74,7 +75,7 @@ function hud(ctx, t, idx, dark = false, alpha = 1) {
   ctx.textBaseline = 'middle';
   ctx.fillText('SLANA  /  ON-CHAIN COIN ARENAS', 64, H - 46);
   ctx.textAlign = 'right';
-  ctx.fillText(String(idx).padStart(2, '0') + ' / 09', W - 64 - 96, H - 46);
+  ctx.fillText(String(idx).padStart(2, '0') + ' / 07', W - 64 - 96, H - 46);
   [C.pink, C.teal, C.mustard].forEach((c, i) => {
     ctx.fillStyle = c;
     ctx.fillRect(W - 64 - 78 + i * 28, H - 52, 22, 12);
@@ -128,7 +129,22 @@ window.SCENES_INIT = async () => {
   LOOK.bot = { body: '#9A95AE', overprint: '#3055FC', offset: { dx: 3, dy: 3 }, symbol: 'bolt', eyes: 'sleepy', mouth: 'flat', accessory: 'none', special: null };
   S.shots = {};
   (TL.footage || []).forEach((s) => (S.shots[s.id] = s));
+  // the cold open's coin track (output px per footage frame), written by render/footage-from-takes.mjs
+  S.track = {};
+  for (const s of TL.footage || []) {
+    try { const r = await fetch(`/cache/footage/${s.id}/track.json`); if (r.ok) S.track[s.id] = await r.json(); } catch {}
+  }
 };
+/** Where the hero coin is in footage shot `id` at local time lt: {x, y, r} (output px). */
+function trackAt(id, lt) {
+  const tr = S.track[id];
+  if (!tr || !tr.length) return { x: W / 2, y: H / 2, r: 80 };
+  const fps = S.shots[id].fps || 30;
+  const f = clamp(lt * fps, 0, tr.length - 1);
+  const i = Math.floor(f), k = f - i;
+  const a = tr[i], b = tr[Math.min(tr.length - 1, i + 1)];
+  return { x: lerp(a[0], b[0], k), y: lerp(a[1], b[1], k), r: lerp(a[2], b[2], k) };
+}
 
 /* ───────────── 1. HOOK (0 – 4.8) ───────────── */
 function logoLayout(ctx) {
@@ -234,7 +250,8 @@ function sceneHook(ctx, t) {
   // hunter's purse
   const ca = tw(t, 0.7, 1.0) * (1 - tw(t, 3.6, 3.85));
   if (ca > 0.01) {
-    const v = lerp(1200, 2950, E.outCubic(prog(t, T_GULP + 0.08, T_GULP + 0.9)));
+    const pv = TL.hook2?.purse || [1200, 2950];
+    const v = lerp(pv[0], pv[1], E.outCubic(prog(t, T_GULP + 0.08, T_GULP + 0.9)));
     const bx = (t < 3.6 ? hx : 1400), by = (t < 3.6 ? hy : 600) + hr + 60;
     ctx.save();
     ctx.globalAlpha = ca;
@@ -957,8 +974,10 @@ function sceneArenas(ctx, t) {
     const fly = 1 - clamp(E.outCubic(prog(t, a.at - 0.2, a.at + 0.05)));
     const cx = AT.x + AT.w / 2, cy = AT.y + i * (AT.h + AT.gap) + AT.h / 2;
     ctx.save();
-    ctx.translate(cx + fly * 1100, cy - fly * 160);
-    const rot = (i % 2 ? 1 : -1) * 0.012 + fly * 0.25 + (1 - clamp(k, 0, 1.2)) * 0.04;
+    // in the cut the tickets clear off for the arena posters (posterWall)
+    const gone = TL.cut ? E.inCubic(prog(t, 34.45 + i * 0.05, 34.8 + i * 0.05)) : 0;
+    ctx.translate(cx + fly * 1100 + gone * 1300, cy - fly * 160 - gone * 60);
+    const rot = (i % 2 ? 1 : -1) * 0.012 + fly * 0.25 + (1 - clamp(k, 0, 1.2)) * 0.04 + gone * 0.2;
     ctx.rotate(rot);
     const s = lerp(1.06, 1, clamp(k, 0, 1));
     ctx.scale(s, s);
@@ -977,7 +996,7 @@ function sceneArenas(ctx, t) {
   ctx.fillText('Same game in every room.', 154, 640);
   ctx.fillText('Only the entry fee differs.', 154, 674);
   ctx.restore();
-  hud(ctx, t, 6, false, 1);
+  hud(ctx, t, 5, false, 1);
 }
 
 /* ───────────── 8. JOIN (36.85 – 41.6) ───────────── */
@@ -1182,7 +1201,7 @@ function sceneFee(ctx, t, own = true) {
     { text: 'One flat fee.', at: 41.45 },
     { text: '5% of profit.', at: 42.6, color: C.pink },
   ], 150, 300, t, { size: 92, lh: 0.98 });
-  if (own) hud(ctx, t, 8, false, 1);
+  if (own) hud(ctx, t, 6, false, 1);
 }
 
 /* ───────────── 10. END (45.9 – 52.8) ───────────── */
@@ -1255,7 +1274,7 @@ function sceneEnd(ctx, t) {
   font(ctx, 24, 500, 'mono'); ctx.letterSpacing = '5px'; ctx.fillStyle = C.nightInk; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText('X  @SLANAIO  /  FREE PRACTICE ON SOLANA', W / 2, 920);
   ctx.restore();
-  hud(ctx, t, 9, true, tw(t, 50.6, 51.0));
+  hud(ctx, t, 7, true, tw(t, 50.6, 51.0));
 }
 
 /* ───────────── composition: scenes + transitions ───────────── */
@@ -1294,7 +1313,7 @@ function pageTurn(ctx, t, a, b, drawA, drawB) {
   ctx.restore();
 }
 
-window.SCENE_DRAW = (ctx, t) => {
+function drawOld(ctx, t) {
   if (t < 4.8) return sceneHook(ctx, t);
   if (t < 13.55) return sceneTicket(ctx, t);
   if (t < 20.1) return scenePlay(ctx, t);
@@ -1373,9 +1392,9 @@ window.SCENE_DRAW = (ctx, t) => {
   return sceneEnd(ctx, t);
 };
 
-window.SCENE_DARK = (t) => (t >= 26.1 && t < 30.9) || t >= 46.5;
+const darkOld = (t) => (t >= 26.1 && t < 30.9) || t >= 46.5;
 
-window.SCENE_BLUR = (t) => {
+function blurOld(t) {
   // subframe motion blur on the fast moves only
   const win = [
     [2.1, 2.5, 5, 0.012], // lunge + gulp
@@ -1391,9 +1410,177 @@ window.SCENE_BLUR = (t) => {
   return { k: 1, shutter: 0 };
 };
 
-window.SCENE_ASSETS = (t) => {
+function assetsOld(t) {
   const urls = [];
   if (t >= 11.4 && t < 13.55) urls.push(footUrl('A', t - 11.4));
   if (t >= 13.55 && t < 20.5) { const sh = shotAt(t); urls.push(footUrl(sh.id, t - sh.t0)); }
   return urls;
+};
+
+/* ───────────── the cut ─────────────
+ * timeline.json "cut" lays the film out: pieces of the scene timeline above (old seconds), the
+ * cold open on real footage, and the transitions that join the pieces. Everything below maps the
+ * film's time to the scenes. */
+
+/** The purse under the hero coin (ink chip with the $SLANA odometer). */
+function purse(ctx, x, y, v, pop = 1, alpha = 1) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(x, y); ctx.scale(pop, pop);
+  rrect(ctx, -150, -34, 300, 68, 10);
+  ctx.fillStyle = C.ink; ctx.fill();
+  font(ctx, 40, 800, 'display'); ctx.letterSpacing = '-1px'; ctx.fillStyle = C.card; ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic'; ctx.fillText(fmt(Math.round(v / 10) * 10), 40, 16); ctx.textAlign = 'left';
+  font(ctx, 17, 500, 'mono'); ctx.letterSpacing = '2px'; ctx.fillStyle = C.pink;
+  ctx.fillText('$SLANA', 52, 12);
+  ctx.restore();
+}
+
+/** Cold open (0 - 2.4): real footage. A chase, the gulp on the low F (1.2), the purse jumps, the
+ * camera pushes into the coin, which lands where the printed coin of the old hook sits (match cut). */
+function sceneHook2(ctx, t) {
+  const H2 = TL.hook2;
+  const G = H2.gulp;
+  const END = H2.end; // the cut into the printed coin
+  const me = trackAt(H2.shot, t);
+  // push: the footage scales about the coin until it lands on the printed coin's spot and size
+  const push = E.inOutCubic(prog(t, END - 0.5, END));
+  const tx = lerp(me.x, 1400, push), ty = lerp(me.y, 604, push);
+  const sc = lerp(1, 205 / Math.max(20, me.r), push);
+  const sh = shake(t, [G], 16, 0.4);
+  ctx.save();
+  ctx.fillStyle = C.paper; ctx.fillRect(0, 0, W, H);
+  ctx.translate(tx + sh.x, ty + sh.y); ctx.scale(sc, sc); ctx.rotate(sh.r); ctx.translate(-me.x, -me.y);
+  drawFoot(ctx, H2.shot, t, 0, 0, W, H, 1);
+  ctx.restore();
+  // the paper takes over toward the cut (the printed page of the next shot)
+  const pa = E.inCubic(prog(t, END - 0.22, END));
+  if (pa > 0) {
+    ctx.save(); ctx.globalAlpha = pa;
+    ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.arc(1400, 604, 205 * (1 + 0.2 * (1 - pa)), 0, TAU, true); ctx.clip('evenodd');
+    bg(ctx, t + 1.2);
+    ctx.restore();
+  }
+  // a paper wash on the left keeps the type readable over the game
+  ctx.save();
+  const g = ctx.createLinearGradient(0, 0, 980, 0);
+  g.addColorStop(0, 'rgba(241,234,219,0.92)'); g.addColorStop(0.55, 'rgba(241,234,219,0.7)'); g.addColorStop(1, 'rgba(241,234,219,0)');
+  ctx.fillStyle = g; ctx.globalAlpha = 1 - pa; ctx.fillRect(0, 0, 980, H);
+  ctx.restore();
+  // gulp flash and ink burst
+  if (t >= G && t < G + 0.14) { ctx.save(); ctx.globalAlpha = 0.55 * (1 - (t - G) / 0.14); ctx.fillStyle = C.card; ctx.fillRect(0, 0, W, H); ctx.restore(); }
+  const gp = trackAt(H2.shot, G);
+  const gx = (gp.x - me.x) * sc + tx, gy = (gp.y - me.y) * sc + ty;
+  burst(ctx, gx, gy, t - G, { seed: 4, n: 34, speed: 900, size: 11 });
+  shockDots(ctx, gx, gy, t - G, C.ink, 700, 0.16);
+  // the value float: +X rises off the gulp and drops into the purse
+  const vf = t - G;
+  const gain = H2.purse[1] - H2.purse[0];
+  if (vf > 0 && vf < 1.0) {
+    const k = E.outCubic(clamp(vf / 0.35));
+    const fall = E.inCubic(prog(vf, 0.55, 0.95));
+    const fx = lerp(gx + 30, me.x * 0 + tx, fall), fy = lerp(gy - me.r * sc - 40 - 90 * k, ty + me.r * sc + 60, fall);
+    const s1 = (0.4 + 0.75 * E.outBack(clamp(vf / 0.3))) * (1 - 0.6 * fall);
+    ctx.save();
+    ctx.translate(fx, fy); ctx.scale(s1, s1); ctx.rotate(-0.06);
+    font(ctx, 128, 800, 'display'); ctx.letterSpacing = '-3px'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const txt = '+' + fmt(gain);
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.fillStyle = C.pink; ctx.fillText(txt, 7, 6);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.lineWidth = 12; ctx.strokeStyle = C.ink; ctx.lineJoin = 'round'; ctx.strokeText(txt, 0, 0);
+    ctx.fillStyle = C.mustard; ctx.fillText(txt, 0, 0);
+    font(ctx, 26, 500, 'mono'); ctx.letterSpacing = '3px'; ctx.fillStyle = C.ink;
+    ctx.fillText('$SLANA', 0, 84);
+    ctx.restore();
+  }
+  // purse under the coin
+  const ca = tw(t, 0.25, 0.5);
+  if (ca > 0.01) {
+    const v = lerp(H2.purse[0], H2.purse[1], E.outCubic(prog(t, G + 0.55, G + 1.05)));
+    const pop = 1 + 0.14 * Math.exp(-(t - G - 0.95) * 6) * (t > G + 0.95 ? 1 : 0);
+    purse(ctx, tx, ty + me.r * sc + 60, v, pop, ca);
+  }
+  // type: the same kicker and headline as the printed hook, so they carry across the cut
+  kicker(ctx, 'ON-CHAIN COIN ARENAS  /  SOLANA', 150, 300, t, 0.0, { out: END - 0.05 });
+  headline(ctx, [
+    { text: 'Eat a player.', at: 0.04 },
+    { text: 'Keep their tokens.', at: G + 0.08, color: C.pink },
+  ], 150, 470, t, { size: 118, out: END - 0.05, stagger: 0.06 });
+  // print marks in the corners from the first frame
+  hud(ctx, t, 1, false, 0.9 * (1 - tw(t, END - 0.6, END - 0.3)));
+}
+
+/* The four arena posters (brand/posters) dealt onto the board on the beat, in the cut. */
+const POSTERS = ['poster-1-penny-pond', 'poster-2-silver-creek', 'poster-3-gold-lake', 'poster-4-whale-bay'];
+const POSTER_AT = [34.8, 35.1, 35.4, 35.7];
+function posterWall(ctx, t) {
+  if (t < POSTER_AT[0] - 0.25) return;
+  const w = 286, h = 400;
+  POSTERS.forEach((name, i) => {
+    const at = POSTER_AT[i];
+    if (t < at - 0.25) return;
+    const im = getImg(`/brand/posters/${name}.png`);
+    const fall = 1 - E.outCubic(clamp(prog(t, at - 0.25, at)));
+    const k = spring(t - at, 1.7, 6.5);
+    const x = 770 + i * 272 + w / 2, y = 330 + h / 2 + (i % 2) * 26;
+    ctx.save();
+    ctx.translate(x, y - fall * 900);
+    ctx.rotate((i % 2 ? 1 : -1) * 0.035 + fall * 0.3 + (1 - clamp(k, 0, 1.2)) * 0.05);
+    const sc = lerp(1.08, 1, clamp(k, 0, 1));
+    ctx.scale(sc, sc);
+    paperShadow(ctx, () => { ctx.beginPath(); ctx.rect(-w / 2, -h / 2, w, h); }, 1.1, 0.3);
+    if (im) ctx.drawImage(im, -w / 2, -h / 2, w, h);
+    else { ctx.fillStyle = C.card; ctx.fillRect(-w / 2, -h / 2, w, h); }
+    ctx.restore();
+    tape(ctx, x - 20, y - h / 2 - 14 - fall * 900, 120, 34, -0.2 + i * 0.12, prog(t, at + 0.05, at + 0.2));
+  });
+}
+const SCENE_FN = {
+  rounds: (ctx, t) => sceneRounds(ctx, t),
+  arenas: (ctx, t) => { sceneArenas(ctx, t); posterWall(ctx, t); },
+  fee: (ctx, t) => sceneFee(ctx, t),
+};
+const drawScene = (name, ctx, t) => (name ? SCENE_FN[name](ctx, t) : drawOld(ctx, t));
+
+function cutAt(t) {
+  const cs = TL.cut;
+  for (let i = cs.length - 1; i >= 0; i--) if (t >= cs[i].at - 1e-9) return cs[i];
+  return cs[0];
+}
+window.SCENE_DRAW = (ctx, t) => {
+  const c = cutAt(t), lt = t - c.at;
+  if (c.kind === 'hook') return sceneHook2(ctx, lt);
+  if (c.kind === 'turn') return pageTurn(ctx, lt, 0, c.dur, () => drawScene(c.sa, ctx, c.a + lt), () => drawScene(c.sb, ctx, c.b + lt));
+  if (c.kind === 'whip') {
+    const p = E.inOutExpo(prog(lt, 0, c.dur));
+    ctx.save(); ctx.translate(-W * p, 0); drawScene(c.sa, ctx, c.a + lt); ctx.restore();
+    ctx.save(); ctx.translate(W * (1 - p), 0); drawScene(c.sb, ctx, c.b + lt); ctx.restore();
+    return;
+  }
+  return drawScene(c.scene, ctx, c.old + lt);
+};
+window.SCENE_DARK = (t) => {
+  const c = cutAt(t), lt = t - c.at;
+  if (c.kind === 'hook') return false;
+  if (c.kind) return darkOld(c.b + lt);
+  return darkOld(c.old + lt);
+};
+window.SCENE_BLUR = (t) => {
+  const c = cutAt(t), lt = t - c.at;
+  if (c.kind === 'hook') {
+    const G = TL.hook2.gulp, END = TL.hook2.end;
+    if (lt >= G - 0.06 && lt < G + 0.16) return { k: 5, shutter: 0.012 };
+    if (lt >= END - 0.45) return { k: 8, shutter: 0.012 };
+    return { k: 1, shutter: 0 };
+  }
+  if (c.kind === 'whip') return { k: 14, shutter: 0.014 };
+  if (c.kind === 'turn') return { k: 4, shutter: 0.01 };
+  return blurOld(c.old + lt);
+};
+window.SCENE_ASSETS = (t) => {
+  const c = cutAt(t), lt = t - c.at;
+  if (c.kind === 'hook') return [footUrl(TL.hook2.shot, lt)];
+  const posters = POSTERS.map((n) => `/brand/posters/${n}.png`);
+  if (c.kind) return [...assetsOld(c.a + lt), ...assetsOld(c.b + lt), ...(c.sa === 'arenas' || c.sb === 'arenas' ? posters : [])];
+  return [...assetsOld(c.old + lt), ...(c.scene === 'arenas' ? posters : [])];
 };

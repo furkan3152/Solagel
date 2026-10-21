@@ -35,8 +35,9 @@ const ROUTES = {
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.jpg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.woff2': 'font/woff2' };
 const server = createServer((req, res) => {
   const url = decodeURIComponent(new URL(req.url, 'http://x').pathname);
-  const file = ROUTES[url] || join(PROMO, url);
-  if (!file.startsWith(PROMO) && !ROUTES[url]) return res.writeHead(403).end();
+  // the brand art (arena posters) is served from brand/
+  const file = ROUTES[url] || (url.startsWith('/brand/') ? join(ROOT, url) : join(PROMO, url));
+  if (!file.startsWith(PROMO) && !file.startsWith(join(ROOT, 'brand')) && !ROUTES[url]) return res.writeHead(403).end();
   if (!existsSync(file) || statSync(file).isDirectory()) return res.writeHead(404).end();
   res.writeHead(200, { 'content-type': MIME[extname(file)] || 'application/octet-stream', 'cache-control': 'max-age=3600' });
   createReadStream(file).pipe(res);
@@ -84,7 +85,7 @@ try {
     await browser.close();
   } else {
     const from = parseFloat(opt('--from', '0'));
-    const to = parseFloat(opt('--to', String(TL.duration)));
+    const to = parseFloat(opt('--to', String(TL.cutDuration ?? TL.duration)));
     const workers = parseInt(opt('--workers', '3'), 10);
     const out = resolve(opt('--out', join(PROMO, 'cache/video.mp4')));
     const f0 = Math.round(from * FPS), f1 = Math.round(to * FPS);

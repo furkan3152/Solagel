@@ -1,90 +1,97 @@
 [
  {
   "id": "intro",
-  "text": "Here's how to play Slana, in about two minutes."
+  "text": "Here's how to play Slana, | step by step.",
+  "speed": 0.98
  },
  {
   "id": "c1",
-  "text": "Slana is an on-chain coin arena game on Solana. You're a coin in a live arena on Solana. Eat smaller players, take their tokens, and be alive at the bell to get paid."
+  "text": "Slana is an on-chain coin arena game. || You're a coin, | in a live arena on Solana. || Eat smaller players. | Take their tokens. | And be alive at the bell, | to get *paid.*"
  },
  {
   "id": "c2",
-  "text": "Start for free. In the lobby, pick the Practice ticket and press Quick Play. No wallet, no tokens: just you and the bots."
+  "text": "Start for free. || In the lobby, | pick the Practice ticket | and press Start practice. || No wallet. | No tokens. | Just you, and the bots."
  },
  {
   "id": "c3a",
-  "text": "Your coin follows the mouse."
+  "text": "Your coin follows your mouse.",
+  "speed": 0.96
  },
  {
   "id": "c3b",
-  "text": "Press Space to split, and launch half of your coin at a runner."
+  "text": "Press Space to split, | and launch half your coin at a runner."
  },
  {
   "id": "c3c",
-  "text": "Hold W to tip out a little mass."
+  "text": "Hold W | to tip out a little mass.",
+  "speed": 0.96
  },
  {
   "id": "c3d",
-  "text": "Number keys one to eight send stickers, and Enter opens the chat."
+  "text": "Number keys one to eight send stickers. | Enter opens the chat."
  },
  {
   "id": "c4a",
-  "text": "Eat confetti to grow. To eat a coin, you need a quarter more mass than it has, and you have to mostly cover it."
+  "text": "Eat confetti to grow. || To eat another coin, | you need a *quarter* more mass than it has, | and you have to mostly cover it."
  },
  {
   "id": "c4b",
-  "text": "So run from bigger coins. And the bigger you get, the slower you move."
+  "text": "So run from bigger coins. || And the bigger you get, | the slower you move."
  },
  {
   "id": "c4c",
-  "text": "Rug cacti pop big coins into pieces. Small coins can hide behind them."
+  "text": "Rug cacti pop big coins into pieces. | Small coins can hide behind them."
  },
  {
   "id": "c4d",
-  "text": "Bots carry no value. But if a bot eats you, your tokens spill on the floor as loot, and only real players can grab it."
+  "text": "Bots carry no value. || But if a bot eats you, | your tokens spill on the floor as loot. | And only *real* players can grab it."
  },
  {
   "id": "c5a",
-  "text": "Ready to play for real? Connect a wallet and buy a ticket. There are four arenas, open to everyone, and each has a fixed entry fee: Penny Pond is one thousand Slana, Silver Creek ten thousand, Gold Lake fifty thousand, and Whale Bay two hundred fifty thousand."
+  "text": "Ready to play for real? | Connect a wallet, | and buy a ticket. || There are four arenas, | open to everyone, | each with a fixed entry fee. || Penny Pond: | one thousand Slana. | Silver Creek: | ten thousand. | Gold Lake: | fifty thousand. | And Whale Bay: | two hundred fifty thousand.",
+  "speed": 1.04
  },
  {
   "id": "c5b",
-  "text": "Your entry fee is your starting value, and it sits in your till. Eat a player, and their tokens move into it."
+  "text": "Your entry fee is your starting value, | and it sits in your till. || Eat a player, | and their tokens move into it."
  },
  {
   "id": "c6a",
-  "text": "Arenas play five-minute rounds on the clock, and you can join one that's already running."
+  "text": "Arenas play five-minute rounds, | on the clock. || And you can join a round | that's already running."
  },
  {
   "id": "c6b",
-  "text": "Joins close in the final minute. Buy a ticket then, and it's held: you join the next round by yourself."
+  "text": "Joins close in the final minute. || Buy a ticket then, | and it's *held.* | You join the next round by yourself."
  },
  {
   "id": "c6c",
-  "text": "Eaten? Buy back in, at the same fee, and jump straight back into the round."
+  "text": "Eaten? | Buy back in, | at the same fee, | and jump straight back into the round."
  },
  {
   "id": "c6d",
-  "text": "When the bell rings, everyone still alive is paid their till."
+  "text": "When the bell rings, | everyone still alive | gets paid their till."
  },
  {
   "id": "c6e",
-  "text": "The fee is charged on profit only: a flat five percent, paid to the operator. Enter with one thousand, finish the round on two thousand: that's one thousand profit. The fee is fifty, so you get nineteen fifty."
+  "text": "The fee only touches *profit.* | It's a flat five percent, | paid to the operator. || Say you enter with one thousand, | and finish on two thousand. | That's one thousand profit. || The fee is fifty, | so you get nineteen fifty.",
+  "speed": 1.03
  },
  {
   "id": "c6f",
-  "text": "At a loss or break-even, there's no fee at all."
+  "text": "Lose, or break even? | No fee at all."
  },
  {
   "id": "c6g",
-  "text": "And any loot left on the floor at the bell is burned."
+  "text": "And any loot left on the floor at the bell? | It's *burned.*"
  },
  {
   "id": "c7",
-  "text": "Quick tips. Warm up in Practice. Only split when the catch is sure. And in the final minute, play it safe: you're only paid if you're alive at the bell."
+  "text": "Quick tips. || Warm up in Practice. | Only split when the catch is sure. || And in the final minute, | play it safe. | You only get paid | if you're alive at the bell.",
+  "speed": 1.02
  },
  {
   "id": "outro",
-  "text": "Slana. Eat. Grow. Last the round."
+  "text": "Slana. | Eat. | Grow. | Last the round. || See you at slana dot io.",
+  "speed": 0.94
  }
 ]

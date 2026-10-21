@@ -367,9 +367,11 @@ def make(cue):
 
 def main():
     out = sys.argv[1]
+    # --cues sfx2: the cut's own cues (film time) instead of the scene timeline's
+    key = sys.argv[sys.argv.index("--cues") + 1] if "--cues" in sys.argv else "sfx"
     n = int((TL["duration"] + 1.2) * SR)
     buf = np.zeros((2, n))
-    for cue in TL["sfx"]:
+    for cue in TL[key]:
         x = make(cue)
         g = cue.get("gain", 1.0)
         if x.ndim == 2:
