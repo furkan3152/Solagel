@@ -41,7 +41,8 @@ float(s0, tG + 0.08, `+${Math.round(eat.v.delta / 1e6).toLocaleString('en-US')}`
 
 // ── 1 · five-minute rounds (1.5 bars) ── she drops into a round already running; the round chip
 wipe(s0.end, ['pink', 'card']);
-const s1 = e.shot({ take: A, from: mark(A, 'enter') + 0.2, dur: bars(1.5), cam: [[0, 960, 420, 1.8], [4.39, 960, 400, 1.85]] });
+// the round clock over a live stretch of the round (top centre) with her coin below it
+const s1 = e.shot({ take: A, from: 179.6, dur: bars(1.5), cam: [[0, 960, 345, 1.82], [4.39, 960, 340, 1.86]] });
 kick(s1.start + 0.15, 'LIVE ROUND / PENNY POND', 4.0);
 head(s1.start, bars(1.5), [{ text: 'Five-minute', at: 0.25 }, { text: 'rounds.', at: 0.4, color: 'pink' }], { y: 1500 });
 e.voice('rounds_a', s1.start + 0.3);
@@ -65,13 +66,15 @@ e.add('ring', s2.start + 0.6, 2.2, { track: e.trackMe(s2, s2.start + 0.6, 2.2), 
 
 // ── 3 · the bell, the receipt, PAID (2 bars) ──
 const tPaid = mark(F, 'paid');
-const s3 = e.shot({ take: F, from: tBell - 0.05, dur: bars(2), cam: [[0, 960, 520, 1.85], [1.4, 960, 520, 1.8], [2.4, 800, 560, 1.95], [5.85, 790, 560, 2.0]] });
-e.add('flash', s3.start, 0.35, { color: 'card', peak: 0.55 }, 60);
-e.add('stamp', s3.start + 0.08, 1.4, { text: 'BELL!', x: 760, y: 360, color: 'mustard', rot: -10, size: 120 }, 40);
-e.cue('stamp', s3.start + 0.08, 0.9).cue('impact', s3.start + 0.08, 0.6);
+// the bell on the frozen world (kept inside the map), then the receipt modal framed on its own
+const s3a = e.shot({ take: F, from: tBell - 0.05, dur: 2.3, zoom: 1.85, lag: 0.6 });
+const s3 = e.shot({ take: F, from: tBell + 2.25, dur: bars(2) - 2.3, edge: false, cam: [[0, 800, 540, 1.85], [0.6, 768, 540, 1.95], [3.55, 765, 540, 2.0]] });
+e.add('flash', s3a.start, 0.35, { color: 'card', peak: 0.55 }, 60);
+e.add('stamp', s3a.start + 0.08, 1.4, { text: 'BELL!', x: 760, y: 360, color: 'mustard', rot: -10, size: 120 }, 40);
+e.cue('stamp', s3a.start + 0.08, 0.9).cue('impact', s3a.start + 0.08, 0.6);
 const tStamp = e.timeOf(s3, tPaid) + 0.35;
-e.cue('printer', s3.start + 2.6, 0.4, { dur: 1.2 }).cue('kaching', tStamp, 0.6).cue('impact', tStamp, 0.4);
-head(s3.start, bars(2), [{ text: 'Get paid.', at: tStamp - s3.start - 0.1, color: 'pink' }], { y: 1560, size: 128 });
+e.cue('printer', s3a.start + 2.6, 0.4, { dur: 1.2 }).cue('kaching', tStamp, 0.6).cue('impact', tStamp, 0.4);
+head(s3a.start, bars(2), [{ text: 'Get paid.', at: tStamp - s3a.start - 0.1, color: 'pink' }], { y: 1560, size: 128 });
 {
   const till = rr.payout / 1e6;
   const net = Math.round((till - Math.max(0, till - 1000) * 0.05) * 100) / 100;
@@ -102,7 +105,7 @@ const data = e.build(resolve(OUT, 'vertical.json'));
 const music = {
   parts: [{ file: resolve(HERE, '../gameplay/cache/takes/music-lobby/audio.wav'), at: 0, from: 0.22 + 4 * BAR, dur: data.duration + 0.2, gain: 0, fadeIn: 0.05, fadeOut: 1.6 }],
   drums: { bpm: BPM, phase: 0, start: 0, end: tOut + bars(1.5), gain: -5, drop: [[s2.start + bars(1.5), tOut - 0.05]], fills: [s1.end - BEAT] },
-  gain: [[0, 0], [s2.start + bars(1.5), 0], [s2.start + bars(1.5) + 1, -7], [s3.start + 3, -7], [tOut, 0], [data.duration, -10]],
+  gain: [[0, 0], [s2.start + bars(1.5), 0], [s2.start + bars(1.5) + 1, -7], [s3a.start + 3, -7], [tOut, 0], [data.duration, -10]],
 };
 writeFileSync(resolve(OUT, 'vertical-music.json'), JSON.stringify(music, null, 1));
 console.log('vertical edit:', data.duration.toFixed(2), 's,', data.frames, 'frames');
