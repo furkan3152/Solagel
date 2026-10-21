@@ -137,6 +137,8 @@ export class DevFakeChain implements ChainGateway, DevFakeChainActions {
       // only tickets this fake chain issued (and loot sweeps of its own journal file): anything else is real money, never touched
       if (item.kind === 'settle' && !this.byAddress.has(item.key)) continue;
       if (item.kind !== 'settle' && item.kind !== 'sweep') continue;
+      // integrity holds wait for an admin decision
+      if (item.kind === 'settle' && item.held) continue;
       if (this.scheduled.has(item.key)) continue;
       this.scheduled.add(item.key);
       const timer = setTimeout(() => {
@@ -150,7 +152,7 @@ export class DevFakeChain implements ChainGateway, DevFakeChainActions {
 
   private settle(key: string): void {
     const item = this.journal.pending.find((p) => p.key === key);
-    if (!item || this.stopped) return;
+    if (!item || this.stopped || (item.kind === 'settle' && item.held)) return;
     if (item.kind === 'sweep') {
       // sweep_loot: the floor loot of a finished round is burned from the arena vault
       this.journal.remove(key);

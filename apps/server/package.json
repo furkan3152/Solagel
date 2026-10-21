@@ -12,6 +12,7 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "sim": "tsx scripts/sim.ts",
+    "integrity-sim": "tsx scripts/integrity-sim.ts",
     "e2e": "tsx scripts/e2e.ts"
   },
   "dependencies": {

@@ -18,6 +18,8 @@ export class Conn {
   lastCenter = { x: 0, y: 0 };
   aspect = 16 / 9;
   wallet: string | null = null;
+  /** Browser fingerprint sent with the last join (untrusted, integrity evidence only; see `isFingerprint`). */
+  fp: string | null = null;
   profile: ChainProfile | null = null;
   helloed = false;
   joining = false;

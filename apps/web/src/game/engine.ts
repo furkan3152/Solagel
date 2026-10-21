@@ -30,6 +30,7 @@ import { announce, sound, unlockAudio } from '../audio';
 import { currentRound } from './round';
 import { RoundCues } from './roundCues';
 import { ClientWorld } from './state';
+import { fingerprint } from '../integrity/fingerprint';
 
 /** "Whale alert." once a life reaches this mass (25 times the start mass). */
 const WHALE_MASS = 500;
@@ -206,7 +207,7 @@ export class GameEngine {
   private sendJoin(room: string): void {
     const { settings } = useUi.getState();
     this.lastJoin = { room };
-    this.net.send({ t: 'join', room, name: settings.name || 'Coinie', skin: settings.skin });
+    this.net.send({ t: 'join', room, name: settings.name || 'Coinie', skin: settings.skin, fp: fingerprint() });
   }
 
   spectate(room?: string): void {

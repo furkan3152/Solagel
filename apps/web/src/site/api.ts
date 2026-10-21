@@ -1,4 +1,13 @@
 import type {
+  IntegrityBan,
+  IntegrityFlag,
+  IntegrityFlagKind,
+  IntegrityFlagStatus,
+  IntegrityHeld,
+  IntegrityOverview,
+  IntegritySettings,
+  IntegrityThresholds,
+  IntegrityWalletView,
   CollabAdmin,
   CollabApplyRequest,
   CollabPublic,
@@ -177,6 +186,43 @@ export function adminApi(token: string) {
     collabNote: (cid: string, note: string) => request<{ collab: CollabAdmin }>(`/api/admin/collabs/${id(cid)}/note`, { method: 'PUT', token, body: { note } }).then((r) => r.collab),
     collabCsv: (cid: string) => downloadCsv(`/api/admin/collabs/${id(cid)}/wallets.csv`, token, `slana-collab-${cid}.csv`),
     allCollabsCsv: () => downloadCsv('/api/admin/collabs/wallets.csv', token, 'slana-collab-wallets.csv'),
+    integrity: integrityApi(token),
   };
 }
 export type AdminApi = ReturnType<typeof adminApi>;
+
+export interface IntegrityFilter {
+  status?: IntegrityFlagStatus | '';
+  kind?: IntegrityFlagKind | '';
+  minScore?: number | null;
+  q?: string;
+}
+
+export interface IntegritySettingsPatch {
+  autoHold?: boolean;
+  holdScore?: number;
+  thresholds?: Partial<IntegrityThresholds>;
+  reset?: true;
+}
+
+/** `/api/admin/integrity/*`: flags, bans, held settlements and the detector settings. */
+function integrityApi(token: string) {
+  const id = encodeURIComponent;
+  const base = '/api/admin/integrity';
+  return {
+    overview: () => request<IntegrityOverview>(base, { token }),
+    scan: () => request<IntegrityOverview>(`${base}/scan`, { method: 'POST', token, body: {} }),
+    flags: (f: IntegrityFilter) => request<{ flags: IntegrityFlag[] }>(`${base}/flags${q({ ...f, minScore: f.minScore ?? undefined })}`, { token }).then((r) => r.flags),
+    flagsCsv: (f: IntegrityFilter) => downloadCsv(`${base}/flags.csv${q({ ...f, minScore: f.minScore ?? undefined })}`, token, 'slana-integrity-flags.csv'),
+    setStatus: (flagId: string, status: IntegrityFlagStatus, note?: string) =>
+      request<{ flag: IntegrityFlag }>(`${base}/flags/${id(flagId)}/status`, { method: 'POST', token, body: note === undefined ? { status } : { status, note } }).then((r) => r.flag),
+    wallet: (wallet: string, other?: string) => request<IntegrityWalletView>(`${base}/wallet/${id(wallet)}${q({ other })}`, { token }),
+    ban: (wallet: string, reason: string) => request<{ ban: IntegrityBan }>(`${base}/bans`, { method: 'POST', token, body: { wallet, reason } }).then((r) => r.ban),
+    unban: (wallet: string) => request<{ ok: true }>(`${base}/bans/${id(wallet)}`, { method: 'DELETE', token }),
+    release: (key: string) => request<{ ok: true; held: IntegrityHeld[] }>(`${base}/held/${id(key)}/release`, { method: 'POST', token, body: {} }).then((r) => r.held),
+    settleZero: (key: string, reason: string) =>
+      request<{ ok: true; forfeited: number; held: IntegrityHeld[] }>(`${base}/held/${id(key)}/settle-zero`, { method: 'POST', token, body: { reason } }),
+    saveSettings: (patch: IntegritySettingsPatch) => request<{ settings: IntegritySettings }>(`${base}/settings`, { method: 'PUT', token, body: patch }).then((r) => r.settings),
+  };
+}
+export type IntegrityApi = ReturnType<typeof integrityApi>;

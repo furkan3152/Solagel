@@ -5,6 +5,8 @@ import { assertDevFakeChainAllowed, createChain, dataFileNames } from './chain';
 import type { ChainGateway } from './chain/types';
 import type { ServerConfig } from './config';
 import { createHttpServer } from './http';
+import { IntegrityService } from './integrity/service';
+import { IntegrityStore } from './integrity/store';
 import { Leaderboards } from './leaderboards';
 import type { Limiter } from './net/limiter';
 import { Gateway } from './net/gateway';
@@ -22,6 +24,8 @@ export interface App {
   leaderboards: Leaderboards;
   /** The slana.io site: settings, WL tasks and entries, collabs, admin API, game gate. */
   site: SiteApi;
+  /** Cheat and collusion detection: telemetry, flags, bans, auto-hold (`/api/admin/integrity/*`). */
+  integrity: IntegrityService;
   /** Resolves once the HTTP server is listening; returns the bound port. */
   listen(): Promise<number>;
   close(): Promise<void>;
@@ -58,6 +62,17 @@ export async function createApp(
   const auth = new Auth(cfg.authSecret);
   const siteStore = new SiteStore(persist ? cfg.dataDir : null, { now: opts.siteNow, log });
   const site = new SiteApi(cfg, auth, siteStore, opts.siteLimits);
+  // integrity data lives next to the journal; the fake chain keeps its own directory
+  const integrityDir = persist ? join(cfg.dataDir, cfg.devFakeChain ? 'integrity.dev-fake' : 'integrity') : null;
+  const integrity = new IntegrityService({
+    store: new IntegrityStore(integrityDir, { log }),
+    journal,
+    kick: () => chain.kick(),
+    log,
+  });
+  site.setIntegrity(integrity);
+  const held = journal.held().length;
+  if (held > 0) log(`integrity: ${held} settlement(s) held for admin review (/admin → Integrity)`);
 
   const rooms = new RoomManager(
     cfg,
@@ -67,6 +82,7 @@ export async function createApp(
       leaderboards,
       log,
       now: opts.now,
+      integrity,
     },
     chain,
   );
@@ -83,6 +99,9 @@ export async function createApp(
   const gateway = new Gateway(cfg, rooms, auth, chain, journal, log);
   // the game is admin-only until `gamePublic` (setting) or `GAME_PUBLIC=1`: every room entry asks
   gateway.setGameGate((wallet) => site.gameOpenFor(wallet));
+  // wallets the admin banned after an integrity review cannot start arena games (practice still works)
+  gateway.setBanGate((wallet) => integrity.isBanned(wallet));
+  integrity.start();
   gateway.attach(server);
   const flushTimer = setInterval(() => leaderboards.flush(), 30_000);
   flushTimer.unref();
@@ -99,6 +118,7 @@ export async function createApp(
     auth,
     leaderboards,
     site,
+    integrity,
     listen: () =>
       new Promise((resolve) => {
         server.listen(cfg.port, cfg.host, () => {
@@ -113,6 +133,7 @@ export async function createApp(
       clearInterval(flushTimer);
       clearInterval(arenaTimer);
       rooms.shutdown();
+      integrity.close();
       leaderboards.flush();
       gateway.close();
       await chain.stop().catch(() => {});

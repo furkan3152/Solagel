@@ -713,7 +713,8 @@ export class SolanaChain implements ChainGateway {
     if (this.stopped || !this.enabled || !this.client || !this.keypair) return;
     const now = this.now();
     const due = this.journal.pending
-      .filter((item) => item.nextAttemptAt <= now && !this.inFlight.has(item.key))
+      // integrity holds wait for an admin decision (release or settle at 0)
+      .filter((item) => item.nextAttemptAt <= now && !this.inFlight.has(item.key) && !(item.kind === 'settle' && item.held))
       .sort((a, b) => a.createdAt - b.createdAt);
     for (const item of due) {
       if (this.inFlight.size >= MAX_IN_FLIGHT) break;

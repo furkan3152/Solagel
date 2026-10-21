@@ -28,6 +28,7 @@ import { looksLikeScam, maskProfanity } from '../chat-filter';
 import type { Player } from '../game/entities';
 import { mulberry32 } from '../game/rng';
 import { World, type CellEatenEvent } from '../game/world';
+import type { IntegrityService } from '../integrity/service';
 import type { Leaderboards } from '../leaderboards';
 import type { Conn } from '../net/conn';
 import { sweepKey, type Journal, type JournalItem, type LiveStake, type SettleReason, type SettlementItem } from '../stake/journal';
@@ -36,6 +37,8 @@ import { RoundClock } from './round-clock';
 
 /** Stake players are force-cashed-out long before the on-chain 24 h refund window opens. */
 export const MAX_STAKE_SESSION_AGE_S = 6 * 3600;
+/** Arena rooms sample threats for the integrity telemetry every this many ticks. */
+const INTEGRITY_SAMPLE_TICKS = 2;
 /** While live values or loot changed, the journal is rewritten at most this often. */
 const JOURNAL_SNAPSHOT_MS = 1000;
 const SLEEP_AFTER_MS = 60_000;
@@ -62,6 +65,8 @@ export interface RoomDeps {
    * back the gateway tells them the round ended (`round_ended`) instead of "already playing".
    */
   onBellSettled?: (e: BellSettled) => void;
+  /** Cheat and collusion telemetry of the arena tickets (and the optional auto-hold of payouts). */
+  integrity?: IntegrityService;
 }
 
 /** An AFK staker's ticket settled at a round's bell (see `RoomDeps.onBellSettled`). */
@@ -131,6 +136,9 @@ export class Room {
   private roundN = 0;
   private roundEndsAt = Infinity;
   private readonly clock: RoundClock;
+  /** Arena rooms only: the integrity telemetry (null elsewhere and when not configured). */
+  private readonly integrity: IntegrityService | null;
+  private tickN = 0;
   lastActivity = Date.now();
 
   constructor(
@@ -143,6 +151,7 @@ export class Room {
     this.bots = opts.bots ? new BotManager(this.world, opts.bots, mulberry32(seed ^ 0xb07)) : null;
     this.ledger = opts.mode === 'arena' ? new ArenaLedger() : null;
     this.clock = deps.clock ?? new RoundClock(deps.now, deps.round);
+    this.integrity = this.ledger ? (deps.integrity ?? null) : null;
     // loot left on any of this arena's instances when the server last stopped: the first instance adopts it all
     if (this.ledger && opts.stake && (opts.instance ?? 1) === 1) this.world.restoreLoot(deps.journal.adoptLoot(opts.stake.arenaId, this.id));
     if (this.ledger) {
@@ -261,6 +270,7 @@ export class Room {
     if (conn.wallet) this.walletOf.set(player.id, conn.wallet);
     if (this.ledger && opts.stake) {
       this.ledger.join({ ...opts.stake, pid: player.id });
+      this.integrity?.join(this, player.id, conn, opts.stake);
       this.commitJournal();
     }
     conn.send({
@@ -288,6 +298,7 @@ export class Room {
     this.humans.set(pid, conn);
     this.afkSince.delete(pid);
     p.afk = false;
+    this.integrity?.monitor.onAfk(this.id, pid, false, this.now());
     conn.player = p;
     conn.spectating = false;
     conn.lastName = p.name;
@@ -339,6 +350,7 @@ export class Room {
     this.humans.set(p.id, null);
     p.afk = true;
     this.afkSince.set(p.id, this.world.now);
+    this.integrity?.monitor.onAfk(this.id, p.id, true, this.now());
     const c = p.center();
     this.world.setTarget(p.id, c.x, c.y);
   }
@@ -350,6 +362,7 @@ export class Room {
   input(conn: Conn, input: ClientInput): void {
     const p = conn.player;
     if (!p || !p.alive || p.afk) return;
+    this.integrity?.monitor.onInput(this.id, p, input);
     switch (input.op) {
       case ClientOp.Target:
         this.world.setTarget(p.id, input.x, input.y);
@@ -478,6 +491,7 @@ export class Room {
     this.journalDirty = true;
     if (ledger.has(ce.eater.id)) {
       const t = ledger.transfer(ce.victim.id, ce.eater.id, ce.mass, ce.victimTotalBefore, ce.last);
+      this.integrity?.monitor.onTransfer(this, ce.victim.id, ce.eater.id, t, ledger.size - 1, ce.eater.afk);
       this.noteLoss(ce.victim.id, t, 0);
       this.sendValue(ce.eater.id, t, 'eat');
       this.sendValue(ce.victim.id, -t, 'eaten');
@@ -540,7 +554,7 @@ export class Room {
       }
       // arena humans never `leave` (they go AFK); an operator exit settles at value like a kick
       const reason: SettleReason = cause === 'left' ? 'kicked' : cause;
-      enqueue.push({
+      const item: SettlementItem = {
         kind: 'settle',
         key: entry.session,
         player: entry.player,
@@ -555,7 +569,10 @@ export class Room {
         attempts: 0,
         nextAttemptAt: now,
         createdAt: now,
-      });
+      };
+      // integrity: finish the ticket's telemetry; with auto-hold on, a high-risk payout is held (same journal write)
+      this.integrity?.settle(this, p.id, item, { reason, payout: entry.value, killer, killerIsBot: !!killer && this.bots?.isBot(killer.id) === true });
+      enqueue.push(item);
     }
     if (batch) batch.push(...enqueue);
     else if (enqueue.length > 0 || this.ledger) {
@@ -681,6 +698,11 @@ export class Room {
     for (const lp of ev.lootPicked) this.onLootPicked(lp.pid, lp.value);
     // value moves with every eaten stake cell
     for (const ce of ev.cellsEaten) this.onCellEaten(ce);
+    const integ = this.integrity;
+    if (integ) {
+      for (const e of ev.ejectsEaten) integ.monitor.onEjectEaten(this.id, e.ownerId, e.eaterId);
+      if (++this.tickN % INTEGRITY_SAMPLE_TICKS === 0 && this.ledger!.size > 0) integ.monitor.sample(this.id, world.players.values(), this.now());
+    }
 
     for (const k of ev.kills) {
       this.broadcast({

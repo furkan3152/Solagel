@@ -46,6 +46,7 @@ export const en = {
   'err.no_cashout': 'Ticket rooms have no cash-out: everyone alive is paid when the round ends.',
   'err.round_ended': 'The round ended while you were away — your till was paid.',
   'err.game_closed': 'The arena opens soon. Follow @slanaio for the launch.',
+  'err.banned': 'This wallet is banned from paid arenas after an integrity review. Practice is open.',
 
   'tx.sent': 'Transaction sent',
   'tx.confirmed': 'Confirmed on Solana',

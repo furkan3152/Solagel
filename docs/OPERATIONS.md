@@ -69,6 +69,70 @@ collab list. Decide by hand before the mint.
 The files are `DATA_DIR/site/{settings,tasks,wl,collab}.json`, written atomically. Back them up with the journal (see
 [Journal backup](#journal-backup)). Tasks are verified by hand: there is no X API.
 
+## Integrity (cheat and collusion detection)
+
+The server is authoritative (it runs the physics), so speed hacks and teleporting cannot happen. What is left is economic
+and behavioural cheating, and the **Integrity** tab of `/admin` (admin wallet signed in) is where it shows up. The
+detection is evidence for a person to review: nothing is punished automatically, and nothing on chain changes.
+
+**What is recorded.** For every arena ticket the server keeps a small summary: who ate whom and how much value moved,
+whose ejected mass was eaten by whom, idle (AFK) time and value received while idle, the IP and browser fingerprint as
+**keyed hashes** (HMAC with a secret in `DATA_DIR/integrity/secret.key`; the raw IP is never stored), and input statistics
+(timing of aim changes, direction-change spread, share of whole-number aims, reaction time to a threat that comes close).
+The web sends the fingerprint with `join`: a SHA-256 of a random id kept in the browser plus language, time zone, screen
+size and CPU count (no canvas or font probing). The server treats it as untrusted evidence: a missing or fake one proves
+nothing. Practice rooms record nothing.
+
+**Detectors** (pure functions in `apps/server/src/integrity/detectors.ts`, run every minute over the last 7 days and on
+demand with **Run detectors now**). Each flag has a score from 0 to 100 and its evidence:
+
+| Flag | Fires when (defaults) |
+|---|---|
+| Pair transfer | wallet B took value from wallet A on at least 4 occasions in 3+ rounds, net 2+ entry fees, and the chance of that is at most 1 in 10,000. The null model uses B's own eating rate against everyone else, so a strong player is not mistaken for a partner. An idle eater raises the score |
+| Eject feeding | at least 40 of A's ejected blobs were eaten by other players and 70 % of them by B, over 2+ rounds (mass only, so the score is capped at 75) |
+| Suicide feeding | a much smaller A kept moving toward the same bigger B (60 % of its last 3 s) and was eaten by B, 2+ times in 2+ rounds |
+| Shared IP or browser | two wallets in one arena at the same time (30 s+) from one browser hash (60, both 80, +10 in one instance) or one IP hash (30, below the flag score: households, cafes and mobile carriers share IPs). Value moving between them adds 10 to 15 |
+| Bot-like input | 2+ of: aim timing variation under 1 % (the web client sends on a 33 ms frame budget, so timing alone is weak), no mouse jitter (direction-change entropy at most 0.6 bits, or 95 % whole-number aims), median reaction under 110 ms over 20+ threats, play in 21+ hours of the last 24. The reaction signal alone also flags |
+| Round-bell pattern | 3+ tickets that joined in the last 20 s before joins close and sat idle (80 %+) until the bell, or that gained half an entry fee or more while idle |
+
+Every threshold is editable under **Detector settings → Thresholds** (with its default next to it); **Restore defaults**
+puts them back. Flags scoring below `flagMinScore` (40) are not kept.
+
+**Working a flag.** Open it for the summary, the evidence and the timeline of value transfers between the wallets (amount,
+round, idle eater). Mark it **reviewed** (looked at, keep watching) or **dismissed** (explained, e.g. siblings on one
+router), with a note. A dismissed or reviewed flag opens again only if its score rises by 20 or more. **CSV** exports the
+filtered list.
+
+**Bans.** **Ban…** (in a flag) or the **Banned wallets** card refuses new arena games for a wallet with the error
+`banned` (the player sees "This wallet is banned from paid arenas after an integrity review. Practice is open."). A ticket
+already in play finishes normally (it is the player's money), practice still works, and **Unban** lifts it at once.
+A ban does not refund or move anything; the player can still collect or refund tickets on chain.
+
+**Auto-hold (`integrityAutoHold`, default off).** When switched on, a **profitable** settlement (a bell, kick or age-limit
+payout above the entry fee) whose wallet's risk score is at or above the hold score (default 90) is written to the journal
+as **held** instead of being paid. A held item is owed, not lost: it counts in every conservation check and in the vault
+guard, the settlement worker never sends it, and the stale sweeper never refunds it. In **Held settlements**:
+
+- **Release** pays it exactly as it was.
+- **Settle at 0** (a reason is required) settles the ticket on chain with payout 0. The value stays in the arena vault
+  and is journaled as a forfeit (`journal.json` → `forfeits`), so the books still add up:
+  Σ live + Σ loot + Σ pending + Σ forfeited = Σ entry fees − Σ paid. Forfeited value is surplus in the vault; it leaves
+  only through `sweep_arena` when the arena is retired.
+
+**Decide within 24 hours.** A held ticket is still open on chain, and after 24 h its player may refund it themselves at
+the entry fee (`refund_session`). The tab marks items older than 12 h in red. Every hold, release, settle at 0, ban and
+unban is logged (`integrity: HELD …`, `RELEASED`, `SETTLED AT 0`, `BANNED`).
+
+**Files.** `DATA_DIR/integrity/state.json` (settings, bans, flags; atomic writes), `secret.key` (keep it with the
+backup: without it old hashes no longer match new ones), and `log/*.json` (immutable chunks of ticket summaries and
+transfers, one per 30 s flush, deleted after 30 days or beyond 3,000 files). An unreadable `state.json` is moved aside
+(`state.json.corrupt-*`, logged with `!!!`) and the service starts with no bans and auto-hold off. Memory holds at most
+20,000 tickets and 60,000 transfers.
+
+**Cost.** The telemetry runs in the arena rooms only: a few counters per input message and a threat check every second
+tick. `pnpm -F @slana/server integrity-sim` plays the same seeded arena with and without it and prints both tick times,
+the flags honest players raise (none at the defaults) and those two scripted bots raise.
+
 ## Monitoring
 
 - `GET /api/health`: `ok`, uptime, players online, room count (the Docker health check uses it).
@@ -82,7 +146,8 @@ The files are `DATA_DIR/site/{settings,tasks,wl,collab}.json`, written atomicall
   decimals and the current `feeBps`. After `set-token` the server picks the token up within 30 s and logs
   `game token set — mint …`; no restart is needed. New arenas can take up to about 60 s to appear in `/api/rooms`.
 - Server log lines starting with `!!!` need attention (e.g. an unreadable journal, an arena whose vault falls short, an
-  unusable fee wallet token account). The server logs a warning when the server key drops below ◎0.05.
+  unusable fee wallet token account, an unreadable integrity state). `integrity: HELD …` means a payout waits in
+  `/admin` → Integrity. The server logs a warning when the server key drops below ◎0.05.
 
 ## The fee wallet
 

@@ -1198,3 +1198,33 @@ describe('fee wallet token account', () => {
     expect(h.logs.some((l) => /player's token account refused/.test(l))).toBe(false);
   });
 });
+
+describe('integrity holds (settlement worker)', () => {
+  it('never sends a held settlement; a release pays it as it was, a settle at 0 pays nothing', async () => {
+    const h = await harness();
+    const a = h.client.addSession(wallet());
+    h.journal.enqueue(settleItem(a, { held: { at: T0, score: 95, why: 'test', flags: [] } }));
+    await h.chain.processPending();
+    await h.chain.processPending();
+    expect(h.sent).toBe(0);
+    expect(h.journal.held()).toHaveLength(1);
+    // the stale sweeper does not refund a held ticket either (it is pending)
+    h.clock.now += (STALE_SESSION_AFTER_S + 60) * 1000;
+    expect(await h.chain.sweepStale()).toBe(0);
+    h.journal.release(a.address, h.clock.now);
+    await h.chain.processPending();
+    expect(h.sent).toBe(1);
+    expect(h.client.settles.at(-1)).toMatchObject({ player: a.player, payout: 12_345_678 });
+    expect(h.journal.pending).toHaveLength(0);
+
+    const b = h.client.addSession(wallet());
+    h.journal.enqueue(settleItem(b, { nextAttemptAt: h.clock.now, held: { at: T0, score: 95, why: 'test', flags: [] } }));
+    const { forfeit } = h.journal.settleZero(b.address, 'collusion confirmed', 'admin', h.clock.now);
+    expect(forfeit.amount).toBe(12_345_678);
+    await h.chain.processPending();
+    expect(h.sent).toBe(2);
+    expect(h.client.settles.at(-1)).toMatchObject({ player: b.player, payout: 0 });
+    expect(h.journal.pending).toHaveLength(0);
+    expect(h.journal.forfeitedByArena(1)).toBe(12_345_678);
+  });
+});

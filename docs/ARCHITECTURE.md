@@ -252,7 +252,10 @@ Consequences, stated plainly in the player guide:
 - The fee wallet's token account matters for liveness: if it is closed or unusable, the server holds every settlement
   (a loud `!!!` log) until the account is recreated. The program itself never lets the fee go anywhere else.
 - The upgrade authority is the strongest key: it is the admin wallet (`scripts/admin.env`); a multisig is optional later. The program is never made immutable, so the owner can close it at any time (OPERATIONS.md, "Emergency stop / close").
-- Collusion (feeding a second wallet) is not detected in this version.
+- Collusion (feeding a second wallet), multi-accounting and scripted input are detected off chain and shown to the admin
+  for review (OPERATIONS.md, "Integrity"). An optional auto-hold keeps a high-risk payout in the journal (`held`) until
+  the admin releases it or settles it at 0; a forfeit stays in the vault and is journaled, so invariant 11 reads
+  Σ live + Σ loot + Σ pending + Σ forfeited = Σ entry fees − Σ paid. The program is unchanged.
 
 ## Server internals
 
