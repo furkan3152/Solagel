@@ -1,7 +1,7 @@
 {
  "fps": 60,
  "bpm": 100,
- "duration": 52.8,
+ "duration": 69.6,
  "width": 1920,
  "height": 1080,
  "scenes": [
@@ -107,13 +107,18 @@
   {"at": 24.6, "dur": 0.6, "kind": "turn", "a": 25.8, "b": 31.0, "sa": "rounds", "sb": "arenas"},
   {"at": 25.2, "dur": 5.4, "old": 31.6, "scene": "arenas"},
   {"at": 30.6, "dur": 0.6, "kind": "whip", "a": 37.0, "b": 41.4, "sa": "arenas", "sb": "fee"},
-  {"at": 31.2, "dur": 10.8, "old": 42.0}
+  {"at": 31.2, "dur": 3.9, "old": 42.0},
+  {"at": 35.1, "dur": 0.9, "kind": "burn", "a": 45.9, "b": -0.9},
+  {"at": 36.0, "dur": 6.0, "kind": "nft"},
+  {"at": 42.0, "dur": 6.0, "old": 46.8}
  ],
- "cutDuration": 42.0,
+ "cutDuration": 48.0,
  "audioCut": [
   [0.0, 1.2, 25.8],
   [24.6, 30.6, 36.6],
-  [30.6, 41.4, 52.8]
+  [30.6, 41.4, 46.8],
+  [36.0, 62.4, 68.4],
+  [42.0, 46.8, 52.8]
  ],
  "hook2": {
   "shot": "H",
@@ -131,7 +136,8 @@
   {"id": "rounds_b", "at": 21.3},
   {"id": "arenas", "at": 25.35},
   {"id": "fee", "at": 31.35},
-  {"id": "end", "at": 36.55}
+  {"id": "nft", "at": 36.12},
+  {"id": "end", "at": 42.55}
  ],
  "sfx2": [
   {"type": "impact", "at": 0.0, "gain": 0.9},
@@ -147,6 +153,22 @@
   {"type": "thud", "at": 28.4, "gain": 0.55},
   {"type": "thud", "at": 28.7, "gain": 0.55},
   {"type": "thud", "at": 29.0, "gain": 0.55},
-  {"type": "thud", "at": 29.3, "gain": 0.55}
+  {"type": "thud", "at": 29.3, "gain": 0.55},
+  {"type": "whoosh_s", "at": 35.72, "gain": 0.45},
+  {"type": "thud", "at": 36.02, "gain": 0.6},
+  {"type": "thud", "at": 36.14, "gain": 0.5},
+  {"type": "thud", "at": 36.26, "gain": 0.55},
+  {"type": "seal", "at": 37.15, "gain": 0.6},
+  {"type": "pop", "at": 37.2, "gain": 0.45},
+  {"type": "seal", "at": 37.45, "gain": 0.55},
+  {"type": "pop", "at": 37.5, "gain": 0.45},
+  {"type": "seal", "at": 37.75, "gain": 0.6},
+  {"type": "pop", "at": 37.8, "gain": 0.5},
+  {"type": "coins_s", "at": 37.85, "gain": 0.35},
+  {"type": "tape", "at": 37.98, "gain": 0.5},
+  {"type": "thud", "at": 38.05, "gain": 0.5},
+  {"type": "slide", "at": 39.75, "gain": 0.35},
+  {"type": "whoosh_s", "at": 41.25, "gain": 0.45},
+  {"type": "ink", "at": 41.4, "gain": 0.75}
  ]
 }

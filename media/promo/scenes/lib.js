@@ -3,7 +3,9 @@
  * pure function of the timeline time t (seconds). */
 'use strict';
 
-const W = 1920, H = 1080, TAU = Math.PI * 2;
+// the frame size comes from the page URL (?w=1080&h=1920 for a vertical cut); landscape by default
+const QS = new URLSearchParams(typeof location !== 'undefined' ? location.search : '');
+const W = Number(QS.get('w')) || 1920, H = Number(QS.get('h')) || 1080, TAU = Math.PI * 2;
 const C = {
   paper: '#FCF4DF', card: '#FFFDF6', ink: '#1B1732', ink2: '#5B5577',
   pink: '#FB2F85', pinkInk: '#D1166B', pinkText: '#C71466',
@@ -252,7 +254,7 @@ function drawGrainAndVignette(ctx, t, dark = false) {
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   const k = Math.floor(t * 15 + 1e-6);
-  const g = TEX.grain[k % TEX.grain.length];
+  const g = TEX.grain[((k % TEX.grain.length) + TEX.grain.length) % TEX.grain.length];
   const pat = ctx.createPattern(g, 'repeat');
   pat.setTransform(new DOMMatrix().translate((k * 137) % 512, (k * 251) % 512).scale(2, 2));
   ctx.globalAlpha = dark ? 0.55 : 0.85;

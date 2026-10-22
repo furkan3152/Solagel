@@ -73,7 +73,9 @@ window.renderAt = async (t) => {
     sctx.setTransform(1, 0, 0, 1, 0, 0);
     sctx.drawImage(acc, 0, 0);
   }
-  drawGrainAndVignette(sctx, t, window.SCENE_DARK(t));
+  // a scene set may grade its own frame (SCENE_GRAIN); the promo uses the riso grain and vignette
+  if (window.SCENE_GRAIN) window.SCENE_GRAIN(sctx, t);
+  else drawGrainAndVignette(sctx, t, window.SCENE_DARK(t));
   return true;
 };
 

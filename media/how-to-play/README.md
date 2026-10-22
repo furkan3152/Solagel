@@ -1,6 +1,6 @@
 # How to play Slana (Video B)
 
-A narrated tutorial, about 2:26, 1920x1080, 30 fps (every frame an exact replayed game frame), H.264 +
+A narrated tutorial, about 2:45, 1920x1080, 30 fps (every frame an exact replayed game frame), H.264 +
 AAC, -14 LUFS with the true peak at or below -1.5 dBTP after encoding, in seven chapters with the
 brand's ticket chapter cards:
 
@@ -19,7 +19,9 @@ brand's ticket chapter cards:
    paid to the operator), net 1,950; no profit, no fee; floor loot left at the
    bell is burned)
 7. Tips (warm up, split only when sure, play safe in the final minute), then
-   the end card (slana.io, @slanaio)
+   the NFT card (one line: the Slana NFT is a free mint, WL open at slana.io/wl; the sealed cards
+   of `media/free-mint/scenes/nft.js` through the gameplay kit's `nft` component) and the end card
+   (slana.io, @slanaio)
 
 Every rule and number on screen and in the voiceover comes from the in-app
 guide (`apps/web/src/ui/docs/content.en.ts` and `facts.ts`), `docs/PROJECT.md` and the controls

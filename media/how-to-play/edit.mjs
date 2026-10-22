@@ -307,9 +307,25 @@ end = say('c7', t);
 }
 chips.push([7, 'TIPS', t, e.t]);
 
+// ── the NFT ── one short line and the NFT card (media/free-mint/scenes/nft.js): free mint, WL open
+{
+  const tN = e.t, lead = 0.1, vo = 0.2;
+  e.add('wipe', tN - 0.35, 0.7, { colors: ['pink', 'card'] }, 90);
+  e.cue('paper', tN - 0.35, 0.45);
+  const ND = vo + DUR.nft + 0.7;
+  // beats follow the line: "And the Slana NFT?" / "A free mint." / "WL open at slana dot io slash W L."
+  e.add('nft', tN, ND, { lead, times: { deal: [0, 0.12, 0.24], l1: 0.1, l2: vo + 1.25, flip: [vo + 1.45, vo + 1.75, vo + 2.05], ticket: vo + 3.2, underline: vo + 4.9 } }, 50);
+  say('nft', tN + lead + vo);
+  const b = tN + lead;
+  [0, 0.12, 0.24].forEach((d, i) => e.cue('paper', b + d, 0.3 + i * 0.05));
+  [1.45, 1.75, 2.05].forEach((d, i) => e.cue('pop', b + vo + d - 0.03, 0.45, { pitch: 1 + i * 0.12 }).cue('coin', b + vo + d + 0.02, 0.25, { pitch: 1.1 + i * 0.1 }));
+  e.cue('stamp', b + vo + 3.25, 0.4).cue('tick', b + vo + 4.9, 0.25);
+  e.at(tN + ND);
+}
+
 // ── outro ──
 const tOut = e.t;
-e.add('wipe', tOut - 0.35, 0.7, { colors: ['pink', 'card'] }, 90);
+e.add('wipe', tOut - 0.35, 0.7, { colors: ['ink', 'card'] }, 90);
 e.cue('paper', tOut - 0.35, 0.45);
 e.add('card', tOut, 4.3, { variant: 'outro', kicker: 'SLANA / ON SOLANA', tagline: 'Eat. Grow. Last the round.', tagAccent: 4, tagAt: 0.75, tagGap: 0.42, foot: 'START FREE IN PRACTICE  /  SLANA.IO  /  @SLANAIO', footAt: 2.0, footY: 812 }, 50);
 for (let i = 0; i < 3; i++) e.cue('stamp', tOut + 0.75 + i * 0.42 + 0.1, 0.55);

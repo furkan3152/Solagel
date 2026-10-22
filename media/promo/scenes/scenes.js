@@ -1374,23 +1374,47 @@ function drawOld(ctx, t) {
     return;
   }
   if (t < 45.9) return sceneFee(ctx, t);
-  if (t < 46.8) {
-    sceneFee(ctx, t);
-    const p = E.inCubic(prog(t, 45.9, 46.8));
-    const bx = BURN_C.x, by = BURN_C.y;
-    const R = 160 + p * 2300;
-    // charred rim then the end card inside the hole
-    ctx.save();
-    burnFront(ctx, bx, by, R + 34, 5, t); ctx.fillStyle = 'rgba(27,23,50,0.9)'; ctx.fill();
-    burnFront(ctx, bx, by, R + 16, 5, t); ctx.fillStyle = C.orange; ctx.fill();
-    burnFront(ctx, bx, by, R + 6, 5, t); ctx.fillStyle = C.mustard; ctx.fill();
-    burnFront(ctx, bx, by, R, 5, t); ctx.clip();
-    sceneEnd(ctx, t);
-    ctx.restore();
-    return;
-  }
+  if (t < 46.8) return burnThrough(ctx, t, () => sceneEnd(ctx, t));
   return sceneEnd(ctx, t);
 };
+
+/** The floor-loot stub burns through the fee desk (45.9 - 46.8); `inside` draws what the hole shows. */
+function burnThrough(ctx, t, inside) {
+  sceneFee(ctx, t);
+  const p = E.inCubic(prog(t, 45.9, 46.8));
+  const bx = BURN_C.x, by = BURN_C.y;
+  const R = 160 + p * 2300;
+  // charred rim then the next scene inside the hole
+  ctx.save();
+  burnFront(ctx, bx, by, R + 34, 5, t); ctx.fillStyle = 'rgba(27,23,50,0.9)'; ctx.fill();
+  burnFront(ctx, bx, by, R + 16, 5, t); ctx.fillStyle = C.orange; ctx.fill();
+  burnFront(ctx, bx, by, R + 6, 5, t); ctx.fillStyle = C.mustard; ctx.fill();
+  burnFront(ctx, bx, by, R, 5, t); ctx.clip();
+  inside();
+  ctx.restore();
+}
+
+/* ───────────── 11. NFT (cut only: film time, 6.0 s, t = 0 on the drop) ─────────────
+ * The NFT beat of the Free Mint kit (media/free-mint/scenes/nft.js): sealed cards dealt, "Slana NFT.
+ * / Free mint.", the seals crack and the cards turn, the WL ticket (slana.io/wl). It leaves on an
+ * ink flood that becomes the end card's night stock, so the wordmark slams onto the same ink. */
+const NFT_OUT = 5.3, NFT_FLOOD = [5.4, 6.0];
+function sceneNft(ctx, t) {
+  NFT.drawBeat(ctx, t, { out: NFT_OUT });
+  const p = E.inCubic(prog(t, NFT_FLOOD[0], NFT_FLOOD[1]));
+  if (p <= 0) return;
+  const cx = 1470, cy = 540;
+  const R = 30 + p * 2300;
+  ctx.save();
+  blobPath(ctx, cx, cy, R, 33, 0.12, 140, t * 3);
+  ctx.fillStyle = C.night; ctx.fill();
+  const r = rng(77);
+  for (let i = 0; i < 30; i++) {
+    const a = r() * TAU, dd = R * (1.03 + r() * 0.14);
+    ctx.beginPath(); ctx.arc(cx + Math.cos(a) * dd, cy + Math.sin(a) * dd, 3 + r() * 11 * (0.4 + p), 0, TAU); ctx.fill();
+  }
+  ctx.restore();
+}
 
 const darkOld = (t) => (t >= 26.1 && t < 30.9) || t >= 46.5;
 
@@ -1551,6 +1575,8 @@ window.SCENE_DRAW = (ctx, t) => {
   const c = cutAt(t), lt = t - c.at;
   if (c.kind === 'hook') return sceneHook2(ctx, lt);
   if (c.kind === 'turn') return pageTurn(ctx, lt, 0, c.dur, () => drawScene(c.sa, ctx, c.a + lt), () => drawScene(c.sb, ctx, c.b + lt));
+  if (c.kind === 'burn') return burnThrough(ctx, c.a + lt, () => sceneNft(ctx, c.b + lt));
+  if (c.kind === 'nft') return sceneNft(ctx, lt);
   if (c.kind === 'whip') {
     const p = E.inOutExpo(prog(lt, 0, c.dur));
     ctx.save(); ctx.translate(-W * p, 0); drawScene(c.sa, ctx, c.a + lt); ctx.restore();
@@ -1562,6 +1588,8 @@ window.SCENE_DRAW = (ctx, t) => {
 window.SCENE_DARK = (t) => {
   const c = cutAt(t), lt = t - c.at;
   if (c.kind === 'hook') return false;
+  if (c.kind === 'burn') return false;
+  if (c.kind === 'nft') return lt > NFT_FLOOD[1] - 0.15;
   if (c.kind) return darkOld(c.b + lt);
   return darkOld(c.old + lt);
 };
@@ -1575,11 +1603,18 @@ window.SCENE_BLUR = (t) => {
   }
   if (c.kind === 'whip') return { k: 14, shutter: 0.014 };
   if (c.kind === 'turn') return { k: 4, shutter: 0.01 };
+  if (c.kind === 'burn') return { k: 1, shutter: 0 };
+  if (c.kind === 'nft') {
+    // the deal and the card turns
+    if (lt < 0.5 || (lt >= 1.2 && lt < 2.3) || lt >= NFT_OUT) return { k: 4, shutter: 0.01 };
+    return { k: 1, shutter: 0 };
+  }
   return blurOld(c.old + lt);
 };
 window.SCENE_ASSETS = (t) => {
   const c = cutAt(t), lt = t - c.at;
   if (c.kind === 'hook') return [footUrl(TL.hook2.shot, lt)];
+  if (c.kind === 'burn' || c.kind === 'nft') return [];
   const posters = POSTERS.map((n) => `/brand/posters/${n}.png`);
   if (c.kind) return [...assetsOld(c.a + lt), ...assetsOld(c.b + lt), ...(c.sa === 'arenas' || c.sb === 'arenas' ? posters : [])];
   return [...assetsOld(c.old + lt), ...(c.scene === 'arenas' ? posters : [])];

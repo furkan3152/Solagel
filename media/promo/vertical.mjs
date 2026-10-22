@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-// The promo's vertical cut for X and Reels: 1080x1920, 60 fps, about 29 s (ten bars of the game's
+// The promo's vertical cut for X and Reels: 1080x1920, 60 fps, about 35 s (twelve bars of the game's
 // 82 BPM score). Real gameplay, full bleed, reframed around Daphne's coin from the replayed takes
 // (media/gameplay/capture/replay.mjs), with the promo's riso headline, its voice lines (Kokoro
-// af_heart, cache/vo-raw) and the slana.io / @slanaio end card.
+// af_heart, cache/vo-raw), the NFT beat (free mint, the WL at slana.io/wl) and the slana.io / @slanaio
+// end card.
 //   node media/promo/vertical.mjs
 //   media/gameplay/render/render.sh media/promo/cache/vertical/vertical.json \
 //     media/promo/cache/vertical/vertical-music.json slana-promo-vertical media/promo/cache/vo-raw
@@ -81,9 +82,21 @@ head(s3a.start, bars(2), [{ text: 'Get paid.', at: tStamp - s3a.start - 0.1, col
   e.add('lower', tStamp + 0.2, s3.end - tStamp - 0.2, { kicker: 'ROUND OVER / FEE 5% OF PROFIT', count: [0, net], unit: '$SLANA', accent: 'teal', stub: 'PAID', countAt: 0.2, countDur: 1.0, w: 700, dec: 2, x: 190, y: 1300 }, 30);
 }
 
-// ── 4 · end card (2.5 bars) ──
+// ── 4 · the NFT (2 bars) ── sealed cards turn over: "Slana NFT. / Free mint.", the WL at slana.io/wl
+// (the NFT kit, media/free-mint/scenes/nft.js; its beats moved onto the 82 BPM grid)
 wipe(s3.end, ['pink', 'card']);
-const tOut = s3.end;
+const tN = s3.end;
+const ND = bars(2);
+e.add('nft', tN - 0.05, ND + 0.05, { lead: 0.05, times: { deal: [0, 0.12, 0.24], l1: 0.08, l2: 1.3, flip: [BEAT * 2, BEAT * 2.5, BEAT * 3], ticket: 2.0, underline: 3.85 } }, 50);
+e.voice('nft', tN + 0.12);
+e.cue('impact', tN, 0.55).cue('sub', tN, 0.4);
+[0, 0.12, 0.24].forEach((d, i) => e.cue('paper', tN + d, 0.35 + i * 0.05));
+[2, 2.5, 3].forEach((b, i) => e.cue('pop', tN + BEAT * b - 0.03, 0.5, { pitch: 1 + i * 0.12 }).cue('coin', tN + BEAT * b + 0.02, 0.3, { pitch: 1.1 + i * 0.1 }));
+e.cue('stamp', tN + 2.05, 0.45).cue('paper', tN + 1.95, 0.3).cue('tick', tN + 3.85, 0.3);
+
+// ── 5 · end card (2.5 bars) ──
+wipe(tN + ND, ['ink', 'card']);
+const tOut = tN + ND;
 e.add('card', tOut - 0.05, bars(2.5) + 0.05, {
   variant: 'outro', kicker: 'SLANA / ON SOLANA', tagline: 'Eat. Grow. Last the round.', tagAccent: 4, tagAt: 0.7, tagGap: 0.26,
   foot: 'SLANA.IO  /  @SLANAIO', footAt: 1.5, footY: 860, footSize: 46, oy: 420,
@@ -104,8 +117,8 @@ e.at(tOut + bars(2.5));
 const data = e.build(resolve(OUT, 'vertical.json'));
 const music = {
   parts: [{ file: resolve(HERE, '../gameplay/cache/takes/music-lobby/audio.wav'), at: 0, from: 0.22 + 4 * BAR, dur: data.duration + 0.2, gain: 0, fadeIn: 0.05, fadeOut: 1.6 }],
-  drums: { bpm: BPM, phase: 0, start: 0, end: tOut + bars(1.5), gain: -5, drop: [[s2.start + bars(1.5), tOut - 0.05]], fills: [s1.end - BEAT] },
-  gain: [[0, 0], [s2.start + bars(1.5), 0], [s2.start + bars(1.5) + 1, -7], [s3a.start + 3, -7], [tOut, 0], [data.duration, -10]],
+  drums: { bpm: BPM, phase: 0, start: 0, end: tOut + bars(1.5), gain: -5, drop: [[s2.start + bars(1.5), tN - 0.05]], fills: [s1.end - BEAT, tOut - BEAT] },
+  gain: [[0, 0], [s2.start + bars(1.5), 0], [s2.start + bars(1.5) + 1, -7], [s3a.start + 3, -7], [tN, 0], [data.duration, -10]],
 };
 writeFileSync(resolve(OUT, 'vertical-music.json'), JSON.stringify(music, null, 1));
 console.log('vertical edit:', data.duration.toFixed(2), 's,', data.frames, 'frames');
