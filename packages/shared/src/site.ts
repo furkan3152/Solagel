@@ -1,7 +1,7 @@
 /**
  * slana.io site: WL (allowlist) and collab applications. Types shared by the server
  * (`/api/site/*`, `/api/admin/*`) and the web app, plus the validation rules both apply.
- * See docs/superpowers/specs/2026-10-17-slana-site-wl-collab-design.md.
+ * See docs/specs/2026-10-17-slana-site-wl-collab-design.md.
  */
 
 /** The X account of the project (no `@`). */

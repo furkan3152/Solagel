@@ -165,7 +165,7 @@ loot burn, pausing, key rotation, backups, integrity): [docs/OPERATIONS.md](docs
 ## Documentation
 
 [Project overview](docs/PROJECT.md) · [Architecture](docs/ARCHITECTURE.md) · [Deployment](docs/DEPLOY.md) ·
-[Operations](docs/OPERATIONS.md) · [Design (Slana Simple)](docs/superpowers/specs/2026-10-16-slana-simple-design.md) ·
+[Operations](docs/OPERATIONS.md) · [Design (Slana Simple)](docs/specs/2026-10-16-slana-simple-design.md) ·
 [Brand](brand/README.md)
 
 ## License

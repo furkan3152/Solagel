@@ -2,7 +2,7 @@
 
 *Summary: Slana is a hybrid game. The physics runs on the authoritative game server, the money rules in the Solana
 program. This document covers the money flow, the invariants and the trust model. Product decisions:
-[Slana Simple design](superpowers/specs/2026-10-16-slana-simple-design.md).*
+[Slana Simple design](specs/2026-10-16-slana-simple-design.md).*
 
 Every number below is quoted from the code: program constants from `programs/slana-ref/src/constants.rs`, admin defaults
 from `packages/sdk/src/constants.ts` (`pnpm admin init`), game rules from `packages/shared/src/constants.ts` (`RULES`,
