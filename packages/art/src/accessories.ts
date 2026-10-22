@@ -1,5 +1,4 @@
 import { CARD_PAPER, INK, RISO } from './palette';
-import { starPath } from './symbols';
 import type { AccessoryKind } from './looks';
 
 const TAU = Math.PI * 2;
