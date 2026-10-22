@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { LEADERBOARD_SIZE } from '@slana/shared';
 
 export interface LbRecord {
   name: string;
@@ -72,7 +73,7 @@ export class Leaderboards {
     }
   }
 
-  snapshot(limit = 20, now = Date.now()): { day: string; daily: LbRecord[]; allTime: LbRecord[] } {
+  snapshot(limit = LEADERBOARD_SIZE, now = Date.now()): { day: string; daily: LbRecord[]; allTime: LbRecord[] } {
     this.rollover(now);
     return { day: this.day, daily: this.daily.slice(0, limit), allTime: this.allTime.slice(0, limit) };
   }
