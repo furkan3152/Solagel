@@ -9,8 +9,6 @@ export const SLOT_ANGLE = (Math.PI * 2) / SLOTS;
 const DIR_X = Array.from({ length: SLOTS }, (_, k) => Math.cos(k * SLOT_ANGLE));
 const DIR_Y = Array.from({ length: SLOTS }, (_, k) => Math.sin(k * SLOT_ANGLE));
 
-export const slotDir = (k: number): { x: number; y: number } => ({ x: DIR_X[k], y: DIR_Y[k] });
-
 export class ContextMap {
   readonly interest = new Float64Array(SLOTS);
   readonly danger = new Float64Array(SLOTS);

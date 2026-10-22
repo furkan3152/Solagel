@@ -5,7 +5,7 @@ import { allowedDomains, expectedLoginMessage, type NonceResponse } from './siws
 import { GameEngine } from '../game/engine';
 import { engine } from '../game/instance';
 import { t } from '../i18n';
-import { toast, useUi } from '../store';
+import { toast } from '../store';
 
 /**
  * Proves wallet ownership to the game server: reuse a cached token when we
@@ -41,6 +41,3 @@ export async function signInWithWallet(wallet: WalletContextState, force = false
 }
 
 export { allowedDomains, expectedLoginMessage, type NonceResponse } from './siwsCore';
-
-/** True when the server session belongs to the connected wallet. */
-export const isVerified = (pubkey: string | undefined | null): boolean => !!pubkey && useUi.getState().auth?.pubkey === pubkey;

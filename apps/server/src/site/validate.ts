@@ -27,11 +27,6 @@ export class SiteFail extends Error {
 
 export const bad = (field: string, message: string): SiteFail => new SiteFail(400, 'bad_request', message, field);
 
-/** A base58 key of 32 bytes (any address, e.g. a program or a PDA). */
-export function isAddress(s: unknown): s is string {
-  return isValidPubkey(s);
-}
-
 /** A user wallet: a base58 32-byte key on the ed25519 curve (a PDA cannot sign, so it cannot be a wallet). */
 export function isUserWallet(s: unknown): s is string {
   if (!isValidPubkey(s)) return false;

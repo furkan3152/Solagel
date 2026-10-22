@@ -14,7 +14,4 @@ export function mulberry32(seed: number): Rng {
 
 export const randRange = (rng: Rng, lo: number, hi: number): number => lo + (hi - lo) * rng();
 
-export const randInt = (rng: Rng, lo: number, hiInclusive: number): number =>
-  lo + Math.floor(rng() * (hiInclusive - lo + 1));
-
 export const pick = <T>(rng: Rng, items: readonly T[]): T => items[Math.floor(rng() * items.length)];

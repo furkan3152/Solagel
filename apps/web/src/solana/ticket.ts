@@ -63,11 +63,6 @@ export async function buildTicketTx(ix: SlanaInstructions, input: TicketTxInput)
   return { steps, ixs };
 }
 
-/** A transaction with only the player's token account (idempotent, player-paid). */
-export function buildAtaTx(player: Address, token: TokenAccounts): TransactionInstruction[] {
-  return [createAtaIdempotentIx(player, player, token.tokenMint, token.tokenProgram)];
-}
-
 export type CloseStep = 'ata' | 'collect' | 'refund';
 
 /**

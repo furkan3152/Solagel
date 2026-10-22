@@ -4,8 +4,6 @@ import { site } from './api';
 
 /** The X account and the site, for links and copy. */
 export const X_URL = 'https://x.com/slanaio';
-export const X_HANDLE = 'slanaio';
-export const SITE_URL = 'https://slana.io';
 
 let cache: SiteSettings | null = null;
 let pending: Promise<SiteSettings> | null = null;
@@ -47,8 +45,5 @@ export const xProfile = (handle: string): string => `https://x.com/${handle.repl
 /** An X "compose" link with the text filled in (the user attaches the card themselves). */
 export const xIntent = (text: string, inReplyTo?: string | null): string =>
   `https://x.com/intent/post?text=${encodeURIComponent(text)}${inReplyTo ? `&in_reply_to=${encodeURIComponent(inReplyTo)}` : ''}`;
-
-/** The numeric id of an X status link, or null. */
-export const statusId = (url: string | null | undefined): string | null => (url ? (/\/status\/(\d+)/.exec(url)?.[1] ?? null) : null);
 
 export const shortWallet = (w: string): string => (w.length > 12 ? `${w.slice(0, 4)}…${w.slice(-4)}` : w);
