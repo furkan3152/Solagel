@@ -6,3 +6,8 @@ onlyBuiltDependencies:
   - esbuild
   - bufferutil
   - utf-8-validate
+
+# Security: @anchor-lang/core 1.2.1 pins toml 3.x (GHSA advisories fixed in toml >=4.2.0).
+# It only calls toml.parse() on Anchor.toml, which toml 4 still provides.
+overrides:
+  toml: ^4.2.0
