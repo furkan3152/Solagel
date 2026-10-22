@@ -9,6 +9,9 @@
 //   node render/render.mjs [--from 0] [--to 52.8] [--workers 3]
 //                                                     → cache/video.mp4 (picture only, near-lossless)
 //
+//   node render/render.mjs --project media/free-mint [--w 1080 --h 1920] [--out file.mp4]
+//                                                     → another scene set with the same stage contract
+//                                                       (its timeline.json, `page`, cache/), at any frame size
 // Env: CHROME_PATH (optional; defaults to Playwright's Chromium), FFMPEG.
 import { spawn } from 'node:child_process';
 import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync, rmSync } from 'node:fs';
@@ -17,13 +20,17 @@ import { createRequire } from 'node:module';
 import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const PROMO = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const ROOT = resolve(PROMO, '../..');
+const HERE = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const ROOT = resolve(HERE, '../..');
 const FFMPEG = process.env.FFMPEG || '/usr/bin/ffmpeg';
 const argv = process.argv.slice(2);
 const opt = (n, d) => (argv.includes(n) ? argv[argv.indexOf(n) + 1] : d);
+// the scene set: the promo by default, or another folder with a timeline.json and a stage page
+const PROMO = resolve(opt('--project', HERE));
 const TL = JSON.parse(readFileSync(join(PROMO, 'timeline.json'), 'utf8'));
 const FPS = TL.fps;
+const VW = Number(opt('--w', TL.width)), VH = Number(opt('--h', TL.height));
+const PAGE = `/${TL.page || 'scenes/promo.html'}?w=${VW}&h=${VH}`;
 
 // ── static server ──
 const FONT_DIR = join(ROOT, 'apps/web/node_modules');
@@ -35,9 +42,9 @@ const ROUTES = {
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.jpg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.woff2': 'font/woff2' };
 const server = createServer((req, res) => {
   const url = decodeURIComponent(new URL(req.url, 'http://x').pathname);
-  // the brand art (arena posters) is served from brand/
-  const file = ROUTES[url] || (url.startsWith('/brand/') ? join(ROOT, url) : join(PROMO, url));
-  if (!file.startsWith(PROMO) && !file.startsWith(join(ROOT, 'brand')) && !ROUTES[url]) return res.writeHead(403).end();
+  // the brand art (arena posters) is served from brand/, shared scene code from media/
+  const file = ROUTES[url] || (url.startsWith('/brand/') || url.startsWith('/media/') ? join(ROOT, url) : join(PROMO, url));
+  if (!file.startsWith(PROMO) && !file.startsWith(join(ROOT, 'brand')) && !file.startsWith(join(ROOT, 'media')) && !ROUTES[url]) return res.writeHead(403).end();
   if (!existsSync(file) || statSync(file).isDirectory()) return res.writeHead(404).end();
   res.writeHead(200, { 'content-type': MIME[extname(file)] || 'application/octet-stream', 'cache-control': 'max-age=3600' });
   createReadStream(file).pipe(res);
@@ -53,10 +60,10 @@ async function openPage() {
     executablePath: exe,
     args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--disable-gpu-vsync', '--force-device-scale-factor=1'],
   });
-  const page = await browser.newPage({ viewport: { width: TL.width, height: TL.height }, deviceScaleFactor: 1 });
+  const page = await browser.newPage({ viewport: { width: VW, height: VH }, deviceScaleFactor: 1 });
   page.on('pageerror', (e) => console.error('[pageerror]', e.message));
   page.on('console', (m) => m.type() === 'error' && console.error('[console]', m.text()));
-  await page.goto(`${BASE}/scenes/promo.html`);
+  await page.goto(`${BASE}${PAGE}`);
   await page.waitForFunction(() => window.ready === true, null, { timeout: 60000 });
   return { browser, page };
 }
@@ -73,13 +80,13 @@ async function grab(page, t, type = 'jpeg') {
 const preview = opt('--preview', null);
 try {
   if (preview) {
-    const dir = join(PROMO, 'cache/preview');
+    const dir = resolve(opt('--dir', join(PROMO, 'cache/preview')));
     mkdirSync(dir, { recursive: true });
     const { browser, page } = await openPage();
     for (const s of preview.split(',')) {
       const t = parseFloat(s);
       const t0 = Date.now();
-      writeFileSync(join(dir, `t${t.toFixed(2).padStart(6, '0')}.png`), await grab(page, t, 'png'));
+      writeFileSync(join(dir, `${opt('--prefix', '')}t${t.toFixed(2).padStart(6, '0')}.png`), await grab(page, t, 'png'));
       console.log(`t=${t} ${Date.now() - t0} ms`);
     }
     await browser.close();
@@ -90,7 +97,7 @@ try {
     const out = resolve(opt('--out', join(PROMO, 'cache/video.mp4')));
     const f0 = Math.round(from * FPS), f1 = Math.round(to * FPS);
     const n = f1 - f0;
-    const chunkDir = join(PROMO, 'cache/chunks');
+    const chunkDir = join(PROMO, `cache/chunks-${VW}x${VH}`);
     rmSync(chunkDir, { recursive: true, force: true });
     mkdirSync(chunkDir, { recursive: true });
     const per = Math.ceil(n / workers);
@@ -126,6 +133,7 @@ try {
       const ff = spawn(FFMPEG, ['-v', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', join(chunkDir, 'list.txt'), '-c', 'copy', out], { stdio: 'inherit' });
       ff.on('close', (c) => (c === 0 ? r() : j(new Error('concat failed'))));
     });
+    rmSync(chunkDir, { recursive: true, force: true });
     console.log(`wrote ${out} (${n} frames in ${((Date.now() - T0) / 60000).toFixed(1)} min)`);
   }
 } finally {

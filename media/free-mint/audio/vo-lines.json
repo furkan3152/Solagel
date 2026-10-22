@@ -1,0 +1,10 @@
+[
+ {"id": "free", "text": "*Free* mint.", "speed": 1.0},
+ {"id": "coming", "text": "The Slana NFT is coming.", "speed": 1.1},
+ {"id": "sealed", "text": "Sealed cards. | Free to mint.", "speed": 1.1},
+ {"id": "road", "text": "The roadmap:", "speed": 1.1},
+ {"id": "beta", "text": "Game beta.", "speed": 1.12},
+ {"id": "token", "text": "Token launch.", "speed": 1.12},
+ {"id": "nft", "text": "NFT launch.", "speed": 1.12},
+ {"id": "wl", "text": "The WL is open. | slana dot io slash W L.", "speed": 1.08}
+]

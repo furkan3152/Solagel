@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Slana Free Mint stage</title>
+<style>
+  html, body { margin: 0; background: #1B1732; overflow: hidden; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+<script>
+  // the frame size comes from the URL (?w=&h=): 1920x1080, 1080x1920
+  (() => { const q = new URLSearchParams(location.search), c = document.getElementById('stage'); c.width = Number(q.get('w')) || 1920; c.height = Number(q.get('h')) || 1080; })();
+</script>
+<script src="/media/promo/cache/art.js"></script>
+<script src="/media/promo/scenes/lib.js"></script>
+<script src="/scenes/nft.js"></script>
+<script src="/scenes/scenes.js"></script>
+<script src="/media/promo/scenes/main.js"></script>
+</body>
+</html>

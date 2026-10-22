@@ -287,6 +287,9 @@ SECTIONS = [
     (44.4, 46.62, "tension"),
     (46.8, 51.6, "outro"),
     (51.6, 54.0, "sting"),
+    # cut only: the NFT beat (film 36.0 - 42.0) is scored here, after the scene timeline
+    (62.4, 67.2, "nft"),
+    (67.2, 68.4, "nft-breath"),
 ]
 
 
@@ -435,6 +438,22 @@ def build():
         place(lead, bell(m, 2.2, 0.8), 51.6 + i * 0.03, 1.0, -0.4 + i * 0.2)
     place(keys, chord_stab(PROG[0][0], 1.2, 1.0, 2400), 51.6)
     place(bass, bass_note(41, 1.0, 1.0), 51.6)
+    # ── the NFT beat (the cut plays it between the fee and the end card) ──
+    # the drop out of the burn, two bright bars with a bell sparkle on each card turn, then half a
+    # bar of tension and a breath so the end card's hit lands clean
+    N0 = 62.4
+    place(drums, impact(1.0), N0)
+    place(drums, crash(0.9), N0, 1.0, -0.15)
+    place(keys, pad(PROG[0][0], 2.4, 0.8, 1800), N0, 0.7)
+    place(keys, pad(PROG[1][0], 2.4, 0.8, 1800), N0 + BAR, 0.7)
+    groove(N0, N0 + 2 * BAR, bells=True, shakers=True, cutoff=3600)
+    for i, m in enumerate([76, 79, 84]):
+        place(lead, bell(m, 1.0, 0.85), N0 + 1.2 + i * 0.3, 1.0, -0.3 + i * 0.3)
+    place(drums, crash(0.5), N0 + BAR, 1.0, 0.2)
+    T0 = N0 + 2 * BAR
+    groove(T0, T0 + 0.6, kick_pat="four", open_hats=False, stabs=True, cutoff=1400, hats=False)
+    place(drums, kick(0.9), T0 + 0.6)
+    place(fx, noise_riser(0.82, 1.1, 300, 11000), T0 + 0.0)
     return drums, bass, keys, lead, fx
 
 
@@ -457,13 +476,16 @@ def main():
     mix = biquad(mix, "peak", 140, -1.5, 1.0)
     mix = biquad(mix, "highshelf", 4200, 3.0, 0.7)
     # breaths: hard silence before the logo drop and the end hit (reverb tails cut)
-    for a, b in ((4.62, 4.8), (46.62, 46.8)):
+    for a, b in ((4.62, 4.8), (46.62, 46.8), (68.22, 68.4)):
         i0, i1 = int(a * SR), int(b * SR)
         fade = int(0.02 * SR)
         floor = 10 ** (-34 / 20)  # not digital silence: a breath with the room still there
         mix[:, i0 - fade:i0] *= np.linspace(1, floor, fade)
         mix[:, i0:i1] *= floor
-    # tail fade
+    # tail fades: the film's end (the sting, old 52.3 - 54.0), then the NFT beat's bed after it
+    f0, f1 = int(52.3 * SR), int(54.0 * SR)
+    mix[:, f0:f1] *= np.linspace(1, 0, f1 - f0) ** 1.5
+    mix[:, f1:int(62.3 * SR)] = 0
     f0 = int((TL["duration"] - 0.5) * SR)
     mix[:, f0:] *= np.linspace(1, 0, N - f0) ** 1.5
     # gentle glue: soft clip, normalise to -3 dBFS peak

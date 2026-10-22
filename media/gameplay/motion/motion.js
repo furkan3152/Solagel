@@ -991,6 +991,28 @@
     return { root, update };
   };
 
+  /** The NFT beat (media/free-mint/scenes/nft.js), full frame on its canvas: sealed cards dealt and
+   *  turned, "Slana NFT. / Free mint.", the WL ticket (slana.io/wl). p: {times, out, kicker, lead}. */
+  C.nft = (p) => {
+    const root = el('div', 'it');
+    root.style.cssText += `width:${W}px;height:${H}px;`;
+    const cv = el('canvas');
+    cv.width = W; cv.height = H;
+    cv.style.cssText = `position:absolute;left:0;top:0;width:${W}px;height:${H}px;`;
+    root.appendChild(cv);
+    stage.appendChild(root);
+    const ctx = cv.getContext('2d');
+    if (!window.TEX.fibre) window.buildTextures();
+    const update = (lt, dur) => {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+      const t = lt - (p.lead || 0);
+      window.NFT.drawBeat(ctx, t, { out: p.out ?? dur - (p.lead || 0) - 0.55, times: p.times, kicker: p.kicker });
+      window.drawGrainAndVignette(ctx, t, false);
+    };
+    return { root, update, opaque: true };
+  };
+
   // ════════════════════════════ driver ════════════════════════════
   window.setup = (items) => {
     stage.innerHTML = '';
@@ -1030,7 +1052,7 @@
       for (const it of live) {
         const lt = t - it.start;
         if (lt < 0 || lt >= it.dur) continue;
-        const full = it.type === 'card' || it.type === 'wipe' || it.type === 'flash';
+        const full = it.type === 'card' || it.type === 'wipe' || it.type === 'flash' || it.type === 'nft';
         const r = full ? { left: 0, top: 0, right: W, bottom: H } : it.root.getBoundingClientRect();
         const inner = it.root.querySelectorAll('*');
         let bx0 = r.left, by0 = r.top, bx1 = r.right, by1 = r.bottom;
