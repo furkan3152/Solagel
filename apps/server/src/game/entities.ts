@@ -148,7 +148,6 @@ export class Loot extends Entity {
 
 export type StaticEntity = Food | Virus | PowerUp | Loot;
 export type DynamicEntity = Cell | Eject;
-export type AnyEntity = StaticEntity | DynamicEntity;
 
 export interface PlayerStats {
   joinedAt: number;
