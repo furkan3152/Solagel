@@ -7,7 +7,6 @@ import {
   encodeEject,
   encodeSplit,
   encodeTarget,
-  getSkin,
   levelFromXp,
   type DeathStats,
   type RoundStanding,
@@ -20,7 +19,7 @@ import { t } from '../i18n';
 import { FrameGovernor } from '../render/governor';
 import { Renderer } from '../render/renderer';
 import { FOOD_COLORS } from '../render/sprites';
-import { toast, useUi, type Screen } from '../store';
+import { toast, useUi } from '../store';
 import { Camera } from './camera';
 import { serverClock } from './clock';
 import { HeldTicket } from './held';
@@ -107,7 +106,7 @@ export class GameEngine {
   private readonly unsub: () => void;
   private readonly reducedQuery: MediaQueryList | null;
 
-  constructor(private readonly canvas: HTMLCanvasElement) {
+  constructor(canvas: HTMLCanvasElement) {
     this.renderer = new Renderer(canvas);
     this.net = new Net(
       SERVER.ws,
@@ -371,10 +370,6 @@ export class GameEngine {
       return;
     }
     this.world.apply(s, performance.now());
-  }
-
-  private setScreen(screen: Screen): void {
-    useUi.setState({ screen });
   }
 
   private onMessage(m: ServerMessage): void {
