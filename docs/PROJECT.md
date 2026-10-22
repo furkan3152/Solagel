@@ -180,7 +180,7 @@ Browser (apps/web)  --WebSocket, binary 30 Hz-->  Game server (apps/server)  --s
 | `scripts/` | build, deploy, close, localnet, demo, recorder, IDL sync, program tests |
 | `brand/` | Social art: the X profile picture, banner, previews and the OG card, with their generator (section 9) |
 | `media/` | Sources of the promo, gameplay and how-to-play videos (renders go to `out/videos/`, which git ignores) |
-| `docs/` | This page, [ARCHITECTURE](ARCHITECTURE.md), [DEPLOY](DEPLOY.md), [OPERATIONS](OPERATIONS.md), and the design specs and plans under `docs/superpowers/` |
+| `docs/` | This page, [ARCHITECTURE](ARCHITECTURE.md), [DEPLOY](DEPLOY.md), [OPERATIONS](OPERATIONS.md), and the design specs under `docs/specs/` |
 
 ### 4.2 On-chain program
 
@@ -314,7 +314,7 @@ retired; leftover SOL went back to the admin wallet.
 
 ## 8. Website, allowlist, collabs and the admin panel
 
-Design source: `docs/superpowers/specs/2026-10-17-slana-site-wl-collab-design.md`.
+Design source: `docs/specs/2026-10-17-slana-site-wl-collab-design.md`.
 
 | Route | Who | What |
 |---|---|---|
