@@ -1,293 +1,177 @@
 # Slana
 
-**An on-chain, coin-themed Agar.io on Solana.** Rooms take tickets in $SLANA, every room has a fixed entry fee and
-**the tokens of the player you eat move to you**. There is no NFT and there are no seasons: four arenas, open to
-everyone, differ only by their entry fee. The money rules run on-chain, the game runs on an authoritative server.
+**A coin-themed, real-time multiplayer Agar.io with on-chain stakes on Solana.**
 
-Play at **[slana.io](https://slana.io)**.
+[![CI](https://github.com/furkan3152/Solagel/actions/workflows/ci.yml/badge.svg)](https://github.com/furkan3152/Solagel/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> **Warning.** This is a game played with a token of real value; it may need a licence where you operate. The smart
-> contract **has not been audited**.
+Slana (this repository is named Solagel) is a browser game where you play a coin: eat food and smaller coins, split,
+dodge bigger players. Paid arenas take a fixed ticket in the $SLANA token and **the value of a player you eat moves to
+you**; when the 5-minute round bell rings, everyone still alive is paid out on-chain. Real-time physics at 30 Hz cannot
+run on a blockchain, so Slana is a **hybrid**: an authoritative Node server runs the game, and a small Solana program
+holds the money rules (ticket vaults, settlements, the fee and loot burns) so a payout can never exceed what the arena
+actually holds.
 
----
+- **Website:** [slana.io](https://slana.io) (landing page, NFT allowlist and collab applications).
+- **Status:** the program is deployed on Solana mainnet-beta but not initialized yet; paid arenas open once the $SLANA
+  token is set. Until then the game is in a closed beta (see [docs/PROJECT.md](docs/PROJECT.md#7-live-deployment)).
+- The smart contract **has not been audited**, and a game played with a token of real value may need a licence where
+  you operate.
 
 ## Screenshots
 
-The "Paper Ticket" design: desktop and phone, paper and night themes. All images are in `docs/images/`.
+The "Paper Ticket" design system, desktop and phone, paper and night themes (all images in `docs/images/`).
 
-| Lobby (desktop, paper) | Lobby (desktop, night) |
+| Lobby | Arena |
 | --- | --- |
-| ![Lobby](docs/images/lobby-desktop-paper.webp) | ![Lobby, night](docs/images/lobby-desktop-night.webp) |
-| **Ticket check** | **Ticket issued** |
-| ![Ticket](docs/images/ticket-sheet-desktop.webp) | ![Ticket stamp](docs/images/ticket-stamp-desktop.webp) |
-| **Arena** | **Night theme** |
-| ![Game](docs/images/game-arena-desktop.webp) | ![Game, night](docs/images/game-night-desktop.webp) |
-| **Round over receipt** | **Eaten** |
-| ![Receipt](docs/images/round-over-receipt.webp) | ![Death](docs/images/death-arena.webp) |
-| **Standings** | **Guide** |
-| ![Standings](docs/images/leaderboard-desktop-paper.webp) | ![Guide](docs/images/docs-desktop-paper.webp) |
+| ![Lobby](docs/images/lobby-desktop-paper.webp) | ![Arena](docs/images/game-arena-desktop.webp) |
+| **Ticket issued** | **Round-over receipt** |
+| ![Ticket stamp](docs/images/ticket-stamp-desktop.webp) | ![Receipt](docs/images/round-over-receipt.webp) |
+| **Night theme** | **Standings** |
+| ![Game, night](docs/images/game-night-desktop.webp) | ![Standings](docs/images/leaderboard-desktop-paper.webp) |
 
 | Phone: lobby | Ticket | Game | Standings |
 | --- | --- | --- | --- |
 | ![](docs/images/lobby-mobile-night.webp) | ![](docs/images/ticket-mobile.webp) | ![](docs/images/game-mobile.webp) | ![](docs/images/leaderboard-mobile-night.webp) |
 
-| Phone: lobby (paper) | Eaten | Guide (night) | Before the token is set |
-| --- | --- | --- | --- |
-| ![](docs/images/lobby-mobile-paper.webp) | ![](docs/images/death-mobile.webp) | ![](docs/images/docs-mobile-night.webp) | ![](docs/images/lobby-soon-mobile.webp) |
+Screenshots are produced by the Playwright tours in `apps/web/scripts/` against the fake-chain development stack.
 
-The screenshots are taken with the `apps/web/scripts/{lobby,gameview,docs}.mjs` tours on the `DEV_FAKE_CHAIN=1`
-development stack (signing transactions in a browser cannot be automated). The localnet end-to-end test proves the real
-chain path: `scripts/localnet.sh --no-token` + `pnpm -F @slana/server e2e` (see [OPERATIONS](docs/OPERATIONS.md)).
+## Key features
 
-## How to play
+- **Free practice mode:** no wallet, no token, bots only, Rookie and Pro leagues, nothing on-chain.
+- **On-chain arenas:** four arenas (Penny Pond 1,000 to Whale Bay 250,000 $SLANA) with a fixed entry fee held in a
+  program-owned vault; eating a player transfers their value to you.
+- **Wall-clock rounds, no cash-out:** 5-minute rounds shared by every arena; at the bell everyone alive is settled
+  on-chain, and floor loot left on the map is burned.
+- **Fee on profit only:** a flat 5 % of winnings above the entry fee (capped at 10 % on-chain), fixed when the ticket is
+  bought.
+- **Safe payouts:** a two-phase settlement keeps an unpayable amount in the vault as `owed` for the player to collect;
+  a ticket the server never settles can be refunded by the player after 24 hours.
+- **Lean on-chain program:** a Pinocchio (`no_std`, no allocator) program of 39,032 bytes that is wire-compatible with
+  an Anchor reference implementation and tested against it.
+- **Operations tooling:** an admin CLI, an `/admin` panel with mainnet safety rails, cheat and collusion detection, a
+  persistent money journal, and recorded walkthrough and promo videos generated from the real UI.
 
-- **Practice:** free; no wallet or token needed. Played with bots; no prizes and nothing on-chain. There are Rookie
-  and Pro leagues.
-- **Arenas:** each is an account on-chain. Ticket = a fixed entry fee that goes to the arena's vault (a program account).
-  In the game your value starts at the entry fee; when you eat someone, the mass share of their value moves to you. Bots
-  are worth 0; when a bot eats a player, the value spills across the map as **loot** that only real players can collect.
-- **Rounds, no cash-out:** arenas play 5-minute rounds on the wall clock (round *n* is `[n*300 s, (n+1)*300 s)` of
-  Unix time, the same for every arena). Nobody leaves with money before the bell: when it rings, everyone alive is paid
-  their value on-chain and a new round opens at once. Joins (including a bought-back ticket after being eaten) close in
-  the last 60 s; a ticket bought then is held and joins the next round. Floor loot left at the bell is **burned**
-  (`sweep_loot`).
-- **The fee** is a flat **5 % of profit** (the admin can change it, at most 10 %), taken only from what you win above your
-  entry fee. It is paid in full to the fee wallet, which defaults to the admin wallet. The owner burns tokens off-chain
-  by hand; the program has no treasury, no season pool and no burn split. The rate is fixed on-chain when you buy the
-  ticket.
-- **The token is set after deploy.** The program is deployed and initialized without a mint. The admin sets the $SLANA
-  mint once with `pnpm admin set-token --mint <CA>`; until then the lobby shows the arenas as "Opening soon" and only
-  practice is open. The server and the web pick the token up from the chain with no restart.
-- **Standings** are an off-chain leaderboard (Today and All time, best single game); they carry no prizes.
+## How it works
 
-The player guide is inside the game: **`/docs`** (or the **Guide** tab in the lobby). Default arenas
-(`pnpm admin create-arena --defaults`): Penny Pond 1,000, Silver Creek 10,000, Gold Lake 50,000, Whale Bay 250,000
-$SLANA. All four are open to everyone.
+```mermaid
+flowchart LR
+  B["Browser<br/>React + Vite"] -- "WebSocket, binary snapshots 30 Hz" --> S["Game server<br/>Node 22"]
+  B -- "signs: register, join, refund, collect" --> P["Solana program<br/>slana-lean (Pinocchio)"]
+  S -- "signs: settle_session, sweep_loot" --> P
+  A["Admin CLI / panel"] -- "signs: initialize, set_token_mint, arenas" --> P
+  P --- V[("Arena vaults<br/>$SLANA, SPL Token / Token-2022")]
+```
 
-| Control | Desktop | Phone |
-|---|---|---|
-| Move | Mouse | Joystick |
-| Split | `Space` | Split button |
-| Drop mass | `W` (can be held) | Tip button |
-| Chat / sticker | `Enter` / `1`–`8` | Chat / sticker buttons |
-| Next player while spectating | `Q` | |
+- The **server** is authoritative for the simulation (movement, eating, splits, bots, loot) and keeps an in-game value
+  ledger and a journal; at the bell it settles every live ticket on-chain.
+- The **program** enforces the money rules: tickets go into the arena vault, a payout can never exceed the vault, the fee
+  comes only from profit, and the token mint can be set exactly once.
+- Two program crates exist on purpose: `programs/slana-ref` (Anchor 1.2.1) is the IDL source and conformance oracle and
+  is **never deployed**; `programs/slana-lean` (Pinocchio 0.11) is the deployed program. The same LiteSVM suite runs
+  against both, and CI enforces a size gate and `clippy::arithmetic_side_effects` on the lean crate.
 
-## Architecture
+Details, the money-flow diagram and the invariants: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-Real-time physics (30 Hz) cannot run on-chain. **Hybrid** model: the game loop runs on the authoritative Node server;
-money, tickets and fees live in the Solana program. Details, the money-flow diagram and the invariants:
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+## Tech stack
 
-| Folder | Contents |
-|---|---|
-| `programs/slana-ref` | Anchor 1.2.1 reference (not deployed; the IDL source and the conformance oracle): token arenas (SPL Token / Token-2022), sessions, the flat fee, loot burn, `set_token_mint` + LiteSVM tests |
-| `programs/slana-lean` | The deployed Pinocchio program (`target/deploy/slana_lean.so`, 39,032 bytes, size gate 71,000), wire-compatible with the reference; `scripts/build-lean.sh` |
-| `packages/shared` | Game rules, binary protocol (v4), arena data, token formatting |
-| `packages/sdk` | TypeScript client (PDAs, instructions, account reads, fee math) + **admin CLI** (`pnpm admin`) |
-| `packages/art` | The risograph coin drawing used by the web renderer |
-| `apps/server` | Game server: rooms and instances, bots, loot, the journal, the payout queue, the token watcher |
-| `apps/web` | Game client: the "Paper Ticket" design system, lobby, ticket flow, standings, player guide |
+| Layer | Technology |
+| --- | --- |
+| On-chain | Rust, Pinocchio 0.11 (deployed), Anchor 1.2.1 (reference + IDL), SPL Token / Token-2022, LiteSVM tests |
+| Server | Node 22, TypeScript, `ws` (binary protocol v4), `@solana/web3.js`, tsup |
+| Web | React, Vite, Zustand, Motion, Solana Wallet Adapter (Wallet Standard), Vitest, Playwright |
+| Tooling | pnpm workspaces, GitHub Actions, Docker (single container: server + static web) |
 
-Docs: [project overview](docs/PROJECT.md) · [design (Slana Simple)](docs/superpowers/specs/2026-10-16-slana-simple-design.md) ·
-[setup and deployment](docs/DEPLOY.md) · [operations](docs/OPERATIONS.md) · [architecture](docs/ARCHITECTURE.md)
+## Project structure
 
-## Run it
+| Path | Contents |
+| --- | --- |
+| `programs/slana-lean` | The deployed Pinocchio program (`target/deploy/slana_lean.so`) |
+| `programs/slana-ref` | Anchor reference (IDL source and test oracle) + the LiteSVM test suite |
+| `packages/shared` | Game rules, binary protocol, arena metadata, token formatting |
+| `packages/sdk` | TypeScript client (PDAs, instruction builders, account reads, fee math) and the admin CLI (`pnpm admin`) |
+| `packages/art` | The risograph coin renderer used by the web client |
+| `apps/server` | Game server: rooms and instances, bots, loot, journal, payout queue, token watcher, site API |
+| `apps/web` | Game client: lobby, ticket flow, HUD, standings, in-game player guide (`/docs`), admin panel |
+| `scripts/` | Build, deploy, localnet and demo scripts |
+| `docs/` | Project overview, architecture, deployment, operations, design specs |
+| `brand/`, `media/` | Brand assets and the scripted gameplay / promo video pipelines |
 
-Needs Node 22+ and pnpm 10 (`corepack enable`). Three commands cover everything; each one checks Node, pnpm, the
-installed dependencies and the ports (8787, 5173; localnet also 8899/8900) first and says what to fix. Ctrl+C stops every
-process it started.
+## Getting started
+
+**Prerequisites:** Node 22+ and pnpm 10 (`corepack enable`). The on-chain parts additionally need Rust, the Agave
+(Solana) CLI with `cargo-build-sbf`, and the Anchor CLI 1.2.1.
 
 ```bash
 pnpm install
-pnpm demo            # the stack from the walkthrough videos: http://localhost:5173
-pnpm demo:localnet   # the same UI on a real local validator (real transactions)
-pnpm demo:record     # re-records the walkthrough video (add --quick for a short smoke run)
+pnpm dev             # practice only, no chain: server on :8787, web on http://localhost:5173
+pnpm demo            # full UI on an in-memory fake chain (free tickets, simulated payouts)
+pnpm demo:localnet   # the same UI against a real solana-test-validator (real transactions)
 ```
 
-### `pnpm demo`
+- `pnpm demo` starts the server with `NODE_ENV=development DEV_FAKE_CHAIN=1 DEV_FAKE_TOKEN=1`. Any Wallet Standard
+  wallet (Phantom, Solflare, Backpack) can sign in for free; `pnpm demo --browser` opens a Chromium with a built-in
+  dev wallet. The fake chain refuses to start in production or when `PROGRAM_ID` / `SERVER_KEYPAIR` is set.
+- `pnpm demo:localnet` builds what is missing, starts a validator with the program, a test token and the default arenas,
+  then runs the server and web against it. Fund a wallet with `scripts/localnet-fund.sh <ADDRESS>`.
+- `pnpm demo:record` re-records the walkthrough video with Playwright and ffmpeg.
 
-Starts the game server with `NODE_ENV=development DEV_FAKE_CHAIN=1 DEV_FAKE_TOKEN=1` (an in-memory fake chain: free arena
-tickets, simulated settlements, seeded standings, the game token already set) and the web dev server, then prints
-**http://localhost:5173**. Sign-in works with no extra environment: the dev proxy keeps the browser's host. Each run
-starts from a fresh journal (`out/demo-data/`).
+**Configuration.** Copy `apps/server/.env.example` to `apps/server/.env` (and `apps/web/.env.example` for the web build).
+Key variables: `SOLANA_CLUSTER`, `SOLANA_RPC_URL`, `PROGRAM_ID`, `SERVER_KEYPAIR`, `AUTH_SECRET`, `PUBLIC_URL`,
+`DATA_DIR`. Without `PROGRAM_ID` the server runs in practice-only mode.
 
-- **Wallet.** Any Wallet Standard wallet (Phantom, Solflare, Backpack) can sign in; the login message is free and no funds
-  are needed. With no wallet extension, `pnpm demo --browser` opens a Chromium with a built-in Dev Wallet (a local keypair,
-  `out/dev-wallet.json`; needs a display).
-- **Name.** Set a player name in the lobby before buying a ticket.
-- **Buying a ticket and playing.** Pick Penny Pond in the lobby, buy the ticket and play until the round bell (5 minutes; `ROUND_SECONDS=90 pnpm demo` shortens it); the payout is simulated.
-- **Before the token is set.** `DEV_FAKE_TOKEN=0 pnpm demo` starts with the token unset: the four arenas read "Opening soon"
-  and only practice plays. `curl -X POST localhost:8787/api/dev/token` sets it, like `pnpm admin set-token`; the open
-  page flips to open arenas with no reload.
-- **Practice only.** `pnpm dev` runs the server without any chain (practice rooms with bots, no wallet needed).
-
-The fake chain is development only: it needs an explicit `NODE_ENV=development` and refuses to start while `PROGRAM_ID`
-or `SERVER_KEYPAIR` is set. See `apps/server/.env.example`.
-
-### `pnpm demo:localnet`
-
-Same UI against a real `solana-test-validator`: real tickets, settlements and loot burns. It builds what is
-missing, then starts everything:
-
-1. `target/deploy/slana_lean.so`, via `scripts/build-lean.sh` (needs the Agave/Solana build tools: `cargo-build-sbf`).
-2. The production build of the game server (`pnpm -F @slana/server build`).
-3. `scripts/localnet.sh`: validator, program, test token, `init`, `set-token`, default arenas, and
-   `.localnet/server.env`. The program keypair is not needed (the address comes from the SDK IDL).
-4. The server with that env file and the web dev server. `PUBLIC_URL` is set to the web origin so the sign-in message
-   names `localhost:5173`.
-
-It needs the Agave CLI (`solana`, `solana-test-validator`, `solana-keygen`, `spl-token`) on the PATH or in `/opt/solana/bin`.
-Ctrl+C also stops the validator (`scripts/localnet.sh --stop`). A localnet run keeps no state between runs: every run
-starts from a fresh ledger.
-
-**Wallet and funds.** Either:
-
-- **Phantom on localhost.** Settings, Developer Settings, turn on Testnet Mode and choose Solana Localnet (RPC
-  `http://127.0.0.1:8899`). Then fund the address.
-- **A local keypair (Dev Wallet).** `pnpm demo:localnet --browser` opens a Chromium with a Dev Wallet whose key is
-  `.localnet/dev-wallet.json`, and funds it automatically.
-
-Fund any address with SOL and `$SLANA` (the test mint is capped, so tokens are sent from the admin wallet):
-
-```bash
-scripts/localnet-fund.sh <WALLET_ADDRESS> [sol=10] [slana=1000]
-# SOL only:  solana airdrop 10 <WALLET_ADDRESS> --url http://127.0.0.1:8899
-```
-
-Admin commands work as usual (`pnpm admin status`).
-
-### `pnpm demo:record`
-
-Records the walkthrough (lobby, wallet, practice, a Penny Pond ticket, arena, the round bell and receipt, standings, profile, guide)
-with a visible cursor and chapter captions, and encodes it to **`out/videos/slana-walkthrough.mp4`** plus a highlights
-reel (`out/videos/` is gitignored). It starts the fake-chain stack by itself and stops it afterwards; to record a stack you
-already run, add `--url http://localhost:5173/`. Needs ffmpeg on the PATH (`FFMPEG=<binary>` overrides) and Chromium:
-Playwright's own (`pnpm -F @slana/web exec playwright install chromium`) or `CHROME_PATH=<binary>`. A full run takes a
-few minutes; `pnpm demo:record --quick` records a shorter clip (lobby, wallet, ticket, arena) as `slana-quick.mp4`.
-The videos carry the game's sound (effects and music, captured from the dev build's master bus); the announcer speaks
-through the OS speech engine and is not in the recording. `--no-audio` records silent videos.
-
-## Running with the chain
-
-Step by step (deploy, `init`, `set-token`, arenas, server, Docker, mainnet costs): **[docs/DEPLOY.md](docs/DEPLOY.md)**.
-Day-to-day work (the fee wallet, loot burn, pausing, key rotation, backups): **[docs/OPERATIONS.md](docs/OPERATIONS.md)**.
-Every admin command: `pnpm admin help`.
-
-The order is fixed: **deploy, then `init`, then (later) `set-token`, then `create-arena --defaults`**.
-
-```bash
-scripts/deploy-lean.sh mainnet-beta target/deploy/slana-keypair.json --keypair keys/deployer.json
-pnpm admin init --keypair <admin keypair> --server <server pubkey>  # no mint; the fee wallet defaults to the admin
-pnpm admin set-token --mint <CA>                                 # once; also creates the fee wallet's token account
-pnpm admin create-arena --defaults                               # four arenas; the server lists them within about 60 s
-```
-
-`set-token` can be run only once, and the program has no way to change the mint afterwards: a wrong contract address
-means closing the program and redeploying it (see OPERATIONS, "Emergency stop / close").
-
-### Program build and deploy
-
-The deployed program is the Pinocchio build `programs/slana-lean` (39,032 bytes, size gate 71,000). The Anchor crate
-`programs/slana-ref` is only the IDL source and the conformance oracle in the tests, and is **never deployed**.
-
-```bash
-anchor build --ignore-keys && pnpm -F @slana/sdk sync-idl     # IDL (and the reference slana.so used by the tests)
-bash scripts/build-lean.sh                                    # target/deploy/slana_lean.so, prints size and rent
-scripts/deploy-lean.sh devnet target/deploy/slana-keypair.json --keypair keys/deployer.json
-# refuses a keypair that is not the program id, then moves the upgrade authority to the admin wallet (scripts/admin.env)
-scripts/close-program.sh <cluster-url> <admin-keypair>   # emergency: permanently closes the program, see docs/OPERATIONS.md
-```
-
-Never use `anchor deploy`: it would ship the ~450 KB reference. The lean program locks
-272,866,800 lamports (about ◎0.2729) of ProgramData rent, and the deploy briefly needs about ◎0.55 because of the
-temporary buffer. The full cost table is in [docs/DEPLOY.md](docs/DEPLOY.md#10-mainnet-costs).
-
-### Localnet and end-to-end test
-
-`scripts/localnet.sh` sets up a clean local cluster: `solana-test-validator` with the Slana program loaded, a Token-2022
-test mint (6 decimals, no freeze authority, 1 billion tokens to the admin, then minting disabled), `init`, `set-token`
-and the default arenas; it writes the server environment to `.localnet/server.env`. `scripts/localnet.sh --no-token`
-stops after `init` (the mint exists but is not set), which is the state the end-to-end test starts from. Requirements:
-`scripts/build-lean.sh` (`slana_lean.so`) and the Agave CLI (`spl-token` included). `.localnet/` is never committed.
-
-```bash
-scripts/build-lean.sh && scripts/localnet.sh        # or just: pnpm demo:localnet
-scripts/localnet.sh --no-token && pnpm -F @slana/server e2e   # the end-to-end test; about 2-3 minutes
-scripts/localnet.sh --stop
-```
-
-The test uses the real chain (not the fake chain) and starts and stops its own game server. In order: the program is
-initialized without a mint; the server reports `tokenReady: false`, refuses an arena join with `token_not_set` and still
-plays practice; the real `pnpm admin set-token` runs and the server picks the token up with no restart; `pnpm admin
-create-arena --defaults` runs and the arena appears; four real tickets are bought (a hunter, a prey, a feeder and the fee
-wallet itself); a player is eaten and the feeder's value spills as loot; at the bell each fee equals the SDK's
-`splitPayout`, the fee wallet's token account grows by exactly the sum of the fees, the fee wallet's own ticket is
-finalized and collected with `refund_session`, and the floor loot is burned (the supply drops by exactly tickets minus
-payouts).
+**Docker:**
 
 ```bash
 docker build -t slana .
-docker run -p 8787:8787 -v slana-data:/data --env-file apps/server/.env slana   # → http://localhost:8787
+docker run -p 8787:8787 -v slana-data:/data --env-file apps/server/.env slana   # http://localhost:8787
 ```
 
-## Tests
+### Tests
 
 ```bash
 pnpm -r typecheck
-pnpm -r test                        # shared, sdk, art, server, web (Vitest)
+pnpm -r test                 # Vitest: shared, sdk, art, server, web
 pnpm -F @slana/web build
-scripts/test-program.sh             # program: LiteSVM suite against slana.so (ref) and slana_lean.so (lean)
+scripts/test-program.sh      # LiteSVM suite against the Anchor reference and the lean program
+scripts/localnet.sh --no-token && pnpm -F @slana/server e2e   # end-to-end on a real local validator
 ```
 
-Extra tools: `pnpm -F @slana/server sim` (bot balance), `pnpm -F @slana/web shot <url> <png>` (screenshot).
+The end-to-end test runs the real admin CLI and real tickets on a local validator: it initializes without a token, sets
+the token, creates arenas, buys four tickets, has a player eaten, and checks at the bell that every fee matches the SDK
+math, the fee wallet grows by exactly the fees, and burned loot reduces supply by exactly tickets minus payouts.
 
-## Trust model
+### Deploying the program
 
-- Entry fees sit in the arena vaults (program accounts); a payout cannot exceed the vault, the fee is taken only from
-  profit and is capped at 10 %. The fee rate, entry fee and deposit shown to the player when buying a ticket are upper
-  bounds on-chain.
-- The payout has two phases (R24): the server always writes the outcome on-chain. If the player has no token account or
-  the account refuses the payout, the amount stays in the vault as `owed`, and the player takes exactly that amount at
-  any time with "Collect payout". A losing player cannot spoil the outcome by closing their token account, nor get the
-  entry fee back. A ticket the server never settled can be refunded by the player themselves after 24 hours.
-- The game's outcome (who ate whom, the value at the bell, the score) **trusts the authoritative server**. The server key
-  can only close open tickets and, through `sweep_loot`, **burn** round-end floor loot from an arena vault (never more than
-  the vault holds, the same trust as a payout); it cannot touch the fee wallet or the settings. Since the admin can
-  replace the server key, this trust is in the end trust in the admin.
-- The fee goes to one wallet, the fee wallet (the admin by default). It must keep its token account for the game
-  token: if that account is closed or unusable, every settlement is held until it is recreated.
-- The token mint is set once and cannot be changed (a wrong contract address means redeploying).
+The order is fixed: **deploy, then `init`, then (later) `set-token`, then `create-arena --defaults`**. Build with
+`bash scripts/build-lean.sh` and deploy with `scripts/deploy-lean.sh`, never `anchor deploy` (it would ship
+the much larger Anchor reference). Full runbook and mainnet costs: [docs/DEPLOY.md](docs/DEPLOY.md); day-to-day operations (fee wallet,
+loot burn, pausing, key rotation, backups, integrity): [docs/OPERATIONS.md](docs/OPERATIONS.md).
+
+## Security and trust model
+
+- **Non-custodial for players:** players sign their own tickets, refunds and collections from their wallet. Entry fees
+  sit in program-owned arena vaults, never in a server wallet.
+- **Bounded server trust:** the game outcome (who ate whom, value at the bell) trusts the authoritative server, but the
+  server key can only settle open tickets and burn round-end floor loot from a vault; it cannot touch the fee wallet or
+  the settings. The admin can rotate the server key.
+- **Bounded fees:** the fee rate shown at ticket purchase is an on-chain upper bound and can never exceed 10 %.
+- **Immutable token:** the mint is set once and cannot be changed afterwards.
+- **Admin panel safety:** the program id is pinned in the bundle, the cluster is derived from the RPC genesis hash,
+  every transaction is previewed before the wallet prompt, and the token address must be typed twice.
+- **Keys:** never commit keypairs or `.env` files; `.gitignore` covers `.env*`, `*-keypair.json`, `*.keypair.json`,
+  `id.json`, `keys/`, `*.pem` and `*.key`.
+
+## Documentation
+
+[Project overview](docs/PROJECT.md) · [Architecture](docs/ARCHITECTURE.md) · [Deployment](docs/DEPLOY.md) ·
+[Operations](docs/OPERATIONS.md) · [Design (Slana Simple)](docs/superpowers/specs/2026-10-16-slana-simple-design.md) ·
+[Brand](brand/README.md)
+
+## License
+
+[MIT](LICENSE)
 
 ---
 
-## Summary
-
-**Slana** is an on-chain, coin-themed Agar.io on Solana.
-
-- **Practice** is free: no wallet, no token, bots only, Rookie and Pro leagues, nothing on-chain.
-- **Arenas** are on-chain accounts with a fixed entry fee in **$SLANA**: Penny Pond 1,000, Silver Creek 10,000, Gold Lake
-  50,000, Whale Bay 250,000, all open to everyone. Your in-game value starts at the entry fee; eating a player moves their
-  value to you. Bots are worth 0; when a bot eats a player, the value spills as loot that only real players can collect.
-  Rooms are sharded into instances of 50 players and run 24/7.
-- **Rounds** (5 minutes, wall-clock, no cash-out) end with the payout of everyone alive on-chain; floor loot is burned
-  through the server-signed `sweep_loot`. The fee is a flat **5 % of profit** (at most 10 %), paid in full to the fee
-  wallet, which defaults to the admin; the owner burns tokens off-chain by hand. The rate is fixed on-chain when the
-  ticket is bought.
-- **The token is set after deploy** with `pnpm admin set-token --mint <CA>` (once). Until then the arenas show "Opening
-  soon" and only practice is open; the server and the web follow the chain with no restart.
-- **Architecture:** a hybrid model. The authoritative Node server runs the 30 Hz simulation and settles tickets on-chain;
-  the Solana program holds the money rules. The deployed program is a Pinocchio build (`programs/slana-lean`, 39,032
-  bytes, about ◎0.2729 of rent). It is wire-compatible with the Anchor reference (`programs/slana-ref`), which supplies
-  the IDL and is checked against it by the same LiteSVM suite, but is never deployed. Build with
-  `bash scripts/build-lean.sh`, deploy with `scripts/deploy-lean.sh <cluster-url> <keypair>`,
-  never `anchor deploy`. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-```bash
-corepack enable && pnpm install && pnpm dev     # http://localhost:5173, practice, no wallet needed
-```
-
-The player guide is in the app at `/docs`. Deployment and operations are in [docs/DEPLOY.md](docs/DEPLOY.md) and
-[docs/OPERATIONS.md](docs/OPERATIONS.md); architecture in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The program
-has **not been audited**, and real-money games may need a licence where you operate.
-
-License: [MIT](LICENSE)
+Built by Furkan Akdogan ([@furkan3152](https://github.com/furkan3152)).
