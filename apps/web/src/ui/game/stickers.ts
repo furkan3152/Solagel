@@ -152,8 +152,6 @@ const BODIES: Record<number, string> = {
     `<path d="M19.5 22q1-4.5 5.5-5" fill="none" stroke="${CARD}" stroke-width="2.6" stroke-linecap="round"/>`,
 };
 
-export const STICKER_COUNT = 8;
-
 /** Full SVG markup of an emote sticker (64 × 64 viewBox). */
 export function stickerSvg(id: number, size = 64): string {
   const body = BODIES[id] ?? BODIES[0];

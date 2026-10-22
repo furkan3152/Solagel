@@ -124,23 +124,6 @@ export async function signIn(wallet: MessageSigner, opts: { force?: boolean } = 
   }
 }
 
-/** Checks a stored session with the server (`/api/auth/me`); clears it when the server says it expired. */
-export async function verifySession(s: SiteSession): Promise<SiteSession | null> {
-  try {
-    const me = await auth.me(s.token);
-    const next = { ...s, admin: me.admin };
-    store(next);
-    useSession.setState({ session: next });
-    return next;
-  } catch (err) {
-    if (err instanceof SiteApiError && err.status === 401) {
-      signOut();
-      return null;
-    }
-    return s;
-  }
-}
-
 /** Called after a 401 from any site call: the token is gone, the user signs in again. */
 export function dropExpired(err: unknown): boolean {
   if (err instanceof SiteApiError && err.code === 'unauthorized') {
