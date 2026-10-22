@@ -4,6 +4,9 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -15,7 +18,9 @@ jobs:
     env:
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
       # English only: fails on any Turkish-specific letter (c-cedilla, g-breve, dotless i, o-umlaut,
       # s-cedilla, u-umlaut and their capitals) in a tracked text file. The letters are written as
       # PCRE code points so this file passes its own check; images are skipped as binaries.
@@ -27,8 +32,8 @@ jobs:
           if [ "$rc" -eq 0 ]; then echo "Turkish text found"; exit 1; fi
           if [ "$rc" -ne 1 ]; then echo "git grep failed (exit $rc)"; exit 1; fi
           echo "No Turkish text"
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: pnpm
@@ -51,8 +56,10 @@ jobs:
       # Agave CLI version: platform-tools and cargo-build-sbf come with it, so it is part of the cache key.
       AGAVE_VERSION: v4.3.0
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.cargo/registry
@@ -66,7 +73,7 @@ jobs:
         run: |
           sh -c "$(curl -sSfL https://release.anza.xyz/${AGAVE_VERSION}/install)"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
       - name: Install Anchor CLI
@@ -113,6 +120,8 @@ jobs:
     name: Docker image (build only, no push)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
       - name: Build
         run: docker build -t slana:ci .
