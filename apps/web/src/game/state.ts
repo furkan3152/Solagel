@@ -1,4 +1,4 @@
-import { EntityKind, PlayerFlag, type PlayerInfo, type ServerMessage, type SnapshotData } from '@slana/shared';
+import { EMOTE_DURATION_MS, EntityKind, PlayerFlag, type PlayerInfo, type ServerMessage, type SnapshotData } from '@slana/shared';
 import type { Expression } from '@slana/art';
 import { JellyBody } from '../render/jelly';
 
@@ -249,7 +249,7 @@ export class ClientWorld {
       }
     }
     // emotes expire
-    for (const p of this.players.values()) if (p.emote && now - p.emote.at > 2600) p.emote = null;
+    for (const p of this.players.values()) if (p.emote && now - p.emote.at > EMOTE_DURATION_MS) p.emote = null;
   }
 
   myCells(): CEntity[] {

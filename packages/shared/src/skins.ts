@@ -382,7 +382,6 @@ export const SKINS: readonly SkinDef[] = [
 ];
 
 export const SKIN_COUNT = SKINS.length;
-export const FREE_SKIN_IDS = SKINS.filter((s) => s.tier === 'free').map((s) => s.id);
 
 export const getSkin = (id: number): SkinDef => SKINS[id] ?? SKINS[0];
 
@@ -392,9 +391,3 @@ export const getSkin = (id: number): SkinDef => SKINS[id] ?? SKINS[0];
 export const BASIC_SKINS: readonly SkinDef[] = SKINS.slice(0, 8);
 
 export const isBasicSkin = (id: number): boolean => Number.isInteger(id) && id >= 0 && id < BASIC_SKINS.length;
-
-/** Hue-shifted color for rainbow skins. */
-export function rainbowColor(timeMs: number, offset = 0, lightness = 72): string {
-  const hue = ((timeMs / 18 + offset) % 360 + 360) % 360;
-  return `hsl(${hue.toFixed(0)} 95% ${lightness}%)`;
-}
