@@ -34,6 +34,7 @@ FIXED = {
     "Slana's": "slˈɑːnəz",
     "Slana": "slˈɑːnə",
     "Solana": "soʊlˈɑːnə",
+    "NFTs": "ˌɛnˌɛftˈiːz",  # the G2P drops the plural
 }
 PAUSE = {"|": 0.16, "||": 0.38}
 SR = 24000

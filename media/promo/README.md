@@ -1,4 +1,4 @@
-# Slana promo (48 s, 1920x1080, 60 fps) and its vertical cut (35 s, 1080x1920)
+# Slana promo (45 s, 1920x1080, 60 fps) and its vertical cut (32 s, 1080x1920)
 
 The launch film for Slana, in the Paper Ticket brand. One idea runs through it: **the whole film
 is printed**. It opens cold on real gameplay: Daphne's coin gulps a rival on the downbeat (1.2 s,
@@ -8,9 +8,9 @@ cut). The coin spins into the riso dot of the wordmark, the camera pulls back to
 printed on a ticket, the ticket gets a PAID stamp and a punched hole, and the camera dives through
 the hole into the gameplay montage. A round clock runs down to the bell and the "Round over" receipt
 prints. A page turn deals the four arena tickets, a whip pan crosses to the fee bar: one flat 5% of
-profit. The floor-loot stub catches fire, and the fire burns through to the NFT beat: sealed riso
-cards are dealt and turn over, "Slana NFT. / Free mint.", the WL ticket (slana.io/wl). An ink flood
-carries it to the end card (slana.io, @slanaio).
+profit. The floor-loot stub catches fire, and the fire burns through to a short, plain NFT mention:
+the cards are dealt face up on the paper stock, "COMING SOON", "Slana NFTs.". An ink flood carries
+it to the end card (slana.io, @slanaio).
 
 Everything is deterministic. No CSS animation and no wall clock are used, so any frame can be
 re-rendered on its own.
@@ -18,7 +18,7 @@ re-rendered on its own.
 ## The cut
 
 `timeline.json` keeps the scene timeline the scenes are drawn on ("scenes", "vo", "sfx", old
-seconds, 52.8 s; the NFT beat's score sits after it, at 62.4 - 68.4) and lays the film out over it in `cut`: the cold open, pieces of the scene
+seconds, 52.8 s; the NFT beat's score sits after it, at 62.4 - 65.4) and lays the film out over it in `cut`: the cold open, pieces of the scene
 timeline and the transitions between them. `audioCut` splices the score and the scene SFX on the
 same beat-aligned pieces (the score is rendered on the scene timeline, then cut on bar phase), and
 `vo2` / `sfx2` are the film's own voice and cue times.
@@ -35,15 +35,15 @@ same beat-aligned pieces (the score is rendered on the scene timeline, then cut 
 | 0:25.2 | Arenas | Four tickets dealt on the beat: 1,000 / 10,000 / 50,000 / 250,000 $SLANA; they clear off and the four arena posters (`brand/posters`) are pinned up on the beat. | "Four arenas, open to everyone. From one thousand, to two hundred fifty thousand Slana." |
 | 0:30.6 | Whip pan | | |
 | 0:31.2 | Fee | "One flat fee. / 5% of profit." The floor-loot stub burns through. | "One flat fee: five percent of profit. Floor loot at the bell? Burned." |
-| 0:36.0 | NFT | The NFT kit (`media/free-mint/scenes/nft.js`) on the pink stock: three sealed cards dealt on the drop, "Slana NFT. / Free mint.", the seals crack and the cards turn on the beat, the WL ticket (slana.io/wl) with its underline; an ink flood to night. | "Slana NFT. Free mint. WL open at slana dot io slash W L." |
-| 0:42.0 | End card | The wordmark, "Eat. Grow. Last the round.", slana.io / $SLANA, X @slanaio, sting. | "Eat. Grow. Last the round. slana dot io." |
+| 0:36.0 | NFT | The NFT kit's plain beat (`media/free-mint/scenes/nft.js`, `drawBeat` with `plain`) on the paper stock: the three cards (Goldie, Bubbles, Minty) dealt face up on the drop, a "COMING SOON" kicker, "Slana NFTs."; an ink flood to night (3.0 s). | "Slana NFTs. Coming soon." |
+| 0:39.0 | End card | The wordmark, "Eat. Grow. Last the round.", slana.io / $SLANA, X @slanaio, sting. | "Eat. Grow. Last the round. slana dot io." |
 
 Music: 100 BPM, Fmaj7 / G6 / Em7 / Am7, silence-then-drop into the logo and the end card.
 
 The vertical cut (`vertical.mjs`) is built with the gameplay kit at 1080x1920: the gulp with the
 riso headline, "Five-minute rounds." over the drop-in and the round clock, "Alive at the bell?"
-over the last ten seconds (a last gulp), "Get paid." over the bell and the receipt, the NFT beat (the
-gameplay kit's `nft` component, two bars, on the 82 BPM grid) and the end card with slana.io and
+over the last ten seconds (a last gulp), "Get paid." over the bell and the receipt, the plain NFT
+mention (the gameplay kit's `nft` component with `plain`, one bar, on the 82 BPM grid) and the end card with slana.io and
 @slanaio, on the game's 82 BPM score with the promo's voice lines.
 
 ## Voice
@@ -115,7 +115,7 @@ node render/footage-from-takes.mjs
 
 # 2. picture (about 6-8 min on 4 cores with SwiftShader)
 node render/render.mjs --preview 1.2,2.4,13.6,25.0   # spot-check stills in cache/preview/
-node render/render.mjs --workers 3                   # -> cache/video.mp4 (48 s)
+node render/render.mjs --workers 3                   # -> cache/video.mp4 (45 s)
 
 # 3. sound (the score and SFX on the scene timeline, then cut)
 $PY audio/tts.py --models ../gameplay/cache/models --out cache/vo-raw --voice af_heart
@@ -129,7 +129,7 @@ render/mux.sh   # -> out/videos/slana-promo.mp4 (< 30 MB) and slana-promo-master
 
 # vertical cut (from the repo root)
 node media/promo/vertical.mjs
-media/gameplay/render/render.sh media/promo/cache/vertical/vertical.json \
+MASTER_AUDIO=192k media/gameplay/render/render.sh media/promo/cache/vertical/vertical.json \
   media/promo/cache/vertical/vertical-music.json slana-promo-vertical media/promo/cache/vo-raw
 ```
 
@@ -140,8 +140,8 @@ time. New takes need new `footage` entries (pick moments with the takes' events)
 ## Brand values
 
 - **slana.io** and **@slanaio** (X) on the end card (`sceneEnd` in `scenes/scenes.js`).
-- The NFT: a free mint, the WL open at slana.io/wl. Nothing more (no price but free, no supply, no
-  dates, no perks).
+- The NFT: the promo says only "Slana NFTs." and "coming soon" (no mint terms, no WL, no price,
+  no supply, no dates, no perks).
 - **$SLANA** is the token name on the end card, the ticket stub, the receipt and the tags.
 - Colours: `C` in `scenes/lib.js` mirrors the vivid palette (`docs/design/palette.md`,
   `packages/shared/src/palette.ts`); the coin art comes from `packages/art`.

@@ -992,7 +992,8 @@
   };
 
   /** The NFT beat (media/free-mint/scenes/nft.js), full frame on its canvas: sealed cards dealt and
-   *  turned, "Slana NFT. / Free mint.", the WL ticket (slana.io/wl). p: {times, out, kicker, lead}. */
+   *  turned, "Slana NFT. / Free mint.", the WL ticket (slana.io/wl). p: {times, out, kicker, lead,
+   *  plain (the plain mention, see drawBeat)}. */
   C.nft = (p) => {
     const root = el('div', 'it');
     root.style.cssText += `width:${W}px;height:${H}px;`;
@@ -1007,7 +1008,7 @@
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
       const t = lt - (p.lead || 0);
-      window.NFT.drawBeat(ctx, t, { out: p.out ?? dur - (p.lead || 0) - 0.55, times: p.times, kicker: p.kicker });
+      window.NFT.drawBeat(ctx, t, { out: p.out ?? dur - (p.lead || 0) - 0.55, times: p.times, kicker: p.kicker, plain: p.plain });
       window.drawGrainAndVignette(ctx, t, false);
     };
     return { root, update, opaque: true };

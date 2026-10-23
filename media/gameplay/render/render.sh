@@ -3,7 +3,8 @@
 #   render/render.sh <edit.json> <music.json> <out-name> [vo-dir]
 # Steps: graphics (overlays.mjs) -> picture (compose.py) -> soundtrack (audio.py, -14 LUFS)
 # -> out/videos/<out-name>-master.mp4 (CRF 17) and out/videos/<out-name>.mp4 (two-pass, < 30 MB).
-# Env: SKIP_OVERLAYS=1 / SKIP_PICTURE=1 / SKIP_AUDIO=1 to reuse a previous step.
+# Env: SKIP_OVERLAYS=1 / SKIP_PICTURE=1 / SKIP_AUDIO=1 to reuse a previous step; MASTER_AUDIO=192k
+# encodes the master's AAC at the bitrate finalize.py calibrates the true peak for (default 256k).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
@@ -32,7 +33,7 @@ fi
 # master: high quality
 "$FF" -hide_banner -loglevel error -y -i "$WORK/picture.mp4" -i "$WORK/mix-final.wav" -map 0:v -map 1:a \
   -c:v libx264 -preset slow -crf 17 -tune animation -pix_fmt yuv420p -r $FPS -g $((FPS * 2)) -profile:v high -level 4.2 \
-  -c:a aac -b:a 256k -ar 48000 -movflags +faststart -shortest "$OUT/$NAME-master.mp4"
+  -c:a aac -b:a ${MASTER_AUDIO:-256k} -ar 48000 -movflags +faststart -shortest "$OUT/$NAME-master.mp4"
 # web: two-pass to about 28 MB (under 30 MB) with 192 kb/s audio
 VB=$(node -e "console.log(Math.floor((26.5*8*1024*1024/$DUR - 192000*1.02)/1000))")
 cd "$WORK"

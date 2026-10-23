@@ -275,22 +275,24 @@
     ctx.fillStyle = C.ink; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     ctx.fillText('SLANA NFT', wx + w * 0.01, -h / 2 + h * 0.068);
     brandMark(ctx, wx + ww - w * 0.04, -h / 2 + h * 0.066, w * 0.035, 1, 1);
-    // name + the free-mint tag
+    // name + the free-mint tag (o.tag === false: the name and the barcode only)
     font(ctx, w * 0.13, 800, 'display'); ctx.letterSpacing = (-w * 0.003) + 'px';
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     ctx.fillText(L.name, wx + w * 0.01, wy + wh + h * 0.11);
     const tw0 = w * 0.5, th0 = h * 0.065, tx0 = wx + w * 0.01, ty0 = wy + wh + h * 0.145;
-    rrect(ctx, tx0, ty0, tw0, th0, th0 / 2); ctx.fillStyle = C.pink; ctx.fill();
-    font(ctx, w * 0.052, 500, 'mono'); ctx.letterSpacing = (w * 0.008) + 'px';
-    ctx.fillStyle = C.ink; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('FREE MINT', tx0 + tw0 / 2, ty0 + th0 / 2 + 1);
+    if (o.tag !== false) {
+      rrect(ctx, tx0, ty0, tw0, th0, th0 / 2); ctx.fillStyle = C.pink; ctx.fill();
+      font(ctx, w * 0.052, 500, 'mono'); ctx.letterSpacing = (w * 0.008) + 'px';
+      ctx.fillStyle = C.ink; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('FREE MINT', tx0 + tw0 / 2, ty0 + th0 / 2 + 1);
+    }
     barcode(ctx, wx + ww - w * 0.3, ty0 - h * 0.005, w * 0.3, th0, 11 + (o.i || 0), C.ink);
     cardPath(ctx, w, h);
     ctx.lineWidth = w * 0.016; ctx.strokeStyle = C.ink; ctx.stroke();
   }
   /**
    * A card at (x, y), w x h. o: {i, rot, scale, flip (0 = back, 1 = face), crack (s since the seal
-   * cracked, or null), t, shadow, ghost}.
+   * cracked, or null), t, shadow, ghost, tag (false: no FREE MINT tag on the face)}.
    */
   function card(ctx, x, y, w, h, o = {}) {
     const flip = clamp(o.flip ?? 0);
@@ -478,7 +480,16 @@
 
   /* ───────────── the NFT beat (about 4.8 s; t = 0 on the downbeat) ─────────────
    * Three sealed cards are dealt face down, "Slana NFT." / "Free mint." rise, the seals crack and
-   * the cards turn over one by one, then the WL ticket lands with its stamp. Landscape or portrait. */
+   * the cards turn over one by one, then the WL ticket lands with its stamp. Landscape or portrait.
+   *
+   * Options (all optional; leaving them out draws the beat exactly as above):
+   *   out      time the beat starts to leave
+   *   times    beat times (BEAT_T keys)
+   *   kicker   the pill's text
+   *   plain    the plain mention instead: the cards dealt face up with no FREE MINT tag, one
+   *            headline line, no WL ticket, on the promo's paper stock (ink type on a light
+   *            ground, so the brand mark's pink disc stays legible). Its own fields:
+   *            {head: 'Slana NFTs.', layout: {...beatLayout overrides}} */
   const BEAT_T = { deal: [0.0, 0.12, 0.24], l1: 0.08, l2: 1.2, flip: [1.2, 1.5, 1.8], ticket: 1.95, underline: 3.75 };
   function beatLayout() {
     if (H > W) {
@@ -498,6 +509,7 @@
     };
   }
   function drawBeat(ctx, t, o = {}) {
+    if (o.plain) return drawPlain(ctx, t, o);
     const L = beatLayout();
     const T = { ...BEAT_T, ...(o.times || {}) };
     pinkStock(ctx, t, L.sun[0], L.sun[1]);
@@ -526,6 +538,29 @@
     const [tx, ty, tw0, th] = L.tk;
     wlTicket(ctx, tx, ty, tw0, th, tp, { size: L.portrait ? 112 : 96, underline: prog(t, T.underline, T.underline + 0.5) });
     shockDots(ctx, tx + tw0 * 0.6, ty + th / 2, t - T.ticket - 0.12, C.card, L.portrait ? 700 : 600, 0.3);
+  }
+
+  /** The plain NFT mention (drawBeat with o.plain): paper stock, the three cards dealt face up
+   *  (no tags), a small kicker and one ink headline. Times: deal, l1 (kicker + headline). */
+  function drawPlain(ctx, t, o) {
+    const P = o.plain === true ? {} : o.plain;
+    const L = { ...beatLayout(), ...(P.layout || {}) };
+    const T = { ...BEAT_T, ...(o.times || {}) };
+    const out = o.out ?? null;
+    drawPaper(ctx, -t * 10, 0, C.paper);
+    L.cards.forEach(([cx, cy, rot, dy], i) => {
+      const at = T.deal[i];
+      if (t < at) return;
+      const k = spring(t - at, 1.5, 6.5);
+      const x = cx + (1 - k) * (i - 1) * 120;
+      const y = lerp(H + L.ch, cy + dy, k);
+      let sc = 1;
+      if (out != null) sc *= 1 - E.inBack(prog(t, out + i * 0.06, out + i * 0.06 + 0.35));
+      if (sc <= 0.01) return;
+      card(ctx, x, y, L.cw, L.ch, { i: o.cardSet ? o.cardSet[i] : i, rot: rot * k + (1 - k) * (i - 1) * 0.5, flip: 1, t, scale: sc, tag: false });
+    });
+    pill(ctx, o.kicker || 'COMING SOON', L.kx, L.ky, L.portrait ? 26 : 24, t, T.l1, { align: L.align === 'center' ? 'center' : 'left', lip: C.pink });
+    riseLine(ctx, P.head || 'Slana NFTs.', L.hx, L.hy1, L.hs, C.ink, t, T.l1, { align: L.align, out, shadow: C.pink });
   }
 
   window.NFT = { heroCoin, card, cardFront, cardBack, waxSeal, wlTicket, pinkStock, sunburst, inkText, riseLine, pill, drawBeat, BEAT_T, lookOf, edgePath };

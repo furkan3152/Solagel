@@ -1394,13 +1394,14 @@ function burnThrough(ctx, t, inside) {
   ctx.restore();
 }
 
-/* ───────────── 11. NFT (cut only: film time, 6.0 s, t = 0 on the drop) ─────────────
- * The NFT beat of the Free Mint kit (media/free-mint/scenes/nft.js): sealed cards dealt, "Slana NFT.
- * / Free mint.", the seals crack and the cards turn, the WL ticket (slana.io/wl). It leaves on an
- * ink flood that becomes the end card's night stock, so the wordmark slams onto the same ink. */
-const NFT_OUT = 5.3, NFT_FLOOD = [5.4, 6.0];
+/* ───────────── 11. NFT (cut only: film time, 3.0 s, t = 0 on the drop) ─────────────
+ * The plain NFT mention of the NFT kit (media/free-mint/scenes/nft.js, drawBeat `plain`): on the
+ * paper stock the three cards are dealt face up, a small "COMING SOON" kicker and "Slana NFTs.".
+ * It leaves on an ink flood that becomes the end card's night stock, so the wordmark slams onto
+ * the same ink. */
+const NFT_OUT = 2.3, NFT_FLOOD = [2.4, 3.0];
 function sceneNft(ctx, t) {
-  NFT.drawBeat(ctx, t, { out: NFT_OUT });
+  NFT.drawBeat(ctx, t, { out: NFT_OUT, plain: { head: 'Slana NFTs.', layout: { ky: 400, hy1: 600 } }, kicker: 'COMING SOON' });
   const p = E.inCubic(prog(t, NFT_FLOOD[0], NFT_FLOOD[1]));
   if (p <= 0) return;
   const cx = 1470, cy = 540;
@@ -1605,8 +1606,8 @@ window.SCENE_BLUR = (t) => {
   if (c.kind === 'turn') return { k: 4, shutter: 0.01 };
   if (c.kind === 'burn') return { k: 1, shutter: 0 };
   if (c.kind === 'nft') {
-    // the deal and the card turns
-    if (lt < 0.5 || (lt >= 1.2 && lt < 2.3) || lt >= NFT_OUT) return { k: 4, shutter: 0.01 };
+    // the deal and the way out
+    if (lt < 0.5 || lt >= NFT_OUT) return { k: 4, shutter: 0.01 };
     return { k: 1, shutter: 0 };
   }
   return blurOld(c.old + lt);
