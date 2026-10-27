@@ -33,6 +33,7 @@ account), then the wallet prompt; the result shows the signature with an explore
 | Enable / disable an arena, entry fee, cap | Update arena | `update-arena ...` |
 | Shut an arena down | Sweep arena (disabled and idle arenas only; acknowledgement required) | `sweep --id N --force` |
 | Recreate the fee wallet's token account | Fee wallet token account → Recreate | `update-config --fee-wallet <same>` |
+| Close the program for good (emergency) | Close program (upgrade authority wallet only; type the program id and acknowledge) | `scripts/close-program.sh` |
 
 The program id is pinned in the build (the SDK's `PROGRAM_ID`), and the cluster is read from the RPC's genesis hash.
 If the game server reports another program id, or the genesis hash is unknown or does not match the claimed cluster
@@ -326,6 +327,11 @@ pnpm admin update-config --paused true --keypair <admin keypair>     # undo: --p
 scripts/close-program.sh <cluster-url> <admin-keypair>          # prints the state, asks you to type the program id
 scripts/close-program.sh <cluster-url> <admin-keypair> --force  # no confirmation
 ```
+
+In `/admin`, the **Close program** card does the same with the browser wallet: it is shown only when the connected
+wallet is the program's upgrade authority (usually the admin), lists the tokens and open sessions still in the arenas,
+and signs the loader's `Close` only after the program id is retyped and the warning acknowledged. The reclaimed rent
+goes to that wallet.
 
 The script prints the on-chain state first (`pnpm admin status`: the paused flag, each arena's open sessions and vault,
 the fee wallet and its token account), then a warning, then runs `solana program close <PROGRAM_ID>

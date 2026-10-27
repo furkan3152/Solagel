@@ -2,11 +2,15 @@ import { ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } 
 import { ComputeBudgetProgram, Connection, Keypair, PublicKey, SystemProgram } from '@solana/web3.js';
 import { describe, expect, it } from 'vitest';
 import { SlanaClient, pdas } from '../src';
+import { BPF_LOADER_UPGRADEABLE_ID } from '../src/program';
 import {
   AdminInputError,
+  buildCloseProgramIx,
   buildCreateArenasInstructions,
   buildSweepInstructions,
   buildUpdateConfigInstructions,
+  closeProgramExposure,
+  closeProgramRefusal,
   createArenaRefusal,
   describeInstruction,
   initParams,
@@ -123,6 +127,39 @@ describe('status helpers', () => {
     expect(sweepRefusal({ id: 1, enabled: true, openSessions: 0 })).toMatch(/disable/);
     expect(sweepRefusal({ id: 1, enabled: false, openSessions: 1 })).toMatch(/open sessions/);
     expect(sweepRefusal({ id: 1, enabled: false, openSessions: 0 })).toBeNull();
+  });
+});
+
+describe('close program', () => {
+  it('only the upgrade authority of a deployed, upgradeable program may close it', () => {
+    const auth = k().toBase58();
+    expect(closeProgramRefusal({ deployed: false, upgradeAuthority: auth }, auth)).toMatch(/not deployed/);
+    expect(closeProgramRefusal({ deployed: true, upgradeAuthority: null }, auth)).toMatch(/immutable/);
+    expect(closeProgramRefusal({ deployed: true, upgradeAuthority: auth }, k().toBase58())).toMatch(/only the upgrade authority/);
+    expect(closeProgramRefusal({ deployed: true, upgradeAuthority: auth }, auth)).toBeNull();
+  });
+
+  it('sums what a close would lock in the arenas', () => {
+    expect(closeProgramExposure([])).toEqual({ pot: 0n, openSessions: 0 });
+    expect(closeProgramExposure([{ pot: 5n, openSessions: 1 }, { pot: 7n, openSessions: 2 }])).toEqual({ pot: 12n, openSessions: 3 });
+  });
+
+  it('builds and describes the loader Close of the program', () => {
+    const client = new SlanaClient(new Connection('http://127.0.0.1:1'));
+    const auth = k();
+    const to = k();
+    const ix = buildCloseProgramIx(client.programId, auth, to);
+    expect(ix.programId.equals(BPF_LOADER_UPGRADEABLE_ID)).toBe(true);
+    expect([...ix.data]).toEqual([5, 0, 0, 0]);
+    expect(ix.keys.map((a) => [a.pubkey.toBase58(), a.isSigner, a.isWritable])).toEqual([
+      [pdas.programData(client.programId).toBase58(), false, true],
+      [to.toBase58(), false, true],
+      [auth.toBase58(), true, false],
+      [client.programId.toBase58(), false, true],
+    ]);
+    const d = describeInstruction(client, ix);
+    expect(d.name).toBe('close');
+    expect(d.accounts.map((a) => a.name)).toEqual(['program_data', 'recipient', 'authority', 'program']);
   });
 });
 

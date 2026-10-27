@@ -4,7 +4,7 @@ import { SlanaClient, explorerAddressUrl, type ConfigView } from '@slana/sdk';
 import { arenaName, fmtPct, fmtSol, fmtTok, tokenProgramName, type StatusSnapshot } from '@slana/sdk/ops';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Chip, InkButton, Rule, Stamp } from '../design';
-import { CreateArenas, InitForm, PauseControl, RecreateFeeAta, SetTokenForm, SweepArena, UpdateArena, UpdateConfig, type ActionCtx } from './actions';
+import { CloseProgram, CreateArenas, InitForm, PauseControl, RecreateFeeAta, SetTokenForm, SweepArena, UpdateArena, UpdateConfig, type ActionCtx } from './actions';
 import { isMainnet, verifyNetwork, type AdminNetwork, type NetworkCheck } from './net';
 import { Review, type LogEntry, type Plan } from './Review';
 import { useAdminStatus } from './useAdminStatus';
@@ -287,6 +287,8 @@ export function AdminPanel({ net: claimed, embedded = false }: { net: AdminNetwo
 
   const ctx: ActionCtx | null = status && wallet.publicKey && (role === 'admin' || role === 'upgrade-authority') ? { client, connection, signer: wallet.publicKey, status, net, open: setPlan } : null;
   const config: ConfigView | null = status?.config ?? null;
+  // closing the program is the upgrade authority's right, which need not be the config admin
+  const closeCtx: ActionCtx | null = status?.deployed && wallet.publicKey && me !== null && status.upgradeAuthority === me ? { client, connection, signer: wallet.publicKey, status, net, open: setPlan } : null;
 
   return (
     <div className={embedded ? 'ad-embedded' : 'ad-page'}>
@@ -326,6 +328,12 @@ export function AdminPanel({ net: claimed, embedded = false }: { net: AdminNetwo
           {config && <PauseControl ctx={ctx} config={config} />}
           {config && config.tokenMint !== null && <RecreateFeeAta ctx={ctx} config={config} />}
           {config && config.tokenMint !== null && <SweepArena ctx={ctx} config={config} />}
+          {closeCtx && <CloseProgram ctx={closeCtx} />}
+        </div>
+      )}
+      {!ctx && closeCtx && (
+        <div className="ad-grid">
+          <CloseProgram ctx={closeCtx} />
         </div>
       )}
 

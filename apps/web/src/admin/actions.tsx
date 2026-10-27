@@ -2,13 +2,17 @@ import { formatToken } from '@slana/shared';
 import { MAX_ARENA_SESSIONS, MAX_FEE_BPS, MAX_SETTLE_FEE_LAMPORTS, MIN_ARENA_SESSIONS, createFeeWalletAtaIx, feeWalletAta, requireToken, type ArenaView, type ConfigView, type SlanaClient, type UpdateConfigParams } from '@slana/sdk';
 import {
   AdminInputError,
+  CLOSE_PROGRAM_WARNING,
   adminTransferRefusal,
   SWEEP_WARNING,
   arenaName,
+  buildCloseProgramIx,
   buildCreateArenasInstructions,
   buildSetTokenInstructions,
   buildSweepInstructions,
   buildUpdateConfigInstructions,
+  closeProgramExposure,
+  closeProgramRefusal,
   createArenaRefusal,
   fmtPct,
   fmtSol,
@@ -687,6 +691,55 @@ export function RecreateFeeAta({ ctx, config }: { ctx: ActionCtx; config: Config
         <InkButton variant={exists ? 'paper' : 'pink'} onClick={go}>
           Recreate token account
         </InkButton>
+      </div>
+    </Card>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Close the program (emergency, irreversible)                         */
+/* ------------------------------------------------------------------ */
+
+export function CloseProgram({ ctx }: { ctx: ActionCtx }) {
+  const programId = ctx.client.programId.toBase58();
+  const config = ctx.status.config;
+  const refusal = closeProgramRefusal(ctx.status, ctx.signer.toBase58());
+  const exposure = closeProgramExposure(ctx.status.arenas ?? []);
+  const d = config?.tokenDecimals ?? 0;
+  const go = () =>
+    ctx.open({
+      title: 'Close the program',
+      warning: <p>{CLOSE_PROGRAM_WARNING}</p>,
+      summary: [
+        ['Program', code(programId)],
+        ['Rent to', <>{code(ctx.signer.toBase58())} (this wallet, the upgrade authority)</>],
+        ['Locked forever', exposure.pot > 0n || exposure.openSessions > 0 ? `${fmtTok(exposure.pot, d)} in arena vaults · ${exposure.openSessions} open sessions` : 'no tokens in arena vaults, no open sessions'],
+        ['Effect', 'Every instruction of the program fails from the next slot on: no joins, settlements, refunds or admin actions.'],
+      ],
+      retype: { label: 'Type the program id to confirm', text: programId },
+      ack: 'I understand this cannot be undone and the program id can never be deployed again.',
+      ixs: [buildCloseProgramIx(programId, ctx.signer, ctx.signer)],
+      done: 'Closed the program',
+    });
+  return (
+    <Card
+      title="Close program"
+      tone="danger"
+      lede={<>Emergency kill switch: deletes the deployed program for good ({code('solana program close')}). Signed by the upgrade authority. Pause first if a reversible stop is enough.</>}
+    >
+      {(exposure.pot > 0n || exposure.openSessions > 0) && (
+        <p className="ad-warn">
+          The arenas still hold {fmtTok(exposure.pot, d)} and {exposure.openSessions} open sessions: closing locks them forever.
+        </p>
+      )}
+      <div className="ad-actions">
+        {refusal ? (
+          <span className="ad-note">{refusal}</span>
+        ) : (
+          <InkButton variant="pink" onClick={go}>
+            Review close program
+          </InkButton>
+        )}
       </div>
     </Card>
   );

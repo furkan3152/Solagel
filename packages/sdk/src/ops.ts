@@ -8,7 +8,8 @@
  * re-exported from the SDK entry point, so the game bundle does not carry the admin code.
  */
 import { DEFAULT_ARENAS, arenaMeta, formatToken, parseToken } from '@slana/shared';
-import { ComputeBudgetProgram, PublicKey, SystemProgram, type Connection, type TransactionInstruction } from '@solana/web3.js';
+import { Buffer } from 'buffer';
+import { ComputeBudgetProgram, PublicKey, SystemProgram, TransactionInstruction, type Connection } from '@solana/web3.js';
 import BN from 'bn.js';
 import type { ArenaView, ConfigView, GameToken } from './accounts';
 import type { InitializeParams, SlanaClient, UpdateArenaParams, UpdateConfigParams } from './client';
@@ -179,6 +180,49 @@ export const SWEEP_WARNING =
   "Sweep moves the arena's whole vault to the fee wallet. The game server may still hold journaled loot or pending payouts " +
   'for this arena that this tool cannot see: check the server log and journal first. A server that finds the vault short of ' +
   'its journal keeps the arena disabled. Never re-enable a swept arena.';
+
+/**
+ * Why the connected wallet cannot close the program (null: it can). Closing is a BPF upgradeable
+ * loader `Close`, signed by the upgrade authority, not by the config admin.
+ */
+export function closeProgramRefusal(status: Pick<StatusSnapshot, 'deployed' | 'upgradeAuthority'>, signer: string): string | null {
+  if (!status.deployed) return 'the program is not deployed (or already closed)';
+  if (!status.upgradeAuthority) return 'the program has no upgrade authority (immutable): nobody can close it';
+  if (status.upgradeAuthority !== signer) return `only the upgrade authority ${status.upgradeAuthority} can close the program`;
+  return null;
+}
+
+export const CLOSE_PROGRAM_WARNING =
+  'Closing deletes the program code for good and returns its rent to the recipient. It cannot be undone: the same program id ' +
+  'can never be deployed again, and every account the program owns (config, arenas, sessions, profiles) and every vault its ' +
+  'PDAs control is locked forever, tokens included. Sweep the arenas first. For a reversible emergency stop, use Pause.';
+
+/** The tokens and open sessions that a close would lock in the arenas. */
+export function closeProgramExposure(arenas: Pick<ArenaView, 'pot' | 'openSessions'>[]): { pot: bigint; openSessions: number } {
+  return arenas.reduce((t, a) => ({ pot: t.pot + a.pot, openSessions: t.openSessions + a.openSessions }), { pot: 0n, openSessions: 0 });
+}
+
+const LOADER_CLOSE = 5;
+
+/**
+ * The BPF upgradeable loader `Close` of the program itself (`solana program close`): closes the
+ * ProgramData account, sends its lamports to `recipient` and leaves the program unusable.
+ */
+export function buildCloseProgramIx(programId: Address, authority: PublicKey, recipient: PublicKey): TransactionInstruction {
+  const program = toPublicKey(programId);
+  const data = Buffer.alloc(4);
+  data.writeUInt32LE(LOADER_CLOSE, 0);
+  return new TransactionInstruction({
+    programId: BPF_LOADER_UPGRADEABLE_ID,
+    keys: [
+      { pubkey: pdas.programData(program), isSigner: false, isWritable: true },
+      { pubkey: recipient, isSigner: false, isWritable: true },
+      { pubkey: authority, isSigner: true, isWritable: false },
+      { pubkey: program, isSigner: false, isWritable: true },
+    ],
+    data,
+  });
+}
 
 /* -------------------------------------------------------------------- */
 /* Token programs and the mint check                                     */
@@ -679,6 +723,11 @@ export function describeInstruction(client: SlanaClient, ix: TransactionInstruct
     const view = new DataView(ix.data.buffer, ix.data.byteOffset, ix.data.byteLength);
     if (ix.data[0] === 3 && ix.data.length >= 9) return { program: 'Compute Budget', programId, name: 'setComputeUnitPrice', args: [['microLamports', view.getBigUint64(1, true).toString()]], accounts: [] };
     if (ix.data[0] === 2 && ix.data.length >= 5) return { program: 'Compute Budget', programId, name: 'setComputeUnitLimit', args: [['units', String(view.getUint32(1, true))]], accounts: [] };
+  }
+  if (ix.programId.equals(BPF_LOADER_UPGRADEABLE_ID)) {
+    const tag = ix.data.length >= 4 ? new DataView(ix.data.buffer, ix.data.byteOffset, ix.data.byteLength).getUint32(0, true) : -1;
+    if (tag === LOADER_CLOSE) return { program: 'BPF Upgradeable Loader', programId, name: 'close', args: [], accounts: accounts(['program_data', 'recipient', 'authority', 'program']) };
+    return { program: 'BPF Upgradeable Loader', programId, name: `instruction ${tag}`, args: [], accounts: accounts([]) };
   }
   const program = ix.programId.equals(SystemProgram.programId) ? 'System' : programId;
   return { program, programId, name: 'instruction', args: [['data', `${ix.data.length} bytes`]], accounts: accounts([]) };
