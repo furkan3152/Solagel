@@ -47,8 +47,7 @@ describe('player guide facts', () => {
     const src = (rel: string) => readFileSync(resolve(process.cwd(), '../server/src', rel), 'utf8');
     const manager = src('rooms/manager.ts');
     const room = src('rooms/room.ts');
-    // the chain gateway: chain/evm.ts on Elysium (chain/solana.ts until the server port lands)
-    const gateway = existsSync(resolve(process.cwd(), '../server/src/chain/evm.ts')) ? src('chain/evm.ts') : src('chain/solana.ts');
+    const gateway = src('chain/evm.ts');
     expect(manager).toMatch(new RegExp(`export const PRO_LEVEL = ${SERVER.proLevel};`));
     expect(manager).toMatch(new RegExp(`export const PROMOTE_MAX_MASS = ${SERVER.promoteMaxMass};`));
     expect(manager).toMatch(new RegExp(`export const PROMOTE_KILLS = ${SERVER.promoteKills};`));

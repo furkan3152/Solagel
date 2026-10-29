@@ -6,7 +6,7 @@ export interface FieldProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 
   hint?: ReactNode;
   /** Error message; marks the field invalid and replaces the hint. */
   error?: ReactNode;
-  /** Mono text inside the box, before / after the value (e.g. "$SLANA"). */
+  /** Mono text inside the box, before / after the value (e.g. "$ELYMUM"). */
   prefix?: ReactNode;
   suffix?: ReactNode;
 }

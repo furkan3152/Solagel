@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Slana web client: cute coin renderer, lobby, HUD and Solana wallet integration",
+  "description": "Elymum web client: site, mint, game and admin panel for Elysium",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

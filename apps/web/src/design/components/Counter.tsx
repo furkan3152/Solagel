@@ -6,7 +6,7 @@ export interface CounterProps extends Omit<HTMLAttributes<HTMLSpanElement>, 'chi
   value: number;
   /** Formatter, e.g. `(n) => n.toFixed(2)`. Default: en-US grouping. */
   format?: (n: number) => string;
-  /** Mono unit after the number, e.g. "$SLANA". */
+  /** Mono unit after the number, e.g. "$ELYMUM". */
   unit?: string;
 }
 
