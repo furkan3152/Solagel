@@ -1,9 +1,13 @@
-// Paper Ticket design system: fonts, tokens (on :root and every `.kb`) and paper.
-import '@fontsource-variable/bricolage-grotesque/standard.css';
-import '@fontsource/dm-mono/400.css';
-import '@fontsource/dm-mono/500.css';
+// Ring Storybook design system (spec §6): fonts, tokens (on :root and every `.kb`) and styles.
+// Fraunces "full" carries the SOFT and WONK axes (display); DM Sans with optical sizes (body);
+// Geist Mono (every number).
+import '@fontsource-variable/fraunces/full.css';
+import '@fontsource-variable/fraunces/full-italic.css';
+import '@fontsource-variable/dm-sans/opsz.css';
+import '@fontsource-variable/dm-sans/opsz-italic.css';
+import '@fontsource-variable/geist-mono/wght.css';
 import './design/tokens.css';
-import './design/paper.css';
+import './design/storybook.css';
 
 const root = document.getElementById('root')!;
 const params = new URLSearchParams(location.search);

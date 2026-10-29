@@ -1,42 +1,75 @@
+import { ELYSIUM, SHADE, type ElysiumPaint } from '@elymum/shared';
 import { motion } from 'motion/react';
-import { StrictMode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { StrictMode, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { translate, type TKey } from '../i18n';
-import { useUi } from '../store';
 import { ICON_NAMES, Icon } from './icons';
-import { Kb, themeFromSettings, useKbTheme, type KbTheme } from './Kb';
-import { STAGGER, useReducedMotion } from './motion';
+import { Kb, type KbTheme } from './Kb';
+import { useMoves } from './motion';
+import { AddressChip } from './components/AddressChip';
+import { ArcGauge } from './components/ArcGauge';
+import { Button } from './components/Button';
 import { Chip } from './components/Chip';
+import { Countdown } from './components/Countdown';
 import { Counter } from './components/Counter';
 import { Dateline } from './components/Dateline';
 import { Field } from './components/Field';
+import { HypeAmount } from './components/HypeAmount';
 import { InkButton } from './components/InkButton';
+import { Skeleton, StampSpinner } from './components/Loading';
+import { Modal, WalletPicker } from './components/Modal';
+import { PlateLabel } from './components/PlateLabel';
+import { QuantityStepper } from './components/QuantityStepper';
 import { Receipt } from './components/Receipt';
 import { Rule } from './components/Rule';
-import { Sheet } from './components/Sheet';
 import { Stamp } from './components/Stamp';
+import { StatusPill } from './components/StatusPill';
+import { Stepper } from './components/Stepper';
+import { Sticker } from './components/Sticker';
 import { TabPanel, Tabs } from './components/Tabs';
 import { Tape } from './components/Tape';
 import { Ticket, TicketGroup, TicketStub } from './components/Ticket';
-import { ToastViewport, type ToastItem } from './components/Toast';
+import { Toast, ToastViewport, type ToastItem } from './components/Toast';
+import { TxPreview } from './components/TxPreview';
+import { CoinCharacter, type CoinMood, type CoinPaint } from './motifs/CoinCharacter';
+import { Cloud } from './motifs/Clouds';
+import { FoodBit } from './motifs/FoodBits';
+import { OrbitDots } from './motifs/OrbitDots';
+import { RingScene, SceneProp } from './motifs/RingScene';
+import { Seigaiha } from './motifs/Seigaiha';
+import { CoinMark, Wordmark } from './motifs/Wordmark';
 import './gallery.css';
 
 type Theme = KbTheme;
-type T = (key: TKey, vars?: Record<string, string | number>) => string;
 
-/** Token names only; the printed values are read back from the live CSS. */
-const SWATCHES: { key: TKey; v: string; text?: string }[] = [
-  { key: 'ds.c.paper', v: '--paper' },
-  { key: 'ds.c.card', v: '--card' },
-  { key: 'ds.c.ink', v: '--ink' },
-  { key: 'ds.c.ink2', v: '--ink-2' },
-  { key: 'ds.c.pink', v: '--pink', text: '--pink-text' },
-  { key: 'ds.c.teal', v: '--teal', text: '--teal-ink' },
-  { key: 'ds.c.mustard', v: '--mustard', text: '--mustard-text' },
-  { key: 'ds.c.blue', v: '--blue', text: '--blue-ink' },
-  { key: 'ds.c.green', v: '--green', text: '--green-ink' },
-  { key: 'ds.c.red', v: '--red', text: '--red-ink' },
+/** The paints shown on the swatch plate, in book order. */
+const PAINTS: { name: ElysiumPaint; note: string }[] = [
+  { name: 'abyss', note: 'ink · outlines' },
+  { name: 'trench', note: 'night page' },
+  { name: 'reef', note: 'night cards' },
+  { name: 'current', note: 'night lines' },
+  { name: 'teal', note: 'water · buttons' },
+  { name: 'cyan', note: 'light · focus' },
+  { name: 'spray', note: 'night accents' },
+  { name: 'foam', note: 'night text accents' },
+  { name: 'mist', note: 'day tints · tape' },
+  { name: 'plain', note: 'day page' },
+  { name: 'linen', note: 'day surfaces' },
+  { name: 'cream', note: 'sticker stock' },
+  { name: 'sand', note: 'borders · the shore' },
+  { name: 'stone', note: 'captions' },
+  { name: 'sun', note: 'primary · money' },
+  { name: 'up', note: 'gains · done' },
+  { name: 'down', note: 'losses · danger' },
+  { name: 'meadow', note: 'top terrace' },
+  { name: 'clover', note: 'terrace' },
+  { name: 'verdant', note: 'terrace' },
+  { name: 'forest', note: 'trees' },
+  { name: 'blush', note: 'cheeks' },
+  { name: 'coral', note: 'roofs' },
 ];
+
+const MOODS: CoinMood[] = ['smile', 'happy', 'smug', 'scared', 'chomp', 'sleepy', 'open'];
+const COIN_PAINTS: CoinPaint[] = ['cyan', 'sun', 'teal', 'up', 'foam', 'cream', 'coral'];
 
 export function startDesignGallery(root: HTMLElement): void {
   document.body.style.margin = '0';
@@ -47,554 +80,637 @@ export function startDesignGallery(root: HTMLElement): void {
   );
 }
 
-export function Gallery() {
-  // `?gallery&theme=night` pins the proof for screenshots.
-  const [theme, setTheme] = useState<Theme>(() => {
-    const q = new URLSearchParams(location.search).get('theme');
-    if (q === 'night' || q === 'paper') return q;
-    return themeFromSettings(useUi.getState().settings.theme);
-  });
-  const t: T = translate;
-  const fmt = useCallback((n: number) => Math.round(n).toLocaleString('en-US'), []);
-  const reduced = useReducedMotion();
-
-  useEffect(() => {
-    document.title = t('ds.docTitle');
-  }, [t]);
-  const rootRef = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    // body sits outside the .kb root: paint it with the live --paper token.
-    const paper = rootRef.current ? getComputedStyle(rootRef.current).getPropertyValue('--paper').trim() : '';
-    document.body.style.background = paper;
-    document.documentElement.style.colorScheme = theme === 'night' ? 'dark' : 'light';
-  }, [theme]);
-
+function Plate({ n, title, aside, children, className }: { n: number; title: string; aside?: string; children: ReactNode; className?: string }) {
   return (
-    <Kb ref={rootRef} theme={theme} className="g-root">
-      <Masthead t={t} theme={theme} setTheme={setTheme} reduced={reduced} fmt={fmt} />
-      <main className="g-main">
-        <div className="g-band">
-          <Section n="01" title={t('ds.s.palette')} note={t('ds.s.palette.note')} className="g-palette">
-            <Palette t={t} />
-          </Section>
-          <Section n="02" title={t('ds.s.type')} className="g-type">
-            <TypeSpecimen t={t} />
-          </Section>
-        </div>
-        <Section n="03" title={t('ds.s.icons')} note={t('ds.s.icons.note')} className="g-icons-sec">
-          <IconSheet t={t} />
-        </Section>
-        <Rule variant="double" className="g-rule" />
-        <div className="g-cols">
-          <div className="g-col">
-            <Section n="04" title={t('ds.s.tickets')} note={t('ds.s.tickets.note')}>
-              <TicketDemo t={t} fmt={fmt} />
-            </Section>
-            <Section n="05" title={t('ds.s.buttons')} note={t('ds.s.buttons.note')}>
-              <ButtonDemo t={t} fmt={fmt} />
-            </Section>
-            <Section n="06" title={t('ds.s.tabs')}>
-              <TabsDemo t={t} fmt={fmt} />
-            </Section>
-            <Section n="07" title={t('ds.s.fields')}>
-              <FieldDemo t={t} />
-            </Section>
-          </div>
-          <div className="g-col">
-            <Section n="08" title={t('ds.s.stamps')} note={t('ds.s.stamps.note')}>
-              <StampDemo t={t} />
-            </Section>
-            <Section n="09" title={t('ds.s.counter')} note={t('ds.s.counter.note')}>
-              <CounterDemo t={t} fmt={fmt} />
-            </Section>
-          </div>
-          <div className="g-col">
-            <Section n="10" title={t('ds.s.receipt')} note={t('ds.s.receipt.note')}>
-              <ReceiptDemo t={t} fmt={fmt} />
-            </Section>
-            <Section n="11" title={t('ds.s.paper')}>
-              <PaperBits t={t} fmt={fmt} />
-            </Section>
-            <Section n="12" title={t('ds.s.overlays')} note={t('ds.s.overlays.note')}>
-              <OverlayDemo t={t} />
-            </Section>
-          </div>
-        </div>
-      </main>
-      <footer className="g-foot">
-        <Rule variant="thick" />
-        <p className="mono">{t('ds.footer')}</p>
-      </footer>
-    </Kb>
-  );
-}
-
-/* ── masthead ─────────────────────────────────────────────────────────── */
-
-function Masthead({
-  t,
-  theme,
-  setTheme,
-  reduced,
-  fmt,
-}: {
-  t: T;
-  theme: Theme;
-  setTheme: (t: Theme) => void;
-  reduced: boolean;
-  fmt: (n: number) => string;
-}) {
-  return (
-    <header className="g-mast">
-      <div className="g-mast__top">
-        <div className="g-mast__brand">
-          <div className="g-mast__kicker mono">{t('ds.kicker')}</div>
-          <h1 className="g-wordmark" aria-label={`slana · ${t('ds.title')}`}>
-            <span className="g-wordmark__ink" aria-hidden="true">
-              slana
-            </span>
-            <span className="g-wordmark__pink" aria-hidden="true">
-              slana
-            </span>
-            <CoinMark className="g-wordmark__coin" />
-          </h1>
-          <div className="g-mast__title" aria-hidden="true">
-            {t('ds.title')}
-          </div>
-        </div>
-        <div className="g-controls" role="group" aria-label={t('ds.controls')}>
-          <div className="g-control">
-            <span className="g-control__label mono" id="g-theme-l">
-              {t('ds.theme')}
-            </span>
-            <div className="g-seg" role="group" aria-labelledby="g-theme-l">
-              <Chip selected={theme === 'paper'} onClick={() => setTheme('paper')} icon="sun">
-                {t('ds.theme.paper')}
-              </Chip>
-              <Chip selected={theme === 'night'} onClick={() => setTheme('night')} icon="moon">
-                {t('ds.theme.night')}
-              </Chip>
-            </div>
-          </div>
-        </div>
-      </div>
-      <Dateline
-        label={t('ds.dl.label')}
-        items={[
-          t('ds.edition'),
-          t('ds.date'),
-          t('ds.dl.round'),
-          reduced ? t('ds.motion.reduced') : t('ds.motion.full'),
-        ]}
-      />
-      <p className="g-intro">{t('ds.intro')}</p>
-    </header>
-  );
-}
-
-function CoinMark({ className, size = 34 }: { className?: string; size?: number }) {
-  return (
-    <svg className={className} width={size} height={size} viewBox="0 0 40 40" aria-hidden="true">
-      <circle cx="22" cy="22" r="15" style={{ fill: 'var(--teal)' }} />
-      <circle cx="19" cy="19" r="15" style={{ fill: 'var(--pink)', mixBlendMode: 'multiply' }} />
-      <circle cx="19" cy="19" r="10" fill="none" style={{ stroke: 'var(--ink-fixed)' }} strokeWidth="1.6" opacity="0.5" />
-    </svg>
-  );
-}
-
-function Section({ n, title, note, children, className }: { n: string; title: string; note?: string; children: ReactNode; className?: string }) {
-  return (
-    <section className={`g-sec${className ? ` ${className}` : ''}`} aria-labelledby={`g-s${n}`}>
-      <header className="g-sec__head">
-        <span className="g-sec__n mono" aria-hidden="true">
-          {n}
-        </span>
-        <h2 id={`g-s${n}`} className="g-sec__title">
-          {title}
-        </h2>
-      </header>
-      {note && <p className="g-sec__note">{note}</p>}
-      <div className="g-sec__body">{children}</div>
+    <section className={`gal-plate${className ? ` ${className}` : ''}`}>
+      <PlateLabel numeral={n} title={title} aside={aside} level={2} />
+      <div className="gal-plate__body">{children}</div>
     </section>
   );
 }
 
-/* ── foundations ──────────────────────────────────────────────────────── */
+function Spec({ label, children, wide }: { label: string; children: ReactNode; wide?: boolean }) {
+  return (
+    <figure className={`gal-spec${wide ? ' is-wide' : ''}`}>
+      <figcaption className="gal-spec__label">{label}</figcaption>
+      <div className="gal-spec__art">{children}</div>
+    </figure>
+  );
+}
 
-function Palette({ t }: { t: T }) {
-  const theme = useKbTheme();
-  const ref = useRef<HTMLUListElement>(null);
-  const [vals, setVals] = useState<Record<string, string>>({});
+export function Gallery() {
+  // `?gallery&theme=night` (or day / paper) pins the proof for screenshots.
+  const [theme, setTheme] = useState<Theme>(() => {
+    const q = new URLSearchParams(location.search).get('theme');
+    if (q === 'night' || q === 'dark') return 'night';
+    if (q === 'paper' || q === 'day' || q === 'light') return 'paper';
+    return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'night' : 'paper';
+  });
+  const night = theme === 'night';
+  const time = night ? 'night' : 'dawn';
+  const moves = useMoves();
+
+  const [tab, setTab] = useState<'feast' | 'ring' | 'ledger'>('feast');
+  const [room, setRoom] = useState<string | null>('lethe');
+  const [qty, setQty] = useState(2);
+  const [minted, setMinted] = useState(2614);
+  const [sheet, setSheet] = useState(false);
+  const [wallets, setWallets] = useState(false);
+  const [busyWallet, setBusyWallet] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const [deadline] = useState(() => Date.now() + (3 * 60 + 12) * 1000);
+  const toastId = useRef(0);
+
+  useEffect(() => {
+    document.title = 'Elymum · Storybook proof';
+  }, []);
+  const rootRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
-    if (!ref.current) return;
-    const cs = getComputedStyle(ref.current);
-    const next: Record<string, string> = {};
-    for (const s of SWATCHES) for (const v of [s.v, s.text]) if (v) next[v] = cs.getPropertyValue(v).trim().toUpperCase();
-    setVals(next);
-  }, [theme]);
-  return (
-    <ul className="g-swatches" ref={ref}>
-      {SWATCHES.map((s, i) => (
-        <motion.li
-          key={s.v}
-          className="g-swatch"
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: i * STAGGER, duration: 0.24 }}
-        >
-          <span className="g-swatch__chip" style={{ background: `var(${s.v})` }}>
-            <span className="g-swatch__ht halftone" />
-          </span>
-          <span className="g-swatch__name">{t(s.key)}</span>
-          <span className="g-swatch__hex mono">
-            {s.v} {vals[s.v]}
-          </span>
-          {s.text && (
-            <span className="g-swatch__hex mono">
-              {t('ds.c.textInk')} {s.text} {vals[s.text]}
-            </span>
-          )}
-        </motion.li>
-      ))}
-    </ul>
-  );
-}
+    document.documentElement.dataset.theme = night ? 'night' : 'light';
+  }, [night]);
 
-function TypeSpecimen({ t }: { t: T }) {
+  const pushToast = (tone: ToastItem['tone']) => {
+    const id = ++toastId.current;
+    const copy = {
+      info: { title: 'Price refreshed', message: 'HYPE/USD 46.94. One emblem is still a dollar.' },
+      success: { title: 'Minted. Two of them.', message: 'They are in your wallet. Try not to eat them.' },
+      error: { title: 'The wallet said no', message: 'Nothing was sent. Nothing was spent.' },
+    }[tone ?? 'info'];
+    setToasts((ts) => [...ts, { id, tone, ...copy }]);
+    setTimeout(() => setToasts((ts) => ts.filter((x) => x.id !== id)), 5200);
+  };
+
   return (
-    <div className="g-typespec">
-      <div className="g-typespec__row">
-        <div className="g-typespec__display">{t('ds.type.sampleDisplay')}</div>
-        <div className="g-cap mono">
-          {t('ds.type.display')} · {t('ds.type.displaySpec')}
+    <Kb ref={rootRef} theme={theme} className="gal">
+      {/* ── masthead ── */}
+      <header className="gal-head">
+        <div className="gal-head__brand">
+          <CoinMark size={52} title="Elymum" />
+          <div>
+            <div className="kicker">Design system · Ring Storybook</div>
+            <h1 className="gal-head__title display">The proof sheet</h1>
+          </div>
         </div>
-      </div>
-      <div className="g-typespec__row">
-        <p className="g-typespec__body">{t('ds.type.sampleBody')}</p>
-        <div className="g-cap mono">
-          {t('ds.type.body')} · {t('ds.type.bodySpec')}
+        <div className="gal-head__tools" role="group" aria-label="Theme">
+          <Chip tone="ink" icon="sun" selected={!night} onClick={() => setTheme('paper')}>
+            Day
+          </Chip>
+          <Chip tone="ink" icon="moon" selected={night} onClick={() => setTheme('night')}>
+            Night
+          </Chip>
         </div>
-      </div>
-      <div className="g-typespec__row">
-        <div className="g-typespec__mono mono">{t('ds.type.sampleMono')}</div>
-        <div className="g-cap mono">
-          {t('ds.type.mono')} · {t('ds.type.monoSpec')}
+      </header>
+
+      {/* ── I: the ring ── */}
+      <Plate n={1} title={night ? 'The plain, after dark' : 'The plain at dawn'} aside="RingScene · full">
+        <RingScene time={time} className="gal-hero">
+          <div className="gal-hero__inner">
+            <Sticker pad="lg" tilt={-1.6} tape className="gal-hero__card">
+              <div className="kicker">A five-minute feast · on Elysium</div>
+              <Wordmark height={104} className="gal-hero__mark" />
+              <h2 className="gal-hero__h">You are small change with a big appetite.</h2>
+              <p className="gal-hero__lede">
+                Eat the food. Eat coins smaller than you. Run from the ones that are bigger. Five minutes later the bell rings and
+                whatever you&rsquo;ve swallowed is yours.
+              </p>
+              <p className="gal-hero__homer">
+                <i className="quote">&ldquo;No snow is there, nor heavy storm, nor ever rain.&rdquo;</i>
+                <br />
+                Homer, on the Elysian plain. He didn&rsquo;t mention lunch.
+              </p>
+              <div className="gal-hero__ctas">
+                <Button variant="primary" icon="arrow">
+                  Join the WL
+                </Button>
+                <Button>Collab</Button>
+                <span className="gal-hero__flow mono">WL → Mint → Play</span>
+              </div>
+            </Sticker>
+            <Sticker tone="sun" pad="sm" tilt={4} className="gal-hero__badge">
+              <div className="num gal-hero__badge-n">05:00</div>
+              <div className="mono gal-hero__badge-l">per round. Then lunch.</div>
+            </Sticker>
+          </div>
+          <div className="gal-pond" aria-hidden="true">
+            <CoinCharacter paint="teal" size={120} look={[3, 1]} feet ground bob phase={0} className="gal-pond__c" style={{ left: '4%' }} />
+            <CoinCharacter paint="foam" mood="happy" size={64} feet ground bob phase={0.6} className="gal-pond__c" style={{ left: '14%' }} />
+            <CoinCharacter paint="cream" size={84} look={[-3, 2]} feet ground bob phase={1.1} className="gal-pond__c gal-pond__c--far" style={{ left: '23%', bottom: 46 }} />
+            <CoinCharacter paint="sun" mood="chomp" size={150} look={[4, 1]} feet ground bob phase={0.3} className="gal-pond__c" style={{ left: '60%' }} />
+            <CoinCharacter paint="foam" mood="scared" sweat size={62} look={[-3, -1]} feet ground className="gal-pond__c" style={{ left: '72%', bottom: 10 }} />
+            <CoinCharacter paint="up" mood="open" size={96} look={[-3, 0]} feet ground bob phase={1.4} className="gal-pond__c gal-pond__c--far" style={{ left: '84%', bottom: 40 }} />
+            <CoinCharacter paint="cyan" size={56} look={[-2, -1]} feet ground bob phase={0.9} className="gal-pond__c" style={{ left: '93%' }} />
+          </div>
+        </RingScene>
+        <div className="gal-grid gal-grid--2">
+          <Spec label="RingScene · compact">
+            <RingScene time={time} variant="compact" className="gal-ring-sm" />
+          </Spec>
+          <Spec label="RingScene · horizon (footers, seams)">
+            <div className="gal-horizon">
+              <RingScene time={time} variant="horizon" clouds={false} />
+            </div>
+          </Spec>
         </div>
-      </div>
-    </div>
-  );
-}
+      </Plate>
 
-function IconSheet({ t }: { t: T }) {
-  return (
-    <ul className="g-icons">
-      {ICON_NAMES.map((name, i) => (
-        <motion.li
-          key={name}
-          className="g-icon"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: i * STAGGER * 0.5, duration: 0.2 }}
-        >
-          <Icon name={name} size={28} />
-          <span className="g-cap mono">{t(`ds.icon.${name}` as TKey)}</span>
-        </motion.li>
-      ))}
-    </ul>
-  );
-}
+      {/* ── II: paints ── */}
+      <Plate n={2} title="The paint box" aside="tokens.css · palette.ts">
+        <ul className="gal-swatches">
+          {PAINTS.map((p) => (
+            <li key={p.name} className="gal-swatch">
+              <span className="gal-swatch__chip" style={{ background: ELYSIUM[p.name] }}>
+                <span className="gal-swatch__shade" style={{ background: SHADE[p.name] }} />
+              </span>
+              <span className="gal-swatch__name">{p.name}</span>
+              <span className="gal-swatch__hex num">
+                {ELYSIUM[p.name]} / {SHADE[p.name]}
+              </span>
+              <span className="gal-swatch__note">{p.note}</span>
+            </li>
+          ))}
+        </ul>
+        <p className="gal-note">Every fill has one hard shade (right half of each chip). Outlines and offset shadows are always abyss.</p>
+      </Plate>
 
-/* ── components ───────────────────────────────────────────────────────── */
+      {/* ── III: type ── */}
+      <Plate n={3} title="Type, set by hand" aside="Fraunces · DM Sans · Geist Mono">
+        <div className="gal-type">
+          <div className="gal-type__display display">
+            One emblem.
+            <br />
+            One <em className="gal-type__em wonk">dollar.</em>
+            <br />
+            Many snacks.
+          </div>
+          <div className="gal-type__specs">
+            <p className="kicker">Kicker · Geist Mono 12 · uppercase +0.08em</p>
+            <h2 className="gal-type__h2">Fraunces 800, SOFT 100</h2>
+            <h3 className="gal-type__h3">Three small chores, then the feast.</h3>
+            <p className="lede">DM Sans for everything you read. The ring noticed, and so did our follower count. Copy is short, specific and a little wry.</p>
+            <p className="gal-type__body">
+              Body 16/1.5. Numbers are always Geist Mono: <span className="num">0.0213 HYPE</span>, <span className="num">2,614 / 5,000</span>,{' '}
+              <span className="num">0x7a3f…e91c</span>.
+            </p>
+            <p className="quote gal-type__quote">&ldquo;To the Elysian plain, where life is easiest for men.&rdquo;</p>
+          </div>
+        </div>
+      </Plate>
 
-function TicketDemo({ t, fmt }: { t: T; fmt: (n: number) => string }) {
-  const [sel, setSel] = useState('penny');
-  const rooms = [
-    { id: 'practice', title: t('ds.room.practice'), meta: t('ds.room.practiceMeta'), value: t('ds.room.free'), unit: t('ds.room.noTokens') },
-    { id: 'penny', title: t('ds.room.penny'), meta: t('ds.room.pennyMeta', { n: 23 }), value: fmt(1000), unit: '$SLANA' },
-    { id: 'gold', title: t('ds.room.gold'), meta: t('ds.room.players', { n: 9 }), value: fmt(50000), unit: '$SLANA' },
-    { id: 'whale', title: t('ds.room.whale'), meta: t('ds.room.onFloor', { n: fmt(310400) }), value: fmt(250000), unit: '$SLANA' },
-  ];
-  return (
-    <TicketGroup className="g-tickets" label={t('ds.rooms')} value={sel} onChange={setSel}>
-      {rooms.map((r, i) => (
-        <motion.div
-          key={r.id}
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 + i * STAGGER, duration: 0.26 }}
-        >
-          <Ticket
-            value={r.id}
-            title={r.title}
-            meta={r.meta}
-            stub={<TicketStub value={r.value} unit={r.unit} />}
+      {/* ── IV: characters ── */}
+      <Plate n={4} title="The cast" aside="CoinCharacter · FoodBit">
+        <div className="gal-moods">
+          {MOODS.map((m, i) => (
+            <figure key={m} className="gal-mood">
+              <CoinCharacter paint={COIN_PAINTS[i % COIN_PAINTS.length]} mood={m} size={104} sweat={m === 'scared'} feet bob phase={i * 0.4} />
+              <figcaption className="mono">{m}</figcaption>
+            </figure>
+          ))}
+        </div>
+        <div className="gal-row gal-row--paints" aria-label="Coin paints">
+          {COIN_PAINTS.map((p, i) => (
+            <CoinCharacter key={p} paint={p} size={56} mood={i % 2 ? 'smile' : 'happy'} look={[i - 3, 0]} />
+          ))}
+          <span className="gal-row__sep" />
+          <FoodBit kind="pear" size={40} glow={night} wiggle />
+          <FoodBit kind="grapes" size={40} glow={night} wiggle />
+          <FoodBit kind="seed" paint="sun" size={34} glow={night} />
+          <FoodBit kind="seed" paint="foam" size={34} glow={night} />
+          <FoodBit kind="seed" paint="up" size={34} glow={night} />
+          <FoodBit kind="seed" paint="blush" size={34} glow={night} />
+          <span className="gal-row__sep" />
+          <SceneProp kind="house" time={time} size={44} />
+          <SceneProp kind="tree" time={time} size={44} />
+          <SceneProp kind="pine" time={time} size={48} />
+        </div>
+        <div className="gal-grid gal-grid--3">
+          <Spec label="Cloud × 3">
+            <div className="gal-clouds">
+              <Cloud shape={0} width={150} />
+              <Cloud shape={1} width={130} />
+              <Cloud shape={2} width={100} />
+            </div>
+          </Spec>
+          <Spec label="Seigaiha · night / day / ink">
+            <div className="gal-seig">
+              <div className="gal-seig__night">
+                <Seigaiha rows={3} r={30} span={600} tone="night" style={{ '--sg-fill': ELYSIUM.trench } as CSSProperties} />
+              </div>
+              <div className="gal-seig__day">
+                <Seigaiha rows={3} r={30} span={600} tone="day" style={{ '--sg-fill': ELYSIUM.plain } as CSSProperties} />
+              </div>
+              <div className="gal-seig__ink">
+                <Seigaiha rows={3} r={24} span={600} tone="ink" />
+              </div>
+            </div>
+          </Spec>
+          <Spec label="OrbitDots · a round, in orbit">
+            <OrbitDots
+              tone={night ? 'night' : 'day'}
+              width={420}
+              height={200}
+              coins={3}
+              title="A round: ticket, eat, bell, paid"
+              stations={[
+                { at: 0, label: 'ticket', done: true },
+                { at: 0.25, label: 'eat', done: true },
+                { at: 0.5, label: 'bell' },
+                { at: 0.75, label: 'paid' },
+              ]}
+            />
+          </Spec>
+        </div>
+        <div className="gal-grid gal-grid--2">
+          <Spec label="Wordmark · cyan / die-cut / sun / cream">
+            <div className="gal-marks">
+              <Wordmark height={72} />
+              <Wordmark height={72} diecut />
+              <Wordmark height={52} paint="sun" playful={false} />
+              <Wordmark height={40} paint="cream" playful={false} />
+            </div>
+          </Spec>
+          <Spec label="CoinMark (favicon) · 64 / 40 / 24">
+            <div className="gal-row">
+              <CoinMark size={64} />
+              <CoinMark size={40} paint="sun" />
+              <CoinMark size={24} />
+              <CoinMark size={40} paint="teal" />
+            </div>
+          </Spec>
+        </div>
+      </Plate>
+
+      {/* ── V: buttons & stickers ── */}
+      <Plate n={5} title="Stickers, buttons, stamps" aside="Button · Sticker · Stamp · Tape · Chip · StatusPill">
+        <div className="gal-grid gal-grid--2">
+          <Spec label="Button · primary / secondary / teal / up / danger / ghost">
+            <div className="gal-row">
+              <Button variant="primary" icon="arrow">
+                Mint 2 emblems
+              </Button>
+              <Button>Collab</Button>
+              <Button variant="teal">Open X</Button>
+              <Button variant="up" lead="check">
+                Claim
+              </Button>
+              <Button variant="danger">Withdraw</Button>
+              <Button variant="ghost">Connect</Button>
+            </div>
+            <div className="gal-row">
+              <Button variant="primary" size="lg" sub="≈ $2.00 · max 3" icon="arrow">
+                Mint now
+              </Button>
+              <Button size="sm" lead="wallet">
+                0x7a3…e91c
+              </Button>
+              <Button disabled>Locked</Button>
+              <Button variant="primary" loading>
+                Waiting for wallet
+              </Button>
+            </div>
+            <div className="gal-row">
+              <InkButton variant="pink">InkButton pink</InkButton>
+              <InkButton>InkButton ink</InkButton>
+              <InkButton variant="paper">InkButton paper</InkButton>
+            </div>
+          </Spec>
+          <Spec label="Sticker tones (with tape)">
+            <div className="gal-stickers">
+              <Sticker pad="sm" tape>
+                cream
+              </Sticker>
+              <Sticker pad="sm" tone="white" tilt={1.2}>
+                white
+              </Sticker>
+              <Sticker pad="sm" tone="sun" tilt={-1}>
+                sun
+              </Sticker>
+              <Sticker pad="sm" tone="mist">
+                mist
+              </Sticker>
+              <Sticker pad="sm" tone="mint" tilt={0.8}>
+                mint
+              </Sticker>
+              <Sticker pad="sm" tone="night" lift="lg">
+                night
+              </Sticker>
+            </div>
+          </Spec>
+          <Spec label="Stamp · up / down / teal / sun / round / lg">
+            <div className="gal-row gal-row--stamps">
+              <Stamp text="DONE" />
+              <Stamp text="EATEN" tone="down" rotate={6} />
+              <Stamp text="SEALED" tone="teal" size="sm" />
+              <Stamp text="PAID" tone="sun" rotate={-4} />
+              <Stamp text="WL" sub="2026" tone="up" round />
+              <Stamp text="SOLD OUT" tone="down" size="lg" rotate={-5} />
+            </div>
+          </Spec>
+          <Spec label="Tape · Chip · StatusPill · keys">
+            <div className="gal-row">
+              <Tape inline tone="mist" rotate={-3} width={90} />
+              <Tape inline tone="sun" rotate={2} width={90} />
+              <Tape inline tone="blush" rotate={-1} width={90} />
+              <Tape inline tone="cream" rotate={3} width={90}>
+                fragile
+              </Tape>
+            </div>
+            <div className="gal-row">
+              <Chip>Asphodel</Chip>
+              <Chip tone="teal" icon="users">
+                41 in
+              </Chip>
+              <Chip tone="up">Gains</Chip>
+              <Chip tone="down">Losses</Chip>
+              <Chip selected onClick={() => {}}>
+                Selected
+              </Chip>
+            </div>
+            <div className="gal-row">
+              <StatusPill tone="live">Live</StatusPill>
+              <StatusPill tone="ok">Synced</StatusPill>
+              <StatusPill tone="warn">Price stale</StatusPill>
+              <StatusPill tone="danger">Paused</StatusPill>
+              <StatusPill tone="idle">Closed</StatusPill>
+              <StatusPill tone="mainnet">Mainnet</StatusPill>
+              <StatusPill tone="testnet">Testnet</StatusPill>
+            </div>
+            <div className="gal-row gal-keys">
+              <span className="kb-key">mouse</span> steer <span className="kb-key">space</span> split <span className="kb-key">W</span> spit
+            </div>
+          </Spec>
+        </div>
+      </Plate>
+
+      {/* ── VI: the mint card ── */}
+      <Plate n={6} title="The mint, after dark" aside="ArcGauge · HypeAmount · QuantityStepper · Countdown · AddressChip" className="gal-plate--mint">
+        <div className="gal-mint">
+          <div className="gal-mint__copy">
+            <div className="kicker">Sealed emblems · supply 5,000</div>
+            <h2 className="gal-mint__h display">
+              One emblem.
+              <br />
+              One <em>dollar.</em>
+              <br />
+              Many snacks.
+            </h2>
+            <p>Your emblem is your ticket to the ring. The price is pinned to a dollar and paid in HYPE, so the number on the button wiggles with the market.</p>
+            <div className="gal-row">
+              <Countdown seconds={2 * 86400 + 6 * 3600 + 14 * 60} label="WL window closes" />
+              <Countdown to={deadline} label="until the bell" tone="sun" />
+            </div>
+          </div>
+          <motion.div className="gal-mint__card kb-island" variants={moves.stickerDrop} custom={0.8} initial="hidden" animate="shown">
+            <div className="gal-emblem">
+              <Seigaiha rows={4} r={26} span={260} tone="night" className="gal-emblem__sg" style={{ '--sg-fill': ELYSIUM.teal, '--sg-line': SHADE.teal } as CSSProperties} />
+              <span className="gal-emblem__no num">NO. 2615</span>
+              <CoinCharacter paint="sun" mood="smug" size={150} look={[2, 0]} bob className="gal-emblem__seal" />
+              <span className="gal-emblem__rib display">Sealed. For now.</span>
+            </div>
+            <div className="gal-mint__right">
+              <ArcGauge value={minted} max={5000} caption={`${Math.round((minted / 5000) * 100)}% minted. The rest are still deciding.`} />
+              <div className="gal-mint__price">
+                <HypeAmount value={0.0213} usd={1} size="lg" />
+                <div className="gal-mint__tick num">HYPE/USD 46.94 · updated 4s ago · gas on Elysium, also in HYPE</div>
+              </div>
+              <div className="gal-mint__qty">
+                <div>
+                  <div className="kicker gal-mint__lbl">How many</div>
+                  <QuantityStepper value={qty} onChange={setQty} max={3} label="How many emblems" />
+                </div>
+                <div className="gal-mint__tot">
+                  Total
+                  <HypeAmount value={0.0213 * qty} usd={qty} size="sm" stack />
+                </div>
+              </div>
+              <Button variant="primary" size="lg" block onClick={() => setMinted((m) => Math.min(5000, m + qty))}>
+                Mint {qty} emblem{qty > 1 ? 's' : ''}
+              </Button>
+              <div className="gal-mint__wl">
+                <AddressChip address="0x7a3f9c2e1b4d5a6f708192a3b4c5d6e7f809e91c" /> <span>is on the list. Nobody&rsquo;s rushing you. Well, a little.</span>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+        <div className="gal-mint__band" aria-hidden="true">
+          <Seigaiha rows={3} r={40} tone="night" style={{ '--sg-fill': 'var(--paper)' } as CSSProperties} />
+        </div>
+      </Plate>
+
+      {/* ── VII: the ascent ── */}
+      <Plate n={7} title="Three small chores" aside="Stepper">
+        <div className="gal-wl">
+          <div>
+            <div className="kicker">Whitelist · the ascent</div>
+            <h2 className="gal-wl__h display">Three small chores, then the feast.</h2>
+            <p className="lede">Each chore lifts you one terrace up the ring. Finish all three and you get a mint spot and a boarding pass to flex with.</p>
+          </div>
+          <Stepper
+            label="Whitelist chores"
+            steps={[
+              {
+                id: 'follow',
+                state: 'done',
+                meta: 'Chore 1 · X',
+                title: 'Follow @elymum',
+                body: 'Done. The ring noticed, and so did our follower count.',
+                art: <CoinCharacter paint="up" mood="happy" size={76} />,
+              },
+              {
+                id: 'repost',
+                state: 'active',
+                meta: 'Chore 2 · X · about 20 seconds',
+                title: 'Repost the pinned feast',
+                body: 'The one with the coin eating a slightly smaller coin.',
+                art: <CoinCharacter paint="cyan" size={76} look={[4, 0]} />,
+                action: <Button variant="teal">Open X</Button>,
+              },
+              {
+                id: 'wallet',
+                state: 'locked',
+                meta: 'Chore 3 · wallet',
+                title: 'Connect a wallet on Elysium',
+                body: 'To sign a message, not a transaction. We will never ask for your seed phrase.',
+                art: <CoinCharacter paint="cream" mood="scared" size={76} look={[0, -3]} />,
+                action: <Button disabled>Connect</Button>,
+              },
+            ]}
           />
-        </motion.div>
-      ))}
-    </TicketGroup>
-  );
-}
+        </div>
+      </Plate>
 
-function ButtonDemo({ t, fmt }: { t: T; fmt: (n: number) => string }) {
-  return (
-    <div className="g-buttons">
-      <InkButton size="lg" block icon="arrow" sub={t('ds.btn.playSub', { fee: fmt(1000) })}>
-        {t('ds.btn.play')}
-      </InkButton>
-      <div className="g-row">
-        <InkButton variant="pink" lead="coin">
-          {t('ds.btn.collect')}
-        </InkButton>
-        <InkButton variant="paper" lead="wallet">
-          {t('ds.btn.wallet')}
-        </InkButton>
-      </div>
-      <div className="g-row">
-        <InkButton size="sm" lead="bot">
-          {t('ds.btn.practice')}
-        </InkButton>
-        <InkButton size="sm" variant="pink" lead="ticket">
-          {t('ds.btn.nextRound')}
-        </InkButton>
-        <InkButton size="sm" variant="paper" disabled>
-          {t('ds.btn.soldOut')}
-        </InkButton>
-      </div>
-      <div className="g-cap mono">
-        {t('ds.btn.caption.variants')} / {t('ds.btn.caption.sizes')}
-      </div>
-    </div>
-  );
-}
-
-function StampDemo({ t }: { t: T }) {
-  const [round, setRound] = useState(0);
-  return (
-    <div className="g-stamps">
-      <div className="g-stamps__pad" key={round}>
-        <Stamp text={t('ds.stamp.defeated')} tone="red" size="lg" rotate={-7} animateIn />
-        <Stamp text={t('ds.stamp.paid')} tone="teal" size="md" rotate={6} animateIn delay={0.25} />
-        <Stamp text={t('ds.stamp.valid')} sub={t('ds.stamp.round')} tone="mustard" round rotate={-12} animateIn delay={0.4} />
-        <Stamp text={t('ds.stamp.held')} tone="ink" size="md" rotate={-3} animateIn delay={0.55} />
-      </div>
-      <InkButton size="sm" variant="paper" lead="flame" onClick={() => setRound((r) => r + 1)}>
-        {t('ds.stamp.replay')}
-      </InkButton>
-    </div>
-  );
-}
-
-function CounterDemo({ t, fmt }: { t: T; fmt: (n: number) => string }) {
-  const [v, setV] = useState(12450);
-  return (
-    <div className="g-counter">
-      <div className="g-counter__card">
-        <Tape rotate={-5} width={70} style={{ left: -12, top: -10 }} />
-        <div className="g-cap mono">{t('ds.ct.vault')}</div>
-        <Counter value={v} format={fmt} unit="$SLANA" className="g-counter__num" />
-      </div>
-      <div className="g-row">
-        <InkButton size="sm" lead="coin" onClick={() => setV((x) => x + 137)}>
-          {t('ds.ct.eat')}
-        </InkButton>
-        <InkButton size="sm" variant="pink" lead="crown" onClick={() => setV((x) => x + 48210)}>
-          {t('ds.ct.jackpot')}
-        </InkButton>
-        <InkButton size="sm" variant="paper" lead="close" onClick={() => setV(1000)}>
-          {t('ds.ct.reset')}
-        </InkButton>
-      </div>
-    </div>
-  );
-}
-
-function ReceiptDemo({ t, fmt }: { t: T; fmt: (n: number) => string }) {
-  const [run, setRun] = useState(0);
-  return (
-    <div className="g-receipt">
-      <Receipt
-        key={run}
-        printing
-        title={t('ds.rc.title')}
-        meta={t('ds.rc.meta')}
-        code="5h3Kq9pZ1vXfR2mN"
-        lines={[
-          { label: t('ds.rc.entry'), value: fmt(1000) },
-          { label: t('ds.rc.won'), value: `+${fmt(4250)}` },
-          { label: t('ds.rc.fee', { p: t('ds.pct', { n: 2 }) }), value: `−${fmt(85)}`, muted: true },
-          { label: t('ds.rc.net'), value: fmt(1000 + 4250 - 85), strong: true },
-        ]}
-        footer={
-          <a href="#tx" onClick={(e) => e.preventDefault()}>
-            {t('ds.rc.tx')} 5h3K…mN
-          </a>
-        }
-      />
-      <InkButton size="sm" variant="paper" lead="docs" onClick={() => setRun((r) => r + 1)}>
-        {t('ds.rc.replay')}
-      </InkButton>
-    </div>
-  );
-}
-
-function FieldDemo({ t }: { t: T }) {
-  return (
-    <div className="g-fields">
-      <Field label={t('ds.f.name')} placeholder={t('ds.f.namePh')} hint={t('ds.f.nameHint')} maxLength={16} />
-      <Field label={t('ds.f.deposit')} defaultValue="250000" inputMode="numeric" suffix="$SLANA" error={t('ds.f.depositErr')} />
-    </div>
-  );
-}
-
-function PaperBits({ t, fmt }: { t: T; fmt: (n: number) => string }) {
-  const [bots, setBots] = useState(true);
-  const [mini, setMini] = useState(false);
-  const [sound, setSound] = useState(true);
-  return (
-    <div className="g-bits">
-      <Dateline
-        label={t('ds.dl.label')}
-        items={[t('ds.dl.open'), t('ds.dl.round'), t('ds.dl.fee', { p: t('ds.pct', { n: 5 }) })]}
-      />
-      <Rule variant="thin" />
-      <Rule variant="double" label={t('ds.rule.today')} />
-      <Rule variant="cut" label={t('ds.rule.cut')} />
-      <div className="g-bits__tape">
-        <Tape inline rotate={-3} width={150}>
-          {t('ds.tape.text')}
-        </Tape>
-        <Tape inline rotate={4} width={70} tone="pink" />
-        <Tape inline rotate={-8} width={56} tone="teal" />
-      </div>
-      <div className="g-chips">
-        <Chip>{t('ds.chip.private')}</Chip>
-        <Chip tone="pink">{t('ds.chip.fee', { p: t('ds.pct', { n: 5 }) })}</Chip>
-        <Chip tone="teal" icon="ticket">
-          {t('ds.chip.held')}
-        </Chip>
-        <Chip tone="mustard" icon="flame">
-          {t('ds.chip.round')}
-        </Chip>
-      </div>
-      <div className="g-chips">
-        <Chip icon="bot" selected={bots} onClick={() => setBots((b) => !b)}>
-          {t('ds.chip.bots')}
-        </Chip>
-        <Chip icon="map" selected={mini} onClick={() => setMini((b) => !b)}>
-          {t('ds.chip.minimap')}
-        </Chip>
-        <Chip icon={sound ? 'sound' : 'mute'} tone="pink" selected={sound} onClick={() => setSound((b) => !b)}>
-          {t('ds.chip.sound')}
-        </Chip>
-      </div>
-    </div>
-  );
-}
-
-function TabsDemo({ t, fmt }: { t: T; fmt: (n: number) => string }) {
-  const [period, setPeriod] = useState<'today' | 'all'>('today');
-  const [nav, setNav] = useState<'play' | 'ranks' | 'profile'>('play');
-  const text = useMemo(
-    () => ({
-      today: t('ds.tab.panel.today', { n: fmt(18930) }),
-      all: t('ds.tab.panel.all', { n: fmt(402115) }),
-    }),
-    [t, fmt],
-  );
-  return (
-    <div className="g-tabs">
-      <Tabs
-        idBase="g-period"
-        label={t('ds.tab.periodLabel')}
-        value={period}
-        onChange={setPeriod}
-        items={[
-          { id: 'today', label: t('ds.tab.today') },
-          { id: 'all', label: t('ds.tab.all') },
-        ]}
-      />
-      <TabPanel idBase="g-period" id={period} className="g-tabs__panel">
-        {text[period]}
-      </TabPanel>
-      <div className="g-phone">
-        <Tabs
-          variant="nav"
-          label={t('ds.tab.nav')}
-          value={nav}
-          onChange={setNav}
-          items={[
-            { id: 'play', label: t('ds.tab.play'), icon: 'ticket' },
-            { id: 'ranks', label: t('ds.tab.ranks'), icon: 'trophy' },
-            { id: 'profile', label: t('ds.tab.profile'), icon: 'user' },
+      {/* ── VIII: admin ── */}
+      <Plate n={8} title="Before every wallet prompt" aside="TxPreview · Modal · WalletPicker">
+        <div className="gal-grid gal-grid--2">
+          <TxPreview
+            fn="setToken"
+            contract={{ name: 'ElymumArena', address: '0x5FbDB2315678afecb367f032d93F642f64180aa3' }}
+            args={[{ name: 'token', type: 'address', value: '0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512' }]}
+            network={{ name: 'Elysium Testnet', chainId: 4207 }}
+            from="0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
+            onConfirm={() => new Promise((r) => setTimeout(r, 1200))}
+            onCancel={() => {}}
+          />
+          <TxPreview
+            fn="ownerMint"
+            contract={{ name: 'ElymumNFT', address: '0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0' }}
+            args={[
+              { name: 'to', type: 'address', value: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8' },
+              { name: 'quantity', type: 'uint256', value: '3' },
+            ]}
+            value={{ wei: 63_900_000_000_000_000n, usd: 3 }}
+            network={{ name: 'Elysium', chainId: 4206, mainnet: true }}
+            note="This is mainnet. Real HYPE leaves the owner wallet."
+            confirmLabel="Sign on mainnet"
+            onConfirm={() => {}}
+            onCancel={() => {}}
+          />
+        </div>
+        <div className="gal-row">
+          <Button onClick={() => setSheet(true)}>Open a Modal</Button>
+          <Button variant="primary" lead="wallet" onClick={() => setWallets(true)}>
+            Connect wallet
+          </Button>
+          <Button variant="teal" onClick={() => pushToast('success')}>
+            Toast: success
+          </Button>
+          <Button variant="ghost" onClick={() => pushToast('error')}>
+            Toast: error
+          </Button>
+        </div>
+        <Modal
+          open={sheet}
+          onClose={() => setSheet(false)}
+          title="Buy this ticket?"
+          kicker="Asphodel Meadow · round 418"
+          closeLabel="Close"
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setSheet(false)}>
+                Not yet
+              </Button>
+              <Button variant="primary" onClick={() => setSheet(false)}>
+                Approve and join
+              </Button>
+            </>
+          }
+        >
+          <p>1,000 $ELYMUM for a seat at the next round. If the round never starts, you get it back.</p>
+        </Modal>
+        <WalletPicker
+          open={wallets}
+          onClose={() => {
+            setWallets(false);
+            setBusyWallet(null);
+          }}
+          busyId={busyWallet}
+          onPick={(id) => setBusyWallet(id)}
+          wallets={[
+            { id: 'io.rabby', name: 'Rabby', detected: true },
+            { id: 'io.metamask', name: 'MetaMask', detected: true, note: 'Recent' },
+            { id: 'xyz.frame', name: 'Frame' },
           ]}
         />
-      </div>
-    </div>
-  );
-}
+        <ToastViewport toasts={toasts} onDismiss={(id) => setToasts((ts) => ts.filter((x) => x.id !== id))} closeLabel="Dismiss" label="Notifications" />
+      </Plate>
 
-function OverlayDemo({ t }: { t: T }) {
-  const [open, setOpen] = useState(false);
-  const [toasts, setToasts] = useState<ToastItem[]>([]);
-  const seq = useRef(0);
-  const push = (tone: ToastItem['tone']) => {
-    const id = ++seq.current;
-    const item: ToastItem =
-      tone === 'error'
-        ? { id, tone, title: t('tx.failed'), message: t('ds.to.errorMsg') }
-        : tone === 'success'
-          ? { id, tone, title: t('tx.confirmed'), message: t('ds.to.successMsg') }
-          : { id, tone, title: t('tx.sent'), message: t('ds.to.infoMsg') };
-    setToasts((xs) => [item, ...xs].slice(0, 3));
-    window.setTimeout(() => setToasts((xs) => xs.filter((x) => x.id !== id)), 5200);
-  };
-  return (
-    <div className="g-overlays">
-      <InkButton block icon="arrow" onClick={() => setOpen(true)}>
-        {t('ds.sh.open')}
-      </InkButton>
-      <div className="g-row">
-        <InkButton size="sm" variant="paper" lead="info" onClick={() => push('info')}>
-          {t('ds.to.info')}
-        </InkButton>
-        <InkButton size="sm" variant="paper" lead="check" onClick={() => push('success')}>
-          {t('ds.to.success')}
-        </InkButton>
-        <InkButton size="sm" variant="paper" lead="close" onClick={() => push('error')}>
-          {t('ds.to.error')}
-        </InkButton>
-      </div>
-      <Sheet
-        open={open}
-        onClose={() => setOpen(false)}
-        kicker={t('ds.sh.kicker')}
-        title={t('ds.sh.title')}
-        closeLabel={t('common.close')}
-        footer={
-          <>
-            <InkButton variant="paper" onClick={() => setOpen(false)}>
-              {t('common.cancel')}
-            </InkButton>
-            <InkButton variant="pink" icon="check" onClick={() => setOpen(false)}>
-              {t('ds.sh.confirm')}
-            </InkButton>
-          </>
-        }
-      >
-        <p className="g-sheet-text">{t('ds.sh.body')}</p>
-        <div className="g-sheet-chips">
-          <Chip tone="teal" icon="ticket">
-            {t('ds.chip.fee', { p: t('ds.pct', { n: 5 }) })}
-          </Chip>
-          <Chip icon="coin">{t('ds.room.penny')}</Chip>
+      {/* ── IX: the old cast, redrawn ── */}
+      <Plate n={9} title="Tickets, report cards and odds and ends" aside="Ticket · Receipt · Counter · Field · Tabs · Toast · Loading">
+        <div className="gal-grid gal-grid--3">
+          <Spec label="Ticket (boarding pass) in a TicketGroup">
+            <TicketGroup label="Arenas" value={room} onChange={setRoom} className="gal-tickets">
+              <Ticket value="asphodel" title="Asphodel Meadow" meta="23 players · open" stub={<TicketStub value="1,000" unit="$ELYMUM" />} />
+              <Ticket value="lethe" title="Lethe Shore" meta="9 players · open" stub={<TicketStub value="10K" unit="$ELYMUM" />} />
+              <Ticket value="bough" title="Golden Bough" meta="closed till 18:00" stamp="HELD" stub={<TicketStub value="50K" unit="$ELYMUM" />} />
+              <Ticket value="isles" title="Isles of the Blessed" meta="for holders" disabled stub={<TicketStub value="250K" unit="$ELYMUM" />} />
+            </TicketGroup>
+          </Spec>
+          <Spec label="Receipt (sticker report card)">
+            <Receipt
+              title="Round 418, eaten"
+              meta="Lethe Shore · 5:00 · 41 coins"
+              stamp="PAID"
+              lines={[
+                { label: 'Ticket', value: '10,000' },
+                { label: 'You ate', value: '+7,412' },
+                { label: 'House cut 5%', value: '−370', muted: true },
+                { label: 'Paid out', value: '17,042', strong: true },
+              ]}
+              code="0x9a4e1c"
+              footer="tx 0x9a4e…1c07 · Elysium"
+            />
+          </Spec>
+          <Spec label="Counter · Field · Tabs · Dateline · Rule">
+            <div className="gal-stack">
+              <div className="gal-counter">
+                <Counter value={minted} unit="minted" />
+              </div>
+              <Field label="X handle" placeholder="elymum" prefix="@" hint="We check it once. No DMs." />
+              <Field label="Token address" defaultValue="0xnope" error="That is not an address. It is a mood." />
+              <Tabs
+                label="Board"
+                idBase="galtabs"
+                value={tab}
+                onChange={setTab}
+                items={[
+                  { id: 'feast', label: 'Feast' },
+                  { id: 'ring', label: 'Ring' },
+                  { id: 'ledger', label: 'Ledger' },
+                ]}
+              />
+              <TabPanel idBase="galtabs" id={tab} className="gal-tabpanel">
+                {tab === 'feast' ? 'Five minutes. Eat or be eaten.' : tab === 'ring' ? 'Four arenas on the ring.' : 'Every bite, on the books.'}
+              </TabPanel>
+              <Dateline items={['Arenas open', 'Fee 5% of profit', '42 online']} label="Today" />
+              <Rule label="or" />
+              <Rule variant="thick" />
+              <Rule variant="cut" />
+            </div>
+          </Spec>
         </div>
-      </Sheet>
-      <ToastViewport
-        toasts={toasts}
-        onDismiss={(id) => setToasts((xs) => xs.filter((x) => x.id !== id))}
-        closeLabel={t('common.close')}
-        label={t('ds.to.region')}
-      />
-    </div>
+        <div className="gal-grid gal-grid--3">
+          <Spec label="Toast · info / success / error">
+            <div className="gal-stack">
+              <Toast tone="info" title="Price refreshed" message="HYPE/USD 46.94. Still a dollar." />
+              <Toast tone="success" title="You made the list" message="0x7a3…e91c is in. Mint opens soon." tilt={-0.6} />
+              <Toast tone="error" title="Wrong network" message="Switch to Elysium and try again." onClose={() => {}} closeLabel="Dismiss" />
+            </div>
+          </Spec>
+          <Spec label="Loading · StampSpinner · Skeleton">
+            <div className="gal-row">
+              <StampSpinner size="sm" />
+              <StampSpinner />
+              <StampSpinner size="lg" label="Loading" />
+            </div>
+            <Skeleton rows={4} label="Standings loading" />
+          </Spec>
+          <Spec label="Bottom nav (phones)">
+            <Tabs
+              variant="nav"
+              label="Main menu"
+              value="play"
+              onChange={() => {}}
+              items={[
+                { id: 'play', label: 'Play', icon: 'play' },
+                { id: 'ranks', label: 'Ranks', icon: 'trophy' },
+                { id: 'wallet', label: 'Wallet', icon: 'wallet' },
+                { id: 'me', label: 'Me', icon: 'user' },
+              ]}
+            />
+            <div className="gal-icons">
+              {ICON_NAMES.map((n) => (
+                <span key={n} title={n}>
+                  <Icon name={n} size={22} />
+                </span>
+              ))}
+            </div>
+          </Spec>
+        </div>
+      </Plate>
+
+      <footer className="gal-foot">
+        <RingScene time={time} variant="horizon" clouds={false} />
+        <p className="mono gal-foot__note">Elymum · Ring Storybook · every component in {night ? 'night' : 'day'}</p>
+      </footer>
+    </Kb>
   );
 }

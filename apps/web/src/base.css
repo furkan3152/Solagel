@@ -1,7 +1,8 @@
-/* ─────────────────────────── Paper Ticket · page base ───────────────────────────
- * The app shell: a fixed full-screen stage for the game canvas, paper behind
- * it, and no page scroll (each screen scrolls inside its own Kb root).
- * Tokens live in design/tokens.css (on :root and on every `.kb`).
+/* ─────────────────────────── Ring Storybook · page base ───────────────────────────
+ * The app shell: a fixed full-screen stage for the game canvas, the page
+ * colour behind it, and no page scroll (each screen scrolls inside its own Kb
+ * root). Tokens live in design/tokens.css (on :root and on every `.kb`),
+ * component styles in design/storybook.css.
  * ------------------------------------------------------------------------- */
 *,
 *::before,
@@ -19,7 +20,7 @@ body,
 body {
   background: var(--paper);
   color: var(--ink);
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

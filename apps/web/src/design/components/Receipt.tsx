@@ -1,6 +1,7 @@
 import { motion } from 'motion/react';
 import type { HTMLAttributes, ReactNode } from 'react';
 import { printerEase, useReducedMotion } from '../motion';
+import { Stamp, type StampTone } from './Stamp';
 
 export interface ReceiptLine {
   label: ReactNode;
@@ -25,10 +26,17 @@ export interface ReceiptProps extends Omit<HTMLAttributes<HTMLDivElement>, 'titl
   printing?: boolean;
   /** Called once the slip has fully printed. */
   onPrinted?: () => void;
+  /** A rubber stamp pressed on the corner, e.g. "PAID". */
+  stamp?: string;
+  stampTone?: StampTone;
 }
 
-/** A thermal-printer slip: zigzag tear on both ends, dotted leaders, halftone shade. */
-export function Receipt({ lines, title, meta, footer, code, printing = false, onPrinted, className, ...rest }: ReceiptProps) {
+/**
+ * A sticker "report card": cream card, ink edge, hard shadow, a ruled
+ * header band, dotted leaders, a total in Geist Mono and an optional stamp.
+ * `printing` slides it out of a slot line by line.
+ */
+export function Receipt({ lines, title, meta, footer, code, printing = false, onPrinted, stamp, stampTone = 'up', className, ...rest }: ReceiptProps) {
   const reduced = useReducedMotion();
   const steps = lines.length + 4;
   const slip = (
@@ -52,6 +60,11 @@ export function Receipt({ lines, title, meta, footer, code, printing = false, on
       </dl>
       {code && <Barcode seed={code} />}
       {footer != null && <div className="kb-receipt__foot mono">{footer}</div>}
+      {stamp && (
+        <span className="kb-receipt__stamp">
+          <Stamp text={stamp} tone={stampTone} rotate={-9} animateIn={printing} delay={printing ? steps * 0.16 : 0} />
+        </span>
+      )}
     </div>
   );
 

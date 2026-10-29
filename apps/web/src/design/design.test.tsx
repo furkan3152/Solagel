@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { useState } from 'react';
 import { describe, expect, it } from 'vitest';
 import { setReducedMotion } from '../test/media';
-import { Kb, Sheet, Tabs, Ticket, TicketGroup, TicketStub } from './index';
+import { ArcGauge, CoinCharacter, Kb, QuantityStepper, Sheet, Stepper, Tabs, Ticket, TicketGroup, TicketStub, TxPreview, Wordmark, formatWei, shortAddress } from './index';
 
 function SheetHarness() {
   const [open, setOpen] = useState(false);
@@ -208,5 +208,78 @@ describe('TicketGroup', () => {
     const b = screen.getByRole('button', { name: 'Solo' });
     expect(b.getAttribute('aria-pressed')).toBe('true');
     expect(b.getAttribute('role')).toBeNull();
+  });
+});
+
+describe('Storybook building blocks', () => {
+  it('formats wei exactly and shortens addresses', () => {
+    expect(formatWei(21_300_000_000_000_000n)).toBe('0.0213');
+    expect(formatWei(1_234_567_890_000_000_000_000_000n, 2)).toBe('1,234,567.89');
+    expect(formatWei(49_999n, 4)).toBe('0.0000');
+    expect(shortAddress('0x7a3f9c2e1b4d5a6f708192a3b4c5d6e7f809e91c')).toBe('0x7a3f…e91c');
+  });
+
+  it('QuantityStepper clamps to min/max and is a spinbutton', () => {
+    function H() {
+      const [v, setV] = useState(1);
+      return <QuantityStepper value={v} onChange={setV} max={3} label="How many" />;
+    }
+    render(<H />);
+    const less = screen.getByRole('button', { name: 'One fewer' }) as HTMLButtonElement;
+    const more = screen.getByRole('button', { name: 'One more' }) as HTMLButtonElement;
+    expect(less.disabled).toBe(true);
+    fireEvent.click(more);
+    fireEvent.click(more);
+    fireEvent.click(more);
+    const spin = screen.getByRole('spinbutton', { name: 'How many' });
+    expect(spin.getAttribute('aria-valuenow')).toBe('3');
+    expect(more.disabled).toBe(true);
+    fireEvent.keyDown(spin, { key: 'Home' });
+    expect(spin.getAttribute('aria-valuenow')).toBe('1');
+  });
+
+  it('TxPreview never sends twice on a double click', async () => {
+    let calls = 0;
+    let release: () => void = () => {};
+    render(
+      <TxPreview
+        fn="setToken"
+        args={[{ name: 'token', type: 'address', value: '0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512' }]}
+        network={{ name: 'Elysium Testnet', chainId: 4207 }}
+        onConfirm={() => {
+          calls++;
+          return new Promise<void>((r) => (release = r));
+        }}
+      />,
+    );
+    expect(screen.getByText('setToken(address token)')).toBeTruthy();
+    const go = screen.getByRole('button', { name: /Open wallet/ });
+    fireEvent.click(go);
+    fireEvent.click(go);
+    expect(calls).toBe(1);
+    await act(async () => release());
+    fireEvent.click(go);
+    expect(calls).toBe(2);
+  });
+
+  it('ArcGauge is a meter; Stepper marks done steps; art is labelled or hidden', () => {
+    render(
+      <Kb>
+        <ArcGauge value={2614} max={5000} />
+        <Stepper
+          label="Chores"
+          steps={[
+            { id: 'a', title: 'Follow', state: 'done' },
+            { id: 'b', title: 'Repost', state: 'active' },
+          ]}
+        />
+        <Wordmark />
+        <CoinCharacter mood="chomp" />
+      </Kb>,
+    );
+    expect(screen.getByRole('meter', { name: 'Minted' }).getAttribute('aria-valuetext')).toBe('2,614 of 5,000');
+    expect(screen.getByRole('progressbar', { name: 'Chores' }).getAttribute('aria-valuenow')).toBe('1');
+    expect(screen.getByText('DONE')).toBeTruthy();
+    expect(screen.getByRole('img', { name: 'Elymum' })).toBeTruthy();
   });
 });

@@ -226,105 +226,170 @@ smart wallets). Addresses are compared and stored checksummed. Same nonce rules 
   `setToken`, double clicks cannot send twice, mainnet shows a red MAINNET banner. "Open mint" offers (checked) "activate
   the game for holders".
 
-## 6. The Elysian design language
+## 6. The Elysian design language: "Ring Storybook"
+
+The design direction is **Ring Storybook**. The reference is `docs/design/storybook-reference.html` and its render
+`docs/design/storybook-reference.png`; the live proof of every token, component and motif is `?gallery`
+(`apps/web/src/design/Gallery.tsx`, `?gallery&theme=night` for night). This section is the guide every screen follows.
+The UI matters most in this migration: it must look hand-drawn.
 
 ### 6.1 Sources
 
 Elysium is Kinetiq's chain. Its launch art is an orbital ring habitat seen from inside: the ground curves up into the
-sky, terraces of green fields, a band of night with the planet below, and the word **Elysium** in a clean grotesk whose
-letters fall away into vertical light streaks. Kinetiq's brand guide gives the palette (teal, cyan, deep teal-black and
-warm neutrals) and the type (DM Sans, Geist Mono); its pages use thin concentric wave arcs (seigaiha) and soft clouds.
-The blog opens with Homer: *"To the Elysian plain… where life is easiest for men. No snow is there, nor heavy storm,
-nor ever rain."* Elymum adds one idea of its own: in Elysium everything is a feast, and the coins eat.
+sky, terraces of green fields, a band of night with the planet below. Kinetiq's brand gives the palette (teal, cyan,
+deep teal-black, warm neutrals), DM Sans and Geist Mono, and the seigaiha wave scales. The blog opens with Homer: *"To
+the Elysian plain… No snow is there, nor heavy storm, nor ever rain."* Elymum adds its own idea: in Elysium everything
+is a feast, and the coins eat. Ring Storybook draws all of that as a **picture book**: confident ink outlines, flat cel
+colour, die-cut sticker UI, plates labelled like a book.
 
-### 6.2 Concept: "The Ring" — day on the plain, night in orbit
+### 6.2 Concept
 
-- **Day (light theme, site default above the fold):** warm paper `--plain` and teal ink, like Kinetiq. Calm, generous,
-  editorial.
-- **Night (dark theme, the game and the mint):** deep space teal-black with luminous cyan lines, the ring's lights.
-- The landing scrolls from day to night: the background interpolates as you descend from the plain into orbit.
-- One recurring geometry: **arcs**. The ring horizon (a huge arc), seigaiha wave scales (stacked half-circles), orbit
-  ellipses (dotted), and round coins. Straight lines are hairlines only.
+- **A picture book of the ring.** The habitat is an illustration (terraces curving up, the far ring arching overhead
+  with spokes and lights, the planet, a moon, chubby clouds, tiny houses, lollipop trees, a canal). The UI is stickers
+  pressed onto those pages.
+- **Day = the plain at dawn** (`--paper` #F8F7F4, ink text) above the fold; **night = in orbit** (`--paper` #0F2A30,
+  cream text) for the mint, the game and the lower half of the landing. Sections are **plates**:
+  `PLATE II  The mint, after dark  - - - - /mint`.
+- **Coins are characters**: big eyes, blush cheeks, moods (smile, happy, smug, scared, chomp, sleepy, open). They bob,
+  blink, chase and get eaten.
+- Copy is short, specific and a little wry ("Sealed. For now.", "Nobody's rushing you. Well, a little.").
 
 ### 6.3 Tokens (`apps/web/src/design/tokens.css`, mirrored in `packages/shared/src/palette.ts`)
 
-| Token | Hex | Use |
-|---|---|---|
-| `--abyss` | `#04181C` | night background |
-| `--deep` | `#071317` | night surfaces below |
-| `--trench` | `#0F2A30` | night cards |
-| `--reef` | `#163B44` | night borders, raised |
-| `--current` | `#1E4D5A` | night lines |
-| `--teal` | `#2D7388` | primary ink on day, buttons |
-| `--cyan` | `#34B7DD` | light, focus, live |
-| `--spray` | `#6FCDE8` | night accents |
-| `--foam` | `#93D9EE` | night text accents |
-| `--mist` | `#DBF2F9` | day tints |
-| `--plain` | `#F8F7F4` | day background |
-| `--linen` | `#F1EFE8` | day surfaces |
-| `--sand` | `#EBE6DD` / `#DDD6C7` | day borders |
-| `--stone` | `#91887A` / `#6B655A` | secondary text on day |
-| `--ink` | `#1C1A14` | day text |
-| `--up` | `#3C9A87` | gains, success |
-| `--down` | `#FF5252` | losses, danger |
-| `--sun` | `#F2C14E` | money glints only (payouts, HYPE price) |
-| `--verdant` | `#5FA36A` | the habitat's fields, used in illustration only |
+`palette.ts` is the single source: `ELYSIUM` (paints), `SHADE` (the one hard shadow tone of each paint), `TEXT_INKS`
+(text-safe accents), `COIN_PAINTS`, `INK`, `PAPER`, `CARD_PAPER`, `INK_2`, `NIGHT`. The old `RISO` names still compile
+and are aliased to the nearest paint (deprecated; new code uses `ELYSIUM`). CSS repeats the values;
+`apps/web/test/palette.test.ts` keeps both in step and checks every text/background pair >= 4.5:1 in both themes.
 
-Every text/background pair is at least 4.5:1 (tested, like the old palette test). The four arena inks: Asphodel
-`#6FCDE8`, Lethe `#93D9EE`→`#2D7388`, Golden Bough `#F2C14E`, Isles `#3C9A87`.
+| Paint (`--x` / `--x-s` shade) | Hex | Use |
+|---|---|---|
+| `--abyss` = `--outline` | `#04181C` | every outline and offset shadow, deepest night, text on light fills |
+| `--deep` / `--trench` / `--reef` / `--current` | `#071317` / `#0F2A30` / `#163B44` / `#1E4D5A` | night: surfaces / page / cards / lines |
+| `--teal` / `--teal-s` | `#2D7388` / `#1F5566` | water, the planet, teal buttons (cream text) |
+| `--cyan` / `--cyan-s` | `#34B7DD` / `#2490B0` | the wordmark, light, focus on night, "you" |
+| `--spray`, `--foam`, `--mist` | `#6FCDE8`, `#93D9EE`, `#DBF2F9` | night accents, night text accents, day tints and tape |
+| `--plain`, `--linen`, `--sand`, `--sand-2` | `#F8F7F4`, `#F1EFE8`, `#EBE6DD`, `#DDD6C7` | day page, surfaces, the shore, dashed rules |
+| `--cream` / `--cream-s` | `#F6EEDA` / `#DCCDA8` | sticker stock (`--sticker`), both themes |
+| `--stone` | `#6B655A` | captions on day (`--ink-3`) |
+| `--sun` / `--sun-s` | `#F2C14E` / `#D49A2B` | the primary button, money tags (≈ $1.00), "you" highlights, badges |
+| `--up` / `--up-s` | `#3C9A87` / `#2B7465` | gains, done, the gauge fill |
+| `--down` / `--down-s` | `#FF5252` / `#C93A3A` | losses, danger, MAINNET |
+| `--meadow`, `--clover`, `--verdant`, `--forest`, `--pine` | `#B9D98F` … `#2F6E4F` | terraces and trees (illustration only) |
+| `--blush`, `--coral` | `#F39B86`, `#D9714F` | cheeks and tongues, roofs |
+
+Semantic tokens (switch with the theme): `--paper`, `--surface`, `--card`, `--ink`, `--ink-2`, `--ink-3`, `--on-ink`,
+`--line`, `--line-soft`, `--rule`, `--focus`, `--scrim`, `--sky-0..3`. Text-safe accents: `--teal-ink`, `--up-ink`,
+`--down-ink`, `--sun-ink`, `--cyan-ink` (day `#2D7388 #2B7465 #C42F2F #8A5F0E #1E6F8C`, night `#93D9EE #6FD3B8 #FF8A80
+#F2C14E #6FCDE8`). Fixed: `--ink-fixed`, `--sticker`, `--on-sticker`, `--on-sticker-2`, `--white`, `--danger`. Legacy
+names (`--pink` → sun, `--pink-text` → teal-ink, `--mustard`, `--blue`, `--green`, `--red`, `*-ink`) are aliases so
+Paper Ticket screens keep rendering; restyled screens use the new names.
+
+Themes: `<Kb theme="paper">` (day) or `<Kb theme="night">`; the page root follows `:root[data-theme='dark'|'night']`,
+else `prefers-color-scheme`. **Islands**: cream stickers (`.kb-sticker`, tickets, report cards, sheets, toasts,
+TxPreview, steps, or any `.kb-island`) keep day text tokens on the night page, exactly like the mint card in the
+reference. `.kb-sticker--night` is the dark card.
+
+Arena inks: Asphodel `#6FCDE8` (spray), Lethe `#93D9EE` → `#2D7388`, Golden Bough `#F2C14E` (sun), Isles `#3C9A87` (up).
+
+**Outlines and shadows (the two rules that make it look drawn):**
+
+- Outlines are ink `#04181C`, never grey, never tinted: `--stroke` 3px (stickers, buttons, cards, art at 1x),
+  `--stroke-sm` 2.5px (tags, chips, keys, pills), `--stroke-xs` 2px (dense tables, tiny art). Illustration strokes stay
+  ~3px at any size (scale the stroke inversely, as `CoinCharacter` does).
+- Shadows are **hard offsets with no blur**, always down-right, always ink: `--sh-1` 2px, `--sh-2` 3px, `--sh-3` 4px
+  (default sticker), `--sh-4` 6px, `--sh-5` 8px (hero cards, panels), `--sh-hover` 5px, `--sh-press` 1px. On night the
+  shadow ink is `#000507` so it still reads on the trench page.
+- Flat fills with **one** shade tone (`--x-s`), placed lower-right. No gradients except the sky.
+- Radii are soft die-cut corners: `--r-key` 7, `--r-tag` 8, `--r-btn` 14, `--r-card` 18, `--r-panel` 24, `--r-pill`.
+- Stickers sit a little off true: tilt within ±2° (badges up to 4°), never on dense content.
+
+Spacing: `--s-1..9` = 4 8 12 16 24 32 48 64 96; `--gutter` clamp(16px, 4.4vw, 64px) (16px on phones); `--measure` 62ch.
 
 ### 6.4 Type
 
-- **DM Sans** (variable, optical sizes) for everything readable. Headlines in DM Sans 500–600 with tight tracking
-  (−0.03em at display sizes), never bold-black.
-- **Geist Mono** for numbers, labels, addresses, timers, kicker lines (uppercase, +0.08em).
-- **Cormorant** (italic, 500) only for mythic voice: the Homer line, one italic word inside a headline, pull quotes.
-  Never for UI.
-- The **ELYMUM wordmark** is a hand-built SVG (geometric, wide, its own drawing, not a font) with the Elysium "light
-  fall": vertical streaks below each letter that fade out, animated as a slow shimmer.
+- **Fraunces** (variable, `@fontsource-variable/fraunces/full.css`) for display: weight 800 (900 for stamps), axis
+  `SOFT 100` always (`--fv-display`), `WONK 1` only on one word per page or a pull quote (`.wonk`, `.quote`). Tracking
+  −0.02em, line-height 0.95–1.05. Headlines are Fraunces, never bold DM Sans. Scale: `--t-hero` clamp(48–96),
+  `--t-h1` clamp(40–64), `--t-h2` clamp(30–46), `--t-h3` 25, `--t-h4` 20.
+- **DM Sans** (variable with optical size) for everything you read: 16/1.5 body, `--t-lede` 18, `--t-small` 14,
+  buttons 700. Sub-heads under the wordmark: DM Sans 600.
+- **Geist Mono** for **every number** (prices, supply, timers, addresses, totals, ranks; `.num`, tabular figures) and
+  for kickers/labels (`.kicker`, `.mono`: uppercase, +0.08em, 11–12px, never smaller than 11px).
+- Italic Fraunces (`.quote`) only for the mythic voice: the Homer line, pull quotes.
+- The **ELYMUM wordmark** is the hand-built SVG `Wordmark` (no font): chunky cyan letters drawn with a fat round brush,
+  ink edge, hard offset shadow, a mist shine, each letter a hair off the baseline. `diecut` adds a cream sticker border
+  for use straight on the night page. The compact mark is `CoinMark` (a cyan coin with a fat cream E), also the favicon.
+  In running text the product is "Elymum".
 
-### 6.5 Motifs (each is one reusable component in `src/design/motifs/`)
+### 6.5 Components (`apps/web/src/design`, import from `../design`)
 
-1. `RingHorizon`: the inner curve of the habitat. Layered SVG arcs (terraces) with tiny lit windows, slow drift
-   (one turn per ~4 minutes), parallax on scroll. Day and night variants.
-2. `Seigaiha`: a field of stacked half-circle waves drawn in hairlines; used as section seams and card backs.
-3. `OrbitPath`: a dotted ellipse with coins travelling it; used for "how a round works" and loaders.
-4. `LightFall`: the vertical streak fade under a word or number (wordmark, big payouts).
-5. `GrainSky`: a subtle noise + vignette layer for night surfaces (CSS only, no images).
-6. `Coin`: the existing coin characters from `packages/art`, recoloured to the palette (faces stay: they are Elymum's
-   personality).
+New: `Button` (primary sun / secondary cream / teal / up / danger / ghost; sm/md/lg; `sub`, `icon`, `lead`, `loading`),
+`Sticker` (tones cream/white/sun/mist/mint/linen/night, `tilt`, `lift`, `pad`, `tape`), `PlateLabel`, `StatusPill`
+(live/ok/warn/danger/idle/mainnet/testnet), `AddressChip` (+ `shortAddress`), `HypeAmount` (+ `formatWei`,
+`formatHype`, `formatUsd`), `ArcGauge`, `Countdown` (flip digits), `Stepper` (terrace steps with DONE stamps),
+`QuantityStepper`, `TxPreview` (admin: function, args table, value, network, signer; locks against double sends),
+`Modal`, `WalletPicker`. Redrawn with the same names and props: `InkButton` (pink → primary, ink → teal, paper →
+secondary), `Stamp` (rubber stamp), `Ticket`/`TicketGroup` (boarding-pass sticker), `Receipt` (sticker report card, new
+`stamp` prop), `Tape`, `Chip` (pill tag), `Dateline`, `Rule`, `Field`, `Sheet`, `Tabs` (sun sticker slides between
+tabs), `Toast`, `Counter`, `StampSpinner`/`Skeleton`, `ScreenTransition`. Utility classes in `storybook.css`:
+`.display .wonk .num .kicker .lede .quote .mono .kb-sticker .kb-tag .kb-key .kb-island .kb-wobble .kb-sr`.
 
-### 6.6 Motion
+### 6.6 Motifs (`apps/web/src/design/motifs`, SVG + CSS, theme-aware, reduced-motion still, paused off screen)
 
-- Easing: `cubic-bezier(0.22, 1, 0.36, 1)` (out) for entrances, springs only for coins and buttons.
-- Durations: 160 ms (state), 320 ms (enter), 640 ms (scene). Stagger 40 ms.
-- Signature moves: the **ring turn** (a page change rotates the horizon a few degrees), **light fall** on numbers that
-  change (digits drop in from a streak), **orbit capture** (a coin travels an orbit and settles into a slot when a step
-  completes), the **bell** (a single expanding ring wave across the screen at round end).
-- `prefers-reduced-motion`: every motion has a still fallback; nothing essential is motion-only.
+1. `RingScene` (`time` dawn/night, `variant` full 1440×880 / compact / horizon, `clouds`, `animate`, children laid
+   over): the hero plate. Lights crawl along the far ring, clouds drift, stars twinkle, the canal ripples.
+   `SceneProp` gives a single house, tree or pine.
+2. `Clouds` / `Cloud`: chubby outlined clouds (ink silhouette, white puff, mist belly, one highlight); dusky teal at night.
+3. `Seigaiha`: stacked half-circle wave scales, drawn back to front; `night` band at the foot of night sections,
+   `day`, and `ink` for card backs.
+4. `OrbitDots`: a dotted orbit with coins riding it and labelled stations ("ticket → eat → bell → paid").
+5. `Wordmark` and `CoinMark` (6.4).
+6. `CoinCharacter`: the site's coin with a face (paints from `COIN_PAINTS`, moods, `look`, `feet`, `ground`, `sweat`,
+   `bob`, `blink`, `chewing`). The game canvas draws its own coins in the same style.
+7. `FoodBit` / `FoodScatter`: pear, grapes, seed (with the night glow).
+8. Hand-inked wobble: `#kb-wobble` / `#kb-wobble-soft` SVG filters defined once per document (`<Kb>` injects them);
+   use on illustration, never on text.
 
-### 6.7 Anti-patterns (things that make a page look generated)
+### 6.7 Motion (`motion.ts`, motion/react; CSS for loops)
 
-No purple/indigo gradients, no glassmorphism cards floating on blurred blobs, no emoji as icons, no "✨", no generic
-3-column feature grids with icons in circles, no centered-everything hero with a gradient headline, no stock "Web3"
-hexagons, no lorem-like copy ("Unlock the future of…"). Copy is short, specific and a little wry. Layouts use an
-asymmetric 12-column grid with deliberate whitespace; numbers are set in Geist Mono and aligned.
+- Easing `--ease-out` cubic-bezier(0.22, 1, 0.36, 1) for entrances; springs for coins, buttons and stickers
+  (`springs.pop`, `springs.drop`, `springs.press`).
+- Durations: 160 ms state, 320 ms enter, 640 ms scene; lists stagger 40 ms (`STAGGER`).
+- Presets (`moves`, or `useMoves()` for the reduced-motion twins): `popIn`, `stickerDrop` (custom = tilt), `press`,
+  `bob`, `chomp`, `stagger`.
+- Signature moves: buttons **sink into their shadow** on press (translate 3px, shadow 4 → 1px); stickers **drop** onto the
+  page and settle on their tilt; coins **bob** (2.6 s) and **blink** (5 s); the hunter **chomps**; the DONE **stamp**
+  lands with a squash and an ink bloom; countdown digits **flip**; the gauge needle swings on a spring.
+- `prefers-reduced-motion`: loops stand still (clouds keep a fixed spot), entrances become 120 ms fades, nothing is
+  motion-only. Every looping motif pauses when off screen (`useOffscreenPause`).
 
-### 6.8 Screens
+### 6.8 Anti-patterns (things that make a page look generic)
 
-- **Landing `/`:** hero = wordmark with light fall over the RingHorizon at dawn, the Homer line in Cormorant italic, the
-  live coin pond along the arc (coins eat each other), CTAs **Join the WL** and **Collab**. Then: "What Elymum is" (the
-  feast, on Elysium, 5-minute rounds), "A round, in orbit" (OrbitPath with four stations: ticket → eat → bell → paid),
-  the coins gallery, the NFT section (sealed emblems turning; "$1 in HYPE", WL → Mint → Play), the four arenas as
-  places on the ring, FAQ, footer. The background descends from day to night as you scroll.
-- **WL `/wl`:** a vertical "ascent": each task is a terrace on the ring; completing one sends a coin up the orbit to the
-  next. The shareable card becomes an **Elysian boarding pass** (night, wordmark, handle, coin, seigaiha back).
-- **Collab `/collab`:** same family; the review states as a mission log.
-- **Mint `/mint`:** night. A large emblem on a turning ring, supply as an arc gauge, price "0.0xx HYPE ≈ $1.00" with the
-  live HYPE/USD tick, quantity stepper, one primary action. Minted: the emblem drops through a light fall and lands as
-  your card; "Play" appears.
-- **Game:** the world is the habitat floor at night (`--abyss` with a faint arc grid that curves at the map edges like
-  the ring); food and loot glow; the HUD is hairline Geist Mono instrumentation; the round chip is an arc timer; the
-  Round over sheet is a "landing report" with LightFall payout.
-- **Admin:** quiet and dense: day theme, Geist Mono tables, a left rail of tabs, clear MAINNET/TESTNET status pill,
-  transaction preview drawers.
+No gradients on UI (the sky is the only gradient), no blurred or soft shadows, no glassmorphism, no purple/indigo, no
+grey outlines or 1px hairline cards, no emoji as icons, no "✨", no three equal feature cards with icons in circles, no
+centered-everything hero, no gradient headline text, no stock Web3 hexagons or glowing orbs, no lorem-like copy
+("Unlock the future of…"). Do not set headlines in DM Sans bold, numbers in a proportional font, or labels in Fraunces.
+Do not mix shadow directions or tilt dense content. Layouts are asymmetric (5/7, 4/8 columns) with deliberate
+whitespace; one primary (sun) button per view.
+
+### 6.9 Screens
+
+- **Landing `/`:** Plate I "The plain at dawn": `RingScene` full with the hero sticker (kicker, `Wordmark`, "You are
+  small change with a big appetite.", lede, the Homer `.quote`, **Join the WL** primary + **Collab** secondary), a sun
+  badge "05:00 per round. Then lunch.", and the coin pond on the shore (a hunter chomping a scared snack, "+$0.12" pop).
+  Then plates down the page from day into night: what Elymum is, "A round, in orbit" (`OrbitDots` with four
+  stations), the cast of coins, the NFT plate (night, sealed emblem, "$1 in HYPE", WL → Mint → Play pills), the four
+  arenas as places on the ring (tickets), FAQ, footer on a `RingScene` horizon.
+- **WL `/wl`:** "Three small chores": the `Stepper` ascent (each chore a terrace sticker, DONE stamps, progress bar).
+  The shareable card is an **Elysian boarding pass** (night, wordmark, handle, coin, seigaiha back) drawn as a
+  `Ticket`-style sticker.
+- **Collab `/collab`:** same family; review states as stamped stickers (RECEIVED, IN REVIEW, ACCEPTED).
+- **Mint `/mint`:** night plate "The mint, after dark": headline with one sun word, the mint card sticker (emblem panel
+  with `CoinCharacter` smug, `NO. ####` tag and "Sealed. For now." ribbon; `ArcGauge` supply; `HypeAmount` "0.0213 HYPE
+  ≈ $1.00" with the HYPE/USD tick; `QuantityStepper`; one primary **Mint N emblems**; WL status with `AddressChip`),
+  seigaiha band at the foot. Minted: the emblem pops in and a **Play** button appears.
+- **Game:** the floor of the ring at feeding time (night arena with curving contour arcs); HUD pieces are small cream
+  stickers with ink edges (round timer, "You're worth" sun badge, the leaderboard card, round minimap, `.kb-key` help);
+  the Round over sheet is a `Receipt` report card with a PAID stamp.
+- **Admin:** day theme, quiet and dense: Geist Mono tables with dashed rules, a rail of `Tabs`, a `StatusPill`
+  MAINNET/TESTNET in the header (a red MAINNET banner on mainnet), and a `TxPreview` before every wallet prompt.

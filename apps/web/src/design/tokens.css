@@ -1,138 +1,303 @@
-/* ─────────────────────────── Paper Ticket · tokens ───────────────────────────
- * Fresh riso inks on bright paper (docs/design/palette.md). The tokens sit
- * on `:root` (the page itself, body background, the canvas stage) and again on
- * every `.kb` root, so a `<Kb theme>` subtree keeps its own paper / night
- * print whatever the page around it uses.
- * `:root[data-theme='dark']` (the app's night setting) prints the page itself
- * at night.
+/* ─────────────────────────── Ring Storybook · tokens ───────────────────────────
+ * Spec §6. The Elysium ring habitat drawn like a picture book: confident ink
+ * outlines, flat cel colour with ONE hard shadow tone per fill, die-cut sticker
+ * UI with offset hard shadows. Day = the plain at dawn, night = in orbit.
  *
- * The ink values repeat `@elymum/shared` palette.ts (the canvas art reads that
- * file). apps/web/test/palette.test.ts keeps both in step and checks every
- * text / background pair below for >= 4.5:1 (WCAG), in both prints:
- *   --ink, --ink-2 and every *-ink / *-text accent on --paper and --card;
- *   --on-ink / --on-ink-2 on --ink; --ink-fixed on the pink, teal, mustard
- *   and green fills; --pink-sub on --pink; --on-cover on --danger.
- * The bright fills (--pink, --teal, ...) are for fills, strokes and large type
- * only; small accent TEXT uses the *-ink / *-text pairs.
+ * The tokens sit on `:root` (the page, body, the canvas stage) and again on
+ * every `.kb` root, so a `<Kb theme>` subtree keeps its own day / night
+ * whatever the page around it uses. Night applies with
+ *   :root[data-theme='dark'], [data-theme='night'] (on a .kb or around it),
+ *   or prefers-color-scheme: dark when the root has no data-theme.
+ *
+ * The paint values repeat `@elymum/shared` palette.ts (ELYSIUM / SHADE).
+ * apps/web/test/palette.test.ts keeps both in step and checks every text /
+ * background pair below for >= 4.5:1 (WCAG) in both themes.
+ *
+ * Rules of thumb:
+ *   - fills (--sun, --cyan, ...) are for shapes and big type; small accent
+ *     TEXT uses the *-ink tokens;
+ *   - outlines and offset shadows are ALWAYS --outline (#04181C), in both
+ *     themes: a sticker on the night page still has a black edge;
+ *   - stickers are cream in both themes (--sticker / --on-sticker).
  * ------------------------------------------------------------------------- */
 
 :root,
 .kb {
-  /* paper & ink */
-  --paper: #fcf4df;
-  --card: #fffdf6;
-  --ink: #1b1732;
-  --ink-2: #5b5577;
+  /* ── paints (theme independent) ── */
+  --abyss: #04181C;
+  --deep: #071317;
+  --trench: #0F2A30;
+  --reef: #163B44;
+  --current: #1E4D5A;
 
-  /* riso accents (fills) and their text-safe "ink" pairs */
-  --pink: #fb2f85;
-  --pink-ink: #d1166b;
-  --teal: #01aca4;
-  --teal-ink: #0f736e;
-  --mustard: #ffb413;
-  --mustard-ink: #90650e;
-  /* small-text-safe pink / mustard (>= 4.5:1 on paper and card) */
-  --pink-text: #c71466;
-  --mustard-text: #885f0d;
-  --blue: #3055fc;
-  --green: #17ad65;
-  --red: #f72e1c;
-  --orange: #ff7024;
-  --purple: #7f39f4;
-  --aqua: #1ac9e7;
-  /* text-safe pairs for the riso blue/green/red */
-  --blue-ink: #2f53f9;
-  --green-ink: #0f7644;
-  --red-ink: #cb1c0d;
-  /* fixed print ink: text/art on accent fills, same in both themes */
-  --ink-fixed: #1b1732;
-  /* secondary text on a --pink fill (button sub-labels), both themes */
-  --pink-sub: #3c0c26;
-  /* paper stock that stays paper in both themes (photo mats) */
-  --paper-fixed: #fcf4df;
-  /* light-blue millimetre grid (the arena sheet) */
-  --grid: rgba(40, 130, 235, 0.3);
-  /* text on a fixed dark stock (same in both themes) */
-  --on-cover: #fffdf6;
-  /* alert stock (same in both themes) and its text */
-  --danger: #cb1c0d;
+  --teal: #2D7388;
+  --teal-s: #1F5566;
+  --cyan: #34B7DD;
+  --cyan-s: #2490B0;
+  --spray: #6FCDE8;
+  --spray-s: #4FAECB;
+  --foam: #93D9EE;
+  --foam-s: #69B4CC;
+  --mist: #DBF2F9;
+  --mist-s: #B5DDEA;
 
-  /* derived */
-  --on-ink: #fffdf6; /* text on an --ink fill */
-  --on-ink-2: #cac6e3; /* secondary text on an --ink fill */
-  --line: rgba(27, 23, 50, 0.35); /* perforation / hairlines */
-  --line-soft: rgba(27, 23, 50, 0.14);
-  --grain-a: rgba(27, 23, 50, 0.055);
-  --grain-b: rgba(27, 23, 50, 0.035);
-  --halftone-dot: rgba(27, 23, 50, 0.22);
-  --scrim: rgba(27, 23, 50, 0.42);
-  --tape: color-mix(in srgb, var(--mustard) 45%, transparent);
+  --plain: #F8F7F4;
+  --linen: #F1EFE8;
+  --sand: #EBE6DD;
+  --sand-2: #DDD6C7;
+  --stone: #6B655A;
+  --cream: #F6EEDA;
+  --cream-s: #DCCDA8;
+  --white: #FFFFFF;
+
+  --sun: #F2C14E;
+  --sun-s: #D49A2B;
+  --up: #3C9A87;
+  --up-s: #2B7465;
+  --down: #FF5252;
+  --down-s: #C93A3A;
+
+  --meadow: #B9D98F;
+  --meadow-s: #9CC77A;
+  --clover: #8CC47A;
+  --clover-s: #74B064;
+  --verdant: #5FA36A;
+  --verdant-s: #4C8F58;
+  --forest: #3E8A5C;
+  --forest-s: #2F7049;
+  --pine: #2F6E4F;
+  --blush: #F39B86;
+  --coral: #D9714F;
+  --coral-s: #B4553A;
+
+  /* ── fixed ink: outlines, shadows, text on light fills (both themes) ── */
+  --outline: #04181C;
+  --ink-fixed: #04181C;
+  --shadow-ink: #04181C;
+  /* secondary text on a --sun fill (button sub-labels) */
+  --pink-sub: #3A2E0A;
+  /* sticker stock: cream with ink text, same in both themes */
+  --sticker: #F6EEDA;
+  --on-sticker: #04181C;
+  --on-sticker-2: #4A453B;
+  --paper-fixed: #F6EEDA;
+  /* text on a fixed dark stock and the alert stock */
+  --on-cover: #F6EEDA;
+  --danger: #B3261E;
+
+  /* ── theme (day: the plain at dawn) ── */
+  --paper: #F8F7F4;
+  --surface: #F1EFE8;
+  --card: #F6EEDA;
+  --ink: #04181C;
+  --ink-2: #4A453B;
+  --ink-3: #6B655A;
+  --on-ink: #F6EEDA;
+  --on-ink-2: #BFD8DD;
+
+  /* text-safe accent inks */
+  --teal-ink: #2D7388;
+  --up-ink: #2B7465;
+  --down-ink: #C42F2F;
+  --sun-ink: #8A5F0E;
+  --cyan-ink: #1E6F8C;
+
+  --line: rgba(4, 24, 28, 0.32);
+  --line-soft: rgba(4, 24, 28, 0.12);
+  --rule: #DDD6C7;
+  --scrim: rgba(4, 24, 28, 0.55);
+  --tape: rgba(219, 242, 249, 0.86);
+  --tape-edge: rgba(4, 24, 28, 0.22);
+  --halftone-dot: rgba(4, 24, 28, 0.16);
+  --grain-a: rgba(4, 24, 28, 0.04);
+  --grain-b: rgba(4, 24, 28, 0.025);
+  --grid: rgba(45, 115, 136, 0.18);
   --stamp-blend: multiply;
-  --focus: var(--pink-ink);
+  --focus: #2D7388;
+  --select: #F2C14E;
+  /* landing sky (day): night band at the top, dawn at the horizon */
+  --sky-0: #0F2A30;
+  --sky-1: #2D7388;
+  --sky-2: #6FCDE8;
+  --sky-3: #DBF2F9;
+  --star: #F6EEDA;
 
-  /* type */
-  --font-display: 'Bricolage Grotesque Variable', 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'DM Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
-  --display-stretch: 85%;
+  /* ── legacy names (Paper Ticket) → nearest Storybook role ── */
+  --pink: var(--sun); /* the primary fill */
+  --pink-ink: var(--teal-ink);
+  --pink-text: var(--teal-ink);
+  --teal-text: var(--teal-ink);
+  --mustard: var(--sun);
+  --mustard-ink: var(--sun-ink);
+  --mustard-text: var(--sun-ink);
+  --blue: var(--cyan);
+  --blue-ink: var(--cyan-ink);
+  --green: var(--up);
+  --green-ink: var(--up-ink);
+  --red: var(--down);
+  --red-ink: var(--down-ink);
+  --orange: var(--coral);
+  --purple: var(--teal-s);
+  --aqua: var(--spray);
 
-  /* type scale (display / mono) */
-  --t-hero: clamp(46px, 7vw, 92px);
-  --t-h1: 46px;
-  --t-h2: 32px;
-  --t-h3: 21px;
-  --t-body: 16px;
-  --t-small: 14px;
-  --t-label: 11.5px; /* mono labels; never smaller than 11px */
-
-  /* shape */
-  --r-ticket: 10px;
-  --r-card: 14px;
-  --r-chip: 5px;
-  --notch: 9px;
-  --stub-w: 104px;
-
-  /* print offsets (misregistration) */
-  --off: 5px;
+  /* ── outlines and offset shadows ── */
+  --stroke: 3px; /* stickers, buttons, cards */
+  --stroke-sm: 2.5px; /* tags, chips, keys */
+  --stroke-xs: 2px; /* tiny art, dense tables */
+  --stroke-art: 3px; /* illustration outlines at 1x */
+  --sh-1: 2px 2px 0 var(--shadow-ink);
+  --sh-2: 3px 3px 0 var(--shadow-ink);
+  --sh-3: 4px 4px 0 var(--shadow-ink); /* default sticker */
+  --sh-4: 6px 6px 0 var(--shadow-ink);
+  --sh-5: 8px 8px 0 var(--shadow-ink); /* hero cards, panels */
+  --sh-hover: 5px 5px 0 var(--shadow-ink);
+  --sh-press: 1px 1px 0 var(--shadow-ink);
+  --sh: var(--sh-3);
+  --off: 4px;
   --off-press: 1px;
 
-  /* motion (CSS side; springs live in motion.ts) */
-  --dur-micro: 150ms;
-  --dur-screen: 320ms;
-  --ease-print: cubic-bezier(0.2, 0.9, 0.25, 1);
+  /* ── type ── */
+  --font-display: 'Fraunces Variable', 'Fraunces', Georgia, 'Times New Roman', serif;
+  --font-body: 'DM Sans Variable', 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Geist Mono Variable', 'Geist Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  /* Fraunces axes: SOFT 100 always; WONK only on the wordmark and one word per page */
+  --fv-display: 'SOFT' 100, 'WONK' 0;
+  --fv-wonk: 'SOFT' 100, 'WONK' 1;
+  --display-stretch: 100%;
+
+  --t-hero: clamp(48px, 7vw, 96px);
+  --t-h1: clamp(40px, 5vw, 64px);
+  --t-h2: clamp(30px, 3.6vw, 46px);
+  --t-h3: 25px;
+  --t-h4: 20px;
+  --t-lede: 18px;
+  --t-body: 16px;
+  --t-small: 14px;
+  --t-label: 12px; /* mono kickers and labels, uppercase +0.08em */
+  --t-micro: 11px; /* never smaller */
+  --t-num: 28px; /* Geist Mono figures in cards */
+
+  /* ── space ── */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --s-7: 48px;
+  --s-8: 64px;
+  --s-9: 96px;
+  --gutter: clamp(16px, 4.4vw, 64px);
+  --measure: 62ch;
+
+  /* ── radii: soft die-cut sticker corners ── */
+  --r-key: 7px;
+  --r-tag: 8px;
+  --r-btn: 14px;
+  --r-card: 18px;
+  --r-panel: 24px;
+  --r-pill: 999px;
+  --r-ticket: 18px;
+  --r-chip: 8px;
+  --notch: 10px;
+  --stub-w: 104px;
+
+  /* ── motion (springs live in motion.ts) ── */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-press: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-print: var(--ease-out);
+  --dur-micro: 160ms;
+  --dur-state: 160ms;
+  --dur-enter: 320ms;
+  --dur-screen: 320ms;
+  --dur-scene: 640ms;
+  --dur-bob: 2.6s;
+  --dur-blink: 5s;
+  --dur-drift: 60s;
 
   color-scheme: light;
 }
 
-/* Night print: same bright accents on a deep violet stock. Text-safe accent
- * inks are lightened so they keep >= 4.5:1 on the dark paper and card. */
+/* Night: in orbit. Same paints; the page goes deep teal, text goes cream. */
 :root[data-theme='dark'],
+:root[data-theme='night'],
 .kb[data-theme='night'],
 [data-theme='night'] .kb {
-  --paper: #19142e;
-  --card: #251f3d;
-  --ink: #f5eedc;
-  --ink-2: #b1accc;
+  --paper: #0F2A30;
+  --surface: #071317;
+  --card: #163B44;
+  --ink: #F6EEDA;
+  --ink-2: #BFD8DD;
+  --ink-3: #93D9EE;
+  --on-ink: #0F2A30;
+  --on-ink-2: #1E4D5A;
 
-  --pink-ink: #fc739f;
-  --teal-ink: #21c2b9;
-  --mustard-ink: #ffb413;
-  --pink-text: #fc739f;
-  --mustard-text: #ffb413;
-  --blue-ink: #7a9efb;
-  --green-ink: #21c776;
-  --red-ink: #fc7b68;
+  --teal-ink: #93D9EE;
+  --up-ink: #6FD3B8;
+  --down-ink: #FF8A80;
+  --sun-ink: #F2C14E;
+  --cyan-ink: #6FCDE8;
 
-  --on-ink: #19142e;
-  --on-ink-2: #4d4866;
-  --line: rgba(245, 238, 220, 0.32);
-  --line-soft: rgba(245, 238, 220, 0.12);
-  --grain-a: rgba(245, 238, 220, 0.055);
-  --grain-b: rgba(245, 238, 220, 0.035);
-  --halftone-dot: rgba(0, 0, 0, 0.55);
-  --scrim: rgba(7, 5, 18, 0.62);
-  --tape: color-mix(in srgb, var(--mustard) 32%, transparent);
-  --stamp-blend: screen;
+  --line: rgba(147, 217, 238, 0.34);
+  --line-soft: rgba(147, 217, 238, 0.14);
+  --rule: #1E4D5A;
+  --scrim: rgba(0, 11, 13, 0.66);
+  --tape: rgba(219, 242, 249, 0.7);
+  --tape-edge: rgba(4, 24, 28, 0.3);
+  --halftone-dot: rgba(0, 0, 0, 0.4);
+  --grain-a: rgba(246, 238, 218, 0.04);
+  --grain-b: rgba(246, 238, 218, 0.025);
+  --grid: rgba(147, 217, 238, 0.12);
+  --stamp-blend: normal;
+  --focus: #34B7DD;
+  --select: #34B7DD;
+  --shadow-ink: #000507;
+  --sky-0: #04181C;
+  --sky-1: #071317;
+  --sky-2: #0F2A30;
+  --sky-3: #163B44;
 
   color-scheme: dark;
+}
+
+/* No explicit theme on the page: follow the system. (Every <Kb> root sets its own.) */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --paper: #0F2A30;
+    --surface: #071317;
+    --card: #163B44;
+    --ink: #F6EEDA;
+    --ink-2: #BFD8DD;
+    --ink-3: #93D9EE;
+    --on-ink: #0F2A30;
+    --on-ink-2: #1E4D5A;
+
+    --teal-ink: #93D9EE;
+    --up-ink: #6FD3B8;
+    --down-ink: #FF8A80;
+    --sun-ink: #F2C14E;
+    --cyan-ink: #6FCDE8;
+
+    --line: rgba(147, 217, 238, 0.34);
+    --line-soft: rgba(147, 217, 238, 0.14);
+    --rule: #1E4D5A;
+    --scrim: rgba(0, 11, 13, 0.66);
+    --tape: rgba(219, 242, 249, 0.7);
+    --tape-edge: rgba(4, 24, 28, 0.3);
+    --halftone-dot: rgba(0, 0, 0, 0.4);
+    --grain-a: rgba(246, 238, 218, 0.04);
+    --grain-b: rgba(246, 238, 218, 0.025);
+    --grid: rgba(147, 217, 238, 0.12);
+    --stamp-blend: normal;
+    --focus: #34B7DD;
+    --select: #34B7DD;
+    --shadow-ink: #000507;
+    --sky-0: #04181C;
+    --sky-1: #071317;
+    --sky-2: #0F2A30;
+    --sky-3: #163B44;
+
+    color-scheme: dark;
+  }
 }

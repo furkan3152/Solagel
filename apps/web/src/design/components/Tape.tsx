@@ -3,7 +3,8 @@ import type { CSSProperties, HTMLAttributes, ReactNode } from 'react';
 export interface TapeProps extends Omit<HTMLAttributes<HTMLSpanElement>, 'children' | 'style'> {
   /** Degrees, default -4. */
   rotate?: number;
-  tone?: 'mustard' | 'pink' | 'teal' | 'paper';
+  /** `mist` (default, the pale blue tape), `sun`, `blush`, `cream`; legacy `mustard`/`pink`/`teal`/`paper`. */
+  tone?: 'mist' | 'sun' | 'blush' | 'cream' | 'mustard' | 'pink' | 'teal' | 'paper';
   /** Width in px (default 88). */
   width?: number;
   /** Optional mono text written on the tape. */
@@ -15,8 +16,8 @@ export interface TapeProps extends Omit<HTMLAttributes<HTMLSpanElement>, 'childr
   inline?: boolean;
 }
 
-/** A strip of translucent masking tape with torn ends. Decorative. */
-export function Tape({ rotate = -4, tone = 'mustard', width = 88, children, className, style, inline = false, ...rest }: TapeProps) {
+/** A strip of translucent tape with nicked ends holding a sticker down. Decorative. */
+export function Tape({ rotate = -4, tone = 'mist', width = 88, children, className, style, inline = false, ...rest }: TapeProps) {
   return (
     <span
       {...rest}
