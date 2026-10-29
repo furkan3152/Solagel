@@ -1,0 +1,168 @@
+/* ── the site sign-in widget (WL, collab, mint, the gate) ─────────────── */
+.sw {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+  min-width: 0;
+}
+.sw-signed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.sw-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.sw-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--teal-ink);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+  cursor: pointer;
+}
+.sw-link:hover {
+  color: var(--ink);
+}
+.sw-link:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+.sw-note {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+.sw-note.is-error {
+  color: var(--down-ink);
+  font-weight: 600;
+}
+.sw-wallets {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+}
+.sw-opt {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 58px;
+  padding: 8px 14px 8px 9px;
+  border: var(--stroke) solid var(--outline);
+  border-radius: 14px;
+  background: var(--sticker);
+  color: var(--ink-fixed);
+  font: inherit;
+  font-weight: 700;
+  font-size: 16px;
+  text-align: left;
+  box-shadow: var(--sh-3);
+  cursor: pointer;
+  transition: transform var(--dur-micro, 160ms) var(--ease-press), box-shadow var(--dur-micro, 160ms) var(--ease-press), background-color 120ms linear;
+}
+.sw-opt:hover:not(:disabled) {
+  transform: translate(-1px, -1px);
+  box-shadow: var(--sh-hover);
+  background: var(--white);
+}
+.sw-opt:active:not(:disabled) {
+  transform: translate(3px, 3px);
+  box-shadow: var(--sh-press);
+}
+.sw-opt:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+.sw-opt:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+.sw-opt.is-busy {
+  opacity: 1;
+  background: var(--sun);
+}
+.sw-opt__icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  overflow: hidden;
+  border: var(--stroke-xs) solid var(--outline);
+  border-radius: 9px;
+  background: var(--white);
+}
+.sw-opt__icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.sw-opt__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sw-opt__go {
+  transition: transform var(--dur-micro, 160ms) var(--ease-press);
+}
+.sw-opt:hover .sw-opt__go {
+  transform: translateX(3px);
+}
+.sw-opt.is-busy .sw-opt__go {
+  animation: sw-nudge 0.9s ease-in-out infinite;
+}
+@keyframes sw-nudge {
+  50% {
+    transform: translateX(4px);
+  }
+}
+.sw-none {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0;
+  padding: 12px 14px;
+  border: var(--stroke-sm) dashed var(--sand-2);
+  border-radius: 12px;
+  background: var(--linen);
+  color: var(--ink-2);
+  font-size: 14.5px;
+  line-height: 1.45;
+}
+.sw-none strong {
+  color: var(--ink);
+}
+.sw-none__icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: 9px;
+  background: var(--sun);
+  color: var(--ink-fixed);
+}
+@media (prefers-reduced-motion: reduce) {
+  .sw-opt,
+  .sw-opt__go {
+    transition: none;
+  }
+  .sw-opt.is-busy .sw-opt__go {
+    animation: none;
+  }
+}

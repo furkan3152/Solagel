@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { InkButton } from '../../design';
+import { AddressChip, Button, Icon, StatusPill } from '../../design';
 import { providerSigner } from '../../wallet/siwe';
 import { connectWallet, connected, disconnectWallet, initWallets, useWallet } from '../../wallet/store';
-import { shortWallet } from '../settings';
 import { signIn, signOut, useSession, type SiteSession } from '../session';
+import './wallet.css';
 
 /**
  * Wallets for the site pages (WL, collab, mint): EIP-6963 discovery (MetaMask, Rabby or any
@@ -62,12 +62,14 @@ export function WalletSignIn({ label = 'Sign in with your wallet', onSession }: 
 
   if (session && (!address || same(session.address, address))) {
     return (
-      <div className="st-signed">
-        <span className="kb-chip mono kb-tone-teal">Signed in</span>
-        <code title={session.address}>{shortWallet(session.address)}</code>
+      <div className="sw-signed">
+        <StatusPill tone="ok" size="sm">
+          Signed in
+        </StatusPill>
+        <AddressChip address={session.address} size="sm" />
         <button
           type="button"
-          className="st-textlink"
+          className="sw-link"
           onClick={() => {
             signOut();
             asked.current = null;
@@ -83,22 +85,24 @@ export function WalletSignIn({ label = 'Sign in with your wallet', onSession }: 
 
   if (address) {
     return (
-      <div className="st-signin">
-        <div className="st-signed">
-          <span className="kb-chip mono kb-tone-ink">Connected</span>
-          <code title={address}>{shortWallet(address)}</code>
-          <button type="button" className="st-textlink" onClick={() => disconnectWallet()}>
+      <div className="sw">
+        <div className="sw-signed">
+          <StatusPill tone="live" size="sm">
+            Connected
+          </StatusPill>
+          <AddressChip address={address} size="sm" copy={false} />
+          <button type="button" className="sw-link" onClick={() => disconnectWallet()}>
             Use another wallet
           </button>
         </div>
-        <div className="st-row" style={{ marginTop: 12 }}>
-          <InkButton variant="pink" onClick={() => void doSign()} disabled={signing}>
+        <div className="sw-row">
+          <Button variant="teal" lead="wallet" onClick={() => void doSign()} disabled={signing} loading={signing}>
             {signing ? 'Check your wallet…' : label}
-          </InkButton>
+          </Button>
         </div>
-        <p className="st-note">Signing is free and sends no transaction.</p>
+        <p className="sw-note">Signing is free and sends no transaction.</p>
         {error && (
-          <p className="st-note is-error" role="alert">
+          <p className="sw-note is-error" role="alert">
             {error}
           </p>
         )}
@@ -107,35 +111,46 @@ export function WalletSignIn({ label = 'Sign in with your wallet', onSession }: 
   }
 
   return (
-    <div className="st-signin">
+    <div className="sw">
       {providers.length === 0 ? (
-        <p className="st-note">
-          No browser wallet found. Install MetaMask, Rabby or any browser wallet, or open this page in your wallet app&apos;s browser.
+        <p className="sw-none">
+          <span className="sw-none__icon" aria-hidden="true">
+            <Icon name="wallet" size={22} />
+          </span>
+          <span>
+            <strong>No browser wallet found.</strong> Install MetaMask, Rabby or any browser wallet, or open this page in your wallet app&apos;s browser.
+          </span>
         </p>
       ) : (
-        <div className="st-wallets" role="group" aria-label="Wallets">
-          {providers.map((d) => (
-            <button
-              key={d.info.uuid}
-              type="button"
-              className="st-wallet-opt"
-              disabled={connecting}
-              aria-busy={connecting && current?.info.uuid === d.info.uuid}
-              onClick={() => {
-                setPicked(true);
-                asked.current = null;
-                void connectWallet(d);
-              }}
-            >
-              {d.info.icon && <img src={d.info.icon} alt="" />}
-              <span>{d.info.name}</span>
-            </button>
-          ))}
+        <div className="sw-wallets" role="group" aria-label="Wallets">
+          {providers.map((d) => {
+            const busy = connecting && current?.info.uuid === d.info.uuid;
+            return (
+              <button
+                key={d.info.uuid}
+                type="button"
+                className={`sw-opt${busy ? ' is-busy' : ''}`}
+                disabled={connecting}
+                aria-busy={busy}
+                onClick={() => {
+                  setPicked(true);
+                  asked.current = null;
+                  void connectWallet(d);
+                }}
+              >
+                <span className="sw-opt__icon" aria-hidden="true">
+                  {d.info.icon ? <img src={d.info.icon} alt="" /> : <Icon name="wallet" size={20} />}
+                </span>
+                <span className="sw-opt__name">{d.info.name}</span>
+                <Icon name="arrow" size={18} className="sw-opt__go" />
+              </button>
+            );
+          })}
         </div>
       )}
-      <p className="st-note">{connecting ? 'Connecting…' : 'Signing in is free and sends no transaction.'}</p>
+      <p className="sw-note">{connecting ? 'Connecting… check your wallet.' : 'Signing in is free and sends no transaction.'}</p>
       {(error || walletError) && (
-        <p className="st-note is-error" role="alert">
+        <p className="sw-note is-error" role="alert">
           {error ?? walletError}
         </p>
       )}

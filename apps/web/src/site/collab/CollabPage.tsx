@@ -1,11 +1,14 @@
 import { COLLAB_ROLES, COLLAB_TYPES, SITE_LIMITS, isXStatusUrl, type CollabPublic, type CollabWalletRow } from '@elymum/shared';
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type ReactNode } from 'react';
-import { Field, Icon, InkButton, Stamp, StampSpinner } from '../../design';
+import { Button, CoinCharacter, Field, FoodBit, Icon, Stamp, StampSpinner, Sticker, Tape, type CoinMood, type CoinPaint, type StampTone } from '../../design';
 import { SiteApiError, site } from '../api';
 import { dropExpired } from '../session';
 import { X_URL, useSiteSettings, xProfile } from '../settings';
 import { SitePage, XIcon } from '../Shell';
 import { SiteWalletProvider, WalletSignIn, useSiteSession } from '../wallet/SiteWallet';
+import { Ascent } from '../wl/Ascent';
+import { ChoreArt, Magnifier, Moon, RainCloud, Sealed } from '../wl/ChoreArt';
+import { StoryPlate } from '../wl/Plate';
 import { CollabGuide } from './CollabGuide';
 import {
   EMPTY_DRAFT,
@@ -21,6 +24,7 @@ import {
   type ApplyDraft,
   type ApplyErrors,
 } from './logic';
+import '../wl/wl.css';
 import './collab.css';
 
 /** `/collab`: apply with a community, follow its review, and hand out the spots. */
@@ -34,12 +38,12 @@ export function CollabPage() {
   );
 }
 
-const PHASE: Record<CollabPublic['phase'], { label: string; tone: 'mustard' | 'red' | 'teal' | 'ink' | 'pink' }> = {
-  in_review: { label: 'In review', tone: 'mustard' },
-  rejected: { label: 'Not this time', tone: 'red' },
-  approved: { label: 'Approved', tone: 'teal' },
-  submitted: { label: 'Submitted', tone: 'ink' },
-  closed: { label: 'Closed', tone: 'pink' },
+const PHASE: Record<CollabPublic['phase'], { label: string; tone: 'sun' | 'down' | 'up' | 'teal' | 'ink' }> = {
+  in_review: { label: 'In review', tone: 'sun' },
+  rejected: { label: 'Not this time', tone: 'down' },
+  approved: { label: 'Approved', tone: 'up' },
+  submitted: { label: 'Submitted', tone: 'teal' },
+  closed: { label: 'Closed', tone: 'ink' },
 };
 
 function stepOf(view: 'new' | CollabPublic | null): number {
@@ -114,152 +118,229 @@ function Collab() {
   const replace = (c: CollabPublic) => setCollabs((list) => (list ? list.map((x) => (x.id === c.id ? c : x)) : [c]));
   const guideFor = current && current !== 'new' ? current : null;
 
+  const STEPS = ['Apply', 'Review', 'Add wallets'];
   return (
-    <div className="st-page cb-page">
-      <header className="cb-head">
-        <div>
-          <span className="st-kicker mono">Collab · Elymum NFT</span>
-          <h1 className="st-title">Bring your community.</h1>
-          <p className="st-deck">DAOs, guilds, alpha groups and NFT projects can get Elymum WL spots to raffle to their members. Tell us about yours.</p>
-        </div>
-        <ol className="cb-progress" aria-label="Collab steps">
-          {['Apply', 'Review', 'Add wallets'].map((label, i) => (
-            <li key={label} className={i === step ? 'is-on' : i < step ? 'is-done' : ''} aria-current={i === step ? 'step' : undefined}>
-              <span className="mono">{i + 1}</span> {label}
-            </li>
-          ))}
-        </ol>
-      </header>
+    <StoryPlate numeral="V" title="Bring your community" aside="/collab" className="cb-plate">
+      <div className="cb-page">
+        <header className="cb-head">
+          <div className="cb-head__text">
+            <span className="kicker wl-kicker">Collab · Elymum NFT</span>
+            <h1 className="wl-title">
+              Bring your community to the <span className="wonk">table.</span>
+            </h1>
+            <p className="wl-deck">DAOs, guilds, alpha groups and NFT projects can get Elymum WL spots to raffle to their members. Tell us about yours; a person reads every one.</p>
+          </div>
+          <div className="cb-head__map">
+            <Ascent total={3} done={current && current !== 'new' && current.phase === 'submitted' ? 3 : step} active={step} paint="sun" labels={['APPLY', 'REVIEW', 'WALLETS']} goal="Spots" />
+            <ol className="cb-progress" aria-label="Collab steps">
+              {STEPS.map((label, i) => (
+                <li key={label} className={i === step ? 'is-on' : i < step ? 'is-done' : ''} aria-current={i === step ? 'step' : undefined}>
+                  <span className="cb-progress__n num" aria-hidden="true">
+                    {i < step ? <Icon name="check" size={14} /> : i + 1}
+                  </span>{' '}
+                  {label}
+                </li>
+              ))}
+            </ol>
+          </div>
+        </header>
 
-      <div className="cb-layout">
-        <aside className="cb-side">
-          <button type="button" className="cb-guidecard" onClick={() => setGuide(true)}>
-            <span className="cb-guidecard__k mono">Collab guide</span>
-            <strong>Read this first</strong>
-            <span>How to run your raffle and hand out your spots.</span>
-            <span className="cb-guidecard__open mono">
-              Open <Icon name="arrow" size={16} />
-            </span>
-          </button>
+        <div className="cb-layout">
+          <aside className="cb-side">
+            <button type="button" className="cb-guidecard" onClick={() => setGuide(true)}>
+              <Tape className="cb-guidecard__tape" rotate={-5} width={80} />
+              <span className="cb-guidecard__art" aria-hidden="true">
+                <ChoreArt kind="text" />
+              </span>
+              <span className="cb-guidecard__k mono">Collab guide</span>
+              <strong>Read this first</strong>
+              <span>How to run your raffle and hand out your spots. Two minutes, with a post you can copy.</span>
+              <span className="cb-guidecard__open mono">
+                Open <Icon name="arrow" size={16} />
+              </span>
+            </button>
 
-          <section className="cb-mine" aria-labelledby="cb-mine-h">
-            <h2 id="cb-mine-h" className="cb-mine__h mono">
-              Your communities
-            </h2>
-            {!session ? (
-              <>
-                <p className="st-note">Applied before? Sign in with the same wallet to see your communities.</p>
-                {signin ? (
-                  <WalletSignIn label="Sign in" />
-                ) : (
-                  <InkButton variant="paper" size="sm" lead="wallet" onClick={() => setSignin(true)}>
-                    Sign in
-                  </InkButton>
-                )}
-              </>
-            ) : collabs === null ? (
-              <StampSpinner label="Loading" />
+            <Sticker as="section" className="cb-mine" tone="white" pad="sm" lift="sm" aria-labelledby="cb-mine-h">
+              <h2 id="cb-mine-h" className="cb-mine__h mono">
+                Mission log · your communities
+              </h2>
+              {!session ? (
+                <>
+                  <p className="wl-note">Applied before? Sign in with the same wallet to see your communities.</p>
+                  {signin ? (
+                    <WalletSignIn label="Sign in" />
+                  ) : (
+                    <Button variant="secondary" size="sm" lead="wallet" onClick={() => setSignin(true)}>
+                      Sign in
+                    </Button>
+                  )}
+                </>
+              ) : collabs === null ? (
+                <StampSpinner label="Loading" />
+              ) : (
+                <>
+                  {collabs.length === 0 && <p className="wl-note">No communities yet. Fill in the form to apply.</p>}
+                  <ul className="cb-mine__list">
+                    {collabs.map((c) => (
+                      <li key={c.id}>
+                        <button type="button" className={`cb-mine__item${current !== 'new' && current?.id === c.id ? ' is-on' : ''}`} onClick={() => setSelected(c.id)} aria-current={current !== 'new' && current?.id === c.id ? 'true' : undefined}>
+                          <span className="cb-mine__name">{c.community}</span>
+                          <span className={`kb-chip mono kb-tone-${PHASE[c.phase].tone}`}>{PHASE[c.phase].label}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  {collabs.length > 0 && (
+                    <button type="button" className="wl-textlink" onClick={() => setSelected('new')} disabled={!settings.collabOpen}>
+                      + Add another community
+                    </button>
+                  )}
+                  <WalletSignIn />
+                </>
+              )}
+              {loadErr && (
+                <p className="wl-note is-error" role="alert">
+                  {loadErr}
+                </p>
+              )}
+            </Sticker>
+            <p className="wl-note">
+              Questions? DM{' '}
+              <a className="cb-link" href={X_URL} target="_blank" rel="noreferrer">
+                @elymum
+              </a>{' '}
+              on X. We answer, slowly but kindly.
+            </p>
+          </aside>
+
+          <section className="cb-main" aria-live="polite">
+            {!loaded || current === null ? (
+              <div className="cb-loading">
+                <StampSpinner label="Loading" />
+              </div>
+            ) : current === 'new' ? (
+              settings.collabOpen ? (
+                <ApplyForm
+                  d={draft}
+                  setD={setDraft}
+                  onApplied={(c) => {
+                    setDraft(EMPTY_DRAFT);
+                    window.scrollTo({ top: 0 });
+                    setCollabs((list) => [c, ...(list ?? [])]);
+                    setSelected(c.id);
+                  }}
+                  onCancel={collabs && collabs.length > 0 ? () => setSelected(collabs[0].id) : undefined}
+                />
+              ) : (
+                <ClosedCard onSignIn={session ? undefined : () => setSignin(true)} />
+              )
             ) : (
-              <>
-                {collabs.length === 0 && <p className="st-note">No communities yet. Fill in the form to apply.</p>}
-                <ul className="cb-mine__list">
-                  {collabs.map((c) => (
-                    <li key={c.id}>
-                      <button type="button" className={`cb-mine__item${current !== 'new' && current?.id === c.id ? ' is-on' : ''}`} onClick={() => setSelected(c.id)} aria-current={current !== 'new' && current?.id === c.id ? 'true' : undefined}>
-                        <span className="cb-mine__name">{c.community}</span>
-                        <span className={`kb-chip mono kb-tone-${PHASE[c.phase].tone}`}>{PHASE[c.phase].label}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-                {collabs.length > 0 && (
-                  <button type="button" className="st-textlink" onClick={() => setSelected('new')} disabled={!settings.collabOpen}>
-                    + Add another community
-                  </button>
-                )}
-                <WalletSignIn />
-              </>
-            )}
-            {loadErr && (
-              <p className="st-note is-error" role="alert">
-                {loadErr}
-              </p>
+              <CollabView key={current.id} collab={current} onChange={replace} onGuide={() => setGuide(true)} onExpired={() => session && void refresh(session.token)} />
             )}
           </section>
-          <p className="st-note">
-            Questions? DM <a href={X_URL} target="_blank" rel="noreferrer">@elymum</a> on X.
-          </p>
-        </aside>
-
-        <section className="cb-main" aria-live="polite">
-          {!loaded || current === null ? (
-            <div className="cb-loading">
-              <StampSpinner label="Loading" />
-            </div>
-          ) : current === 'new' ? (
-            settings.collabOpen ? (
-              <ApplyForm
-                d={draft}
-                setD={setDraft}
-                onApplied={(c) => {
-                  setDraft(EMPTY_DRAFT);
-                  window.scrollTo({ top: 0 });
-                  setCollabs((list) => [c, ...(list ?? [])]);
-                  setSelected(c.id);
-                }}
-                onCancel={collabs && collabs.length > 0 ? () => setSelected(collabs[0].id) : undefined}
-              />
-            ) : (
-              <ClosedCard onSignIn={session ? undefined : () => setSignin(true)} />
-            )
-          ) : (
-            <CollabView key={current.id} collab={current} onChange={replace} onGuide={() => setGuide(true)} onExpired={() => session && void refresh(session.token)} />
-          )}
-        </section>
+        </div>
+        <CollabGuide open={guide} onClose={() => setGuide(false)} community={guideFor?.community ?? ''} spots={guideFor?.spots ?? null} deadline={guideFor?.deadline ?? null} />
       </div>
-      <CollabGuide open={guide} onClose={() => setGuide(false)} community={guideFor?.community ?? ''} spots={guideFor?.spots ?? null} deadline={guideFor?.deadline ?? null} />
-    </div>
+    </StoryPlate>
+  );
+}
+
+/** The picture at the top of a state card: a small storybook plate with a coin, a prop and a caption. */
+function Vignette({
+  tone,
+  plate,
+  caption,
+  coin,
+  mood,
+  prop,
+  second,
+  night = false,
+}: {
+  tone: 'mist' | 'linen' | 'mint' | 'sand' | 'night' | 'sun';
+  plate: string;
+  caption: string;
+  coin: CoinPaint;
+  mood: CoinMood;
+  prop?: ReactNode;
+  second?: { paint: CoinPaint; mood: CoinMood };
+  night?: boolean;
+}) {
+  return (
+    <figure className={`cb-vig cb-vig--${tone}`} aria-hidden="true">
+      <span className="cb-vig__ground" />
+      {night && (
+        <span className="cb-vig__stars">
+          <i />
+          <i />
+          <i />
+          <i />
+        </span>
+      )}
+      <span className="cb-vig__coin">
+        <CoinCharacter paint={coin} mood={mood} size={104} feet ground sweat={mood === 'scared'} bob={mood === 'happy'} look={[3, 0]} />
+      </span>
+      {second && (
+        <span className="cb-vig__coin cb-vig__coin--2">
+          <CoinCharacter paint={second.paint} mood={second.mood} size={72} feet ground bob={second.mood === 'happy'} phase={0.8} look={[-3, 0]} />
+        </span>
+      )}
+      {prop && <span className="cb-vig__prop">{prop}</span>}
+      <figcaption className="cb-vig__cap mono">
+        <span>{plate}</span>
+        <span>{caption}</span>
+      </figcaption>
+    </figure>
   );
 }
 
 function ClosedCard({ onSignIn }: { onSignIn?: () => void }) {
   return (
-    <div className="st-card cb-state">
-      <Stamp text="Closed" tone="pink" size="md" rotate={-8} />
-      <h2 className="cb-state__title">Applications are closed.</h2>
-      <p className="cb-state__text">
-        We are not taking new communities right now. Follow <a href={X_URL} target="_blank" rel="noreferrer">@elymum</a> on X for the next round.
-      </p>
-      <div className="st-row">
-        <a className="st-linkbtn st-linkbtn--ink" href={X_URL} target="_blank" rel="noreferrer">
-          <XIcon /> Follow @elymum
-        </a>
-        {onSignIn && (
-          <button type="button" className="st-textlink" onClick={onSignIn}>
-            Applied before? Sign in
-          </button>
-        )}
+    <Sticker tone="white" lift="lg" pad="none" round="lg" className="cb-state" data-phase="shut">
+      <Vignette tone="night" plate="Plate V.0" caption="After hours" coin="cream" mood="sleepy" prop={<Moon size={84} />} night />
+      <div className="cb-state__body">
+        <Stamp text="Closed" tone="ink" size="lg" rotate={-6} className="cb-state__stamp" />
+        <h2 className="cb-state__title">Applications are closed.</h2>
+        <p className="cb-state__text">
+          We are not taking new communities right now. Follow{' '}
+          <a className="cb-link" href={X_URL} target="_blank" rel="noreferrer">
+            @elymum
+          </a>{' '}
+          on X for the next round.
+        </p>
+        <div className="wl-row">
+          <a className="kb-btn kb-btn--teal kb-btn--md" href={X_URL} target="_blank" rel="noreferrer">
+            <XIcon /> Follow @elymum
+          </a>
+          {onSignIn && (
+            <button type="button" className="wl-textlink" onClick={onSignIn}>
+              Applied before? Sign in
+            </button>
+          )}
+        </div>
       </div>
-    </div>
+    </Sticker>
   );
 }
 
 function Select({ id, label, value, onChange, options, error }: { id: string; label: string; value: string; onChange: (v: string) => void; options: [string, string][]; error?: string }) {
   return (
-    <div className={`cb-field${error ? ' is-error' : ''}`}>
-      <label className="st-label mono" htmlFor={id}>
+    <div className={`kb-field cb-field${error ? ' is-error' : ''}`}>
+      <label className="kb-field__label mono" htmlFor={id}>
         {label}
       </label>
-      <select id={id} className="st-input" value={value} onChange={(e) => onChange(e.target.value)} aria-invalid={error ? true : undefined} aria-describedby={error ? `${id}-err` : undefined}>
-        <option value="">Pick one</option>
-        {options.map(([v, l]) => (
-          <option key={v} value={v}>
-            {l}
-          </option>
-        ))}
-      </select>
+      <span className="cb-select">
+        <select id={id} className="cb-input" value={value} onChange={(e) => onChange(e.target.value)} aria-invalid={error ? true : undefined} aria-describedby={error ? `${id}-err` : undefined}>
+          <option value="">Pick one</option>
+          {options.map(([v, l]) => (
+            <option key={v} value={v}>
+              {l}
+            </option>
+          ))}
+        </select>
+        <Icon name="chevron" size={18} className="cb-select__chev" />
+      </span>
       {error && (
-        <p className="st-note is-error" id={`${id}-err`} role="alert">
+        <p className="kb-field__note cb-err" id={`${id}-err`} role="alert">
           {error}
         </p>
       )}
@@ -313,7 +394,7 @@ export function ApplyForm({ d, setD, onApplied, onCancel }: { d: ApplyDraft; set
   return (
     <form
       ref={form}
-      className="st-card cb-form"
+      className="kb-sticker kb-sticker--white kb-sticker--lift-lg kb-sticker--pad-none kb-sticker--round cb-form"
       noValidate
       onSubmit={(e) => {
         e.preventDefault();
@@ -321,9 +402,21 @@ export function ApplyForm({ d, setD, onApplied, onCancel }: { d: ApplyDraft; set
       }}
       aria-labelledby="cb-form-h"
     >
-      <h2 className="cb-form__h" id="cb-form-h">
-        Apply with your community
-      </h2>
+      <div className="cb-form__top">
+        <span className="cb-form__art" aria-hidden="true">
+          <CoinCharacter paint="cyan" mood="smile" size={84} feet look={[3, -2]} />
+          <span className="cb-form__art2">
+            <CoinCharacter paint="sun" mood="happy" size={58} feet phase={1.2} look={[-3, -1]} />
+          </span>
+        </span>
+        <div>
+          <span className="kicker cb-form__k">Plate V.i · the application</span>
+          <h2 className="cb-form__h" id="cb-form-h">
+            Apply with your community
+          </h2>
+          <p className="cb-form__lede">Nine fields, one free signature. We DM you on X when there is news.</p>
+        </div>
+      </div>
       <div className="cb-form__grid">
         <Field className="cb-span2" label="Community name" value={d.community} onChange={(e) => set('community')(e.target.value)} maxLength={SITE_LIMITS.community + 20} error={errors.community} autoComplete="off" />
         <Select id="cb-type" label="Type" value={d.type} onChange={set('type')} options={COLLAB_TYPES.map((t) => [t, TYPE_LABEL[t]])} error={errors.type} />
@@ -344,12 +437,12 @@ export function ApplyForm({ d, setD, onApplied, onCancel }: { d: ApplyDraft; set
           spellCheck={false}
           autoComplete="off"
         />
-        <div className="cb-field cb-span2">
-          <label className="st-label mono" htmlFor="cb-about">
+        <div className={`kb-field cb-span2${errors.about ? ' is-error' : ''}`}>
+          <label className="kb-field__label mono" htmlFor="cb-about">
             About your community
           </label>
-          <textarea id="cb-about" className="st-input" value={d.about} onChange={(e) => set('about')(e.target.value)} maxLength={SITE_LIMITS.about + 50} aria-invalid={errors.about ? true : undefined} aria-describedby="cb-about-note" />
-          <p className={`st-note${errors.about ? ' is-error' : ''}`} id="cb-about-note" role={errors.about ? 'alert' : undefined}>
+          <textarea id="cb-about" className="wl-input" value={d.about} onChange={(e) => set('about')(e.target.value)} maxLength={SITE_LIMITS.about + 50} aria-invalid={errors.about ? true : undefined} aria-describedby="cb-about-note" />
+          <p className={`kb-field__note${errors.about ? ' cb-err' : ' num'}`} id="cb-about-note" role={errors.about ? 'alert' : undefined}>
             {errors.about ?? `${d.about.trim().length} / ${SITE_LIMITS.about}`}
           </p>
         </div>
@@ -359,21 +452,26 @@ export function ApplyForm({ d, setD, onApplied, onCancel }: { d: ApplyDraft; set
         </label>
       </div>
       <div className="cb-form__sign">
-        <p className="st-note">Your wallet signs once to send this: free, no transaction. Use the wallet you will come back with: it is how you add your winners later.</p>
-        {!session && <WalletSignIn label="Sign in to apply" />}
+        <span className="cb-form__signart" aria-hidden="true">
+          <ChoreArt kind="wallet" />
+        </span>
+        <div className="wl-grid">
+          <p className="wl-note">Your wallet signs once to send this: free, no transaction. Use the wallet you will come back with: it is how you add your winners later.</p>
+          {!session && <WalletSignIn label="Sign in to apply" />}
+        </div>
       </div>
-      <div className="st-row cb-form__actions">
-        <InkButton type="submit" variant="pink" icon="arrow" disabled={sending || !session}>
-          {sending ? 'Sending…' : 'Apply'}
-        </InkButton>
+      <div className="wl-row cb-form__actions">
+        <Button type="submit" variant="primary" icon="arrow" disabled={!session} loading={sending}>
+          Apply
+        </Button>
         {onCancel && (
-          <InkButton variant="paper" onClick={onCancel}>
+          <Button variant="ghost" onClick={onCancel}>
             Cancel
-          </InkButton>
+          </Button>
         )}
       </div>
       {formErr && (
-        <p className="st-note is-error" role="alert">
+        <p className="wl-note is-error cb-form__err" role="alert">
           {formErr}
         </p>
       )}
@@ -385,26 +483,58 @@ function Summary({ c }: { c: CollabPublic }) {
   return (
     <dl className="cb-summary">
       <div>
-        <dt className="mono">Community</dt>
+        <dt>Community</dt>
         <dd>{c.community}</dd>
       </div>
       <div>
-        <dt className="mono">Type</dt>
+        <dt>Type</dt>
         <dd>{TYPE_LABEL[c.type]}</dd>
       </div>
       <div>
-        <dt className="mono">Members</dt>
-        <dd>{c.members.toLocaleString('en-US')}</dd>
+        <dt>Members</dt>
+        <dd className="num">{c.members.toLocaleString('en-US')}</dd>
       </div>
       <div>
-        <dt className="mono">Community X</dt>
+        <dt>Community X</dt>
         <dd>
-          <a href={xProfile(c.communityX)} target="_blank" rel="noreferrer">
+          <a className="cb-link" href={xProfile(c.communityX)} target="_blank" rel="noreferrer">
             @{c.communityX}
           </a>
         </dd>
       </div>
     </dl>
+  );
+}
+
+const when = (t: number | null | undefined) => (t && t > 1e11 ? new Date(t).toLocaleDateString('en-US', { day: 'numeric', month: 'short' }) : null);
+
+/** The mission log: what happened to this application so far, one line per leg. */
+function MissionLog({ c }: { c: CollabPublic }) {
+  type Leg = { k: string; text: ReactNode; at?: string | null; state: 'done' | 'now' | 'bad' | 'todo' };
+  const legs: Leg[] = [{ k: 'applied', text: 'Applied with a post on X', at: when(c.createdAt), state: 'done' }];
+  if (c.phase === 'in_review') {
+    legs.push({ k: 'review', text: <>In review. We DM @{c.contactX} on X</>, state: 'now' });
+    legs.push({ k: 'wallets', text: 'Raffle and winners', state: 'todo' });
+  } else if (c.phase === 'rejected') {
+    legs.push({ k: 'review', text: 'Reviewed: not this time', at: when(c.updatedAt), state: 'bad' });
+  } else {
+    legs.push({ k: 'review', text: `Approved: ${c.spots ?? 0} WL spots`, state: 'done' });
+    if (c.phase === 'approved') legs.push({ k: 'wallets', text: <>Winners due by {c.deadline ? new Date(c.deadline).toLocaleString('en-US', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'the deadline'}</>, state: 'now' });
+    if (c.phase === 'submitted') legs.push({ k: 'wallets', text: `List locked: ${c.wallets.length} ${c.wallets.length === 1 ? 'wallet' : 'wallets'}`, at: when(c.submittedAt), state: 'done' });
+    if (c.phase === 'closed') legs.push({ k: 'wallets', text: 'Deadline passed without a list', state: 'bad' });
+  }
+  return (
+    <ol className="cb-log" aria-label="Mission log">
+      {legs.map((l) => (
+        <li key={l.k} className={`cb-log__leg is-${l.state}`}>
+          <span className="cb-log__dot" aria-hidden="true">
+            {l.state === 'done' ? <Icon name="check" size={12} /> : l.state === 'bad' ? <Icon name="close" size={12} /> : null}
+          </span>
+          <span className="cb-log__text">{l.text}</span>
+          {l.at && <span className="cb-log__at num">{l.at}</span>}
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -418,14 +548,18 @@ function useNow(active: boolean): number {
   return now;
 }
 
-function StateCard({ stamp, tone, title, children, c }: { stamp: string; tone: 'mustard' | 'red' | 'teal' | 'ink' | 'pink'; title: string; children: ReactNode; c: CollabPublic }) {
+function StateCard({ stamp, tone, title, children, c, vignette }: { stamp: string; tone: StampTone; title: string; children: ReactNode; c: CollabPublic; vignette: ReactNode }) {
   return (
-    <div className="st-card cb-state" data-phase={c.phase}>
-      <Stamp text={stamp} tone={tone} size="md" rotate={-8} />
-      <h2 className="cb-state__title">{title}</h2>
-      <div className="cb-state__text">{children}</div>
-      <Summary c={c} />
-    </div>
+    <Sticker tone="white" lift="lg" pad="none" round="lg" className="cb-state" data-phase={c.phase}>
+      {vignette}
+      <div className="cb-state__body">
+        <Stamp text={stamp} tone={tone} size="lg" rotate={-6} className="cb-state__stamp" />
+        <h2 className="cb-state__title">{title}</h2>
+        <div className="cb-state__text">{children}</div>
+        <MissionLog c={c} />
+        <Summary c={c} />
+      </div>
+    </Sticker>
   );
 }
 
@@ -433,7 +567,7 @@ function StateCard({ stamp, tone, title, children, c }: { stamp: string; tone: '
 function LegacyNote({ c }: { c: CollabPublic }) {
   if (!c.legacy && !c.wallets.some((w) => !/^0x[0-9a-fA-F]{40}$/.test(w.wallet))) return null;
   return (
-    <p className="st-note cb-legacy" role="note" data-testid="cb-legacy">
+    <p className="cb-legacy" role="note" data-testid="cb-legacy">
       Some wallets here are from before the move to Elysium. Only EVM wallets (0x…) go on the allowlist: replace them with EVM wallets
       {c.phase === 'approved' ? ' before you submit.' : ', or DM @elymum on X if the list is already locked.'}
     </p>
@@ -443,17 +577,62 @@ function LegacyNote({ c }: { c: CollabPublic }) {
 export function CollabView({ collab: c, onChange, onGuide, onExpired }: { collab: CollabPublic; onChange: (c: CollabPublic) => void; onGuide: () => void; onExpired: () => void }) {
   if (c.phase === 'in_review')
     return (
-      <StateCard stamp="In review" tone="mustard" title="Thanks for applying." c={c}>
-        We are reviewing it and will DM <strong>@{c.contactX}</strong> on X. This page updates by itself once your spots are ready.
+      <StateCard
+        stamp="In review"
+        tone="sun"
+        title="Thanks for applying."
+        c={c}
+        vignette={<Vignette tone="mist" plate="Plate V.ii" caption="Someone is reading it" coin="cyan" mood="smug" prop={<Magnifier size={78} />} />}
+      >
+        We are reviewing it and will DM <strong>@{c.contactX}</strong> on X. This page updates by itself once your spots are ready, so no need to refresh it every four
+        minutes. (We would.)
       </StateCard>
     );
   if (c.phase === 'rejected')
     return (
-      <StateCard stamp="Not this time" tone="red" title="Not this time." c={c}>
-        Thanks for applying. We cannot offer spots to this community this round. DM <a href={X_URL} target="_blank" rel="noreferrer">@elymum</a> on X if something changed.
+      <StateCard
+        stamp="Not this time"
+        tone="down"
+        title="Not this time."
+        c={c}
+        vignette={<Vignette tone="linen" plate="Plate V.ii" caption="A little rain" coin="foam" mood="scared" prop={<RainCloud size={92} />} />}
+      >
+        Thanks for applying. We cannot offer spots to this community this round. DM{' '}
+        <a className="cb-link" href={X_URL} target="_blank" rel="noreferrer">
+          @elymum
+        </a>{' '}
+        on X if something changed.
       </StateCard>
     );
   return <SpotsView c={c} onChange={onChange} onGuide={onGuide} onExpired={onExpired} />;
+}
+
+/** The time left, as Geist Mono keys (a digit that changes flips in). Its text is the plain countdown. */
+function Clock({ text }: { text: string }) {
+  const chars = [...text];
+  return (
+    <span className="kb-count kb-count--lg kb-count--sun cb-clock" data-testid="cb-countdown">
+      <span className="kb-count__digits">
+        {chars.map((ch, i) => {
+          const place = chars.length - i;
+          if (!/[0-9]/.test(ch)) {
+            return (
+              <span key={`s${place}`} className={ch === ' ' ? 'kb-count__gap cb-clock__gap' : ch === ':' ? 'kb-count__sep' : 'cb-clock__unit'}>
+                {ch}
+              </span>
+            );
+          }
+          return (
+            <span key={`d${place}`} className="kb-count__cell">
+              <span key={ch} className="kb-count__digit cb-clock__digit">
+                {ch}
+              </span>
+            </span>
+          );
+        })}
+      </span>
+    </span>
+  );
 }
 
 function SpotsView({ c, onChange, onGuide, onExpired }: { c: CollabPublic; onChange: (c: CollabPublic) => void; onGuide: () => void; onExpired: () => void }) {
@@ -578,38 +757,67 @@ function SpotsView({ c, onChange, onGuide, onExpired }: { c: CollabPublic; onCha
     }
   };
 
+  const vignette =
+    c.phase === 'submitted' ? (
+      <Vignette tone="sand" plate="Plate V.iv" caption="Sealed and sent" coin="teal" mood="happy" prop={<Sealed size={90} />} />
+    ) : c.phase === 'closed' ? (
+      <Vignette tone="night" plate="Plate V.iv" caption="The bell rang" coin="cream" mood="sleepy" prop={<Moon size={80} />} night />
+    ) : (
+      <Vignette
+        tone="mint"
+        plate="Plate V.iii"
+        caption="Spots to hand out"
+        coin="sun"
+        mood="happy"
+        second={{ paint: 'cyan', mood: 'happy' }}
+        prop={
+          <span className="cb-vig__feast">
+            <FoodBit kind="pear" size={40} />
+            <FoodBit kind="grapes" size={44} />
+            <FoodBit kind="seed" paint="blush" size={22} />
+          </span>
+        }
+      />
+    );
+
   const head =
     c.phase === 'submitted' ? (
       <>
-        <Stamp text="Submitted" tone="ink" size="md" rotate={-7} />
+        <Stamp text="Submitted" tone="teal" size="lg" rotate={-6} className="cb-state__stamp" />
         <h2 className="cb-state__title">The list is in.</h2>
         <p className="cb-state__text">
-          {c.wallets.length} {c.wallets.length === 1 ? 'wallet is' : 'wallets are'} on the way to the Elymum WL. The list is locked; DM <a href={X_URL} target="_blank" rel="noreferrer">@elymum</a> if you need a change.
+          {c.wallets.length} {c.wallets.length === 1 ? 'wallet is' : 'wallets are'} on the way to the Elymum WL. The list is locked; DM{' '}
+          <a className="cb-link" href={X_URL} target="_blank" rel="noreferrer">
+            @elymum
+          </a>{' '}
+          if you need a change.
         </p>
       </>
     ) : c.phase === 'closed' ? (
       <>
-        <Stamp text="Closed" tone="pink" size="md" rotate={-7} />
+        <Stamp text="Closed" tone="ink" size="lg" rotate={-6} className="cb-state__stamp" />
         <h2 className="cb-state__title">The deadline passed.</h2>
         <p className="cb-state__text">
-          The list was not submitted in time. DM <a href={X_URL} target="_blank" rel="noreferrer">@elymum</a> on X if you need more time.
+          The list was not submitted in time. DM{' '}
+          <a className="cb-link" href={X_URL} target="_blank" rel="noreferrer">
+            @elymum
+          </a>{' '}
+          on X if you need more time.
         </p>
       </>
     ) : (
       <>
         <div className="cb-spots">
-          <Stamp text={`${spots} spots`} sub="approved" tone="teal" round size="md" rotate={-8} />
+          <Stamp text={`${spots} spots`} sub="approved" tone="up" round size="lg" rotate={-8} />
           <div className="cb-timer" role="timer" aria-live="off">
-            <span className="cb-timer__n" data-testid="cb-countdown">
-              {countdown(c.deadline ?? 0, now)}
-            </span>
+            <Clock text={countdown(c.deadline ?? 0, now)} />
             <span className="cb-timer__l mono">left to submit</span>
           </div>
         </div>
         <h2 className="cb-state__title">You have spots. Run your raffle.</h2>
         <p className="cb-state__text">
           Post the raffle on your community&apos;s X (the{' '}
-          <button type="button" className="st-textlink" onClick={onGuide}>
+          <button type="button" className="wl-textlink cb-inline" onClick={onGuide}>
             collab guide
           </button>{' '}
           has a post ready), then add your winners here before{' '}
@@ -619,137 +827,146 @@ function SpotsView({ c, onChange, onGuide, onExpired }: { c: CollabPublic; onCha
     );
 
   return (
-    <div className="st-card cb-state cb-spotsview" data-phase={c.phase}>
-      {head}
-      <LegacyNote c={c} />
-      <div className="cb-raffle">
-        {locked ? (
-          c.raffleUrl && (
-            <p>
-              <span className="mono cb-raffle__k">Raffle post</span>{' '}
-              <a href={c.raffleUrl} target="_blank" rel="noreferrer">
-                {c.raffleUrl}
-              </a>
-            </p>
-          )
-        ) : (
-          <Field
-            label="Your raffle post on X"
-            value={raffle}
-            onChange={(e) => {
-              setRaffle(e.target.value);
-              setRaffleErr(null);
-            }}
-            error={raffleErr ?? undefined}
-            hint="Post the raffle on your community's X, then paste its link. You cannot submit without it."
-            placeholder="https://x.com/yourcommunity/status/…"
-            inputMode="url"
-            spellCheck={false}
-            autoComplete="off"
-          />
-        )}
-      </div>
-
-      <div className="cb-table-head">
-        <h3 className="cb-table-h">{locked ? 'Your WL winners' : 'Add your WL winners'}</h3>
-        <span className="mono cb-count" aria-live="polite">
-          {locked ? c.wallets.length : filled.length} / {spots}
-        </span>
-      </div>
-      <div className="cb-tablewrap">
-        <table className="cb-table">
-          <thead>
-            <tr>
-              <th scope="col" className="mono">
-                #
-              </th>
-              <th scope="col" className="mono">
-                Name
-              </th>
-              <th scope="col" className="mono">
-                Wallet
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {(locked ? c.wallets : table).map((r, i) => {
-              const err = locked ? null : serverRowErr[i] || errs[i];
-              return (
-                <tr key={i} className={err ? 'is-error' : undefined}>
-                  <td className="mono cb-table__no">{i + 1}</td>
-                  <td>
-                    {locked ? (
-                      <span className="cb-name">{r.name || '—'}</span>
-                    ) : (
-                      <input className="cb-cell" aria-label={`Row ${i + 1} name`} value={r.name} maxLength={SITE_LIMITS.walletName + 10} onChange={(e) => setCell(i, 'name', e.target.value)} onPaste={onPaste(i)} placeholder="Discord or X" />
-                    )}
-                  </td>
-                  <td>
-                    {locked ? (
-                      <code className="cb-wallet">{r.wallet}</code>
-                    ) : (
-                      <>
-                        <input
-                          className="cb-cell cb-cell--wallet"
-                          aria-label={`Row ${i + 1} wallet`}
-                          aria-invalid={err ? true : undefined}
-                          value={r.wallet}
-                          onChange={(e) => setCell(i, 'wallet', e.target.value.trim())}
-                          onPaste={onPaste(i)}
-                          spellCheck={false}
-                          autoComplete="off"
-                          placeholder="0x… wallet"
-                        />
-                        {err && (
-                          <span className="cb-cell__err" role="alert">
-                            {err}
-                          </span>
-                        )}
-                      </>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      {!locked && (
-        <>
-          <p className="st-note">One person per row. Paste a list (a name and a wallet on each line) into any row to fill the rows below it.</p>
-          {table.length < spots && (
-            <button type="button" className="st-textlink" onClick={() => setShown((s) => Math.min(spots, s + 10))}>
-              + Show more rows ({spots - table.length} left)
-            </button>
+    <Sticker tone="white" lift="lg" pad="none" round="lg" className="cb-state cb-spotsview" data-phase={c.phase}>
+      {vignette}
+      <div className="cb-state__body">
+        {head}
+        <MissionLog c={c} />
+        <LegacyNote c={c} />
+        <div className="cb-raffle">
+          {locked ? (
+            c.raffleUrl && (
+              <p className="cb-raffle__locked">
+                <span className="mono cb-raffle__k">Raffle post</span>{' '}
+                <a className="cb-link" href={c.raffleUrl} target="_blank" rel="noreferrer">
+                  {c.raffleUrl}
+                </a>
+              </p>
+            )
+          ) : (
+            <Field
+              label="Your raffle post on X"
+              value={raffle}
+              onChange={(e) => {
+                setRaffle(e.target.value);
+                setRaffleErr(null);
+              }}
+              error={raffleErr ?? undefined}
+              hint="Post the raffle on your community's X, then paste its link. You cannot submit without it."
+              placeholder="https://x.com/yourcommunity/status/…"
+              inputMode="url"
+              spellCheck={false}
+              autoComplete="off"
+            />
           )}
-          <div className="st-row cb-actions">
-            <InkButton variant="paper" onClick={() => void save()} disabled={busy !== null}>
-              {busy === 'save' ? 'Saving…' : 'Save wallets'}
-            </InkButton>
-            {confirm ? (
-              <div className="cb-confirm" role="group" aria-label="Confirm submit">
-                <span>Submitting locks the list. Submit {filled.length} {filled.length === 1 ? 'wallet' : 'wallets'}?</span>
-                <InkButton variant="pink" size="sm" onClick={() => void submit()}>
-                  Yes, submit
-                </InkButton>
-                <InkButton variant="paper" size="sm" onClick={() => setConfirm(false)}>
-                  Not yet
-                </InkButton>
-              </div>
-            ) : (
-              <InkButton variant="pink" icon="arrow" onClick={() => setConfirm(true)} disabled={busy !== null}>
-                {busy === 'submit' ? 'Submitting…' : 'Submit wallets'}
-              </InkButton>
+        </div>
+
+        <div className="cb-table-head">
+          <h3 className="cb-table-h">
+            {locked ? 'Your WL winners' : 'Add your WL winners'}
+            {locked && <Icon name="lock" size={18} className="cb-table-h__lock" />}
+          </h3>
+          <span className="num cb-count" aria-live="polite">
+            {locked ? c.wallets.length : filled.length} / {spots}
+          </span>
+        </div>
+        {!locked && (
+          <p className="cb-paste">
+            <span className="kb-key">Paste</span> a list (a name and a wallet on each line) into any row: it fills the rows below. One person per row.
+          </p>
+        )}
+        <div className={`cb-tablewrap${locked ? ' is-locked' : ''}`}>
+          <table className="cb-table">
+            <thead>
+              <tr>
+                <th scope="col">#</th>
+                <th scope="col">Name</th>
+                <th scope="col">Wallet</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(locked ? c.wallets : table).map((r, i) => {
+                const err = locked ? null : serverRowErr[i] || errs[i];
+                return (
+                  <tr key={i} className={err ? 'is-error' : r.wallet ? 'is-filled' : undefined}>
+                    <td className="num cb-table__no">{String(i + 1).padStart(2, '0')}</td>
+                    <td>
+                      {locked ? (
+                        <span className="cb-name">{r.name || '—'}</span>
+                      ) : (
+                        <input className="cb-cell" aria-label={`Row ${i + 1} name`} value={r.name} maxLength={SITE_LIMITS.walletName + 10} onChange={(e) => setCell(i, 'name', e.target.value)} onPaste={onPaste(i)} placeholder="Discord or X" />
+                      )}
+                    </td>
+                    <td>
+                      {locked ? (
+                        <code className="cb-wallet">{r.wallet}</code>
+                      ) : (
+                        <>
+                          <input
+                            className="cb-cell cb-cell--wallet"
+                            aria-label={`Row ${i + 1} wallet`}
+                            aria-invalid={err ? true : undefined}
+                            value={r.wallet}
+                            onChange={(e) => setCell(i, 'wallet', e.target.value.trim())}
+                            onPaste={onPaste(i)}
+                            spellCheck={false}
+                            autoComplete="off"
+                            placeholder="0x… wallet"
+                          />
+                          {err && (
+                            <span className="cb-cell__err" role="alert">
+                              {err}
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {!locked && (
+          <>
+            {table.length < spots && (
+              <button type="button" className="wl-textlink" onClick={() => setShown((s) => Math.min(spots, s + 10))}>
+                + Show more rows ({spots - table.length} left)
+              </button>
             )}
-          </div>
-        </>
-      )}
-      {msg && (
-        <p className={`st-note${msg.kind === 'err' ? ' is-error' : ' cb-ok'}`} role={msg.kind === 'err' ? 'alert' : 'status'}>
-          {msg.text}
-        </p>
-      )}
-      <Summary c={c} />
-    </div>
+            <div className="wl-row cb-actions">
+              <Button variant="secondary" onClick={() => void save()} disabled={busy !== null} loading={busy === 'save'}>
+                Save wallets
+              </Button>
+              {confirm ? (
+                <div className="cb-confirm" role="group" aria-label="Confirm submit">
+                  <span>
+                    Submitting locks the list. Submit {filled.length} {filled.length === 1 ? 'wallet' : 'wallets'}?
+                  </span>
+                  <div className="wl-row">
+                    <Button variant="primary" size="sm" onClick={() => void submit()}>
+                      Yes, submit
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setConfirm(false)}>
+                      Not yet
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button variant="primary" icon="arrow" onClick={() => setConfirm(true)} disabled={busy !== null} loading={busy === 'submit'}>
+                  Submit wallets
+                </Button>
+              )}
+            </div>
+          </>
+        )}
+        {msg && (
+          <p className={`wl-note${msg.kind === 'err' ? ' is-error' : ' cb-ok'}`} role={msg.kind === 'err' ? 'alert' : 'status'}>
+            {msg.text}
+          </p>
+        )}
+        <Summary c={c} />
+      </div>
+    </Sticker>
   );
 }

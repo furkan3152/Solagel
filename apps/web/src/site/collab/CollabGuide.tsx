@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { InkButton, Sheet } from '../../design';
+import { Button, Sheet, Tape } from '../../design';
 import { rafflePost } from './logic';
 
 /** The collab guide: how the raffle works, the rules, and a post to copy. */
@@ -45,15 +45,18 @@ export function CollabGuide({ open, onClose, community, spots, deadline }: { ope
         <li>After you submit, the list is locked. DM @elymum on X if you need a change.</li>
       </ul>
       <h3 className="cb-guide__h">A post for your raffle</h3>
-      <label className="kb-sr" htmlFor="cb-raffle-post">
-        Raffle post
-      </label>
-      <textarea id="cb-raffle-post" className="st-input cb-guide__post" readOnly value={post} rows={10} />
-      <div className="st-row">
-        <InkButton variant="pink" size="sm" onClick={() => void copy()}>
+      <div className="cb-guide__note">
+        <Tape rotate={-4} width={80} />
+        <label className="kb-sr" htmlFor="cb-raffle-post">
+          Raffle post
+        </label>
+        <textarea id="cb-raffle-post" className="cb-guide__post" readOnly value={post} rows={10} />
+      </div>
+      <div className="wl-row">
+        <Button variant="primary" size="sm" lead={copied ? 'check' : undefined} onClick={() => void copy()}>
           {copied ? 'Copied' : 'Copy the post'}
-        </InkButton>
-        <span className="st-note" role="status">
+        </Button>
+        <span className="wl-note" role="status">
           {copied ? 'The post is on your clipboard.' : 'It mentions @elymum and this site.'}
         </span>
       </div>
