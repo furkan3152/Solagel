@@ -1,0 +1,729 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Elymum Ring Storybook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,100..900,0..100,0..1&family=DM+Sans:ital,opsz,wght@0,9..40,400..700;1,9..40,400&family=Geist+Mono:wght@400..600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#04181C; --abyss:#04181C; --deep:#071317; --trench:#0F2A30; --reef:#163B44; --current:#1E4D5A;
+  --teal:#2D7388; --teal-s:#1F5566; --cyan:#34B7DD; --cyan-s:#2490B0; --spray:#6FCDE8; --foam:#93D9EE; --foam-s:#69B4CC;
+  --mist:#DBF2F9; --plain:#F8F7F4; --linen:#F1EFE8; --sand:#EBE6DD; --sand2:#DDD6C7; --stone:#6B655A;
+  --sun:#F2C14E; --sun-s:#D49A2B; --up:#3C9A87; --up-s:#2B7465; --cream:#F6EEDA; --cream-s:#DCCDA8;
+  --down:#FF5252; --verdant:#5FA36A; --blush:#F39B86;
+  --display:"Fraunces", Georgia, serif; --body:"DM Sans", system-ui, sans-serif; --mono:"Geist Mono", ui-monospace, monospace;
+  --stroke:3px; --sh:4px 4px 0 var(--ink);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--plain);color:var(--ink)}
+body{font-family:var(--body);font-size:16px;line-height:1.5;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+.disp{font-family:var(--display);font-variation-settings:"SOFT" 100,"WONK" 1,"opsz" 144;font-weight:800;letter-spacing:-.02em;line-height:.95}
+.mono{font-family:var(--mono)}
+.kick{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;font-weight:500}
+
+/* plate labels between frames */
+.plate{display:flex;align-items:center;gap:14px;padding:22px 40px;font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--stone);background:var(--plain);border-top:var(--stroke) solid var(--ink)}
+.plate b{font-family:var(--display);font-variation-settings:"SOFT" 100,"WONK" 1;font-weight:700;font-size:20px;letter-spacing:0;text-transform:none;color:var(--ink)}
+.plate .rule{flex:1;height:0;border-top:2px dashed var(--sand2)}
+
+/* sticker primitives */
+.sticker{background:var(--cream);border:var(--stroke) solid var(--ink);border-radius:18px;box-shadow:var(--sh)}
+.btn{display:inline-flex;align-items:center;gap:10px;font-family:var(--body);font-weight:700;font-size:17px;color:var(--ink);text-decoration:none;
+  padding:13px 22px;border:var(--stroke) solid var(--ink);border-radius:14px;box-shadow:var(--sh);background:var(--cream);cursor:pointer;
+  transition:transform .16s cubic-bezier(.22,1,.36,1),box-shadow .16s cubic-bezier(.22,1,.36,1)}
+.btn:hover{transform:translate(-1px,-1px);box-shadow:5px 5px 0 var(--ink)}
+.btn:active{transform:translate(3px,3px);box-shadow:1px 1px 0 var(--ink)}
+.btn.sun{background:var(--sun)} .btn.teal{background:var(--teal);color:var(--cream)} .btn.up{background:var(--up);color:var(--cream)}
+.btn svg{width:18px;height:18px}
+.tag{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;
+  padding:4px 9px;border:2.5px solid var(--ink);border-radius:999px;background:var(--cream)}
+
+/* ---------- FRAME 1: HERO ---------- */
+.hero{position:relative;height:880px;overflow:hidden;background:#2D7388}
+.hero > svg.scene{position:absolute;inset:0;width:100%;height:100%}
+.hero .card{position:absolute;left:64px;top:72px;width:520px;padding:30px 34px 32px;transform:rotate(-1.6deg);z-index:3}
+.hero .card::before{content:"";position:absolute;left:50%;top:-16px;width:96px;height:28px;margin-left:-48px;background:rgba(219,242,249,.85);border:2px solid rgba(4,24,28,.25);transform:rotate(3deg)}
+.wordmark{display:block;width:100%;height:auto;margin:8px 0 14px}
+.hero h2{font-size:23px;line-height:1.25;font-weight:600;letter-spacing:-.01em;margin-bottom:10px}
+.hero p.lede{color:#3E3A31;font-size:16.5px;max-width:430px}
+.hero .homer{margin:18px 0 22px;padding-left:14px;border-left:3px solid var(--sun);font-size:14px;color:var(--stone)}
+.hero .homer i{font-family:var(--display);font-variation-settings:"SOFT" 100,"WONK" 1;font-weight:500;font-size:17px;color:var(--ink)}
+.hero .ctas{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+.hero .ctas small{font-family:var(--mono);font-size:12px;color:var(--stone)}
+.hero .badge{position:absolute;right:64px;top:64px;z-index:3;transform:rotate(4deg);padding:12px 16px;background:var(--sun);border-radius:14px}
+.hero .badge .n{font-family:var(--mono);font-size:26px;font-weight:600;line-height:1}
+.hero .badge .l{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+
+/* pond (HTML layer of coins on the hero's front terrace) */
+.pond{position:absolute;left:0;right:0;bottom:0;height:300px;z-index:2;pointer-events:none}
+.pc{position:absolute;bottom:0}
+.bob{animation:bob 2.6s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+.blink{transform-box:fill-box;transform-origin:center;animation:blink 5s infinite}
+@keyframes blink{0%,46%,50%,100%{transform:scaleY(1)}48%{transform:scaleY(.08)}}
+.drift{animation:drift 60s linear infinite}
+.drift.slow{animation-duration:95s}
+@keyframes drift{from{transform:translateX(-260px)}to{transform:translateX(1700px)}}
+
+/* chase loop: hunter + snack */
+.chase{position:absolute;bottom:22px;left:52%;width:340px;height:170px}
+.hunter{position:absolute;left:0;bottom:0;width:150px;animation:hunt 4.8s cubic-bezier(.5,0,.3,1) infinite}
+@keyframes hunt{0%,10%{transform:translateX(0)}55%{transform:translateX(120px)}62%{transform:translateX(116px) scale(1.04,.96)}70%{transform:translateX(120px) scale(1.06)}100%{transform:translateX(0) scale(1)}}
+.snack{position:absolute;left:236px;bottom:6px;width:62px;transform-origin:50% 100%;animation:snack 4.8s infinite}
+@keyframes snack{0%,30%{transform:translateX(0) scale(1)}50%{transform:translateX(-8px) scale(1) rotate(-6deg)}57%{transform:translateX(-30px) scale(.2);opacity:1}58%,82%{transform:translateX(-30px) scale(0);opacity:0}90%{transform:translateX(30px) scale(1);opacity:0}100%{transform:translateX(0) scale(1);opacity:1}}
+.hunter .m-open{animation:mopen 4.8s infinite} .hunter .m-shut{animation:mshut 4.8s infinite}
+@keyframes mopen{0%,40%{opacity:0}42%,57%{opacity:1}58%,100%{opacity:0}}
+@keyframes mshut{0%,40%{opacity:1}42%,57%{opacity:0}58%,100%{opacity:1}}
+.snack .sweat{animation:sweat 4.8s infinite}
+@keyframes sweat{0%,30%{opacity:0}34%,56%{opacity:1}57%,100%{opacity:0}}
+.pop{position:absolute;left:150px;bottom:150px;font-family:var(--mono);font-weight:600;font-size:15px;padding:3px 8px;background:var(--sun);border:2.5px solid var(--ink);border-radius:8px;box-shadow:2px 2px 0 var(--ink);opacity:0;animation:pop 4.8s infinite}
+@keyframes pop{0%,57%{opacity:0;transform:translateY(10px)}62%{opacity:1;transform:translateY(0)}80%{opacity:1;transform:translateY(-14px)}88%,100%{opacity:0;transform:translateY(-20px)}}
+
+/* ---------- FRAME 2: MINT ---------- */
+.mint{position:relative;background:var(--trench);color:var(--cream);padding:96px 64px 104px;overflow:hidden}
+.mint > svg.bg{position:absolute;inset:0;width:100%;height:100%}
+.mint .wrap{position:relative;max-width:1240px;margin:0 auto;display:grid;grid-template-columns:5fr 7fr;gap:56px;align-items:center}
+.mint .copy .kick{color:var(--foam)}
+.mint h3{font-size:64px;margin:12px 0 18px;color:var(--cream)}
+.mint h3 em{font-style:normal;color:var(--sun)}
+.mint .copy p{color:#BFD8DD;max-width:420px;font-size:17px}
+.flow{display:flex;align-items:center;gap:10px;margin-top:28px;font-family:var(--mono);font-size:13px;letter-spacing:.06em;text-transform:uppercase}
+.flow span{padding:6px 11px;border:2.5px solid var(--foam);border-radius:999px;color:var(--foam)}
+.flow span.on{background:var(--sun);color:var(--ink);border-color:var(--ink);box-shadow:3px 3px 0 var(--ink)}
+.flow i{width:22px;border-top:2.5px dotted var(--foam)}
+.mintcard{color:var(--ink);background:var(--cream);border-radius:26px;box-shadow:8px 8px 0 var(--ink);border:var(--stroke) solid var(--ink);padding:28px;display:grid;grid-template-columns:260px 1fr;gap:28px;transform:rotate(.8deg)}
+.emblem{position:relative;align-self:stretch;min-height:340px;background:var(--teal);border:var(--stroke) solid var(--ink);border-radius:20px;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.emblem svg.rays{position:absolute;inset:0;width:100%;height:100%}
+.emblem .seal{position:relative;width:76%;animation:bob 3.2s ease-in-out infinite}
+.emblem .no{position:absolute;left:12px;top:12px;font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.08em;background:var(--cream);border:2.5px solid var(--ink);border-radius:8px;padding:3px 7px}
+.emblem .rib{position:absolute;left:-2px;right:-2px;bottom:16px;text-align:center;background:var(--sun);border-top:var(--stroke) solid var(--ink);border-bottom:var(--stroke) solid var(--ink);font-family:var(--display);font-variation-settings:"SOFT" 100,"WONK" 1;font-weight:800;font-size:20px;padding:4px 0}
+.mintcard .right{display:flex;flex-direction:column;gap:18px}
+.gauge{display:flex;align-items:center;gap:16px}
+.gauge svg{width:150px;flex:none}
+.gauge .num{white-space:nowrap;font-family:var(--mono);font-size:28px;font-weight:600;line-height:1}
+.gauge .num small{font-size:15px;color:var(--stone)}
+.gauge .sub{font-size:13.5px;color:var(--stone);margin-top:6px}
+.price{border-top:2.5px dashed var(--sand2);border-bottom:2.5px dashed var(--sand2);padding:14px 0;display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.price .hype{font-family:var(--mono);font-size:30px;font-weight:600;letter-spacing:-.02em}
+.price .hype b{color:var(--teal)}
+.price .usd{font-family:var(--mono);font-size:15px;padding:3px 9px;background:var(--sun);border:2.5px solid var(--ink);border-radius:8px}
+.price .tick{width:100%;font-size:12.5px;color:var(--stone)}
+.qty{display:flex;align-items:center;justify-content:space-between}
+.stepper{display:flex;align-items:center;border:var(--stroke) solid var(--ink);border-radius:14px;overflow:hidden;box-shadow:3px 3px 0 var(--ink);background:#fff}
+.stepper button{all:unset;width:44px;height:42px;text-align:center;font-family:var(--mono);font-size:22px;font-weight:600;cursor:pointer;background:var(--linen)}
+.stepper span{width:54px;text-align:center;font-family:var(--mono);font-size:20px;font-weight:600;border-left:var(--stroke) solid var(--ink);border-right:var(--stroke) solid var(--ink);line-height:42px}
+.qty .tot{font-family:var(--mono);font-size:14px;text-align:right;color:var(--stone)} .qty .tot b{display:block;color:var(--ink);font-size:18px}
+.mintbtn{width:100%;justify-content:center;font-size:20px;padding:16px;background:var(--sun)}
+.wlstat{display:flex;align-items:center;gap:12px;font-size:14px;background:#E3F1EC;border:2.5px solid var(--up);border-radius:12px;padding:10px 12px}
+.wlstat .dot{width:26px;height:26px;flex:none}
+.wlstat b{font-weight:700}
+
+/* ---------- FRAME 3: GAME ---------- */
+.game{background:var(--linen);padding:80px 64px 96px}
+.game .head{max-width:1240px;margin:0 auto 28px;display:flex;justify-content:space-between;align-items:flex-end;gap:24px}
+.game h3{font-size:52px}
+.game .head p{max-width:420px;color:var(--stone);font-size:15.5px}
+.screen{position:relative;max-width:1240px;margin:0 auto;border:var(--stroke) solid var(--ink);border-radius:24px;box-shadow:8px 8px 0 var(--ink);overflow:hidden;aspect-ratio:1240/720;background:var(--trench)}
+.screen > svg{position:absolute;inset:0;width:100%;height:100%;display:block}
+.hud{position:absolute;z-index:2}
+.hud.timer{left:20px;top:20px;display:flex;align-items:center;gap:10px;background:var(--cream);border:var(--stroke) solid var(--ink);border-radius:999px;padding:6px 16px 6px 6px;box-shadow:3px 3px 0 var(--ink)}
+.hud.timer svg{width:46px;height:46px}
+.hud.timer .t{font-family:var(--mono);font-size:24px;font-weight:600;line-height:1}
+.hud.timer .l{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--stone)}
+.hud.you{left:50%;top:20px;transform:translateX(-50%);background:var(--sun);border:var(--stroke) solid var(--ink);border-radius:14px;padding:6px 16px 8px;box-shadow:3px 3px 0 var(--ink);text-align:center}
+.hud.you .l{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase}
+.hud.you .v{font-family:var(--mono);font-size:28px;font-weight:600;line-height:1.05}
+.hud.you .d{font-family:var(--mono);font-size:12px;color:var(--up-s);font-weight:600}
+.hud.lb{right:20px;top:20px;width:236px;background:var(--cream);border:var(--stroke) solid var(--ink);border-radius:16px;box-shadow:3px 3px 0 var(--ink);padding:10px 12px 8px}
+.hud.lb h4{font-family:var(--display);font-variation-settings:"SOFT" 100,"WONK" 1;font-weight:800;font-size:17px;display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px}
+.hud.lb h4 span{font-family:var(--mono);font-size:10.5px;font-weight:500;letter-spacing:.08em;color:var(--stone)}
+.hud.lb ol{list-style:none}
+.hud.lb li{display:grid;grid-template-columns:16px 18px 1fr auto;gap:7px;align-items:center;font-size:13.5px;padding:3px 0;border-top:1.5px dashed var(--sand2)}
+.hud.lb li:first-child{border-top:0}
+.hud.lb li .r{font-family:var(--mono);font-size:12px;color:var(--stone)}
+.hud.lb li .sw{width:16px;height:16px;border-radius:50%;border:2.5px solid var(--ink)}
+.hud.lb li .v{font-family:var(--mono);font-size:13px;font-weight:600}
+.hud.lb li.me{background:#FBE7B0;margin:0 -6px;padding:3px 6px;border-radius:8px;border-top-color:transparent}
+.hud.mm{right:20px;bottom:20px;width:150px;height:150px;border-radius:50%;background:var(--abyss);border:var(--stroke) solid var(--ink);box-shadow:3px 3px 0 var(--ink);overflow:hidden}
+.hud.mm svg{width:100%;height:100%}
+.hud.help{left:20px;bottom:20px;display:flex;gap:8px;align-items:center;font-family:var(--mono);font-size:12px;color:var(--foam)}
+.key{display:inline-block;padding:2px 8px;background:var(--cream);color:var(--ink);border:2.5px solid var(--ink);border-radius:7px;box-shadow:2px 2px 0 var(--ink);font-weight:600}
+.feed{position:absolute;left:20px;top:90px;z-index:2;display:flex;flex-direction:column;gap:6px}
+.feed div{font-family:var(--mono);font-size:12px;color:var(--cream);background:rgba(4,24,28,.72);border-radius:8px;padding:4px 9px;width:max-content}
+.feed div b{color:var(--sun);font-weight:600}
+
+/* ---------- FRAME 4: WL ---------- */
+.wl{position:relative;background:var(--plain);padding:88px 64px 110px;overflow:hidden}
+.wl > svg.bg{position:absolute;inset:0;width:100%;height:100%}
+.wl .wrap{position:relative;max-width:1240px;margin:0 auto;display:grid;grid-template-columns:4fr 8fr;gap:48px}
+.wl h3{font-size:58px;margin:12px 0 16px}
+.wl .intro p{color:#4A453B;font-size:16.5px;max-width:360px}
+.prog{margin-top:26px;display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:13px}
+.prog .bar{flex:1;max-width:220px;height:18px;border:var(--stroke) solid var(--ink);border-radius:999px;background:#fff;overflow:hidden}
+.prog .bar i{display:block;height:100%;width:33.3%;background:var(--up);border-right:var(--stroke) solid var(--ink)}
+.steps{display:flex;flex-direction:column;gap:22px}
+.step{position:relative;display:grid;grid-template-columns:76px 1fr auto;gap:20px;align-items:center;padding:20px 22px;background:#fff;border:var(--stroke) solid var(--ink);border-radius:20px;box-shadow:var(--sh)}
+.step:nth-child(1){margin-right:120px;background:#E6F3EE}
+.step:nth-child(2){margin-left:60px;margin-right:60px}
+.step:nth-child(3){margin-left:120px;background:var(--linen)}
+.step .ic{width:76px;height:76px}
+.step h4{font-family:var(--display);font-variation-settings:"SOFT" 100,"WONK" 1;font-weight:800;font-size:25px;letter-spacing:-.01em;line-height:1.1}
+.step p{font-size:14.5px;color:#4A453B;margin-top:4px}
+.step .meta{font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--stone);margin-bottom:4px}
+.stamp{font-family:var(--mono);font-weight:600;font-size:14px;letter-spacing:.1em;color:var(--up-s);border:3px solid var(--up-s);border-radius:10px;padding:6px 12px;transform:rotate(-7deg);background:rgba(255,255,255,.6)}
+.step.locked{opacity:1}
+.step.locked .btn{background:var(--sand);color:var(--stone);box-shadow:none;border-style:dashed;cursor:not-allowed}
+
+/* responsive */
+@media (max-width:760px){
+  .plate{padding:16px 16px}
+  .plate b{font-size:17px}
+  .hero{height:auto;min-height:1010px}
+  .hero{background:#0F2A30}
+  .hero > svg.scene{inset:auto;bottom:0;left:-510px;height:620px;width:1015px}
+  .hero .card{position:relative;left:auto;top:auto;width:auto;margin:40px 16px 0;padding:24px 20px 24px;transform:rotate(-1deg)}
+  .hero .badge{display:none}
+  .pc:nth-child(3),.pc:nth-child(4),.pc:nth-child(5){display:none}
+  .pc:nth-child(1){width:96px!important}
+  .hero h2{font-size:20px}
+  .pond{height:220px}
+  .chase{left:auto;right:-30px;transform:scale(.68);transform-origin:100% 100%}
+  .mint{padding:56px 16px 64px}
+  .mint .wrap{grid-template-columns:1fr;gap:32px}
+  .mint h3{font-size:44px}
+  .mintcard{grid-template-columns:1fr;padding:18px;transform:none}
+  .emblem{aspect-ratio:4/3}
+  .emblem .seal{width:44%}
+  .game{padding:48px 16px 56px}
+  .game .head{flex-direction:column;align-items:flex-start;gap:10px}
+  .game h3{font-size:38px}
+  .screen{aspect-ratio:auto;height:640px;border-radius:20px}
+  .hud.timer{left:10px;top:10px;padding:4px 12px 4px 4px} .hud.timer svg{width:36px;height:36px} .hud.timer .t{font-size:19px}
+  .hud.you{left:auto;right:10px;top:10px;transform:none;padding:4px 10px 6px} .hud.you .v{font-size:21px}
+  .hud.lb{left:10px;right:auto;top:auto;bottom:10px;width:178px;padding:6px 8px 4px;box-shadow:2px 2px 0 var(--ink)}
+  .hud.lb li{font-size:11.5px;padding:1px 0;grid-template-columns:12px 14px 1fr auto;gap:5px} .hud.lb li .sw{width:13px;height:13px;border-width:2px} .hud.lb li .v{font-size:11.5px} .hud.lb h4{font-size:14px} .hud.lb h4 span{display:none}
+  .hud.mm{right:10px;bottom:10px;width:100px;height:100px}
+  .hud.help,.feed{display:none}
+  .wl{padding:56px 16px 72px}
+  .wl .wrap{grid-template-columns:1fr;gap:28px}
+  .wl h3{font-size:42px}
+  .step{grid-template-columns:56px 1fr;gap:14px;padding:16px;margin:0!important}
+  .step .ic{width:56px;height:56px}
+  .step .act{grid-column:1/-1;justify-self:start}
+  .step h4{font-size:21px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+</head>
+<body>
+
+<div class="plate"><span>Plate I</span><b>The plain at dawn</b><span class="rule"></span><span>Landing</span></div>
+
+<!-- ================= FRAME 1: HERO ================= -->
+<section class="hero">
+  <svg class="scene" viewBox="0 0 1440 880" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+    <defs>
+      <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#0F2A30"/>
+        <stop offset=".34" stop-color="#2D7388"/>
+        <stop offset=".62" stop-color="#6FCDE8"/>
+        <stop offset=".8" stop-color="#DBF2F9"/>
+      </linearGradient>
+      <g id="cloud">
+        <g stroke="#04181C" stroke-width="6" fill="#04181C">
+          <circle cx="40" cy="40" r="28"/><circle cx="80" cy="26" r="36"/><circle cx="124" cy="38" r="30"/><circle cx="154" cy="52" r="20"/><rect x="18" y="44" width="150" height="26" rx="13"/>
+        </g>
+        <g fill="#FFFFFF">
+          <circle cx="40" cy="40" r="28"/><circle cx="80" cy="26" r="36"/><circle cx="124" cy="38" r="30"/><circle cx="154" cy="52" r="20"/><rect x="18" y="44" width="150" height="26" rx="13"/>
+        </g>
+        <path d="M18 58 H168 V57 a13 13 0 0 1 -13 13 H31 a13 13 0 0 1 -13 -13z" fill="#DBF2F9"/>
+        <path d="M58 22 q10 -14 26 -10" stroke="#04181C" stroke-width="2.5" fill="none" stroke-linecap="round" opacity=".35"/>
+      </g>
+      <g id="house">
+        <path d="M-12 0 V-16 L0 -27 L12 -16 V0 Z" fill="#F6EEDA" stroke="#04181C" stroke-width="2.5" stroke-linejoin="round"/>
+        <path d="M-15 -14 L0 -29 L15 -14" fill="none" stroke="#04181C" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+        <path d="M-15 -14 L0 -29 L15 -14 L12 -16 L0 -27 L-12 -16Z" fill="#D9714F"/>
+        <rect x="-4" y="-11" width="8" height="8" rx="1.5" fill="#F2C14E" stroke="#04181C" stroke-width="2"/>
+      </g>
+      <g id="tree">
+        <path d="M0 0 V-14" stroke="#04181C" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="0" cy="-24" r="12" fill="#3E8A5C" stroke="#04181C" stroke-width="2.5"/>
+        <path d="M-5 -30 a8 8 0 0 1 8 -3" stroke="#8CC47A" stroke-width="3" fill="none" stroke-linecap="round"/>
+      </g>
+      <g id="pine">
+        <path d="M0 0 V-8" stroke="#04181C" stroke-width="3" stroke-linecap="round"/>
+        <path d="M0 -40 L11 -8 H-11 Z" fill="#2F6E4F" stroke="#04181C" stroke-width="2.5" stroke-linejoin="round"/>
+      </g>
+      <g id="star"><path d="M0 -7 Q1 -1 7 0 Q1 1 0 7 Q-1 1 -7 0 Q-1 -1 0 -7Z" fill="#F6EEDA"/></g>
+      <clipPath id="planetClip"><circle cx="1010" cy="600" r="250"/></clipPath>
+      <filter id="wob" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="fractalNoise" baseFrequency="0.018" numOctaves="2" seed="7"/><feDisplacementMap in="SourceGraphic" scale="4"/></filter>
+    </defs>
+
+    <rect width="1440" height="880" fill="url(#sky)"/>
+    <!-- stars in the night band -->
+    <g opacity=".9">
+      <use href="#star" x="700" y="60"/><use href="#star" x="910" y="120" transform="scale(1)"/><use href="#star" x="1180" y="48"/>
+      <use href="#star" x="640" y="170"/><use href="#star" x="1330" y="160"/><use href="#star" x="820" y="200"/>
+      <circle cx="760" cy="110" r="2.2" fill="#F6EEDA"/><circle cx="1040" cy="70" r="2" fill="#F6EEDA"/><circle cx="1260" cy="110" r="2.4" fill="#F6EEDA"/><circle cx="980" cy="190" r="1.8" fill="#F6EEDA"/><circle cx="1400" cy="80" r="2" fill="#F6EEDA"/>
+    </g>
+
+    <!-- the far side of the ring arching overhead -->
+    <g>
+      <path d="M-60 520 C 180 40, 1260 40, 1500 520" fill="none" stroke="#04181C" stroke-width="58" stroke-linecap="round"/>
+      <path d="M-60 520 C 180 40, 1260 40, 1500 520" fill="none" stroke="#1E4D5A" stroke-width="50"/>
+      <path d="M-60 520 C 180 40, 1260 40, 1500 520" fill="none" stroke="#163B44" stroke-width="18" transform="translate(0,16)"/>
+      <path d="M-60 520 C 180 40, 1260 40, 1500 520" fill="none" stroke="#F2C14E" stroke-width="6" stroke-dasharray="3 22" transform="translate(0,-6)"/>
+      <path d="M-60 520 C 180 40, 1260 40, 1500 520" fill="none" stroke="#04181C" stroke-width="3" transform="translate(0,28)"/>
+      <!-- spokes -->
+      <g stroke="#04181C" stroke-width="3" fill="#163B44">
+        <path d="M352 210 L376 210 L396 520 L338 520 Z"/>
+        <path d="M1064 210 L1088 210 L1102 520 L1046 520 Z"/>
+      </g>
+      <g fill="#1E4D5A"><rect x="356" y="212" width="6" height="300"/><rect x="1068" y="212" width="6" height="300"/></g>
+    </g>
+
+    <!-- planet seen through the sky band -->
+    <g>
+      <circle cx="1010" cy="600" r="262" fill="none" stroke="#6FCDE8" stroke-width="4" opacity=".5"/>
+      <circle cx="1010" cy="600" r="250" fill="#1F5566"/>
+      <g clip-path="url(#planetClip)">
+        <circle cx="976" cy="566" r="250" fill="#2D7388"/>
+        <path d="M850 440 q30 -26 70 -14 q22 10 46 0 q26 -8 30 14 q4 18 -28 22 q-36 4 -58 18 q-30 14 -56 0 q-26 -16 -4 -40z" fill="#3C9A87" stroke="#04181C" stroke-width="3"/>
+        <path d="M1090 410 q50 -12 90 18 q26 26 -6 40 q-40 16 -66 -6 q-30 -28 -18 -52z" fill="#3C9A87" stroke="#04181C" stroke-width="3"/>
+        <g stroke="#DBF2F9" stroke-width="6" fill="none" stroke-linecap="round"><path d="M790 400 q60 -24 120 -12"/><path d="M960 470 q50 -12 100 0 q20 6 10 16"/><path d="M1000 380 q40 -10 70 4"/><path d="M1150 470 q30 -6 50 6"/></g>
+        <path d="M1260 600 A250 250 0 0 0 1060 354 A250 250 0 0 1 1260 600Z" fill="#1F5566"/>
+        
+        <path d="M1260 600 A250 250 0 0 1 1010 850 L1260 850Z" fill="#04181C" opacity=".0"/>
+      </g>
+      <circle cx="1010" cy="600" r="250" fill="none" stroke="#04181C" stroke-width="3"/>
+      <!-- little moon -->
+      <circle cx="1238" cy="288" r="20" fill="#DCCDA8"/>
+      <clipPath id="moonClip"><circle cx="1238" cy="288" r="20"/></clipPath>
+      <circle cx="1232" cy="282" r="20" fill="#F6EEDA" clip-path="url(#moonClip)"/>
+      <circle cx="1233" cy="282" r="3.5" fill="#DCCDA8"/><circle cx="1243" cy="292" r="2.5" fill="#DCCDA8"/>
+      <circle cx="1238" cy="288" r="20" fill="none" stroke="#04181C" stroke-width="3"/>
+    </g>
+
+    <!-- drifting clouds -->
+    <use href="#cloud" class="drift" style="animation-delay:-38s" x="0" y="250" transform="scale(1)"/>
+    <use href="#cloud" class="drift slow" style="animation-delay:-20s" x="0" y="330"/>
+    <use href="#cloud" class="drift slow" style="animation-delay:-70s" x="0" y="190"/>
+
+    <!-- terraces: the ground curving up both sides -->
+    <g filter="url(#wob)">
+<path d="M-40 300 Q 720 760 1480 300 V 900 H -40 Z" fill="#B9D98F" stroke="#04181C" stroke-width="3"/>
+<path d="M-40 316 Q 720 776 1480 316" fill="none" stroke="#9CC77A" stroke-width="10"/>
+<path d="M-40 334 Q 720 794 1480 334" fill="none" stroke="#9CC77A" stroke-width="3" stroke-linecap="round" stroke-dasharray="140 70 50 120 90 60" stroke-dashoffset="0"/>
+<path d="M-40 346 Q 720 806 1480 346" fill="none" stroke="#9CC77A" stroke-width="3" stroke-linecap="round" stroke-dasharray="140 70 50 120 90 60" stroke-dashoffset="6"/>
+<path d="M-40 358 Q 720 818 1480 358" fill="none" stroke="#9CC77A" stroke-width="3" stroke-linecap="round" stroke-dasharray="140 70 50 120 90 60" stroke-dashoffset="12"/>
+<path d="M-40 372 Q 720 840 1480 372 V 900 H -40 Z" fill="#8CC47A" stroke="#04181C" stroke-width="3"/>
+<path d="M-40 388 Q 720 856 1480 388" fill="none" stroke="#74B064" stroke-width="12"/>
+<path d="M-40 406 Q 720 874 1480 406" fill="none" stroke="#74B064" stroke-width="3" stroke-linecap="round" stroke-dasharray="60 40 120 90 30 160" stroke-dashoffset="37"/>
+<path d="M-40 418 Q 720 886 1480 418" fill="none" stroke="#74B064" stroke-width="3" stroke-linecap="round" stroke-dasharray="60 40 120 90 30 160" stroke-dashoffset="43"/>
+<path d="M-40 430 Q 720 898 1480 430" fill="none" stroke="#74B064" stroke-width="3" stroke-linecap="round" stroke-dasharray="60 40 120 90 30 160" stroke-dashoffset="49"/>
+<path d="M590 600 Q 720 625 860 598" fill="none" stroke="#04181C" stroke-width="13" stroke-linecap="round"/>
+    <path d="M590 600 Q 720 625 860 598" fill="none" stroke="#6FCDE8" stroke-width="7" stroke-linecap="round"/>
+    <path d="M640 604 h18 M760 612 h14" stroke="#DBF2F9" stroke-width="2.5" stroke-linecap="round"/>
+<path d="M-40 452 Q 720 930 1480 452 V 900 H -40 Z" fill="#5FA36A" stroke="#04181C" stroke-width="3"/>
+<path d="M-40 468 Q 720 946 1480 468" fill="none" stroke="#4C8F58" stroke-width="14"/>
+<path d="M-40 486 Q 720 964 1480 486" fill="none" stroke="#4C8F58" stroke-width="3" stroke-linecap="round" stroke-dasharray="140 70 50 120 90 60" stroke-dashoffset="74"/>
+<path d="M-40 498 Q 720 976 1480 498" fill="none" stroke="#4C8F58" stroke-width="3" stroke-linecap="round" stroke-dasharray="140 70 50 120 90 60" stroke-dashoffset="80"/>
+<path d="M-40 510 Q 720 988 1480 510" fill="none" stroke="#4C8F58" stroke-width="3" stroke-linecap="round" stroke-dasharray="140 70 50 120 90 60" stroke-dashoffset="86"/>
+<path d="M-40 548 Q 720 1030 1480 548 V 900 H -40 Z" fill="#3E8A5C" stroke="#04181C" stroke-width="3"/>
+<path d="M-40 564 Q 720 1046 1480 564" fill="none" stroke="#2F7049" stroke-width="16"/>
+<path d="M-40 582 Q 720 1064 1480 582" fill="none" stroke="#2F7049" stroke-width="3" stroke-linecap="round" stroke-dasharray="60 40 120 90 30 160" stroke-dashoffset="111"/>
+<path d="M-40 594 Q 720 1076 1480 594" fill="none" stroke="#2F7049" stroke-width="3" stroke-linecap="round" stroke-dasharray="60 40 120 90 30 160" stroke-dashoffset="117"/>
+<path d="M-40 606 Q 720 1088 1480 606" fill="none" stroke="#2F7049" stroke-width="3" stroke-linecap="round" stroke-dasharray="60 40 120 90 30 160" stroke-dashoffset="123"/>
+<path d="M-40 680 Q 720 1010 1480 680 V 900 H -40 Z" fill="#EBE6DD" stroke="#04181C" stroke-width="3"/>
+    <path d="M-40 700 Q 720 1030 1480 700" fill="none" stroke="#DDD6C7" stroke-width="10"/>
+    </g>
+    <g fill="#DDD6C7" stroke="#04181C" stroke-width="2">
+      <ellipse cx="160" cy="808" rx="10" ry="5"/><ellipse cx="420" cy="852" rx="7" ry="4"/><ellipse cx="1180" cy="826" rx="9" ry="4.5"/><ellipse cx="1320" cy="790" rx="6" ry="3"/><ellipse cx="640" cy="872" rx="8" ry="4"/>
+    </g>
+    <g fill="#2F6E4F" stroke="#04181C" stroke-width="2.5">
+      <path d="M150 482 a9 9 0 0 1 16 -6 a9 9 0 0 1 16 4 a7 7 0 0 1 -2 10 h-28 a6 6 0 0 1 -2 -8z"/>
+      <path d="M560 668 a9 9 0 0 1 16 -6 a9 9 0 0 1 16 4 a7 7 0 0 1 -2 10 h-28 a6 6 0 0 1 -2 -8z"/>
+      <path d="M1250 560 a9 9 0 0 1 16 -6 a9 9 0 0 1 16 4 a7 7 0 0 1 -2 10 h-28 a6 6 0 0 1 -2 -8z"/>
+      <path d="M860 728 a9 9 0 0 1 16 -6 a9 9 0 0 1 16 4 a7 7 0 0 1 -2 10 h-28 a6 6 0 0 1 -2 -8z"/>
+    </g>
+    <!-- a tiny zig-zag path climbing the terraces -->
+    <path d="M1100 700 L1130 640 L1100 600 L1135 560 L1110 520" fill="none" stroke="#F6EEDA" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="1 9" filter="url(#wob)"/>
+
+    <!-- houses and trees placed on the terrace tops (approx points on curves) -->
+    <g>
+      <!-- t0 -->
+      <use href="#house" x="560" y="503" transform="scale(1)"/><use href="#tree" x="600" y="510"/><use href="#tree" x="880" y="508"/><use href="#house" x="840" y="504"/>
+      <use href="#pine" x="300" y="420"/><use href="#pine" x="318" y="428"/><use href="#tree" x="1160" y="436"/>
+      <!-- t1 -->
+      <use href="#tree" x="140" y="460"/><use href="#house" x="190" y="482"/><use href="#tree" x="236" y="498"/>
+      <use href="#house" x="1236" y="490"/><use href="#tree" x="1290" y="466"/><use href="#pine" x="1196" y="506"/>
+      <!-- t2 -->
+      <use href="#pine" x="70" y="500"/><use href="#pine" x="96" y="512"/><use href="#tree" x="440" y="634"/><use href="#house" x="1010" y="638"/><use href="#tree" x="1052" y="632"/><use href="#pine" x="1380" y="498"/>
+      <!-- t3 -->
+      <use href="#tree" x="300" y="704"/><use href="#tree" x="326" y="712"/><use href="#pine" x="352" y="722"/>
+      <use href="#tree" x="470" y="640"/><use href="#pine" x="496" y="648"/><use href="#tree" x="930" y="650"/><use href="#tree" x="960" y="646"/>
+      <use href="#pine" x="680" y="520"/><use href="#tree" x="700" y="524"/><use href="#house" x="740" y="528"/><use href="#house" x="770" y="528"/>
+      <use href="#tree" x="400" y="560"/><use href="#house" x="370" y="552"/><use href="#tree" x="1090" y="556"/><use href="#pine" x="1120" y="548"/><use href="#tree" x="1180" y="684"/><use href="#house" x="1230" y="664"/><use href="#tree" x="40" y="590"/>
+    </g>
+  </svg>
+
+  <div class="card sticker">
+    <div class="kick" style="color:var(--teal)">A five-minute feast · on Elysium</div>
+    <svg class="wordmark" viewBox="0 0 470 112" role="img" aria-label="Elymum">
+      <text x="10" y="92" font-family="Fraunces" font-weight="900" font-size="96" letter-spacing="-3" style="font-variation-settings:'SOFT' 100,'WONK' 1,'opsz' 144" fill="#04181C" transform="translate(5,5)">ELYMUM</text>
+      <text x="10" y="92" font-family="Fraunces" font-weight="900" font-size="96" letter-spacing="-3" style="font-variation-settings:'SOFT' 100,'WONK' 1,'opsz' 144" fill="#34B7DD" stroke="#04181C" stroke-width="6" stroke-linejoin="round" paint-order="stroke">ELYMUM</text>
+      <path d="M30 34 q10 -10 26 -8" stroke="#DBF2F9" stroke-width="5" fill="none" stroke-linecap="round"/>
+    </svg>
+    <h2>You are small change with a big appetite.</h2>
+    <p class="lede">Eat the food. Eat coins smaller than you. Run from the ones that are bigger. Five minutes later the bell rings and whatever you've swallowed is yours.</p>
+    <p class="homer"><i>“No snow is there, nor heavy storm, nor ever rain.”</i><br>Homer, on the Elysian plain. He didn't mention lunch.</p>
+    <div class="ctas">
+      <a class="btn sun" href="#wl">Join the WL
+        <svg viewBox="0 0 20 20" fill="none" stroke="#04181C" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10h11M11 5l5 5-5 5"/></svg></a>
+      <a class="btn" href="#collab">Collab</a>
+      <small>WL → Mint → Play</small>
+    </div>
+  </div>
+
+  <div class="badge sticker">
+    <div class="n">05:00</div>
+    <div class="l">per round. Then lunch.</div>
+  </div>
+
+  <div class="pond" id="pond"></div>
+</section>
+
+<div class="plate"><span>Plate II</span><b>The mint, after dark</b><span class="rule"></span><span>/mint</span></div>
+
+<!-- ================= FRAME 2: MINT ================= -->
+<section class="mint">
+  <svg class="bg" viewBox="0 0 1440 760" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+    <g fill="none" stroke="#163B44" stroke-width="3">
+      <!-- hand-drawn seigaiha band at bottom -->
+      <g id="sg"></g>
+    </g>
+    <g fill="#F6EEDA" opacity=".8">
+      <circle cx="120" cy="80" r="2"/><circle cx="380" cy="40" r="1.6"/><circle cx="700" cy="70" r="2.2"/><circle cx="1010" cy="40" r="1.8"/><circle cx="1330" cy="110" r="2"/><circle cx="260" cy="200" r="1.6"/><circle cx="1240" cy="260" r="1.6"/>
+    </g>
+    <g transform="translate(1380 60)"><path d="M0 -9 Q1.4 -1.4 9 0 Q1.4 1.4 0 9 Q-1.4 1.4 -9 0 Q-1.4 -1.4 0 -9Z" fill="#F2C14E"/></g>
+    <g transform="translate(560 120)"><path d="M0 -7 Q1 -1 7 0 Q1 1 0 7 Q-1 1 -7 0 Q-1 -1 0 -7Z" fill="#93D9EE"/></g>
+  </svg>
+  <div class="wrap">
+    <div class="copy">
+      <div class="kick">Sealed emblems · supply 5,000</div>
+      <h3 class="disp">One emblem.<br>One <em>dollar.</em><br>Many snacks.</h3>
+      <p>Your emblem is your ticket to the ring. The price is pinned to a dollar and paid in HYPE, so the number on the button wiggles with the market. We do the arithmetic; you do the eating.</p>
+      <div class="flow"><span>WL</span><i></i><span class="on">Mint</span><i></i><span>Play</span></div>
+    </div>
+
+    <div class="mintcard">
+      <div class="emblem">
+        <svg class="rays" viewBox="0 0 260 346" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          <g fill="none" stroke="#1F5566" stroke-width="3">
+            <circle cx="130" cy="160" r="70"/><circle cx="130" cy="160" r="100"/><circle cx="130" cy="160" r="130" stroke-dasharray="2 12" stroke-linecap="round"/><circle cx="130" cy="160" r="160"/>
+          </g>
+          <path d="M60 270 Q130 240 200 270" stroke="#163B44" stroke-width="3" fill="none"/>
+        </svg>
+        <span class="no">NO. 2615</span>
+        <div class="seal" id="seal"></div>
+        <div class="rib">Sealed. For now.</div>
+      </div>
+      <div class="right">
+        <div class="gauge">
+          <svg viewBox="0 0 200 116" aria-hidden="true">
+            <path d="M20 100 A80 80 0 0 1 180 100" fill="none" stroke="#04181C" stroke-width="28" stroke-linecap="round"/>
+            <path d="M20 100 A80 80 0 0 1 180 100" fill="none" stroke="#FFFFFF" stroke-width="21" stroke-linecap="round"/>
+            <path d="M20 100 A80 80 0 0 1 180 100" fill="none" stroke="#3C9A87" stroke-width="21" stroke-linecap="round" pathLength="100" stroke-dasharray="52.3 100"/>
+            <path d="M20 100 A80 80 0 0 1 180 100" fill="none" stroke="#04181C" stroke-width="2.5" stroke-dasharray="1.5 11.07" pathLength="100" transform="translate(0,0)" opacity=".5"/>
+            <path d="M100 32 v-10" stroke="#04181C" stroke-width="3" stroke-linecap="round"/><circle cx="100" cy="100" r="7" fill="#04181C"/><path d="M100 100 L104 44" stroke="#04181C" stroke-width="4" stroke-linecap="round"/>
+          </svg>
+          <div>
+            <div class="num">2,614<small> / 5,000</small></div>
+            <div class="sub">52% minted. The rest are still deciding.</div>
+          </div>
+        </div>
+        <div class="price">
+          <div class="hype"><b>0.0213</b> HYPE</div>
+          <div class="usd">≈ $1.00</div>
+          <div class="tick mono">HYPE/USD 46.94 · updated 4s ago · gas on Elysium, also in HYPE</div>
+        </div>
+        <div class="qty">
+          <div>
+            <div class="kick" style="color:var(--stone);margin-bottom:6px">How many</div>
+            <div class="stepper"><button aria-label="less">−</button><span>2</span><button aria-label="more">+</button></div>
+          </div>
+          <div class="tot">Total<b>0.0426 HYPE</b>≈ $2.00 · max 3</div>
+        </div>
+        <a class="btn mintbtn" href="#">Mint 2 emblems</a>
+        <div class="wlstat">
+          <svg class="dot" viewBox="0 0 26 26"><circle cx="13" cy="13" r="11" fill="#3C9A87" stroke="#04181C" stroke-width="2.5"/><path d="M8 13.5l3.2 3.2L18 9.5" stroke="#F6EEDA" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <div><b>0x7a3…e91c is on the list.</b> WL window closes in 2d 06h. Nobody's rushing you. Well, a little.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="plate"><span>Plate III</span><b>Round 418, in progress</b><span class="rule"></span><span>/play</span></div>
+
+<!-- ================= FRAME 3: GAME ================= -->
+<section class="game">
+  <div class="head">
+    <h3 class="disp">The floor of the ring,<br>at feeding time.</h3>
+    <p>Food glows a little so you can find it. Bigger coins don't glow at all, so keep an eye out. Everyone's value is on the board; nobody's dignity is.</p>
+  </div>
+  <div class="screen">
+    <svg id="arena" viewBox="0 0 1240 720" preserveAspectRatio="xMidYMid slice" aria-hidden="true"></svg>
+
+    <div class="hud timer">
+      <svg viewBox="0 0 46 46"><circle cx="23" cy="23" r="17" fill="#F6EEDA" stroke="#04181C" stroke-width="3"/>
+        <circle cx="23" cy="23" r="12.5" fill="none" stroke="#2D7388" stroke-width="7" pathLength="100" stroke-dasharray="64 100" transform="rotate(-90 23 23)"/>
+        <circle cx="23" cy="23" r="17" fill="none" stroke="#04181C" stroke-width="3"/><circle cx="23" cy="23" r="3" fill="#04181C"/></svg>
+      <div><div class="t">3:12</div><div class="l">until the bell</div></div>
+    </div>
+    <div class="hud you"><div class="l">You're worth</div><div class="v">$4.37</div><div class="d">+0.18 last bite</div></div>
+    <div class="hud lb">
+      <h4>Top of the food chain <span>41 IN</span></h4>
+      <ol>
+        <li><span class="r">1</span><span class="sw" style="background:#F2C14E"></span><span>big_aurelius</span><span class="v">$9.80</span></li>
+        <li><span class="r">2</span><span class="sw" style="background:#2D7388"></span><span>lethe.hl</span><span class="v">$6.12</span></li>
+        <li class="me"><span class="r">3</span><span class="sw" style="background:#34B7DD"></span><span><b>you</b></span><span class="v">$4.37</span></li>
+        <li><span class="r">4</span><span class="sw" style="background:#3C9A87"></span><span>penny_pincher</span><span class="v">$3.05</span></li>
+        <li><span class="r">5</span><span class="sw" style="background:#F6EEDA"></span><span>gm_crumbs</span><span class="v">$2.41</span></li>
+      </ol>
+    </div>
+    <div class="hud mm">
+      <svg viewBox="0 0 150 150">
+        <circle cx="75" cy="75" r="60" fill="none" stroke="#1E4D5A" stroke-width="2"/><circle cx="75" cy="75" r="40" fill="none" stroke="#1E4D5A" stroke-width="2" stroke-dasharray="2 5"/>
+        <rect x="52" y="54" width="44" height="30" rx="5" fill="none" stroke="#F6EEDA" stroke-width="2"/>
+        <g stroke="#04181C" stroke-width="1.5">
+          <circle cx="70" cy="70" r="5" fill="#34B7DD"/><circle cx="104" cy="44" r="8" fill="#F2C14E"/><circle cx="44" cy="96" r="6" fill="#2D7388"/><circle cx="96" cy="104" r="4" fill="#3C9A87"/><circle cx="36" cy="54" r="3.5" fill="#F6EEDA"/><circle cx="82" cy="118" r="3" fill="#93D9EE"/>
+        </g>
+      </svg>
+    </div>
+    <div class="feed">
+      <div><b>you</b> ate gm_dust · +$0.18</div>
+      <div>lethe.hl ate a grape. Classy.</div>
+    </div>
+    <div class="hud help"><span class="key">mouse</span> steer <span class="key">space</span> split <span class="key">W</span> spit</div>
+  </div>
+</section>
+
+<div class="plate" id="wl"><span>Plate IV</span><b>Three small chores</b><span class="rule"></span><span>/wl</span></div>
+
+<!-- ================= FRAME 4: WL ================= -->
+<section class="wl">
+  <svg class="bg" viewBox="0 0 1440 760" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+    <path d="M-40 640 Q720 900 1480 520 V800 H-40Z" fill="#EBE6DD"/>
+    <path d="M-40 700 Q720 980 1480 600 V800 H-40Z" fill="#DDD6C7"/>
+    <use href="#cloud" x="1180" y="40" transform="scale(1)" opacity=".9"/>
+    <use href="#tree" x="1360" y="584"/><use href="#tree" x="1396" y="566"/><use href="#house" x="1310" y="600"/>
+  </svg>
+  <div class="wrap">
+    <div class="intro">
+      <div class="kick" style="color:var(--teal)">Whitelist · the ascent</div>
+      <h3 class="disp">Three small chores, then the feast.</h3>
+      <p>Each chore lifts you one terrace up the ring. Finish all three and you get a mint spot and a boarding pass to flex with.</p>
+      <div class="prog"><div class="bar"><i></i></div><span>1 of 3 done</span></div>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="ic" id="ic1"></div>
+        <div>
+          <div class="meta">Chore 1 · X</div>
+          <h4>Follow @elymum</h4>
+          <p>Done. The ring noticed, and so did our follower count.</p>
+        </div>
+        <div class="act"><span class="stamp">DONE</span></div>
+      </div>
+      <div class="step">
+        <div class="ic" id="ic2"></div>
+        <div>
+          <div class="meta">Chore 2 · X · about 20 seconds</div>
+          <h4>Repost the pinned feast</h4>
+          <p>The one with the coin eating a slightly smaller coin. Forty seconds if you read the replies.</p>
+        </div>
+        <div class="act"><a class="btn teal" href="#">Open X</a></div>
+      </div>
+      <div class="step locked">
+        <div class="ic" id="ic3"></div>
+        <div>
+          <div class="meta">Chore 3 · wallet</div>
+          <h4>Connect a wallet on Elysium</h4>
+          <p>To sign a message, not a transaction. We will never ask for your seed phrase. Nobody should.</p>
+        </div>
+        <div class="act"><span class="btn">Connect</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+/* ---------- coin character generator ---------- */
+const PAL = {
+  teal:['#2D7388','#1F5566'], cyan:['#34B7DD','#2490B0'], foam:['#93D9EE','#69B4CC'],
+  sun:['#F2C14E','#D49A2B'], up:['#3C9A87','#2B7465'], cream:['#F6EEDA','#DCCDA8']
+};
+let uid = 0;
+function coin(col, o = {}){
+  const [c, s] = PAL[col]; const id = 'c' + (uid++);
+  const mood = o.mood || 'smile', look = o.look || [0,0], feet = o.feet !== false;
+  const blinkDelay = o.blink != null ? o.blink : (Math.random()*4).toFixed(2);
+  const ink = '#04181C', NS = '';
+  const sz = o.size || 112;
+  const W = Math.min(3*112/sz, 6.2); const Wf = Math.min(2.6*112/sz, 5);
+  const [lx, ly] = look;
+  let eyes = '';
+  const eye = (x) => {
+    if (mood === 'happy') return `<path d="M${x-8} -4 Q${x} -15 ${x+8} -4" fill="none" stroke="${ink}" stroke-width="${W}" stroke-linecap="round" ${NS}/>`;
+    return `<g class="blink" style="animation-delay:${blinkDelay}s">
+      <ellipse cx="${x}" cy="-6" rx="10" ry="12.5" fill="#fff" stroke="${ink}" stroke-width="${Wf}" ${NS}/>
+      <circle cx="${x+lx}" cy="${-5+ly}" r="${mood==='scared'?3.6:6}" fill="${ink}"/>
+      <circle cx="${x+lx-2.2}" cy="${-8+ly}" r="2.1" fill="#fff"/>
+      ${mood==='smug' ? `<path d="M${x-11.5} -6 L${x+11.5} -6 A11 13 0 0 0 ${x-11.5} -6Z" fill="${c}" stroke="${ink}" stroke-width="${W}" stroke-linejoin="round" ${NS}/>` : ''}
+    </g>`;
+  };
+  eyes = eye(-15) + eye(15);
+  let brows = '';
+  if (mood==='scared') brows = `<path d="M-24 -24 L-9 -21 M24 -24 L9 -21" stroke="${ink}" stroke-width="${W}" stroke-linecap="round" ${NS}/>`;
+  if (mood==='smug') brows = `<path d="M-25 -21 Q-16 -25 -7 -21 M7 -22 Q16 -27 25 -23" stroke="${ink}" stroke-width="${W}" fill="none" stroke-linecap="round" ${NS}/>`;
+  let mouth = '';
+  const smile = `<path d="M-9 13 Q0 22 9 13" fill="none" stroke="${ink}" stroke-width="${W}" stroke-linecap="round" ${NS}/>`;
+  const open = `<path d="M-11 11 Q0 13 11 11 Q10 27 0 27 Q-10 27 -11 11Z" fill="${ink}" stroke="${ink}" stroke-width="${W}" stroke-linejoin="round" ${NS}/><path d="M-6 23 Q0 18 6 23 Q3 26 0 26 Q-3 26 -6 23Z" fill="#F39B86"/>`;
+  const chomp = `<path d="M-20 8 Q0 4 20 8 Q20 38 0 38 Q-20 38 -20 8Z" fill="${ink}" stroke="${ink}" stroke-width="${W}" stroke-linejoin="round" ${NS}/><path d="M-14 9 l4 6 l4 -6 M6 9 l4 6 l4 -6" fill="#fff"/><path d="M-10 32 Q0 25 10 32 Q5 36 0 36 Q-5 36 -10 32Z" fill="#F39B86"/>`;
+  if (mood==='smile' || mood==='smug') mouth = mood==='smug' ? `<path d="M-6 15 Q4 19 12 11" fill="none" stroke="${ink}" stroke-width="${W}" stroke-linecap="round" ${NS}/>` : smile;
+  if (mood==='happy') mouth = open;
+  if (mood==='open') mouth = open;
+  if (mood==='scared') mouth = `<path d="M-8 18 q4 -5 8 0 t8 0" fill="none" stroke="${ink}" stroke-width="${W}" stroke-linecap="round" ${NS}/>`;
+  if (mood==='hunter') mouth = `<g class="m-shut">${smile}</g><g class="m-open">${chomp}</g>`;
+  if (mood==='chomp') mouth = chomp;
+  const cheeks = `<ellipse cx="-27" cy="9" rx="6" ry="3.6" fill="#F39B86" opacity=".75"/><ellipse cx="27" cy="9" rx="6" ry="3.6" fill="#F39B86" opacity=".75"/>`;
+  const feetSvg = feet ? `<g stroke="${ink}" stroke-width="${W}" ${NS} fill="${s}"><path d="M-30 52 Q-30 42 -18 42 Q-6 42 -6 52 Z" ${NS} stroke-linejoin="round"/><path d="M6 52 Q6 42 18 42 Q30 42 30 52 Z" ${NS} stroke-linejoin="round"/></g>` : '';
+  const sweat = o.sweat ? `<path class="sweat" d="M38 -30 q6 9 0 13 q-6 -4 0 -13Z" fill="#DBF2F9" stroke="${ink}" stroke-width="2.5" ${NS}/>` : '';
+  const shadow = o.ground ? `<ellipse cx="0" cy="53" rx="34" ry="5" fill="${ink}" opacity=".18"/>` : '';
+  return `<svg viewBox="-56 -56 112 ${feet?112:112}" ${o.attrs||''} style="overflow:visible;display:block;width:100%">
+    <defs><clipPath id="${id}"><circle r="46"/></clipPath></defs>
+    ${shadow}${feetSvg}
+    <circle r="46" fill="${s}"/>
+    <g clip-path="url(#${id})"><circle cx="-6" cy="-8" r="46" fill="${c}"/></g>
+    <circle r="37.5" fill="none" stroke="${s}" stroke-width="2.5" ${NS} opacity=".9"/>
+    <path d="M-36 -10 A37 37 0 0 1 -18 -32" stroke="#fff" stroke-width="5" fill="none" stroke-linecap="round" opacity=".85"/>
+    <circle r="46" fill="none" stroke="${ink}" stroke-width="${W}" ${NS}/>
+    ${cheeks}${brows}${eyes}${mouth}${sweat}
+  </svg>`;
+}
+
+/* ---------- hero pond ---------- */
+const pond = document.getElementById('pond');
+const pondCoins = [
+  {col:'teal', size:120, left:'5%', bottom:30, mood:'smile', look:[3,1], d:0},
+  {col:'foam', size:64, left:'15%', bottom:16, mood:'happy', d:.6},
+  {col:'cream', size:84, left:'24%', bottom:52, mood:'smile', look:[-3,2], d:1.1},
+  {col:'up', size:96, left:'84%', bottom:46, mood:'open', look:[-3,0], d:.3},
+  {col:'cyan', size:56, left:'93%', bottom:24, mood:'smile', look:[-2,-1], d:1.5},
+];
+pondCoins.forEach(p => {
+  const el = document.createElement('div');
+  el.className = 'pc';
+  el.style.cssText = `left:${p.left};bottom:${p.bottom}px;width:${p.size}px`;
+  el.innerHTML = `<div class="bob" style="animation-delay:-${p.d}s">${coin(p.col,{mood:p.mood,look:p.look,ground:true,size:p.size})}</div>`;
+  pond.appendChild(el);
+});
+const chase = document.createElement('div');
+chase.className = 'chase';
+chase.innerHTML = `<div class="hunter">${coin('sun',{mood:'hunter',look:[4,1],ground:true,size:150})}</div>
+  <div class="snack">${coin('foam',{mood:'scared',look:[-3,-1],sweat:true,ground:true,size:62})}</div>
+  <div class="pop">+$0.12</div>`;
+pond.appendChild(chase);
+
+/* ---------- mint ---------- */
+document.getElementById('seal').innerHTML = coin('sun',{mood:'smug',feet:false,look:[2,0],size:190});
+
+
+/* seigaiha band in mint bg */
+(function(){
+  const g = document.getElementById('sg'); let s = '';
+  for (let row=0; row<4; row++){
+    const y = 640 + row*34, off = (row%2)*40;
+    for (let x=-80+off; x<1520; x+=80){
+      for (const r of [38,26,14]) s += `<path d="M${x-r} ${y} A${r} ${r} 0 0 1 ${x+r} ${y}"/>`;
+    }
+  }
+  g.innerHTML = s;
+})();
+
+/* ---------- arena ---------- */
+(function(){
+  const a = document.getElementById('arena');
+  let s = '';
+  s += `<rect width="1240" height="720" fill="#0F2A30"/>`;
+  // terrace contour arcs (the ring floor curving at the edges)
+  for (let i=0;i<9;i++){
+    const ry = 120 + i*90, rx = 300 + i*170;
+    s += `<ellipse cx="620" cy="1180" rx="${rx}" ry="${ry+520}" fill="none" stroke="${i%3===0?'#1E4D5A':'#163B44'}" stroke-width="${i%3===0?3:2}" ${i%3?'stroke-dasharray="2 10" stroke-linecap="round"':''}/>`;
+  }
+  // map edge lip at top (the ring curving up)
+  s += `<path d="M-20 70 Q620 -30 1260 70 V-20 H-20Z" fill="#071317" stroke="#04181C" stroke-width="3"/>
+        <path d="M-20 70 Q620 -30 1260 70" fill="none" stroke="#2D7388" stroke-width="3" stroke-dasharray="1 14" stroke-linecap="round"/>`;
+  // grass tufts and pebbles
+  const rnd = (seed => () => (seed = (seed*16807)%2147483647)/2147483647)(42);
+  for (let i=0;i<46;i++){
+    const x = rnd()*1240, y = 90 + rnd()*620;
+    if (i%3===0) s += `<ellipse cx="${x}" cy="${y}" rx="${4+rnd()*5}" ry="${2+rnd()*2}" fill="#163B44"/>`;
+    else s += `<path d="M${x} ${y} l-4 -9 M${x} ${y} l0 -11 M${x} ${y} l4 -9" stroke="#1E4D5A" stroke-width="2.5" stroke-linecap="round"/>`;
+  }
+  // food: berries, seeds, little pears
+  const foods = [];
+  for (let i=0;i<60;i++){
+    const x = 30 + rnd()*1180, y = 100 + rnd()*600;
+    if ((x>1040 && y<300) || (x>1040 && y>540) || (x<330 && y<170) || Math.hypot(x-890,y-410)<125 || Math.hypot(x-600,y-380)<80) continue;
+    const kind = i%5;
+    const cols = ['#F2C14E','#93D9EE','#3C9A87','#F39B86','#F6EEDA'];
+    const c = cols[i%cols.length];
+    if (kind===0){ // pear
+      foods.push(`<g transform="translate(${x} ${y})"><circle r="11" fill="${c}" opacity=".18"/><path d="M0 -8 Q5 -8 5 -2 Q8 2 8 5 Q8 10 0 10 Q-8 10 -8 5 Q-8 2 -5 -2 Q-5 -8 0 -8Z" fill="#F2C14E" stroke="#04181C" stroke-width="2.5"/><path d="M0 -8 q1 -4 4 -5" stroke="#04181C" stroke-width="2.5" fill="none" stroke-linecap="round"/></g>`);
+    } else if (kind===1){ // grape trio
+      foods.push(`<g transform="translate(${x} ${y})" stroke="#04181C" stroke-width="2.2" fill="#6FCDE8"><circle r="12" fill="#6FCDE8" opacity=".16" stroke="none"/><circle cx="-4" cy="-3" r="4.5"/><circle cx="4" cy="-3" r="4.5"/><circle cx="0" cy="4" r="4.5"/></g>`);
+    } else { // seed
+      foods.push(`<g transform="translate(${x} ${y})"><circle r="10" fill="${c}" opacity=".16"/><circle r="5.5" fill="${c}" stroke="#04181C" stroke-width="2.5"/><circle cx="-1.8" cy="-1.8" r="1.6" fill="#fff"/></g>`);
+    }
+  }
+  s += foods.join('');
+  // coins with name tags
+  const coins = [
+    {col:'sun', x:890, y:410, size:200, mood:'smug', look:[-4,3], name:'big_aurelius', v:'$9.80'},
+    {col:'teal', x:250, y:520, size:150, mood:'smile', look:[4,-2], name:'lethe.hl', v:'$6.12'},
+    {col:'cyan', x:600, y:380, size:118, mood:'happy', name:'you', v:'$4.37', me:true},
+    {col:'up', x:700, y:620, size:96, mood:'open', look:[-3,-2], name:'penny_pincher', v:'$3.05'},
+    {col:'cream', x:300, y:250, size:78, mood:'smile', look:[3,2], name:'gm_crumbs', v:'$2.41'},
+    {col:'foam', x:760, y:175, size:48, mood:'scared', look:[-3,1], name:'gm_dust2', v:'$0.40', sweat:true},
+    {col:'foam', x:450, y:660, size:54, mood:'smile', look:[2,-2], name:'nibbler', v:'$0.71'},
+    {col:'teal', x:130, y:330, size:60, mood:'open', look:[3,0], name:'0xb0b', v:'$0.88'},
+  ];
+  coins.forEach((c,i) => {
+    const sz = c.size, x = c.x - sz/2, y = c.y - sz/2;
+    if (c.me) s += `<circle cx="${c.x}" cy="${c.y}" r="${sz/2+16}" fill="none" stroke="#F2C14E" stroke-width="3" stroke-dasharray="2 9" stroke-linecap="round"/>`;
+    s += `<ellipse cx="${c.x}" cy="${c.y+sz*0.47}" rx="${sz*0.32}" ry="${sz*0.05}" fill="#04181C" opacity=".45"/>`;
+    s += `<svg x="${x}" y="${y}" width="${sz}" height="${sz}" viewBox="-56 -56 112 112" overflow="visible"><g class="bob" style="animation-delay:-${i*0.4}s">${coin(c.col,{mood:c.mood,look:c.look,sweat:c.sweat,feet:false,size:c.size}).replace(/^<svg[^>]*>/,'').replace(/<\/svg>\s*$/,'')}</g></svg>`;
+    const tw = c.name.length*7.4 + 18 + (c.v?c.v.length*7.4+10:0);
+    const ty = c.y - sz/2 - 26;
+    s += `<g transform="translate(${c.x - tw/2} ${ty})">
+      <rect x="2" y="2" width="${tw}" height="22" rx="7" fill="#04181C"/>
+      <rect width="${tw}" height="22" rx="7" fill="${c.me?'#F2C14E':'#F6EEDA'}" stroke="#04181C" stroke-width="2.5"/>
+      <text x="9" y="15.5" font-family="Geist Mono" font-size="12" font-weight="600" fill="#04181C">${c.name}<tspan fill="#2D7388" dx="8">${c.v}</tspan></text></g>`;
+  });
+  // a split blob trail + crumbs near "you"
+  s += `<g fill="#F6EEDA" stroke="#04181C" stroke-width="2"><circle cx="540" cy="430" r="3"/><circle cx="528" cy="446" r="2.2"/><circle cx="552" cy="452" r="1.8"/></g>`;
+  a.innerHTML = s;
+})();
+
+/* ---------- WL icons ---------- */
+document.getElementById('ic1').innerHTML = coin('up',{mood:'happy',feet:false,size:76});
+document.getElementById('ic2').innerHTML = coin('cyan',{mood:'smile',feet:false,look:[4,0],size:76});
+document.getElementById('ic3').innerHTML = coin('cream',{mood:'scared',feet:false,look:[0,-3],size:76});
+</script>
+</body>
+</html>
