@@ -1,278 +1,107 @@
-import { spawnSync } from 'node:child_process';
-import { resolve } from 'node:path';
-import { ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from '@solana/spl-token';
-import { Connection, Keypair, PublicKey, SystemProgram } from '@solana/web3.js';
 import { describe, expect, it } from 'vitest';
+import { USAGE, formatStatus, parseAddressList, parseArgs, parsePhaseArg, parsePrivateKey, tokens, UsageError } from '../src/admin-lib';
 import {
-  DEFAULT_FEE_BPS,
-  DEFAULT_SETTLE_FEE_LAMPORTS,
-  SlanaClient,
-  ata,
-  pdas,
-  type ArenaView,
-  type ConfigView,
-} from '../src';
-import {
-  USAGE,
-  UsageError,
-  buildSetTokenInstructions,
-  defaultArenaParams,
-  flag,
-  formatStatus,
-  inferCluster,
-  int,
-  metaplexMetadataPda,
-  MPL_TOKEN_METADATA_ID,
-  parseArgs,
-  parseInitOptions,
-  parseMetaplexMetadata,
-  parseUpdateConfigOptions,
-  tokenProgramName,
-  tokens,
+  AdminInputError,
+  confirmTypedAddress,
+  createArenaRefusal,
+  ownerRefusal,
+  parseAddressInput,
+  parseBoolInput,
+  parseIntInput,
+  planDefaultArenas,
+  setTokenRefusal,
+  sweepArenaRefusal,
+  testTokenRefusal,
+  updateArenaRefusal,
   type StatusSnapshot,
-} from '../src/admin-lib';
+} from '../src/ops';
+import { chainInfo } from '@elymum/shared';
 
-const k = () => Keypair.generate().publicKey;
-const opts = (...argv: string[]) => parseArgs(['cmd', ...argv]).opts;
+const A = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8';
+const KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
 
-describe('parseArgs', () => {
-  it('reads the command, --name value, --name=value and bare flags', () => {
-    const { command, opts: o } = parseArgs(['create-arena', '--id', '5', '--entry=1_000.5', '--defaults', '--max', '300', '--force']);
-    expect(command).toBe('create-arena');
-    expect([...o.entries()]).toEqual([
-      ['id', '5'],
-      ['entry', '1_000.5'],
-      ['defaults', true],
-      ['max', '300'],
-      ['force', true],
-    ]);
-    expect(parseArgs([]).command).toBeNull();
-    expect(parseArgs(['--', 'status']).command).toBe('status');
-    expect(() => parseArgs(['status', 'extra'])).toThrow(UsageError);
-  });
-
-  it('typed option readers', () => {
-    expect(int(opts('--n', '7'), 'n', 0, 10)).toBe(7);
-    expect(int(opts('--n', '1_000'), 'n', 0, 2_000)).toBe(1_000);
-    expect(int(opts(), 'n', 0, 10)).toBeUndefined();
-    expect(() => int(opts('--n', '11'), 'n', 0, 10)).toThrow(/between 0 and 10/);
-    expect(() => int(opts('--n', '1.5'), 'n', 0, 10)).toThrow(UsageError);
-    expect(() => int(opts('--n'), 'n', 0, 10)).toThrow(/needs a value/);
-    expect(tokens(opts('--entry', '1_000.5'), 'entry', 6)).toBe(1_000_500_000n);
-    expect(tokens(opts('--entry', '50000'), 'entry', 0)).toBe(50_000n);
-    expect(() => tokens(opts('--entry', '0.0000001'), 'entry', 6)).toThrow(UsageError);
-    expect(inferCluster('https://api.devnet.solana.com')).toBe('devnet');
-    expect(inferCluster('https://mainnet.helius-rpc.com')).toBe('mainnet-beta');
-    expect(inferCluster('http://127.0.0.1:8899')).toBe('localnet');
-  });
-});
-
-describe('flag', () => {
-  it('accepts --x and --x=true, not false or absent', () => {
-    expect(flag(opts('--defaults'), 'defaults')).toBe(true);
-    expect(flag(opts('--defaults=true'), 'defaults')).toBe(true);
-    expect(flag(opts('--defaults=false'), 'defaults')).toBe(false);
-    expect(flag(opts(), 'defaults')).toBe(false);
-  });
-});
-
-describe('init options', () => {
-  const admin = k();
-  const server = k();
-
-  it('the fee wallet defaults to the admin; fee and settle deposit to their defaults', () => {
-    const p = parseInitOptions(opts('--server', server.toBase58()), admin);
-    expect(p.feeWallet.equals(admin)).toBe(true);
-    expect(p.serverAuthority.equals(server)).toBe(true);
-    expect([p.feeBps, p.settleFeeLamports]).toEqual([DEFAULT_FEE_BPS, DEFAULT_SETTLE_FEE_LAMPORTS]);
-    expect(DEFAULT_FEE_BPS).toBe(500);
-  });
-
-  it('--fee-wallet, --fee-bps and --settle-fee-lamports override', () => {
-    const fw = k();
-    const p = parseInitOptions(opts('--server', server.toBase58(), '--fee-wallet', fw.toBase58(), '--fee-bps', '250', '--settle-fee-lamports', '10000'), admin);
-    expect(p.feeWallet.equals(fw)).toBe(true);
-    expect([p.feeBps, p.settleFeeLamports]).toEqual([250, 10_000]);
-  });
-
-  it('refuses a missing server, a mint, bad numbers and default keys', () => {
-    expect(() => parseInitOptions(opts(), admin)).toThrow(/--server/);
-    expect(() => parseInitOptions(opts('--server', server.toBase58(), '--mint', k().toBase58()), admin)).toThrow(/set-token/);
-    expect(() => parseInitOptions(opts('--server', server.toBase58(), '--fee-bps', '1001'), admin)).toThrow(/between 0 and 1000/);
-    expect(() => parseInitOptions(opts('--server', server.toBase58(), '--settle-fee-lamports', '1000001'), admin)).toThrow(UsageError);
-    expect(() => parseInitOptions(opts('--server', 'not-a-key'), admin)).toThrow(/valid public key/);
-    expect(() => parseInitOptions(opts('--server', server.toBase58(), '--fee-wallet', PublicKey.default.toBase58()), admin)).toThrow(/default/);
-  });
-});
-
-describe('update-config options', () => {
-  it('keeps only the given fields', () => {
-    const fw = k();
-    expect(parseUpdateConfigOptions(opts('--fee-wallet', fw.toBase58(), '--paused', 'false'))).toEqual({ feeWallet: fw, paused: false });
-    expect(parseUpdateConfigOptions(opts('--fee-bps', '0'))).toEqual({ feeBps: 0 });
-    const all = parseUpdateConfigOptions(opts('--admin', fw.toBase58(), '--server', fw.toBase58(), '--settle-fee-lamports', '5'));
-    expect(Object.keys(all).sort()).toEqual(['admin', 'serverAuthority', 'settleFeeLamports']);
-  });
-
-  it('refuses nothing to change, Pass/split leftovers and bad values', () => {
-    expect(() => parseUpdateConfigOptions(opts())).toThrow(/nothing to change/);
-    expect(() => parseUpdateConfigOptions(opts('--split', '5000/3000/2000'))).toThrow(/nothing to change/);
-    expect(() => parseUpdateConfigOptions(opts('--paused', 'yes'))).toThrow(/true or false/);
-    expect(() => parseUpdateConfigOptions(opts('--fee-bps', '2000'))).toThrow(UsageError);
-    expect(() => parseUpdateConfigOptions(opts('--fee-wallet', PublicKey.default.toBase58()))).toThrow(/default/);
-  });
-});
-
-describe('create-arena --defaults', () => {
-  it('four open arenas, entry fees scaled by the mint decimals', () => {
-    expect(defaultArenaParams(6)).toEqual([
-      { id: 1, entryFee: 1_000_000_000n, maxSessions: 300 },
-      { id: 2, entryFee: 10_000_000_000n, maxSessions: 300 },
-      { id: 3, entryFee: 50_000_000_000n, maxSessions: 300 },
-      { id: 4, entryFee: 250_000_000_000n, maxSessions: 300 },
-    ]);
-    expect(defaultArenaParams(0).map((a) => a.entryFee)).toEqual([1_000n, 10_000n, 50_000n, 250_000n]);
-  });
-});
-
-describe('set-token', () => {
-  const client = new SlanaClient(new Connection('http://127.0.0.1:1'));
-  const admin = k();
-  const feeWallet = k();
-  const mint = k();
-
-  for (const program of [TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID]) {
-    it(`creates the fee wallet ATA (admin pays), then set_token_mint (${tokenProgramName(program)})`, async () => {
-      const [create, set] = await buildSetTokenInstructions(client, admin, { tokenMint: null, feeWallet: feeWallet.toBase58() }, mint, program);
-      const feeToken = ata(feeWallet, mint, program);
-      expect(create.programId.equals(ASSOCIATED_TOKEN_PROGRAM_ID)).toBe(true);
-      expect([...create.data]).toEqual([1]); // CreateIdempotent
-      expect(create.keys.map((m) => [m.pubkey.toBase58(), m.isSigner, m.isWritable])).toEqual([
-        [admin.toBase58(), true, true], // payer
-        [feeToken.toBase58(), false, true],
-        [feeWallet.toBase58(), false, false],
-        [mint.toBase58(), false, false],
-        [SystemProgram.programId.toBase58(), false, false],
-        [program.toBase58(), false, false],
-      ]);
-      expect(set.programId.equals(client.programId)).toBe(true);
-      expect([...set.data]).toEqual([204, 233, 179, 83, 12, 31, 139, 120]);
-      expect(set.keys.map((m) => m.pubkey.toBase58())).toEqual([admin, pdas.config(), mint, program].map((x) => x.toBase58()));
-    });
-  }
-
-  it('refuses when the mint is already set or the owner is not a token program', async () => {
-    await expect(buildSetTokenInstructions(client, admin, { tokenMint: k().toBase58(), feeWallet: feeWallet.toBase58() }, mint, TOKEN_PROGRAM_ID)).rejects.toThrow(/already set/);
-    await expect(buildSetTokenInstructions(client, admin, { tokenMint: null, feeWallet: feeWallet.toBase58() }, mint, SystemProgram.programId)).rejects.toThrow(
-      /not an SPL Token/,
-    );
-  });
-
-  it('reads the symbol from Metaplex metadata', () => {
-    const str = (s: string, pad: number) => {
-      const b = new TextEncoder().encode(s.padEnd(pad, '\0'));
-      return [b.length, 0, 0, 0, ...b];
-    };
-    const data = Uint8Array.from([4, ...k().toBytes(), ...mint.toBytes(), ...str('Slana', 32), ...str('SLANA', 10), ...str('https://x', 200)]);
-    expect(parseMetaplexMetadata(data)).toEqual({ name: 'Slana', symbol: 'SLANA' });
-    expect(parseMetaplexMetadata(data.subarray(0, 80))).toBeNull();
-    expect(parseMetaplexMetadata(Uint8Array.from([5, ...data.subarray(1)]))).toBeNull();
-    const expected = PublicKey.findProgramAddressSync([Buffer.from('metadata'), MPL_TOKEN_METADATA_ID.toBuffer(), mint.toBuffer()], MPL_TOKEN_METADATA_ID)[0];
-    expect(metaplexMetadataPda(mint).equals(expected)).toBe(true);
-  });
-});
-
-describe('status', () => {
-  const base = (config: ConfigView | null, extra: Partial<StatusSnapshot> = {}): StatusSnapshot => ({
-    url: 'http://127.0.0.1:8899',
-    cluster: 'localnet',
-    programId: 'Prog111',
-    deployed: true,
-    configAddress: 'Conf111',
-    config,
-    ...extra,
-  });
-  const config = (over: Partial<ConfigView> = {}): ConfigView => ({
-    admin: 'Admin111',
-    serverAuthority: 'Server111',
-    feeWallet: 'FeeWallet111',
-    tokenMint: null,
-    tokenProgram: null,
-    tokenDecimals: 0,
-    feeBps: 500,
-    settleFeeLamports: 20_000,
-    paused: false,
-    totals: { players: 0, games: 0, sessions: 0, staked: 0n, paidOut: 0n },
-    ...over,
-  });
-
-  it('not deployed / not initialized', () => {
-    expect(formatStatus(base(null, { deployed: false })).join('\n')).toMatch(/✗ not deployed/);
-    expect(formatStatus(base(null)).join('\n')).toMatch(/not initialized \(run `pnpm admin init --server <pubkey>`\)/);
-  });
-
-  it('shows "token: not set" until set-token', () => {
-    const text = formatStatus(base(config(), { serverBalance: 2_500_000_000 })).join('\n');
-    expect(text).toMatch(/^ {2}token: +not set/m);
-    expect(text).toContain('set-token --mint <CA>');
-    expect(text).toMatch(/fee wallet: +FeeWallet111/);
-    expect(text).toMatch(/fee: +5\.00 % of profit, 100 % to the fee wallet/);
-    expect(text).toContain('◎2.5');
-    expect(text).toContain('arenas    none (set the token first');
-    expect(text).not.toMatch(/pass|season|treasury/i);
-  });
-
-  it('with the token set: mint, program, decimals, symbol, fee wallet balance and arenas', () => {
-    const arena: ArenaView = { id: 3, address: 'Arena3', entryFee: 50_000_000_000n, maxSessions: 300, openSessions: 2, enabled: true, vault: 'V', pot: 1_234_500_000n };
-    const lines = formatStatus(
-      base(config({ tokenMint: 'Mint111', tokenProgram: TOKEN_2022_PROGRAM_ID.toBase58(), tokenDecimals: 6, paused: true }), {
-        mint: { supply: 1_000_000_000_000_000n, mintAuthority: null, freezeAuthority: null, symbol: 'SLANA' },
-        feeWalletToken: 'FeeAta111',
-        feeWalletBalance: 42_000_000n,
-        arenas: [arena],
-      }),
-    );
-    const text = lines.join('\n');
-    expect(text).toMatch(/token: +Mint111 {2}\(Token-2022, 6 decimals, SLANA\)/);
-    expect(text).toMatch(/supply: +1,000,000,000 SLANA/);
-    expect(text).toMatch(/mint\/freeze auth: +none \/ none/);
-    expect(text).toMatch(/fee wallet token: +FeeAta111 {2}\(42 SLANA\)/);
-    expect(text).toMatch(/paused: +YES/);
-    expect(lines.find((l) => l.includes('#3'))).toMatch(/Gold Lake +entry 50,000 +open 2\/300 · pot 1,234.5 · enabled {2}Arena3/);
-    expect(text).not.toContain('not set');
-  });
-
-  it('a missing fee wallet token account is flagged', () => {
-    const text = formatStatus(
-      base(config({ tokenMint: 'Mint111', tokenProgram: TOKEN_PROGRAM_ID.toBase58(), tokenDecimals: 0 }), { mint: null, feeWalletToken: 'FeeAta111', feeWalletBalance: null }),
-    ).join('\n');
-    expect(text).toMatch(/SPL Token, 0 decimals/);
-    expect(text).toMatch(/mint account not readable/);
-    expect(text).toMatch(/account missing/);
-    expect(text).toContain('arenas    none (run `pnpm admin create-arena --defaults`)');
-  });
-});
-
-describe('CLI process', () => {
-  const tsx = resolve(process.cwd(), 'node_modules/.bin/tsx');
-  const run = (...args: string[]) => spawnSync(tsx, ['src/admin.ts', ...args], { encoding: 'utf8', env: { ...process.env, SOLANA_RPC_URL: 'http://127.0.0.1:1' } });
-
-  it('help lists the simple command set', () => {
-    const r = run('help');
-    expect(r.status).toBe(0);
-    expect(r.stdout).toBe(`${USAGE}\n`);
-    for (const cmd of ['init', 'set-token --mint <CA>', 'create-arena --defaults', 'update-config', 'pause', 'unpause', 'update-arena', 'sweep', 'status', '--fee-wallet']) {
-      expect(r.stdout).toContain(cmd);
+describe('admin CLI parsing', () => {
+  it('parses commands, positionals and options', () => {
+    const p = parseArgs(['nft:phase', 'allowlist', '--dry-run', '--rpc', 'http://x', '--id=3']);
+    expect(p.command).toBe('nft:phase');
+    expect(p.positional).toEqual(['allowlist']);
+    expect(p.opts.get('dry-run')).toBe(true);
+    expect(p.opts.get('rpc')).toBe('http://x');
+    expect(p.opts.get('id')).toBe('3');
+    expect(() => parseArgs(['a', 'b', 'c'])).toThrow(UsageError);
+    expect(tokens(new Map([['fee', '1_000']]), 'fee', 18)).toBe(1000n * 10n ** 18n);
+    expect(parsePhaseArg('wl')).toBe('allowlist');
+    expect(() => parsePhaseArg('open')).toThrow(UsageError);
+    for (const cmd of ['status', 'deploy-arena', 'deploy-nft', 'deploy-test-token', 'set-token', 'create-arena', 'update-arena', 'fee', 'pause', 'unpause', 'server-key', 'sweep-arena', 'nft:phase', 'nft:root', 'nft:price', 'nft:keeper', 'nft:bounds', 'nft:withdraw']) {
+      expect(USAGE).toContain(cmd);
     }
-    expect(r.stdout).not.toMatch(/pass|season|treasury|reveal|collection/i);
-  }, 30_000);
+  });
 
-  it('usage errors exit 2 before any RPC', () => {
-    const missing = run('set-token');
-    expect(missing.status).toBe(2);
-    expect(missing.stderr).toContain('set-token needs --mint <CA>');
-    const unknown = run('withdraw-treasury', '--amount', '1');
-    expect(unknown.status).toBe(2);
-    expect(unknown.stderr).toContain('unknown command: withdraw-treasury');
-  }, 30_000);
+  it('loads a private key from hex or a file', () => {
+    expect(parsePrivateKey(KEY)).toBe(KEY);
+    expect(parsePrivateKey(KEY.slice(2))).toBe(KEY);
+    expect(parsePrivateKey('/key', () => `${KEY}\n`)).toBe(KEY);
+    expect(parsePrivateKey('/key', () => JSON.stringify({ privateKey: KEY }))).toBe(KEY);
+    expect(() => parsePrivateKey('/key', () => 'nope')).toThrow(UsageError);
+    expect(() =>
+      parsePrivateKey('/missing', () => {
+        throw new Error('ENOENT');
+      }),
+    ).toThrow(UsageError);
+  });
+
+  it('reads address lists', () => {
+    expect(parseAddressList(`# wl\n${A}\n\n0xabc,\n`)).toEqual([A, '0xabc']);
+    expect(parseAddressList(JSON.stringify([A, { wallet: '0x1' }, { address: '0x2' }]))).toEqual([A, '0x1', '0x2']);
+  });
+});
+
+describe('ops (shared with the admin panel)', () => {
+  it('parses fields', () => {
+    expect(parseAddressInput('to', A.toLowerCase())).toBe(A);
+    expect(() => parseAddressInput('to', A.replace('C8', 'c8'))).toThrow(/checksum/);
+    expect(() => parseAddressInput('to', '0x0000000000000000000000000000000000000000')).toThrow(AdminInputError);
+    expect(parseAddressInput('to', '0x0000000000000000000000000000000000000000', { allowZero: true })).toMatch(/^0x0+$/);
+    expect(parseIntInput('n', '1_000', 0, 2000)).toBe(1000);
+    expect(() => parseIntInput('n', '-1', 0, 2)).toThrow(AdminInputError);
+    expect(parseBoolInput('b', 'yes')).toBe(true);
+  });
+
+  it('set-token needs the address twice', () => {
+    expect(confirmTypedAddress('token', A, A.toLowerCase())).toBe(A);
+    expect(() => confirmTypedAddress('token', A, '0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC')).toThrow(/differ/);
+  });
+
+  it('refusals mirror the contract', () => {
+    expect(setTokenRefusal({ token: A }, A, true)).toMatch(/already set/);
+    expect(setTokenRefusal({ token: null }, A, false)).toMatch(/not a contract/);
+    expect(setTokenRefusal({ token: null }, A, true)).toBeNull();
+    expect(createArenaRefusal({ token: null }, { id: 1, entryFee: 1n, maxSessions: 2 }, [])).toMatch(/token/);
+    expect(createArenaRefusal({ token: A }, { id: 1, entryFee: 1n, maxSessions: 2 }, [1])).toMatch(/exists/);
+    expect(updateArenaRefusal({ id: 1, exists: true, entryFee: 5n, openSessions: 2 }, 6n)).toMatch(/open tickets/);
+    expect(updateArenaRefusal({ id: 1, exists: true, entryFee: 5n, openSessions: 2 }, 5n)).toBeNull();
+    expect(sweepArenaRefusal({ id: 1, exists: true, enabled: true, openSessions: 0 })).toMatch(/disable/);
+    expect(sweepArenaRefusal({ id: 1, exists: true, enabled: false, openSessions: 0 })).toBeNull();
+    expect(ownerRefusal(A, A.toLowerCase() as `0x${string}`)).toBeNull();
+    expect(ownerRefusal(A, null)).toMatch(/connect/);
+    expect(testTokenRefusal(4242)).toMatch(/testnet/);
+    expect(testTokenRefusal(99801)).toBeNull();
+    expect(planDefaultArenas(18, [2])).toMatchObject({ skip: [2] });
+    expect(planDefaultArenas(18, [2]).create.map((a) => a.id)).toEqual([1, 3, 4]);
+  });
+
+  it('formats the status report', () => {
+    const s: StatusSnapshot = {
+      chain: chainInfo(31337),
+      mainnet: false,
+      block: 12n,
+      account: { address: A, balance: 10n ** 18n },
+      arena: null,
+      nft: null,
+    };
+    const lines = formatStatus(s, 'http://127.0.0.1:8545');
+    expect(lines[0]).toContain('Localnet');
+    expect(lines.join('\n')).toContain('1 HYPE');
+    expect(lines.join('\n')).toContain('ARENA_ADDRESS');
+  });
 });

@@ -1,84 +1,74 @@
-import type { IntLike } from './math';
-
-export const LAMPORTS_PER_SOL = 1_000_000_000;
-
-export type Cluster = 'mainnet-beta' | 'devnet' | 'testnet' | 'localnet';
-
-/** Accepts common spellings ("mainnet", "localhost", …); anything unknown is treated as localnet. */
-export function normalizeCluster(cluster: string | null | undefined): Cluster {
-  switch ((cluster ?? '').trim().toLowerCase()) {
-    case 'mainnet':
-    case 'mainnet-beta':
-      return 'mainnet-beta';
-    case 'devnet':
-      return 'devnet';
-    case 'testnet':
-      return 'testnet';
-    default:
-      return 'localnet';
-  }
-}
-
-/** Lamports → SOL as a JS number (display only). */
-export function lamportsToSol(lamports: IntLike): number {
-  return Number(typeof lamports === 'number' ? lamports : lamports.toString()) / LAMPORTS_PER_SOL;
-}
+import { HYPE_DECIMALS, formatToken, parseToken } from '@elymum/shared';
+import { getAddress, isAddress } from 'viem';
 
 /**
- * SOL → lamports without floating point drift (`0.29` → 290 000 000, not 289 999 999).
- * Accepts numbers or decimal strings; more than 9 decimals are rounded to the nearest lamport.
+ * Display helpers. Token amounts are bigint base units of the ERC-20 (its `decimals()`); HYPE
+ * amounts are wei. All arithmetic is exact (no floating point).
  */
-export function solToLamports(sol: number | string): number {
-  const n = typeof sol === 'string' ? Number(sol.trim()) : sol;
-  if (typeof sol === 'string' && !/^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i.test(sol.trim())) {
-    throw new RangeError(`invalid SOL amount: ${JSON.stringify(sol)}`);
-  }
-  if (!Number.isFinite(n)) throw new RangeError(`invalid SOL amount: ${sol}`);
-  const negative = n < 0;
-  // toFixed(9) rounds the exact binary value to 9 decimals (0.29 → "0.290000000").
-  const [whole, frac = ''] = Math.abs(n).toFixed(9).split('.');
-  const lamports = Number(whole) * LAMPORTS_PER_SOL + Number(frac.padEnd(9, '0'));
-  if (!Number.isSafeInteger(lamports)) throw new RangeError(`SOL amount out of range: ${sol}`);
-  return negative && lamports !== 0 ? -lamports : lamports;
+
+/** `1,234.5` (at most `maxFrac` decimals, default 6, never more than the token has). */
+export function formatTokenAmount(raw: bigint | number, decimals: number, opts: { maxFrac?: number; compact?: boolean } = {}): string {
+  return formatToken(raw, decimals, { maxFrac: opts.maxFrac ?? Math.min(decimals, 6), compact: opts.compact });
 }
 
-const LOCAL_RPC = 'http://localhost:8899';
-
-function explorerUrl(kind: 'tx' | 'address', value: string, cluster: string, customRpcUrl: string): string {
-  const c = normalizeCluster(cluster);
-  if (c === 'localnet') {
-    return `https://explorer.solana.com/${kind}/${value}?cluster=custom&customUrl=${encodeURIComponent(customRpcUrl)}`;
-  }
-  const path = kind === 'tx' ? 'tx' : 'account';
-  const query = c === 'mainnet-beta' ? '' : `?cluster=${c}`;
-  return `https://solscan.io/${path}/${value}${query}`;
+/** `1,234.5 $ELYMUM`. */
+export function formatTokenWithSymbol(raw: bigint | number, decimals: number, symbol: string, opts: { maxFrac?: number; compact?: boolean } = {}): string {
+  return `${formatTokenAmount(raw, decimals, opts)} ${symbol}`;
 }
 
-/** Link to a transaction: Solscan on mainnet/devnet/testnet, explorer.solana.com with a custom RPC on localnet. */
-export function explorerTxUrl(signature: string, cluster: string, customRpcUrl: string = LOCAL_RPC): string {
-  return explorerUrl('tx', signature, cluster, customRpcUrl);
+/** Whole tokens typed by a person (`1,000`, `0.5`) → base units. Throws `SyntaxError` / `RangeError`. */
+export function parseTokenAmount(text: string, decimals: number): bigint {
+  return parseToken(text.replace(/_/g, ''), decimals);
 }
 
-/** Link to an account (see `explorerTxUrl`). */
-export function explorerAddressUrl(address: string, cluster: string, customRpcUrl: string = LOCAL_RPC): string {
-  return explorerUrl('address', address, cluster, customRpcUrl);
+/** `0.0312 HYPE` (at most `maxFrac` decimals, default 6). */
+export function formatHypeAmount(wei: bigint | number, maxFrac = 6): string {
+  return `${formatToken(wei, HYPE_DECIMALS, { maxFrac })} HYPE`;
 }
 
-/** Public RPC endpoint of a cluster (localnet → the default solana-test-validator port). */
-export function clusterDefaultRpc(cluster: string): string {
-  switch (normalizeCluster(cluster)) {
-    case 'mainnet-beta':
-      return 'https://api.mainnet-beta.solana.com';
-    case 'devnet':
-      return 'https://api.devnet.solana.com';
-    case 'testnet':
-      return 'https://api.testnet.solana.com';
-    default:
-      return 'http://127.0.0.1:8899';
-  }
+/** HYPE typed by a person (`0.03`) → wei. */
+export function parseHypeAmount(text: string): bigint {
+  return parseToken(text.trim().replace(/\s*HYPE$/i, '').replace(/_/g, ''), HYPE_DECIMALS);
 }
 
-/** `9xQe…3fTr` style shortening for UI. */
+/** Basis points as a percentage: `5.00 %`. */
+export function formatBps(bps: number): string {
+  return `${(bps / 100).toFixed(2)} %`;
+}
+
+/** US cents as dollars: `$1.00`. */
+export function formatUsdCents(cents: number): string {
+  const sign = cents < 0 ? '-' : '';
+  const abs = Math.abs(Math.round(cents));
+  return `${sign}$${Math.floor(abs / 100).toLocaleString('en-US')}.${String(abs % 100).padStart(2, '0')}`;
+}
+
+/** `0x1234…abcd` (keeps `0x` + `chars` hex digits at each end). Non-addresses are shortened the same way. */
 export function shortAddress(address: string, chars = 4): string {
-  return address.length <= chars * 2 + 1 ? address : `${address.slice(0, chars)}…${address.slice(-chars)}`;
+  const head = address.startsWith('0x') ? chars + 2 : chars;
+  return address.length <= head + chars + 1 ? address : `${address.slice(0, head)}…${address.slice(-chars)}`;
+}
+
+/** A transaction hash shortened the same way (`0xabcdef…1234`). */
+export function shortHash(hash: string, chars = 6): string {
+  return shortAddress(hash, chars);
+}
+
+/** EIP-55 checksummed address, or null when `value` is not an address. Accepts any case. */
+export function checksumAddress(value: string): `0x${string}` | null {
+  const v = value.trim();
+  return isAddress(v, { strict: false }) ? getAddress(v) : null;
+}
+
+/** Case-insensitive address equality (false for non-addresses). */
+export function sameAddress(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false;
+  const x = checksumAddress(a);
+  return x !== null && x === checksumAddress(b);
+}
+
+export const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as const;
+
+export function isZeroAddress(a: string | null | undefined): boolean {
+  return !a || /^0x0{40}$/i.test(a);
 }
