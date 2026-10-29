@@ -1,9 +1,10 @@
 import { formatHypeAmount, needsReprice, sameAddress } from '@elymum/sdk';
 import { planDefaultArenas, type StatusSnapshot } from '@elymum/sdk/ops';
-import type { AllowlistStatus, MintPriceQuote, SiteSettings } from '@elymum/shared';
+import type { AllowlistStatus, MintPriceQuote, SiteCounts, SiteSettings } from '@elymum/shared';
 import { useEffect, useState } from 'react';
+import { Button, CoinCharacter, Stamp, type CoinMood, type CoinPaint } from '../design';
 import type { AdminNetwork } from './net';
-import { Card, type ChainCtx } from './ui';
+import { Mark, type ChainCtx } from './ui';
 
 export type ChecklistTab = 'deploy' | 'mint' | 'arena' | 'settings';
 
@@ -77,39 +78,124 @@ export function launchChecklist(i: {
   ];
 }
 
-/** `/admin → Launch`: what is done and what is left, each with the tab that does it. */
-export function LaunchTab({ ctx, go }: { ctx: ChainCtx; go: (tab: ChecklistTab) => void }) {
+/** The five terraces of the launch, each holding its checklist lines. */
+const STAGES: { id: string; title: string; blurb: string; items: string[]; paint: CoinPaint }[] = [
+  { id: 'wl', title: 'Whitelist', blurb: 'People ask in; you approve them.', items: [], paint: 'cream' },
+  { id: 'deploy', title: 'Deploy', blurb: 'Both contracts live, owned by you, wired to the server.', items: ['chain', 'server-key', 'arena', 'authority', 'nft', 'token', 'arenas'], paint: 'teal' },
+  { id: 'allowlist', title: 'Allowlist', blurb: 'The approved wallets, hashed into one root on chain.', items: ['allowlist'], paint: 'spray' },
+  { id: 'mint', title: 'Mint', blurb: 'One dollar in HYPE, and the doors open.', items: ['price', 'phase'], paint: 'sun' },
+  { id: 'game', title: 'Game', blurb: 'Holders walk onto the floor. Lunch is served.', items: ['access'], paint: 'up' },
+];
+
+type StageState = 'done' | 'now' | 'todo' | 'unknown';
+
+/** `/admin → Launch`: the checklist as a terrace path, WL → Deploy → Allowlist → Mint → Game. */
+export function LaunchTab({ ctx, go }: { ctx: ChainCtx; go: (tab: ChecklistTab | 'wl') => void }) {
   const [allowlist, setAllowlist] = useState<AllowlistStatus | null>(null);
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const [quote, setQuote] = useState<MintPriceQuote | null>(null);
+  const [counts, setCounts] = useState<SiteCounts | null>(null);
   useEffect(() => {
     if (!ctx.api) return;
     let live = true;
     ctx.api.allowlist().then((a) => live && setAllowlist(a), () => {});
     ctx.api.settings().then((r) => live && setSettings(r.settings), () => {});
     ctx.api.mintPrice().then((q) => live && setQuote(q), () => {});
+    ctx.api.counts?.().then((c) => live && setCounts(c), () => {});
     return () => {
       live = false;
     };
   }, [ctx.api]);
   const items = launchChecklist({ net: ctx.net, status: ctx.status, allowlist, settings, quote });
+  const byId = new Map(items.map((it) => [it.id, it]));
+  const wlOk = counts ? counts.wl.approved > 0 : null;
+  const done = items.filter((it) => it.ok === true).length + (wlOk ? 1 : 0);
+  const total = items.length + 1;
+
+  let seenOpen = false;
+  const stages = STAGES.map((st) => {
+    const its = st.items.map((id) => byId.get(id)!).filter(Boolean);
+    const oks = st.id === 'wl' ? [wlOk] : its.map((it) => it.ok);
+    const raw: StageState = oks.every((o) => o === true) ? 'done' : oks.some((o) => o === false) ? 'todo' : 'unknown';
+    let state: StageState = raw;
+    if (raw !== 'done' && !seenOpen) {
+      state = 'now';
+      seenOpen = true;
+    }
+    return { ...st, its, state };
+  });
+  const mood: Record<StageState, CoinMood> = { done: 'happy', now: 'open', todo: 'sleepy', unknown: 'smile' };
+
   return (
-    <Card title="Launch checklist" id="launch" lede="WL → Mint → the game opens for holders. Each line links to the tab that does it.">
-      <ul className="ad-checklist" data-testid="launch-checklist">
-        {items.map((it) => (
-          <li key={it.id} className={`ad-checklist__item is-${it.ok === null ? 'unknown' : it.ok ? 'ok' : 'todo'}`} data-item={it.id} data-ok={String(it.ok)}>
-            <span className="ad-checklist__mark mono" aria-hidden="true">
-              {it.ok === null ? '?' : it.ok ? 'OK' : 'TODO'}
-            </span>{' '}
-            <strong>{it.label}</strong> <span className="ad-note">{it.detail}</span>{' '}
-            {it.ok !== true && (
-              <button type="button" className="ad-textlink" onClick={() => go(it.tab)}>
-                {it.tab}
-              </button>
-            )}
+    <section className="ad-launch" aria-labelledby="ad-launch-h">
+      <header className="ad-launch__head">
+        <div>
+          <h2 className="ad-launch__title" id="ad-launch-h">
+            The way up
+          </h2>
+          <p className="ad-card__lede">Each terrace lights up when its lines are done. A line that is not done links to the drawer that does it.</p>
+        </div>
+        <div className="ad-launch__prog">
+          <span className="num ad-launch__count">
+            {done}
+            <small> / {total}</small>
+          </span>
+          <span className="ad-launch__bar" aria-hidden="true">
+            <i style={{ width: `${Math.round((done / total) * 100)}%` }} />
+          </span>
+          <span className="mono ad-launch__cap">lines done</span>
+        </div>
+      </header>
+      <ol className="ad-terraces" data-testid="launch-checklist">
+        {stages.map((st, i) => (
+          <li key={st.id} className={`ad-terrace is-${st.state}`} style={{ ['--terrace' as string]: i }} data-stage={st.id}>
+            <div className="ad-terrace__art" aria-hidden="true">
+              <CoinCharacter paint={st.paint} mood={mood[st.state]} size={68} bob={st.state === 'now'} blink feet={st.state !== 'todo'} />
+            </div>
+            <div className="ad-terrace__main">
+              <div className="ad-terrace__top">
+                <span className="mono ad-terrace__no">Terrace {i + 1}</span>
+                <h3 className="ad-terrace__title">{st.title}</h3>
+                {st.state === 'now' && <span className="ad-terrace__now mono">You are here</span>}
+              </div>
+              <p className="ad-terrace__blurb">{st.blurb}</p>
+              <ul className={`ad-checks${st.state === 'done' && st.its.length > 1 ? ' is-compact' : ''}`}>
+                {st.id === 'wl' ? (
+                  <li className={`ad-check-line is-${wlOk === null ? 'unknown' : wlOk ? 'ok' : 'todo'}`} data-item="wl" data-ok={String(wlOk)}>
+                    <Mark state={wlOk === null ? 'unknown' : wlOk ? 'ok' : 'todo'} />
+                    <span className="ad-check-line__label">Approved WL wallets</span>
+                    <span className="ad-check-line__detail num">{counts ? `${counts.wl.approved} approved · ${counts.wl.pending} waiting` : 'Sign in to count.'}</span>
+                    {wlOk !== true && (
+                      <button type="button" className="ad-golink" onClick={() => go('wl')}>
+                        WL →
+                      </button>
+                    )}
+                  </li>
+                ) : (
+                  st.its.map((it) => (
+                    <li key={it.id} className={`ad-check-line is-${it.ok === null ? 'unknown' : it.ok ? 'ok' : 'todo'}`} data-item={it.id} data-ok={String(it.ok)}>
+                      <Mark state={it.ok === null ? 'unknown' : it.ok ? 'ok' : 'todo'} />
+                      <span className="ad-check-line__label">{it.label}</span>
+                      <span className="ad-check-line__detail">{it.detail}</span>
+                      {it.ok !== true && (
+                        <button type="button" className="ad-golink" onClick={() => go(it.tab)}>
+                          {it.tab[0].toUpperCase() + it.tab.slice(1)} →
+                        </button>
+                      )}
+                    </li>
+                  ))
+                )}
+              </ul>
+            </div>
+            {st.state === 'done' && <Stamp text="Done" tone="up" size="sm" rotate={-8} className="ad-terrace__stamp" />}
           </li>
         ))}
-      </ul>
-    </Card>
+      </ol>
+      {stages.every((s) => s.state === 'done') && (
+        <p className="ad-launch__fin">
+          Everything is lit. <Button variant="secondary" size="sm" onClick={() => go('settings')}>Check who may play</Button>
+        </p>
+      )}
+    </section>
   );
 }

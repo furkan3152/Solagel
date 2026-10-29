@@ -8,7 +8,8 @@ import { describeError } from '@elymum/sdk';
 import { ensureChain } from '../wallet/network';
 import { connected } from '../wallet/store';
 import { activeStep, arenaDeployArgs, defaultNftForm, deploySteps, loadLocalDeploys, nftDeployArgs, saveLocalDeploy, type LocalDeploys, type NftForm } from './deploy';
-import { Addr, Btn, Card, FormError, Input, NeedsSession, useFormError, type ChainCtx } from './ui';
+import { Icon } from '../design';
+import { Addr, Btn, Card, FormError, Input, NeedsSession, Row, useFormError, type ChainCtx } from './ui';
 
 /**
  * `/admin → Deploy`: the owner deploys everything from their own wallet (spec section 5). Each
@@ -23,52 +24,100 @@ export function DeployTab({ ctx }: { ctx: ChainCtx }) {
   const steps = deploySteps({ me, walletChainId, net, status, local });
   const active = activeStep(steps);
 
+  const n = steps.findIndex((s) => s.state === 'active') + 1;
+  const kicker = (i: number) => `Step ${i} of ${steps.length}`;
+
   return (
     <div className="ad-deploy">
-      <Card title="Deploy" id="deploy" lede="Every contract is deployed from your wallet, which becomes its owner. Nothing here uses a server key except as the arena's settler.">
+      <aside className="ad-deploy__path" aria-label="Deploy steps">
         <ol className="ad-steps" data-testid="deploy-steps">
           {steps.map((s, i) => (
-            <li key={s.id} className={`ad-step is-${s.state}`} data-step={s.id} data-state={s.state}>
-              <span className="ad-step__n mono">{i + 1}</span> <strong>{s.label}</strong> <span className="ad-note">{s.detail}</span>
+            <li key={s.id} className={`ad-step is-${s.state}`} data-step={s.id} data-state={s.state} aria-current={s.state === 'active' ? 'step' : undefined}>
+              <span className="ad-step__n num" aria-hidden="true">
+                {s.state === 'done' ? <Icon name="check" size={16} /> : i + 1}
+              </span>
+              <span className="ad-step__text">
+                <strong className="ad-step__label">{s.label}</strong>
+                <span className={`ad-step__detail${/0x[0-9a-fA-F]{8}/.test(s.detail) ? ' is-hex' : ''}`}>{s.detail}</span>
+              </span>
             </li>
           ))}
         </ol>
-      </Card>
-      {active === 'connect' && <ConnectStep />}
-      {active === 'chain' && <ChainStep ctx={ctx} />}
-      {active === 'arena' && <ArenaStep ctx={ctx} onLocal={setLocal} />}
-      {active === 'nft' && <NftStep ctx={ctx} onLocal={setLocal} />}
-      {active === 'register' && <RegisterStep ctx={ctx} local={local} onLocal={setLocal} />}
-      {active === 'token' && <SetTokenForm ctx={ctx} />}
-      {active === 'arenas' && <DefaultArenas ctx={ctx} />}
-      {active === null && (
-        <Card title="All deployed" id="deploy-done" lede="Both contracts are live and registered, the token is set and the four arenas exist. The Launch tab shows what is left (mint, game access).">
-          <></>
-        </Card>
-      )}
-      {!net.mainnet && net.info && <TestTokenCard ctx={ctx} onLocal={setLocal} local={local} />}
-      <NeedsSession api={api} />
+        <p className="ad-deploy__fine">Each new contract is owned by the wallet that deploys it. Nothing here uses a server key, except as the arena&apos;s settler.</p>
+      </aside>
+      <div className="ad-deploy__work">
+        {active === 'connect' && <ConnectStep kicker={kicker(n)} />}
+        {active === 'chain' && <ChainStep ctx={ctx} kicker={kicker(n)} />}
+        {active === 'arena' && <ArenaStep ctx={ctx} onLocal={setLocal} kicker={kicker(n)} />}
+        {active === 'nft' && <NftStep ctx={ctx} onLocal={setLocal} kicker={kicker(n)} />}
+        {active === 'register' && <RegisterStep ctx={ctx} local={local} onLocal={setLocal} kicker={kicker(n)} />}
+        {active === 'token' && <SetTokenForm ctx={ctx} kicker={kicker(n)} />}
+        {active === 'arenas' && <DefaultArenas ctx={ctx} kicker={kicker(n)} />}
+        {active === null && <DoneCard ctx={ctx} />}
+        <NeedsSession api={api} />
+        {!net.mainnet && net.info && <TestTokenCard ctx={ctx} onLocal={setLocal} local={local} />}
+      </div>
     </div>
   );
 }
 
-function ConnectStep() {
+/** Everything is deployed: the registered contracts, their explorer links and the code hash verdict. */
+function DoneCard({ ctx }: { ctx: ChainCtx }) {
+  const rows: { name: string; address: string | null; code: string | undefined }[] = [
+    { name: 'ElymumArena', address: ctx.net.arenaAddress, code: ctx.status?.arena?.code },
+    { name: 'ElymumNFT', address: ctx.net.nftAddress, code: ctx.status?.nft?.code },
+  ];
   return (
-    <Card title="1 · Connect the owner wallet" id="deploy-connect" lede="Use the wallet that should own the contracts (a hardware wallet behind MetaMask or Rabby works). Connect it in the session box above." >
-      <></>
+    <Card title="The ring is built." id="deploy-done" kicker="All seven steps" tone="done" lede="Both contracts are live and registered, the token is set and the four arenas exist. Launch shows what is left: the allowlist, the mint and who may play.">
+      <ul className="ad-registered">
+        {rows.map((r) => (
+          <li key={r.name}>
+            <span className="ad-registered__name">{r.name}</span>
+            <Addr value={r.address} net={ctx.net} />
+            <span className={`ad-code mono${r.code === 'ok' ? ' is-ok' : ' is-bad'}`}>{r.code === 'ok' ? 'code hash ok' : `code ${r.code ?? '…'}`}</span>
+          </li>
+        ))}
+      </ul>
     </Card>
   );
 }
 
-function ChainStep({ ctx }: { ctx: ChainCtx }) {
+/** The line under every deploy and call: the preview comes first. */
+function PreviewFirst() {
+  return (
+    <p className="ad-previewfirst">
+      <Icon name="info" size={16} /> The preview opens first: function, arguments, network and signer. Your wallet only opens from there.
+    </p>
+  );
+}
+
+function ConnectStep({ kicker }: { kicker: string }) {
+  return (
+    <Card
+      title="Connect the owner wallet"
+      id="deploy-connect"
+      kicker={kicker}
+      lede="Use the wallet that should own the contracts (a hardware wallet behind MetaMask or Rabby works). Connect it at the top right; it becomes the owner of everything deployed here."
+    />
+  );
+}
+
+function ChainStep({ ctx, kicker }: { ctx: ChainCtx; kicker: string }) {
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const info = ctx.net.info;
   return (
-    <Card title="2 · Check the chain" id="deploy-chain" lede={info ? `The game server is on ${info.name} (chain ${info.id}). The wallet must sign there.` : 'The game server reports no chain yet.'}>
-      <p className="ad-note">Wallet chain: {ctx.walletChainId ?? 'unknown'}</p>
+    <Card title="Check the chain" id="deploy-chain" kicker={kicker} lede={info ? `The game server is on ${info.name} (chain ${info.id}). The wallet must sign there.` : 'The game server reports no chain yet.'}>
+      <dl className="ad-kv">
+        <Row label="Your wallet">
+          <span className="num">{ctx.walletChainId ?? 'unknown'}</span>
+        </Row>
+        <Row label="The server">
+          <span className="num">{info ? `${info.name} (${info.id})` : 'none'}</span>
+        </Row>
+      </dl>
       <Btn
-        primary
+        sun
         disabled={!info || busy}
         testId="deploy-switch"
         onClick={async () => {
@@ -99,32 +148,34 @@ async function register(ctx: ChainCtx, kind: ContractKind, address: Address, txH
   await ctx.reloadNet();
 }
 
-function ArenaStep({ ctx, onLocal }: { ctx: ChainCtx; onLocal: (l: LocalDeploys) => void }) {
+function ArenaStep({ ctx, onLocal, kicker }: { ctx: ChainCtx; onLocal: (l: LocalDeploys) => void; kicker: string }) {
   const [err, guard] = useFormError();
   return (
-    <Card title="3 · Deploy ElymumArena" id="deploy-arena">
-      <dl className="ad-kv">
+    <Card title="Deploy ElymumArena" id="deploy-arena" kicker={kicker} lede="The arena holds the tickets, settles rounds with the server's key and keeps the fee. Its constructor takes three addresses:">
+      <dl className="ad-kv ad-kv--args">
         <div>
           <dt className="mono">admin</dt>
           <dd>
-            <Addr value={ctx.me} net={ctx.net} /> (you)
+            <Addr value={ctx.me} net={ctx.net} /> <span className="ad-role">you</span>
           </dd>
         </div>
         <div>
           <dt className="mono">serverAuthority</dt>
           <dd>
-            <Addr value={ctx.net.serverKey} net={ctx.net} /> (the game server's key)
+            <Addr value={ctx.net.serverKey} net={ctx.net} /> <span className="ad-role">the game server&apos;s key</span>
           </dd>
         </div>
         <div>
           <dt className="mono">feeWallet</dt>
           <dd>
-            <Addr value={ctx.me} net={ctx.net} /> (you; change it later in Arena)
+            <Addr value={ctx.me} net={ctx.net} /> <span className="ad-role">you, for now (Arena changes it)</span>
           </dd>
         </div>
       </dl>
+      <PreviewFirst />
       <Btn
-        primary
+        sun
+        icon="arrow"
         testId="deploy-arena"
         onClick={() =>
           guard(() => {
@@ -150,7 +201,7 @@ function ArenaStep({ ctx, onLocal }: { ctx: ChainCtx; onLocal: (l: LocalDeploys)
   );
 }
 
-function NftStep({ ctx, onLocal }: { ctx: ChainCtx; onLocal: (l: LocalDeploys) => void }) {
+function NftStep({ ctx, onLocal, kicker }: { ctx: ChainCtx; onLocal: (l: LocalDeploys) => void; kicker: string }) {
   const [form, setForm] = useState<NftForm>(() => defaultNftForm(location.origin, null, ctx.me));
   const [quote, setQuote] = useState<string | null>(null);
   const [err, guard, setErr] = useFormError();
@@ -172,17 +223,19 @@ function NftStep({ ctx, onLocal }: { ctx: ChainCtx; onLocal: (l: LocalDeploys) =
   }, [ctx.api, ctx.me, setErr]);
   const set = (k: keyof NftForm) => (v: string) => setForm({ ...form, [k]: v });
   return (
-    <Card title="4 · Deploy ElymumNFT" id="deploy-nft">
-      <div className="ad-form">
+    <Card title="Deploy ElymumNFT" id="deploy-nft" kicker={kicker} lede="The emblem contract. Everything below goes into its constructor; most of it can be changed later from Mint.">
+      <div className="ad-form ad-form--grid">
         <Input label="Max supply" value={form.maxSupply} onChange={set('maxSupply')} />
-        <Input label="Mint price (HYPE)" value={form.priceHype} onChange={set('priceHype')} hint={quote ? `$1 at ${quote}` : 'From /api/admin/mint/price'} />
+        <Input label="Mint price (HYPE)" suffix="HYPE" value={form.priceHype} onChange={set('priceHype')} hint={quote ? `$1 at ${quote}` : 'From /api/admin/mint/price'} />
         <Input label="Allowlist limit per wallet" value={form.wlLimit} onChange={set('wlLimit')} />
         <Input label="Public limit per wallet" value={form.publicLimit} onChange={set('publicLimit')} />
         <Input label="Base URI" value={form.baseURI} onChange={set('baseURI')} hint="tokenURI = base URI + id" />
         <Input label="Treasury" value={form.treasury} onChange={set('treasury')} hint="withdraw() sends the mint proceeds here" />
       </div>
+      <PreviewFirst />
       <Btn
-        primary
+        sun
+        icon="arrow"
         testId="deploy-nft"
         onClick={() =>
           guard(() => {
@@ -208,20 +261,21 @@ function NftStep({ ctx, onLocal }: { ctx: ChainCtx; onLocal: (l: LocalDeploys) =
   );
 }
 
-function RegisterStep({ ctx, local, onLocal }: { ctx: ChainCtx; local: LocalDeploys; onLocal: (l: LocalDeploys) => void }) {
+function RegisterStep({ ctx, local, onLocal, kicker }: { ctx: ChainCtx; local: LocalDeploys; onLocal: (l: LocalDeploys) => void; kicker: string }) {
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const todo = (['arena', 'nft'] as const).filter((k) => local[k] && !(k === 'arena' ? ctx.net.arenaAddress : ctx.net.nftAddress));
   return (
-    <Card title="5 · Register with the server" id="deploy-register" lede="The server checks each address (code hash, owner = you, and for the arena that the server authority is its key) and stores it.">
+    <Card title="Register with the server" id="deploy-register" kicker={kicker} lede="The server checks each address (code hash, owner = you, and for the arena that the server authority is its key) and stores it.">
       {todo.length === 0 && <p className="ad-note">Nothing deployed from this browser is waiting. Deploy the missing contract first.</p>}
       {todo.map((k) => (
-        <p key={k}>
-          {k === 'arena' ? 'ElymumArena' : 'ElymumNFT'} <Addr value={local[k]!.address} net={ctx.net} />
+        <p key={k} className="ad-registered__row">
+          <span className="ad-registered__name">{k === 'arena' ? 'ElymumArena' : 'ElymumNFT'}</span> <Addr value={local[k]!.address} net={ctx.net} />
         </p>
       ))}
+      <div className="ad-actions">
       <Btn
-        primary
+        sun
         disabled={busy || todo.length === 0 || !ctx.api}
         testId="deploy-register"
         onClick={async () => {
@@ -248,33 +302,36 @@ function RegisterStep({ ctx, local, onLocal }: { ctx: ChainCtx; local: LocalDepl
       {Object.keys(local).length > 0 && ctx.net.info && (
         <Btn onClick={() => (['arena', 'nft'] as const).forEach((k) => onLocal(saveLocalDeploy(ctx.net.info!.id, k, null)))}>Forget local deploys</Btn>
       )}
+      </div>
       <FormError error={err} />
     </Card>
   );
 }
 
 /** The set-token rail: the address is typed twice; it can be set only once. */
-export function SetTokenForm({ ctx }: { ctx: ChainCtx }) {
+export function SetTokenForm({ ctx, kicker }: { ctx: ChainCtx; kicker?: string }) {
   const [a, setA] = useState('');
   const [b, setB] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const cfg = ctx.status?.arena?.config ?? null;
   const arena = ctx.net.arenaAddress;
-  if (!arena || !cfg) return <Card title="Set the game token" id="set-token" lede="Deploy and register the arena first."><></></Card>;
+  if (!arena || !cfg) return <Card title="Set the game token" id="set-token" kicker={kicker} lede="Deploy and register the arena first." tone="quiet" />;
   if (cfg.token)
     return (
-      <Card title="Game token" id="set-token">
-        <p>
-          Set to <Addr value={cfg.token} net={ctx.net} /> ({cfg.decimals} decimals). It can never change.
+      <Card title="Game token" id="set-token" kicker="Set once, forever">
+        <p className="ad-inline">
+          <Addr value={cfg.token} net={ctx.net} /> <span className="ad-role num">{cfg.decimals} decimals</span>
         </p>
       </Card>
     );
   return (
-    <Card title="6 · Set the game token" id="set-token" lede="The ERC-20 the arenas take ($ELYMUM). Paste its address twice: a typo here cannot be undone.">
-      <Input label="Token address" value={a} onChange={setA} placeholder="0x…" />
-      <Input label="Token address (again)" value={b} onChange={setB} placeholder="0x…" />
+    <Card title="Set the game token" id="set-token" kicker={kicker ?? 'Once, forever'} tone="danger" lede="The ERC-20 the arenas take ($ELYMUM). Paste its address twice: a typo here cannot be undone, ever.">
+      <div className="ad-form">
+        <Input label="Token address" value={a} onChange={setA} placeholder="0x…" />
+        <Input label="Token address (again)" value={b} onChange={setB} placeholder="0x…" />
+      </div>
       <Btn
-        primary
+        danger
         testId="set-token"
         onClick={async () => {
           setErr(null);
@@ -305,25 +362,41 @@ export function SetTokenForm({ ctx }: { ctx: ChainCtx }) {
 }
 
 /** Creates the default tiers that do not exist yet, one previewed call at a time. */
-export function DefaultArenas({ ctx }: { ctx: ChainCtx }) {
+export function DefaultArenas({ ctx, kicker }: { ctx: ChainCtx; kicker?: string }) {
   const cfg = ctx.status?.arena?.config ?? null;
   const arena = ctx.net.arenaAddress;
   if (!arena || !cfg?.token) return null;
   const existing = (ctx.status?.arena?.arenas ?? []).filter((x) => x.exists).map((x) => x.id);
   const plan = planDefaultArenas(cfg.decimals, existing);
   const next = plan.create[0];
+  if (!next) return null;
   return (
-    <Card title="7 · Create the four arenas" id="default-arenas" lede={plan.skip.length ? `Already created: ${plan.skip.map((id) => `#${id}`).join(', ')}.` : undefined}>
-      <ul>
-        {plan.create.map((p) => (
-          <li key={p.id}>
-            #{p.id} {arenaName(p.id)} · {fmtTok(p.entryFee, cfg.decimals)} · max {p.maxSessions} tickets
-          </li>
-        ))}
-      </ul>
+    <Card title="Create the four arenas" id="default-arenas" kicker={kicker} lede={plan.skip.length ? `Already created: ${plan.skip.map((id) => `#${id}`).join(', ')}. One previewed call per arena.` : 'One previewed call per arena, in order.'}>
+      <div className="ad-tablewrap">
+        <table className="ad-table">
+          <thead>
+            <tr>
+              <th scope="col">Id</th>
+              <th scope="col">Place</th>
+              <th scope="col" className="is-num">Entry fee</th>
+              <th scope="col" className="is-num">Max tickets</th>
+            </tr>
+          </thead>
+          <tbody>
+            {plan.create.map((p, i) => (
+              <tr key={p.id} className={i === 0 ? 'is-next' : undefined}>
+                <td className="num">#{p.id}</td>
+                <td>{arenaName(p.id)}</td>
+                <td className="num is-num">{fmtTok(p.entryFee, cfg.decimals)}</td>
+                <td className="num is-num">{p.maxSessions}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       {next ? (
         <Btn
-          primary
+          sun
           testId="create-arena"
           onClick={() =>
             ctx.open({
@@ -352,10 +425,10 @@ function TestTokenCard({ ctx, local, onLocal }: { ctx: ChainCtx; local: LocalDep
   if (refusal) return null;
   const token = (ctx.status?.arena?.config?.token ?? local.token?.address ?? null) as Address | null;
   return (
-    <Card title="TestToken (testnet only)" id="test-token" lede={`A mintable ERC-20 with a faucet (1,000,000 per hour). ${testTokenArtifact.contractName} is never offered on mainnet.`}>
+    <Card title="TestToken" id="test-token" kicker="Off mainnet only" tone="quiet" lede={`A mintable ERC-20 with a faucet (1,000,000 per hour), to try the arena before $ELYMUM exists. ${testTokenArtifact.contractName} is never offered on mainnet.`}>
       {token && (
-        <p>
-          Token: <Addr value={token} net={ctx.net} />
+        <p className="ad-inline">
+          <span className="ad-registered__name">Token</span> <Addr value={token} net={ctx.net} />
         </p>
       )}
       <div className="ad-actions">

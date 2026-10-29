@@ -59,13 +59,11 @@ export function SettingsTab({ api }: TabProps) {
   };
 
   const switchRow = (k: 'wlOpen' | 'collabOpen', label: string, note: string) => (
-    <label className="ad-check" key={k}>
-      <input type="checkbox" checked={draft[k]} onChange={() => toggle(k)} />
+    <label className="ad-check ad-switch" key={k}>
+      <input type="checkbox" role="switch" checked={draft[k]} onChange={() => toggle(k)} />
       <span>
         {label}
-        <span className="ad-note" style={{ display: 'block', fontWeight: 400 }}>
-          {note}
-        </span>
+        <span className="ad-check__sub">{note}</span>
       </span>
     </label>
   );
@@ -75,23 +73,26 @@ export function SettingsTab({ api }: TabProps) {
       <h2 className="ad-card__title" id="ad-set-h">
         Site settings
       </h2>
+      <p className="ad-card__lede">Nothing here touches the chain. Changes apply when you save.</p>
       <fieldset className="ad-access" aria-describedby="ad-access-note">
         <legend className="mono ad-cap">Who may play</legend>
-        {GAME_ACCESS_MODES.map((m) => (
-          <label className="ad-check" key={m}>
-            <input type="radio" name="ad-game-access" value={m} checked={draft.gameAccess === m} onChange={() => setDraft({ ...draft, gameAccess: m })} />
-            <span>
-              {GAME_ACCESS_LABEL[m].label}
-              <span className="ad-note" style={{ display: 'block', fontWeight: 400 }}>
-                {GAME_ACCESS_LABEL[m].note}
+        <div className="ad-opts">
+          {GAME_ACCESS_MODES.map((m) => (
+            <label className={`ad-opt${draft.gameAccess === m ? ' is-picked' : ''}${saved.gameAccess === m ? ' is-live' : ''}`} key={m}>
+              <input type="radio" name="ad-game-access" value={m} checked={draft.gameAccess === m} onChange={() => setDraft({ ...draft, gameAccess: m })} />
+              <span>
+                <span className="ad-opt__title">{GAME_ACCESS_LABEL[m].label}</span>
+                <span className="ad-opt__note">{GAME_ACCESS_LABEL[m].note}</span>
               </span>
-            </span>
-          </label>
-        ))}
+              {saved.gameAccess === m && <span className="ad-phase__live mono">Live</span>}
+            </label>
+          ))}
+        </div>
         <p className="ad-note" id="ad-access-note">
           {env ? `GAME_ACCESS=${env} is set on the server: it wins over this setting.` : 'The server reads this on every room entry.'}
         </p>
       </fieldset>
+      <h3 className="ad-h3">Doors</h3>
       {switchRow('wlOpen', 'WL applications open', `When off, /wl shows “Applications are closed, follow @${saved.xHandle}”.`)}
       {switchRow('collabOpen', 'Collab applications open', "When off, the landing's Collab button reads “Soon” and /collab takes no new communities.")}
       <Field

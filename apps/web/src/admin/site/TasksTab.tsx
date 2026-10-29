@@ -93,7 +93,7 @@ function TaskForm({ initial, submitLabel, onSubmit, onCancel }: { initial: Draft
         </label>
       </div>
       <div className="ad-actions">
-        <InkButton variant="pink" size="sm" onClick={() => void go()} disabled={busy}>
+        <InkButton variant="teal" size="sm" onClick={() => void go()} disabled={busy}>
           {busy ? 'Saving…' : submitLabel}
         </InkButton>
         {onCancel && (
@@ -193,7 +193,7 @@ export function TasksTab({ api }: TabProps) {
             WL tasks ({tasks.length})
           </h2>
           {!adding && (
-            <InkButton variant="ink" size="sm" onClick={() => setAdding(true)} disabled={tasks.length >= SITE_LIMITS.maxTasks}>
+            <InkButton variant="secondary" size="sm" onClick={() => setAdding(true)} disabled={tasks.length >= SITE_LIMITS.maxTasks}>
               Add task
             </InkButton>
           )}
@@ -272,7 +272,7 @@ export function TasksTab({ api }: TabProps) {
                       {t.enabled ? 'Disable' : 'Enable'}
                     </InkButton>
                     <InkButton
-                      variant="paper"
+                      variant="ghost"
                       size="sm"
                       onClick={() => {
                         if (!window.confirm(`Delete the task “${t.title}”? Entries already sent keep their answers.`)) return;

@@ -16,7 +16,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Chip, InkButton, Sheet, StampSpinner } from '../../design';
 import { request, type IntegrityApi, type IntegrityFilter } from '../../site/api';
-import { errText, fmtDate, useFlash, type TabProps } from './common';
+import { Empty, errText, fmtDate, useFlash, type TabProps } from './common';
 
 const KIND_LABEL: Record<IntegrityFlagKind, string> = {
   pair_transfer: 'Pair transfer',
@@ -27,7 +27,7 @@ const KIND_LABEL: Record<IntegrityFlagKind, string> = {
   bell_abuse: 'Round-bell pattern',
 };
 
-const STATUS_TONE: Record<IntegrityFlagStatus, 'mustard' | 'teal' | 'ink'> = { open: 'mustard', reviewed: 'teal', dismissed: 'ink' };
+const STATUS_TONE: Record<IntegrityFlagStatus, 'sun' | 'up' | 'ink'> = { open: 'sun', reviewed: 'up', dismissed: 'ink' };
 
 const THRESHOLD_LABEL: Record<keyof IntegrityThresholds, string> = {
   flagMinScore: 'Keep flags scoring at least',
@@ -249,7 +249,7 @@ function FlagSheet({
           <textarea id="ad-int-note" className="st-input" rows={3} maxLength={1000} value={note} onChange={(e) => setNote(e.target.value)} />
         </div>
         <div className="ad-actions">
-          <InkButton variant="pink" size="sm" onClick={() => void set('reviewed', 'Marked reviewed.')} disabled={flag.status === 'reviewed' && note === flag.note}>
+          <InkButton variant="teal" size="sm" onClick={() => void set('reviewed', 'Marked reviewed.')} disabled={flag.status === 'reviewed' && note === flag.note}>
             Mark reviewed
           </InkButton>
           <InkButton variant="paper" size="sm" onClick={() => void set('dismissed', 'Dismissed.')} disabled={flag.status === 'dismissed' && note === flag.note}>
@@ -315,7 +315,7 @@ function HeldCard({ api, held, money, onChanged }: { api: IntegrityApi; held: In
       </p>
       {flashNode}
       {held.length === 0 ? (
-        <p className="ad-note">Nothing is held.</p>
+        <Empty mood="smile">Nothing is held. Every payout went out as settled.</Empty>
       ) : (
         <div className="ad-tablewrap">
           <table className="ad-table">
@@ -343,7 +343,7 @@ function HeldCard({ api, held, money, onChanged }: { api: IntegrityApi; held: In
                     <td className="mono">#{h.arenaId ?? '?'}</td>
                     <td className="mono">{money(h.payout)}</td>
                     <td>
-                      <Chip tone={scoreTone(h.score)}>{h.score}</Chip>
+                      <span className={`ad-score is-${scoreTone(h.score)} num`}>{h.score}</span>
                     </td>
                     <td>{h.why}</td>
                     <td className={age > 12 * HOUR ? 'ad-bad' : undefined}>
@@ -352,7 +352,7 @@ function HeldCard({ api, held, money, onChanged }: { api: IntegrityApi; held: In
                     </td>
                     <td>
                       <div className="ad-actions">
-                        <InkButton variant="pink" size="sm" disabled={busy} onClick={() => void release(h)}>
+                        <InkButton variant="teal" size="sm" disabled={busy} onClick={() => void release(h)}>
                           Release
                         </InkButton>
                         <InkButton variant="paper" size="sm" disabled={busy} onClick={() => setZero(h)}>
@@ -381,7 +381,7 @@ function HeldCard({ api, held, money, onChanged }: { api: IntegrityApi; held: In
               <textarea id="ad-int-zero" className="st-input" rows={3} maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} />
             </div>
             <div className="ad-actions">
-              <InkButton variant="pink" size="sm" disabled={busy || reason.trim().length < 3} onClick={() => void settleZero()}>
+              <InkButton variant="danger" size="sm" disabled={busy || reason.trim().length < 3} onClick={() => void settleZero()}>
                 Settle at 0
               </InkButton>
               <InkButton variant="paper" size="sm" onClick={() => setZero(null)}>
@@ -431,12 +431,12 @@ function SettingsCard({ api, overview, onSaved }: { api: IntegrityApi; overview:
           </span>
         </span>
       </label>
-      <label className="ad-int__field">
+      <label className="ad-int__field ad-int__narrow">
         <span className="mono ad-cap">Hold score (50 to 100)</span>
         <input className="st-input" type="number" min={50} max={100} value={draft.holdScore} onChange={(e) => setDraft({ ...draft, holdScore: Number(e.target.value) })} />
       </label>
-      <details className="ad-int__details">
-        <summary className="mono">Thresholds</summary>
+      <details className="ad-more ad-int__details">
+        <summary>Thresholds ({keys.length})</summary>
         <div className="ad-int__grid">
           {keys.map((k) => {
             const [lo, hi] = INTEGRITY_THRESHOLD_RANGES[k];
@@ -571,7 +571,7 @@ export function IntegrityTab({ api: adminApi }: TabProps) {
       <section className="ad-card" aria-labelledby="ad-int-h">
         <div className="ad-card__bar">
           <h2 className="ad-card__title" id="ad-int-h">
-            Integrity
+            The detectors
           </h2>
           <div className="ad-actions">
             <InkButton variant="paper" size="sm" disabled={busy} onClick={() => void scan()}>
@@ -597,12 +597,13 @@ export function IntegrityTab({ api: adminApi }: TabProps) {
           ).map(([k, v]) => (
             <div key={k}>
               <dt className="mono">{k}</dt>
-              <dd>{v}</dd>
+              <dd className="num">{v}</dd>
             </div>
           ))}
         </dl>
-        <p className={overview.settings.autoHold ? 'ad-bad' : 'ad-note'}>
-          Auto-hold is {overview.settings.autoHold ? `ON (hold score ${overview.settings.holdScore})` : 'off'}.
+        <p className={`ad-autohold${overview.settings.autoHold ? ' is-on' : ''}`}>
+          <span className="ad-code mono">{overview.settings.autoHold ? 'Auto-hold on' : 'Auto-hold off'}</span>
+          {overview.settings.autoHold ? ` Payouts scoring ${overview.settings.holdScore} or more wait here for you.` : ' Every payout goes out as settled.'}
         </p>
         {flashNode}
       </section>
@@ -621,7 +622,7 @@ export function IntegrityTab({ api: adminApi }: TabProps) {
         <div className="ad-filters">
           <div className="ad-chips" role="group" aria-label="Status">
             {(['open', 'reviewed', 'dismissed', ''] as const).map((s) => (
-              <Chip key={s || 'all'} tone={s ? STATUS_TONE[s] : 'ink'} selected={status === s} onClick={() => setStatus(s)}>
+              <Chip key={s || 'all'} tone="ink" selected={status === s} onClick={() => setStatus(s)}>
                 {s || 'all'}
               </Chip>
             ))}
@@ -649,7 +650,7 @@ export function IntegrityTab({ api: adminApi }: TabProps) {
         {!flags ? (
           <StampSpinner label="Loading" />
         ) : flags.length === 0 ? (
-          <p className="ad-note">No flags{status ? ` with status ${status}` : ''}.</p>
+          <Empty mood="smile">No flags{status ? ` with status ${status}` : ''}. The floor looks honest.</Empty>
         ) : (
           <div className="ad-tablewrap">
             <table className="ad-table">
@@ -670,7 +671,7 @@ export function IntegrityTab({ api: adminApi }: TabProps) {
                 {flags.map((f) => (
                   <tr key={f.id}>
                     <td>
-                      <Chip tone={scoreTone(f.score)}>{f.score}</Chip>
+                      <span className={`ad-score is-${scoreTone(f.score)} num`}>{f.score}</span>
                     </td>
                     <td>{KIND_LABEL[f.kind]}</td>
                     <td>{f.summary}</td>
@@ -682,7 +683,7 @@ export function IntegrityTab({ api: adminApi }: TabProps) {
                         </div>
                       ))}
                     </td>
-                    <td>{fmtDate(f.lastSeen)}</td>
+                    <td className="num ad-date">{fmtDate(f.lastSeen)}</td>
                     <td>
                       <Chip tone={STATUS_TONE[f.status]}>{f.status}</Chip>
                     </td>
@@ -699,13 +700,13 @@ export function IntegrityTab({ api: adminApi }: TabProps) {
         )}
       </section>
 
-      <section className="ad-card" aria-labelledby="ad-int-bans-h">
+      <section className="ad-card is-danger" aria-labelledby="ad-int-bans-h">
         <h2 className="ad-card__title" id="ad-int-bans-h">
           Banned wallets
         </h2>
         <p className="ad-note">A banned wallet cannot start a paid arena game (error “banned”). A ticket already in play finishes normally; practice is open.</p>
         {overview.bans.length === 0 ? (
-          <p className="ad-note">No wallet is banned.</p>
+          <Empty mood="smile">No wallet is banned.</Empty>
         ) : (
           <ul className="ad-int__bans">
             {overview.bans.map((b) => (
@@ -730,7 +731,7 @@ export function IntegrityTab({ api: adminApi }: TabProps) {
             <span className="mono ad-cap">Reason</span>
             <input className="st-input" value={banReason} maxLength={500} onChange={(e) => setBanReason(e.target.value)} />
           </label>
-          <InkButton variant="pink" size="sm" disabled={busy || !banWallet.trim() || !banReason.trim()} onClick={() => void ban()}>
+          <InkButton variant="danger" size="sm" disabled={busy || !banWallet.trim() || !banReason.trim()} onClick={() => void ban()}>
             Ban wallet
           </InkButton>
         </div>
@@ -769,7 +770,7 @@ export function IntegrityTab({ api: adminApi }: TabProps) {
               <textarea id="ad-int-banreason" className="st-input" rows={3} maxLength={500} value={banReason} onChange={(e) => setBanReason(e.target.value)} />
             </div>
             <div className="ad-actions">
-              <InkButton variant="pink" size="sm" disabled={busy || !banReason.trim()} onClick={() => void ban()}>
+              <InkButton variant="danger" size="sm" disabled={busy || !banReason.trim()} onClick={() => void ban()}>
                 Ban wallet
               </InkButton>
               <InkButton variant="paper" size="sm" onClick={() => setBanFor(null)}>

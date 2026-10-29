@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Address, Hash, PublicClient } from 'viem';
 import { explorerAddressUrl, explorerTxUrl } from '@elymum/shared';
+import { Button, Stamp, StatusPill } from '../design';
 import { sendWithWallet, txErrorText, type TxPhase } from '../wallet/tx';
 import type { AdminNetwork } from './net';
 import { planRefusals, previewOf, readOwner, sendPlan, type Plan, type PlanResult } from './plan';
+import { CopyButton } from './ui';
 
 export interface SignedEntry {
   at: number;
@@ -14,12 +16,44 @@ export interface SignedEntry {
 
 type State = { kind: 'review' } | { kind: 'busy'; phase: 'checking' | TxPhase; hash?: Hash } | { kind: 'done'; result: PlanResult; afterError: string | null } | { kind: 'error'; message: string; hash: Hash | null };
 
+/** The four stations a send passes, drawn as a dotted track. */
+const STATIONS = [
+  { id: 'checking', label: 'Owner check' },
+  { id: 'switching', label: 'Chain' },
+  { id: 'signing', label: 'Your wallet' },
+  { id: 'confirming', label: 'Receipt' },
+] as const;
+
+function stationIndex(s: State): number {
+  if (s.kind === 'done') return STATIONS.length;
+  if (s.kind !== 'busy') return -1;
+  return STATIONS.findIndex((x) => x.id === s.phase);
+}
+
+/** A hash or an address, in full, linked to the explorer when there is one. */
+function Hex({ value, href }: { value: string; href: string | null }) {
+  return (
+    <span className="ad-addr">
+      {href ? (
+        <a className="ad-addr__link" href={href} target="_blank" rel="noreferrer">
+          <code className="ad-addr__v">{value}</code>
+        </a>
+      ) : (
+        <code className="ad-addr__v">{value}</code>
+      )}
+      <CopyButton value={value} label="Copy" />
+    </span>
+  );
+}
+
 /**
  * The step before every wallet prompt of the admin panel: the call (function, arguments with
  * names, types and values, the HYPE value), the network and the signer. The wallet only opens
  * from here, after the chain check (the server's chain is known and the RPC agrees; the wallet is
  * switched to it) and the owner check (the contract's `owner()` re-read right now). A ref guard
- * makes a double click (or a held Enter) send once. Markup is plain (`ad-txp*`); restyled later.
+ * makes a double click (or a held Enter) send once. Drawn as the design system's `kb-tx`
+ * sticker (see `design/components/TxPreview`), with the admin's refusals, typed confirmation
+ * and send stations on top.
  */
 export function TxPreview({
   plan,
@@ -41,6 +75,7 @@ export function TxPreview({
   const [state, setState] = useState<State>({ kind: 'review' });
   const [typed, setTyped] = useState('');
   const inFlight = useRef(false);
+  const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
     inFlight.current = false;
     setState({ kind: 'review' });
@@ -52,6 +87,21 @@ export function TxPreview({
   const needsText = !!plan.confirmText && typed.trim() !== plan.confirmText;
   const busy = state.kind === 'busy';
   const explorer = net.info?.explorerUrl ?? null;
+  const at = stationIndex(state);
+
+  // focus the dialog on open; Esc closes it unless a send is under way
+  useEffect(() => {
+    const prev = document.activeElement as HTMLElement | null;
+    box.current?.focus();
+    return () => prev?.focus?.();
+  }, []);
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !inFlight.current) onClose();
+    };
+    window.addEventListener('keydown', on);
+    return () => window.removeEventListener('keydown', on);
+  }, [onClose]);
 
   const confirm = async () => {
     if (inFlight.current || refusals.length > 0 || needsText || !net.chain || !me) return;
@@ -95,22 +145,56 @@ export function TxPreview({
     setState({ kind: 'done', result, afterError });
   };
 
+  const sigName = p.signature.replace(/\(.*$/, '');
+  const sigArgs = p.signature.slice(sigName.length);
+
   return (
-    <div className="ad-txp" role="dialog" aria-modal="true" aria-labelledby="ad-txp-h" data-testid="tx-preview">
-      <div className="ad-txp__box">
-        <h2 className="ad-txp__title" id="ad-txp-h">
-          {plan.title}
-        </h2>
+    <div className="kb-sheet-layer ad-txp" role="presentation">
+      <div className="kb-sheet-scrim" aria-hidden="true" onClick={() => !inFlight.current && onClose()} />
+      <div
+        ref={box}
+        tabIndex={-1}
+        className={`kb-tx ad-txp__box${net.mainnet ? ' is-mainnet' : ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="ad-txp-h"
+        data-testid="tx-preview"
+      >
+        <header className="kb-tx__head">
+          <div>
+            <div className="kb-tx__kicker">
+              {plan.deploy ? 'Deploy preview' : 'Transaction preview'} · {state.kind === 'done' ? 'signed and confirmed' : state.kind === 'busy' ? 'on its way' : 'nothing is sent yet'}
+            </div>
+            <h2 className="kb-tx__title" id="ad-txp-h">
+              {plan.title}
+            </h2>
+          </div>
+          <StatusPill tone={net.mainnet ? 'mainnet' : 'testnet'} size="sm">
+            {net.mainnet ? 'Mainnet' : net.info?.name ?? 'No chain'}
+          </StatusPill>
+        </header>
         {net.mainnet && (
-          <p className="ad-mainnet" role="alert">
+          <p className="ad-mainnet ad-mainnet--inline" role="alert">
             <strong>MAINNET.</strong> This transaction is final and moves real funds.
           </p>
         )}
-        <p className="ad-txp__sig mono">
-          <code>{p.signature}</code> {p.to ? <>on {plan.contract} <code>{p.to}</code></> : <>a new {plan.deploy?.name} contract</>}
-        </p>
-        {p.args.length > 0 ? (
-          <table className="ad-table ad-txp__args">
+        <div className="kb-tx__sig">
+          {p.to ? (
+            <>
+              <span className="kb-tx__contract">{plan.contract}.</span>
+              <span className="kb-tx__fn">{sigName}</span>
+              <span className="ad-txp__params">{sigArgs}</span>
+            </>
+          ) : (
+            <>
+              <span className="kb-tx__contract">new {plan.deploy?.name} · </span>
+              <span className="kb-tx__fn">{sigName}</span>
+              <span className="ad-txp__params">{sigArgs}</span>
+            </>
+          )}
+        </div>
+        <div className="ad-txp__scroll">
+          <table className="kb-tx__args">
             <thead>
               <tr>
                 <th scope="col">Argument</th>
@@ -119,51 +203,74 @@ export function TxPreview({
               </tr>
             </thead>
             <tbody>
+              {p.args.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="kb-tx__none">
+                    No arguments. The name says it all.
+                  </td>
+                </tr>
+              )}
               {p.args.map((a) => (
                 <tr key={a.name}>
-                  <td className="mono">{a.name}</td>
-                  <td className="mono">{a.type}</td>
-                  <td>
+                  <th scope="row">{a.name}</th>
+                  <td className="kb-tx__type">{a.type}</td>
+                  <td className="kb-tx__val">
                     <code className="ad-txp__val">{a.value}</code>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        ) : (
-          <p className="ad-note">No arguments.</p>
-        )}
-        <dl className="ad-kv ad-txp__meta">
+        </div>
+        <dl className="kb-tx__meta ad-txp__meta">
           <div>
-            <dt className="mono">Value</dt>
-            <dd>{p.valueText ?? 'none'}</dd>
+            <dt>Value</dt>
+            <dd className="num">{p.valueText ?? '0 HYPE'}</dd>
           </div>
           <div>
-            <dt className="mono">Network</dt>
+            <dt>Network</dt>
             <dd>{net.info ? `${net.info.name} (${net.info.id})` : 'unknown'}</dd>
           </div>
           <div>
-            <dt className="mono">From</dt>
-            <dd>{me ? <code>{me}</code> : 'no wallet'}</dd>
+            <dt>{p.to ? 'To' : 'Creates'}</dt>
+            <dd>{p.to ? <code className="ad-txp__mono">{p.to}</code> : <span>a new contract, owned by you</span>}</dd>
+          </div>
+          <div className="ad-txp__from">
+            <dt>From</dt>
+            <dd>{me ? <code className="ad-txp__mono">{me}</code> : 'no wallet'}</dd>
           </div>
         </dl>
-        {plan.note && <p className="ad-warn">{plan.note}</p>}
+        {plan.note && <div className="kb-tx__note">{plan.note}</div>}
         {refusals.length > 0 && (
-          <ul className="ad-bad ad-txp__refusals" role="alert" data-testid="tx-refusals">
+          <ul className="ad-txp__refusals" role="alert" data-testid="tx-refusals">
             {refusals.map((r) => (
               <li key={r}>{r}</li>
             ))}
           </ul>
         )}
         {plan.confirmText && state.kind === 'review' && (
-          <label className="ad-field">
-            <span className="mono ad-cap">Type {plan.confirmText} to confirm</span>
-            <input className="st-input" value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" />
-          </label>
+          <div className="ad-field ad-txp__confirm">
+            <label className="ad-field__label mono" htmlFor="ad-txp-typed">
+              Type {plan.confirmText} to confirm
+            </label>
+            <span className="ad-field__box">
+              <input id="ad-txp-typed" className="ad-input" value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" spellCheck={false} />
+            </span>
+          </div>
         )}
 
+        {state.kind !== 'review' && state.kind !== 'error' && (
+          <ol className="ad-stations" aria-label="Sending">
+            {STATIONS.map((s, i) => (
+              <li key={s.id} className={i < at ? 'is-done' : i === at ? 'is-now' : ''}>
+                <span className="ad-stations__dot" aria-hidden="true" />
+                <span className="mono">{s.label}</span>
+              </li>
+            ))}
+          </ol>
+        )}
         {state.kind === 'busy' && (
-          <p className="ad-note" role="status" aria-live="polite">
+          <p className="ad-txp__status" role="status" aria-live="polite">
             {state.phase === 'checking'
               ? 'Checking the owner on chain…'
               : state.phase === 'switching'
@@ -182,51 +289,53 @@ export function TxPreview({
           </p>
         )}
         {state.kind === 'error' && (
-          <p className="ad-bad" role="alert" data-testid="tx-error">
+          <p className="ad-bad ad-txp__error" role="alert" data-testid="tx-error">
             {state.message}
           </p>
         )}
         {state.kind === 'done' && (
           <div className="ad-txp__done" role="status" data-testid="tx-done">
-            <p>
-              Confirmed.{' '}
-              {explorerTxUrl(explorer, state.result.hash) ? (
-                <a href={explorerTxUrl(explorer, state.result.hash)!} target="_blank" rel="noreferrer">
-                  <code>{state.result.hash}</code>
-                </a>
-              ) : (
-                <code>{state.result.hash}</code>
+            <Stamp text="Signed" tone="up" animateIn rotate={-6} className="ad-txp__stamp" />
+            <dl className="ad-txp__result">
+              <div>
+                <dt className="mono">Transaction</dt>
+                <dd>
+                  <Hex value={state.result.hash} href={explorerTxUrl(explorer, state.result.hash)} />
+                </dd>
+              </div>
+              {state.result.address && (
+                <div>
+                  <dt className="mono">New contract</dt>
+                  <dd>
+                    <Hex value={state.result.address} href={explorerAddressUrl(explorer, state.result.address)} />
+                  </dd>
+                </div>
               )}
-            </p>
-            {state.result.address && (
-              <p>
-                New contract:{' '}
-                {explorerAddressUrl(explorer, state.result.address) ? (
-                  <a href={explorerAddressUrl(explorer, state.result.address)!} target="_blank" rel="noreferrer">
-                    <code>{state.result.address}</code>
-                  </a>
-                ) : (
-                  <code>{state.result.address}</code>
-                )}
-              </p>
-            )}
+            </dl>
             {state.afterError && <p className="ad-bad">{state.afterError}</p>}
           </div>
         )}
 
-        <div className="ad-actions">
+        <div className="kb-tx__actions">
           {state.kind === 'done' ? (
-            <button type="button" className="ad-btn ad-btn--primary" onClick={onClose}>
+            <Button variant="secondary" size="sm" onClick={onClose}>
               Close
-            </button>
+            </Button>
           ) : (
             <>
-              <button type="button" className="ad-btn ad-btn--primary" disabled={busy || refusals.length > 0 || needsText} onClick={() => void confirm()} data-testid="tx-confirm">
-                {state.kind === 'error' ? 'Try again' : 'Open wallet'}
-              </button>
-              <button type="button" className="ad-btn" disabled={busy} onClick={onClose}>
+              <Button variant="ghost" size="sm" disabled={busy} onClick={onClose}>
                 Cancel
-              </button>
+              </Button>
+              <Button
+                variant={net.mainnet || plan.confirmText ? 'danger' : 'primary'}
+                lead="wallet"
+                disabled={busy || refusals.length > 0 || needsText}
+                loading={busy}
+                onClick={() => void confirm()}
+                data-testid="tx-confirm"
+              >
+                {state.kind === 'error' ? 'Try again' : 'Open wallet'}
+              </Button>
             </>
           )}
         </div>

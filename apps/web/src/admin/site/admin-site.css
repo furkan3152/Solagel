@@ -1,53 +1,68 @@
-/* Admin: the site tabs (WL, tasks, collabs, settings, play). Same operator sheet as admin.css. */
+/* /admin: the site drawers (WL, tasks, collabs, integrity, settings, play). Same workshop as admin.css. */
 
-.ad-embedded {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-.ad-tabs {
-  overflow-x: auto;
-}
-.ad-panel {
-  outline: none;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
+.ad-embedded,
 .ad-stack {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 24px;
 }
-.ad-session .ad-wallet {
-  padding: 0;
-}
-.ad-counts {
+
+/* the locked drawer */
+.ad-gate {
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin: 0;
+  align-items: center;
+  gap: 24px;
+  padding: 26px 28px;
+  border: var(--stroke) dashed var(--stone);
+  border-radius: var(--r-card);
+  background: var(--surface);
 }
-.ad-counts > div {
-  min-width: 96px;
-  padding: 8px 12px;
-  border: 2px solid var(--ink);
-  border-radius: var(--r-chip);
-  background: var(--paper);
+.ad-gate__title {
+  margin-bottom: 6px;
+  font-size: 28px;
 }
-.ad-counts dt {
-  font-size: var(--t-label);
+.ad-gate p {
+  max-width: 56ch;
   color: var(--ink-2);
 }
-.ad-counts dd {
-  margin: 2px 0 0;
-  font-size: 24px;
-  font-weight: 800;
+
+/* counts: a strip of stat cells, Geist Mono figures */
+.ad-counts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 96px), 1fr));
+  margin: 0;
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: 14px;
+  background: var(--white);
+  color: var(--ink-fixed);
+  overflow: hidden;
 }
+.ad-counts > div {
+  padding: 10px 14px 12px;
+  border-left: 2px dashed var(--sand-2);
+  margin-left: -2px;
+}
+.ad-counts > div.is-sun {
+  background: #fbe7b0;
+}
+.ad-counts > div.is-up {
+  background: #e6f3ee;
+}
+.ad-counts dt {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.ad-counts dd {
+  margin: 4px 0 0;
+  font-size: 26px;
+  line-height: 1.05;
+}
+
+/* filters, search, bulk */
 .ad-filters {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 12px 16px;
   align-items: center;
   justify-content: space-between;
 }
@@ -56,23 +71,96 @@
   max-width: 420px;
 }
 .ad-bulk {
-  padding: 8px 0;
-  border-top: 1px dashed var(--line);
-  border-bottom: 1px dashed var(--line);
+  min-height: 56px;
+  padding: 6px 12px;
+  border: var(--stroke-sm) dashed var(--sand-2);
+  border-radius: 14px;
+  background: var(--surface);
+}
+.ad-bulk.is-live {
+  border-style: solid;
+  border-color: var(--outline);
+  background: #fbe7b0;
+  box-shadow: var(--sh-2);
+}
+.ad-bulk__n {
+  margin-right: 6px;
+  font-size: 14px;
+  font-weight: 600;
 }
 .ad-box {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   margin: 10px 0;
-  accent-color: var(--pink-ink);
+  accent-color: var(--teal);
 }
 .ad-wltable td {
   vertical-align: middle;
 }
+.ad-wallet {
+  font-size: 13px;
+}
+.ad-date {
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.ad-flags {
+  display: inline-flex;
+  gap: 6px;
+}
+.ad-legacy {
+  font-size: 13px;
+}
+
+/* empty table */
+.ad-empty {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 20px;
+  border: var(--stroke-sm) dashed var(--sand-2);
+  border-radius: 14px;
+  background: var(--surface);
+}
+.ad-empty p {
+  color: var(--ink-2);
+  font-size: 15px;
+}
+
+/* integrity */
+.ad-score {
+  display: inline-grid;
+  place-items: center;
+  min-width: 40px;
+  height: 28px;
+  padding: 0 8px;
+  border: var(--stroke-xs) solid var(--outline);
+  border-radius: 8px;
+  background: var(--white);
+  color: var(--ink-fixed);
+  font-size: 14px;
+}
+.ad-score.is-pink {
+  background: var(--down);
+}
+.ad-score.is-mustard {
+  background: var(--sun);
+}
+.ad-autohold {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  font-size: 14.5px;
+  color: var(--ink-2);
+}
+.ad-autohold.is-on .ad-code {
+  background: var(--down);
+}
+
+/* sheets */
 .ad-answers {
-  list-style: none;
-  margin: 0;
-  padding: 0;
   display: grid;
   gap: 10px;
 }
@@ -80,47 +168,87 @@
   display: grid;
   gap: 2px;
   padding-bottom: 8px;
-  border-bottom: 1px dashed var(--line);
+  border-bottom: 2px dashed var(--rule);
 }
+
+/* tasks */
 .ad-tasks {
-  list-style: none;
-  margin: 0;
-  padding: 0;
   display: grid;
-  gap: 10px;
+  gap: 12px;
 }
 .ad-task {
   display: grid;
-  gap: 10px;
-  padding: 12px;
-  border: 2px solid var(--ink);
-  border-radius: var(--r-ticket);
-  background: var(--paper);
+  gap: 12px;
+  padding: 14px 16px;
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: 14px;
+  background: var(--white);
+  box-shadow: var(--sh-1);
 }
 .ad-task.is-off {
   border-style: dashed;
-  opacity: 0.8;
+  background: var(--surface);
+  box-shadow: none;
 }
 .ad-task__main {
   display: flex;
-  gap: 12px;
+  gap: 14px;
   align-items: flex-start;
+}
+.ad-task__main strong {
+  font-family: var(--font-display);
+  font-variation-settings: var(--fv-display);
+  font-weight: 800;
+  font-size: 19px;
 }
 .ad-task__no {
   display: grid;
   place-items: center;
   flex: none;
-  width: 28px;
-  height: 28px;
-  border: 2px solid var(--ink);
+  width: 32px;
+  height: 32px;
+  border: var(--stroke-sm) solid var(--outline);
   border-radius: 50%;
+  background: var(--sun);
+  color: var(--ink-fixed);
   font-size: 12px;
+  transform: rotate(-6deg);
+}
+.ad-task.is-off .ad-task__no {
+  background: var(--sand);
 }
 .ad-task__main .ad-chips {
-  margin-top: 6px;
+  margin-top: 8px;
 }
 .ad-task__main p {
   margin: 6px 0 0;
+}
+.ad-task {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+.ad-task > .ad-taskform {
+  grid-column: 1 / -1;
+}
+.ad-task__btns {
+  justify-content: flex-end;
+  max-width: 440px;
+  gap: 8px;
+}
+.ad-task__btns .kb-btn {
+  min-height: 40px;
+  padding: 0 12px;
+}
+@media (max-width: 760px) {
+  .ad-task {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ad-task__btns {
+    justify-content: flex-start;
+    max-width: none;
+    padding-top: 10px;
+    border-top: 2px dashed var(--rule);
+  }
 }
 .ad-taskform {
   width: 100%;
@@ -129,33 +257,131 @@
   min-height: 1.4em;
   margin: 0;
 }
+.ad-flash:empty {
+  min-height: 0;
+  margin-top: -16px;
+}
+
+/* play */
+.ad-play {
+  padding-right: 180px;
+  min-height: 200px;
+}
+.ad-play__coin {
+  position: absolute;
+  right: 28px;
+  bottom: 18px;
+}
 .ad-playbtn {
   text-decoration: none;
-  color: var(--ink-fixed) !important;
 }
+.kb .ad-playbtn {
+  color: var(--ink-fixed);
+  text-decoration: none;
+}
+
+/* settings: who may play */
+.ad-access {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ad-access legend {
+  margin-bottom: 10px;
+  font-size: 11px;
+  color: var(--ink-2);
+}
+.ad-opts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
+  gap: 14px;
+}
+.ad-opt {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border: var(--stroke) solid var(--outline);
+  border-radius: 16px;
+  background: var(--white);
+  color: var(--ink-fixed);
+  box-shadow: var(--sh-2);
+  cursor: pointer;
+  transition: transform var(--dur-micro) var(--ease-press), box-shadow var(--dur-micro) var(--ease-press);
+}
+.ad-opt:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: var(--sh-3);
+}
+.ad-opt.is-picked {
+  background: var(--sun);
+  box-shadow: var(--sh-4);
+}
+.ad-opt input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin: 3px 0 0;
+  accent-color: var(--ink-fixed);
+}
+.ad-opt__title {
+  display: block;
+  font-family: var(--font-display);
+  font-variation-settings: var(--fv-display);
+  font-weight: 800;
+  font-size: 20px;
+  line-height: 1.1;
+}
+.ad-opt__note {
+  display: block;
+  margin-top: 4px;
+  font-size: 13.5px;
+  color: #4a453b;
+}
+.ad-switch input {
+  accent-color: var(--up-s);
+}
+
+/* inputs of the site drawers */
 .st-input {
   width: 100%;
   min-height: 44px;
   padding: 8px 12px;
   font: inherit;
-  color: var(--ink);
-  background: var(--card);
-  border: 2px solid var(--ink);
-  border-radius: 8px;
+  font-size: 15px;
+  color: var(--ink-fixed);
+  background: var(--white);
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: 10px;
+}
+.st-input:focus-visible {
+  box-shadow: 3px 3px 0 var(--shadow-ink);
+}
+.st-input::placeholder {
+  color: var(--ink-3);
 }
 textarea.st-input {
-  min-height: 80px;
+  min-height: 84px;
   resize: vertical;
 }
 select.st-input {
   appearance: auto;
 }
-label.ad-cap {
+label.ad-cap,
+.ad-cap {
   display: block;
   margin-bottom: 6px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
 }
 
-/* Integrity tab */
+/* integrity */
 .ad-int__wallet {
   white-space: nowrap;
 }
@@ -175,7 +401,7 @@ label.ad-cap {
   min-width: 0;
 }
 .ad-int__narrow {
-  max-width: 140px;
+  max-width: 200px;
 }
 .ad-int__grid {
   display: grid;
@@ -191,20 +417,17 @@ label.ad-cap {
 }
 .ad-int__bar {
   display: inline-block;
-  height: 10px;
-  background: var(--pink-ink);
-  border: 1.5px solid var(--ink);
-  border-radius: 2px;
-  box-shadow: 2px 2px 0 var(--teal);
+  height: 12px;
+  background: var(--sun);
+  border: var(--stroke-xs) solid var(--outline);
+  border-radius: 3px;
+  box-shadow: 2px 2px 0 var(--shadow-ink);
 }
 .ad-int__timeline {
   display: grid;
   gap: 8px;
 }
 .ad-int__bans {
-  list-style: none;
-  margin: 0;
-  padding: 0;
   display: grid;
   gap: 10px;
 }
@@ -214,9 +437,9 @@ label.ad-cap {
   gap: 8px 12px;
   align-items: center;
   padding: 10px 12px;
-  border: 2px dashed var(--ink);
-  border-radius: var(--r-ticket);
-  background: var(--paper);
+  border: var(--stroke-sm) dashed var(--down-s);
+  border-radius: 12px;
+  background: #fff1ee;
 }
 .ad-int__bans code {
   overflow-wrap: anywhere;
@@ -231,4 +454,15 @@ label.ad-cap {
   .ad-int__banform {
     grid-template-columns: 1fr;
   }
+  .ad-play {
+    padding-right: 16px;
+    padding-bottom: 150px;
+  }
+  .ad-gate {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+.ad-filters .ad-int__narrow {
+  width: 130px;
 }

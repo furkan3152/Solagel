@@ -1,6 +1,6 @@
 import type { GameAccess } from '@elymum/shared';
 import { useEffect, useState } from 'react';
-import { Chip } from '../../design';
+import { Chip, CoinCharacter } from '../../design';
 import { errText, type TabProps } from './common';
 import { GAME_ACCESS_LABEL } from './SettingsTab';
 
@@ -15,10 +15,11 @@ export function PlayTab({ api }: TabProps) {
     );
   }, [api]);
   return (
-    <section className="ad-card" aria-labelledby="ad-play-h">
+    <section className="ad-card ad-play" aria-labelledby="ad-play-h">
+      <CoinCharacter paint="sun" mood="chomp" size={120} feet bob className="ad-play__coin" />
       <div className="ad-card__bar">
         <h2 className="ad-card__title" id="ad-play-h">
-          Play
+          The floor, before the crowd
         </h2>
         {access && <Chip tone={access === 'public' ? 'teal' : 'mustard'}>{GAME_ACCESS_LABEL[access].label}</Chip>}
       </div>
@@ -30,7 +31,7 @@ export function PlayTab({ api }: TabProps) {
             : 'The game is closed to the public. Your admin session lets you in to test: the server checks the same wallet on every room entry.'}
       </p>
       <div className="ad-actions">
-        <a className="kb-btn kb-btn--pink kb-btn--md ad-playbtn" href="/play">
+        <a className="kb-btn kb-btn--primary kb-btn--md ad-playbtn" href="/play">
           <span className="kb-btn__label">
             <span className="kb-btn__text">Open the arena</span>
           </span>

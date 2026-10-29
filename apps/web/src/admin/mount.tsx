@@ -16,9 +16,9 @@ function AdminApp() {
       live = false;
     };
   }, []);
-  const theme = window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'night' : 'paper';
+  // the workshop is a day page (spec §6.9 Admin): calm paper whatever the OS theme
   return (
-    <Kb theme={theme} className="ad-root">
+    <Kb theme="paper" className="ad-root">
       {net ? (
         <AdminHome net={net} reloadNet={reloadNet} />
       ) : (

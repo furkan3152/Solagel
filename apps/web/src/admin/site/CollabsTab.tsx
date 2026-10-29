@@ -2,10 +2,10 @@ import { SITE_LIMITS, type CollabAdmin, type CollabStatus, type SiteCounts } fro
 import { useCallback, useEffect, useState } from 'react';
 import { Chip, Field, InkButton, Sheet, StampSpinner } from '../../design';
 import { ROLE_LABEL, TYPE_LABEL } from '../../site/collab/labels';
-import { Ext, errText, fmtDate, fromLocalInput, toLocalInput, useFlash, type TabProps } from './common';
+import { Empty, Ext, errText, fmtDate, fromLocalInput, toLocalInput, useFlash, type TabProps } from './common';
 
 type Filter = CollabStatus | 'closed' | '';
-const PHASE_TONE: Record<CollabAdmin['phase'], 'mustard' | 'pink' | 'teal' | 'ink'> = { in_review: 'mustard', rejected: 'pink', approved: 'teal', submitted: 'ink', closed: 'pink' };
+const PHASE_TONE: Record<CollabAdmin['phase'], 'sun' | 'down' | 'up' | 'teal' | 'ink'> = { in_review: 'sun', rejected: 'down', approved: 'up', submitted: 'teal', closed: 'ink' };
 const DAY = 24 * 3600_000;
 
 const dupCount = (c: CollabAdmin) => c.wallets.filter((w) => w.dupWl || w.dupCollabs.length > 0).length;
@@ -105,7 +105,7 @@ function Detail({ collab: c, onClose, onChanged, api }: { collab: CollabAdmin; o
         <div className="ad-actions">
           {canApprove && (
             <InkButton
-              variant="pink"
+              variant="teal"
               size="sm"
               onClick={() => {
                 const v = read();
@@ -230,9 +230,9 @@ export function CollabsTab({ api }: TabProps) {
     <section className="ad-card" aria-labelledby="ad-cb-h">
       <div className="ad-card__bar">
         <h2 className="ad-card__title" id="ad-cb-h">
-          Collabs
+          Applications
         </h2>
-        <InkButton variant="paper" size="sm" onClick={() => void api.allCollabsCsv().catch((e) => flash('err', errText(e)))}>
+        <InkButton variant="ghost" size="sm" onClick={() => void api.allCollabsCsv().catch((e) => flash('err', errText(e)))}>
           CSV: all submitted wallets
         </InkButton>
       </div>
@@ -251,7 +251,7 @@ export function CollabsTab({ api }: TabProps) {
           ).map(([l, n]) => (
             <div key={l}>
               <dt className="mono">{l}</dt>
-              <dd>{n}</dd>
+              <dd className="num">{n}</dd>
             </div>
           ))}
         </dl>
@@ -273,7 +273,7 @@ export function CollabsTab({ api }: TabProps) {
       {!items ? (
         <StampSpinner label="Loading" />
       ) : items.length === 0 ? (
-        <p className="ad-note">No collabs here yet.</p>
+        <Empty>No collabs here yet. Communities find you through the Collab button on the landing.</Empty>
       ) : (
         <div className="ad-tablewrap">
           <table className="ad-table">
@@ -281,7 +281,7 @@ export function CollabsTab({ api }: TabProps) {
               <tr>
                 <th scope="col">Community</th>
                 <th scope="col">Type</th>
-                <th scope="col">Members</th>
+                <th scope="col" className="is-num">Members</th>
                 <th scope="col">Contact</th>
                 <th scope="col">Phase</th>
                 <th scope="col">Wallets</th>
@@ -301,18 +301,18 @@ export function CollabsTab({ api }: TabProps) {
                     </div>
                   </td>
                   <td>{TYPE_LABEL[c.type]}</td>
-                  <td>{c.members.toLocaleString('en-US')}</td>
+                  <td className="num is-num">{c.members.toLocaleString('en-US')}</td>
                   <td>
                     <Ext href={`https://x.com/${c.contactX}`}>@{c.contactX}</Ext>
                   </td>
                   <td>
                     <Chip tone={PHASE_TONE[c.phase]}>{c.phase.replace('_', ' ')}</Chip>
                   </td>
-                  <td>
+                  <td className="num">
                     {c.wallets.length}
                     {c.spots ? ` / ${c.spots}` : ''} {dupCount(c) > 0 && <span className="ad-bad">· {dupCount(c)} dup</span>}
                   </td>
-                  <td>{fmtDate(c.deadline)}</td>
+                  <td className="num ad-date">{fmtDate(c.deadline)}</td>
                   <td>
                     <InkButton variant="paper" size="sm" onClick={() => setOpen(c)}>
                       Open

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { CoinCharacter, type CoinMood } from '../../design';
 import type { AdminApi } from '../../site/api';
 
 export interface TabProps {
@@ -44,5 +45,15 @@ export function Ext({ href, children }: { href: string | null | undefined; child
     <a href={href} target="_blank" rel="noreferrer noopener">
       {children ?? href}
     </a>
+  );
+}
+
+/** An empty table: a small sleepy coin and one honest line. */
+export function Empty({ children, mood = 'sleepy' }: { children: ReactNode; mood?: CoinMood }) {
+  return (
+    <div className="ad-empty">
+      <CoinCharacter paint="cream" mood={mood} size={56} />
+      <p>{children}</p>
+    </div>
   );
 }
