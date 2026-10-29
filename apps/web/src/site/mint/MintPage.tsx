@@ -21,6 +21,26 @@ import './mint.css';
 /** The NFT emblem image the server draws for a token id. */
 export const nftImageUrl = (id: bigint | number | string): string => `${SERVER.http}/api/nft/${id.toString()}.svg`;
 
+/**
+ * A freshly minted emblem. The server may not have seen the mint yet when the receipt lands (its
+ * supply read can predate it by a moment), so a failed load retries a few times, cache-busted.
+ */
+function EmblemImage({ id }: { id: bigint }) {
+  const [attempt, setAttempt] = useState(0);
+  const src = attempt === 0 ? nftImageUrl(id) : `${nftImageUrl(id)}?retry=${attempt}`;
+  return (
+    <img
+      src={src}
+      alt={`Elymum #${id.toString()}`}
+      width={240}
+      height={240}
+      onError={() => {
+        if (attempt < 5) setTimeout(() => setAttempt((a) => a + 1), 800 * (attempt + 1));
+      }}
+    />
+  );
+}
+
 const PHASE_LABEL: Record<MintView, string> = {
   unavailable: 'Not deployed',
   closed: 'Closed',
@@ -314,7 +334,7 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
                 const tilt = [-3, 2.5, -1.5, 3.5][i % 4];
                 return (
                   <motion.li key={id.toString()} className="mt-token" variants={mv.stickerDrop} custom={tilt}>
-                    <img src={nftImageUrl(id)} alt={`Elymum #${id.toString()}`} width={240} height={240} />
+                    <EmblemImage id={id} />
                     <motion.span
                       className="mt-token__tag mono"
                       initial={reduced ? { opacity: 0 } : { scale: 0, rotate: -40 }}

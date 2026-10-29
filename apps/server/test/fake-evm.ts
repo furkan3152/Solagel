@@ -297,7 +297,10 @@ export class FakeEvm implements EvmClient {
     this.check();
     return this.balances.get(owner.toLowerCase()) ?? 0n;
   }
+  /** `royaltyInfo` reads so far (the server caches them). */
+  royaltyCalls = 0;
   async royalty() {
+    this.royaltyCalls++;
     return { receiver: ADMIN, bps: 500 };
   }
 

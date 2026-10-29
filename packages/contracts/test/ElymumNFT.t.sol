@@ -214,6 +214,16 @@ contract ElymumNFTTest is Test, MerkleHelper {
         assertEq(nft.ownerOf(6), mallory);
     }
 
+    function test_renounceOwnership_disabled() public {
+        vm.prank(owner);
+        vm.expectRevert(ElymumNFT.RenounceDisabled.selector);
+        nft.renounceOwnership();
+        vm.prank(alice);
+        vm.expectRevert(_unauthorized(alice));
+        nft.renounceOwnership();
+        assertEq(nft.owner(), owner);
+    }
+
     function test_setPhase_onlyOwner() public {
         vm.prank(alice);
         vm.expectRevert(_unauthorized(alice));

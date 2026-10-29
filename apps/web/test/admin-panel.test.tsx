@@ -90,6 +90,49 @@ describe('TxPreview: every write is previewed, checked and sent once', () => {
     expect(onSigned).toHaveBeenCalledWith(expect.objectContaining({ hash: HASH, url: `https://explorer-elysium-testnet.t.conduit.xyz/tx/${HASH}` }));
   });
 
+  it('a receipt timeout after the broadcast offers "Check status" on that hash, never a resend', async () => {
+    const onDone = vi.fn();
+    let receiptCalls = 0;
+    const read = {
+      waitForTransactionReceipt: vi.fn(async ({ hash }: { hash: string }) => {
+        receiptCalls++;
+        expect(hash).toBe(HASH);
+        if (receiptCalls <= 2) throw new Error('Timed out while waiting for transaction with hash');
+        return { status: 'success', contractAddress: NEW, logs: [] };
+      }),
+      readContract: vi.fn(async () => ALICE),
+    } as never;
+    ui(<TxPreview plan={plan({ onDone })} net={resolveNetwork(chainStatus())} me={ALICE} client={read} blockers={[]} onClose={() => {}} />);
+    act(() => screen.getByTestId('tx-confirm').click());
+    await settle();
+    await waitFor(() => expect(screen.getByTestId('tx-error')).toBeTruthy());
+    // broadcast: no "Try again" (it would send a second transaction), only the status check
+    expect(screen.queryByTestId('tx-confirm')).toBeNull();
+    expect(screen.getByTestId('tx-check').textContent).toContain('Check status');
+    expect(screen.getByTestId('tx-error').textContent).toMatch(/It was sent/);
+    // still nothing: the check can be repeated
+    act(() => screen.getByTestId('tx-check').click());
+    await settle();
+    await waitFor(() => expect(screen.getByTestId('tx-error').textContent).toMatch(/Still no receipt/));
+    expect(screen.queryByTestId('tx-confirm')).toBeNull();
+    act(() => screen.getByTestId('tx-check').click());
+    await waitFor(() => expect(screen.getByTestId('tx-done')).toBeTruthy());
+    expect(onDone).toHaveBeenCalledWith(expect.objectContaining({ hash: HASH }));
+    expect(provider.calls.filter((c) => c.method === 'eth_sendTransaction')).toHaveLength(1);
+  });
+
+  it('"Try again" (a new send) only when nothing was broadcast', async () => {
+    provider.handlers.eth_sendTransaction = () => {
+      throw Object.assign(new Error('User rejected the request.'), { code: 4001 });
+    };
+    ui(<TxPreview plan={plan()} net={resolveNetwork(chainStatus())} me={ALICE} client={client()} blockers={[]} onClose={() => {}} />);
+    act(() => screen.getByTestId('tx-confirm').click());
+    await settle();
+    await waitFor(() => expect(screen.getByTestId('tx-error')).toBeTruthy());
+    expect(screen.getByTestId('tx-confirm').textContent).toContain('Try again');
+    expect(screen.queryByTestId('tx-check')).toBeNull();
+  });
+
   it('switches (or adds) the server chain before the prompt', async () => {
     provider.chainId = 1;
     provider.known = new Set([1]);

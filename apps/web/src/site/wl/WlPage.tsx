@@ -215,7 +215,7 @@ export function WlStatus({ entry, fresh = false, onReapply }: { entry: WlEntryPu
               <div>
                 <p>
                   <strong>This entry is from before the move to Elysium.</strong> Its wallet is not an EVM address, so it cannot go on the allowlist. Re-apply with an EVM
-                  wallet (MetaMask, Rabby or any browser wallet) and the same X handle: your new entry replaces this one and goes back to review.
+                  wallet (MetaMask, Rabby or any browser wallet) and the same X handle: your new entry goes to review, and an admin checks the handle claim.
                 </p>
                 {onReapply && (
                   <Button variant="secondary" size="sm" icon="arrow" onClick={onReapply}>

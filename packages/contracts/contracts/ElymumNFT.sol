@@ -97,6 +97,7 @@ contract ElymumNFT is ERC721, ERC2981, Ownable2Step, ReentrancyGuard {
     error MaxSupplyBelowTotal();
     error MetadataIsFrozen();
     error RoyaltyTooHigh();
+    error RenounceDisabled();
 
     /// @param owner_     Contract owner (Ownable2Step).
     /// @param maxSupply_ Supply cap; can only go down later.
@@ -280,6 +281,11 @@ contract ElymumNFT is ERC721, ERC2981, Ownable2Step, ReentrancyGuard {
 
     function contractURI() external view returns (string memory) {
         return _contractURI;
+    }
+
+    /// @notice Disabled: an ownerless NFT could never be withdrawn from, re-priced or have its metadata moved.
+    function renounceOwnership() public view override onlyOwner {
+        revert RenounceDisabled();
     }
 
     function supportsInterface(bytes4 interfaceId) public view override(ERC721, ERC2981) returns (bool) {

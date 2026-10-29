@@ -21,7 +21,7 @@ export interface SiteExtras {
   mint?: MintService;
   profiles?: ProfileStore;
   journal?: Journal;
-  /** Public base URL of a request (`PUBLIC_URL`, else the request host): NFT metadata links. */
+  /** Public base URL (`PUBLIC_URL`; the request host only in development): NFT metadata links. */
   baseUrl?: (req: IncomingMessage) => string;
 }
 
@@ -121,16 +121,19 @@ export class SiteApi {
     return this.cfg.gameAccess ?? this.store.settings.gameAccess;
   }
 
-  /** Whether `wallet` holds an Elymum NFT (cached 60 s; false without an NFT or a chain). */
-  async isHolder(wallet: string | null | undefined): Promise<boolean> {
-    return !!wallet && !!this.ext.mint && (await this.ext.mint.isHolder(wallet));
+  /** Whether `wallet` holds an Elymum NFT (cached 15 s, `fresh` re-reads; false without an NFT or a chain). */
+  async isHolder(wallet: string | null | undefined, fresh = false): Promise<boolean> {
+    return !!wallet && !!this.ext.mint && (await this.ext.mint.isHolder(wallet, fresh));
   }
 
-  /** Whether `wallet` may enter game rooms: admins always; NFT holders in `holders` mode; everyone in `public`. */
-  async gameOpenFor(wallet: string | null | undefined): Promise<boolean> {
+  /**
+   * Whether `wallet` may enter game rooms: admins always; NFT holders in `holders` mode; everyone in `public`.
+   * `fresh`: the holder check skips its 15 s cache (the gateway asks so right before seating an arena ticket).
+   */
+  async gameOpenFor(wallet: string | null | undefined, fresh = false): Promise<boolean> {
     const mode = this.gameAccess();
     if (mode === 'public' || this.isAdmin(wallet)) return true;
-    if (mode === 'holders') return this.isHolder(wallet);
+    if (mode === 'holders') return this.isHolder(wallet, fresh);
     return false;
   }
 

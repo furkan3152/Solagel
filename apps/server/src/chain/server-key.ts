@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import type { Hex } from 'viem';
 import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from 'viem/accounts';
 
@@ -14,6 +14,29 @@ function asHexKey(s: string): Hex | null {
   const t = s.trim();
   const k = t.startsWith('0x') || t.startsWith('0X') ? `0x${t.slice(2)}` : `0x${t}`;
   return HEX_KEY.test(k) ? (k.toLowerCase() as Hex) : null;
+}
+
+/** Strips one pair of surrounding quotes (Docker `--env-file` keeps them literally). */
+function unquote(s: string): string {
+  const t = s.trim();
+  return t.length >= 2 && (t[0] === '"' || t[0] === "'") && t[t.length - 1] === t[0] ? t.slice(1, -1).trim() : t;
+}
+
+/** A run of hex digits long enough to be (part of) a key. */
+const HEXISH = /0x[0-9a-fA-F]{8,}|[0-9a-fA-F]{24,}/;
+
+/**
+ * Whether a `SERVER_PRIVATE_KEY` value that is not a valid key looks like an attempt at one (a 0x prefix or
+ * a long hex run, quoted or not): it is then refused as malformed and never echoed (it is likely a secret).
+ */
+export function looksLikeKey(spec: string): boolean {
+  const t = spec.trim().replace(/^["']+/, '').trim();
+  return /^0x/i.test(t) || /^[0-9a-fA-F]{24,}/.test(t) || (HEXISH.test(t) && !/[/\\]/.test(t));
+}
+
+/** A path as it may appear in an error: withheld when its file name looks like key material. */
+function shownPath(path: string): string {
+  return HEXISH.test(basename(path)) ? '<path withheld: its name looks like a key>' : path;
 }
 
 /** The key inside a key file: a bare hex key, or JSON `{ "privateKey": "0x…" }` (what `auto` writes). */
@@ -55,14 +78,20 @@ export function loadServerKey(spec: string, dataDir?: string): PrivateKeyAccount
   }
   const direct = /^(0x)?[0-9a-fA-F]{64}$/.test(trimmed) ? asHexKey(trimmed) : null;
   if (direct) return privateKeyToAccount(direct);
+  // anything key-like that is not exactly a key (quoted, truncated, a stray character): never read as a path
+  if (looksLikeKey(trimmed) || looksLikeKey(unquote(trimmed))) {
+    throw new Error(
+      'SERVER_PRIVATE_KEY: malformed key (expected 0x + 64 hex digits, no quotes or extra characters; the value is not printed)',
+    );
+  }
   const path = trimmed === '~' || trimmed.startsWith('~/') ? resolve(homedir(), trimmed.slice(2)) : resolve(trimmed);
   let raw: string;
   try {
     raw = readFileSync(path, 'utf8');
   } catch {
-    throw new Error(`SERVER_PRIVATE_KEY: cannot read ${path}`);
+    throw new Error(`SERVER_PRIVATE_KEY: cannot read ${shownPath(path)}`);
   }
   const key = keyFromFile(raw);
-  if (!key) throw new Error(`SERVER_PRIVATE_KEY: ${path} does not hold a private key (0x + 64 hex digits)`);
+  if (!key) throw new Error(`SERVER_PRIVATE_KEY: ${shownPath(path)} does not hold a private key (0x + 64 hex digits)`);
   return privateKeyToAccount(key);
 }

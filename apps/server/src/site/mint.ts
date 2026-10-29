@@ -32,7 +32,13 @@ const PRICE_RETRY_MS = 15_000;
 /** A HYPE/USD reading older than this is not shown (the feed is down). */
 const PRICE_MAX_AGE_MS = 10 * 60_000;
 const STATE_TTL_MS = 15_000;
-const HOLDER_TTL_MS = 60_000;
+/** A holder check (`balanceOf`) is reused this long: the game gate re-checks at every arena ticket and round. */
+export const HOLDER_TTL_MS = 15_000;
+/** A negative holder check is reused only this long (a fresh mint must open /play at once). */
+export const HOLDER_MISS_TTL_MS = 2_000;
+/** `royaltyInfo` of the collection (`/api/nft/contract`, an unauthenticated route) is read at most this often. */
+export const ROYALTY_TTL_MS = 5 * 60_000;
+const ROYALTY_RETRY_MS = 30_000;
 const HOLDERS_INDEX_TTL_MS = 30_000;
 const HOLDERS_LOOKBACK_BLOCKS = 1_000_000n;
 const MAX_HOLDER_CACHE = 20_000;
@@ -73,9 +79,13 @@ export class MintService {
   private priceFetch: Promise<void> | null = null;
   private state: { nft: string; at: number; value: ChainMintState } | null = null;
   private stateFetch: Promise<ChainMintState | null> | null = null;
+  /** When `minted()` last forced a fresh state read for an id above the cached supply. */
+  private missReadAt = -Infinity;
   private readonly holderCache = new Map<string, { at: number; value: boolean }>();
   private holders: { nft: string; next: bigint | null; balances: Map<string, number>; at: number } | null = null;
   private holdersScan: Promise<number> | null = null;
+  private royaltyV: { nft: string; at: number; ttl: number; value: { bps: number; receiver: string } | null } | null = null;
+  private royaltyFetch: Promise<{ bps: number; receiver: string } | null> | null = null;
   private snapshotV: AllowlistSnapshot | null = null;
   private tree: AllowlistTree | null = null;
   private readonly now: () => number;
@@ -239,14 +249,16 @@ export class MintService {
     return this.stateFetch;
   }
 
-  /** Whether a wallet holds an Elymum NFT (`balanceOf > 0`), cached 60 s. False without an NFT. */
-  async isHolder(wallet: string): Promise<boolean> {
+  /** Whether a wallet holds an Elymum NFT (`balanceOf > 0`), cached 15 s (`fresh` re-reads). False without an NFT. */
+  async isHolder(wallet: string, fresh = false): Promise<boolean> {
     const nft = this.deps.nft();
     const client = this.deps.client();
     if (!nft || !client) return false;
     const key = `${nft.address}:${wallet.toLowerCase()}`;
     const hit = this.holderCache.get(key);
-    if (hit && this.now() - hit.at < HOLDER_TTL_MS) return hit.value;
+    // a "not a holder" answer is kept only briefly: the wallet may be minting right now, and the
+    // mint page sends it straight to /play (a refused visit just before must not lock it out)
+    if (!fresh && hit && this.now() - hit.at < (hit.value ? HOLDER_TTL_MS : HOLDER_MISS_TTL_MS)) return hit.value;
     let value: boolean;
     try {
       value = (await client.nftBalance(nft.address as Address, getAddress(wallet))) > 0n;
@@ -332,11 +344,22 @@ export class MintService {
   /* Metadata                                                         */
   /* ---------------------------------------------------------------- */
 
-  /** Whether token `id` was minted (ids run from 1 to `totalSupply`; a newer id re-reads the state once). */
+  /**
+   * Whether token `id` was minted (ids run from 1 to `totalSupply`). An id above the cached supply
+   * (up to the max supply) re-reads the state: the mint page asks for the emblem of a token the
+   * moment its receipt lands, often within a second of a read made while the mint was still
+   * pending. Those re-reads are throttled on their own clock (at most one per 500 ms), not on the
+   * age of the cached state, so a recent stale read cannot hide a fresh mint.
+   */
   async minted(id: number): Promise<boolean> {
     if (!Number.isSafeInteger(id) || id < 1) return false;
     let s = await this.chainState();
-    if (s && id > s.totalSupply && this.state && this.now() - this.state.at > 2_000) s = await this.chainState(true);
+    if (s && id > s.totalSupply && id <= s.maxSupply && this.now() - this.missReadAt >= 500) {
+      this.missReadAt = this.now();
+      // a read already in flight may have started before the mint landed: let it finish, then read again
+      if (this.stateFetch) await this.stateFetch;
+      s = await this.chainState(true);
+    }
     return !!s && id <= s.totalSupply;
   }
 
@@ -359,11 +382,30 @@ export class MintService {
     };
   }
 
+  /** `royaltyInfo` of the NFT, cached 5 min (a failed read is retried after 30 s); one read in flight at a time. */
+  private async royalty(nft: string, client: EvmClient): Promise<{ bps: number; receiver: string } | null> {
+    const c = this.royaltyV;
+    if (c && c.nft === nft && this.now() - c.at < c.ttl) return c.value;
+    this.royaltyFetch ??= client
+      .royalty(nft as Address)
+      .then((value) => {
+        this.royaltyV = { nft, at: this.now(), ttl: ROYALTY_TTL_MS, value };
+        return value;
+      })
+      .catch(() => {
+        const prev = c && c.nft === nft ? c.value : null;
+        this.royaltyV = { nft, at: this.now(), ttl: ROYALTY_RETRY_MS, value: prev };
+        return prev;
+      })
+      .finally(() => (this.royaltyFetch = null));
+    return this.royaltyFetch;
+  }
+
   /** The collection's `contractURI` JSON. */
   async contractMetadata(baseUrl: string): Promise<Record<string, unknown>> {
     const nft = this.deps.nft();
     const client = this.deps.client();
-    const royalty = nft && client ? await client.royalty(nft.address as Address).catch(() => null) : null;
+    const royalty = nft && client ? await this.royalty(nft.address, client) : null;
     return {
       name: 'Elymum',
       description: 'Elymum emblems: the coins of the ring. Holders play Elymum on Elysium.',

@@ -13,7 +13,8 @@ export interface ServerConfig {
   dataDir: string;
   /**
    * Public base URL of this server (`PUBLIC_URL`, no trailing slash), the origin wallet logins
-   * (SIWE) are bound to. Null: derived from the request's Host header, else `http://localhost:<PORT>`.
+   * (SIWE) are bound to and the base of the NFT metadata links. Required unless `NODE_ENV=development`
+   * (`assertPublicUrl`); null (development only): the request's Host header, else `http://localhost:<PORT>`.
    */
   publicUrl: string | null;
   /** Optional path to the built web app (apps/web/dist) to serve statically. */
@@ -114,6 +115,30 @@ export function parseAdminWallets(v: string | undefined): string[] {
 }
 
 /** Malformed entries of `ADMIN_WALLETS` (for the startup warning). */
+/**
+ * Refuses to start without a usable `PUBLIC_URL` unless `NODE_ENV=development`: it is the origin SIWE
+ * logins are bound to and the base of the NFT metadata links, and a request-derived one (Host /
+ * X-Forwarded-Host) would let any site that proxies to this server obtain real sessions. Throws a clear message.
+ */
+export function assertPublicUrl(cfg: Pick<ServerConfig, 'publicUrl' | 'nodeEnv'>): void {
+  if (cfg.publicUrl) {
+    let ok = false;
+    try {
+      const u = new URL(cfg.publicUrl);
+      ok = (u.protocol === 'https:' || u.protocol === 'http:') && u.host !== '' && (u.pathname === '/' || u.pathname === '') && !u.search && !u.hash && !u.username;
+    } catch {
+      ok = false;
+    }
+    if (!ok) throw new Error(`PUBLIC_URL must be the site's origin, e.g. https://elymum.io (got ${JSON.stringify(cfg.publicUrl)}); refusing to start`);
+    return;
+  }
+  if (cfg.nodeEnv === 'development') return;
+  throw new Error(
+    `PUBLIC_URL is required (NODE_ENV is ${cfg.nodeEnv ?? 'unset'}): set it to the site's public origin, e.g. https://elymum.io. ` +
+      'It is the domain wallet sign-ins (SIWE) are bound to and the base of the NFT metadata links; only NODE_ENV=development may derive it from the request. Refusing to start',
+  );
+}
+
 export function invalidAdminWallets(v: string | undefined): string[] {
   return (v ?? '')
     .split(',')

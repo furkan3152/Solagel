@@ -193,9 +193,10 @@ smart wallets). Addresses are compared and stored checksummed. Same nonce rules 
 
 - WL / collab: wallets are EVM addresses. Entries whose wallet is not `0x…` (from the Solana era) are kept and marked
   `legacy: true`; they are never in the allowlist. A user who applies with an EVM wallet and the X handle of a legacy
-  entry replaces it (status goes back to `pending`, note "re-applied with an EVM wallet; was <status>").
+  entry gets a fresh `pending` entry noted "claims legacy handle @x (legacy status: <status>, ...)" for manual review;
+  the legacy entry is kept, and only this one legacy→EVM claim per handle is allowed.
 - Settings: `gamePublic: boolean` becomes `gameAccess: 'admins' | 'holders' | 'public'` (stored `gamePublic: true`
-  migrates to `public`, else `admins`). `holders` = wallets with `balanceOf > 0` on the NFT (cached 60 s) plus admins.
+  migrates to `public`, else `admins`). `holders` = wallets with `balanceOf > 0` on the NFT (cached 15 s, re-read uncached at every arena seat) plus admins.
 - Contracts registry: `GET /api/site/contracts` (public), `POST /api/admin/contracts` `{ kind: 'arena'|'nft'|'token',
   address, txHash }`: the server checks the code hash, the owner (= the signed-in admin), and for the arena that the
   server authority is the server key, then stores it. `DELETE` clears a kind.

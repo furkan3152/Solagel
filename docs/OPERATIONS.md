@@ -52,8 +52,10 @@ until you publish a root.
 | Communities | **Collabs**: approve with spots and a deadline, extend, unlock a submitted list, export wallets (with a `legacy` column) |
 
 - Wallets are EVM addresses (checksummed). Entries from before the move whose wallet is not `0x...` are kept,
-  marked **legacy**, and never in the allowlist. Someone who applies again with an EVM wallet and the same X handle
-  replaces their legacy entry (it goes back to pending, with a note).
+  marked **legacy**, and never in the allowlist. A legacy entry's X handle can be claimed by exactly one EVM
+  application: it is a fresh **pending** entry with the note "claims legacy handle @x (legacy status: ...)" and
+  inherits nothing (anyone can type a handle). The legacy entry is kept; both show in the WL list. Verify the claim
+  (e.g. ask the X account) before approving.
 - Duplicates are flagged, never dropped: a collab wallet that is also on the WL (`dup_wl`) or in another list
   (`dup_collabs`) is marked; decide by hand.
 - **Publishing the allowlist** (Mint tab): the server snapshots every approved WL wallet plus every wallet of a
@@ -71,14 +73,21 @@ public info API. The UI always shows the HYPE amount with its USD value.
   `setPrice`. Do it before opening a phase and whenever the USD value drifts.
 - **Automatically (price keeper):** set **price bounds** (`setPriceBounds`, e.g. $0.80 to $1.25 in wei at today's
   rate) and make the **server key the price keeper** (`setPriceKeeper`). Every 5 minutes the server re-prices when
-  the price is off by more than 2 %, always clamped into your bounds; it logs `price keeper: ...`. The keeper can
+  the price is off by more than 2 %, always clamped into your bounds; it logs `price keeper: ...`. It only moves after
+  two consecutive HYPE/USD readings agree within 3 %, and at most ±20 % per update (a big move takes several
+  5-minute checks). The keeper can
   never price outside the bounds; widen or move them yourself if HYPE moves a lot. Remove the keeper
   (`setPriceKeeper(0)`) to stop it.
 - **Phases:** Closed → **Allowlist** (proof required, `wlLimit` per wallet) → **Public** (`publicLimit` per wallet;
   allowlisted wallets may still use their allowlist allowance). Opening the mint offers "activate the game for
   holders" (sets `gameAccess` to `holders`).
-- **Who may play:** `admins` (default), `holders` (NFT `balanceOf > 0`, cached 60 s, plus admins) or `public`;
-  `GAME_ACCESS` on the server overrides the setting.
+- **Who may play:** `admins` (default), `holders` (NFT `balanceOf > 0`, cached 15 s, plus admins) or `public`;
+  `GAME_ACCESS` on the server overrides the setting. In `holders` mode every room entry checks the gate, and every
+  arena seat (each new ticket, i.e. each round) re-reads `balanceOf` uncached right before seating.
+  **Known limitation:** the gate is a snapshot at seat time. One NFT can be passed between wallets between rounds
+  (or between joins), so several wallets can take turns playing on a single NFT; a seated player is not removed
+  mid-round if they transfer it away. Tickets are bought on chain, so the server cannot refuse a ticket purchase
+  itself: a non-holder who buys one is refused at the seat and gets the entry fee back by the stale-session refund.
 - **Money:** mint proceeds stay in the NFT contract until **Withdraw** sends the whole balance to the treasury.
 - **Metadata:** `tokenURI = baseURI + id`, served by the server at `/api/nft/<id>` (JSON) and `/api/nft/<id>.svg`.
   Change the base URI if the domain changes; **Freeze metadata** is forever.

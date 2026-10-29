@@ -699,6 +699,47 @@ describe('stale sessions (settled at the entry fee)', () => {
     expect(h.settled[0]).toMatchObject({ player: stale, payout: K, fee: 0 });
   });
 
+  it('skips a session seated during its awaits (re-reads the live sessions right before the commit)', async () => {
+    const h = await harness();
+    const old = Math.floor(T0 / 1000) - 3600;
+    const p = wallet();
+    const sp = h.evm.join(1, p, { openedAt: old });
+    const key = sessionKey(1, p, sp.id);
+    const read = h.evm.session.bind(h.evm);
+    // the player is seated while the sweeper reads the session
+    h.evm.session = async (...args: Parameters<typeof read>) => {
+      const s = await read(...args);
+      h.live.add(key);
+      return s;
+    };
+    expect(await h.chain.sweepStale()).toBe(0);
+    expect(h.journal.pending).toHaveLength(0);
+    expect(h.logs.join()).toMatch(/1 stale settlement\(s\) skipped/);
+  });
+
+  it('a stale refund replaced by the real result is never sent with its old payout', async () => {
+    const h = await harness();
+    const old = Math.floor(T0 / 1000) - 3600;
+    const p = wallet();
+    const sp = h.evm.join(1, p, { openedAt: old });
+    expect(await h.chain.sweepStale()).toBe(1);
+    const key = sessionKey(1, p, sp.id);
+    const read = h.evm.session.bind(h.evm);
+    // the room's real result (eaten: payout 0) arrives while the worker checks the stale item
+    h.evm.session = async (...args: Parameters<typeof read>) => {
+      const s = await read(...args);
+      if (h.journal.pending.some((x) => x.key === key && x.kind === 'settle' && x.reason === 'stale')) {
+        h.journal.commit({ enqueue: [{ kind: 'settle', key, player: p, arenaId: 1, session: key, sessionId: Number(sp.id), payout: 0, score: 0, kills: 0, xp: 0, reason: 'death', attempts: 0, nextAttemptAt: 0, createdAt: h.clock.now }] });
+      }
+      return s;
+    };
+    await h.chain.processPending();
+    await h.chain.processPending();
+    expect(h.settled).toHaveLength(1);
+    expect(h.settled[0]).toMatchObject({ player: p, payout: 0 });
+    expect(h.journal.pending).toHaveLength(0);
+  });
+
   it('respects STALE_SESSION_AFTER_S and STAKE_ARENA_IDS', async () => {
     const h = await harness({ env: { STALE_SESSION_AFTER_S: '5', STAKE_ARENA_IDS: '2' } });
     const t = Math.floor(T0 / 1000) - 6;

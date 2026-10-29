@@ -55,7 +55,7 @@ One Docker container serves the game server and the web client on the same origi
 |---|---|
 | `NODE_ENV` | `production` |
 | `DATA_DIR` | `/data` |
-| `PUBLIC_URL` | the site's address, e.g. `https://<your current domain>` (the SIWE domain and the base of the NFT metadata URLs) |
+| `PUBLIC_URL` | **required**: the site's address, e.g. `https://<your current domain>` (the SIWE domain and the base of the NFT metadata URLs). The server refuses to start without it unless `NODE_ENV=development`; it never derives the sign-in domain from `Host` / `X-Forwarded-Host` |
 | `VITE_PUBLIC_URL` | the same value (build time: absolute canonical and Open Graph URLs in `index.html`) |
 | `EVM_RPC_URL` | `https://testnet-rpc.elysium.kinetiq.xyz` (testnet), later the mainnet RPC (may hold an API key; never sent to browsers) |
 | `PUBLIC_RPC_URL` | optional: an RPC for browsers, no secrets (default: `EVM_RPC_URL` when it is the public testnet RPC, else the wallet's own RPC) |
@@ -63,7 +63,7 @@ One Docker container serves the game server and the web client on the same origi
 | `SERVER_PRIVATE_KEY` | `auto`: generated once into `/data/server-key.json` (mode 0600) and reused; its address is logged and published as `serverKey` |
 | `ADMIN_WALLETS` | your owner wallet's 0x address (comma-separated for more). **No default**: unset, nobody is admin |
 | `AUTH_SECRET` | `openssl rand -hex 32` (otherwise players sign in again after each restart) |
-| `TRUST_PROXY` | `1` (set by the image already) |
+| `TRUST_PROXY` | `1` (set by the image already): the client IP is the right-most `X-Forwarded-For` hop; with more than one proxy in front, set `TRUST_PROXY_HOPS` to their number (default 1) |
 | `MINT_USD_CENTS` | `100` (the $1 target; default) |
 | `TOKEN_SYMBOL` | `$ELYMUM` (default; display only) |
 | `GAME_ACCESS` | leave empty: the `/admin` setting decides (`admins` until you open the mint) |

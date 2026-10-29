@@ -305,7 +305,9 @@ export class Journal {
 
   /**
    * Atomically enqueue settlements, replace a room's live snapshot and
-   * replace an arena instance's loot records.
+   * replace an arena instance's loot records. An item whose key is already pending is dropped, with one
+   * exception: a real settlement (any reason but `stale`) replaces a pending `stale` one (the sweeper's
+   * entry-fee refund of a ticket that was seated meanwhile), never the other way round.
    */
   commit(opts: {
     enqueue?: JournalItem[];
@@ -315,7 +317,9 @@ export class Journal {
   }): void {
     if (opts.enqueue) {
       for (const item of opts.enqueue) {
-        if (!this.pendingItems.some((p) => p.key === item.key)) this.pendingItems.push(item);
+        const i = this.pendingItems.findIndex((p) => p.key === item.key);
+        if (i < 0) this.pendingItems.push(item);
+        else if (replacesStale(this.pendingItems[i], item)) this.pendingItems[i] = item;
       }
     }
     if (opts.roomId !== undefined && opts.live) {
@@ -493,6 +497,11 @@ export class Journal {
     writeFileSync(tmp, JSON.stringify(data));
     renameSync(tmp, this.path);
   }
+}
+
+/** Whether `next` (same key) supersedes the pending `prev`: a real result over the sweeper's stale refund. */
+function replacesStale(prev: JournalItem, next: JournalItem): boolean {
+  return prev.kind === 'settle' && prev.reason === 'stale' && next.kind === 'settle' && next.reason !== 'stale';
 }
 
 /** Validates a journal file and upgrades v1 (no loot) to v2. */

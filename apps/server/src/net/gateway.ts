@@ -23,11 +23,31 @@ import { MAX_STAKE_SESSION_AGE_S } from '../rooms/room';
 import type { Journal } from '../stake/journal';
 import { Conn } from './conn';
 
-export function clientIp(req: IncomingMessage, trustProxy: boolean): string {
-  if (trustProxy) {
+/**
+ * How many reverse proxies in front of this server append to `X-Forwarded-For`: 0 unless `TRUST_PROXY=1`,
+ * then `TRUST_PROXY_HOPS` (default 1).
+ */
+export function trustProxyHops(env: NodeJS.ProcessEnv = process.env): number {
+  if (env.TRUST_PROXY !== '1') return 0;
+  const n = Math.floor(Number(env.TRUST_PROXY_HOPS ?? '1'));
+  return Number.isFinite(n) && n >= 1 ? Math.min(n, 16) : 1;
+}
+
+/**
+ * The client's IP. Behind `hops` trusted proxies (true = 1) it is the `hops`-th `X-Forwarded-For` entry from
+ * the RIGHT: the address the outermost trusted proxy saw. Entries to its left were written by the client
+ * and are never trusted (a forged left-most value would otherwise pick any rate-limit key).
+ */
+export function clientIp(req: IncomingMessage, hops: number | boolean): string {
+  const n = hops === true ? 1 : hops === false ? 0 : hops;
+  if (n > 0) {
     const fwd = req.headers['x-forwarded-for'];
-    const first = (Array.isArray(fwd) ? fwd[0] : fwd)?.split(',')[0]?.trim();
-    if (first) return first;
+    const list = (Array.isArray(fwd) ? fwd.join(',') : (fwd ?? ''))
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    const hop = list.length > 0 ? list[Math.max(0, list.length - n)] : undefined;
+    if (hop) return hop;
   }
   return req.socket.remoteAddress ?? 'unknown';
 }
@@ -63,7 +83,7 @@ export class Gateway {
   private readonly alive = new WeakMap<WebSocket, boolean>();
   private timers: NodeJS.Timeout[] = [];
   /** Who may enter a room (join or spectate); null: everyone (unit tests that build a bare gateway). */
-  private gameGate: ((wallet: string | null) => boolean | Promise<boolean>) | null = null;
+  private gameGate: ((wallet: string | null, fresh?: boolean) => boolean | Promise<boolean>) | null = null;
   /** Server profiles (names, skins, XP); null: none (bare unit tests). */
   private profiles: ProfileStore | null = null;
   /** Wallets the admin banned from arenas (integrity); null: nobody (bare unit tests). */
@@ -76,7 +96,7 @@ export class Gateway {
     private readonly chain: ChainGateway,
     private readonly journal: Journal,
     private readonly log: (m: string) => void,
-    private readonly trustProxy = process.env.TRUST_PROXY === '1',
+    private readonly trustProxy: number | boolean = trustProxyHops(),
   ) {
     chain.onSettled((e) => {
       for (const conn of this.rooms.connsByWallet(e.player)) {
@@ -88,7 +108,7 @@ export class Gateway {
   }
 
   /** Sets who may enter rooms (the site's game gate: admins, NFT holders, or everyone). */
-  setGameGate(gate: ((wallet: string | null) => boolean | Promise<boolean>) | null): void {
+  setGameGate(gate: ((wallet: string | null, fresh?: boolean) => boolean | Promise<boolean>) | null): void {
     this.gameGate = gate;
   }
 
@@ -102,10 +122,13 @@ export class Gateway {
     this.banGate = gate;
   }
 
-  /** Refuses (`game_closed`) a room entry the game gate does not allow for this session. */
-  private async gameClosed(conn: Conn): Promise<boolean> {
+  /**
+   * Refuses (`game_closed`) a room entry the game gate does not allow for this session. `fresh`: the
+   * holder check bypasses its cache (each arena seat, i.e. every new ticket and round, re-checks it).
+   */
+  private async gameClosed(conn: Conn, fresh = false): Promise<boolean> {
     if (!this.gameGate) return false;
-    const open = await Promise.resolve(this.gameGate(conn.wallet)).catch(() => false);
+    const open = await Promise.resolve(this.gameGate(conn.wallet, fresh)).catch(() => false);
     if (open) return false;
     this.error(conn, 'game_closed', conn.wallet ? 'The game is not open to this wallet yet.' : 'The game is not open yet. Sign in with your wallet if you hold an Elymum NFT.');
     return true;
@@ -434,6 +457,9 @@ export class Gateway {
         this.error(conn, 'no_session', 'This arena ticket expired and will be refunded.');
         return;
       }
+      // holders gate: re-checked uncached right before every arena seat (each round needs a new ticket and
+      // join), so an NFT sold since the sign-in no longer seats its former holder
+      if (await this.gameClosed(conn, true)) return;
       // the instance may have filled up or been closed during the awaits above: pick again (arena data is cached)
       room = await this.rooms.confirmArenaRoom(target.arenaId, room);
       if (!room) {

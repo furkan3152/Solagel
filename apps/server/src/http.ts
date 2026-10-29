@@ -7,7 +7,7 @@ import type { DevFakeChainActions } from './chain/dev-fake';
 import type { ChainGateway } from './chain/types';
 import type { ServerConfig } from './config';
 import type { Leaderboards } from './leaderboards';
-import { clientIp } from './net/gateway';
+import { clientIp, trustProxyHops } from './net/gateway';
 import { Limiter } from './net/limiter';
 import type { PriceKeeper } from './chain/price-keeper';
 import type { RoomManager } from './rooms/manager';
@@ -45,30 +45,44 @@ interface Ctx {
   priceKeeper?: PriceKeeper | null;
   /** The per-IP limiter of every `/api/*` request (default 240 a minute); tests inject a larger one. */
   apiLimiter?: Limiter;
+  /** Server log (unexpected errors of a request go here, never to the client). Default: console.error. */
+  log?: (m: string) => void;
+}
+
+/** Strips URLs (an RPC URL can carry an API key in its path or query) from a message before it is logged. */
+export function redactUrls(s: string): string {
+  return s.replace(/\b[a-z][a-z0-9+.-]*:\/\/[^\s"'<>]+/gi, (u) => {
+    try {
+      return `${new URL(u).protocol}//${new URL(u).host}/<redacted>`;
+    } catch {
+      return '<redacted-url>';
+    }
+  });
 }
 
 const HOST_RE = /^[A-Za-z0-9.-]+(:\d{1,5})?$|^\[[0-9A-Fa-f:.]+\](:\d{1,5})?$/;
 
 /**
- * Public base URL of this server: `PUBLIC_URL` when set, else the request's
- * host (and `X-Forwarded-Proto`/`-Host` behind a trusted proxy), else localhost.
+ * Public base URL of this server: `PUBLIC_URL` when set. Without it (only allowed with
+ * `NODE_ENV=development`, see `assertPublicUrl`) the request's own `Host` header in development, else
+ * `http://localhost:<PORT>`. Client-supplied `X-Forwarded-Host`/`-Proto` are never used: this URL is the
+ * SIWE origin of a login and the base of the NFT metadata links, so it must not be chosen by a caller
+ * (`_trustProxy` is accepted for compatibility and ignored).
  */
-export function publicBaseUrl(cfg: ServerConfig, req: IncomingMessage, trustProxy: boolean): string {
+export function publicBaseUrl(cfg: ServerConfig, req: IncomingMessage, _trustProxy?: boolean | number): string {
   if (cfg.publicUrl) return cfg.publicUrl;
-  const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v)?.split(',')[0]?.trim();
-  const host = (trustProxy ? first(req.headers['x-forwarded-host']) : undefined) ?? req.headers.host;
-  const proto = trustProxy ? first(req.headers['x-forwarded-proto']) : undefined;
-  if (host && HOST_RE.test(host)) return `${proto === 'https' ? 'https' : 'http'}://${host}`;
+  const host = req.headers.host;
+  if (cfg.nodeEnv === 'development' && host && HOST_RE.test(host)) return `http://${host}`;
   return `http://localhost:${cfg.port}`;
 }
 
 /**
- * SIWE origin of a login (M1): the domain is the `PUBLIC_URL` host, else the request host (as in
- * `publicBaseUrl`); the URI is that base URL; the chain id is the server's (`eth_chainId` of its RPC),
- * or the Elysium testnet's while the chain is off.
+ * SIWE origin of a login: the domain is the `PUBLIC_URL` host (the request host only in
+ * development, as in `publicBaseUrl`); the URI is that base URL; the chain id is the server's
+ * (`eth_chainId` of its RPC), or the Elysium testnet's while the chain is off.
  */
-export function siweOrigin(cfg: ServerConfig, req: IncomingMessage, trustProxy: boolean, chainId: number | null): SiweOrigin {
-  const uri = publicBaseUrl(cfg, req, trustProxy);
+export function siweOrigin(cfg: ServerConfig, req: IncomingMessage, _trustProxy: boolean | number, chainId: number | null): SiweOrigin {
+  const uri = publicBaseUrl(cfg, req);
   return { domain: new URL(uri).host, uri, chainId: chainId ?? ELYSIUM_TESTNET_CHAIN_ID };
 }
 
@@ -106,7 +120,7 @@ function serveStatic(root: string, req: IncomingMessage, res: ServerResponse, pa
 export function createHttpServer(cfg: ServerConfig, ctx: Ctx): Server {
   const apiLimiter = ctx.apiLimiter ?? new Limiter(240, 60_000);
   const nonceLimiter = new Limiter(20, 60_000);
-  const trustProxy = process.env.TRUST_PROXY === '1';
+  const trustProxy = trustProxyHops();
 
   return createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
@@ -187,7 +201,10 @@ export function createHttpServer(cfg: ServerConfig, ctx: Ctx): Server {
       }
       json(res, 404, { error: 'not found' });
     } catch (err) {
-      json(res, 500, { error: 'internal', message: (err as Error).message });
+      // details stay server-side (with URLs redacted): an RPC error can name the RPC URL and its key
+      (ctx.log ?? ((m: string) => console.error(m)))(`http: ${req.method} ${url.pathname} failed: ${redactUrls(String((err as Error)?.stack ?? err))}`);
+      if (!res.headersSent) json(res, 500, { error: 'internal', message: 'internal server error' });
+      else res.end();
     }
   });
 }

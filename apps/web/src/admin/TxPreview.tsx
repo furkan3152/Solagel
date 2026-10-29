@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Address, Hash, PublicClient } from 'viem';
+import type { Address, Hash, PublicClient, TransactionReceipt } from 'viem';
 import { explorerAddressUrl, explorerTxUrl } from '@elymum/shared';
 import { Button, Stamp, StatusPill } from '../design';
 import { sendWithWallet, txErrorText, type TxPhase } from '../wallet/tx';
@@ -14,7 +14,18 @@ export interface SignedEntry {
   url: string | null;
 }
 
-type State = { kind: 'review' } | { kind: 'busy'; phase: 'checking' | TxPhase; hash?: Hash } | { kind: 'done'; result: PlanResult; afterError: string | null } | { kind: 'error'; message: string; hash: Hash | null };
+/**
+ * `error.unsettled`: a transaction WAS broadcast (`hash`) but its outcome is unknown (no receipt yet, the
+ * RPC timed out): it may still land, so the only action is "Check status" on that hash, never a resend.
+ */
+type State =
+  | { kind: 'review' }
+  | { kind: 'busy'; phase: 'checking' | TxPhase; hash?: Hash }
+  | { kind: 'done'; result: PlanResult; afterError: string | null }
+  | { kind: 'error'; message: string; hash: Hash | null; unsettled?: boolean };
+
+/** How long one "Check status" waits for the receipt of an already broadcast transaction. */
+const STATUS_TIMEOUT_MS = 60_000;
 
 /** The four stations a send passes, drawn as a dotted track. */
 const STATIONS = [
@@ -132,10 +143,38 @@ export function TxPreview({
     });
     if (!res.ok) {
       inFlight.current = false;
-      return setState({ kind: 'error', message: txErrorText(res.error), hash: res.hash });
+      // broadcast but no final receipt (a reverted receipt is final): never offer a resend for it
+      const unsettled = res.hash !== null && res.error.kind !== 'revert';
+      return setState({ kind: 'error', message: txErrorText(res.error), hash: res.hash, unsettled });
     }
-    const result: PlanResult = { hash: res.hash, receipt: res.receipt, address: res.receipt.contractAddress ?? null };
-    onSigned?.({ at: Date.now(), label: plan.title, hash: res.hash, url: explorerTxUrl(explorer, res.hash) });
+    await finish(res.hash, res.receipt);
+  };
+
+  /** Polls the receipt of the transaction already broadcast (`state.hash`); nothing is sent again. */
+  const checkStatus = async () => {
+    if (inFlight.current || state.kind !== 'error' || !state.hash || !state.unsettled) return;
+    const hash = state.hash;
+    if (!client) return setState({ kind: 'error', message: 'Cannot check the transaction: no RPC.', hash, unsettled: true });
+    inFlight.current = true;
+    setState({ kind: 'busy', phase: 'confirming', hash });
+    let receipt: TransactionReceipt;
+    try {
+      receipt = await client.waitForTransactionReceipt({ hash, timeout: STATUS_TIMEOUT_MS });
+    } catch (err) {
+      inFlight.current = false;
+      const why = (err as Error).message?.split('\n')[0] ?? String(err);
+      return setState({ kind: 'error', message: `Still no receipt for this transaction (${why}). It may still land: check again, or look it up in the explorer.`, hash, unsettled: true });
+    }
+    if (receipt.status !== 'success') {
+      inFlight.current = false;
+      return setState({ kind: 'error', message: 'The transaction was refused by the contract.', hash, unsettled: false });
+    }
+    await finish(hash, receipt);
+  };
+
+  const finish = async (hash: Hash, receipt: TransactionReceipt) => {
+    const result: PlanResult = { hash, receipt, address: receipt.contractAddress ?? null };
+    onSigned?.({ at: Date.now(), label: plan.title, hash, url: explorerTxUrl(explorer, hash) });
     let afterError: string | null = null;
     try {
       await plan.onDone?.(result);
@@ -291,6 +330,19 @@ export function TxPreview({
         {state.kind === 'error' && (
           <p className="ad-bad ad-txp__error" role="alert" data-testid="tx-error">
             {state.message}
+            {state.hash && (
+              <>
+                {' '}
+                {state.unsettled ? 'It was sent: ' : ''}
+                {explorerTxUrl(explorer, state.hash) ? (
+                  <a href={explorerTxUrl(explorer, state.hash)!} target="_blank" rel="noreferrer">
+                    View transaction
+                  </a>
+                ) : (
+                  <code className="ad-txp__mono">{state.hash}</code>
+                )}
+              </>
+            )}
           </p>
         )}
         {state.kind === 'done' && (
@@ -326,16 +378,23 @@ export function TxPreview({
               <Button variant="ghost" size="sm" disabled={busy} onClick={onClose}>
                 Cancel
               </Button>
-              <Button
-                variant={net.mainnet || plan.confirmText ? 'danger' : 'primary'}
-                lead="wallet"
-                disabled={busy || refusals.length > 0 || needsText}
-                loading={busy}
-                onClick={() => void confirm()}
-                data-testid="tx-confirm"
-              >
-                {state.kind === 'error' ? 'Try again' : 'Open wallet'}
-              </Button>
+              {state.kind === 'error' && state.unsettled ? (
+                // broadcast already: only look the hash up again (a resend could execute twice)
+                <Button variant="primary" disabled={busy} loading={busy} onClick={() => void checkStatus()} data-testid="tx-check">
+                  Check status
+                </Button>
+              ) : (
+                <Button
+                  variant={net.mainnet || plan.confirmText ? 'danger' : 'primary'}
+                  lead="wallet"
+                  disabled={busy || refusals.length > 0 || needsText}
+                  loading={busy}
+                  onClick={() => void confirm()}
+                  data-testid="tx-confirm"
+                >
+                  {state.kind === 'error' ? 'Try again' : 'Open wallet'}
+                </Button>
+              )}
             </>
           )}
         </div>

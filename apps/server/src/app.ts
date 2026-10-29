@@ -98,14 +98,13 @@ export async function createApp(
     logChunkBlocks: cfg.chain.logChunkBlocks,
     log,
   });
-  const trustProxy = process.env.TRUST_PROXY === '1';
   const site = new SiteApi(cfg, auth, siteStore, opts.siteLimits, {
     chain,
     contracts,
     mint,
     profiles,
     journal,
-    baseUrl: (req) => publicBaseUrl(cfg, req, trustProxy),
+    baseUrl: (req) => publicBaseUrl(cfg, req),
   });
   const priceKeeper = chain.evm
     ? new PriceKeeper({ client: () => chain.evm?.() ?? null, nft: () => nftRecord()?.address ?? null, usdCents: cfg.mint.usdCents, fetchPrice, log })
@@ -152,11 +151,11 @@ export async function createApp(
   await chain.start();
   await rooms.ensureArenaRooms();
 
-  const server = createHttpServer(cfg, { rooms, leaderboards, chain, auth, journal, site, priceKeeper, apiLimiter: opts.apiLimiter, startedAt: Date.now() });
+  const server = createHttpServer(cfg, { rooms, leaderboards, chain, auth, journal, site, priceKeeper, apiLimiter: opts.apiLimiter, startedAt: Date.now(), log });
   const gateway = new Gateway(cfg, rooms, auth, chain, journal, log);
   gateway.setProfiles(profiles);
   // who may play: `gameAccess` (setting) or `GAME_ACCESS`: admins, NFT holders + admins, or everyone
-  gateway.setGameGate((wallet) => site.gameOpenFor(wallet));
+  gateway.setGameGate((wallet, fresh) => site.gameOpenFor(wallet, fresh));
   // wallets the admin banned after an integrity review cannot start arena games (practice still works)
   gateway.setBanGate((wallet) => integrity.isBanned(wallet));
   integrity.start();

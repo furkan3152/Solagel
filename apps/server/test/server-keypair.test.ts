@@ -44,4 +44,36 @@ describe('SERVER_PRIVATE_KEY', () => {
     expect(() => loadServerKey(join(dir, 'bad.txt'))).toThrow(/does not hold a private key/);
     expect(() => loadServerKey('')).toThrow(/not set/);
   });
+
+  it('refuses a malformed key as "malformed key", never reading it as a path or printing it', () => {
+    for (const spec of [`"${KEY}"`, `'${KEY}'`, `${KEY}\n#`, KEY.slice(0, 65), `${KEY}0`, `0X${KEY.slice(2, 40)}`, KEY.slice(2, 50), ` "${KEY.slice(2)}" `]) {
+      let msg = '';
+      try {
+        loadServerKey(spec, '/tmp/x');
+      } catch (e) {
+        msg = (e as Error).message;
+      }
+      expect(msg, spec).toMatch(/SERVER_PRIVATE_KEY: malformed key/);
+      expect(msg, spec).not.toMatch(/[0-9a-f]{16}/i);
+    }
+  });
+
+  it('withholds a key file path whose name looks like a key', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'elymum-key-'));
+    const hexName = join(dir, KEY.slice(2));
+    const msg = (() => {
+      try {
+        loadServerKey(hexName);
+        return '';
+      } catch (e) {
+        return (e as Error).message;
+      }
+    })();
+    expect(msg).toMatch(/cannot read <path withheld/);
+    expect(msg).not.toContain(KEY.slice(2, 26));
+    writeFileSync(join(dir, `0x${KEY.slice(2, 20)}.txt`), 'hello');
+    expect(() => loadServerKey(join(dir, `0x${KEY.slice(2, 20)}.txt`))).toThrow(/<path withheld: its name looks like a key> does not hold/);
+    // an ordinary file name is still shown
+    expect(() => loadServerKey(join(dir, 'nope.txt'))).toThrow(new RegExp(`cannot read .*nope\\.txt`));
+  });
 });

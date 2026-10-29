@@ -49,7 +49,7 @@ interface Harness {
   dir: string;
   evm: FakeEvm;
   chain: EvmTestChain;
-  call(method: string, path: string, opts?: { wallet?: string | null; body?: unknown }): Promise<{ status: number; body: any; text: string; headers: Headers }>;
+  call(method: string, path: string, opts?: { wallet?: string | null; body?: unknown; headers?: Record<string, string> }): Promise<{ status: number; body: any; text: string; headers: Headers }>;
 }
 
 async function harness(env: Record<string, string> = {}, setupDir?: (dir: string) => void): Promise<Harness> {
@@ -79,7 +79,7 @@ async function harness(env: Record<string, string> = {}, setupDir?: (dir: string
   });
   const port = await app.listen();
   const call: Harness['call'] = async (method, path, opts = {}) => {
-    const headers: Record<string, string> = {};
+    const headers: Record<string, string> = { ...opts.headers };
     if (opts.wallet) headers.Authorization = `Bearer ${app.auth.issueToken(opts.wallet)}`;
     let body: string | undefined;
     if (opts.body !== undefined) {
@@ -281,12 +281,26 @@ describe('mint: allowlist, proofs, state, price', () => {
     expect(svg.headers.get('content-type')).toContain('image/svg+xml');
     expect(svg.text).toBe(emblemSvg(2));
     for (const missing of ['/api/nft/4', '/api/nft/4.svg', '/api/nft/0', '/api/nft/abc', '/api/nft/01.svg']) expect((await h.call('GET', missing)).status, missing).toBe(404);
-    // a fresh mint shows up without waiting for the cache
+    // a fresh mint shows up without waiting for the cache: even right after a read that predates it
+    // (the mint page asks for the emblem the moment the receipt lands), past the 500 ms miss throttle
+    await new Promise((r) => setTimeout(r, 600));
+    expect((await h.call('GET', '/api/site/mint')).status).toBe(200);
     h.evm.mintNft(wallet());
-    await new Promise((r) => setTimeout(r, 2_100));
+    expect((await h.call('GET', '/api/nft/4.svg')).status).toBe(200);
     expect((await h.call('GET', '/api/nft/4')).status).toBe(200);
+    // ids beyond the max supply never trigger a chain read
+    expect((await h.call('GET', '/api/nft/5000000')).status).toBe(404);
     const contract = (await h.call('GET', '/api/nft/contract')).body;
     expect(contract).toMatchObject({ name: 'Elymum', external_link: 'https://elymum.example', seller_fee_basis_points: 500, fee_recipient: ADMIN });
+    // royaltyInfo is cached (5 min): an unauthenticated route never turns every hit into an RPC call
+    const calls = h.evm.royaltyCalls;
+    for (let i = 0; i < 5; i++) expect((await h.call('GET', '/api/nft/contract')).body).toMatchObject({ seller_fee_basis_points: 500 });
+    expect(h.evm.royaltyCalls).toBe(calls);
+    // metadata links come from PUBLIC_URL, never from a spoofed X-Forwarded-Host
+    expect((await h.call('GET', '/api/nft/2', { headers: { 'x-forwarded-host': 'evil.example', 'x-forwarded-proto': 'http' } })).body).toMatchObject({
+      image: 'https://elymum.example/api/nft/2.svg',
+      external_url: 'https://elymum.example',
+    });
   }, 10_000);
 });
 
@@ -364,9 +378,17 @@ describe('game gate modes', () => {
     expect(await tryJoin(null)).toBe('game_closed');
     expect(await tryJoin(ADMIN)).toBe('joined');
     expect((await h.call('GET', '/api/auth/me', { wallet: holder })).body).toEqual({ address: holder, admin: false, holder: true, canPlay: true });
-    // the balance is cached 60 s: a transfer away shows up after that
+    // a refused wallet that then mints gets in within seconds: a negative answer is cached only 2 s
+    // (the mint page sends it straight to /play)
+    expect((await h.call('GET', '/api/auth/me', { wallet: nobody })).body.canPlay).toBe(false);
+    h.evm.mintNft(nobody);
+    await new Promise((r) => setTimeout(r, 2_100));
+    expect((await h.call('GET', '/api/auth/me', { wallet: nobody })).body.canPlay).toBe(true);
+    // the balance is cached 15 s for the lobby; an arena seat re-checks it uncached (`fresh`)
     h.evm.balances.set(holder.toLowerCase(), 0n);
     expect(await h.app.site.gameOpenFor(holder)).toBe(true);
+    expect(await h.app.site.gameOpenFor(holder, true)).toBe(false);
+    expect(await h.app.site.gameOpenFor(holder)).toBe(false);
     await h.call('PUT', '/api/admin/settings', { wallet: ADMIN, body: { gameAccess: 'public' } });
     expect(await tryJoin(null)).toBe('joined');
     expect((await h.call('GET', '/api/site/mint')).body.gameAccess).toBe('public');
@@ -510,6 +532,19 @@ describe('legacy (pre-Elysium) site data', () => {
     );
   }
 
+  it('the one legacy handle claim survives a restart: the handle stays taken, both entries kept', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'elymum-legacy-'));
+    seed(dir);
+    const s = new SiteStore(dir);
+    const w = wallet();
+    const claimed = s.submitWl(w, wlBody('oldtimer'));
+    expect(claimed).toMatchObject({ wallet: w, status: 'pending' });
+    const again = new SiteStore(dir);
+    expect(again.listWl({ q: 'oldtimer' }).items).toHaveLength(2);
+    expect(again.myWl(w)?.id).toBe(claimed.id);
+    expect(() => again.submitWl(wallet(), wlBody('oldtimer'))).toThrow(/already applied/);
+  });
+
   it('migrates settings (gamePublic → gameAccess, slanaio → elymum) and seeded task text', () => {
     const dir = mkdtempSync(join(tmpdir(), 'elymum-legacy-'));
     seed(dir);
@@ -525,7 +560,7 @@ describe('legacy (pre-Elysium) site data', () => {
     expect(new SiteStore(dir).settings).toMatchObject({ gameAccess: 'admins', xHandle: 'other' });
   });
 
-  it('keeps legacy entries (legacy: true), never in the allowlist; re-applying with their X handle replaces them', async () => {
+  it('keeps legacy entries (legacy: true), never in the allowlist; their X handle can be claimed once, as a fresh entry for review', async () => {
     const h = await harness({}, seed);
     try {
       const s = h.app.site.store;
@@ -540,14 +575,24 @@ describe('legacy (pre-Elysium) site data', () => {
       const w = wallet();
       const r = await h.call('POST', '/api/site/wl', { wallet: w, body: wlBody('oldtimer') });
       expect(r.status).toBe(201);
-      expect(r.body.entry).toMatchObject({ id: 'wl_old', wallet: w, xHandle: 'oldtimer', status: 'pending' });
+      // a new pending entry: it never takes over the legacy one nor inherits its "approved" or its note
+      expect(r.body.entry).toMatchObject({ wallet: w, xHandle: 'oldtimer', status: 'pending' });
+      expect(r.body.entry.id).not.toBe('wl_old');
       expect(r.body.entry.legacy).toBeUndefined();
-      const admin = (await h.call('GET', '/api/admin/wl/wl_old', { wallet: ADMIN })).body.entry;
-      expect(admin.note).toBe('early\nre-applied with an EVM wallet; was approved');
-      expect((await h.call('GET', '/api/site/wl', { wallet: w })).body.entry.id).toBe('wl_old');
-      // the handle of a non-legacy entry is still taken
+      const fresh = (await h.call('GET', `/api/admin/wl/${r.body.entry.id}`, { wallet: ADMIN })).body.entry;
+      expect(fresh.note).toBe('claims legacy handle @oldtimer (legacy status: approved, legacy entry wl_old); verify before approving');
+      expect(fresh.note).not.toContain('early');
+      // the legacy entry is kept as it was (plus a pointer to the claim); both are visible to the admin
+      const old = (await h.call('GET', '/api/admin/wl/wl_old', { wallet: ADMIN })).body.entry;
+      expect(old).toMatchObject({ id: 'wl_old', wallet: SOL, legacy: true, status: 'approved' });
+      expect(old.note).toBe(`early\nhandle claimed by EVM application ${r.body.entry.id} (${w})`);
+      expect(s.listWl({ q: 'oldtimer' }).items.map((e) => e.id).sort()).toEqual([r.body.entry.id, 'wl_old'].sort());
+      expect((await h.call('GET', '/api/site/wl', { wallet: w })).body.entry.id).toBe(r.body.entry.id);
+      // not in the allowlist until an admin approves it
+      expect(h.app.mint.currentAllowlist().wallets).not.toContain(w);
+      // exactly one claim: the handle is now taken
       expect((await h.call('POST', '/api/site/wl', { wallet: wallet(), body: wlBody('oldtimer') })).body.error).toBe('handle_taken');
-      expect(s.counts().wl.total).toBe(2);
+      expect(s.counts().wl.total).toBe(3);
     } finally {
       await h.app.close();
     }

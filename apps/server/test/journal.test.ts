@@ -132,6 +132,30 @@ describe('journal v2', () => {
   });
 });
 
+describe('commit: duplicate keys', () => {
+  const K = '1:0x00000000000000000000000000000000000000aa:7';
+  const base = { kind: 'settle' as const, key: K, player: '0x00000000000000000000000000000000000000aA', arenaId: 1, session: K, sessionId: 7, score: 0, kills: 0, xp: 0, attempts: 0, nextAttemptAt: 0, createdAt: 0 };
+
+  it('a real settlement replaces a pending stale one for the same key', () => {
+    const j = new Journal(null);
+    j.commit({ enqueue: [{ ...base, payout: 1000, reason: 'stale' }] });
+    j.commit({ enqueue: [{ ...base, payout: 0, reason: 'death' }] });
+    expect(j.pending.map((p) => (p.kind === 'settle' ? [p.payout, p.reason] : null))).toEqual([[0, 'death']]);
+  });
+
+  it('never the other way round, and a duplicate real settlement is dropped', () => {
+    const j = new Journal(null);
+    j.commit({ enqueue: [{ ...base, payout: 50, reason: 'round' }] });
+    j.commit({ enqueue: [{ ...base, payout: 1000, reason: 'stale' }] });
+    j.commit({ enqueue: [{ ...base, payout: 0, reason: 'death' }] });
+    expect(j.pending.map((p) => (p.kind === 'settle' ? [p.payout, p.reason] : null))).toEqual([[50, 'round']]);
+    const k = new Journal(null);
+    k.commit({ enqueue: [{ ...base, payout: 1000, reason: 'stale' }] });
+    k.commit({ enqueue: [{ ...base, payout: 999, reason: 'stale' }] });
+    expect(k.pending.map((p) => (p.kind === 'settle' ? p.payout : null))).toEqual([1000]);
+  });
+});
+
 describe('sweep ids and the contract binding (EVM)', () => {
   const sweep = (key: string, arenaId = 1) => ({ kind: 'sweep' as const, key, arenaId, roomId: `arena-${arenaId}-1`, round: 1, amount: 10, attempts: 0, nextAttemptAt: 0, createdAt: 0 });
 

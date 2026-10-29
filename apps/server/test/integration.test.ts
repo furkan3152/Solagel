@@ -203,6 +203,8 @@ beforeAll(async () => {
     BOT_MAX: '6',
     // the game gate (site setting `gameAccess`) is covered in site.test.ts
     GAME_ACCESS: 'public',
+    // no PUBLIC_URL: only development derives the SIWE origin from the request host
+    NODE_ENV: 'development',
   });
   chain = new FakeChain();
   app = await createApp(cfg, { chain, log: () => {}, persist: true, now: serverNow });
@@ -328,7 +330,7 @@ describe('server over websocket', () => {
     const res = await fetch(`http://127.0.0.1:${port}/api/auth/nonce?address=${address.toLowerCase()}`);
     const body = (await res.json()) as { message: string; address: string; domain: string; uri: string; chainId: number; nonce: string; issuedAt: string };
     const { message } = body;
-    // M1: SIWE domain = request host (no PUBLIC_URL here), with URI and the server's Chain ID; the client can rebuild it
+    // SIWE domain = request host (no PUBLIC_URL here, NODE_ENV=development), with URI and the server's Chain ID; the client can rebuild it
     expect(body.domain).toBe(`127.0.0.1:${port}`);
     expect(body.address).toBe(address);
     expect(body.chainId).toBe(31337);
@@ -420,6 +422,33 @@ describe('server over websocket', () => {
     chain.sessions.delete(`1:${player}`);
     c.close();
   }, 15_000);
+
+  it('holders gate: every arena seat re-checks the gate uncached (an NFT passed on since the lobby check)', async () => {
+    const player = newWallet();
+    chain.sessions.set(`1:${player}`, session(player, { id: 41 }));
+    const site = app.site as unknown as { gameOpenFor: (w: string | null, fresh?: boolean) => Promise<boolean> };
+    const original = site.gameOpenFor;
+    const asked: boolean[] = [];
+    // the cached answer still says "holder"; a fresh balanceOf read says the NFT is gone
+    site.gameOpenFor = async (_w, fresh = false) => {
+      asked.push(fresh);
+      return !fresh;
+    };
+    try {
+      const c = await signedIn(player);
+      c.send({ t: 'join', room: 'arena:1', name: 'Passer', skin: 0 });
+      expect((await c.wait('error', 2000, (m) => m.code === 'game_closed')).code).toBe('game_closed');
+      expect(asked).toEqual([false, true]);
+      expect(app.journal.live().some((l) => l.player === player)).toBe(false);
+      // practice is gated by the (cached) check only
+      c.send({ t: 'join', room: 'practice', name: 'Passer', skin: 0 });
+      expect((await c.wait('joined')).room.mode).toBe('practice');
+      c.close();
+    } finally {
+      site.gameOpenFor = original;
+      chain.sessions.delete(`1:${player}`);
+    }
+  });
 
   it('arena joins close in the last minute; an AFK staker may still come back; the next round opens joins', async () => {
     const afk = newWallet();

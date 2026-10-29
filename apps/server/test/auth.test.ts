@@ -1,7 +1,7 @@
 import { SIWE_STATEMENT, siweMessage } from '@elymum/shared';
 import { describe, expect, it } from 'vitest';
 import { Auth, MAX_NONCES, NONCE_TTL_MS, checksumAddress, loginMessage, type SiweOrigin } from '../src/auth';
-import { loadConfig } from '../src/config';
+import { assertPublicUrl, loadConfig } from '../src/config';
 import { siweOrigin } from '../src/http';
 import { testSigner } from './signers';
 
@@ -98,16 +98,46 @@ describe('SIWE login message (EIP-4361)', () => {
     expect(checksumAddress('D2Ts7yCiVjedo6uwqpkM44QA8J45NdVU1J3k5m6iWtvm')).toBeNull();
   });
 
-  it('takes the domain from PUBLIC_URL, else the request host; the chain id is the server\'s', () => {
+  it('takes the domain from PUBLIC_URL (the request host only in development); the chain id is the server\'s', () => {
     const req = { headers: { host: 'game.local:8787' } } as never;
     expect(siweOrigin(loadConfig({ PUBLIC_URL: 'https://elymum.io/' } as NodeJS.ProcessEnv), req, false, 99801)).toEqual({
       domain: 'elymum.io',
       uri: 'https://elymum.io',
       chainId: 99801,
     });
+    const dev = loadConfig({ NODE_ENV: 'development' } as NodeJS.ProcessEnv);
     // chain off: the testnet id
-    expect(siweOrigin(loadConfig({} as NodeJS.ProcessEnv), req, false, null)).toEqual({ domain: 'game.local:8787', uri: 'http://game.local:8787', chainId: 99801 });
-    expect(siweOrigin(loadConfig({} as NodeJS.ProcessEnv), req, false, 31337).chainId).toBe(31337);
+    expect(siweOrigin(dev, req, false, null)).toEqual({ domain: 'game.local:8787', uri: 'http://game.local:8787', chainId: 99801 });
+    expect(siweOrigin(dev, req, false, 31337).chainId).toBe(31337);
+  });
+
+  it('never lets a request choose the SIWE domain outside development (Host / X-Forwarded-Host spoofing)', async () => {
+    const auth = new Auth(Buffer.alloc(32, 1));
+    const victim = testSigner();
+    const spoofs = [{ host: 'evil.example' }, { host: 'game.example', 'x-forwarded-host': 'evil.example, game.example' }];
+    for (const headers of spoofs) {
+      const req = { headers } as never;
+      // PUBLIC_URL set: always its host
+      expect(siweOrigin(loadConfig({ PUBLIC_URL: 'https://game.example' } as NodeJS.ProcessEnv), req, false, 99801).domain).toBe('game.example');
+      // unset outside development (startup refuses this; the fallback is localhost, never the request)
+      for (const env of [{}, { NODE_ENV: 'production' }, { NODE_ENV: 'test' }]) {
+        const o = siweOrigin(loadConfig({ PORT: '8787', ...env } as NodeJS.ProcessEnv), req, false, 99801);
+        expect(o.domain).toBe('localhost:8787');
+        const n = auth.issueNonce(victim.address, o);
+        expect(n.message).not.toContain('evil.example');
+      }
+      // development: Host only, X-Forwarded-Host is ignored
+      expect(siweOrigin(loadConfig({ NODE_ENV: 'development' } as NodeJS.ProcessEnv), req, false, 99801).domain).toBe(headers.host);
+    }
+  });
+
+  it('refuses to start without PUBLIC_URL unless NODE_ENV=development', () => {
+    expect(() => assertPublicUrl(loadConfig({ NODE_ENV: 'production' } as NodeJS.ProcessEnv))).toThrow(/PUBLIC_URL is required \(NODE_ENV is production\)/);
+    expect(() => assertPublicUrl(loadConfig({} as NodeJS.ProcessEnv))).toThrow(/PUBLIC_URL is required \(NODE_ENV is unset\)/);
+    expect(() => assertPublicUrl(loadConfig({ NODE_ENV: 'development' } as NodeJS.ProcessEnv))).not.toThrow();
+    expect(() => assertPublicUrl(loadConfig({ NODE_ENV: 'production', PUBLIC_URL: 'https://elymum.io/' } as NodeJS.ProcessEnv))).not.toThrow();
+    for (const bad of ['elymum.io', 'ftp://elymum.io', 'https://elymum.io/app', 'https://u:p@elymum.io'])
+      expect(() => assertPublicUrl(loadConfig({ NODE_ENV: 'production', PUBLIC_URL: bad } as NodeJS.ProcessEnv)), bad).toThrow(/PUBLIC_URL must be/);
   });
 });
 

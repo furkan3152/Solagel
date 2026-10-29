@@ -241,7 +241,9 @@ export class SiteStore {
     if (collabs) this.collabs = collabs;
     for (const e of this.wl) {
       this.wlByWallet.set(wkey(e.wallet), e);
-      this.wlByHandle.set(e.xHandle, e);
+      // a legacy entry and the one EVM application that claimed its handle share it: the EVM one holds it
+      const prev = this.wlByHandle.get(e.xHandle);
+      if (!(prev && !isLegacyWallet(prev.wallet) && isLegacyWallet(e.wallet))) this.wlByHandle.set(e.xHandle, e);
     }
     const legacy = this.wl.filter((e) => isLegacyWallet(e.wallet)).length;
     if (legacy > 0) this.log(`site: ${legacy} legacy WL entr${legacy === 1 ? 'y' : 'ies'} (non-EVM wallet) kept for the record, never in the allowlist`);
@@ -401,7 +403,8 @@ export class SiteStore {
     if (this.wlByWallet.has(wkey(wallet))) throw new SiteFail(409, 'already_applied', 'This wallet already applied.');
     const xHandle = v.handle(body.xHandle, 'xHandle');
     const byHandle = this.wlByHandle.get(xHandle);
-    // a legacy entry (non-EVM wallet) of this handle is replaced by the EVM application below
+    // handles are unique, with one exception: a legacy entry's (non-EVM wallet) handle may be claimed by exactly
+    // one EVM application, which is then a fresh entry flagged for manual review (the legacy one is kept)
     if (byHandle && !isLegacyWallet(byHandle.wallet)) throw new SiteFail(409, 'handle_taken', 'This X handle already applied.', 'xHandle');
     const answers = body.answers === undefined ? {} : v.obj(body.answers, 'answers');
     if (Object.keys(answers).length > 60) throw bad('answers', 'too many answers');
@@ -425,17 +428,13 @@ export class SiteStore {
       return { id: t.id, kind: t.kind, title: t.title, target: t.target, required: t.required, answer };
     });
     const now = this.now();
+    // claiming a legacy handle inherits nothing (status, note): anyone can type a handle, so an admin decides
+    const note = byHandle ? `claims legacy handle @${xHandle} (legacy status: ${byHandle.status}, legacy entry ${byHandle.id}); verify before approving` : '';
+    const e: WlRecord = { id: newId('wl'), wallet, xHandle, status: 'pending', tasks, note, createdAt: now, updatedAt: now };
     if (byHandle) {
-      // re-applied with an EVM wallet: the legacy entry becomes this one, back in review
-      const was = byHandle.status;
-      this.wlByWallet.delete(wkey(byHandle.wallet));
-      const line = `re-applied with an EVM wallet; was ${was}`;
-      Object.assign(byHandle, { wallet, tasks, status: 'pending' as WlStatus, note: byHandle.note ? `${byHandle.note}\n${line}` : line, updatedAt: now });
-      this.wlByWallet.set(wkey(wallet), byHandle);
-      this.save('wl');
-      return this.wlPublic(byHandle);
+      const line = `handle claimed by EVM application ${e.id} (${wallet})`;
+      byHandle.note = byHandle.note ? `${byHandle.note}\n${line}` : line;
     }
-    const e: WlRecord = { id: newId('wl'), wallet, xHandle, status: 'pending', tasks, note: '', createdAt: now, updatedAt: now };
     this.wl.push(e);
     this.wlByWallet.set(wkey(wallet), e);
     this.wlByHandle.set(xHandle, e);

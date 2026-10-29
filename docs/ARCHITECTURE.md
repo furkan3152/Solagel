@@ -163,13 +163,15 @@ Consequences, stated plainly in the player guide:
   warning and `/admin` shows it. Journal keys are `<arenaId>:<player lowercase>:<sessionId>`.
 - **Price keeper** (`chain/price-keeper.ts`): when the owner has set the server key as the NFT's `priceKeeper`
   and set bounds, every 5 minutes it reads HYPE/USD from Hyperliquid's info API (`allMids`, key `HYPE`) and
-  re-prices to `MINT_USD_CENTS` (default 100) when the price is off by more than 2 %, clamped into the bounds.
+  re-prices to `MINT_USD_CENTS` (default 100) when the price is off by more than 2 %, clamped into the bounds. The
+  feed is a single source: a move needs two consecutive readings within 3 % of each other, and one update moves the
+  on-chain price by at most ±20 %.
 - **Sign-in (SIWE, EIP-4361)**: `/api/auth/nonce` issues the message (domain = the `PUBLIC_URL` host, the
   server's chain id, statement "Sign in to Elymum. This is free and sends no transaction."); nonces are single
   use and expire after 10 minutes. Verification uses viem `verifyMessage`, falling back to the public client
   for ERC-1271 / 6492 smart wallets. Addresses are stored checksummed.
 - **Who may play** (`gameAccess`: `admins` | `holders` | `public`; `GAME_ACCESS` overrides): holders are
-  wallets with `balanceOf > 0` on the NFT (cached 60 s) plus the admins.
+  wallets with `balanceOf > 0` on the NFT (cached 15 s, re-read uncached at every arena seat) plus the admins.
 - **Mint API**: `GET /api/site/mint` (contract state, HYPE/USD, price in USD, holders, game access),
   `GET /api/site/mint/proof?wallet=` (`{ eligible, proof, root, onchainRoot }`), `POST|GET
   /api/admin/mint/allowlist` (snapshot of approved WL wallets + submitted collab wallets, EVM only, sorted;

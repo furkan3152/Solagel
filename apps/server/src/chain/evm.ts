@@ -690,7 +690,8 @@ export class EvmChain implements ChainGateway {
         }
         if (item.reason === 'stale' && this.liveSessions().has(item.key)) {
           this.log(`chain: stale settlement of ${short(item.key)} cancelled — the player is in the arena now`);
-          this.journal.remove(item.key);
+          // only this stale item: a real result for the key may have replaced it during the read
+          if (this.journal.pending.includes(item)) this.journal.remove(item.key);
           return;
         }
         checked.push({ item, sessionId: id, entryFee: s.entryFee, feeBps: s.feeBps });
@@ -698,12 +699,15 @@ export class EvmChain implements ChainGateway {
     );
     // last check right before sending: a stale session may have been picked up meanwhile
     const send = checked.filter((c) => {
+      // the exact item still pending: a stale refund replaced by the room's real result (`Journal.commit`)
+      // is not sent with its old payout (the replacement goes in a later pass)
+      if (!this.journal.pending.includes(c.item)) return false;
       if (c.item.reason === 'stale' && this.liveSessions().has(c.item.key)) {
         this.log(`chain: stale settlement of ${short(c.item.key)} cancelled — the player is in the arena now`);
         this.journal.remove(c.item.key);
         return false;
       }
-      return this.isPending(c.item.key);
+      return true;
     });
     if (send.length === 0) return;
     send.sort((a, b) => a.item.createdAt - b.item.createdAt);
@@ -1021,6 +1025,14 @@ export class EvmChain implements ChainGateway {
         }),
       );
     }
+    // re-read synchronously right before the commit: a ticket may have been seated (or a settlement queued)
+    // during the awaits above; its room settles it with the real result, never at the entry fee
+    const liveNow = this.liveSessions();
+    const pendingNow = new Set(this.journal.pending.map((p) => p.key));
+    const fresh = enqueue.filter((e) => !liveNow.has(e.key) && !pendingNow.has(e.key));
+    if (fresh.length < enqueue.length) this.log(`chain: ${enqueue.length - fresh.length} stale settlement(s) skipped — the session is in the arena or queued now`);
+    enqueue.length = 0;
+    enqueue.push(...fresh);
     if (enqueue.length === 0) return 0;
     this.journal.commit({ enqueue });
     this.log(`chain: ${enqueue.length} unplayed session(s) older than ${staleAfterS >= 120 ? `${Math.round(staleAfterS / 60)} min` : `${staleAfterS} s`} → settlement at the entry fee queued`);
