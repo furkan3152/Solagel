@@ -5,7 +5,7 @@
  *   target/idl/slana.json  →  packages/sdk/src/idl/slana.json   (runtime IDL, snake_case)
  *   target/types/slana.ts  →  packages/sdk/src/idl/slana.ts     (`export type Slana`, camelCase)
  *
- * Run it after every `anchor build` (pnpm -F @slana/sdk sync-idl).
+ * Run it after every `anchor build` (pnpm -F @elymum/sdk sync-idl).
  *
  * Program address: the IDL carries the address from `declare_id!` in programs/slana-ref/src/lib.rs.
  * `anchor keys sync` rewrites `declare_id!` and Anchor.toml to match target/deploy/slana-keypair.json,

@@ -1,6 +1,6 @@
-import { PROGRAM_ID, clusterDefaultRpc, normalizeCluster, type Cluster } from '@slana/sdk';
-import { inferCluster } from '@slana/sdk/ops';
-import type { ChainStatus } from '@slana/shared';
+import { PROGRAM_ID, clusterDefaultRpc, normalizeCluster, type Cluster } from '@elymum/sdk';
+import { inferCluster } from '@elymum/sdk/ops';
+import type { ChainStatus } from '@elymum/shared';
 import { CHAIN_OVERRIDES, SERVER } from '../config';
 import { DEV_FAKE_PROGRAM_ID } from '../solana/devFakeLoader';
 import { PRIORITY_MICRO_LAMPORTS } from '../solana/ticket';
@@ -9,7 +9,7 @@ import { PRIORITY_MICRO_LAMPORTS } from '../solana/ticket';
  * Where the admin panel talks to.
  *
  * - **Program id: pinned.** Always the SDK's `PROGRAM_ID`, compiled into the bundle from the IDL
- *   (`pnpm -F @slana/sdk sync-idl` after `anchor keys sync`). The game server's claim is only
+ *   (`pnpm -F @elymum/sdk sync-idl` after `anchor keys sync`). The game server's claim is only
  *   compared with it: a different id blocks signing.
  * - **RPC:** `VITE_RPC_URL`, else the game server's public RPC, else the cluster default.
  * - **Cluster:** read from the RPC's genesis hash (`verifyNetwork`). `VITE_SOLANA_CLUSTER`, else the

@@ -1,5 +1,5 @@
-import { CARD_PAPER, INK, INK_2, NIGHT, PAPER, RISO, type CoinInterior, type CoinLook } from '@slana/art';
-import { EntityKind, PlayerFlag } from '@slana/shared';
+import { CARD_PAPER, INK, INK_2, NIGHT, PAPER, RISO, type CoinInterior, type CoinLook } from '@elymum/art';
+import { EntityKind, PlayerFlag } from '@elymum/shared';
 import { DROP_LAND, dropScale } from '../design/curves';
 import type { Camera } from '../game/camera';
 import type { Particles } from '../game/particles';

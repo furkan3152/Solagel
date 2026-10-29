@@ -19,8 +19,8 @@ import {
   type GameToken,
   type ProfileView,
   type SessionView,
-} from '@slana/sdk';
-import { TOKEN_SYMBOL_DEFAULT, formatToken, toSafeAmount, type ChainStatus } from '@slana/shared';
+} from '@elymum/sdk';
+import { TOKEN_SYMBOL_DEFAULT, formatToken, toSafeAmount, type ChainStatus } from '@elymum/shared';
 import { Connection, Keypair, PublicKey, type TransactionInstruction } from '@solana/web3.js';
 import type { ServerConfig } from '../config';
 import type { Journal, JournalItem, SettlementItem, SweepItem } from '../stake/journal';

@@ -1,7 +1,7 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { RULES, TICK_MS, roundAt, type ServerMessage } from '@slana/shared';
+import { RULES, TICK_MS, roundAt, type ServerMessage } from '@elymum/shared';
 import { describe, expect, it } from 'vitest';
 import { Room } from '../src/rooms/room';
 import { Journal, itemAmount, type JournalItem } from '../src/stake/journal';

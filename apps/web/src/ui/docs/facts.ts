@@ -1,11 +1,11 @@
-import { CAPACITY, DEFAULT_ARENAS, RULES, arenaMeta } from '@slana/shared';
-import { DEFAULT_FEE_BPS, DEFAULT_SETTLE_FEE_LAMPORTS, MAX_FEE_BPS, SESSION_REFUND_TIMEOUT_SECS, splitPayout, type PayoutSplit } from '@slana/sdk';
+import { CAPACITY, DEFAULT_ARENAS, RULES, arenaMeta } from '@elymum/shared';
+import { DEFAULT_FEE_BPS, DEFAULT_SETTLE_FEE_LAMPORTS, MAX_FEE_BPS, SESSION_REFUND_TIMEOUT_SECS, splitPayout, type PayoutSplit } from '@elymum/sdk';
 
 /**
  * Every number the player guide quotes, taken from the code that enforces it, so the
- * page cannot drift from the game. Program and admin defaults come from `@slana/sdk`
+ * page cannot drift from the game. Program and admin defaults come from `@elymum/sdk`
  * (mirrors of `programs/slana-ref/src/constants.rs` and `pnpm admin init`), gameplay from
- * `@slana/shared` `RULES` / `CAPACITY` (server defaults; operators may change them with
+ * `@elymum/shared` `RULES` / `CAPACITY` (server defaults; operators may change them with
  * env vars). The few server-only timings are mirrored in `SERVER` below and checked
  * against the server source by `test/docs.test.ts`.
  */

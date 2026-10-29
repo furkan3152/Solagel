@@ -7,7 +7,7 @@ export type { Slana };
 /**
  * The program IDL exactly as emitted by `anchor build` (snake_case). Typed with the camelCase
  * `Slana` helper type like Anchor expects: `new Program<Slana>(IDL, provider)`.
- * Re-sync with `pnpm -F @slana/sdk sync-idl` after rebuilding the program.
+ * Re-sync with `pnpm -F @elymum/sdk sync-idl` after rebuilding the program.
  */
 export const IDL = idlJson as unknown as Slana;
 

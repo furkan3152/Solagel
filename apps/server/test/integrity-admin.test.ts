@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { PROTOCOL_VERSION, type ServerMessage } from '@slana/shared';
+import { PROTOCOL_VERSION, type ServerMessage } from '@elymum/shared';
 import bs58 from 'bs58';
 import nacl from 'tweetnacl';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';

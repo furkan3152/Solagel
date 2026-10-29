@@ -22,7 +22,7 @@ import type {
   WlStatus,
   WlSubmitRequest,
   WlTask,
-} from '@slana/shared';
+} from '@elymum/shared';
 import { SERVER } from '../config';
 
 /**

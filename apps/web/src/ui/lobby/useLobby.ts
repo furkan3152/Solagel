@@ -1,5 +1,5 @@
 import { useWallet } from '@solana/wallet-adapter-react';
-import { TOKEN_SYMBOL_DEFAULT, arenaMeta, formatToken } from '@slana/shared';
+import { TOKEN_SYMBOL_DEFAULT, arenaMeta, formatToken } from '@elymum/shared';
 import { useEffect, useMemo, useState } from 'react';
 import { useChainData } from '../../solana/chain';
 import { buildTickets, quickPlayTarget, ticketGate, type OpenSession, type TicketGate, type TicketKey, type TicketModel } from '../../solana/ticket';

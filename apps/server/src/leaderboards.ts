@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { LEADERBOARD_SIZE } from '@slana/shared';
+import { LEADERBOARD_SIZE } from '@elymum/shared';
 
 export interface LbRecord {
   name: string;

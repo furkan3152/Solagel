@@ -1,4 +1,4 @@
-import { roundAt, type ChainStatus, type ServerMessage } from '@slana/shared';
+import { roundAt, type ChainStatus, type ServerMessage } from '@elymum/shared';
 import type { ChainArena, ChainGateway, ChainProfile, ChainSession } from '../src/chain/types';
 import { Leaderboards } from '../src/leaderboards';
 import { Conn } from '../src/net/conn';

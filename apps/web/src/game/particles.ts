@@ -1,4 +1,4 @@
-import { CARD_PAPER, INK, RISO } from '@slana/art';
+import { CARD_PAPER, INK, RISO } from '@elymum/art';
 
 type Kind = 'splat' | 'coin' | 'scrap' | 'ring' | 'text' | 'dot';
 

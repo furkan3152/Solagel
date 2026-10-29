@@ -1,4 +1,4 @@
-import { normalizeXHandle } from '@slana/shared';
+import { normalizeXHandle } from '@elymum/shared';
 import { useEffect, useRef, useState } from 'react';
 import { InkButton } from '../../design';
 import { saveBlob } from '../api';

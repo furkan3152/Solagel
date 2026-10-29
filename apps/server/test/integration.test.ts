@@ -12,7 +12,7 @@ import {
   type SnapshotData,
   roundAt,
   siwsMessage,
-} from '@slana/shared';
+} from '@elymum/shared';
 import bs58 from 'bs58';
 import nacl from 'tweetnacl';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';

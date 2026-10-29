@@ -1,4 +1,4 @@
-import { siwsMessage } from '@slana/shared';
+import { siwsMessage } from '@elymum/shared';
 import bs58 from 'bs58';
 import nacl from 'tweetnacl';
 import { describe, expect, it } from 'vitest';

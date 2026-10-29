@@ -8,7 +8,7 @@ import {
   type IntegrityFlag,
   type IntegritySettings,
   type IntegrityTransfer,
-} from '@slana/shared';
+} from '@elymum/shared';
 import { sanitizeSettings } from './settings';
 import type { SessionSummary } from './types';
 

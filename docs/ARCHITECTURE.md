@@ -28,7 +28,7 @@ The money rules exist twice, as two crates that must behave identically on the w
 
 | Crate | Built by | Output | Role |
 |---|---|---|---|
-| `programs/slana-ref` (Anchor 1.2.1, lib name `slana`) | `anchor build --ignore-keys` | `target/deploy/slana.so` (~679 KB) and the IDL | **Reference, never deployed.** The IDL (`pnpm -F @slana/sdk sync-idl` → `packages/sdk/src/idl`) and so every TS type come from it. In the tests it is the conformance oracle. |
+| `programs/slana-ref` (Anchor 1.2.1, lib name `slana`) | `anchor build --ignore-keys` | `target/deploy/slana.so` (~679 KB) and the IDL | **Reference, never deployed.** The IDL (`pnpm -F @elymum/sdk sync-idl` → `packages/sdk/src/idl`) and so every TS type come from it. In the tests it is the conformance oracle. |
 | `programs/slana-lean` (Pinocchio 0.11, `no_std`, no allocator, no `core::fmt`, no floats) | `bash scripts/build-lean.sh` (`cargo build-sbf`) | `target/deploy/slana_lean.so` (39,032 bytes) | **The deployed program**, at the same program id. It dispatches on the 8-byte Anchor discriminators and reads/writes accounts at fixed offsets. It reproduces the reference's account checks, error codes (6000+ and the Anchor built-ins it raises) and events. |
 
 Wire compatibility means the following match: instruction discriminators and Borsh arguments, account order and
@@ -62,7 +62,7 @@ The lean crate's host tests (`cargo test -p slana-lean`) check:
 - differential tests of the money math (`mul_bps`, `split_payout`) against the reference functions;
 - the account layouts and event encodings.
 
-Finally, the localnet e2e (`pnpm -F @slana/server e2e`) runs the deployed lean `.so` on a real `solana-test-validator`
+Finally, the localnet e2e (`pnpm -F @elymum/server e2e`) runs the deployed lean `.so` on a real `solana-test-validator`
 with the game server and the web's own transaction builders.
 
 **Size gate.** `programs/slana-ref/tests/size.rs` fails when `slana_lean.so` exceeds 71,000 bytes, or when its

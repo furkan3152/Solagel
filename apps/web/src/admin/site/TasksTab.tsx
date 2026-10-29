@@ -1,4 +1,4 @@
-import { SITE_LIMITS, WL_TASK_KINDS, isXStatusUrl, type WlTask, type WlTaskKind } from '@slana/shared';
+import { SITE_LIMITS, WL_TASK_KINDS, isXStatusUrl, type WlTask, type WlTaskKind } from '@elymum/shared';
 import { useCallback, useEffect, useState } from 'react';
 import { Chip, Field, InkButton, StampSpinner } from '../../design';
 import type { TaskInput } from '../../site/api';

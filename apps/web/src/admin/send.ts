@@ -1,4 +1,4 @@
-import { confirmSignature, describeError, type DescribedError, type SlanaClient } from '@slana/sdk';
+import { confirmSignature, describeError, type DescribedError, type SlanaClient } from '@elymum/sdk';
 import bs58 from 'bs58';
 import type { Connection, PublicKey, Transaction, TransactionInstruction } from '@solana/web3.js';
 

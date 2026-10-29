@@ -10,7 +10,7 @@ import {
   type CollabWalletRow,
   type SiteErrorCode,
   type WlTaskKind,
-} from '@slana/shared';
+} from '@elymum/shared';
 import { isValidPubkey } from '../auth';
 
 /** A refused site / admin request: HTTP status, error code, message and the offending field. */

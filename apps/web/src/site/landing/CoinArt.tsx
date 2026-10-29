@@ -1,4 +1,4 @@
-import type { CoinLook, Expression } from '@slana/art';
+import type { CoinLook, Expression } from '@elymum/art';
 import { useEffect, useRef, useState } from 'react';
 import { drawCoinLook } from '../../render/coin';
 import { JellyBody } from '../../render/jelly';

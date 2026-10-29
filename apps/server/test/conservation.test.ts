@@ -1,4 +1,4 @@
-import { PlayerFlag, TICK_MS, roundAt, type ServerMessage } from '@slana/shared';
+import { PlayerFlag, TICK_MS, roundAt, type ServerMessage } from '@elymum/shared';
 import { describe, expect, it } from 'vitest';
 import { NullChain } from '../src/chain/types';
 import { Leaderboards } from '../src/leaderboards';

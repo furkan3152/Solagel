@@ -6,7 +6,7 @@
  * `:root[data-theme='dark']` (the app's night setting) prints the page itself
  * at night.
  *
- * The ink values repeat `@slana/shared` palette.ts (the canvas art reads that
+ * The ink values repeat `@elymum/shared` palette.ts (the canvas art reads that
  * file). apps/web/test/palette.test.ts keeps both in step and checks every
  * text / background pair below for >= 4.5:1 (WCAG), in both prints:
  *   --ink, --ink-2 and every *-ink / *-text accent on --paper and --card;

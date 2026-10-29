@@ -1,6 +1,6 @@
-import { CellFlag, INK, PAPER, PowerUpType, SKINS, getSkin } from '@slana/shared';
+import { CellFlag, INK, PAPER, PowerUpType, SKINS, getSkin } from '@elymum/shared';
 import { drawCoin } from './render/coin';
-import type { Expression } from '@slana/art';
+import type { Expression } from '@elymum/art';
 import { JellyBody } from './render/jelly';
 import { SpriteCache, drawSprite } from './render/sprites';
 

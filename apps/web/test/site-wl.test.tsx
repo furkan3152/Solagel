@@ -1,4 +1,4 @@
-import type { PublicWlTask, WlEntryPublic } from '@slana/shared';
+import type { PublicWlTask, WlEntryPublic } from '@elymum/shared';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { useSession } from '../src/site/session';

@@ -10,7 +10,7 @@ import {
   type CollabRole,
   type CollabType,
   type CollabWalletRow,
-} from '@slana/shared';
+} from '@elymum/shared';
 
 export { ROLE_LABEL, TYPE_LABEL } from './labels';
 

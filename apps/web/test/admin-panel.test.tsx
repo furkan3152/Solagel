@@ -7,7 +7,7 @@ vi.hoisted(() => {
 });
 
 import { ConnectionContext, WalletContext, type WalletContextState } from '@solana/wallet-adapter-react';
-import { ASSOCIATED_TOKEN_PROGRAM_ID, BPF_LOADER_UPGRADEABLE_ID, PROGRAM_ID, SlanaClient, TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID, ata, pdas } from '@slana/sdk';
+import { ASSOCIATED_TOKEN_PROGRAM_ID, BPF_LOADER_UPGRADEABLE_ID, PROGRAM_ID, SlanaClient, TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID, ata, pdas } from '@elymum/sdk';
 import { ComputeBudgetProgram, Connection, Keypair, PublicKey, SystemProgram, Transaction, type AccountInfo } from '@solana/web3.js';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import bs58 from 'bs58';

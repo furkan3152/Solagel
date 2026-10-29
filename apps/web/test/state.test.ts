@@ -1,4 +1,4 @@
-import { EntityKind, type SnapshotData } from '@slana/shared';
+import { EntityKind, type SnapshotData } from '@elymum/shared';
 import { describe, expect, it } from 'vitest';
 import { ClientWorld } from '../src/game/state';
 

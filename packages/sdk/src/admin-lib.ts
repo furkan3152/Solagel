@@ -2,9 +2,9 @@
  * Admin CLI building blocks (Node only, not exported from the SDK entry point): argument
  * parsing and the `status` report. Validation, the mint check, the status read and the
  * instruction plans are shared with the web admin panel and live in `ops.ts` (browser-safe,
- * `@slana/sdk/ops`); this file adapts them to command-line options. `admin.ts` wires them to the RPC.
+ * `@elymum/sdk/ops`); this file adapts them to command-line options. `admin.ts` wires them to the RPC.
  */
-import { arenaMeta } from '@slana/shared';
+import { arenaMeta } from '@elymum/shared';
 import { PublicKey } from '@solana/web3.js';
 import { DEFAULT_FEE_BPS, DEFAULT_SETTLE_FEE_LAMPORTS, MAX_FEE_BPS, MAX_SETTLE_FEE_LAMPORTS, PROGRAM_ID, type UpdateConfigParams } from './index';
 import {

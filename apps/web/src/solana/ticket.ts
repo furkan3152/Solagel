@@ -3,7 +3,7 @@
  * transaction that buys a ticket. Pure functions (no React, no network) so the
  * money path is unit-tested (test/ticket.test.ts).
  */
-import { DEFAULT_ARENAS, type RoomInfo } from '@slana/shared';
+import { DEFAULT_ARENAS, type RoomInfo } from '@elymum/shared';
 import {
   ACCOUNT_BYTES as SDK_ACCOUNT_BYTES,
   DEFAULT_FEE_BPS,
@@ -12,7 +12,7 @@ import {
   type Address,
   type SlanaInstructions,
   type TokenAccounts,
-} from '@slana/sdk';
+} from '@elymum/sdk';
 import type { TransactionInstruction } from '@solana/web3.js';
 
 /* ── the ticket transaction ─────────────────────────────────────────────── */

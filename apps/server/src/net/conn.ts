@@ -1,4 +1,4 @@
-import type { ServerMessage } from '@slana/shared';
+import type { ServerMessage } from '@elymum/shared';
 import { WebSocket } from 'ws';
 import type { ChainProfile } from '../chain/types';
 import type { Player } from '../game/entities';

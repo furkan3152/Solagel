@@ -1,4 +1,4 @@
-import { EMOTES, type DeathStats, type RoomInfo } from '@slana/shared';
+import { EMOTES, type DeathStats, type RoomInfo } from '@elymum/shared';
 import { act, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Kb } from '../src/design';

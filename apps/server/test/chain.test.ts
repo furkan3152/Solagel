@@ -10,7 +10,7 @@ import {
   type ConfigView,
   type ProfileView,
   type SessionView,
-} from '@slana/sdk';
+} from '@elymum/sdk';
 import { Connection, Keypair, PublicKey, TransactionInstruction } from '@solana/web3.js';
 import { describe, expect, it } from 'vitest';
 import { createChain } from '../src/chain';

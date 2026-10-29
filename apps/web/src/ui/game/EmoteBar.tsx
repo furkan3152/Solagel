@@ -1,4 +1,4 @@
-import { EMOTES } from '@slana/shared';
+import { EMOTES } from '@elymum/shared';
 import { engine } from '../../game/instance';
 import { useT, type TKey } from '../../i18n';
 import { stickerUrl } from './stickers';

@@ -7,7 +7,7 @@
  * a web test keeps the two in step and checks every text / background pair
  * for >= 4.5:1 contrast. The list with OKLCH values is `docs/design/palette.md`.
  *
- * Hex values are upper case: `@slana/art` compares inks by string.
+ * Hex values are upper case: `@elymum/art` compares inks by string.
  */
 
 /** Risograph inks. Fills, strokes and large type; small text uses the text-safe inks in tokens.css. */

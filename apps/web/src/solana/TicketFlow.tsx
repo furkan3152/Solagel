@@ -1,6 +1,6 @@
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
-import { TOKEN_2022_PROGRAM_ID, isTokenSet, pdas } from '@slana/sdk';
-import { arenaMeta, formatToken, isBasicSkin, sanitizeName, truncateUtf8, utf8Length } from '@slana/shared';
+import { TOKEN_2022_PROGRAM_ID, isTokenSet, pdas } from '@elymum/sdk';
+import { arenaMeta, formatToken, isBasicSkin, sanitizeName, truncateUtf8, utf8Length } from '@elymum/shared';
 import { motion } from 'motion/react';
 import { useEffect, useId, useRef, useState, type CSSProperties } from 'react';
 import { Field, Icon, InkButton, Sheet, Stamp, StampSpinner, markTransitionOrigin, useReducedMotion } from '../design';

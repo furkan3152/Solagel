@@ -1,4 +1,4 @@
-import { lookForBasicSkin, type CoinLook } from '@slana/art';
+import { lookForBasicSkin, type CoinLook } from '@elymum/art';
 
 /** Coin looks by basic skin id, cached (one riso look per skin). */
 export class LookCache {

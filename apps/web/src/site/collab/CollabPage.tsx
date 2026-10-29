@@ -1,4 +1,4 @@
-import { COLLAB_ROLES, COLLAB_TYPES, SITE_LIMITS, isXStatusUrl, type CollabPublic, type CollabWalletRow } from '@slana/shared';
+import { COLLAB_ROLES, COLLAB_TYPES, SITE_LIMITS, isXStatusUrl, type CollabPublic, type CollabWalletRow } from '@elymum/shared';
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type ReactNode } from 'react';
 import { Field, Icon, InkButton, Stamp, StampSpinner } from '../../design';
 import { SiteApiError, site } from '../api';

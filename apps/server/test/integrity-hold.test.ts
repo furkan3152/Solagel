@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { PlayerFlag, TICK_MS, roundAt } from '@slana/shared';
+import { PlayerFlag, TICK_MS, roundAt } from '@elymum/shared';
 import { describe, expect, it } from 'vitest';
 import { DevFakeChain } from '../src/chain/dev-fake';
 import { NullChain } from '../src/chain/types';

@@ -4,7 +4,7 @@ import {
   INTEGRITY_THRESHOLDS_DEFAULT,
   type IntegritySettings,
   type IntegrityThresholds,
-} from '@slana/shared';
+} from '@elymum/shared';
 
 /** Settings read from disk: unknown or out-of-range values fall back to the defaults (auto-hold stays off unless saved on). */
 export function sanitizeSettings(raw: unknown): IntegritySettings {

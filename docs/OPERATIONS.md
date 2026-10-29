@@ -131,7 +131,7 @@ transfers, one per 30 s flush, deleted after 30 days or beyond 3,000 files). An 
 20,000 tickets and 60,000 transfers.
 
 **Cost.** The telemetry runs in the arena rooms only: a few counters per input message and a threat check every second
-tick. `pnpm -F @slana/server integrity-sim` plays the same seeded arena with and without it and prints both tick times,
+tick. `pnpm -F @elymum/server integrity-sim` plays the same seeded arena with and without it and prints both tick times,
 the flags honest players raise (none at the defaults) and those two scripted bots raise.
 
 ## Monitoring
@@ -287,7 +287,7 @@ Contents of `DATA_DIR`:
 ## Program upgrade
 
 ```bash
-anchor build --ignore-keys && pnpm -F @slana/sdk sync-idl && scripts/build-lean.sh && scripts/test-program.sh
+anchor build --ignore-keys && pnpm -F @elymum/sdk sync-idl && scripts/build-lean.sh && scripts/test-program.sh
 scripts/deploy-lean.sh <cluster-url> target/deploy/slana-keypair.json   # with the upgrade authority
 ```
 

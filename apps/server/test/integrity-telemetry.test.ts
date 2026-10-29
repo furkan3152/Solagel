@@ -1,4 +1,4 @@
-import { ClientOp, WORLD_PRESETS, type IntegrityTransfer } from '@slana/shared';
+import { ClientOp, WORLD_PRESETS, type IntegrityTransfer } from '@elymum/shared';
 import { describe, expect, it } from 'vitest';
 import { World } from '../src/game/world';
 import { IntegrityMonitor, type MonitorRoom } from '../src/integrity/telemetry';

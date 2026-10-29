@@ -1,4 +1,4 @@
-import { arenaMeta } from '@slana/shared';
+import { arenaMeta } from '@elymum/shared';
 import { useEffect, useState } from 'react';
 import { serverClock } from '../../game/clock';
 import { formatCountdown } from '../../game/round';

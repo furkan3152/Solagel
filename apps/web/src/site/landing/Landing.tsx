@@ -1,5 +1,5 @@
-import { lookForBasicSkin } from '@slana/art';
-import { BASIC_SKINS } from '@slana/shared';
+import { lookForBasicSkin } from '@elymum/art';
+import { BASIC_SKINS } from '@elymum/shared';
 import { motion, type Variants } from 'motion/react';
 import { useCallback, useRef, useState, type ReactNode } from 'react';
 import { Icon, Stamp, useReducedMotion } from '../../design';

@@ -1,5 +1,5 @@
-import { DEFAULT_FEE_BPS, TOKEN_PROGRAM_ID, type ConfigView, type ProfileView, type SessionView } from '@slana/sdk';
-import type { ChainStatus } from '@slana/shared';
+import { DEFAULT_FEE_BPS, TOKEN_PROGRAM_ID, type ConfigView, type ProfileView, type SessionView } from '@elymum/sdk';
+import type { ChainStatus } from '@elymum/shared';
 import { DEV_FAKE_PROGRAM_ID } from './devFakeLoader';
 import type { TicketStep } from './ticket';
 

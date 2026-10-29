@@ -1,4 +1,4 @@
-import { CARD_PAPER, INK, RISO } from '@slana/art';
+import { CARD_PAPER, INK, RISO } from '@elymum/art';
 
 const DISPLAY_FONT = '"Bricolage Grotesque Variable", "Bricolage Grotesque", system-ui, sans-serif';
 const MONO_FONT = '"DM Mono", ui-monospace, monospace';

@@ -4,10 +4,10 @@
  * program applies in `set_token_mint`, the status read, the instruction plans and a decoder that
  * shows what a transaction will do.
  *
- * Browser-safe (no Node built-ins). Imported as `@slana/sdk/ops`; it is deliberately not
+ * Browser-safe (no Node built-ins). Imported as `@elymum/sdk/ops`; it is deliberately not
  * re-exported from the SDK entry point, so the game bundle does not carry the admin code.
  */
-import { DEFAULT_ARENAS, arenaMeta, formatToken, parseToken } from '@slana/shared';
+import { DEFAULT_ARENAS, arenaMeta, formatToken, parseToken } from '@elymum/shared';
 import { Buffer } from 'buffer';
 import { ComputeBudgetProgram, PublicKey, SystemProgram, TransactionInstruction, type Connection } from '@solana/web3.js';
 import BN from 'bn.js';

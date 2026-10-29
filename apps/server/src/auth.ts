@@ -1,7 +1,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import bs58 from 'bs58';
 import nacl from 'tweetnacl';
-import { parseSiwsMessage, siwsChainId, siwsMessage } from '@slana/shared';
+import { parseSiwsMessage, siwsChainId, siwsMessage } from '@elymum/shared';
 
 const NONCE_TTL_MS = 5 * 60_000;
 const TOKEN_TTL_MS = 24 * 60 * 60_000;

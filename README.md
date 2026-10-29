@@ -132,9 +132,9 @@ docker run -p 8787:8787 -v slana-data:/data --env-file apps/server/.env slana   
 ```bash
 pnpm -r typecheck
 pnpm -r test                 # Vitest: shared, sdk, art, server, web
-pnpm -F @slana/web build
+pnpm -F @elymum/web build
 scripts/test-program.sh      # LiteSVM suite against the Anchor reference and the lean program
-scripts/localnet.sh --no-token && pnpm -F @slana/server e2e   # end-to-end on a real local validator
+scripts/localnet.sh --no-token && pnpm -F @elymum/server e2e   # end-to-end on a real local validator
 ```
 
 The end-to-end test runs the real admin CLI and real tickets on a local validator: it initializes without a token, sets

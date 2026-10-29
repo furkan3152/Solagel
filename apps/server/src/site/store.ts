@@ -25,7 +25,7 @@ import {
   type WlStatus,
   type WlTask,
   type WlTaskAnswer,
-} from '@slana/shared';
+} from '@elymum/shared';
 import * as v from './validate';
 import { SiteFail, bad } from './validate';
 

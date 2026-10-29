@@ -14,7 +14,7 @@ import {
   type ErrorCode,
   type ProfileSummary,
   type ServerMessage,
-} from '@slana/shared';
+} from '@elymum/shared';
 import { WebSocketServer, type RawData, type WebSocket } from 'ws';
 import type { Auth } from '../auth';
 import type { ChainGateway, ChainProfile, SettledEvent } from '../chain/types';

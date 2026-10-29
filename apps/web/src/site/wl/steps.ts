@@ -1,4 +1,4 @@
-import { SITE_LIMITS, WL_TASK_X_HANDLE, isXStatusUrl, normalizeXHandle, type PublicWlTask, type WlSubmitRequest } from '@slana/shared';
+import { SITE_LIMITS, WL_TASK_X_HANDLE, isXStatusUrl, normalizeXHandle, type PublicWlTask, type WlSubmitRequest } from '@elymum/shared';
 
 /**
  * The WL stepper, built from the server's task list. Two steps are structural and pinned:

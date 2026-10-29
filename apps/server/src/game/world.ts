@@ -13,7 +13,7 @@ import {
   massToRadius,
   mergeDelayMs,
   speedForRadius,
-} from '@slana/shared';
+} from '@elymum/shared';
 import { Cell, Eject, Food, Loot, Player, PowerUp, Virus, type DynamicEntity, type StaticEntity } from './entities';
 import { Grid } from './grid';
 import { mulberry32, randRange, type Rng } from './rng';

@@ -1,4 +1,4 @@
-import { SITE_SETTINGS_DEFAULT, type SiteSettings } from '@slana/shared';
+import { SITE_SETTINGS_DEFAULT, type SiteSettings } from '@elymum/shared';
 import { useEffect, useState } from 'react';
 import { site } from './api';
 

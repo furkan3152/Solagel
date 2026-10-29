@@ -1,7 +1,7 @@
 /**
  * Slana admin CLI (Node only, not exported from the SDK entry point).
  *
- *   pnpm -F @slana/sdk admin <command> [options]      (or `pnpm admin <command>` at the repo root)
+ *   pnpm -F @elymum/sdk admin <command> [options]      (or `pnpm admin <command>` at the repo root)
  *
  * Run `pnpm admin help` for the command list. Parsing, validation, the set-token transaction
  * and the status report live in `admin-lib.ts` (unit-tested); this file does the RPC and I/O.
@@ -9,7 +9,7 @@
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
-import { arenaMeta } from '@slana/shared';
+import { arenaMeta } from '@elymum/shared';
 import { Connection, Keypair, PublicKey, type TransactionInstruction } from '@solana/web3.js';
 import {
   MAX_ARENA_SESSIONS,

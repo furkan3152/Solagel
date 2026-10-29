@@ -1,4 +1,4 @@
-import { TICK_MS, arenaMeta, type BlockedArena, type League, type RoomInfo, type RoundWindow } from '@slana/shared';
+import { TICK_MS, arenaMeta, type BlockedArena, type League, type RoomInfo, type RoundWindow } from '@elymum/shared';
 import type { ChainGateway } from '../chain/types';
 import type { ServerConfig } from '../config';
 import type { Conn } from '../net/conn';

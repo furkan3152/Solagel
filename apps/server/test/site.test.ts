@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { PROTOCOL_VERSION, type CollabAdmin, type CollabPublic, type ServerMessage, type WlEntryAdmin, type WlEntryPublic } from '@slana/shared';
+import { PROTOCOL_VERSION, type CollabAdmin, type CollabPublic, type ServerMessage, type WlEntryAdmin, type WlEntryPublic } from '@elymum/shared';
 import { PublicKey, SystemProgram } from '@solana/web3.js';
 import bs58 from 'bs58';
 import nacl from 'tweetnacl';

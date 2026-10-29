@@ -8,7 +8,7 @@
  * (decoded once into an Image and drawn above the cell).
  */
 
-import { CARD_PAPER, INK as PALETTE_INK, RISO } from '@slana/art';
+import { CARD_PAPER, INK as PALETTE_INK, RISO } from '@elymum/art';
 
 const INK = PALETTE_INK;
 const CARD = CARD_PAPER;

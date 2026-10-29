@@ -58,7 +58,7 @@ Open `/admin` on the deployed web app (or `http://localhost:5173/admin` with `pn
   shows the signature with an explorer link and re-reads the status.
 - **Network safety.**
   - **The program id is pinned.** It is the SDK's `PROGRAM_ID`, compiled into the build from the IDL (`anchor keys
-    sync`, then `pnpm -F @slana/sdk sync-idl`, section 1). The status card shows it as "Pinned program id". If the game
+    sync`, then `pnpm -F @elymum/sdk sync-idl`, section 1). The status card shows it as "Pinned program id". If the game
     server's `/api/config` reports another program id, a red "SIGNING BLOCKED" banner appears and every Sign button is
     disabled.
   - **The cluster comes from the RPC's genesis hash** (mainnet-beta, devnet or testnet). The MAINNET banner and every
@@ -141,7 +141,7 @@ anchor keys sync                                        # updates declare_id! (s
 # also put the new id into `ID` in programs/slana-lean/src/lib.rs (32 bytes;
 # `cargo test -p slana-lean` fails while it differs from the reference's declare_id!)
 anchor build --ignore-keys                              # Anchor reference: IDL + target/deploy/slana.so (never deployed)
-pnpm -F @slana/sdk sync-idl                             # copies the IDL into the SDK (client, server and admin use it)
+pnpm -F @elymum/sdk sync-idl                             # copies the IDL into the SDK (client, server and admin use it)
 bash scripts/build-lean.sh                              # deployed program: target/deploy/slana_lean.so (prints size and rent)
 scripts/test-program.sh                                 # LiteSVM suite against both builds
 ```

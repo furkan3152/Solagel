@@ -1,8 +1,8 @@
 /**
  * Measures how long a *stationary* fresh human survives in a busy bot room.
- *   pnpm -F @slana/server exec tsx scripts/newbie.ts [trials=30]
+ *   pnpm -F @elymum/server exec tsx scripts/newbie.ts [trials=30]
  */
-import { TICK_MS, WORLD_PRESETS } from '@slana/shared';
+import { TICK_MS, WORLD_PRESETS } from '@elymum/shared';
 import { BotManager } from '../src/bots/manager';
 import { mulberry32 } from '../src/game/rng';
 import { World } from '../src/game/world';

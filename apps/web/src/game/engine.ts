@@ -1,4 +1,4 @@
-import { CARD_PAPER, INK, RISO } from '@slana/art';
+import { CARD_PAPER, INK, RISO } from '@elymum/art';
 import {
   PowerUpType,
   arenaMeta,
@@ -12,7 +12,7 @@ import {
   type RoundStanding,
   type ServerMessage,
   type SnapshotData,
-} from '@slana/shared';
+} from '@elymum/shared';
 import { SERVER } from '../config';
 import { DROP_LAND, DUR, SLOWMO_TOTAL, slowmoScale } from '../design/curves';
 import { t } from '../i18n';

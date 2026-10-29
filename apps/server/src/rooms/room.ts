@@ -20,7 +20,7 @@ import {
   type RoundInfo,
   type RoundStanding,
   type ServerMessage,
-} from '@slana/shared';
+} from '@elymum/shared';
 import type { BotManagerOptions } from '../bots/manager';
 import { BotManager } from '../bots/manager';
 import type { ChainGateway } from '../chain/types';

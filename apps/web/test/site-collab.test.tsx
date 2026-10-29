@@ -5,7 +5,7 @@ vi.hoisted(() => {
   globalThis.Uint8Array = Object.getPrototypeOf((globalThis as unknown as { Buffer: { prototype: object } }).Buffer.prototype).constructor as Uint8ArrayConstructor;
 });
 
-import type { CollabPublic } from '@slana/shared';
+import type { CollabPublic } from '@elymum/shared';
 import { Keypair } from '@solana/web3.js';
 import { act, createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';

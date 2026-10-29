@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { TICK_MS } from '@slana/shared';
+import { TICK_MS } from '@elymum/shared';
 import { describe, expect, it } from 'vitest';
 import type { ChainProfile } from '../src/chain/types';
 import { NullChain } from '../src/chain/types';

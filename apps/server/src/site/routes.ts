@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { SITE_LIMITS, type SiteError, type SiteSettings } from '@slana/shared';
+import { SITE_LIMITS, type SiteError, type SiteSettings } from '@elymum/shared';
 import type { Auth } from '../auth';
 import { integrityRoutes } from '../integrity/routes';
 import type { IntegrityService } from '../integrity/service';

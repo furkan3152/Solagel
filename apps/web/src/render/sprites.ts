@@ -1,5 +1,5 @@
-import { CARD_PAPER, INK, RISO, drawCoinInterior, drawHalftoneDots, heartPath, lookForBasicSkin, starPath, type CoinInterior, type CoinLook } from '@slana/art';
-import { PowerUpType } from '@slana/shared';
+import { CARD_PAPER, INK, RISO, drawCoinInterior, drawHalftoneDots, heartPath, lookForBasicSkin, starPath, type CoinInterior, type CoinLook } from '@elymum/art';
+import { PowerUpType } from '@elymum/shared';
 
 const TAU = Math.PI * 2;
 

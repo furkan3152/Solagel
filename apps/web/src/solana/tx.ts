@@ -1,6 +1,6 @@
 import type { WalletContextState } from '@solana/wallet-adapter-react';
 import type { Connection, TransactionInstruction } from '@solana/web3.js';
-import { confirmSignature, describeError, type DescribeContext, type DescribedError, type SlanaClient } from '@slana/sdk';
+import { confirmSignature, describeError, type DescribeContext, type DescribedError, type SlanaClient } from '@elymum/sdk';
 import { t } from '../i18n';
 import { toast, useUi } from '../store';
 import { explorerTx } from './links';

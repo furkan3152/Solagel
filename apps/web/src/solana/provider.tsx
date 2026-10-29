@@ -1,5 +1,5 @@
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
-import { clusterDefaultRpc } from '@slana/sdk';
+import { clusterDefaultRpc } from '@elymum/sdk';
 import { useMemo, type ReactNode } from 'react';
 import { CHAIN_OVERRIDES } from '../config';
 import { useUi } from '../store';

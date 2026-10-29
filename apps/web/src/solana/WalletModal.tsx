@@ -1,6 +1,6 @@
 import { WalletReadyState } from '@solana/wallet-adapter-base';
 import { useWallet } from '@solana/wallet-adapter-react';
-import { formatToken } from '@slana/shared';
+import { formatToken } from '@elymum/shared';
 import { useState } from 'react';
 import { Chip, Icon, InkButton, Sheet } from '../design';
 import { useT } from '../i18n';

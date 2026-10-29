@@ -1,4 +1,4 @@
-import { CARD_PAPER, INK, PAPER, RISO } from '@slana/art';
+import { CARD_PAPER, INK, PAPER, RISO } from '@elymum/art';
 import { drawCoinLook } from '../../render/coin';
 import { lookForHandle, seeded, hash32, ticketNo } from '../coinLook';
 

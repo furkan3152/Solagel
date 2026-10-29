@@ -1,5 +1,5 @@
-import { drawRisoCoin, lookForBasicSkin, type CoinInterior, type CoinLook, type Expression, type JellyLike } from '@slana/art';
-import type { SkinDef } from '@slana/shared';
+import { drawRisoCoin, lookForBasicSkin, type CoinInterior, type CoinLook, type Expression, type JellyLike } from '@elymum/art';
+import type { SkinDef } from '@elymum/shared';
 
 export interface CoinOpts {
   time: number;
@@ -16,7 +16,7 @@ export interface CoinOpts {
   halftone?: (r: number, spacing: number) => CanvasImageSource | null;
   /** Cached interior provider (see `SpriteCache.coinInterior`). */
   interior?: (look: CoinLook, r: number) => CoinInterior | null;
-  /** Live-renderer speed-ups (see `CoinState` in @slana/art). */
+  /** Live-renderer speed-ups (see `CoinState` in @elymum/art). */
   fastBody?: boolean;
   minPrintPx?: number;
 }
@@ -31,7 +31,7 @@ export function drawCoinLook(ctx: CanvasRenderingContext2D, x: number, y: number
 
 /**
  * Draws a coin character centred at (x, y) with world radius r using the
- * shared risograph drawing from `@slana/art` (basic skins map onto riso looks).
+ * shared risograph drawing from `@elymum/art` (basic skins map onto riso looks).
  */
 export function drawCoin(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, skin: SkinDef, o: CoinOpts): void {
   drawCoinLook(ctx, x, y, r, lookForBasicSkin(skin.id), o);

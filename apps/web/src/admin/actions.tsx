@@ -1,5 +1,5 @@
-import { formatToken } from '@slana/shared';
-import { MAX_ARENA_SESSIONS, MAX_FEE_BPS, MAX_SETTLE_FEE_LAMPORTS, MIN_ARENA_SESSIONS, createFeeWalletAtaIx, feeWalletAta, requireToken, type ArenaView, type ConfigView, type SlanaClient, type UpdateConfigParams } from '@slana/sdk';
+import { formatToken } from '@elymum/shared';
+import { MAX_ARENA_SESSIONS, MAX_FEE_BPS, MAX_SETTLE_FEE_LAMPORTS, MIN_ARENA_SESSIONS, createFeeWalletAtaIx, feeWalletAta, requireToken, type ArenaView, type ConfigView, type SlanaClient, type UpdateConfigParams } from '@elymum/sdk';
 import {
   AdminInputError,
   CLOSE_PROGRAM_WARNING,
@@ -28,7 +28,7 @@ import {
   updateConfigParams,
   type MintInspection,
   type StatusSnapshot,
-} from '@slana/sdk/ops';
+} from '@elymum/sdk/ops';
 import { PublicKey, type Connection } from '@solana/web3.js';
 import { useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Chip, Field, InkButton } from '../design';

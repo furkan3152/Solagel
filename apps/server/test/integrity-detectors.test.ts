@@ -1,4 +1,4 @@
-import { INTEGRITY_THRESHOLDS_DEFAULT as TH, type IntegrityTransfer } from '@slana/shared';
+import { INTEGRITY_THRESHOLDS_DEFAULT as TH, type IntegrityTransfer } from '@elymum/shared';
 import { describe, expect, it } from 'vitest';
 import {
   detectBellAbuse,

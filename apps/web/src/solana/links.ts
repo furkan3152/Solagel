@@ -1,4 +1,4 @@
-import { explorerAddressUrl, explorerTxUrl } from '@slana/sdk';
+import { explorerAddressUrl, explorerTxUrl } from '@elymum/sdk';
 import { useUi } from '../store';
 
 const localRpc = () => useUi.getState().chain?.rpcUrl ?? 'http://127.0.0.1:8899';

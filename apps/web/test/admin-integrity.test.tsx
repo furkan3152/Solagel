@@ -1,4 +1,4 @@
-import { INTEGRITY_SETTINGS_DEFAULT, type IntegrityFlag, type IntegrityOverview, type IntegrityWalletView } from '@slana/shared';
+import { INTEGRITY_SETTINGS_DEFAULT, type IntegrityFlag, type IntegrityOverview, type IntegrityWalletView } from '@elymum/shared';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { IntegrityTab } from '../src/admin/site/IntegrityTab';

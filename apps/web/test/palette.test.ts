@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ARENA_META, CARD_PAPER, INK, INK_2, NIGHT, PAPER, RISO } from '@slana/shared';
+import { ARENA_META, CARD_PAPER, INK, INK_2, NIGHT, PAPER, RISO } from '@elymum/shared';
 import { describe, expect, it } from 'vitest';
 import { WORLD_THEMES } from '../src/render/renderer';
 

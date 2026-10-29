@@ -1,4 +1,4 @@
-import type { ChainStatus } from '@slana/shared';
+import type { ChainStatus } from '@elymum/shared';
 
 /** Program id the game server advertises in its DEV_FAKE_CHAIN mode. */
 export const DEV_FAKE_PROGRAM_ID = 'DevFakeChain1111111111111111111111111111111';

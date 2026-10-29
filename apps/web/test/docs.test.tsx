@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { CAPACITY, RULES } from '@slana/shared';
+import { CAPACITY, RULES } from '@elymum/shared';
 import { act, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Kb } from '../src/design';

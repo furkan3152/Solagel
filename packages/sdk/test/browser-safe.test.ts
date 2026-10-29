@@ -25,7 +25,7 @@ function reachable(entry: string, seen = new Set<string>()): Set<string> {
 
 describe('browser safety', () => {
   const files = [...reachable(join(src, 'index.ts'))];
-  // `@slana/sdk/ops` (the admin panel's shared logic) is bundled for the browser too
+  // `@elymum/sdk/ops` (the admin panel's shared logic) is bundled for the browser too
   const opsFiles = [...reachable(join(src, 'ops.ts'))];
 
   it('index.ts does not reach the admin CLI', () => {

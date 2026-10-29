@@ -1,4 +1,4 @@
-import type { CollabAdmin, SiteCounts, WlEntryAdmin, WlTask } from '@slana/shared';
+import type { CollabAdmin, SiteCounts, WlEntryAdmin, WlTask } from '@elymum/shared';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';

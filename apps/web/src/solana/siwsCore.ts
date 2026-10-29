@@ -1,4 +1,4 @@
-import { siwsMessage } from '@slana/shared';
+import { siwsMessage } from '@elymum/shared';
 import { SERVER } from '../config';
 
 /*

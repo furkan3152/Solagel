@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { DEFAULT_ARENAS, TOKEN_SYMBOL_DEFAULT, type ChainStatus } from '@slana/shared';
+import { DEFAULT_ARENAS, TOKEN_SYMBOL_DEFAULT, type ChainStatus } from '@elymum/shared';
 import bs58 from 'bs58';
 import type { Journal } from '../stake/journal';
 import type { ChainArena, ChainGateway, ChainProfile, ChainSession, SettledEvent } from './types';

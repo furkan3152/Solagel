@@ -1,4 +1,4 @@
-import { arenaMeta } from '@slana/shared';
+import { arenaMeta } from '@elymum/shared';
 import { motion } from 'motion/react';
 import type { CSSProperties } from 'react';
 import { STAGGER, Ticket, TicketGroup, TicketStub, useReducedMotion } from '../../design';

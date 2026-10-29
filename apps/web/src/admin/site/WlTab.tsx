@@ -1,4 +1,4 @@
-import type { SiteCounts, WlEntryAdmin, WlStatus } from '@slana/shared';
+import type { SiteCounts, WlEntryAdmin, WlStatus } from '@elymum/shared';
 import { useCallback, useEffect, useState } from 'react';
 import { Chip, InkButton, Sheet, StampSpinner } from '../../design';
 import type { WlPage } from '../../site/api';

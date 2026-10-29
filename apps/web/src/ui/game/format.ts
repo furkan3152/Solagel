@@ -1,4 +1,4 @@
-import { TOKEN_SYMBOL_DEFAULT, arenaMeta, formatToken, type RoomInfo } from '@slana/shared';
+import { TOKEN_SYMBOL_DEFAULT, arenaMeta, formatToken, type RoomInfo } from '@elymum/shared';
 import { useUi } from '../../store';
 
 export interface TokenFormat {

@@ -5,11 +5,11 @@
  * without a restart, the arenas are created and a timed round is played with real tickets.
  *
  *   scripts/localnet.sh --no-token      # validator + Slana + Token-2022 test mint + `init` (no set-token)
- *   pnpm -F @slana/server e2e           # starts the game server itself (see below) and runs the steps
+ *   pnpm -F @elymum/server e2e           # starts the game server itself (see below) and runs the steps
  *
  * The run starts its own game server (`tsx src/index.ts`) with `.localnet/server.env` plus
  * ROUND_SECONDS=30, ROUND_JOIN_CLOSE_SECONDS=5 and three arena bots (ARENA_BOT_*=3), on PORT
- * (default 8787), and stops it at the end. Pass a ws URL (`pnpm -F @slana/server e2e ws://host:port/ws`)
+ * (default 8787), and stops it at the end. Pass a ws URL (`pnpm -F @elymum/server e2e ws://host:port/ws`)
  * to use a server you started yourself with that env instead.
  *
  * What it proves, in order:
@@ -56,8 +56,8 @@ import {
   splitPayout,
   type ConfigView,
   type SessionView,
-} from '@slana/sdk';
-import { EntityKind, PROTOCOL_VERSION, PlayerFlag, decodeSnapshot, encodeTarget, radiusToMass, type ChainStatus, type RoomInfo, type ServerMessage } from '@slana/shared';
+} from '@elymum/sdk';
+import { EntityKind, PROTOCOL_VERSION, PlayerFlag, decodeSnapshot, encodeTarget, radiusToMass, type ChainStatus, type RoomInfo, type ServerMessage } from '@elymum/shared';
 import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, TransactionInstruction, type Signer } from '@solana/web3.js';
 import bs58 from 'bs58';
 import nacl from 'tweetnacl';
@@ -157,9 +157,9 @@ function transferCheckedIx(source: PublicKey, mint: PublicKey, dest: PublicKey, 
 const children: ChildProcess[] = [];
 let dataDir: string | null = null;
 
-/** Runs the admin CLI (`pnpm -F @slana/sdk admin …`) against the localnet; output is shown. */
+/** Runs the admin CLI (`pnpm -F @elymum/sdk admin …`) against the localnet; output is shown. */
 function adminCli(programId: string, args: string[]): Promise<void> {
-  const all = ['--silent', '-F', '@slana/sdk', 'admin', '--url', rpcUrl, '--keypair', adminKeypairPath, '--program', programId, '--cluster', 'localnet', ...args];
+  const all = ['--silent', '-F', '@elymum/sdk', 'admin', '--url', rpcUrl, '--keypair', adminKeypairPath, '--program', programId, '--cluster', 'localnet', ...args];
   return new Promise((resolvePromise, reject) => {
     const child = spawn('pnpm', all, { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
     const prefix = (buf: Buffer) =>

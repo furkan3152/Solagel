@@ -1,5 +1,5 @@
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
-import { BASIC_SKINS, MAX_NAME_LENGTH, isBasicSkin, sanitizeName, shortAddress, utf8Length } from '@slana/shared';
+import { BASIC_SKINS, MAX_NAME_LENGTH, isBasicSkin, sanitizeName, shortAddress, utf8Length } from '@elymum/shared';
 import { useEffect, useId, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { Field, Icon, InkButton, staggerIn, useReducedMotion } from '../../design';

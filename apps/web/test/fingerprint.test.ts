@@ -1,4 +1,4 @@
-import { isFingerprint } from '@slana/shared';
+import { isFingerprint } from '@elymum/shared';
 import { describe, expect, it } from 'vitest';
 import { fingerprint } from '../src/integrity/fingerprint';
 

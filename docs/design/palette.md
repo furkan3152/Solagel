@@ -7,7 +7,7 @@ are the saturated, fresh-from-the-drum versions, and the paper is brighter and c
 Sources of truth in the code:
 
 - `packages/shared/src/palette.ts`: the riso inks, ink, paper and night stock (the canvas art, food, coins, stickers
-  and arena inks read this file; `@slana/art` re-exports it).
+  and arena inks read this file; `@elymum/art` re-exports it).
 - `apps/web/src/design/tokens.css`: the CSS tokens, including the text-safe accent inks.
 - `apps/web/test/palette.test.ts`: keeps the two in step, checks every text and background pair for at least 4.5:1
   (WCAG AA) in both prints, and fails if a riso ink drops below OKLCH chroma 0.11.

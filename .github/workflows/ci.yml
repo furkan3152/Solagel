@@ -39,15 +39,15 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Shared
-        run: pnpm -F @slana/shared typecheck && pnpm -F @slana/shared test
+        run: pnpm -F @elymum/shared typecheck && pnpm -F @elymum/shared test
       - name: Art
-        run: pnpm -F @slana/art typecheck && pnpm -F @slana/art test
+        run: pnpm -F @elymum/art typecheck && pnpm -F @elymum/art test
       - name: SDK
-        run: pnpm -F @slana/sdk typecheck && pnpm -F @slana/sdk test
+        run: pnpm -F @elymum/sdk typecheck && pnpm -F @elymum/sdk test
       - name: Server
-        run: pnpm -F @slana/server typecheck && pnpm -F @slana/server test && pnpm -F @slana/server build
+        run: pnpm -F @elymum/server typecheck && pnpm -F @elymum/server test && pnpm -F @elymum/server build
       - name: Web
-        run: pnpm -F @slana/web typecheck && pnpm -F @slana/web test && pnpm -F @slana/web build
+        run: pnpm -F @elymum/web typecheck && pnpm -F @elymum/web test && pnpm -F @elymum/web build
 
   program:
     name: Program (Anchor reference + lean build, size gate, LiteSVM suite on both)

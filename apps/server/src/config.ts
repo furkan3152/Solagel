@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
-import { CAPACITY, RULES, TOKEN_SYMBOL_DEFAULT } from '@slana/shared';
+import { CAPACITY, RULES, TOKEN_SYMBOL_DEFAULT } from '@elymum/shared';
 import type { BotManagerOptions } from './bots/manager';
 
 export interface ServerConfig {

@@ -1,5 +1,5 @@
-import { explorerTxUrl, type SlanaClient } from '@slana/sdk';
-import { describeInstruction } from '@slana/sdk/ops';
+import { explorerTxUrl, type SlanaClient } from '@elymum/sdk';
+import { describeInstruction } from '@elymum/sdk/ops';
 import { ComputeBudgetProgram, type Connection, type TransactionInstruction } from '@solana/web3.js';
 import { useRef, useState, type ReactNode } from 'react';
 import { Field, InkButton, Sheet, StampSpinner } from '../design';

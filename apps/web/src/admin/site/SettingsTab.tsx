@@ -1,4 +1,4 @@
-import { normalizeXHandle, type SiteSettings } from '@slana/shared';
+import { normalizeXHandle, type SiteSettings } from '@elymum/shared';
 import { useEffect, useState } from 'react';
 import { Field, InkButton, StampSpinner } from '../../design';
 import { errText, useFlash, type TabProps } from './common';

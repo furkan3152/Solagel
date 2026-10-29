@@ -1,4 +1,4 @@
-import { lookForBasicSkin } from '@slana/art';
+import { lookForBasicSkin } from '@elymum/art';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
 import { Icon, usePreset, useReducedMotion } from '../../design';

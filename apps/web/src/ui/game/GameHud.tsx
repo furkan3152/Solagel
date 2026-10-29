@@ -1,4 +1,4 @@
-import { PowerUpType, RULES } from '@slana/shared';
+import { PowerUpType, RULES } from '@elymum/shared';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
 import { Counter, DUR, Icon, Stamp, Tape, springs, useReducedMotion } from '../../design';

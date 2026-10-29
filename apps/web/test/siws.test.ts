@@ -1,4 +1,4 @@
-import { siwsMessage } from '@slana/shared';
+import { siwsMessage } from '@elymum/shared';
 import { describe, expect, it } from 'vitest';
 import { expectedLoginMessage } from '../src/solana/siws';
 

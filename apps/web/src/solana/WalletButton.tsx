@@ -1,5 +1,5 @@
 import { useWallet } from '@solana/wallet-adapter-react';
-import { shortAddress } from '@slana/shared';
+import { shortAddress } from '@elymum/shared';
 import { Icon } from '../design';
 import { useT } from '../i18n';
 import { openModal, useUi } from '../store';

@@ -1,5 +1,5 @@
 import '../polyfills';
-import type { ChainStatus } from '@slana/shared';
+import type { ChainStatus } from '@elymum/shared';
 import { useEffect } from 'react';
 import { SERVER } from '../config';
 import { useUi } from '../store';

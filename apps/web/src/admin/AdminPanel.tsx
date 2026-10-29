@@ -1,7 +1,7 @@
 import { WalletReadyState } from '@solana/wallet-adapter-base';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
-import { SlanaClient, explorerAddressUrl, type ConfigView } from '@slana/sdk';
-import { arenaName, fmtPct, fmtSol, fmtTok, tokenProgramName, type StatusSnapshot } from '@slana/sdk/ops';
+import { SlanaClient, explorerAddressUrl, type ConfigView } from '@elymum/sdk';
+import { arenaName, fmtPct, fmtSol, fmtTok, tokenProgramName, type StatusSnapshot } from '@elymum/sdk/ops';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Chip, InkButton, Rule, Stamp } from '../design';
 import { CloseProgram, CreateArenas, InitForm, PauseControl, RecreateFeeAta, SetTokenForm, SweepArena, UpdateArena, UpdateConfig, type ActionCtx } from './actions';

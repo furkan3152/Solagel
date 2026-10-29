@@ -1,5 +1,5 @@
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
-import { SlanaClient, ata, fetchTokenBalance, isTokenSet, type ArenaView, type ConfigView, type ProfileView, type SessionView } from '@slana/sdk';
+import { SlanaClient, ata, fetchTokenBalance, isTokenSet, type ArenaView, type ConfigView, type ProfileView, type SessionView } from '@elymum/sdk';
 import { useCallback, useEffect, useMemo } from 'react';
 import { create } from 'zustand';
 import { SERVER } from '../config';

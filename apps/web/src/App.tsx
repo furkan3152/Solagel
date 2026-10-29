@@ -1,4 +1,4 @@
-import { NIGHT, PAPER } from '@slana/shared';
+import { NIGHT, PAPER } from '@elymum/shared';
 import { useEffect, useRef } from 'react';
 import { startAudio } from './audio';
 import { GameEngine } from './game/engine';

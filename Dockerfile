@@ -25,9 +25,9 @@ ARG VITE_SERVER_URL=""
 ARG VITE_RPC_URL=""
 ENV VITE_SERVER_URL=$VITE_SERVER_URL VITE_RPC_URL=$VITE_RPC_URL
 
-RUN pnpm -F @slana/web build \
- && pnpm -F @slana/server build \
- && pnpm --filter @slana/server deploy --legacy --prod /out
+RUN pnpm -F @elymum/web build \
+ && pnpm -F @elymum/server build \
+ && pnpm --filter @elymum/server deploy --legacy --prod /out
 
 FROM node:22-bookworm-slim AS runtime
 ENV NODE_ENV=production \

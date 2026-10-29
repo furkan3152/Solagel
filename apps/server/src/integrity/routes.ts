@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { INTEGRITY_FLAG_KINDS, type IntegrityFlagKind } from '@slana/shared';
+import { INTEGRITY_FLAG_KINDS, type IntegrityFlagKind } from '@elymum/shared';
 import { SiteFail } from '../site/validate';
 import { IntegrityError, type FlagFilter, type IntegrityService } from './service';
 import { SettingsError } from './settings';

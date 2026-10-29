@@ -1,6 +1,6 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { EMOTES, PowerUpType } from '@slana/shared';
+import { EMOTES, PowerUpType } from '@elymum/shared';
 import { describe, expect, it } from 'vitest';
 import { ICON_NAMES } from '../src/design/icons';
 import { translate, type TKey } from '../src/i18n';

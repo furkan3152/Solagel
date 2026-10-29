@@ -166,7 +166,7 @@ async function buildMissing() {
     if (!hasCommand('cargo-build-sbf', ENV)) fail('target/deploy/slana_lean.so is missing and cargo-build-sbf is not installed.', 'Install the Agave/Solana build tools, then run: scripts/build-lean.sh');
     if ((await runStep('building the Slana program (scripts/build-lean.sh, a few minutes the first time)', join(ROOT, 'scripts/build-lean.sh'), [])) !== 0) fail('The program build failed.', 'Fix the error above, or run scripts/build-lean.sh yourself.');
   }
-  if ((await runStep('building the game server (tsup)', 'pnpm', ['-F', '@slana/server', 'build'])) !== 0) fail('The server build failed.', 'Run: pnpm -F @slana/server build');
+  if ((await runStep('building the game server (tsup)', 'pnpm', ['-F', '@elymum/server', 'build'])) !== 0) fail('The server build failed.', 'Run: pnpm -F @elymum/server build');
 }
 
 async function main() {
@@ -186,7 +186,7 @@ async function main() {
     serverEnv = { ...ENV, NODE_ENV: 'development', DEV_FAKE_CHAIN: '1', DEV_FAKE_TOKEN: ENV.DEV_FAKE_TOKEN === '0' ? '0' : '1', DATA_DIR: data };
     delete serverEnv.PROGRAM_ID; // the fake chain refuses to start next to a real chain config
     delete serverEnv.SERVER_KEYPAIR;
-    serverCmd = ['pnpm', ['-F', '@slana/server', 'dev']];
+    serverCmd = ['pnpm', ['-F', '@elymum/server', 'dev']];
   } else {
     await buildMissing();
     walletKeypair = join(ROOT, '.localnet/dev-wallet.json');
@@ -206,7 +206,7 @@ async function main() {
 
   say(LOCALNET ? 'starting the game server (production build) and the web app' : 'starting the game server (fake chain) and the web app');
   start('server', serverCmd[0], serverCmd[1], { cwd: serverCwd, env: serverEnv, tagColor: '36' });
-  start('web', 'pnpm', ['-F', '@slana/web', 'dev'], { env: { ...ENV, GAME_SERVER: `http://127.0.0.1:${SERVER_PORT}` }, tagColor: '33' });
+  start('web', 'pnpm', ['-F', '@elymum/web', 'dev'], { env: { ...ENV, GAME_SERVER: `http://127.0.0.1:${SERVER_PORT}` }, tagColor: '33' });
 
   const alive = () => shuttingDown;
   const okServer = await waitForHttp(`http://127.0.0.1:${SERVER_PORT}/api/health`, 90_000, alive);

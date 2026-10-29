@@ -6,7 +6,7 @@ import type {
   ProfileSummary,
   RoomInfo,
   RoundStanding,
-} from '@slana/shared';
+} from '@elymum/shared';
 import { create } from 'zustand';
 import { AUDIO_DEFAULTS } from './audio/mixer';
 

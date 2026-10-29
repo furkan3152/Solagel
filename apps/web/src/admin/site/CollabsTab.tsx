@@ -1,4 +1,4 @@
-import { SITE_LIMITS, type CollabAdmin, type CollabStatus, type SiteCounts } from '@slana/shared';
+import { SITE_LIMITS, type CollabAdmin, type CollabStatus, type SiteCounts } from '@elymum/shared';
 import { useCallback, useEffect, useState } from 'react';
 import { Chip, Field, InkButton, Sheet, StampSpinner } from '../../design';
 import { ROLE_LABEL, TYPE_LABEL } from '../../site/collab/labels';

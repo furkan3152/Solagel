@@ -1,4 +1,4 @@
-import { normalizeXHandle, type PublicWlTask, type SiteSettings, type WlEntryPublic } from '@slana/shared';
+import { normalizeXHandle, type PublicWlTask, type SiteSettings, type WlEntryPublic } from '@elymum/shared';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Field, Icon, InkButton, Stamp, StampSpinner, useReducedMotion } from '../../design';

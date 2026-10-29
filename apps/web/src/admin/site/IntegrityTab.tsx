@@ -11,7 +11,7 @@ import {
   type IntegritySettings,
   type IntegrityThresholds,
   type IntegrityWalletView,
-} from '@slana/shared';
+} from '@elymum/shared';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Chip, InkButton, Sheet, StampSpinner } from '../../design';
 import { request, type IntegrityApi, type IntegrityFilter } from '../../site/api';

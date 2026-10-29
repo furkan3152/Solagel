@@ -1,4 +1,4 @@
-import { CellFlag } from '@slana/shared';
+import { CellFlag } from '@elymum/shared';
 import { drawAccessoryBack, drawAccessoryFront, symbolAnchor, type AccessoryColors } from './accessories';
 import { drawFace, type Expression } from './faces';
 import type { CoinLook } from './looks';

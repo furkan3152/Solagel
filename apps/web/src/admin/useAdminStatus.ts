@@ -1,5 +1,5 @@
-import type { SlanaClient } from '@slana/sdk';
-import { fetchStatus, type StatusSnapshot } from '@slana/sdk/ops';
+import type { SlanaClient } from '@elymum/sdk';
+import { fetchStatus, type StatusSnapshot } from '@elymum/sdk/ops';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AdminNetwork } from './net';
 

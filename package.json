@@ -1,5 +1,5 @@
 {
-  "name": "slana",
+  "name": "elymum",
   "private": true,
   "version": "0.1.0",
   "description": "Slana — cute coin-themed on-chain Agar.io for Solana",
@@ -12,14 +12,14 @@
     "demo": "node scripts/demo.mjs",
     "demo:localnet": "node scripts/demo.mjs --localnet",
     "demo:record": "node scripts/record-walkthrough.mjs",
-    "dev": "pnpm -r --parallel --filter @slana/server --filter @slana/web dev",
-    "dev:server": "pnpm -F @slana/server dev",
-    "dev:web": "pnpm -F @slana/web dev",
+    "dev": "pnpm -r --parallel --filter @elymum/server --filter @elymum/web dev",
+    "dev:server": "pnpm -F @elymum/server dev",
+    "dev:web": "pnpm -F @elymum/web dev",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "program:build": "anchor build --ignore-keys && scripts/build-lean.sh",
     "program:test": "scripts/test-program.sh",
-    "admin": "pnpm -F @slana/sdk admin"
+    "admin": "pnpm -F @elymum/sdk admin"
   }
 }

@@ -1,4 +1,4 @@
-import type { ChainStatus, RoomInfo, ServerMessage } from '@slana/shared';
+import type { ChainStatus, RoomInfo, ServerMessage } from '@elymum/shared';
 import { WalletContext, type WalletContextState } from '@solana/wallet-adapter-react';
 import { act, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

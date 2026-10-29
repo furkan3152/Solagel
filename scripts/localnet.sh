@@ -95,7 +95,7 @@ else
   PROGRAM_ID="$IDL_ID"
 fi
 if [[ -n "$IDL_ID" && "$IDL_ID" != "$PROGRAM_ID" ]]; then
-  die "program keypair is $PROGRAM_ID but the SDK IDL is for $IDL_ID — run \`anchor keys sync && anchor build && pnpm -F @slana/sdk sync-idl\`"
+  die "program keypair is $PROGRAM_ID but the SDK IDL is for $IDL_ID — run \`anchor keys sync && anchor build && pnpm -F @elymum/sdk sync-idl\`"
 fi
 
 mkdir -p "$STATE"
@@ -161,7 +161,7 @@ spl authorize "$TOKEN_MINT" mint --disable --authority "$ADMIN_KEYPAIR" >/dev/nu
 say "minted $TOKEN_SUPPLY tokens to the admin; minting disabled (the supply only shrinks by burns)"
 
 admin() {
-  (cd "$ROOT" && pnpm --silent -F @slana/sdk admin --url "$RPC_URL" --keypair "$ADMIN_KEYPAIR" --program "$PROGRAM_ID" --cluster localnet "$@")
+  (cd "$ROOT" && pnpm --silent -F @elymum/sdk admin --url "$RPC_URL" --keypair "$ADMIN_KEYPAIR" --program "$PROGRAM_ID" --cluster localnet "$@")
 }
 say "initializing the program (no token yet; fee wallet = the admin)"
 admin init --server "$SERVER"
@@ -194,4 +194,4 @@ echo "The admin ($ADMIN) holds the $TOKEN_SUPPLY test tokens of $TOKEN_MINT and 
 if [[ "$NO_TOKEN" == 1 ]]; then echo "The token is not set yet: the game server plays practice only until it is."; fi
 echo
 echo "e.g.  cd apps/server && env \$(cat ../../.localnet/server.env | xargs) npx tsx src/index.ts"
-echo "      pnpm -F @slana/server e2e        (after --no-token; see apps/server/scripts/e2e.ts for the server env)"
+echo "      pnpm -F @elymum/server e2e        (after --no-token; see apps/server/scripts/e2e.ts for the server env)"

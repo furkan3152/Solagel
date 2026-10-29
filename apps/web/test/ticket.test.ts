@@ -1,7 +1,7 @@
 // @vitest-environment node
 // (jsdom typed arrays break PDA derivation in web3.js; this file renders nothing)
-import { ASSOCIATED_TOKEN_PROGRAM_ID, IDL, PROGRAM_ID, SlanaClient, TOKEN_PROGRAM_ID, ata, pdas } from '@slana/sdk';
-import type { RoomInfo } from '@slana/shared';
+import { ASSOCIATED_TOKEN_PROGRAM_ID, IDL, PROGRAM_ID, SlanaClient, TOKEN_PROGRAM_ID, ata, pdas } from '@elymum/sdk';
+import type { RoomInfo } from '@elymum/shared';
 import { Connection, Keypair, type TransactionInstruction } from '@solana/web3.js';
 import { describe, expect, it } from 'vitest';
 import {

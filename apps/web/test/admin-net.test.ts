@@ -1,5 +1,5 @@
-import { PROGRAM_ID } from '@slana/sdk';
-import type { ChainStatus } from '@slana/shared';
+import { PROGRAM_ID } from '@elymum/sdk';
+import type { ChainStatus } from '@elymum/shared';
 import { describe, expect, it } from 'vitest';
 import { MAX_PRIORITY_MICRO_LAMPORTS, maxFeeLamports, priorityFromEnv, resolveNetwork, verifyNetwork } from '../src/admin/net';
 
