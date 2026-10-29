@@ -2,25 +2,22 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Slana motion</title>
+<title>Elymum motion</title>
 <style>
-@font-face { font-family: 'Bricolage'; src: url('../../../apps/web/node_modules/@fontsource-variable/bricolage-grotesque/files/bricolage-grotesque-latin-standard-normal.woff2') format('woff2'); font-weight: 200 800; font-stretch: 75% 100%; }
-@font-face { font-family: 'DM Mono'; src: url('../../../apps/web/node_modules/@fontsource/dm-mono/files/dm-mono-latin-400-normal.woff2') format('woff2'); font-weight: 400; }
-@font-face { font-family: 'DM Mono'; src: url('../../../apps/web/node_modules/@fontsource/dm-mono/files/dm-mono-latin-500-normal.woff2') format('woff2'); font-weight: 500; }
-/* the promo's canvas kit (lib.js, the NFT cards) names the same faces Brico and DMMono */
-@font-face { font-family: 'Brico'; src: url('../../../apps/web/node_modules/@fontsource-variable/bricolage-grotesque/files/bricolage-grotesque-latin-standard-normal.woff2') format('woff2'); font-weight: 200 800; font-stretch: 75% 100%; }
-@font-face { font-family: 'DMMono'; src: url('../../../apps/web/node_modules/@fontsource/dm-mono/files/dm-mono-latin-400-normal.woff2') format('woff2'); font-weight: 400; }
-@font-face { font-family: 'DMMono'; src: url('../../../apps/web/node_modules/@fontsource/dm-mono/files/dm-mono-latin-500-normal.woff2') format('woff2'); font-weight: 500; }
+@font-face { font-family: 'Fraunces'; src: url('../../../apps/web/node_modules/@fontsource-variable/fraunces/files/fraunces-latin-full-normal.woff2') format('woff2'); font-weight: 100 900; }
+@font-face { font-family: 'DM Sans'; src: url('../../../apps/web/node_modules/@fontsource-variable/dm-sans/files/dm-sans-latin-opsz-normal.woff2') format('woff2'); font-weight: 100 1000; }
+@font-face { font-family: 'Geist Mono'; src: url('../../../apps/web/node_modules/@fontsource-variable/geist-mono/files/geist-mono-latin-wght-normal.woff2') format('woff2'); font-weight: 100 900; }
+/* the promo's canvas kit (lib.js, the NFT cards) uses the same faces by name */
 :root {
-  --paper: #fcf4df; --card: #fffdf6; --ink: #1b1732; --ink-2: #5b5577;
-  --pink: #fb2f85; --pink-ink: #d1166b; --teal: #01aca4; --teal-ink: #0f736e; --mustard: #ffb413; --blue: #3055fc; --green: #17ad65; --red: #f72e1c;
-  --line: rgba(27,23,50,.35);
+  --paper: #f8f7f4; --card: #f6eeda; --ink: #04181c; --ink-2: #6b655a;
+  --pink: #34b7dd; --pink-ink: #2490b0; --teal: #2d7388; --teal-ink: #1f5566; --mustard: #f2c14e; --blue: #93d9ee; --green: #3c9a87; --red: #ff5252;
+  --line: rgba(4,24,28,.35);
 }
 html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
-#stage { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; overflow: hidden; font-family: 'Bricolage', system-ui, sans-serif; color: var(--ink); }
+#stage { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; overflow: hidden; font-family: 'DM Sans', system-ui, sans-serif; color: var(--ink); }
 .it { position: absolute; left: 0; top: 0; display: none; will-change: transform, opacity; }
-.mono { font-family: 'DM Mono', ui-monospace, monospace; text-transform: uppercase; letter-spacing: .14em; font-weight: 500; }
-.disp { font-family: 'Bricolage', sans-serif; font-weight: 800; font-stretch: 85%; letter-spacing: -.02em; line-height: .92; }
+.mono { font-family: 'Geist Mono', ui-monospace, monospace; text-transform: uppercase; letter-spacing: .14em; font-weight: 500; }
+.disp { font-family: 'Fraunces', Georgia, serif; font-variation-settings: 'SOFT' 100, 'opsz' 144; font-weight: 800; letter-spacing: -.02em; line-height: .92; }
 .grain { position: absolute; inset: 0; pointer-events: none; mix-blend-mode: multiply; opacity: .55; }
 .paper { background: var(--paper); }
 .cardstock { background: var(--card); }
@@ -30,14 +27,14 @@ html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
 .lt .bar { position: absolute; left: 0; top: 0; bottom: 0; width: 16px; background: var(--pink); border-right: 3px solid var(--ink); }
 .lt .k { position: absolute; left: 40px; top: 20px; font-size: 19px; color: var(--ink-2); white-space: nowrap; }
 .lt .v { position: absolute; left: 38px; top: 50px; font-size: 64px; white-space: nowrap; }
-.lt .v small { font-family: 'DM Mono'; font-size: 22px; letter-spacing: .1em; font-weight: 500; margin-left: 10px; color: var(--ink-2); }
+.lt .v small { font-family: 'Geist Mono'; font-size: 22px; letter-spacing: .1em; font-weight: 500; margin-left: 10px; color: var(--ink-2); }
 .lt .perf { position: absolute; top: 10px; bottom: 10px; border-left: 3px dashed var(--line); }
 .lt .stub { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center; font-size: 17px; writing-mode: vertical-rl; transform: rotate(180deg); color: var(--ink); }
 .notch { position: absolute; width: 26px; height: 26px; border-radius: 50%; background: transparent; }
-.tape { position: absolute; width: 120px; height: 34px; background: rgba(255,180,19,.55); transform: rotate(-6deg); mix-blend-mode: multiply; }
+.tape { position: absolute; width: 120px; height: 34px; background: rgba(242,193,78,.55); transform: rotate(-6deg); mix-blend-mode: multiply; }
 /* tag */
 .tag { padding: 12px 18px 11px; background: var(--card); border: 3px solid var(--ink); border-radius: 8px; box-shadow: 5px 5px 0 var(--ink); font-size: 22px; white-space: nowrap; display: flex; align-items: center; gap: 12px; }
-.tag .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--red); box-shadow: 0 0 0 3px rgba(247,46,28,.25); }
+.tag .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--red); box-shadow: 0 0 0 3px rgba(255,82,82,.25); }
 .tag.ink { background: var(--ink); color: var(--card); box-shadow: 5px 5px 0 var(--pink); }
 .tag.kick { background: var(--ink); color: var(--card); border-color: var(--ink); box-shadow: 4px 4px 0 var(--pink); letter-spacing: .2em; }
 .tag.kick .dot { background: var(--pink); box-shadow: none; width: 13px; height: 13px; }
@@ -52,24 +49,24 @@ html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
 .cap .w { display: inline-block; }
 .cap em { font-style: normal; color: var(--pink-ink); }
 /* chapter chip */
-.chip { font-size: 20px; display: flex; align-items: center; gap: 14px; padding: 12px 16px 11px; background: rgba(255,253,246,.94); border: 3px solid var(--ink); border-radius: 8px; box-shadow: 5px 5px 0 var(--ink); }
+.chip { font-size: 20px; display: flex; align-items: center; gap: 14px; padding: 12px 16px 11px; background: rgba(246,238,218,.94); border: 3px solid var(--ink); border-radius: 8px; box-shadow: 5px 5px 0 var(--ink); }
 .chip .ticks { display: flex; gap: 5px; }
 .chip .ticks i { display: block; width: 18px; height: 8px; border: 2px solid var(--ink); border-radius: 2px; }
 .chip .ticks i.on { background: var(--pink); }
 /* receipt */
-.rc { width: 520px; background: #fffdf6; color: var(--ink); font-family: 'DM Mono'; font-weight: 500; box-shadow: 0 2px 0 rgba(0,0,0,.05); position: relative; }
+.rc { width: 520px; background: #f6eeda; color: var(--ink); font-family: 'Geist Mono'; font-weight: 500; box-shadow: 0 2px 0 rgba(0,0,0,.05); position: relative; }
 .rc .in { padding: 34px 38px 30px; }
-.rc h3 { font-family: 'Bricolage'; font-weight: 800; font-stretch: 85%; font-size: 40px; margin: 0 0 4px; text-align: center; letter-spacing: -.01em; }
+.rc h3 { font-family: 'Fraunces'; font-weight: 800; font-size: 40px; margin: 0 0 4px; text-align: center; letter-spacing: -.01em; }
 .rc .sub { text-align: center; font-size: 17px; letter-spacing: .14em; color: var(--ink-2); margin-bottom: 18px; }
 .rc .row { display: flex; font-size: 23px; letter-spacing: .06em; padding: 9px 0; align-items: baseline; }
 .rc .row .l { white-space: nowrap; }
-.rc .row .d { flex: 1; border-bottom: 3px dotted rgba(27,23,50,.35); margin: 0 10px; transform: translateY(-6px); }
+.rc .row .d { flex: 1; border-bottom: 3px dotted rgba(4,24,28,.35); margin: 0 10px; transform: translateY(-6px); }
 .rc .row .r { white-space: nowrap; }
-.rc .rule { border-top: 3px dashed rgba(27,23,50,.45); margin: 12px 0; }
+.rc .rule { border-top: 3px dashed rgba(4,24,28,.45); margin: 12px 0; }
 .rc .rule2 { border-top: 3px double var(--ink); border-bottom: 3px solid var(--ink); height: 3px; margin: 14px 0; }
 .rc .net { display: flex; justify-content: space-between; align-items: baseline; }
-.rc .net b { font-family: 'Bricolage'; font-weight: 800; font-size: 64px; letter-spacing: -.02em; }
-.rc .zig { position: absolute; left: 0; right: 0; bottom: -14px; height: 15px; background: linear-gradient(-45deg, transparent 10px, #fffdf6 0) 0 0/20px 20px, linear-gradient(45deg, transparent 10px, #fffdf6 0) 0 0/20px 20px; }
+.rc .net b { font-family: 'Fraunces'; font-weight: 800; font-size: 64px; letter-spacing: -.02em; }
+.rc .zig { position: absolute; left: 0; right: 0; bottom: -14px; height: 15px; background: linear-gradient(-45deg, transparent 10px, #f6eeda 0) 0 0/20px 20px, linear-gradient(45deg, transparent 10px, #f6eeda 0) 0 0/20px 20px; }
 </style>
 </head>
 <body>
@@ -81,7 +78,7 @@ html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
 </svg>
 <script src="../cache/art.js"></script>
 <script src="../../promo/scenes/lib.js"></script>
-<script src="../../free-mint/scenes/nft.js"></script>
+<script src="../../mint-film/scenes/nft.js"></script>
 <script src="motion.js"></script>
 </body>
 </html>

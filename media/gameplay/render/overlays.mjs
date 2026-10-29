@@ -28,7 +28,7 @@ mkdirSync(outDir, { recursive: true });
 const PAGES = Number(opt('--pages', '3'));
 const preview = opt('--preview', null);
 const EW = edit.w || 1920, EH = edit.h || 1080;
-const motionUrl = `${pathToFileURL(resolve(HERE, '../motion/motion.html')).href}?w=${EW}&h=${EH}`;
+const motionUrl = `${pathToFileURL(resolve(HERE, '../motion/motion.html')).href}?w=${EW}&h=${EH}&site=${encodeURIComponent(process.env.SITE_HOST || 'elymum.io')}`;
 
 const browser = await chromium.launch({ executablePath: CHROME, args: ['--disable-gpu', '--allow-file-access-from-files', '--force-color-profile=srgb', '--font-render-hinting=none'] });
 async function openPage() {

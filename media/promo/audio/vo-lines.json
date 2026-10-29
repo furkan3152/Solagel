@@ -11,7 +11,7 @@
  },
  {
   "id": "logo",
-  "text": "This is Slana. || Live coin arenas, | on Solana.",
+  "text": "This is Elymum. || Live coin arenas, | on Elysium.",
   "speed": 1.06
  },
  {
@@ -36,7 +36,7 @@
  },
  {
   "id": "arenas",
-  "text": "Four arenas, | open to everyone. || From one thousand, | to two hundred fifty thousand Slana.",
+  "text": "Four arenas, | open to everyone. || From one thousand, | to two hundred fifty thousand Elymum.",
   "speed": 1.12
  },
  {
@@ -46,12 +46,12 @@
  },
  {
   "id": "nft",
-  "text": "Slana NFTs. | Coming soon.",
+  "text": "Elymum NFTs. | One dollar, | in HYPE.",
   "speed": 1.12
  },
  {
   "id": "end",
-  "text": "Eat. | Grow. | Last the round. || slana dot io.",
+  "text": "Eat. | Grow. | Last the round. || @elymum.",
   "speed": 0.96
  }
 ]

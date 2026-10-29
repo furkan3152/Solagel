@@ -1,7 +1,7 @@
-"""Score for the Free Mint film: 120 BPM (a beat is 0.5 s), downbeats at 0.5 + 2k, synthesised with
+"""Score for the mint film: 120 BPM (a beat is 0.5 s), downbeats at 0.5 + 2k, synthesised with
 the promo's instruments (media/promo/audio/music.py) and scored to the scenes in ../timeline.json.
 
-  0.0  riser and a reverse crash into the FREE slam (0.5); MINT hits on the next beat
+  0.0  riser and a reverse crash into the $1 slam (0.5); MINT hits on the next beat
   0.5  bright groove (Fmaj7 / G6 / Em7 / Am7), stabs, bells on the card turns
   8.0  sweep down into the ink, 8.5 the roadmap: four on the floor, a bell per landing
  12.0  the leap: riser, breath, 12.5 drop into WL OPEN; 16.5 the sting, an airy tail to 19.5
@@ -76,7 +76,7 @@ def build():
     place(fx, M.noise_riser(0.48, 0.9, 500, 9000), 0.02)
     place(fx, M.reverse_crash(0.45, 0.7), 0.05)
     place(keys, M.pad(PROG[0][0], 0.5, 0.6, 900), 0.0, 0.5)
-    # 1 FREE MINT
+    # 1 $1 MINT
     for t in (0.5, 1.0):
         place(drums, M.impact(1.0 if t == 0.5 else 0.8), t)
     place(drums, M.crash(0.9), 0.5, 1.0, 0.2)

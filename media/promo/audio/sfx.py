@@ -1,4 +1,4 @@
-"""Procedural sound effects for the Slana promo (paper, ink, coins, stamps).
+"""Procedural sound effects for the Elymum promo (paper, ink, coins, stamps).
 
 Every cue in ../timeline.json "sfx" is synthesised here and laid onto one
 stereo track.   python sfx.py OUT.wav

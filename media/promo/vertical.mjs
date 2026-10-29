@@ -2,17 +2,19 @@
 // The promo's vertical cut for X and Reels: 1080x1920, 60 fps, about 32 s (eleven bars of the game's
 // 82 BPM score). Real gameplay, full bleed, reframed around Daphne's coin from the replayed takes
 // (media/gameplay/capture/replay.mjs), with the promo's riso headline, its voice lines (Kokoro
-// af_heart, cache/vo-raw), a plain NFT mention ("Slana NFTs.", coming soon) and the slana.io / @slanaio
+// af_heart, cache/vo-raw), a plain NFT mention ("Elymum NFTs.", $1 in HYPE) and the SITE_HOST / @elymum
 // end card.
 //   node media/promo/vertical.mjs
 //   MASTER_AUDIO=192k media/gameplay/render/render.sh media/promo/cache/vertical/vertical.json \
-//     media/promo/cache/vertical/vertical-music.json slana-promo-vertical media/promo/cache/vo-raw
+//     media/promo/cache/vertical/vertical-music.json elymum-promo-vertical media/promo/cache/vo-raw
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Edit, events, mark } from '../gameplay/render/timeline.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+// the site's host on the end card (no domain is hard-coded: set SITE_HOST to the PUBLIC_URL host)
+const SITE = (process.env.SITE_HOST || 'elymum.io').toUpperCase();
 const OUT = resolve(HERE, 'cache/vertical');
 mkdirSync(OUT, { recursive: true });
 const BPM = 82, BEAT = 60 / BPM, BAR = BEAT * 4;
@@ -23,7 +25,7 @@ const e = new Edit({ name: 'vertical', fps: 60, w: 1080, h: 1920 });
 const head = (t, dur, lines, o = {}) => e.add('headline', t, dur, { lines, x: o.x ?? 70, y: o.y ?? 210, size: o.size ?? 104, align: o.align, out: o.out ?? dur - 0.4 }, 45);
 const kick = (t, text, dur) => { e.add('tag', t, dur, { text, x: 70, y: 120, size: 26, kick: true, dot: true, scramble: true }, 46); e.cue('tick', t + 0.05, 0.3); };
 const wipe = (t, colors, dur = 0.7) => { e.add('wipe', t - dur / 2, dur, { colors }, 90); e.cue('paper', t - dur / 2, 0.5); };
-const float = (s, t, text) => { e.add('float', t, 1.6, { text, sub: '$SLANA', track: e.trackMe(s, t, 1.6, 1 / 30), size: 124 }, 35); e.cue('coin', t, 0.5).cue('pop', t + 0.05, 0.4); };
+const float = (s, t, text) => { e.add('float', t, 1.6, { text, sub: '$ELYMUM', track: e.trackMe(s, t, 1.6, 1 / 30), size: 124 }, 35); e.cue('coin', t, 0.5).cue('pop', t + 0.05, 0.4); };
 
 // ── 0 · the gulp (1.5 bars) ── slow motion through it, the value floats off
 const eat = events(A, 'value', (v) => v.reason === 'eat')[0];
@@ -33,7 +35,7 @@ const s0 = e.shot({ take: A, from: eat.t - pre, dur: bars(1.5), zoom: 2.3, lag: 
   punch: [[pre - 0.2, 1.22, 0.3, 1.2, 0.6]], shake: [[pre + 0.3, 12]] });
 const tG = e.timeOf(s0, eat.t);
 e.cue('impact', 0, 0.7);
-kick(0.0, 'ON-CHAIN COIN ARENAS / SOLANA', bars(1.5) - 0.2);
+kick(0.0, 'ON-CHAIN COIN ARENAS / ELYSIUM', bars(1.5) - 0.2);
 head(0.0, bars(1.5), [{ text: 'Eat a player.', at: 0.04 }, { text: 'Keep their', at: tG + 0.1, color: 'pink' }, { text: 'tokens.', at: tG + 0.24, color: 'pink' }]);
 e.voice('hook_a', 0.1).voice('hook_b', tG + 0.15);
 e.cue('gulp', tG, 0.8).cue('sub', tG, 0.5);
@@ -79,15 +81,15 @@ head(s3a.start, bars(2), [{ text: 'Get paid.', at: tStamp - s3a.start - 0.1, col
 {
   const till = rr.payout / 1e6;
   const net = Math.round((till - Math.max(0, till - 1000) * 0.05) * 100) / 100;
-  e.add('lower', tStamp + 0.2, s3.end - tStamp - 0.2, { kicker: 'ROUND OVER / FEE 5% OF PROFIT', count: [0, net], unit: '$SLANA', accent: 'teal', stub: 'PAID', countAt: 0.2, countDur: 1.0, w: 700, dec: 2, x: 190, y: 1300 }, 30);
+  e.add('lower', tStamp + 0.2, s3.end - tStamp - 0.2, { kicker: 'ROUND OVER / FEE 5% OF PROFIT', count: [0, net], unit: '$ELYMUM', accent: 'teal', stub: 'PAID', countAt: 0.2, countDur: 1.0, w: 700, dec: 2, x: 190, y: 1300 }, 30);
 }
 
-// ── 4 · the NFT (1 bar) ── a plain mention: the cards dealt face up, "COMING SOON", "Slana NFTs."
-// (the NFT kit's plain beat, media/free-mint/scenes/nft.js, on the paper stock)
+// ── 4 · the NFT (1 bar) ── a plain mention: the cards dealt face up, "$1 IN HYPE", "Elymum NFTs."
+// (the NFT kit's plain beat, media/mint-film/scenes/nft.js, on the paper stock)
 wipe(s3.end, ['pink', 'card']);
 const tN = s3.end;
 const ND = bars(1);
-e.add('nft', tN - 0.05, ND + 0.05, { lead: 0.05, kicker: 'COMING SOON', plain: { head: 'Slana NFTs.', layout: { ky: 630, hy1: 830, cards: [[240, 1210, -0.13, 28], [540, 1165, 0, 0], [840, 1210, 0.13, 28]] } }, times: { deal: [0, 0.12, 0.24], l1: 0.08 } }, 50);
+e.add('nft', tN - 0.05, ND + 0.05, { lead: 0.05, kicker: '$1 IN HYPE', plain: { head: 'Elymum NFTs.', layout: { ky: 630, hy1: 830, cards: [[240, 1210, -0.13, 28], [540, 1165, 0, 0], [840, 1210, 0.13, 28]] } }, times: { deal: [0, 0.12, 0.24], l1: 0.08 } }, 50);
 e.voice('nft', tN + 0.12);
 e.cue('impact', tN, 0.55).cue('sub', tN, 0.4);
 [0, 0.12, 0.24].forEach((d, i) => e.cue('paper', tN + d, 0.35 + i * 0.05));
@@ -96,8 +98,8 @@ e.cue('impact', tN, 0.55).cue('sub', tN, 0.4);
 wipe(tN + ND, ['ink', 'card']);
 const tOut = tN + ND;
 e.add('card', tOut - 0.05, bars(2.5) + 0.05, {
-  variant: 'outro', kicker: 'SLANA / ON SOLANA', tagline: 'Eat. Grow. Last the round.', tagAccent: 4, tagAt: 0.7, tagGap: 0.26,
-  foot: 'SLANA.IO  /  @SLANAIO', footAt: 1.5, footY: 860, footSize: 46, oy: 420,
+  variant: 'outro', kicker: 'ELYMUM / ON ELYSIUM', tagline: 'Eat. Grow. Last the round.', tagAccent: 4, tagAt: 0.7, tagGap: 0.26,
+  foot: `${SITE}  /  @ELYMUM`, footAt: 1.5, footY: 860, footSize: 46, oy: 420,
   coins: [
     { skin: 4, r: 110, x: 120, y: -150, expression: 'happy' },
     { skin: 7, r: 130, x: 760, y: -230, expression: 'proud' },

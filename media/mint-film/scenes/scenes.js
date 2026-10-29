@@ -1,11 +1,11 @@
-/* Slana "Free Mint" (about 19.5 s, 120 BPM: a beat is 0.5 s, the downbeats sit at 0.5 + 2k).
+/* Elymum "Mint film" (about 19.5 s, 120 BPM: a beat is 0.5 s, the downbeats sit at 0.5 + 2k).
  *
- *  0.0  FREE MINT     pink stock, FREE / MINT slam in, the mascot (the X pfp coin) rises and falls in love
- *  4.5  SEALED        a paper wipe; five sealed cards dealt, the seals crack and the cards turn, FREE MINT stamp
- *  8.5  ROADMAP       an ink flood to night; three tickets, the mascot hops 01 GAME BETA, 02 TOKEN LAUNCH,
- *                     03 NFT LAUNCH (each prints in its ink as it lands), then leaps at the camera
- * 12.5  WL OPEN       the coin pulls back to reveal the pink: "WL open.", the slana.io/wl ticket,
- *                     the wordmark and @slanaio
+ *  0.0  $1 MINT       the stock, $1 / MINT slam in, the mascot (the X pfp coin) rises and falls in love
+ *  4.5  SEALED        a paper wipe; five sealed cards dealt, the seals crack and the cards turn, $1 IN HYPE stamp
+ *  8.5  ROADMAP       an ink flood to night; three tickets, the mascot hops 01 WL OPEN, 02 $1 MINT,
+ *                     03 GAME LIVE (each prints in its ink as it lands), then leaps at the camera
+ * 12.5  WL OPEN       the coin pulls back to reveal the pink: "WL open.", the <site>/wl ticket,
+ *                     the wordmark and @elymum
  *
  * Landscape (1920x1080) and portrait (1080x1920) from the same code (?w=&h=). Draws with the promo
  * kit (media/promo/scenes/lib.js) and the NFT kit (nft.js). Deterministic.
@@ -75,7 +75,7 @@
     NFT.heroCoin(ctx, x, y, r, { ghostOver: o.ghostOver, expr: o.expr, lookX: o.lookX, lookY: o.lookY, rot: o.rot, sx: o.sx, sy: o.sy, mouth: o.mouth, dir: o.dir });
   }
 
-  /* ───────────── 1. FREE MINT (0 - 4.5) ───────────── */
+  /* ───────────── 1. $1 MINT (0 - 4.5) ───────────── */
   function s1(ctx, t) {
     const sh = shake(t, [0.5, 1.0], 16);
     ctx.save(); ctx.translate(sh.x, sh.y);
@@ -88,12 +88,12 @@
     const push = 1 + 0.035 * E.inOutCubic(prog(t, 1.2, 4.5));
     ctx.save();
     ctx.translate(cx, (y1 + y2) / 2); ctx.scale(push, push); ctx.translate(-cx, -(y1 + y2) / 2);
-    slamWord(ctx, 'FREE', cx, y1, sz, t, 0.5, { rot: -0.03 });
+    slamWord(ctx, '$1', cx, y1, sz, t, 0.5, { rot: -0.03 });
     slamWord(ctx, 'MINT', cx, y2, sz, t, 1.0, { rot: 0.02, color: C.mustard });
     ctx.restore();
     burst(ctx, cx, y2 - 60, t - 1.0, { seed: 4, n: 40, speed: 1500, size: 14, life: 1.3, colors: [C.card, C.mustard, C.teal, C.ink] });
-    NFT.pill(ctx, 'THE SLANA NFT', cx, P ? 330 : 120, P ? 28 : 24, t, 0.15, { align: 'center' });
-    // pre-roll: a sealed card spins up at the camera and its seal cracks into FREE
+    NFT.pill(ctx, 'THE ELYMUM NFT', cx, P ? 330 : 120, P ? 28 : 24, t, 0.15, { align: 'center' });
+    // pre-roll: a sealed card spins up at the camera and its seal cracks into $1
     if (t < 0.62) {
       const k = E.outCubic(prog(t, 0, 0.45));
       const gone = E.inBack(prog(t, 0.45, 0.62));
@@ -150,17 +150,17 @@
       NFT.card(ctx, xs, ys, L.cw, L.ch, { i: [0, 1, 2, 3, 4][i], rot: rot * k + (1 - k) * 0.6, flip: fl, crack, t });
     });
     const st = t - S2.stamp;
-    if (st > -0.2) stamp(ctx, 'FREE MINT', P ? W / 2 : 1390, P ? 1260 : 600, -0.16, st, C.ink, { size: P ? 110 : 100, scale: 1, alpha: 0.95 });
+    if (st > -0.2) stamp(ctx, '$1 IN HYPE', P ? W / 2 : 1390, P ? 1260 : 600, -0.16, st, C.ink, { size: P ? 110 : 100, scale: 1, alpha: 0.95 });
     const hx = P ? 70 : 150, hy = P ? 420 : 380;
-    kicker(ctx, 'SLANA NFT / SEALED CARDS', hx, P ? 250 : 220, t, 4.55);
-    headline(ctx, [{ text: 'Sealed.', at: 4.6 }, { text: 'Free to mint.', at: 5.2, color: C.pink }], hx, hy, t, { size: P ? 128 : 112, lh: 1.0 });
+    kicker(ctx, 'ELYMUM NFT / SEALED CARDS', hx, P ? 250 : 220, t, 4.55);
+    headline(ctx, [{ text: 'Sealed.', at: 4.6 }, { text: '$1 in HYPE.', at: 5.2, color: C.pink }], hx, hy, t, { size: P ? 128 : 112, lh: 1.0 });
   }
 
   /* ───────────── 3. ROADMAP (8.5 - 12.5) ───────────── */
   const STEPS = [
-    { n: '01', title: 'GAME BETA', ink: C.teal, land: 9.5 },
-    { n: '02', title: 'TOKEN LAUNCH', ink: C.mustard, land: 10.5 },
-    { n: '03', title: 'NFT LAUNCH', ink: C.pink, land: 11.5 },
+    { n: '01', title: 'WL OPEN', ink: C.teal, land: 9.5 },
+    { n: '02', title: '$1 MINT', ink: C.mustard, land: 10.5 },
+    { n: '03', title: 'GAME LIVE', ink: C.pink, land: 11.5 },
   ];
   function roadLayout() {
     // portrait: the tickets stack on the right and the mascot hops down the left beside them
@@ -185,20 +185,20 @@
     // ghost (unprinted) or printed
     if (!printed) {
       ticketPath(ctx, x0, y0, w, h, 16, stub, 14);
-      ctx.setLineDash([12, 10]); ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(245,238,220,0.45)'; ctx.stroke(); ctx.setLineDash([]);
-      font(ctx, h * 0.28, 500, 'mono'); ctx.letterSpacing = '4px'; ctx.fillStyle = 'rgba(245,238,220,0.45)';
+      ctx.setLineDash([12, 10]); ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(246,238,218,0.45)'; ctx.stroke(); ctx.setLineDash([]);
+      font(ctx, h * 0.28, 500, 'mono'); ctx.letterSpacing = '4px'; ctx.fillStyle = 'rgba(246,238,218,0.45)';
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(s.n, x0 + stub / 2, 0);
       font(ctx, L0().title, 800, 'display'); ctx.letterSpacing = '-1px'; ctx.textAlign = 'left';
       ctx.fillText(s.title, x0 + stub + 34, 4);
     } else {
-      ctx.save(); ctx.translate(8, 10); ticketPath(ctx, x0, y0, w, h, 16, stub, 14); ctx.fillStyle = '#05040A'; ctx.globalAlpha = 0.6; ctx.fill(); ctx.restore();
+      ctx.save(); ctx.translate(8, 10); ticketPath(ctx, x0, y0, w, h, 16, stub, 14); ctx.fillStyle = '#000507'; ctx.globalAlpha = 0.6; ctx.fill(); ctx.restore();
       ticketPath(ctx, x0, y0, w, h, 16, stub, 14); ctx.fillStyle = C.card; ctx.fill();
       ctx.save(); ticketPath(ctx, x0, y0, w, h, 16, stub, 14); ctx.clip();
       ctx.fillStyle = s.ink; ctx.fillRect(x0, y0, stub, h);
       ctx.restore();
       ticketPath(ctx, x0, y0, w, h, 16, stub, 14); ctx.lineWidth = 4; ctx.strokeStyle = C.ink; ctx.stroke();
-      dashed(ctx, x0 + stub, y0 + 22, x0 + stub, y0 + h - 22, 'rgba(27,23,50,0.6)', 3, [8, 7]);
+      dashed(ctx, x0 + stub, y0 + 22, x0 + stub, y0 + h - 22, 'rgba(4,24,28,0.6)', 3, [8, 7]);
       font(ctx, h * 0.3, 800, 'display'); ctx.letterSpacing = '0px'; ctx.fillStyle = C.ink;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(s.n, x0 + stub / 2, 6);
@@ -242,7 +242,7 @@
     const L = roadLayout();
     // the path between the tickets
     ctx.save();
-    ctx.strokeStyle = 'rgba(245,238,220,0.35)'; ctx.lineWidth = 4; ctx.setLineDash([4, 16]); ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(246,238,218,0.35)'; ctx.lineWidth = 4; ctx.setLineDash([4, 16]); ctx.lineCap = 'round';
     const dp = E.outCubic(prog(t, 8.7, 9.4));
     ctx.beginPath();
     if (P) { ctx.moveTo(165, L.pos[0][1]); ctx.lineTo(165, lerp(L.pos[0][1], L.pos[2][1], dp)); }
@@ -258,10 +258,10 @@
       ctx.translate(x + L.w * 0.18, y + L.h / 2 + 4); ctx.rotate(-0.06); ctx.scale(tg, tg);
       rrect(ctx, -110, -26, 220, 52, 26); ctx.fillStyle = C.pink; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = C.ink; ctx.stroke();
       font(ctx, 22, 500, 'mono'); ctx.letterSpacing = '4px'; ctx.fillStyle = C.ink; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('FREE MINT', 0, 2);
+      ctx.fillText('$1 MINT', 0, 2);
       ctx.restore();
     }
-    kicker(ctx, 'SLANA / WHAT IS NEXT', P ? 70 : 150, P ? 250 : 190, t, 8.55, { color: C.nightInk });
+    kicker(ctx, 'ELYMUM / WHAT IS NEXT', P ? 70 : 150, P ? 250 : 190, t, 8.55, { color: C.nightInk });
     headline(ctx, [{ text: 'The roadmap.', at: 8.6, color: C.nightInk }], P ? 70 : 150, P ? 420 : 340, t, { size: P ? 128 : 112 });
     // the mascot (drawn last; the leap is drawn in s3Leap so it can cover the cut)
     if (t < 12.0) {
@@ -296,7 +296,7 @@
     if (P) NFT.wlTicket(ctx, W / 2 - 430, 1120, 860, 190, tp, { size: 112, underline: prog(t, 15.1, 15.6) });
     else NFT.wlTicket(ctx, 860, 500, 860, 190, tp, { size: 104, underline: prog(t, 15.1, 15.6) });
     shockDots(ctx, P ? W / 2 : 1290, P ? 1215 : 595, t - 13.7, C.card, 700, 0.3);
-    // the sign-off: wordmark + @slanaio
+    // the sign-off: wordmark + @elymum
     const wk = prog(t, 16.0, 16.4);
     if (wk > 0) {
       const wy = P ? 1540 : 900, wx = P ? W / 2 - 330 : 860;
@@ -306,7 +306,7 @@
       const m = wordmarkMetrics(ctx, sz);
       wordmark(ctx, wx + (P ? (660 - m.total) / 2 : 0), wy + (1 - E.outBack(wk)) * 40, sz, { reg: 1 - spring(t - 16.0, 1.5, 6), dark: true, color: C.card });
       ctx.restore();
-      NFT.pill(ctx, '@SLANAIO', P ? W / 2 : 860 + m.total + 60, P ? 1660 : wy - sz * 0.3, P ? 34 : 32, t, 16.2, { align: P ? 'center' : 'left', dot: C.teal });
+      NFT.pill(ctx, '@ELYMUM', P ? W / 2 : 860 + m.total + 60, P ? 1660 : wy - sz * 0.3, P ? 34 : 32, t, 16.2, { align: P ? 'center' : 'left', dot: C.teal });
     }
     // foot line: the whole call to action in one row
     const fa = prog(t, 16.5, 16.9);
@@ -315,7 +315,7 @@
       ctx.globalAlpha = fa;
       font(ctx, P ? 28 : 28, 500, 'mono'); ctx.letterSpacing = (P ? 5 : 7) + 'px';
       ctx.fillStyle = C.ink; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('WL OPEN  ·  SLANA.IO/WL  ·  @SLANAIO', W / 2, P ? 1800 : 1022);
+      ctx.fillText(`WL OPEN  ·  ${window.SITE_HOST.toUpperCase()}/WL  ·  @ELYMUM`, W / 2, P ? 1800 : 1022);
       ctx.restore();
     }
     mascot(ctx, mx, my + (pb < 1 ? 0 : bob), rr, { ghostOver: true, expr: wink ? 'happy' : 'proud', lookX: P ? 0 : 0.7, lookY: 0.2, rot: Math.sin(t * 1.7) * 0.03 });
@@ -339,7 +339,7 @@
       s3(ctx, t);
       if (t >= 12.0) leapCoin(ctx, t);
     } else s4(ctx, t);
-    // the wipe from FREE MINT to the cards
+    // the wipe from $1 MINT to the cards
     paperWipe(ctx, t, T.s2, [C.teal, C.paper]);
   };
   window.SCENE_DARK = (t) => t >= 8.3 && t < 12.3;

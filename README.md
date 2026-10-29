@@ -1,177 +1,173 @@
-# Slana
+# Elymum
 
-**A coin-themed, real-time multiplayer Agar.io with on-chain stakes on Solana.**
+**You are small change with a big appetite.** Elymum is a cute coin-eats-coin arena game on
+Elysium, Kinetiq's EVM L2 (an Arbitrum Orbit chain that settles to HyperEVM, gas token HYPE).
+You are a coin: eat food and smaller coins, run from bigger ones, and when the five-minute bell rings
+whatever you swallowed is paid out on chain.
 
-[![CI](https://github.com/furkan3152/Solagel/actions/workflows/ci.yml/badge.svg)](https://github.com/furkan3152/Solagel/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+The product flow is WL → Mint → Play: people apply for the whitelist, mint an Elymum NFT for
+$1 in HYPE, and the game opens for holders. The money rules live in two Solidity contracts; the
+game itself runs on an authoritative server; the owner deploys and runs everything from their own
+wallet in `/admin`.
 
-Slana (this repository is named Solagel) is a browser game where you play a coin: eat food and smaller coins, split,
-dodge bigger players. Paid arenas take a fixed ticket in the $SLANA token and the value of a player you eat moves to
-you; when the 5-minute round bell rings, everyone still alive is paid out on-chain. Real-time physics at 30 Hz cannot
-run on a blockchain, so Slana is a hybrid: an authoritative Node server runs the game, and a small Solana program
-holds the money rules (ticket vaults, settlements, the fee and loot burns) so a payout can never exceed what the arena
-actually holds.
+Status: the contracts and the whole mint system are ready and run from `/admin`; the public site
+collects WL applications for now. Elysium mainnet launches on Nov 9: until Kinetiq publishes its RPC
+and explorer, everything runs on Elysium Testnet (chain id 99801). The contracts have not been
+audited, and a game played with a token of real value may need a licence where you operate.
 
-- Website: [slana.io](https://slana.io) (landing page, NFT allowlist and collab applications).
-- Status: the program is deployed on Solana mainnet-beta but not initialized yet; paid arenas open once the $SLANA
-  token is set. Until then the game is in a closed beta (see [docs/PROJECT.md](docs/PROJECT.md#7-live-deployment)).
-- The smart contract has not been audited, and a game played with a token of real value may need a licence where
-  you operate.
+The single source of truth for the migration and the interface is
+[`docs/specs/2026-10-29-elymum-on-elysium.md`](docs/specs/2026-10-29-elymum-on-elysium.md); the visual
+reference is [`docs/design/storybook-reference.html`](docs/design/storybook-reference.html) (the "Ring
+Storybook" language).
 
 ## Screenshots
 
-The "Paper Ticket" design system, desktop and phone, paper and night themes (all images in `docs/images/`).
-
-| Lobby | Arena |
-| --- | --- |
-| ![Lobby](docs/images/lobby-desktop-paper.webp) | ![Arena](docs/images/game-arena-desktop.webp) |
-| **Ticket issued** | **Round-over receipt** |
-| ![Ticket stamp](docs/images/ticket-stamp-desktop.webp) | ![Receipt](docs/images/round-over-receipt.webp) |
-| **Night theme** | **Standings** |
-| ![Game, night](docs/images/game-night-desktop.webp) | ![Standings](docs/images/leaderboard-desktop-paper.webp) |
-
-| Phone: lobby | Ticket | Game | Standings |
-| --- | --- | --- | --- |
-| ![](docs/images/lobby-mobile-night.webp) | ![](docs/images/ticket-mobile.webp) | ![](docs/images/game-mobile.webp) | ![](docs/images/leaderboard-mobile-night.webp) |
-
-Screenshots are produced by the Playwright tours in `apps/web/scripts/` against the fake-chain development stack.
+The old screenshots were removed with the redesign. The screenshot tours in `apps/web/scripts`
+(`lobby.mjs`, `docs.mjs`, `gameview.mjs`, `shot.mjs`) regenerate them against `pnpm demo`; they will be
+added back under `docs/images/` once the Ring Storybook UI has landed. Until then,
+[`docs/design/storybook-reference.png`](docs/design/storybook-reference.png) shows the look.
 
 ## Key features
 
-- Free practice mode: no wallet, no token, bots only, Rookie and Pro leagues, nothing on-chain.
-- On-chain arenas: four arenas (Penny Pond 1,000 to Whale Bay 250,000 $SLANA) with a fixed entry fee held in a
-  program-owned vault; eating a player transfers their value to you.
-- Wall-clock rounds, no cash-out: 5-minute rounds shared by every arena; at the bell everyone alive is settled
-  on-chain, and floor loot left on the map is burned.
-- Fee on profit only: a flat 5 % of winnings above the entry fee (capped at 10 % on-chain), fixed when the ticket is
-  bought.
-- Safe payouts: a two-phase settlement keeps an unpayable amount in the vault as `owed` for the player to collect;
-  a ticket the server never settles can be refunded by the player after 24 hours.
-- Lean on-chain program: a Pinocchio (`no_std`, no allocator) program of 39,032 bytes that is wire-compatible with
-  an Anchor reference implementation and tested against it.
-- Operations tooling: an admin CLI, an `/admin` panel with mainnet safety rails, cheat and collusion detection, a
-  persistent money journal, and recorded walkthrough and promo videos generated from the real UI.
+- Real-time arena game: a 30 Hz authoritative server (physics, bots, rounds) and a canvas client with
+  split, eject, viruses, power-ups and floor loot.
+- Rounds, not cash-outs: paid arenas play 5-minute wall-clock rounds. Join late or buy back in;
+  everyone alive at the bell is paid their value, minus a flat 5 % fee on profit only.
+- Four arenas on the ring: Asphodel Meadow (1,000), Lethe Shore (10,000), Golden Bough (50,000) and
+  Isles of the Blessed (250,000 `$ELYMUM`), all open to everyone.
+- On-chain money in one contract: `ElymumArena` holds the entry fees in per-arena vaults; a payout
+  can never exceed the vault, a settlement cannot replay, players refund unsettled tickets themselves
+  after 24 h, floor loot is only ever burned.
+- Elymum NFT: an ERC-721 with an allowlist (Merkle root) and a public phase, priced at $1 in
+  HYPE (synced from `/admin` or kept there by the server's price keeper within the owner's bounds).
+- Sign-In with Ethereum (EIP-4361) for every wallet that speaks EIP-6963 (MetaMask, Rabby, Coinbase
+  Wallet, OKX and the rest), smart wallets included (ERC-1271 / 6492).
+- Owner-run admin panel: deploy both contracts from your wallet, register them, set the token,
+  create arenas, publish the allowlist, open the mint, review the WL and collabs, integrity flags,
+  bans and held payouts. Every transaction is previewed before the wallet prompt.
+- Practice and bots: two leagues of practice rooms with bots; nothing touches the chain.
 
 ## How it works
 
 ```mermaid
 flowchart LR
-  B["Browser<br/>React + Vite"] -- "WebSocket, binary snapshots 30 Hz" --> S["Game server<br/>Node 22"]
-  B -- "signs: register, join, refund, collect" --> P["Solana program<br/>slana-lean (Pinocchio)"]
-  S -- "signs: settle_session, sweep_loot" --> P
-  A["Admin CLI / panel"] -- "signs: initialize, set_token_mint, arenas" --> P
-  P --- V[("Arena vaults<br/>$SLANA, SPL Token / Token-2022")]
+  W["Browser wallet (EIP-6963)"] -- "approve + join(arenaId)" --> A["ElymumArena<br/>(vault per arena)"]
+  W -- "mintAllowlist / mintPublic (HYPE)" --> N["ElymumNFT"]
+  B["Browser (apps/web)"] <-- "WebSocket, binary, 30 Hz" --> S["Game server (apps/server)"]
+  S -- "settle(batch) at the bell<br/>sweepLoot (burn)" --> A
+  S -- "balanceOf: who may play" --> N
+  A -- "payout - fee" --> W
+  A -- "fee" --> F["Fee wallet"]
 ```
 
-- The server is authoritative for the simulation (movement, eating, splits, bots, loot) and keeps an in-game value
-  ledger and a journal; at the bell it settles every live ticket on-chain.
-- The program enforces the money rules: tickets go into the arena vault, a payout can never exceed the vault, the fee
-  comes only from profit, and the token mint can be set exactly once.
-- Two program crates exist on purpose: `programs/slana-ref` (Anchor 1.2.1) is the IDL source and conformance oracle and
-  is never deployed; `programs/slana-lean` (Pinocchio 0.11) is the deployed program. The same LiteSVM suite runs
-  against both, and CI enforces a size gate and `clippy::arithmetic_side_effects` on the lean crate.
+1. A player signs in with SIWE (free, no transaction), approves the game token and calls `join` on the
+   arena: the entry fee moves into that arena's vault and a session opens.
+2. The server seats the ticket. Value moves between players off chain as they eat each other; a
+   crash-safe journal keeps the books (live values + floor loot + pending payouts = entry fees − payouts).
+3. At the bell the server settles every live ticket of the arena in one `settle` batch. The fee
+   (5 % of profit by default, at most 10 %) goes to the fee wallet; floor loot is burned with `sweepLoot`.
+4. If the server never settles a ticket, the player calls `refund` after 24 h. If a payout transfer
+   fails, the session is finalized with what is `owed` and the player collects it with `refund`.
 
-Details, the money-flow diagram and the invariants: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Tech stack
 
-| Layer | Technology |
-| --- | --- |
-| On-chain | Rust, Pinocchio 0.11 (deployed), Anchor 1.2.1 (reference + IDL), SPL Token / Token-2022, LiteSVM tests |
-| Server | Node 22, TypeScript, `ws` (binary protocol v4), `@solana/web3.js`, tsup |
-| Web | React, Vite, Zustand, Motion, Solana Wallet Adapter (Wallet Standard), Vitest, Playwright |
-| Tooling | pnpm workspaces, GitHub Actions, Docker (single container: server + static web) |
+| Layer | Stack |
+|---|---|
+| Contracts | Solidity 0.8.28 (Shanghai), OpenZeppelin 5.6.1, Hardhat 3, forge-std tests (unit + fuzz) |
+| Client SDK / admin CLI | TypeScript, viem |
+| Game server | Node 22, `ws`, viem, a binary protocol, a crash-safe JSON journal |
+| Web | Vite + React, canvas renderer, motion, synthesized WebAudio; Fraunces, DM Sans, Geist Mono |
+| Tooling | pnpm workspaces, Vitest, Playwright, Docker, GitHub Actions |
 
 ## Project structure
 
-| Path | Contents |
-| --- | --- |
-| `programs/slana-lean` | The deployed Pinocchio program (`target/deploy/slana_lean.so`) |
-| `programs/slana-ref` | Anchor reference (IDL source and test oracle) + the LiteSVM test suite |
-| `packages/shared` | Game rules, binary protocol, arena metadata, token formatting |
-| `packages/sdk` | TypeScript client (PDAs, instruction builders, account reads, fee math) and the admin CLI (`pnpm admin`) |
-| `packages/art` | The risograph coin renderer used by the web client |
-| `apps/server` | Game server: rooms and instances, bots, loot, journal, payout queue, token watcher, site API |
-| `apps/web` | Game client: lobby, ticket flow, HUD, standings, in-game player guide (`/docs`), admin panel |
-| `scripts/` | Build, deploy, localnet and demo scripts |
-| `docs/` | Project overview, architecture, deployment, operations, design specs |
-| `brand/`, `media/` | Brand assets and the scripted gameplay / promo video pipelines |
+| Path | What it is |
+|---|---|
+| `packages/contracts` | `ElymumArena`, `ElymumNFT`, `TestToken`; the committed `src/artifacts.ts` (ABIs, bytecode, pinned runtime code hashes) |
+| `packages/sdk` | viem client: reads, call builders, deploy helpers, Merkle tree, HYPE price, the admin CLI (`pnpm admin`) |
+| `packages/shared` | Game rules, protocol, chains table, arenas, SIWE message, palette |
+| `packages/art` | Coin drawing shared by the web renderer and the films |
+| `apps/server` | The game server (rooms, bots, rounds, ledger, journal, chain gateway, site and admin API, integrity) |
+| `apps/web` | The client: landing, `/wl`, `/collab`, `/mint`, `/play`, `/docs`, `/admin` |
+| `scripts/` | `demo.mjs`, `localnet.mjs`, `localnet-fund.mjs`, `dev-browser.mjs`, `record-walkthrough.mjs` and the Dev Wallet |
+| `brand/` | The brand kit generator and its PNGs (X avatar and banner, OG card, favicons, posts, stickers, arena posters) |
+| `media/` | Film pipelines (promo, gameplay, how-to-play, mint film, roadmap chomp) |
+| `docs/` | [PROJECT](docs/PROJECT.md), [ARCHITECTURE](docs/ARCHITECTURE.md), [DEPLOY](docs/DEPLOY.md), [OPERATIONS](docs/OPERATIONS.md), the spec and the design reference |
 
 ## Getting started
 
-Prerequisites: Node 22+ and pnpm 10 (`corepack enable`). The on-chain parts additionally need Rust, the Agave
-(Solana) CLI with `cargo-build-sbf`, and the Anchor CLI 1.2.1.
+Requirements: Node 22+, pnpm 10 (`corepack enable`).
 
 ```bash
 pnpm install
-pnpm dev             # practice only, no chain: server on :8787, web on http://localhost:5173
-pnpm demo            # full UI on an in-memory fake chain (free tickets, simulated payouts)
-pnpm demo:localnet   # the same UI against a real solana-test-validator (real transactions)
+pnpm demo                       # everything on a fake chain: lobby, sign-in, tickets, rounds, bell
+DEV_FAKE_TOKEN=0 pnpm demo      # the same with the game token unset ("Opening soon" until POST /api/dev/token)
+ROUND_SECONDS=90 pnpm demo      # shorter rounds, to see the bell sooner
+pnpm demo --browser             # also open a Chromium with the Dev Wallet (needs a display)
 ```
 
-- `pnpm demo` starts the server with `NODE_ENV=development DEV_FAKE_CHAIN=1 DEV_FAKE_TOKEN=1`. Any Wallet Standard
-  wallet (Phantom, Solflare, Backpack) can sign in for free; `pnpm demo --browser` opens a Chromium with a built-in
-  dev wallet. The fake chain refuses to start in production or when `PROGRAM_ID` / `SERVER_KEYPAIR` is set.
-- `pnpm demo:localnet` builds what is missing, starts a validator with the program, a test token and the default arenas,
-  then runs the server and web against it. Fund a wallet with `scripts/localnet-fund.sh <ADDRESS>`.
-- `pnpm demo:record` re-records the walkthrough video with Playwright and ffmpeg.
+`pnpm demo` starts the server with `NODE_ENV=development DEV_FAKE_CHAIN=1 DEV_FAKE_TOKEN=1` and the web
+dev server on http://localhost:5173. Any EVM wallet signs in (no funds needed).
 
-Configuration: copy `apps/server/.env.example` to `apps/server/.env` (and `apps/web/.env.example` for the web build).
-Key variables: `SOLANA_CLUSTER`, `SOLANA_RPC_URL`, `PROGRAM_ID`, `SERVER_KEYPAIR`, `AUTH_SECRET`, `PUBLIC_URL`,
-`DATA_DIR`. Without `PROGRAM_ID` the server runs in practice-only mode.
-
-**Docker:**
+### A real local chain
 
 ```bash
-docker build -t slana .
-docker run -p 8787:8787 -v slana-data:/data --env-file apps/server/.env slana   # http://localhost:8787
+pnpm demo:localnet              # hardhat node + contracts deployed with the SDK + the production server
+pnpm demo:localnet --browser    # ... and the Dev Wallet as the contract owner (Hardhat account #0)
+node scripts/localnet-fund.mjs 0xYourAddress     # 10 HYPE + 100,000 test tokens
 ```
+
+`demo:localnet` starts `hardhat node` (chain id 31337), deploys `TestToken`, `ElymumArena` and
+`ElymumNFT` from Hardhat account #0 (the owner and admin), sets the token, creates the four arenas,
+opens the mint and runs the built server with `EVM_RPC_URL`, `SERVER_PRIVATE_KEY` (Hardhat account #1),
+`ARENA_ADDRESS`, `NFT_ADDRESS` and `ADMIN_WALLETS`. To run the chain alone: `pnpm localnet`
+(`--no-token` stops before `setToken`, like a fresh deploy); the server env is written to
+`.localnet/server.env`.
 
 ### Tests
 
 ```bash
-pnpm -r typecheck
-pnpm -r test                 # Vitest: shared, sdk, art, server, web
-pnpm -F @elymum/web build
-scripts/test-program.sh      # LiteSVM suite against the Anchor reference and the lean program
-scripts/localnet.sh --no-token && pnpm -F @elymum/server e2e   # end-to-end on a real local validator
+pnpm typecheck && pnpm test     # every package
+pnpm contracts:build            # compile + export packages/contracts/src/artifacts.ts (commit it)
+pnpm contracts:test             # forge-std unit and fuzz tests
+pnpm -F @elymum/server e2e      # a real hardhat node + the real server: deploy, register, setToken, play, settle
 ```
 
-The end-to-end test runs the real admin CLI and real tickets on a local validator: it initializes without a token, sets
-the token, creates arenas, buys four tickets, has a player eaten, and checks at the bell that every fee matches the SDK
-math, the fee wallet grows by exactly the fees, and burned loot reduces supply by exactly tickets minus payouts.
+CI (`.github/workflows/ci.yml`) runs an English-only guard, builds the contracts and fails when the
+exported artifacts are out of date, runs every package's typecheck and tests, builds the server and
+the web, and builds the Docker image.
 
-### Deploying the program
+### Deploying
 
-The order is fixed: **deploy, then `init`, then (later) `set-token`, then `create-arena --defaults`**. Build with
-`bash scripts/build-lean.sh` and deploy with `scripts/deploy-lean.sh`, never `anchor deploy` (it would ship
-the much larger Anchor reference). Full runbook and mainnet costs: [docs/DEPLOY.md](docs/DEPLOY.md); day-to-day operations (fee wallet,
-loot burn, pausing, key rotation, backups, integrity): [docs/OPERATIONS.md](docs/OPERATIONS.md).
+Deploy the server (Docker, e.g. on Render), then deploy the contracts from your own wallet in
+`/admin`: Deploy Arena → Deploy NFT → register both → set the token (when it exists) → create the
+arenas → publish the allowlist → open the mint. Step by step: [docs/DEPLOY.md](docs/DEPLOY.md).
+Day-to-day running (gas for the server key, the allowlist, the $1 price, pausing, ownership):
+[docs/OPERATIONS.md](docs/OPERATIONS.md).
 
 ## Security and trust model
 
-- Non-custodial for players: players sign their own tickets, refunds and collections from their wallet. Entry fees
-  sit in program-owned arena vaults, never in a server wallet.
-- Bounded server trust: the game outcome (who ate whom, value at the bell) trusts the authoritative server, but the
-  server key can only settle open tickets and burn round-end floor loot from a vault; it cannot touch the fee wallet or
-  the settings. The admin can rotate the server key.
-- Bounded fees: the fee rate shown at ticket purchase is an on-chain upper bound and can never exceed 10 %.
-- Immutable token: the mint is set once and cannot be changed afterwards.
-- Admin panel safety: the program id is pinned in the bundle, the cluster is derived from the RPC genesis hash,
-  every transaction is previewed before the wallet prompt, and the token address must be typed twice.
-- Keys: never commit keypairs or `.env` files; `.gitignore` covers `.env*`, `*-keypair.json`, `*.keypair.json`,
-  `id.json`, `keys/`, `*.pem` and `*.key`.
+- Players buy tickets, collect what they are owed and refund unsettled tickets after 24 h. They
+  cannot settle tickets or undo a result.
+- The server key settles tickets (any payout up to the arena's vault) and burns floor loot. It cannot
+  move tokens to a wallet of its choice, change the config or touch the fee wallet. Because the owner can
+  replace it, trusting the server means trusting the owner. Protect it; it only needs a little HYPE.
+- The owner (Ownable2Step) sets the token once, the fee (at most 10 %), the fee wallet, the server
+  authority, arenas and pause; on the NFT, the phase, the allowlist root, the price within the bounds,
+  limits, metadata and withdrawals. The owner cannot change an open ticket's fee or the token once set.
+- The game outcome is trusted: who ate whom is decided by the server. Integrity detectors flag
+  collusion and bot-like play for review; an optional auto-hold keeps high-risk payouts for a decision.
+
+More: [docs/ARCHITECTURE.md#trust-model](docs/ARCHITECTURE.md#trust-model).
 
 ## Documentation
 
-[Project overview](docs/PROJECT.md) · [Architecture](docs/ARCHITECTURE.md) · [Deployment](docs/DEPLOY.md) ·
-[Operations](docs/OPERATIONS.md) · [Design (Slana Simple)](docs/specs/2026-10-16-slana-simple-design.md) ·
-[Brand](brand/README.md)
+[Project overview](docs/PROJECT.md) · [Architecture](docs/ARCHITECTURE.md) · [Deploy](docs/DEPLOY.md) ·
+[Operations](docs/OPERATIONS.md) · [Spec: Elymum on Elysium](docs/specs/2026-10-29-elymum-on-elysium.md) ·
+[Brand kit](brand/README.md) · [Films](media/README.md)
 
 ## License
 
-[MIT](LICENSE)
-
----
-
-Built by Furkan Akdogan ([@furkan3152](https://github.com/furkan3152)).
+MIT, see [LICENSE](LICENSE).

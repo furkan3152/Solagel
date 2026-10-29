@@ -6,7 +6,7 @@
 #   arena  waits for a round to open, then plays it to the bell (about 6 min);
 #   spill  waits for a fresh round (joins open), is eaten by a bot, buys back in;
 #   held   waits for the final minute of a round, buys a held ticket, joins the next round.
-# Penny Pond rounds are wall-clock aligned, so the whole run takes about 25-35 minutes.
+# Asphodel Meadow rounds are wall-clock aligned, so the whole run takes about 25-35 minutes.
 set -u
 cd "$(dirname "$0")/../../.."
 C=media/gameplay/capture

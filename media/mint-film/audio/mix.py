@@ -1,4 +1,4 @@
-"""Mixes a short film's soundtrack (the Free Mint film, Roadmap Chomp): score + SFX cues + VO.
+"""Mixes a short film's soundtrack (the mint film, Roadmap Chomp): score + SFX cues + VO.
 
   python mix.py PROJECT_DIR      (PROJECT_DIR/timeline.json: duration, "vo": [{id, at}], "sfx": [cues])
   -> PROJECT_DIR/cache/audio/premix.wav (then media/gameplay/render/finalize.py, see render.sh)

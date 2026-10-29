@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Video B: "How to play Slana" (about 2:25). Narrated, in seven chapters. The layout follows the
+// Video B: "How to play Elymum" (about 2:25). Narrated, in seven chapters. The layout follows the
 // voiceover: each line gets its stretch of picture, and the chapter cards sit between them.
 // Footage and the render kit are shared with the gameplay video (media/gameplay).
 // Writes cache/edit/howto.json and howto-music.json.
@@ -10,6 +10,8 @@ import { fileURLToPath } from 'node:url';
 import { Edit, events, mark, take } from '../gameplay/render/timeline.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+// the site's host on the end card (no domain is hard-coded: set SITE_HOST to the PUBLIC_URL host)
+const SITE = (process.env.SITE_HOST || 'elymum.io').toUpperCase();
 const OUT = resolve(HERE, 'cache/edit');
 mkdirSync(OUT, { recursive: true });
 const DUR = JSON.parse(readFileSync(resolve(HERE, 'cache/vo-raw/durations.json'), 'utf8'));
@@ -49,7 +51,7 @@ const chips = [];
 const say = (id, t) => { e.voice(id, t); return t + DUR[id]; };
 const caption = (t, dur, text, o = {}) => { e.add('caption', t, dur, { text, y: o.y ?? 896, size: o.size ?? 48, ...o }, 45); e.cue('pop', t + 0.05, 0.22); };
 const kick = (t, text, dur = 2.4) => { e.add('tag', t, dur, { text, x: 72, y: 72, size: 26, kick: true, dot: true, scramble: true }, 20); e.cue('tick', t + 0.05, 0.25); };
-const key = (t, dur, keys, label, presses, o = {}) => { e.add('key', t, dur, { keys, label, x: o.x ?? 1250, y: o.y ?? 640, presses, plus: o.plus, anchor: o.anchor }, 46); for (const p of presses) e.cue('tick', t + (Array.isArray(p) ? p[0] : p), 0.45); };
+const key = (t, dur, keys, label, presses, o = {}) => { e.add('key', t, dur, { keys, label, x: o.x ?? 1250, y: o.y ?? 640, presses, plus: o.plus, pin: o.pin }, 46); for (const p of presses) e.cue('tick', t + (Array.isArray(p) ? p[0] : p), 0.45); };
 const boxSrc = (s, t, dur, x0, y0, x1, y1, label, o = {}) => {
   const [a, b] = e.project(s, t + 0.1, x0, y0), [c, d] = e.project(s, t + 0.1, x1, y1);
   e.add('box', t, dur, { x: a, y: b, w: c - a, h: d - b, label, labelBelow: o.below, seed: o.seed || 3, color: o.color }, 40);
@@ -77,8 +79,8 @@ for (let i = 0; i < 4; i++) e.cue('stamp', 1.3 + i * 0.14 + 0.1, 0.25);
 say('intro', 0.75);
 e.at(3.15);
 
-// ── 01 · what Slana is ──
-let t = chapter(1, 'What Slana is', 'On-chain coin arenas on Solana.');
+// ── 01 · what Elymum is ──
+let t = chapter(1, 'What Elymum is', 'On-chain coin arenas on Elysium.');
 let end = say('c1', t);
 const eats = events(A, 'value', (v) => v.reason === 'eat');
 // the bell and the receipt come from arena2 (a last gulp before the bell, till 3,250)
@@ -96,10 +98,10 @@ const tBell = events(A2, 'roundResult')[0].t, tPaid = mark(A2, 'paid');
   e.cue('gulp', b.start + 0.8, 0.4);
   e.cue('stamp', e.timeOf(c, tPaid) + 0.3, 0.6).cue('kaching', e.timeOf(c, tPaid) + 0.3, 0.4);
 }
-chips.push([1, 'WHAT SLANA IS', t, e.t]);
+chips.push([1, 'WHAT ELYMUM IS', t, e.t]);
 
-// ── 02 · start free in Practice ──
-t = chapter(2, 'Start free', 'No wallet. No tokens. Just bots.', { stamp: 'FREE' });
+// ── 02 · warm up in Practice ──
+t = chapter(2, 'Warm up', 'No tokens at stake. Just bots.', { stamp: 'PRACTICE' });
 end = say('c2', t);
 {
   const src = has(C) ? C : P;
@@ -108,11 +110,11 @@ end = say('c2', t);
     { take: src, from: 0.6, d: 5.4, speed: 0.75, cam: [[0, 960, 540, 1.0], [1.2, 520, 560, 1.75], [5.4, 520, 560, 1.8]] },
     { take: P, from: mark(P, 'enter') + 2.8, d: 4.6, zoom: 1.5, lag: 0.8 },
   ]);
-  boxSrc(a, a.start + 1.4, 2.6, 272, 320, 702, 406, 'PRACTICE / FREE', { seed: 4 });
+  boxSrc(a, a.start + 1.4, 2.6, 272, 320, 702, 406, 'PRACTICE / NO STAKE', { seed: 4 });
   caption(a.start + 1.6, 3.0, 'Pick *Practice*, press Start practice.');
   caption(b.start + 0.4, b.dur - 0.5, 'No wallet. No tokens. *Just bots.*');
 }
-chips.push([2, 'START FREE', t, e.t]);
+chips.push([2, 'WARM UP', t, e.t]);
 
 // ── 03 · controls ──
 t = chapter(3, 'Controls', 'Steer, split, tip mass, stickers, chat.', { titleSize: 120 });
@@ -307,13 +309,13 @@ end = say('c7', t);
 }
 chips.push([7, 'TIPS', t, e.t]);
 
-// ── the NFT ── one short line and the NFT card (media/free-mint/scenes/nft.js): free mint, WL open
+// ── the NFT ── one short line and the NFT card (media/mint-film/scenes/nft.js): $1 in HYPE, WL first
 {
   const tN = e.t, lead = 0.1, vo = 0.2;
   e.add('wipe', tN - 0.35, 0.7, { colors: ['pink', 'card'] }, 90);
   e.cue('paper', tN - 0.35, 0.45);
   const ND = vo + DUR.nft + 0.7;
-  // beats follow the line: "And the Slana NFT?" / "A free mint." / "WL open at slana dot io slash W L."
+  // beats follow the line: "And the Elymum NFT?" / "It mints for one dollar, in HYPE." / "The WL comes first, ..."
   e.add('nft', tN, ND, { lead, times: { deal: [0, 0.12, 0.24], l1: 0.1, l2: vo + 1.25, flip: [vo + 1.45, vo + 1.75, vo + 2.05], ticket: vo + 3.2, underline: vo + 4.9 } }, 50);
   say('nft', tN + lead + vo);
   const b = tN + lead;
@@ -327,7 +329,7 @@ chips.push([7, 'TIPS', t, e.t]);
 const tOut = e.t;
 e.add('wipe', tOut - 0.35, 0.7, { colors: ['ink', 'card'] }, 90);
 e.cue('paper', tOut - 0.35, 0.45);
-e.add('card', tOut, 4.3, { variant: 'outro', kicker: 'SLANA / ON SOLANA', tagline: 'Eat. Grow. Last the round.', tagAccent: 4, tagAt: 0.75, tagGap: 0.42, foot: 'START FREE IN PRACTICE  /  SLANA.IO  /  @SLANAIO', footAt: 2.0, footY: 812 }, 50);
+e.add('card', tOut, 4.3, { variant: 'outro', kicker: 'ELYMUM / ON ELYSIUM', tagline: 'Eat. Grow. Last the round.', tagAccent: 4, tagAt: 0.75, tagGap: 0.42, foot: `MINT AN EMBLEM, THEN PLAY  /  ${SITE}  /  @ELYMUM`, footAt: 2.0, footY: 812 }, 50);
 for (let i = 0; i < 3; i++) e.cue('stamp', tOut + 0.75 + i * 0.42 + 0.1, 0.55);
 say('outro', tOut + 0.55);
 e.at(tOut + 4.3);

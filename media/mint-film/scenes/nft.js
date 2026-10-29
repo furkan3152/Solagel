@@ -1,18 +1,21 @@
-/* Slana NFT kit: the sealed riso cards, the hero coin (brand/x/pfp.png) and the NFT beat.
+/* Elymum NFT kit: the sealed cards, the hero coin (the X profile coin, brand/out/x) and the NFT beat.
  *
  * Shared by the promo (media/promo/scenes), the gameplay kit's motion graphics (the vertical promo
- * and how-to-play, media/gameplay/motion) and the Free Mint film (media/free-mint). It draws with the
+ * and how-to-play, media/gameplay/motion) and the mint film (media/mint-film). It draws with the
  * promo's drawing kit (media/promo/scenes/lib.js: inks, type, tickets, stamps, coins) and the art
- * package bundle (window.SlanaArt). Deterministic: every pose is a pure function of time.
+ * package bundle (window.ElymumArt). Deterministic: every pose is a pure function of time.
  *
- * Facts on screen (keep them exactly so): the Slana NFT is a FREE MINT, the WL is open at
- * slana.io/wl. No price other than free, no supply, no dates, no perks.
+ * Facts on screen (keep them exactly so): the Elymum NFT mints at $1 IN HYPE, the WL is open at
+ * <site>/wl (SITE_HOST). No price other than "$1 in HYPE", no supply, no dates, no perks.
  */
 'use strict';
+// The site's host for the films' on-screen address (no domain is hard-coded: the site is served at
+// whatever PUBLIC_URL says). The renderers pass it as ?site=<host> from the SITE_HOST env var.
+window.SITE_HOST = window.SITE_HOST || new URLSearchParams(location.search).get('site') || 'elymum.io';
 (() => {
-  const A = () => window.SlanaArt;
+  const A = () => window.ElymumArt;
 
-  /* ───────────── the hero coin (brand/x/generate.mjs heroCoin, ported) ─────────────
+  /* ───────────── the hero coin (the X profile coin, ported) ─────────────
    * A gold coin with a reeded edge, a teal misregistered pass, the inner rim, the halftone shade,
    * the paper shine, the star on the forehead and the oversized face.
    * o.mouth: 0 = closed (the pfp's grin), > 0 = a Pac-Man wedge opened by that fraction (the
@@ -174,17 +177,17 @@
       }
     }
     // inner frame
-    ctx.strokeStyle = 'rgba(245,238,220,0.55)'; ctx.lineWidth = w * 0.008; ctx.setLineDash([w * 0.025, w * 0.018]);
+    ctx.strokeStyle = 'rgba(246,238,218,0.55)'; ctx.lineWidth = w * 0.008; ctx.setLineDash([w * 0.025, w * 0.018]);
     rrect(ctx, -w / 2 + w * 0.06, -h / 2 + w * 0.06, w - w * 0.12, h - w * 0.12, w * 0.04); ctx.stroke();
     ctx.setLineDash([]);
     // the band and the mark
     ctx.fillStyle = C.teal;
     ctx.fillRect(-w / 2, -h * 0.07, w, h * 0.14);
-    ctx.fillStyle = 'rgba(27,23,50,0.35)';
+    ctx.fillStyle = 'rgba(4,24,28,0.35)';
     ctx.fillRect(-w / 2, h * 0.07 - 3, w, 3);
     font(ctx, w * 0.068, 500, 'mono'); ctx.letterSpacing = (w * 0.012) + 'px';
     ctx.fillStyle = C.nightInk; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('SLANA NFT', 0, -h * 0.36);
+    ctx.fillText('ELYMUM NFT', 0, -h * 0.36);
     ctx.fillText('SEALED', 0, h * 0.36);
     ctx.restore();
     cardPath(ctx, w, h);
@@ -207,7 +210,7 @@
       else { ctx.save(); ctx.beginPath(); ctx.rect(s < 0 ? -R * 1.4 : 0, -R * 1.4, R * 1.4, R * 2.8); ctx.clip(); blobPath(ctx, 0, 0, R, seed, 0.1, 40); }
       ctx.fillStyle = C.pinkInk; ctx.fill();
       ctx.beginPath(); ctx.arc(0, 0, R * 0.7, 0, TAU); ctx.fillStyle = C.pink; ctx.fill();
-      ctx.lineWidth = R * 0.07; ctx.strokeStyle = 'rgba(27,23,50,0.35)'; ctx.stroke();
+      ctx.lineWidth = R * 0.07; ctx.strokeStyle = 'rgba(4,24,28,0.35)'; ctx.stroke();
       ctx.save();
       ctx.fillStyle = C.pinkInk;
       starPath5(ctx, R * 0.36, R * 0.16);
@@ -252,7 +255,7 @@
     sunburst(ctx, 0, wy + wh * 0.55, wh * 1.2, L.flood, 16, (t || 0) * 0.15 + (o.i || 0), 0.45);
     ctx.globalCompositeOperation = 'source-over';
     // halftone ground
-    ctx.fillStyle = 'rgba(27,23,50,0.16)';
+    ctx.fillStyle = 'rgba(4,24,28,0.16)';
     const sp = w * 0.04;
     for (let yy = wy + wh * 0.62; yy < wy + wh + sp; yy += sp) for (let xx = wx; xx < wx + ww + sp; xx += sp) {
       const ox = ((Math.round(yy / sp) % 2) * sp) / 2;
@@ -270,12 +273,12 @@
     ctx.restore();
     rrect(ctx, wx, wy, ww, wh, w * 0.035);
     ctx.lineWidth = w * 0.012; ctx.strokeStyle = C.ink; ctx.stroke();
-    // header: SLANA NFT and the mark
+    // header: ELYMUM NFT and the mark
     font(ctx, w * 0.06, 500, 'mono'); ctx.letterSpacing = (w * 0.008) + 'px';
     ctx.fillStyle = C.ink; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-    ctx.fillText('SLANA NFT', wx + w * 0.01, -h / 2 + h * 0.068);
+    ctx.fillText('ELYMUM NFT', wx + w * 0.01, -h / 2 + h * 0.068);
     brandMark(ctx, wx + ww - w * 0.04, -h / 2 + h * 0.066, w * 0.035, 1, 1);
-    // name + the free-mint tag (o.tag === false: the name and the barcode only)
+    // name + the $1-mint tag (o.tag === false: the name and the barcode only)
     font(ctx, w * 0.13, 800, 'display'); ctx.letterSpacing = (-w * 0.003) + 'px';
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     ctx.fillText(L.name, wx + w * 0.01, wy + wh + h * 0.11);
@@ -284,7 +287,7 @@
       rrect(ctx, tx0, ty0, tw0, th0, th0 / 2); ctx.fillStyle = C.pink; ctx.fill();
       font(ctx, w * 0.052, 500, 'mono'); ctx.letterSpacing = (w * 0.008) + 'px';
       ctx.fillStyle = C.ink; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('FREE MINT', tx0 + tw0 / 2, ty0 + th0 / 2 + 1);
+      ctx.fillText('$1 MINT', tx0 + tw0 / 2, ty0 + th0 / 2 + 1);
     }
     barcode(ctx, wx + ww - w * 0.3, ty0 - h * 0.005, w * 0.3, th0, 11 + (o.i || 0), C.ink);
     cardPath(ctx, w, h);
@@ -292,7 +295,7 @@
   }
   /**
    * A card at (x, y), w x h. o: {i, rot, scale, flip (0 = back, 1 = face), crack (s since the seal
-   * cracked, or null), t, shadow, ghost, tag (false: no FREE MINT tag on the face)}.
+   * cracked, or null), t, shadow, ghost, tag (false: no $1 MINT tag on the face)}.
    */
   function card(ctx, x, y, w, h, o = {}) {
     const flip = clamp(o.flip ?? 0);
@@ -307,7 +310,7 @@
     if (o.shadow !== false) {
       ctx.save();
       ctx.scale(Math.max(0.02, Math.abs(sx)), 1);
-      ctx.fillStyle = `rgba(27,23,50,${0.32 + lift * 0.1})`;
+      ctx.fillStyle = `rgba(4,24,28,${0.32 + lift * 0.1})`;
       ctx.translate(w * 0.045 + lift * w * 0.05, w * 0.05 + lift * w * 0.08);
       cardPath(ctx, w, h); ctx.fill();
       ctx.restore();
@@ -323,7 +326,7 @@
     // the turn darkens the face edge-on
     if (lift > 0.02) {
       cardPath(ctx, w, h);
-      ctx.fillStyle = `rgba(27,23,50,${0.35 * lift * lift})`;
+      ctx.fillStyle = `rgba(4,24,28,${0.35 * lift * lift})`;
       ctx.fill();
     }
     ctx.restore();
@@ -335,7 +338,7 @@
   }
 
   /* ───────────── the WL ticket ───────────── */
-  /** A card ticket: the teal stub reads WL OPEN, the body reads slana.io/wl. p: 0..1 in. */
+  /** A card ticket: the teal stub reads WL OPEN, the body reads <SITE_HOST>/wl. p: 0..1 in. */
   function wlTicket(ctx, x, y, w, h, p, o = {}) {
     if (p <= 0) return;
     const stub = h * 1.02;
@@ -357,7 +360,7 @@
     ctx.restore();
     ticketPath(ctx, 0, 0, w, h, h * 0.12, stub, h * 0.11);
     ctx.lineWidth = Math.max(3, h * 0.025); ctx.strokeStyle = C.ink; ctx.stroke();
-    dashed(ctx, stub, h * 0.16, stub, h * 0.84, 'rgba(27,23,50,0.6)', Math.max(2.5, h * 0.02), [h * 0.06, h * 0.05]);
+    dashed(ctx, stub, h * 0.16, stub, h * 0.84, 'rgba(4,24,28,0.6)', Math.max(2.5, h * 0.02), [h * 0.06, h * 0.05]);
     font(ctx, h * 0.2, 500, 'mono'); ctx.letterSpacing = (h * 0.03) + 'px';
     ctx.fillStyle = C.ink; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('WL', stub / 2, h * 0.36);
@@ -365,7 +368,7 @@
     font(ctx, o.size || h * 0.5, 800, 'display'); ctx.letterSpacing = (-h * 0.01) + 'px';
     ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     ctx.fillStyle = C.ink;
-    const label = o.text || 'slana.io/wl';
+    const label = o.text || `${window.SITE_HOST}/wl`;
     ctx.fillText(label, stub + h * 0.24, h * 0.53);
     // a pink marker underline drawn under the address when it is read out
     const u = clamp(o.underline ?? 0);
@@ -479,17 +482,17 @@
   }
 
   /* ───────────── the NFT beat (about 4.8 s; t = 0 on the downbeat) ─────────────
-   * Three sealed cards are dealt face down, "Slana NFT." / "Free mint." rise, the seals crack and
+   * Three sealed cards are dealt face down, "Elymum NFT." / "$1 in HYPE." rise, the seals crack and
    * the cards turn over one by one, then the WL ticket lands with its stamp. Landscape or portrait.
    *
    * Options (all optional; leaving them out draws the beat exactly as above):
    *   out      time the beat starts to leave
    *   times    beat times (BEAT_T keys)
    *   kicker   the pill's text
-   *   plain    the plain mention instead: the cards dealt face up with no FREE MINT tag, one
+   *   plain    the plain mention instead: the cards dealt face up with no $1 MINT tag, one
    *            headline line, no WL ticket, on the promo's paper stock (ink type on a light
    *            ground, so the brand mark's pink disc stays legible). Its own fields:
-   *            {head: 'Slana NFTs.', layout: {...beatLayout overrides}} */
+   *            {head: 'Elymum NFTs.', layout: {...beatLayout overrides}} */
   const BEAT_T = { deal: [0.0, 0.12, 0.24], l1: 0.08, l2: 1.2, flip: [1.2, 1.5, 1.8], ticket: 1.95, underline: 3.75 };
   function beatLayout() {
     if (H > W) {
@@ -530,9 +533,9 @@
       card(ctx, x, y, L.cw, L.ch, { i: o.cardSet ? o.cardSet[i] : i, rot: rot * k + (1 - k) * (i - 1) * 0.5, flip: fl, crack, t, scale: sc });
     });
     // kicker + headline
-    pill(ctx, o.kicker || 'COMING SOON / SLANA NFT', L.kx, L.ky, L.portrait ? 26 : 24, t, T.l1, { align: L.align === 'center' ? 'center' : 'left' });
-    riseLine(ctx, 'Slana NFT.', L.hx, L.hy1, L.hs, C.card, t, T.l1, { align: L.align, out });
-    riseLine(ctx, 'Free mint.', L.hx, L.hy2, L.hs, C.mustard, t, T.l2, { align: L.align, out });
+    pill(ctx, o.kicker || 'COMING SOON / ELYMUM NFT', L.kx, L.ky, L.portrait ? 26 : 24, t, T.l1, { align: L.align === 'center' ? 'center' : 'left' });
+    riseLine(ctx, 'Elymum NFT.', L.hx, L.hy1, L.hs, C.card, t, T.l1, { align: L.align, out });
+    riseLine(ctx, '$1 in HYPE.', L.hx, L.hy2, L.hs, C.mustard, t, T.l2, { align: L.align, out });
     // the ticket and its stamp
     const tp = E.outBack(prog(t, T.ticket, T.ticket + 0.45), 1.4) * (out != null ? 1 - E.inCubic(prog(t, out, out + 0.3)) : 1);
     const [tx, ty, tw0, th] = L.tk;
@@ -560,7 +563,7 @@
       card(ctx, x, y, L.cw, L.ch, { i: o.cardSet ? o.cardSet[i] : i, rot: rot * k + (1 - k) * (i - 1) * 0.5, flip: 1, t, scale: sc, tag: false });
     });
     pill(ctx, o.kicker || 'COMING SOON', L.kx, L.ky, L.portrait ? 26 : 24, t, T.l1, { align: L.align === 'center' ? 'center' : 'left', lip: C.pink });
-    riseLine(ctx, P.head || 'Slana NFTs.', L.hx, L.hy1, L.hs, C.ink, t, T.l1, { align: L.align, out, shadow: C.pink });
+    riseLine(ctx, P.head || 'Elymum NFTs.', L.hx, L.hy1, L.hs, C.ink, t, T.l1, { align: L.align, out, shadow: C.pink });
   }
 
   window.NFT = { heroCoin, card, cardFront, cardBack, waxSeal, wlTicket, pinkStock, sunburst, inkText, riseLine, pill, drawBeat, BEAT_T, lookOf, edgePath };

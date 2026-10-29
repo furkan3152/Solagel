@@ -1,4 +1,4 @@
-"""Voiceover for the Free Mint film: the promo's punchy read (Kokoro af_heart, per-line speeds).
+"""Voiceover for the mint film: the promo's punchy read (Kokoro af_heart, per-line speeds).
 
   python tts.py --models DIR --out DIR [--voice af_heart] [--only id,id]
 

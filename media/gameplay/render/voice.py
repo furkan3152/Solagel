@@ -1,4 +1,4 @@
-"""The Slana voice: Kokoro TTS (local ONNX) with fixed pronunciations, spoken rhythm and auditions.
+"""The Elymum voice: Kokoro TTS (local ONNX) with fixed pronunciations, spoken rhythm and auditions.
 
 Shared by the promo (media/promo/audio/tts.py) and the how-to-play video
 (media/how-to-play/audio/tts.py); the gameplay mixer's VO chain (render/audio.py) and the promo's
@@ -28,12 +28,12 @@ import soundfile as sf
 
 # words the G2P must not guess (espeak IPA, as Kokoro expects)
 FIXED = {
-    "slana dot io": "slˈɑːnə dˈɑːt ˌaɪ ˈoʊ",
-    "@slanaio": "æt slˈɑːnə ˌaɪ ˈoʊ",
-    "$SLANA": "slˈɑːnə",
-    "Slana's": "slˈɑːnəz",
-    "Slana": "slˈɑːnə",
-    "Solana": "soʊlˈɑːnə",
+    "@elymum": "æt ˈɛlɪməm",
+    "$ELYMUM": "ˈɛlɪməm",
+    "Elymum's": "ˈɛlɪməmz",
+    "Elymum": "ˈɛlɪməm",
+    "Elysium": "ɪlˈɪziəm",
+    "HYPE": "hˈaɪp",
     "NFTs": "ˌɛnˌɛftˈiːz",  # the G2P drops the plural
 }
 PAUSE = {"|": 0.16, "||": 0.38}

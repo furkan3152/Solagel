@@ -1,34 +1,32 @@
-# Slana: the whole project on one page
+# Elymum: the whole project on one page
 
-Slana is a coin-themed, multiplayer Agar.io game on Solana. The money is on-chain and the game itself runs on a server.
-This page explains how the game plays, how money moves, how the code is laid out and how you run and operate it. Each
-section links to the detailed document where one exists.
+Elymum is a cute coin-eats-coin arena game on **Elysium**, Kinetiq's EVM L2 (Arbitrum Orbit, settles to HyperEVM,
+gas token **HYPE**). The money rules live in two Solidity contracts, the game runs on an authoritative server, and an
+**Elymum NFT** minted for **$1 in HYPE** opens the game. This page explains how the game plays, how money moves, how
+the code is laid out and how it is run. The source of truth for everything is
+[the spec](specs/2026-10-29-elymum-on-elysium.md).
 
-> **Status (2026-10-17).** The program is deployed on Solana mainnet and the server runs at https://slana.io
-> (section 7). The program is not initialized yet: the admin wallet signs `initialize` in `/admin`, then sets the
-> $SLANA token and creates the arenas when the token exists. For now the game is admin-only and the public site is a landing
-> page with the NFT allowlist (WL) and collab applications (section 8). The program has not been audited, and a game
-> played with a token of real value may need a licence where you operate.
+> **Status (2026-10-29).** The project moved to Elysium: the contracts, the
+> SDK, the server's EVM gateway, SIWE sign-in and the mint system are built, and the interface is being redrawn in the
+> Ring Storybook language. The flow is **WL → Mint → Play**: for now the public site collects WL applications; the
+> owner deploys every contract from their own wallet in `/admin`. Mainnet launches on Nov 9; until then everything
+> runs on Elysium Testnet. The contracts have **not been audited**, and a game played with a token of real value may
+> need a licence where you operate.
 
 ---
 
 ## 1. The game in 30 seconds
 
 - You are a coin. Eat food and smaller coins to grow, and run from bigger ones.
-- Practice is free. It needs no wallet and no token, you play with bots, nothing touches the chain, and there are
-  two leagues, Rookie and Pro.
-- Arenas are paid rooms with a fixed entry fee in $SLANA.
-  - Your till starts at the entry fee.
-  - Eat a player and their tokens move into your till.
-- Rounds: an arena round lasts 5 minutes on the wall clock and is the same for every arena.
-  - There is no cash-out.
-  - When the bell rings, everyone still alive is paid their till on-chain, and a fee is taken from the profit only.
-- Re-entry: if you are eaten, you can buy back in at the same fee while joins are open. Joins close in the last minute
-  of a round.
-- One simple model: no NFT, no seasons, no prizes. Four arenas, open to everyone, differ only by their entry fee, and
-  the fee is a flat 5 % of profit.
-- The token is set after deploy: until the admin sets the $SLANA mint on-chain (once), the arenas read "Opening
-  soon" and only practice is open.
+- Practice rooms have bots, two leagues (Rookie and Pro) and touch nothing on chain.
+- Arenas are paid rooms with a fixed entry fee in `$ELYMUM` (the game token the owner sets after deploy).
+  - Your value starts at the entry fee; eat a player and their value moves to you.
+- Rounds: 5 minutes on the wall clock, the same for every arena. No cash-out: at the bell everyone still alive is
+  paid their value on chain, minus a fee on profit only.
+- Re-entry: eaten? Buy back in at the same fee while joins are open (they close in the final minute).
+- The NFT: the Elymum NFT (an emblem) mints for $1 in HYPE, allowlist first, then public. The owner decides who
+  may play: admins only, NFT holders, or everyone.
+- The token is set after deploy: until the owner sets it on the arena (once), the arenas read "Opening soon".
 
 ## 2. Game mechanics
 
@@ -81,7 +79,7 @@ section links to the detailed document where one exists.
 | Eaten | you get 0 for that ticket; buy back in at the same fee while joins are open |
 | Disconnect (AFK) | your cells stay in the arena until they are eaten or the bell rings, so leaving is not an early exit |
 | The bell | every live ticket, connected or AFK, is settled at its current value; the world resets and a new round starts at once |
-| Floor loot at the bell | collected and burned with `sweep_loot` |
+| Floor loot at the bell | collected and **burned** with `sweepLoot` |
 | Exits that still settle at the current value | admin kick and server shutdown (operator actions, not player choices) |
 
 On screen:
@@ -98,299 +96,185 @@ On screen:
 
 | Arena | Entry fee |
 |---|---|
-| Penny Pond | 1,000 $SLANA |
-| Silver Creek | 10,000 $SLANA |
-| Gold Lake | 50,000 $SLANA |
-| Whale Bay | 250,000 $SLANA |
+| Asphodel Meadow | 1,000 `$ELYMUM` |
+| Lethe Shore | 10,000 `$ELYMUM` |
+| Golden Bough | 50,000 `$ELYMUM` |
+| Isles of the Blessed | 250,000 `$ELYMUM` |
 
-These are the defaults created by `pnpm admin create-arena --defaults`, and all four are open to everyone. Each arena can
-hold 300 open tickets. A new 50-player instance opens on the same vault when the existing ones are full. Arenas can be
-created only after the token is set; before that the lobby shows the four defaults as "Opening soon".
+Ids 1 to 4, created from `/admin` → Deploy (or `pnpm admin create-arena --defaults`) once the token is set, all open
+to everyone, 300 open tickets each. A new 50-player instance opens on the same vault when the others are full.
 
 ## 3. Money
 
 ### 3.1 Fees
 
-The fee is charged on profit only, and the rate is fixed when you buy the ticket. It is a flat 5 % by default (500 bps; the
-admin can change it, at most 10 %), and all of it is paid to the fee wallet, which defaults to the admin wallet. There
-is no treasury vault, no season pool and no on-chain burn split; tokens are burned off-chain by hand (the plan is 75 %
-burned, 25 % kept).
+The fee is charged on profit only, at the rate fixed when the ticket was bought: a flat 5 % by default (500 bps; at
+most 10 %), and **all of it goes to the fee wallet** (the owner's choice at deploy).
 
 ```
-profit = max(0, payout - entry_fee)
-fee    = floor(profit x bps / 10 000)        5 % (500 bps) by default; max 10 %
+profit = max(0, payout - entryFee)
+fee    = floor(profit x feeBps / 10 000)
 player = payout - fee
 ```
 
-Example with a 1,000 ticket and a till of 2,000 at the bell: profit 1,000, fee 50 (to the fee wallet), the player gets
-**1,950**.
+Example: a 1,000 ticket worth 2,000 at the bell: profit 1,000, fee 50, the player gets 1,950.
 
 ### 3.2 Where tokens live
 
 ```mermaid
 flowchart LR
-  P["Player wallet"] -- "join_arena: entry fee" --> AV["Arena vault (PDA)"]
-  AV -- "settle_session at the bell: payout - fee" --> P
-  AV -- "settle_session: the whole fee" --> FW["Fee wallet token account"]
-  AV -- "sweep_loot: floor loot at the bell (server key)" --> B(("Burned"))
-  AV -- "sweep_arena: disabled and idle arena (admin)" --> FW
+  P["Player wallet"] -- "join: entry fee" --> V["Arena vault (ElymumArena)"]
+  V -- "settle at the bell: payout - fee" --> P
+  V -- "settle: the whole fee" --> F["Fee wallet"]
+  V -- "sweepLoot: floor loot (server key)" --> B(("Burned"))
+  V -- "sweepArena: disabled, idle arena (owner)" --> F
 ```
 
-- **Two-phase settle.** If a player has no token account, or their account refuses the transfer, the payout stays in
-  the vault as `owed`. The player collects it any time with "Collect payout". A loser cannot undo the result by closing
-  their account.
-- **Refund.** If the server never settles a ticket, the player can refund it themselves after 24 h. On-chain this pays
-  `min(entry fee, vault)`.
-- **Off-chain conservation.** Per arena, the total of live values, floor loot and pending payouts always equals the entry
-  fees taken minus the payouts already settled. The server writes this to a crash-safe journal (write to a temp file, then
-  rename).
+- Two-phase settle: if the payout transfer to a player fails, the session is finalized with what is `owed`, and the
+  player collects it with `refund` at any time.
+- Refund: a ticket the server never settled can be refunded by its player after 24 h (`min(entryFee, vault)`).
+- Off-chain conservation: per arena, live values + floor loot + pending payouts = entry fees − payouts, kept in a
+  crash-safe journal.
 
-### 3.3 The token
+### 3.3 The token and the mint
 
-- The program is deployed and initialized without a token. The admin sets it once with
-  `pnpm admin set-token --mint <CA>`; the same transaction creates the fee wallet's token account.
-- Setting the token is final. The program has no way to change it; a wrong contract address means closing the program and
-  redeploying.
-- The server and the web read the token from the chain: no restart and no rebuild. Until it is set, the server reports
-  `tokenReady: false` and plays practice only, and the arenas show "Opening soon".
-- The fee wallet must keep its token account. If it is closed or unusable, the server holds every settlement (with a loud
-  `!!!` log) until it is recreated.
+- The arena is deployed without a token; the owner sets `$ELYMUM` once (`setToken`, typed twice in `/admin`). It can
+  never change. Until then the server plays practice only and the arenas show "Opening soon"; when it is set the lobby
+  opens the arenas without a reload.
+- The NFT price is held in wei and kept at `MINT_USD_CENTS` (default $1) of HYPE: by the owner's Sync button, or by
+  the server as price keeper inside the owner's bounds (every 5 minutes, only when off by more than 2 %).
+- The allowlist is every approved WL wallet plus every wallet of a submitted collab list; the owner publishes its
+  Merkle root.
 
 ## 4. Architecture
 
-**Hybrid model.** The server runs the real-time physics. The Solana program enforces the money rules. The browser signs
-its own transactions; the server key signs only `settle_session` and `sweep_loot`.
-
-```
-Browser (apps/web)  --WebSocket, binary 30 Hz-->  Game server (apps/server)  --settle / sweep-->  Solana program
-       \__________________ signs join / refund / collect ___________________________/
-```
-
-### 4.1 Repository layout
+**Hybrid model.** The server runs the physics; the contracts enforce the money rules; the browser signs its own
+transactions (approve, join, refund, mint); the server key signs only `settle`, `sweepLoot` and (as keeper)
+`setPrice`. Details: [ARCHITECTURE.md](ARCHITECTURE.md).
 
 | Path | What it is |
 |---|---|
-| `programs/slana-lean` | The deployed program (Pinocchio, `no_std`). The mainnet build is 36,408 bytes and locks ◎0.1858 of rent (the size varies a little with the platform-tools version; CI's size gate prints its own figure and fails above 71,000 bytes). |
-| `programs/slana-ref` | Anchor reference program. It is never deployed; it is the source of the IDL and TypeScript types and the conformance oracle. The LiteSVM test suite runs against both programs (`SLANA_IMPL=ref\|lean`). |
-| `packages/shared` | Game rules (`RULES`), the binary protocol (version 4), arena metadata, the round math, token formatting |
-| `packages/sdk` | TypeScript client: PDAs, instruction builders, account readers, fee math, and the admin CLI (`pnpm admin`) |
-| `packages/art` | The risograph coin drawing used by the web renderer |
-| `apps/server` | Node 22 game server (see 4.3) |
-| `apps/web` | Vite + React client in the "Paper Ticket" design system (see 4.4) |
-| `scripts/` | build, deploy, close, localnet, demo, recorder, IDL sync, program tests |
-| `brand/` | Social art: the X profile picture, banner, previews and the OG card, with their generator (section 9) |
-| `media/` | Sources of the promo, gameplay and how-to-play videos (renders go to `out/videos/`, which git ignores) |
-| `docs/` | This page, [ARCHITECTURE](ARCHITECTURE.md), [DEPLOY](DEPLOY.md), [OPERATIONS](OPERATIONS.md), and the design specs under `docs/specs/` |
+| `packages/contracts` | `ElymumArena`, `ElymumNFT`, `TestToken` (Hardhat 3, Solidity 0.8.28, OpenZeppelin 5.6.1, forge-std tests); `src/artifacts.ts` is committed and pins the runtime code hashes |
+| `packages/sdk` | viem reads, call builders, deploy helpers, call previews, Merkle tree, HYPE price, the admin CLI (`pnpm admin`) |
+| `packages/shared` | Rules (`RULES`), the binary protocol, the chains table, arenas, the SIWE message, the palette |
+| `packages/art` | The coin drawing used by the web renderer and the films |
+| `apps/server` | The game server: rooms, bots, rounds, ledger, journal, `chain/evm.ts`, the price keeper, the site, mint, NFT metadata and admin API, integrity |
+| `apps/web` | The client: landing, `/wl`, `/collab`, `/mint`, `/play`, `/docs`, `/admin`; wallets via EIP-6963 + viem (`src/wallet`) |
+| `scripts/` | `demo.mjs`, `localnet.mjs`, `localnet-fund.mjs`, `dev-browser.mjs`, `record-walkthrough.mjs`, the Dev Wallet (`lib/dev-wallet.mjs`) |
+| `brand/` | The brand kit generator and its PNGs (section 9) |
+| `media/` | Film pipelines (section 10) |
+| `docs/` | This page, ARCHITECTURE, DEPLOY, OPERATIONS, the spec and the design reference |
 
-### 4.2 On-chain program
+**Contract guarantees, in short:** a payout never exceeds the vault; one open ticket per player per arena; a
+settlement cannot replay (the session id must match); the fee rate is fixed at join and capped at 10 %; the token is
+set once; floor loot is only burned; pause blocks joins only. On the NFT: allowlist proofs (Merkle), per-wallet limits,
+excess payment refunded, the keeper prices only inside the owner's bounds, supply only goes down, metadata can be
+frozen forever.
 
-**Instructions, by area:**
-
-| Area | Instructions |
-|---|---|
-| Setup and admin | `initialize` (no token), `set_token_mint` (once), `update_config`, `create_arena`, `update_arena` |
-| Players | `register_player`, `update_profile` |
-| Tickets | `join_arena`, `settle_session` (server), `refund_session` (player: collect what is owed, or refund after 24 h) |
-| Vault sweeps | `sweep_arena` (admin, arena disabled and idle: the vault goes to the fee wallet), `sweep_loot` (server: burns floor loot at each bell) |
-
-**Accounts (PDAs):**
-
-| Account | Seeds |
-|---|---|
-| Config | `config` |
-| Arena | `arena` + id |
-| Arena vault | `vault` + arena |
-| Session | `session` + arena + player |
-| Profile | `profile` + player |
-
-**Main on-chain guarantees:**
-
-- A payout can never exceed the vault.
-- A player has at most one open ticket per arena.
-- Payouts cannot be replayed: the session id is checked.
-- The fee rate is fixed at join and capped at 10 %.
-- The token mint is set once, after deploy, and cannot be changed; mints with a freeze authority and risky Token-2022 extensions are refused.
-- The whole fee is paid to the fee wallet's token account, and a wrong account fails the settlement.
-- Floor loot is only ever burned (`sweep_loot`), never moved to a wallet.
-- A pause blocks joins only; settlements and refunds keep working.
-
-### 4.3 Game server (`apps/server/src`)
-
-| Folder | Role |
-|---|---|
-| `game/` | The world simulation: entities, spatial grid, eating, splitting, viruses, loot, power-ups |
-| `bots/` | Bot brains, personalities and steering |
-| `rooms/` | `manager.ts` (instances, matchmaking, the vault guard), `room.ts` (a room, round end, settlement), `round-clock.ts` (the single round clock), `visibility.ts` |
-| `stake/` | `ledger.ts` (in-game value transfers, loot spill) and `journal.ts` (the crash-safe record of live values, loot, pending settlements and loot sweeps) |
-| `chain/` | `solana.ts`: the token watcher (re-reads the config every 30 s until the token is set), the settlement and loot-burn worker (retries, a two-phase settle, a fee wallet account guard, a sweep resent only after its blockhash expires, and a sweeper that refunds stale tickets). `dev-fake.ts`: an in-memory chain for development. |
-| `net/` | WebSocket gateway: sign-in, join and refusal codes such as `round_closed`, `round_ended`, `no_cashout` and `banned` |
-| `integrity/` | Cheat and collusion detection: per-ticket telemetry, pure detectors, flags, bans, the optional payout auto-hold, `/api/admin/integrity/*` |
-| `http.ts` | REST endpoints: `/api/health`, `/api/rooms`, `/api/leaderboard`, `/api/config`, `/api/auth/*` (nonce, login, me), `/api/pending`, the site API `/api/site/*` and the admin API `/api/admin/*` (section 8) |
-
-Sign-in uses SIWS (Sign-In With Solana) with a nonce that the server issues and checks line by line.
-
-### 4.4 Web client (`apps/web/src`)
-
-| Folder | Role |
-|---|---|
-| `game/` | Engine, network, input, server clock offset, held-ticket auto-join |
-| `render/` | Canvas renderer for the riso world, coins and effects |
-| `ui/` | Screens: `lobby/`, `game/` (HUD, round chip, death sheet, Round over sheet), `profile/`, `news/` (standings), `docs/` (the in-app guide at `/docs`) |
-| `design/` | The "Paper Ticket" design system and motion presets: ticket punch, paper wipe, page turn, stamps |
-| `audio/` | Synthesized WebAudio: mixer buses (master, music, sfx, voice), sound effects, procedural lo-fi music, a speech-synthesis announcer |
-| `solana/` | Wallet adapter and the transaction builders for tickets, refund and collect |
-| `i18n/en.ts` | All UI copy. The project is English-only, and CI enforces it. |
+**Sign-in** is SIWE (EIP-4361): the statement is "Sign in to Elymum. This is free and sends no transaction."; smart
+wallets are verified with ERC-1271 / 6492.
 
 ## 5. Run, test, deploy, operate
 
 ```bash
 corepack enable && pnpm install
-pnpm demo                        # full stack on a fake chain: lobby, sign-in, tickets, rounds (token set)
-DEV_FAKE_TOKEN=0 pnpm demo       # the same with the token unset: "Opening soon" until POST /api/dev/token
-ROUND_SECONDS=90 pnpm demo       # same, with short rounds so you see the bell quickly
-pnpm demo:localnet               # the same UI against a real local validator and the lean program
-pnpm demo:record                 # regenerate the walkthrough video
+pnpm demo                        # full stack on a fake chain (token set)
+DEV_FAKE_TOKEN=0 pnpm demo       # token unset: "Opening soon" until POST /api/dev/token
+ROUND_SECONDS=90 pnpm demo       # short rounds
+pnpm demo:localnet               # hardhat node + contracts deployed with the SDK + the production server
+pnpm demo:record                 # the walkthrough video (fake chain)
 pnpm typecheck && pnpm test      # every package
-pnpm program:test                # LiteSVM suite on both programs, clippy, size gate
+pnpm contracts:build && pnpm contracts:test
+pnpm -F @elymum/server e2e       # real hardhat node + real server, the deploy order end to end
 ```
 
 | Topic | Where |
 |---|---|
-| Keys, the deploy, `init`, `set-token`, `create-arena --defaults` order and the costs | [DEPLOY.md](DEPLOY.md) |
-| Admin CLI, the fee wallet, monitoring, log lines, emergency pause and program close (`scripts/close-program.sh`) | [OPERATIONS.md](OPERATIONS.md) |
+| Elysium details, Render, env vars, the domain, the `/admin` deploy flow, mainnet | [DEPLOY.md](DEPLOY.md) |
+| Server key gas, allowlist, $1 price, pausing, ownership, key rotation, backups, integrity | [OPERATIONS.md](OPERATIONS.md) |
 | Money flow, invariants, trust model, server internals | [ARCHITECTURE.md](ARCHITECTURE.md) |
-
-The admin wallet is `D2Ts7yCiVjedo6uwqpkM44QA8J45NdVU1J3k5m6iWtvm` (`scripts/admin.env`). It is the program's upgrade
-authority and the Config admin. The program is never made immutable, so the admin can close it at any time and reclaim
-its rent.
 
 ## 6. Trust model in one table
 
 | Actor | Can | Cannot |
 |---|---|---|
-| Player | buy tickets, collect what is owed, refund an unsettled ticket after 24 h | settle a ticket, undo a result |
-| Server key | settle tickets with any payout up to the vault balance; burn up to the vault balance of floor loot with `sweep_loot` | touch the fee wallet or the config, move tokens to a wallet |
-| Admin | set the token once, fees (≤ 10 %), arenas, pause, the fee wallet, replace the server key | change the token after it is set, raise an open ticket's fee |
-| Upgrade authority (the admin wallet) | replace or close the program | — |
+| Player | buy tickets, collect what is owed, refund an unsettled ticket after 24 h, mint | settle a ticket, undo a result |
+| Server key | settle tickets with any payout up to the vault; burn floor loot up to the vault; re-price the NFT inside the bounds (if keeper) | move tokens to a wallet of its choice, touch the fee wallet or the config |
+| Owner (Ownable2Step) | token once, fee (≤ 10 %), fee wallet, server authority, arenas, pause, sweeps; NFT phase, root, price, bounds, keeper, limits, metadata, royalty, withdraw | change the token once set, raise an open ticket's fee, take a vault directly |
 
-The game outcome (who ate whom, and each player's value at the bell) trusts the authoritative server. The admin can
-replace the server key, so trusting the server means trusting the admin. `sweep_loot` burns and is capped only by the
-vault balance, the same trust as a payout, so the server key must be protected.
+The game outcome trusts the server, and the owner can replace the server key, so trusting the server means trusting
+the owner. Protect the server key.
 
-
-## 7. Live deployment
+## 7. Deployment
 
 | Item | Value |
 |---|---|
-| Cluster | Solana mainnet-beta |
-| Program id | `5skf5Twyqr8M84dJ8RLGfz1NU6fR3zPDRLUvGd5y7472` |
-| ProgramData | `DXbwrkCGaqZK6mVLBCERoDSFrmbgFrQakpWgaHWeTPpL` (36,408 bytes, ◎0.1858 rent) |
-| Deploy transaction | `4nHjc5fVNMfvopsWnr2LGZBpDLZsdqyKkoLMwfWH6hDeHwpBrtH8gWqJkftLvuAPzPqsBUmurEgR11LRgiVs4bnq` (slot 457,994,653) |
-| Upgrade authority | the admin wallet `D2Ts7yCiVjedo6uwqpkM44QA8J45NdVU1J3k5m6iWtvm` (moved there right after the deploy) |
-| Server key (`Config.server_authority` to be) | `FiXUZ8xUUGDhsvDLjdTLix6EoFrKTZkmhYJRYe4THBdh`, created by the server itself (`SERVER_KEYPAIR=auto`) and kept on the persistent disk; funded with ◎0.1 for settlement fees |
-| Fee wallet | the admin wallet (default of `initialize`) |
-| Config | not initialized yet: next step is `initialize` in `/admin` |
-| Token | not set yet (`set_token_mint` once, when $SLANA exists) |
-
-**Hosting.**
-
-| Piece | Where |
-|---|---|
-| Game server + web (one Docker container) | Render web service `slana` (`srv-db9jejmq1p3s738fsncg`), Frankfurt, Starter plan, auto-deploys the default branch |
-| Persistent disk | 2 GB at `/data`: the server key, the money journal, standings and the site data (WL, collabs, tasks, settings). The Docker entrypoint makes the disk writable for the `node` user |
-| RPC | a QuickNode Solana mainnet endpoint (URL only in the Render environment); the same endpoint is handed to browsers, so restrict it to the slana.io referrer in QuickNode |
-| Domain | slana.io, registered at Vercel; Vercel DNS has `A @ 216.24.57.1` and `CNAME www slana-wo00.onrender.com`; Render holds the custom domain and its TLS certificate. Add `www.slana.io` in Render too for its certificate |
-| Fallback URL | https://slana-wo00.onrender.com |
-
-**Render environment.** `NODE_ENV=production`, `SOLANA_CLUSTER=mainnet-beta`, `SOLANA_RPC_URL`, `PUBLIC_RPC_URL`,
-`VITE_RPC_URL`, `PROGRAM_ID`, `SERVER_KEYPAIR=auto`, `DATA_DIR=/data`, `TOKEN_SYMBOL=$SLANA`,
-`PUBLIC_URL=https://slana.io` (the sign-in domain). Optional: `ADMIN_WALLETS` (defaults to the admin wallet),
-`GAME_PUBLIC=1` (opens the game to everyone), `ROUND_SECONDS` (demos only). A disk-backed Render service restarts briefly
-on every deploy; the journal keeps every value, but players in a room reconnect, so deploy at quiet hours.
-
-**Deploy notes.** The first deploy attempt failed on direct TPU sends; `--use-rpc` through the QuickNode endpoint
-worked. A half-written buffer was closed and its SOL recovered. The temporary deployer key is empty and
-retired; leftover SOL went back to the admin wallet.
+| Chain | **Elysium Testnet** (chain id 99801, RPC `https://testnet-rpc.elysium.kinetiq.xyz`, faucet https://elysium.kinetiq.xyz/testnet-faucet) until mainnet (Nov 9; its RPC and explorer go into `EVM_RPC_URL` / `EXPLORER_URL` when Kinetiq publishes them) |
+| Contracts | deployed by the owner from `/admin` → Deploy and registered with the server (`DATA_DIR/contracts.json`) |
+| Server key | `SERVER_PRIVATE_KEY=auto`, on the persistent disk; pays gas in HYPE |
+| Admins | `ADMIN_WALLETS` = the owner's 0x address (no default) |
+| Hosting | one Docker container (game server + web) on Render with a persistent disk at `/data` |
+| Domain | the site is served at `PUBLIC_URL` (your current domain); elymum.io can be set later by changing `PUBLIC_URL` / `VITE_PUBLIC_URL` and the DNS |
 
 ## 8. Website, allowlist, collabs and the admin panel
 
-Design source: `docs/specs/2026-10-17-slana-site-wl-collab-design.md`.
-
 | Route | Who | What |
 |---|---|---|
-| `/` | everyone | Animated landing in the vivid Paper Ticket style: living coins, the wordmark, how a round works, the coin gallery, the NFT "coming soon" teaser, FAQ, X @slanaio. CTAs: Join the WL, Collab |
-| `/wl` | everyone | NFT allowlist: a stepper of admin-defined tasks (follow @slanaio, post about Slana, like/repost/reply to the launch post, X handle, Solana wallet). The wallet is proven by a free sign-in signature; one entry per wallet and per X handle; a shareable riso ticket card |
-| `/collab` | communities | fhecat-style flow: apply (community, type, members, community X, your X, Discord, role, post link, pitch) → in review → approved with spots and a deadline → raffle on X → add winners' Solana wallets (paste a list) → submit with the raffle link (locks) |
-| `/play` | admin only (for now) | The game. The server refuses every room join from non-admin sessions with `game_closed` until `gamePublic` is switched on |
-| `/admin` | admin wallet | Chain: status, `initialize`, set token, arenas, config, pause, sweep. Site: Play, WL review (approve/reject/bulk/notes/CSV), Tasks editor (add, edit, reorder, launch post link), Collabs (approve with spots and deadline, extend, unlock, wallets, duplicate flags, CSV), Integrity (flags, bans, held payouts, detector settings), Settings (`wlOpen`, `collabOpen`, `gamePublic`, X handle) |
+| `/` | everyone | The landing in the Ring Storybook style: the ring at dawn, the coins, how a round works, the NFT plate, the arenas, FAQ, X @elymum. CTAs: Join the WL, Collab |
+| `/wl` | everyone | "Three small chores": the admin-defined steps (follow @elymum, repost the pinned post, connect an EVM wallet with a free SIWE signature), one entry per wallet and per X handle, a shareable boarding pass |
+| `/collab` | communities | Apply → in review → approved with spots and a deadline → raffle on X → paste the winners' EVM wallets → submit (locks) |
+| `/mint` | everyone | The mint after dark: phase, eligibility and proof, quantity, price in HYPE with its USD value; minted emblems and a Play button when the game is open to holders |
+| `/play` | per `gameAccess` | The game: admins only, holders, or everyone |
+| `/admin` | `ADMIN_WALLETS` | Launch, Deploy, Mint, Arena, Play, WL, Tasks, Collabs, Integrity, Settings (OPERATIONS.md) |
 | `/docs` | everyone | The player guide |
 
-**Admin panel safety.** The program id is pinned in the bundle and signing is blocked if the server reports another one;
-the cluster comes from the RPC's genesis hash, with a MAINNET banner; every transaction is shown before the wallet prompt;
-the token address must be typed twice; an admin transfer needs the new address retyped and rejects obvious mistakes; a
-double click cannot send twice. Site admin endpoints require a sign-in session whose wallet is in `ADMIN_WALLETS`.
+**Admin panel safety:** the wallet must be on the server's chain and be the contract owner; every transaction is
+previewed (function, arguments, value, network, signer) before the wallet prompt; the token address is typed twice;
+double clicks cannot send twice; mainnet shows a red MAINNET banner.
 
-**Integrity.** The **Integrity** tab of `/admin` shows cheat and collusion flags from arena play (repeated value between
-the same wallets, eject and suicide feeding, several wallets on one IP or browser, bot-like input, round-bell patterns),
-each with a score, its evidence and a timeline of value transfers. The admin can ban a wallet from paid arenas (error
-`banned`; practice still works) and unban it. An optional auto-hold (off by default) keeps a high-risk payout in the
-journal for review; the admin releases it or settles it at 0 with a reason, and the books stay balanced. Nothing on chain
-changes. Details: [OPERATIONS.md](OPERATIONS.md#integrity-cheat-and-collusion-detection).
-
-**Site data.** JSON files under `/data/site/` (written atomically). WL and collab tasks are verified by hand: there is no
-X API. Rate limits, a honeypot field and strict link and address validation keep spam out.
+**Integrity:** cheat and collusion flags from arena play (repeated value between wallets, feeding, shared IP or
+browser, bot-like input, round-bell patterns), bans from paid arenas and an optional auto-hold of high-risk payouts.
+Details: [OPERATIONS.md](OPERATIONS.md#integrity-cheat-and-collusion-detection).
 
 ## 9. Brand
 
-- Look: the "Paper Ticket" style, riso print on bright paper, ink misregistration (pink and teal ghosts), halftone, tickets,
-  stamps and tape, cute coin characters.
-- Palette (`docs/design/palette.md`, single source `packages/shared/src/palette.ts`): ink `#1B1732`, paper
-  `#FCF4DF`, card `#FFFDF6`, riso pink `#FB2F85`, riso teal `#01ACA4`, gold `#FFB413`, arena inks Penny Pond red
-  `#F72E1C`, Silver Creek teal `#01ACA4`, Gold Lake gold `#FFB413`, Whale Bay blue `#3055FC`; night paper `#19142E`.
-  Every text/background pair is at least 4.5:1 (tested).
-- X (@slanaio): `brand/x/pfp.png` (400) and `pfp-1000.png`, `banner.png` (1500×500) and `banner@2x.png`, safe-area
-  previews, and `og.png` (1200×630) for link cards. Re-generate with `node brand/x/generate.mjs`.
-- Type: Bricolage Grotesque (display), DM Mono (labels and numbers).
+- Look: "Ring Storybook" (spec section 6; reference `docs/design/storybook-reference.html`): a picture book of the
+  ring habitat, ink outlines `#04181C`, flat cel colour with one shade, hard offset shadows, cream die-cut stickers,
+  coins with faces; day = the plain at dawn, night = in orbit.
+- Palette (`packages/shared/src/palette.ts`): teal `#2D7388`, cyan `#34B7DD`, sun `#F2C14E`, up `#3C9A87`, cream
+  `#F6EEDA`, plain `#F8F7F4`, trench `#0F2A30`, and the rest of the spec's table.
+- Type: Fraunces (display, SOFT 100), DM Sans (reading), Geist Mono (numbers and kickers).
+- Kit: `node brand/generate.mjs` renders the X avatar and banner, the OG card (also `apps/web/public/og-elymum.png`),
+  the favicons, posts (WL open, $1 mint, game live), stickers and arena posters into `brand/out/`
+  ([brand/README.md](../brand/README.md)).
 
 ## 10. Media
 
-Three videos, sources in `media/` and renders in `out/videos/` (1920×1080, H.264 + AAC, −14 LUFS, a master plus a web
-copy under 30 MB):
-
-| Video | Length | Content |
-|---|---|---|
-| Promo | ~53 s | Studio-style film: wordmark, arenas, rounds and the bell, the Round over receipt, slana.io |
-| Gameplay | ~64 s | A real round in Penny Pond: join mid-round, loot, buy back, final minute, the bell, PAID |
-| How to play | ~2:40 | Narrated chapters: what Slana is, practice, controls, eat and avoid, arenas and tickets, rounds and payouts |
-
-Voice: Kokoro TTS (`af_heart`); music and sound are synthesized. They are being re-cut for the vivid palette and the
-simple model (no Pass, no seasons).
+Film sources in `media/`, renders in `out/videos/` (gitignored): the promo, gameplay, how-to-play, the mint film and
+Roadmap Chomp. Their text, voice lines, handles and colours are rebranded; they **must be re-rendered after the new UI
+lands** ([media/README.md](../media/README.md)).
 
 ## 11. Launch checklist
 
-| Step | State |
+| Step | Who |
 |---|---|
-| Program deployed to mainnet, upgrade authority moved to the admin wallet | done |
-| Server on Render with a persistent disk, server key funded | done |
-| slana.io pointed at Render with TLS | done (add `www` in Render) |
-| `initialize` in `/admin` (server authority prefilled) | next |
-| New site (landing, WL, collab, admin tabs, admin-only game) | building |
-| Videos re-cut | building |
-| X art uploaded to @slanaio | ready to upload |
-| $SLANA mint exists → **Set token** in `/admin` (once, check the CA twice) | later |
-| **Create 4 arenas** in `/admin` | after the token |
-| Test rounds in `/play` as admin, then switch `gamePublic` on | after the arenas |
-| Restrict the QuickNode endpoint to slana.io | recommended |
+| Server on Render with a persistent disk, `ADMIN_WALLETS`, `SERVER_PRIVATE_KEY=auto`, testnet RPC | owner |
+| Fund the server key with HYPE | owner |
+| `/admin` → Deploy: Arena, NFT, register both (testnet first) | owner |
+| WL open; review WL and collabs | owner |
+| Publish the allowlist root; Sync to $1; open the mint (Allowlist) with "activate the game for holders" | owner |
+| `$ELYMUM` exists → Set token (once) → create the four arenas | owner |
+| Public mint; optional price keeper with bounds | owner |
+| Mainnet (Nov 9): mainnet RPC and explorer, redeploy the contracts on mainnet | owner |
+| Re-render the films, regenerate the screenshots, upload the X art | owner |
 | Security audit; legal review for a real-money game | recommended before opening |
 
 ## 12. Decision log
 
 | Date | Decision |
 |---|---|
-| 2026-10-14 | v2: $SLANA token arenas, a Pass NFT, seasons, the Paper Ticket design |
-| 2026-10-15 | v3: lean Pinocchio program (rent under ◎0.5), English-only project |
-| 2026-10-15 | Motion and synthesized sound; one-command demo |
+| 2026-10-14 | Token arenas, the coin characters, English-only project |
 | 2026-10-15 | Paid arenas play 5-minute rounds: no cash-out, late join and buy-back, paid at the bell |
-| 2026-10-16 | Slana Simple: no Pass, no seasons; flat 5 % fee to the fee wallet; floor loot burned; token set after deploy |
-| 2026-10-17 | Mainnet deploy, Render hosting with `SERVER_KEYPAIR=auto`, browser-wallet admin panel, slana.io |
-| 2026-10-17 | Vivid palette; X art; the site becomes a landing page with WL and collab applications; the game is admin-only for now |
+| 2026-10-16 | One simple model: flat 5 % fee on profit to the fee wallet; floor loot burned; the token set after deploy |
+| 2026-10-17 | Browser-wallet admin panel; the site becomes a landing page with WL and collab applications |
+| 2026-10-29 | The project becomes **Elymum on Elysium**: two Solidity contracts, EIP-6963 + viem wallets, SIWE, the Elymum NFT at $1 in HYPE, WL → Mint → Play, everything deployed from `/admin`, the Ring Storybook design |

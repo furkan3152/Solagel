@@ -10,7 +10,7 @@ import { CACHE, Player, Recorder, launch, log, sleep } from './lib.mjs';
 const argv = process.argv.slice(2);
 const NAME = argv.includes('--name') ? argv[argv.indexOf('--name') + 1] : 'loot';
 const browser = await launch();
-const hero = new Player(browser, { name: 'Daphne', skin: 4, audio: 'sfx', keyPath: resolve(CACHE, 'keys/daphne.json') });
+const hero = new Player(browser, { name: 'Daphne', skin: 4, audio: 'sfx', keyPath: resolve(CACHE, 'keys/daphne.key') });
 const rival = new Player(browser, { name: 'rug_ruth', skin: 5, w: 480, h: 270, audio: 'off', quality: 'low', minimap: false });
 let rec, stop = false;
 try {

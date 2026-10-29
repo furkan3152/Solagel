@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Take "spill": with a Penny Pond ticket, Daphne picks up some loot (value floats), then runs into a
+// Take "spill": with a Asphodel Meadow ticket, Daphne picks up some loot (value floats), then runs into a
 // bot. Bots carry no value: her tokens spill on the floor as loot coins. The EATEN sheet follows,
 // and she buys back in: "Buy back in" opens the ticket sheet for the same arena at the same fee,
 // she signs and drops into the same round again (the round chip keeps counting).
@@ -11,7 +11,7 @@ import { CACHE, Player, Recorder, launch, log } from './lib.mjs';
 const argv = process.argv.slice(2);
 const NAME = argv.includes('--name') ? argv[argv.indexOf('--name') + 1] : 'spill';
 const browser = await launch();
-const hero = new Player(browser, { name: 'Daphne', skin: 4, audio: 'sfx', keyPath: resolve(CACHE, 'keys/spill.json'), journal: resolve(CACHE, `journal-${NAME}.jsonl`) });
+const hero = new Player(browser, { name: 'Daphne', skin: 4, audio: 'sfx', keyPath: resolve(CACHE, 'keys/spill.key'), journal: resolve(CACHE, `journal-${NAME}.jsonl`) });
 let rec;
 try {
   await hero.open();

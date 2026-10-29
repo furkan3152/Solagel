@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Renders a short motion-graphics film (the Free Mint film, Roadmap Chomp) to finished files.
-#   media/free-mint/render.sh <project-dir> <out-name> <variant:WxH:suffix> [...]
-#   e.g. media/free-mint/render.sh media/free-mint slana-free-mint 1920x1080: 1080x1920:-vertical
+# Renders a short motion-graphics film (the mint film, Roadmap Chomp) to finished files.
+#   media/mint-film/render.sh <project-dir> <out-name> <variant:WxH:suffix> [...]
+#   e.g. media/mint-film/render.sh media/mint-film elymum-mint-film 1920x1080: 1080x1920:-vertical
 # Steps: picture per variant (media/promo/render/render.mjs --project, 60 fps, near-lossless)
-# -> score (<project>/audio/music.py) -> mix (media/free-mint/audio/mix.py) -> -14 LUFS with the true
+# -> score (<project>/audio/music.py) -> mix (media/mint-film/audio/mix.py) -> -14 LUFS with the true
 # peak at or below -1.5 dBTP after AAC (media/gameplay/render/finalize.py)
 # -> out/videos/<name><suffix>-master.mp4 (CRF 12) and out/videos/<name><suffix>.mp4 (two-pass, < 30 MB).
 # Env: SKIP_PICTURE=1 / SKIP_AUDIO=1 to reuse a previous step, WORKERS (default 3).
@@ -18,7 +18,7 @@ FPS=$(node -e "console.log(require('$PROJ/timeline.json').fps)")
 DUR=$(node -e "console.log(require('$PROJ/timeline.json').duration)")
 if [ -z "${SKIP_AUDIO:-}" ]; then
   "$PY" "$PROJ/audio/music.py" "$PROJ/cache/audio/music.wav"
-  "$PY" "$ROOT/media/free-mint/audio/mix.py" "$PROJ"
+  "$PY" "$ROOT/media/mint-film/audio/mix.py" "$PROJ"
   "$PY" "$ROOT/media/gameplay/render/finalize.py" "$PROJ/cache/audio/premix.wav" "$PROJ/cache/audio/final.wav" | tee "$PROJ/cache/audio/loudness.json"
 fi
 A="$PROJ/cache/audio/final.wav"

@@ -1,4 +1,4 @@
-"""Original score for the Slana promo, synthesised from scratch with numpy.
+"""Original score for the Elymum promo, synthesised from scratch with numpy.
 
 Playful lo-fi electronic at 100 BPM (one beat = 0.6 s = 36 video frames), scored
 to the cut list in ../timeline.json: a held breath before the logo drop, a

@@ -140,7 +140,7 @@ async function dispatch(e) {
 async function setDraw(on) {
   if (on === drawing) return;
   const ok = await page.evaluate((on) => {
-    const e = window.__slana?.engine;
+    const e = window.__elymum?.engine;
     if (!e) return false;
     const r = e.renderer;
     if (!r.__draw) { r.__draw = r.draw; r.__mm = r.drawMinimap; }
@@ -191,7 +191,7 @@ for (let k = 0; k < want.length; k++) {
   frameTimes.push(+tOf(target).toFixed(5));
   fsamples.push(await page.evaluate(() => {
     const s = window.__sample ? window.__sample() : {};
-    const c = window.__slana?.engine?.camera, w = window.__slana?.engine?.world;
+    const c = window.__elymum?.engine?.camera, w = window.__elymum?.engine?.world;
     return { me: s.me, screen: s.screen, near: s.near, cam: c ? [c.x, c.y, c.zoom] : null, world: w ? [w.width, w.height] : null, hud: s.hud ? { value: s.hud.value, rank: s.hud.rank } : null };
   }));
   if (k % 120 === 0) {
