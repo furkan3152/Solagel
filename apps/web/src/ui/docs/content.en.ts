@@ -46,11 +46,11 @@ export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps): DocsCo
     {
       id: 'play',
       title: 'How to play',
-      lede: 'Eat confetti, grow, swallow smaller coins, run from bigger ones.',
+      lede: 'Eat food, grow, swallow smaller coins, run from bigger ones.',
       blocks: [
         {
           kind: 'p',
-          text: `You need no wallet to start: pick the Practice ticket in the lobby and press Quick Play. Your coin follows the mouse (the joystick at the bottom left on phones). Eat confetti to grow. To eat a coin you need at least ${num(R.eatRatio)} times its mass and must mostly cover it. The bigger you are, the slower you move.`,
+          text: `You need no wallet to start: pick the Practice ticket in the lobby and press Quick Play. Your coin follows the mouse (the joystick at the bottom left on phones). Eat food (pears, grapes, seeds) to grow. To eat a coin you need at least ${num(R.eatRatio)} times its mass and must mostly cover it. The bigger you are, the slower you move.`,
         },
         {
           kind: 'keys',

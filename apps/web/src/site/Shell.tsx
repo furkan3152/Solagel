@@ -1,22 +1,20 @@
-import type { ReactNode } from 'react';
-import { Kb } from '../design';
+import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
+import { CoinMark, Icon, Kb, RingScene, Wordmark as InkWordmark, type IconName } from '../design';
 import { Link, usePath } from './router';
-import { X_URL, siteHost } from './settings';
+import { siteHost, useSiteSettings, xProfile } from './settings';
 import './site.css';
 
-/** The riso wordmark: ink over a pink (and a faint teal) pass printed off register. */
+// the wallet (viem, EIP-6963) loads in its own chunk, after the page has painted
+const HeaderConnect = lazy(() => import('./HeaderConnect').then((m) => ({ default: m.HeaderConnect })));
+
+/**
+ * The ELYMUM wordmark for site pages: the hand-built ink letters from the design system
+ * (`size` sm = header, xl = hero). `live` lets the letters hop once on load and on hover.
+ */
 export function Wordmark({ size = 'sm', as: Tag = 'span', live = false }: { size?: 'sm' | 'xl'; as?: 'span' | 'h1'; live?: boolean }) {
   return (
-    <Tag className={`st-mark st-mark--${size}${live ? ' is-live' : ''}`} aria-label="Elymum">
-      <span className="st-mark__teal" aria-hidden="true">
-        elymum
-      </span>
-      <span className="st-mark__pink" aria-hidden="true">
-        elymum
-      </span>
-      <span className="st-mark__ink" aria-hidden="true">
-        elymum
-      </span>
+    <Tag className={`st-mark st-mark--${size}${live ? ' is-live' : ''}`}>
+      <InkWordmark height={size === 'xl' ? 112 : 30} playful={live} className="st-mark__art" />
     </Tag>
   );
 }
@@ -29,76 +27,168 @@ export function XIcon({ size = 18 }: { size?: number }) {
   );
 }
 
+/**
+ * A site link drawn as a Storybook button (`kb-btn`): primary sun, secondary cream, teal or
+ * ghost. Same press as the design-system Button, but it navigates.
+ */
+export function SiteLinkButton({
+  href,
+  variant = 'secondary',
+  size = 'md',
+  icon,
+  lead,
+  children,
+  className,
+  external = false,
+  ...rest
+}: {
+  href: string;
+  variant?: 'primary' | 'secondary' | 'teal' | 'ghost';
+  size?: 'sm' | 'md' | 'lg';
+  icon?: IconName;
+  lead?: IconName;
+  children: ReactNode;
+  className?: string;
+  external?: boolean;
+  onClick?: () => void;
+  'aria-label'?: string;
+}) {
+  const iconSize = size === 'lg' ? 24 : size === 'md' ? 20 : 16;
+  const cls = `kb-btn kb-btn--${variant} kb-btn--${size} st-btn${className ? ` ${className}` : ''}`;
+  const inner = (
+    <>
+      {lead && <Icon name={lead} size={iconSize} className="kb-btn__lead" />}
+      <span className="kb-btn__label">
+        <span className="kb-btn__text">{children}</span>
+      </span>
+      {icon && <Icon name={icon} size={iconSize} className="kb-btn__icon" />}
+    </>
+  );
+  if (external) {
+    return (
+      <a href={href} target="_blank" rel="noreferrer" className={cls} {...rest}>
+        {inner}
+      </a>
+    );
+  }
+  return (
+    <Link href={href} className={cls} {...rest}>
+      {inner}
+    </Link>
+  );
+}
+
+/** The site nav: two plates of the landing, then the pages. */
 const NAV: { href: string; label: string }[] = [
-  { href: '/wl', label: 'WL' },
+  { href: '/#feast', label: 'The feast' },
+  { href: '/#arenas', label: 'Arenas' },
   { href: '/mint', label: 'Mint' },
-  { href: '/collab', label: 'Collab' },
-  { href: '/docs', label: 'Guide' },
+  { href: '/wl', label: 'WL' },
+  { href: '/docs', label: 'Docs' },
 ];
 
-export function SiteHeader({ cta = true }: { cta?: boolean }) {
+function ConnectFallback() {
+  return (
+    <button type="button" className="kb-btn kb-btn--secondary kb-btn--md st-connect" disabled aria-busy="true">
+      <Icon name="wallet" size={20} className="kb-btn__lead" />
+      <span className="kb-btn__label">
+        <span className="kb-btn__text">Connect</span>
+      </span>
+    </button>
+  );
+}
+
+export function SiteHeader({ cta: _cta = true }: { cta?: boolean }) {
   const path = usePath();
+  const [menu, setMenu] = useState(false);
+  useEffect(() => setMenu(false), [path]);
+  useEffect(() => {
+    if (!menu) return;
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setMenu(false);
+    window.addEventListener('keydown', esc);
+    return () => window.removeEventListener('keydown', esc);
+  }, [menu]);
+  const links = NAV.map((n) => {
+    const on = !n.href.includes('#') && path === n.href;
+    return (
+      <Link
+        key={n.href}
+        href={n.href}
+        className={`st-nav__link${on ? ' is-on' : ''}`}
+        aria-current={on ? 'page' : undefined}
+        onClick={() => setMenu(false)}
+      >
+        {n.label}
+      </Link>
+    );
+  });
   return (
     <header className="st-head">
       <div className="st-head__inner">
         <Link href="/" className="st-head__home" aria-label="Elymum home">
+          <CoinMark size={38} className="st-head__coin" />
           <Wordmark />
         </Link>
         <nav className="st-nav" aria-label="Site">
-          {NAV.map((n) => (
-            <Link key={n.href} href={n.href} className={`st-nav__link mono${path === n.href ? ' is-on' : ''}`} aria-current={path === n.href ? 'page' : undefined}>
-              {n.label}
-            </Link>
-          ))}
-          <a className="st-nav__x" href={X_URL} target="_blank" rel="noreferrer" aria-label="Elymum on X (@elymum)">
-            <XIcon />
-          </a>
-          {cta && path !== '/wl' && (
-            <Link href="/wl" className="st-pill">
-              Join the WL
-            </Link>
-          )}
+          {links}
         </nav>
+        <div className="st-head__tools">
+          <Suspense fallback={<ConnectFallback />}>
+            <HeaderConnect />
+          </Suspense>
+          <button
+            type="button"
+            className="st-menu-btn"
+            aria-expanded={menu}
+            aria-controls="st-menu"
+            aria-label={menu ? 'Close the menu' : 'Open the menu'}
+            onClick={() => setMenu((m) => !m)}
+          >
+            <Icon name={menu ? 'close' : 'menu'} size={22} />
+          </button>
+        </div>
       </div>
+      {menu && (
+        <nav id="st-menu" className="st-menu kb-sticker kb-sticker--cream" aria-label="Site menu">
+          {links}
+        </nav>
+      )}
     </header>
   );
 }
 
 export function SiteFooter() {
+  const { settings } = useSiteSettings();
+  const handle = settings.xHandle.replace(/^@/, '');
   return (
+    <Kb theme="night" paper={false} className="st-foot-kb">
     <footer className="st-foot">
-      <div className="st-foot__tear" aria-hidden="true" />
+      <RingScene time="night" variant="horizon" clouds={false} animate={false} className="st-foot__ring" />
       <div className="st-foot__inner">
         <div className="st-foot__brand">
-          <Wordmark size="xl" />
-          <p className="st-foot__line">Eat. Grow. Last the round.</p>
+          <InkWordmark height={64} diecut playful={false} className="st-foot__mark" />
+          <p className="st-foot__line">Small change, big appetite. Five minutes at a time.</p>
+          <p className="st-foot__eco">
+            Played on <strong>Elysium</strong>, the ring habitat in the Kinetiq ecosystem. Gas is HYPE. An independent game; the ring just lets us eat on it.
+          </p>
         </div>
         <nav className="st-foot__links" aria-label="Footer">
-          <a href={X_URL} target="_blank" rel="noreferrer" className="st-foot__x">
-            <XIcon size={20} /> <span>@elymum</span>
+          <a href={xProfile(handle)} target="_blank" rel="noreferrer" className="st-foot__x">
+            <XIcon size={18} /> <span>@{handle}</span>
           </a>
-          <Link href="/" className="mono">
-            {siteHost()}
-          </Link>
-          <Link href="/mint" className="mono">
-            Mint
-          </Link>
-          <Link href="/wl" className="mono">
-            WL
-          </Link>
-          <Link href="/collab" className="mono">
-            Collab
-          </Link>
-          <Link href="/docs" className="mono">
-            Player guide
-          </Link>
+          <Link href="/mint">Mint</Link>
+          <Link href="/wl">WL</Link>
+          <Link href="/collab">Collab</Link>
+          <Link href="/docs">Docs</Link>
         </nav>
         <p className="st-foot__small mono">
           <span>Elymum · 2026</span>
-          <span>Played on Elysium</span>
+          <span>{siteHost()}</span>
+          <span>Never DMs first. Never asks for a seed phrase.</span>
         </p>
       </div>
     </footer>
+    </Kb>
   );
 }
 

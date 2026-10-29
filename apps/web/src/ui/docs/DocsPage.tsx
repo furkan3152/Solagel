@@ -1,5 +1,5 @@
 import { useMemo, useRef } from 'react';
-import { Dateline, Icon, Receipt, Rule, Stamp, useReducedMotion, type ReceiptLine } from '../../design';
+import { CoinCharacter, Dateline, Icon, Receipt, Rule, Stamp, useReducedMotion, type ReceiptLine } from '../../design';
 import { feeBps } from '../../wallet/ticket';
 import { useUi } from '../../store';
 import { useTokenText } from '../lobby/useLobby';
@@ -31,11 +31,22 @@ export function DocsPage() {
 
   return (
     <div className="dc-page" ref={top}>
-      <PageHead kicker={c.kicker} title={c.title} deck={c.deck} id="dc-title" aside={<Stamp text="Guide" sub="Player copy" tone="teal" round size="md" rotate={-6} />} />
+      <PageHead
+        kicker={c.kicker}
+        title={c.title}
+        deck={c.deck}
+        id="dc-title"
+        aside={
+          <span className="dc-head__art">
+            <CoinCharacter paint="cream" mood="smug" size={124} look={[-3, 1]} feet ground bob />
+            <Stamp text="Guide" sub="Player copy" tone="teal" round size="md" rotate={-8} className="dc-head__stamp" />
+          </span>
+        }
+      />
       <Dateline items={c.dateline} label={c.tocLabel} className="dc-dateline" />
 
       <div className="dc-layout">
-        <nav className="dc-toc" aria-label={c.tocLabel}>
+        <nav className="dc-toc kb-island" aria-label={c.tocLabel}>
           <span className="dc-toc__label mono">{c.tocLabel}</span>
           <ol className="dc-toc__list">
             {c.sections.map((s, i) => (
@@ -114,7 +125,7 @@ function Block({ block: b, c }: { block: DocBlock; c: DocsContent }) {
       );
     case 'keys':
       return (
-        <figure className="dc-keys-fig">
+        <figure className="dc-keys-fig kb-island">
           <figcaption className="dc-cap mono" id="dc-keys-cap">
             {b.caption}
           </figcaption>
@@ -134,7 +145,7 @@ function Block({ block: b, c }: { block: DocBlock; c: DocsContent }) {
       );
     case 'table':
       return (
-        <div className="dc-table-wrap">
+        <div className="dc-table-wrap kb-island">
           <table className="dc-table">
             <caption className="mono">{b.caption}</caption>
             <thead>
@@ -164,7 +175,10 @@ function Block({ block: b, c }: { block: DocBlock; c: DocsContent }) {
       return (
         <ol className="dc-flow" aria-label={b.label}>
           {b.steps.map((s, i) => (
-            <li key={i} className="dc-flow__step">
+            <li key={i} className="dc-flow__step kb-island">
+              <span className="dc-flow__no num" aria-hidden="true">
+                {String(i + 1).padStart(2, '0')}
+              </span>
               <span className="dc-flow__title mono">{s.title}</span>
               <span className="dc-flow__text">{s.text}</span>
               {i < b.steps.length - 1 && <Icon name="arrow" size={20} className="dc-flow__arrow" />}
@@ -178,7 +192,7 @@ function Block({ block: b, c }: { block: DocBlock; c: DocsContent }) {
       return (
         <div className="dc-compare">
           {[b.left, b.right].map((col, i) => (
-            <div key={i} className={`dc-compare__col${i === 0 ? ' is-chain' : ' is-server'}`}>
+            <div key={i} className={`dc-compare__col kb-island${i === 0 ? ' is-chain' : ' is-server'}`}>
               <h4 className="dc-compare__title">
                 <Icon name={i === 0 ? 'lock' : 'globe'} size={18} />
                 {col.title}
@@ -194,7 +208,7 @@ function Block({ block: b, c }: { block: DocBlock; c: DocsContent }) {
       );
     case 'note':
       return (
-        <aside className={`dc-note is-${b.tone}`} aria-label={b.title}>
+        <aside className={`dc-note kb-island is-${b.tone}`} aria-label={b.title}>
           <Stamp text={b.stamp} tone={b.tone === 'warn' ? 'red' : 'teal'} size="sm" rotate={-4} className="dc-note__stamp" />
           <h4 className="dc-note__title">{b.title}</h4>
           <p className="dc-note__text">{b.text}</p>
@@ -204,7 +218,7 @@ function Block({ block: b, c }: { block: DocBlock; c: DocsContent }) {
       return (
         <div className="dc-faq">
           {b.items.map((it, i) => (
-            <details key={i} className="dc-faq__item">
+            <details key={i} className="dc-faq__item kb-island">
               <summary className="dc-faq__q">
                 <span>{it.q}</span>
                 <Icon name="chevron" size={18} className="dc-faq__chev" />
