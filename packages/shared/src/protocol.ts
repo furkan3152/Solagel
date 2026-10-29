@@ -35,7 +35,7 @@ export const CellFlag = {
 /** Per-player flags carried in snapshots. */
 export const PlayerFlag = {
   Bot: 1,
-  /** Name comes from a wallet-verified on-chain profile. */
+  /** Name comes from the server profile of a signed-in (SIWE) wallet. */
   Verified: 2,
   /** Plays an arena ticket (tokens at stake). */
   Staker: 4,
@@ -110,7 +110,7 @@ export interface RoomInfo {
   maxPlayers: number;
   /** Arena rooms only. */
   arenaId?: number;
-  /** Entry fee in raw token units (base units of the mint). */
+  /** Entry fee in raw token units (base units of the ERC-20 game token). */
   entryFee?: number;
   /** Instance (shard) number within the arena. */
   instance?: number;
@@ -152,24 +152,34 @@ export interface BlockedArena {
 }
 
 export interface ChainStatus {
+  /** The server has an EVM RPC (`EVM_RPC_URL`) and talks to the chain. */
   enabled: boolean;
-  cluster: string;
-  programId: string | null;
+  /** `eth_chainId` of the server's RPC (the source of truth); null while the chain is off or unknown. */
+  chainId: number | null;
+  /** Display name (`chainInfo(chainId).name`, `CHAIN_NAME` for ids not in the table). */
+  chainName: string;
+  /** Public RPC handed to browsers (no secrets); null: the wallet uses its own RPC. */
   rpcUrl: string | null;
+  /** Blockscout-style explorer base URL (`/tx/<hash>`, `/address/<addr>`); null when there is none. */
+  explorerUrl: string | null;
+  /** The registered `ElymumArena` contract (0x address), null until one is deployed and registered. */
+  arenaAddress: string | null;
+  /** The registered `ElymumNFT` contract (0x address), null until one is deployed and registered. */
+  nftAddress: string | null;
   /** Paid arenas are open for tickets (false when the chain is off, the token is not set yet or is unusable). */
   arenasEnabled: boolean;
   /**
-   * The game token is set on chain (`set_token_mint`). Until then the server runs practice only
+   * The game token is set on the arena contract (`setToken`). Until then the server runs practice only
    * and arena joins answer `token_not_set` ("Opening soon"). The server picks the token up
-   * without a restart (it re-reads the config every 30 s) and then pushes a `chain` message.
+   * without a restart (it re-reads `config()` every 30 s) and then pushes a `chain` message.
    */
   tokenReady: boolean;
-  /** The game token, null until it is set; `symbol` is display only (server `TOKEN_SYMBOL`). */
-  token: { mint: string; symbol: string; decimals: number } | null;
-  /** Fee on profit for new tickets (`Config.fee_bps`, basis points); null while the config is unknown. */
+  /** The game token (ERC-20 address), null until it is set; `symbol` is display only (server `TOKEN_SYMBOL`). */
+  token: { address: string; symbol: string; decimals: number } | null;
+  /** Fee on profit for new tickets (`config().feeBps`, basis points); null while the config is unknown. */
   feeBps: number | null;
-  /** Public key the server signs settlements with: set it as the program's server authority (`init` / `update-config`). */
-  serverKey?: string | null;
+  /** Address of the server key that sends settlements (pays gas in HYPE): the arena's server authority. */
+  serverKey: string | null;
 }
 
 export interface ProfileSummary {
@@ -185,7 +195,8 @@ export type JoinTarget = 'practice' | `private:${string}` | `arena:${number}`;
 export type ClientMessage =
   | { t: 'hello'; v: number }
   | { t: 'auth'; token: string }
-  | { t: 'auth'; pubkey: string; message: string; signature: string }
+  /** SIWE sign-in: `message` is `siweMessage(...)`, `signature` the wallet's `personal_sign` (0x hex). */
+  | { t: 'auth'; address: string; message: string; signature: string }
   | { t: 'logout' }
   | {
       t: 'join';
@@ -245,7 +256,8 @@ export type ServerMessage =
       online: number;
       blocked?: BlockedArena[];
     }
-  | { t: 'authed'; pubkey: string; token: string; profile: ProfileSummary | null }
+  /** `address` is the signed-in wallet, EIP-55 checksummed. */
+  | { t: 'authed'; address: string; token: string; profile: ProfileSummary | null }
   | {
       t: 'joined';
       room: RoomInfo;
@@ -256,7 +268,7 @@ export type ServerMessage =
       value?: number;
       /** Arena rooms: the ticket price, raw token units. */
       entryFee?: number;
-      /** Arena rooms: the ticket's on-chain session address (matches `settled.session`). */
+      /** Arena rooms: the ticket's session key `<arenaId>:<player lowercase>:<sessionId>` (matches `settled.session`). */
       session?: string;
       /** Arena rooms: the round in play (same as `room.round`). */
       round?: RoundInfo;
@@ -290,20 +302,21 @@ export type ServerMessage =
       reason: 'eat' | 'loot' | 'eaten' | 'spill';
     }
   // Amounts are raw token units: `fee` is taken from the profit and `net` (= payout - fee) reaches the wallet.
-  // `session` is the settled ticket's on-chain session address (= `joined.session`) and `arenaId` its arena;
-  // clients match a receipt by `session`. Both are optional so older servers stay readable (R16).
+  // `session` is the settled ticket's session key `<arenaId>:<player lowercase>:<sessionId>` (= `joined.session`)
+  // and `arenaId` its arena; clients match a receipt by `session`. `txHash` is the settlement transaction (0x hex).
   | {
       t: 'settled';
       kind: 'payout' | 'death' | 'refund';
       session?: string;
       arenaId?: number;
-      signature: string;
+      txHash: string;
       payout: number;
       fee?: number;
       net?: number;
       /**
-       * R24: settled without a usable token account. The result is final but `net`
-       * waits in the arena vault: the player collects it ("Collect payout").
+       * The token transfer to the player failed, so the session was finalized with `owed`.
+       * The result is final but `net` waits in the arena vault: the player collects it with `refund`
+       * ("Collect payout").
        */
       collect?: boolean;
     }
@@ -331,7 +344,7 @@ export type ErrorCode =
   | 'payout_waiting'
   | 'skin_locked'
   | 'arenas_disabled'
-  /** The game token is not set on chain yet: arenas open soon (`ChainStatus.tokenReady` false); practice works. */
+  /** The game token is not set on the arena contract yet: arenas open soon (`ChainStatus.tokenReady` false); practice works. */
   | 'token_not_set'
   | 'server_full'
   | 'version_mismatch'
@@ -341,7 +354,7 @@ export type ErrorCode =
   | 'no_cashout'
   /** The ticket of a returning (AFK) player was settled at the bell while they were away: the till was paid. */
   | 'round_ended'
-  /** The game is not public yet (`SiteSettings.gamePublic` off): only admin wallets can enter a room. */
+  /** The game is not open to this wallet (`SiteSettings.gameAccess`: admins only, or NFT holders and admins). */
   | 'game_closed'
   /** The admin banned this wallet from arenas (integrity review). Practice still works. */
   | 'banned';

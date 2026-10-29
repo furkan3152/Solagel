@@ -12,9 +12,9 @@ import {
   type ServerMessage,
 } from '../src';
 
-describe('protocol v4 constants', () => {
-  it('pins the wire values (v4: no Slana Pass in snapshots or flags)', () => {
-    expect(PROTOCOL_VERSION).toBe(4);
+describe('protocol v5 constants', () => {
+  it('pins the wire values (v5: EVM chain status, SIWE auth, tx hashes)', () => {
+    expect(PROTOCOL_VERSION).toBe(5);
     expect(EntityKind.Loot).toBe(6);
     expect(PlayerFlag).toEqual({ Bot: 1, Verified: 2, Staker: 4 });
   });
@@ -70,13 +70,17 @@ describe('v2 message shapes', () => {
   it('type-checks the lobby and chain payloads', () => {
     const chain: ChainStatus = {
       enabled: true,
-      cluster: 'devnet',
-      programId: 'Prog111111111111111111111111111111111111111',
-      rpcUrl: null,
+      chainId: 99801,
+      chainName: 'Elysium Testnet',
+      rpcUrl: 'https://testnet-rpc.elysium.kinetiq.xyz',
+      explorerUrl: 'https://explorer-elysium-testnet.t.conduit.xyz',
+      arenaAddress: '0x1111111111111111111111111111111111111111',
+      nftAddress: null,
       arenasEnabled: true,
       tokenReady: true,
-      token: { mint: 'Mint111111111111111111111111111111111111111', symbol: '$SLANA', decimals: 6 },
+      token: { address: '0x2222222222222222222222222222222222222222', symbol: '$ELYMUM', decimals: 18 },
       feeBps: 500,
+      serverKey: '0x3333333333333333333333333333333333333333',
     };
     // deployed and initialized, token not set yet: practice only, arenas "opening soon"
     const opening: ChainStatus = { ...chain, arenasEnabled: false, tokenReady: false, token: null };
@@ -85,12 +89,16 @@ describe('v2 message shapes', () => {
     const pass: ChainStatus = { ...chain, pass: null };
     // @ts-expect-error seasons are gone
     const season: ChainStatus = { ...chain, currentSeason: 1 };
+    // @ts-expect-error clusters are gone (chainId)
+    const cluster: ChainStatus = { ...chain, cluster: 'devnet' };
+    // @ts-expect-error the token is an ERC-20 address, not a mint
+    const mint: ChainStatus = { ...chain, token: { mint: 'x', symbol: '$ELYMUM', decimals: 18 } };
     const pushed: ServerMessage = { t: 'chain', chain };
-    expect([opening.tokenReady, pass, season, pushed.t]).toHaveLength(4);
+    expect([opening.tokenReady, pass, season, cluster, mint, pushed.t]).toHaveLength(6);
     const arena: RoomInfo = {
       id: 'arena-1-1',
       mode: 'arena',
-      name: 'Penny Pond',
+      name: 'Asphodel Meadow',
       width: 6400,
       height: 6400,
       players: 3,
@@ -120,7 +128,10 @@ describe('v2 message shapes', () => {
     ];
     // @ts-expect-error joins carry no Pass any more
     const withPass: ClientMessage = { t: 'join', room: 'arena:3', name: 'gm', skin: 0, pass: 'Asset11111111111111111111111111111111111111' };
-    expect([targets, old, joins, withPass]).toHaveLength(4);
+    const auth: ClientMessage = { t: 'auth', address: '0x1111111111111111111111111111111111111111', message: 'm', signature: '0xsig' };
+    // @ts-expect-error auth carries an address now
+    const pubkey: ClientMessage = { t: 'auth', pubkey: 'x', message: 'm', signature: 's' };
+    expect([targets, old, joins, withPass, auth, pubkey]).toHaveLength(6);
   });
 
   it('type-checks the server messages', () => {
@@ -136,15 +147,18 @@ describe('v2 message shapes', () => {
         killer: 'Bot',
         killerSkin: 1,
       },
-      { t: 'settled', kind: 'payout', signature: 'sig', payout: 1950, fee: 50, net: 1950 },
-      { t: 'settled', kind: 'death', signature: 'sig', payout: 0 },
-      { t: 'settled', kind: 'refund', signature: 'sig', payout: 1000 },
+      { t: 'settled', kind: 'payout', session: '1:0xabc:7', arenaId: 1, txHash: '0xhash', payout: 1950, fee: 50, net: 1950 },
+      { t: 'settled', kind: 'death', txHash: '0xhash', payout: 0 },
+      { t: 'settled', kind: 'refund', txHash: '0xhash', payout: 1000, collect: true },
+      { t: 'authed', address: '0x1111111111111111111111111111111111111111', token: 't', profile: null },
     ];
     // @ts-expect-error the on-chain record kind is gone
-    const record: ServerMessage = { t: 'settled', kind: 'record', signature: 'sig', payout: 0 };
+    const record: ServerMessage = { t: 'settled', kind: 'record', txHash: '0xhash', payout: 0 };
     // @ts-expect-error payout is now always present
-    const noPayout: ServerMessage = { t: 'settled', kind: 'payout', signature: 'sig' };
-    expect([msgs, record, noPayout]).toHaveLength(3);
+    const noPayout: ServerMessage = { t: 'settled', kind: 'payout', txHash: '0xhash' };
+    // @ts-expect-error settlements carry a txHash now
+    const sig: ServerMessage = { t: 'settled', kind: 'payout', signature: 'sig', payout: 0 };
+    expect([msgs, record, noPayout, sig]).toHaveLength(4);
   });
 
   it('has the v2 error codes and drops stake_disabled', () => {

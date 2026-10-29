@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { TOKEN_SYMBOL_DEFAULT, formatToken, parseToken, toSafeAmount } from '../src';
+import { HYPE_DECIMALS, TOKEN_SYMBOL_DEFAULT, formatHype, formatToken, parseToken, toSafeAmount } from '../src';
 
 describe('TOKEN_SYMBOL_DEFAULT', () => {
-  it('is $SLANA', () => {
-    expect(TOKEN_SYMBOL_DEFAULT).toBe('$SLANA');
+  it('is $ELYMUM', () => {
+    expect(TOKEN_SYMBOL_DEFAULT).toBe('$ELYMUM');
   });
 });
 
@@ -175,5 +175,15 @@ describe('parseToken', () => {
         expect(parseToken(text, decimals), `d=${decimals} ${text}`).toBe(raw);
       }
     }
+  });
+});
+
+describe('formatHype', () => {
+  it('formats wei as HYPE with up to 4 decimals', () => {
+    expect(HYPE_DECIMALS).toBe(18);
+    expect(formatHype(31_250_000_000_000_000n)).toBe('0.0313 HYPE');
+    expect(formatHype(10n ** 18n)).toBe('1 HYPE');
+    expect(formatHype(0n)).toBe('0 HYPE');
+    expect(formatHype(1_234_567_890_000_000_000_000n, 2)).toBe('1,234.57 HYPE');
   });
 });

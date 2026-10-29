@@ -1,15 +1,17 @@
 /**
  * Token amounts.
  *
- * Amounts travel as raw base units (a pump.fun style token has 6 decimals and
- * a 1e9 supply, so even whole-supply amounts fit a JS number). The SDK keeps
- * them as `bigint`; the server and web use `number` only after `toSafeAmount`.
+ * Amounts travel as raw base units of the ERC-20 game token (its `decimals()`,
+ * read from the contract). The SDK keeps them as `bigint`; the server and web
+ * use `number` only after `toSafeAmount`, which refuses anything above
+ * `Number.MAX_SAFE_INTEGER` (note: 1,000 tokens of an 18-decimal token is 1e21
+ * base units, which does not fit). HYPE amounts (wei) always stay `bigint`.
  * All formatting and parsing here is exact integer arithmetic, so there is no
  * floating point drift and no dependence on the runtime's ICU data.
  */
 
 /** Display symbol used when the server config does not set one. */
-export const TOKEN_SYMBOL_DEFAULT = '$SLANA';
+export const TOKEN_SYMBOL_DEFAULT = '$ELYMUM';
 
 const MAX_SAFE = BigInt(Number.MAX_SAFE_INTEGER);
 
@@ -48,7 +50,7 @@ const TIERS = [
 const PLAIN = [{ exp: 0, suffix: '' }] as const;
 
 function checkDecimals(decimals: number): void {
-  // SPL mint decimals are a u8
+  // ERC-20 decimals are a uint8
   if (!Number.isInteger(decimals) || decimals < 0 || decimals > 255) {
     throw new RangeError(`token decimals must be an integer in 0..255, got ${decimals}`);
   }
@@ -130,4 +132,12 @@ export function parseToken(text: string, decimals: number): bigint {
     throw new RangeError(`token amount ${JSON.stringify(text)} has more than ${decimals} decimal places`);
   }
   return BigInt(whole + fracText.slice(0, decimals).padEnd(decimals, '0') || '0');
+}
+
+/** Decimals of HYPE, the gas token (wei). */
+export const HYPE_DECIMALS = 18;
+
+/** A HYPE amount in wei for display: `0.0312 HYPE` (at most `maxFrac` decimals, default 4). */
+export function formatHype(wei: bigint | number, maxFrac = 4): string {
+  return `${formatToken(wei, HYPE_DECIMALS, { maxFrac })} HYPE`;
 }

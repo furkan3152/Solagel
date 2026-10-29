@@ -189,7 +189,7 @@ export interface IntegrityTransfer {
   amount: number;
   /** Entry fee of the arena (normalizes amounts across arenas). */
   fee: number;
-  /** Victim and eater ticket keys (`<session PDA>#<session id>`). */
+  /** Victim and eater ticket keys (`<arenaId>:<player lowercase>:<sessionId>`). */
   fromKey: string;
   toKey: string;
   /** Other stakers in the instance at that moment (without the victim). */

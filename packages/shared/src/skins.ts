@@ -126,7 +126,7 @@ export const SKINS: readonly SkinDef[] = [
     id: 2,
     key: 'penny',
     name: 'Penny',
-    desc: 'Every lamport counts.',
+    desc: 'Every wei counts.',
     tier: 'free',
     colors: c('#FFD2B3', '#F47F46', '#D55B20', '#97360D', '#FFE6D6', '#FF8F8F'),
     symbol: 'cent',

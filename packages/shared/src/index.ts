@@ -10,6 +10,7 @@ export * from './arenas';
 export * from './names';
 export * from './text';
 export * from './token';
-export * from './siws';
+export * from './siwe';
+export * from './chains';
 export * from './site';
 export * from './integrity';
