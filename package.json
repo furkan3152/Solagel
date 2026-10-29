@@ -2,7 +2,7 @@
   "name": "elymum",
   "private": true,
   "version": "0.1.0",
-  "description": "Slana — cute coin-themed on-chain Agar.io for Solana",
+  "description": "Elymum: a cute coin-eats-coin arena game on Elysium (EVM, gas HYPE), with the Elymum NFT",
   "license": "MIT",
   "packageManager": "pnpm@10.28.0",
   "engines": {
@@ -18,8 +18,10 @@
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
-    "program:build": "anchor build --ignore-keys && scripts/build-lean.sh",
-    "program:test": "scripts/test-program.sh",
+    "contracts:build": "pnpm -F @elymum/contracts build",
+    "contracts:test": "pnpm -F @elymum/contracts test",
+    "localnet": "node scripts/localnet.mjs",
+    "localnet:fund": "node scripts/localnet-fund.mjs",
     "admin": "pnpm -F @elymum/sdk admin"
   }
 }

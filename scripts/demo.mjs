@@ -1,19 +1,24 @@
 #!/usr/bin/env node
-// One-command Slana demo.
+// One-command Elymum demo.
 //   pnpm demo            fake chain: server (NODE_ENV=development DEV_FAKE_CHAIN=1 DEV_FAKE_TOKEN=1) + web dev server
 //                        (DEV_FAKE_TOKEN=0 pnpm demo: the game token starts unset, arenas "Opening soon";
 //                        `curl -X POST localhost:8787/api/dev/token` sets it live)
-//   pnpm demo:localnet   real local validator + slana_lean.so + production-built server + web dev server
-// Flags: --browser  also open a Chromium with the Dev Wallet (a local keypair; needs a display)
-//        --no-build (localnet) skip building missing pieces and fail instead
+//   pnpm demo:localnet   a real local EVM: `hardhat node` + the contracts deployed with the SDK (TestToken,
+//                        ElymumArena, ElymumNFT, token set, four arenas, mint open) + the production-built
+//                        server on that chain (EVM_RPC_URL, SERVER_PRIVATE_KEY, ARENA_ADDRESS, NFT_ADDRESS,
+//                        ADMIN_WALLETS) + the web dev server
+// Flags: --browser  also open a Chromium with the Dev Wallet (an EIP-6963 wallet whose key stays in Node;
+//                   on localnet it is Hardhat account #0, the contract owner and admin; needs a display)
+//        --no-build (localnet) do not build the server first and fail if it is missing
 // Rounds: paid arenas play wall-clock rounds (5 minutes by default, no cash-out). To see the bell sooner, set
 //        ROUND_SECONDS (e.g. `ROUND_SECONDS=90 pnpm demo`); joins close ROUND_JOIN_CLOSE_SECONDS before it (default
 //        60, capped at half a round). The server reads both.
-// Ctrl+C (SIGINT), SIGTERM and SIGHUP stop every child process group, and in localnet mode the validator.
+// Ctrl+C (SIGINT), SIGTERM and SIGHUP stop every child process group, including the hardhat node.
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { ROOT, hasCommand, portFree, waitForHttp, withSolanaPath } from './lib/common.mjs';
+import { LOCALNET_RPC_PORT, ROOT, portFree, waitForHttp } from './lib/common.mjs';
+import { ACCOUNT, STATE_DIR, deployLocalnet, startHardhatNode } from './lib/localnet.mjs';
 
 const argv = process.argv.slice(2);
 const KNOWN = new Set(['--localnet', '--browser', '--no-build', '--help', '-h']);
@@ -28,9 +33,9 @@ const NO_BUILD = argv.includes('--no-build');
 
 const SERVER_PORT = 8787;
 const WEB_PORT = 5173;
-const RPC_PORT = 8899;
+const RPC_PORT = LOCALNET_RPC_PORT;
 const WEB_URL = `http://localhost:${WEB_PORT}`;
-const ENV = LOCALNET ? withSolanaPath() : { ...process.env };
+const ENV = { ...process.env };
 
 const color = (n, s) => (process.stdout.isTTY ? `\x1b[${n}m${s}\x1b[0m` : s);
 const say = (s) => console.log(`${color('1;35', '>')} ${s}`);
@@ -43,23 +48,20 @@ const fail = (s, hint) => {
 // ───────────────────────────── preflight ─────────────────────────────
 async function preflight() {
   const major = Number(process.versions.node.split('.')[0]);
-  if (major < 22) fail(`Node ${process.versions.node} is too old; Slana needs Node 22 or newer.`, 'Install it from https://nodejs.org or with nvm: nvm install 22');
+  if (major < 22) fail(`Node ${process.versions.node} is too old; Elymum needs Node 22 or newer.`, 'Install it from https://nodejs.org or with nvm: nvm install 22');
   const pv = spawnSync('pnpm', ['--version'], { encoding: 'utf8' });
   if (pv.error || pv.status !== 0) fail('pnpm was not found.', 'Install it with: corepack enable   (or npm i -g pnpm@10)');
   const pnpmMajor = Number(pv.stdout.trim().split('.')[0]);
-  if (pnpmMajor < 10) fail(`pnpm ${pv.stdout.trim()} is too old; Slana needs pnpm 10.`, 'Run: corepack enable   (the repo pins pnpm@10 in package.json)');
+  if (pnpmMajor < 10) fail(`pnpm ${pv.stdout.trim()} is too old; Elymum needs pnpm 10.`, 'Run: corepack enable   (the repo pins pnpm@10 in package.json)');
   const installed = ['apps/server/node_modules/tsx', 'apps/web/node_modules/vite', 'apps/web/node_modules/playwright'].every((p) => existsSync(join(ROOT, p)));
   if (!installed) fail('Dependencies are not installed.', 'Run: pnpm install');
-  const ports = [[SERVER_PORT, 'game server'], [WEB_PORT, 'web app'], ...(LOCALNET ? [[RPC_PORT, 'validator RPC'], [RPC_PORT + 1, 'validator websocket']] : [])];
+  const ports = [[SERVER_PORT, 'game server'], [WEB_PORT, 'web app'], ...(LOCALNET ? [[RPC_PORT, 'hardhat node RPC']] : [])];
   for (const [port, what] of ports) {
     if (!(await portFree(port))) {
-      fail(`Port ${port} (${what}) is already in use.`, `Stop whatever uses it (find it with: lsof -i :${port}) and try again.` + (LOCALNET && port >= RPC_PORT ? '\nA validator from an earlier run: scripts/localnet.sh --stop' : ''));
+      fail(`Port ${port} (${what}) is already in use.`, `Stop whatever uses it (find it with: lsof -i :${port}) and try again.` + (LOCALNET && port === RPC_PORT ? '\nA hardhat node from an earlier run (scripts/localnet.mjs) may still be up.' : ''));
     }
   }
-  if (LOCALNET) {
-    const missing = ['solana-test-validator', 'solana', 'solana-keygen', 'spl-token', 'curl'].filter((t) => !hasCommand(t, ENV));
-    if (missing.length) fail(`Missing tools for the local validator: ${missing.join(', ')}.`, 'Install the Agave CLI: https://docs.anza.xyz/cli/install  (spl-token: cargo install spl-token-cli)');
-  }
+  if (LOCALNET && !existsSync(join(ROOT, 'packages/contracts/node_modules/.bin/hardhat'))) fail('Hardhat is not installed.', 'Run: pnpm install');
 }
 
 // ───────────────────────────── process control ─────────────────────────────
@@ -142,29 +144,16 @@ async function shutdown(code = 0) {
   const deadline = Date.now() + 6000;
   while (Date.now() < deadline && [...children].some((r) => !r.exited)) await new Promise((r) => setTimeout(r, 100));
   for (const rec of children) killGroup(rec, 'SIGKILL');
-  if (LOCALNET) spawnSync(join(ROOT, 'scripts/localnet.sh'), ['--stop'], { env: ENV, stdio: 'inherit' });
   console.log(`${color('1;35', '>')} stopped.`);
   process.exit(code);
 }
 for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => void shutdown(sig === 'SIGINT' ? 130 : 143));
 
 // ───────────────────────────── modes ─────────────────────────────
-function parseEnvFile(path) {
-  const out = {};
-  for (const line of readFileSync(path, 'utf8').split('\n')) {
-    const m = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(line.trim());
-    if (m) out[m[1]] = m[2];
-  }
-  return out;
-}
-
-async function buildMissing() {
-  const lean = join(ROOT, 'target/deploy/slana_lean.so');
-  const need = (what, hint) => fail(`${what} is missing and --no-build was given.`, hint);
-  if (!existsSync(lean)) {
-    if (NO_BUILD) need('target/deploy/slana_lean.so', 'Run: scripts/build-lean.sh');
-    if (!hasCommand('cargo-build-sbf', ENV)) fail('target/deploy/slana_lean.so is missing and cargo-build-sbf is not installed.', 'Install the Agave/Solana build tools, then run: scripts/build-lean.sh');
-    if ((await runStep('building the Slana program (scripts/build-lean.sh, a few minutes the first time)', join(ROOT, 'scripts/build-lean.sh'), [])) !== 0) fail('The program build failed.', 'Fix the error above, or run scripts/build-lean.sh yourself.');
+async function buildServer() {
+  if (NO_BUILD) {
+    if (!existsSync(join(ROOT, 'apps/server/dist/index.js'))) fail('apps/server/dist/index.js is missing and --no-build was given.', 'Run: pnpm -F @elymum/server build');
+    return;
   }
   if ((await runStep('building the game server (tsup)', 'pnpm', ['-F', '@elymum/server', 'build'])) !== 0) fail('The server build failed.', 'Run: pnpm -F @elymum/server build');
 }
@@ -172,9 +161,9 @@ async function buildMissing() {
 async function main() {
   await preflight();
   let serverCwd = join(ROOT, 'apps/server');
-  let walletKeypair = join(ROOT, 'out/dev-wallet.json');
   let serverEnv;
   let serverCmd;
+  let localnet = null;
 
   if (!LOCALNET) {
     // Exactly the walkthrough setup: in-memory fake chain, fresh journal each run.
@@ -184,23 +173,47 @@ async function main() {
     // DEV_FAKE_TOKEN=1: the game token starts set, so the arenas are playable at once.
     // `DEV_FAKE_TOKEN=0 pnpm demo` starts with it unset ("Opening soon"; set it with POST /api/dev/token).
     serverEnv = { ...ENV, NODE_ENV: 'development', DEV_FAKE_CHAIN: '1', DEV_FAKE_TOKEN: ENV.DEV_FAKE_TOKEN === '0' ? '0' : '1', DATA_DIR: data };
-    delete serverEnv.PROGRAM_ID; // the fake chain refuses to start next to a real chain config
-    delete serverEnv.SERVER_KEYPAIR;
+    // the fake chain refuses to start next to a real chain config
+    for (const k of ['EVM_RPC_URL', 'SERVER_PRIVATE_KEY', 'ARENA_ADDRESS', 'NFT_ADDRESS']) delete serverEnv[k];
+    // anyone who signs in may play the demo
+    serverEnv.GAME_ACCESS ??= 'public';
     serverCmd = ['pnpm', ['-F', '@elymum/server', 'dev']];
   } else {
-    await buildMissing();
-    walletKeypair = join(ROOT, '.localnet/dev-wallet.json');
-    // The browser talks to the web dev server (it proxies /api and /ws), so SIWS names it.
-    const rc = await runStep('starting the validator and setting up the chain (scripts/localnet.sh)', join(ROOT, 'scripts/localnet.sh'), [], { env: { ...ENV, GAME_URL: WEB_URL } });
-    if (rc !== 0) {
-      spawnSync(join(ROOT, 'scripts/localnet.sh'), ['--stop'], { env: ENV, stdio: 'ignore' });
-      fail('scripts/localnet.sh failed.', 'See the output above and .localnet/validator.stdout.log. Common causes: a stale ledger (scripts/localnet.sh --stop) or a missing build.');
+    await buildServer();
+    say(`starting hardhat node on 127.0.0.1:${RPC_PORT}`);
+    let node;
+    try {
+      node = await startHardhatNode({ port: RPC_PORT });
+    } catch (e) {
+      fail(`hardhat node did not start: ${e.message}`, 'Try it by hand: pnpm -F @elymum/contracts exec hardhat node');
     }
+    const rec = { child: node, exited: false };
+    node.on('exit', () => {
+      rec.exited = true;
+      if (!shuttingDown) {
+        console.error(`${color('1;31', 'x')} the hardhat node stopped unexpectedly.`);
+        void shutdown(1);
+      }
+    });
+    children.add(rec);
     if (shuttingDown) return;
-    const file = parseEnvFile(join(ROOT, '.localnet/server.env'));
-    serverEnv = { ...ENV, ...file, PUBLIC_URL: WEB_URL, DATA_DIR: join(ROOT, '.localnet/server-data'), STALE_SESSION_AFTER_S: '60' };
+    say('deploying TestToken, ElymumArena and ElymumNFT with the SDK (the /admin deploy order)');
+    let deployed;
+    try {
+      // the browser talks to the web dev server (it proxies /api and /ws), so SIWE names it
+      deployed = await deployLocalnet({ rpcUrl: `http://127.0.0.1:${RPC_PORT}`, publicUrl: WEB_URL, openMint: true, log: (l) => say(l) });
+    } catch (e) {
+      fail(`the local deploy failed: ${e.shortMessage ?? e.message}`);
+    }
+    const data = join(STATE_DIR, 'server-data');
+    rmSync(data, { recursive: true, force: true });
+    mkdirSync(data, { recursive: true });
+    serverEnv = { ...ENV, ...deployed.env, NODE_ENV: 'production', DATA_DIR: data, STALE_SESSION_AFTER_S: '60' };
+    serverEnv.GAME_ACCESS ??= 'public';
     delete serverEnv.DEV_FAKE_CHAIN;
+    delete serverEnv.DEV_FAKE_TOKEN;
     serverCmd = ['node', ['dist/index.js']];
+    localnet = deployed;
   }
   if (shuttingDown) return;
 
@@ -218,15 +231,17 @@ async function main() {
   }
 
   console.log('');
-  console.log(color('1;32', `  Slana is running:  ${WEB_URL}`));
+  console.log(color('1;32', `  Elymum is running: ${WEB_URL}`));
   console.log(`  game server:       http://127.0.0.1:${SERVER_PORT}/api/health`);
-  if (LOCALNET) {
-    console.log(`  validator RPC:     http://127.0.0.1:${RPC_PORT}   (server env: .localnet/server.env)`);
-    console.log('  wallet:            Phantom on localhost (Settings > Developer Settings > Testnet Mode > Solana Localnet),');
-    console.log('                     or `pnpm demo:localnet --browser` for a local-keypair Dev Wallet. Fund an address with:');
-    console.log('                       scripts/localnet-fund.sh <WALLET_ADDRESS>');
+  if (localnet) {
+    console.log(`  hardhat node:      http://127.0.0.1:${RPC_PORT}   (chain id ${localnet.chainId}; addresses in .localnet/contracts.json)`);
+    console.log(`  arena / NFT:       ${localnet.arena} / ${localnet.nft}`);
+    console.log(`  owner + admin:     ${localnet.owner} (Hardhat account #0; import its key into a wallet for /admin)`);
+    console.log('  wallet:            any EVM wallet on "Localnet" (RPC http://127.0.0.1:8545, chain id 31337),');
+    console.log('                     or `pnpm demo:localnet --browser` for the Dev Wallet. Fund an address with:');
+    console.log('                       node scripts/localnet-fund.mjs <0x-address>');
   } else {
-    console.log('  wallet:            any Wallet Standard wallet signs in (no funds needed), or run with --browser for a Dev Wallet.');
+    console.log('  wallet:            any EVM wallet signs in (SIWE, no funds needed), or run with --browser for the Dev Wallet.');
   }
   const rs = Number(ENV.ROUND_SECONDS) || 300;
   console.log(`  arena rounds:      ${rs} s each, no cash-out (set ROUND_SECONDS=90 for a quicker bell)`);
@@ -234,15 +249,9 @@ async function main() {
   console.log('');
 
   if (OPEN_BROWSER) {
-    if (LOCALNET) {
-      const kp = spawnSync('node', ['-e', `import('./scripts/lib/dev-wallet.mjs').then(m=>console.log(m.addressOf(m.loadOrCreateKeypair(${JSON.stringify(walletKeypair)}))))`], { cwd: ROOT, encoding: 'utf8' });
-      const addr = kp.stdout.trim();
-      if (addr) {
-        say(`funding the Dev Wallet ${addr} (SOL + $SLANA)`);
-        await runStep('funding', join(ROOT, 'scripts/localnet-fund.sh'), [addr]);
-      }
-    }
-    start('browser', 'node', [join(ROOT, 'scripts/dev-browser.mjs'), WEB_URL, '--keypair', walletKeypair], { tagColor: '35', essential: false });
+    const args = [join(ROOT, 'scripts/dev-browser.mjs'), WEB_URL];
+    if (localnet) args.push('--account', String(ACCOUNT.owner), '--rpc', `http://127.0.0.1:${RPC_PORT}`);
+    start('browser', 'node', args, { tagColor: '35', essential: false });
   }
 }
 

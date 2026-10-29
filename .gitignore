@@ -8,24 +8,20 @@ build/
 *.tsbuildinfo
 apps/web/dist/
 
-# anchor / rust
-target/
-.anchor/
-test-ledger/
+# hardhat (packages/contracts: build output; src/artifacts.ts is committed)
+packages/contracts/artifacts/
+packages/contracts/cache/
+# local chain state (scripts/localnet.mjs: addresses, server env with a local dev key)
 .localnet/
-.surfpool/
-**/*.rs.bk
 
 # runtime data / secrets
 apps/server/data/
 data/
-*.keypair.json
 keys/
 .env
 .env.*
 !.env.example
-*-keypair.json
-id.json
+server-key.json
 *.pem
 *.key
 
