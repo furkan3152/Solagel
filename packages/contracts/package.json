@@ -14,7 +14,8 @@
     "test": "hardhat test",
     "export": "node scripts/export-artifacts.mjs",
     "build": "hardhat build && node scripts/export-artifacts.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "gas": "hardhat run scripts/gas-report.ts"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox-viem": "^5.0.7",

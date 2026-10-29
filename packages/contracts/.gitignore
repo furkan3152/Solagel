@@ -1,0 +1,5 @@
+# Hardhat build output (src/artifacts.ts is generated from it and checked in)
+cache/
+artifacts/
+types/
+coverage/
