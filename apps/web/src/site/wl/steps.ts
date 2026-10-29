@@ -28,7 +28,7 @@ export function buildSteps(tasks: readonly PublicWlTask[]): Step[] {
     {
       key: 'wallet',
       kind: 'sign',
-      title: walletTask?.title || 'Your Solana wallet',
+      title: walletTask?.title || 'Your EVM wallet',
       body: walletTask?.body || 'Sign in with the wallet that should go on the list. It is free and sends no transaction.',
       required: true,
       task: walletTask,
@@ -45,7 +45,7 @@ export function stepError(step: Step, answers: Answers, handle: string, signedIn
   switch (step.kind) {
     case 'handle':
       if (!handle.trim()) return 'Enter your X handle.';
-      return normalizeXHandle(handle) ? null : 'That is not an X handle. Use 1 to 15 letters, numbers or underscores, like @slanaio.';
+      return normalizeXHandle(handle) ? null : 'That is not an X handle. Use 1 to 15 letters, numbers or underscores, like @elymum.';
     case 'sign':
       return signedIn ? null : 'Sign in with your wallet to finish.';
     case 'follow_x':

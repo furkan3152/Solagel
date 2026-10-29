@@ -70,6 +70,7 @@ function Detail({ entry, onClose, onChanged, api }: { entry: WlEntryAdmin; onClo
             <dt className="mono">Wallet</dt>
             <dd>
               <code>{entry.wallet}</code>
+              {entry.legacy && <span className="ad-bad ad-legacy"> legacy (not an EVM wallet: never in the allowlist)</span>}
             </dd>
           </div>
           <div>
@@ -287,6 +288,7 @@ export function WlTab({ api }: TabProps) {
                     <code title={e.wallet}>
                       {e.wallet.slice(0, 6)}…{e.wallet.slice(-4)}
                     </code>
+                    {e.legacy && <span className="ad-bad ad-legacy"> legacy</span>}
                   </td>
                   <td>
                     <Chip tone={TONE[e.status]}>{e.status}</Chip>

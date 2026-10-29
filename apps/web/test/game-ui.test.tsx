@@ -1,19 +1,20 @@
 import { EMOTES, type DeathStats, type RoomInfo } from '@elymum/shared';
 import { act, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { chainStatus } from './evm-helpers';
 import { Kb } from '../src/design';
 import { useUi } from '../src/store';
 import { setReducedMotion } from '../src/test/media';
 import { DeathSheet, receiptNumbers, settlementFor, stickerSvg } from '../src/ui/game';
 import { roomName, tokenFormat } from '../src/ui/game/format';
 
-const M = 1_000_000; // one whole token (6 decimals)
-const ARENA: RoomInfo = { id: 'arena-1-1', mode: 'arena', name: 'Penny Pond', width: 6400, height: 6400, players: 3, bots: 10, maxPlayers: 50, arenaId: 1, entryFee: 1000 * M };
+const M = 1_000_000; // one whole token in ledger units (6 decimals)
+const ARENA: RoomInfo = { id: 'arena-1-1', mode: 'arena', name: 'Asphodel Meadow', width: 6400, height: 6400, players: 3, bots: 10, maxPlayers: 50, arenaId: 1, entryFee: 1000 * M };
 const STATS: DeathStats = { aliveMs: 94_000, finalMass: 0, maxMass: 640, foodEaten: 88, cellsEaten: 1, playersEaten: 1, bestRank: 5 };
 const initial = useUi.getState();
 
 beforeEach(() => {
-  useUi.setState({ chain: { enabled: true, cluster: 'devnet', programId: null, rpcUrl: null, arenasEnabled: true, tokenReady: true, token: { mint: 'M', symbol: '$SLANA', decimals: 6 }, feeBps: 500 } });
+  useUi.setState({ chain: chainStatus() });
 });
 afterEach(() => {
   act(() => useUi.setState(initial, true));
@@ -31,7 +32,7 @@ describe('round receipt numbers', () => {
   });
 
   it('adopts only the settlement of the ticket that was paid (by session address)', () => {
-    const s = (session: string | null) => ({ session, arenaId: 1, signature: 'x', payout: 1, at: 0 });
+    const s = (session: string | null) => ({ session, arenaId: 1, txHash: '0x', payout: 1, at: 0 });
     expect(settlementFor(s('SessA'), 'SessA')).toEqual(s('SessA'));
     expect(settlementFor(s('SessB'), 'SessA')).toBeNull();
     expect(settlementFor(s(null), 'SessA')).toBeNull();
@@ -42,7 +43,7 @@ describe('round receipt numbers', () => {
 
 describe('format helpers', () => {
   it('signs token deltas with a real minus and no sign on zero', () => {
-    const tf = tokenFormat(6, '$SLANA');
+    const tf = tokenFormat(6, '$ELYMUM');
     expect(tf.signed(1250 * M)).toBe('+1,250');
     expect(tf.signed(-1250 * M)).toBe('−1,250');
     expect(tf.fmt(1500 * M, { compact: true })).toBe('1.5K');
@@ -50,8 +51,8 @@ describe('format helpers', () => {
   });
 
   it('names arenas and practice rooms', () => {
-    expect(roomName(ARENA)).toBe('Penny Pond');
-    expect(roomName({ ...ARENA, arenaId: 4, instance: 2 })).toBe('Whale Bay · 2');
+    expect(roomName(ARENA)).toBe('Asphodel Meadow');
+    expect(roomName({ ...ARENA, arenaId: 4, instance: 2 })).toBe('Isles of the Blessed · 2');
     expect(roomName({ ...ARENA, id: 'practice-rookie-2', mode: 'practice', league: 'rookie', arenaId: undefined })).toBe('Rookie Pond #2');
     expect(roomName({ ...ARENA, id: 'practice-pro-1', mode: 'practice', league: 'pro', arenaId: undefined })).toBe('Pro Pond #1');
   });

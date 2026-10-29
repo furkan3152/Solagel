@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { StampSpinner, Tabs, TabPanel, type TabItem } from '../../design';
+import { Tabs, TabPanel, type TabItem } from '../../design';
 import { adminApi } from '../../site/api';
-import { AdminPanel } from '../AdminPanel';
+import { AdminPanel, type ChainTab } from '../AdminPanel';
 import type { AdminNetwork } from '../net';
 import { AdminSessionBar, useAdminSession } from './AdminSession';
 import { CollabsTab } from './CollabsTab';
@@ -12,9 +12,12 @@ import { TasksTab } from './TasksTab';
 import { WlTab } from './WlTab';
 import './admin-site.css';
 
-export type AdminTab = 'chain' | 'play' | 'wl' | 'tasks' | 'collabs' | 'integrity' | 'settings';
+export type AdminTab = ChainTab | 'play' | 'wl' | 'tasks' | 'collabs' | 'integrity' | 'settings';
 const TABS: TabItem<AdminTab>[] = [
-  { id: 'chain', label: 'Chain' },
+  { id: 'launch', label: 'Launch' },
+  { id: 'deploy', label: 'Deploy' },
+  { id: 'mint', label: 'Mint' },
+  { id: 'arena', label: 'Arena' },
   { id: 'play', label: 'Play' },
   { id: 'wl', label: 'WL' },
   { id: 'tasks', label: 'Tasks' },
@@ -23,16 +26,19 @@ const TABS: TabItem<AdminTab>[] = [
   { id: 'settings', label: 'Settings' },
 ];
 const IDS = TABS.map((t) => t.id);
+const CHAIN_TABS: readonly AdminTab[] = ['launch', 'deploy', 'mint', 'arena'];
 const fromHash = (): AdminTab => {
   const h = location.hash.replace(/^#/, '') as AdminTab;
-  return IDS.includes(h) ? h : 'chain';
+  return IDS.includes(h) ? h : 'launch';
 };
 
 /**
- * `/admin`: the chain admin (unchanged) next to the slana.io tabs. The site tabs need an admin
- * session (SIWS with a wallet in ADMIN_WALLETS); every call sends it as a Bearer token.
+ * `/admin`: the chain tabs (Launch, Deploy, Mint, Arena; status for everyone, writes for the
+ * contract owner) next to the site tabs. The site tabs (and the server steps of the chain tabs:
+ * registering contracts, the allowlist, the $1 price) need an admin session (SIWE with a wallet in
+ * ADMIN_WALLETS); every call sends it as a Bearer token.
  */
-export function AdminHome({ net }: { net: AdminNetwork | null }) {
+export function AdminHome({ net, reloadNet }: { net: AdminNetwork; reloadNet: () => Promise<void> }) {
   const [tab, setTab] = useState<AdminTab>(fromHash);
   const state = useAdminSession();
   const api = useMemo(() => (state.kind === 'admin' ? adminApi(state.session.token) : null), [state]);
@@ -44,11 +50,11 @@ export function AdminHome({ net }: { net: AdminNetwork | null }) {
   }, []);
   const go = (t: AdminTab) => {
     setTab(t);
-    history.replaceState(null, '', t === 'chain' ? location.pathname : `#${t}`);
+    history.replaceState(null, '', t === 'launch' ? location.pathname : `#${t}`);
   };
 
   let panel: ReactNode;
-  if (tab === 'chain') panel = net ? <AdminPanel net={net} embedded /> : <StampSpinner label="Loading" />;
+  if (CHAIN_TABS.includes(tab)) panel = <AdminPanel net={net} api={api} tab={tab as ChainTab} go={go} reloadNet={reloadNet} />;
   else if (!api)
     panel = (
       <section className="ad-gate" role="status">
@@ -67,11 +73,14 @@ export function AdminHome({ net }: { net: AdminNetwork | null }) {
     <div className="ad-page">
       <header className="ad-head">
         <div>
-          <span className="mono ad-kicker">Slana · operator copy</span>
+          <span className="mono ad-kicker">Elymum · operator panel</span>
           <h1 className="ad-title">Admin panel</h1>
         </div>
+        <span className={`ad-netpill mono${net.mainnet ? ' is-mainnet' : ''}`} data-testid="net-pill">
+          {net.info ? `${net.mainnet ? 'MAINNET' : 'TESTNET'} · ${net.info.name}` : 'NO CHAIN'}
+        </span>
         <a className="ad-note" href="/">
-          slana.io
+          Site
         </a>
       </header>
       <AdminSessionBar state={state} />

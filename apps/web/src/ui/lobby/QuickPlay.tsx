@@ -1,7 +1,7 @@
 import { InkButton, type IconName } from '../../design';
 import { formatCountdown } from '../../game/round';
 import { useT } from '../../i18n';
-import type { TicketGate, TicketModel } from '../../solana/ticket';
+import type { TicketGate, TicketModel } from '../../wallet/ticket';
 import { useHeldCountdown } from './HeldBanner';
 import { ticketName, useTokenText } from './useLobby';
 
@@ -36,7 +36,7 @@ export function useCtaText(ticket: TicketModel | undefined, gate: TicketGate | u
     case 'resume':
       return { label: t('lo.cta.resume'), sub: t('lo.cta.resumeSub', { room }), icon: 'play', inert: false };
     case 'settling':
-      return { label: t('lo.cta.settling'), sub: t('lo.cta.settlingSub', { amount: tok.fee(gate.payout), sym: tok.symbol }), icon: 'coin', inert: true };
+      return { label: t('lo.cta.settling'), sub: t('lo.cta.settlingSub', { amount: tok.wire(gate.payout), sym: tok.symbol }), icon: 'coin', inert: true };
     case 'collect':
       return { label: t('lo.cta.collect'), sub: t('lo.cta.collectSub', { amount: tok.fee(gate.owed), sym: tok.symbol }), icon: 'coin', inert: false };
     case 'refund':

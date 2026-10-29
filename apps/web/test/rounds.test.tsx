@@ -6,9 +6,10 @@ import { ServerClock, serverClock } from '../src/game/clock';
 import { HELD_JITTER_MS, HeldTicket } from '../src/game/held';
 import { Input } from '../src/game/input';
 import { formatCountdown, roundInfoFor, roundLengths, roundStartLabel, roundStateAt } from '../src/game/round';
-import { useChainData } from '../src/solana/chain';
+import { useChainData } from '../src/wallet/chain';
+import { chainStatus } from './evm-helpers';
 import { RoundCues, type RoundCueSink } from '../src/game/roundCues';
-import type { TicketGate, TicketModel } from '../src/solana/ticket';
+import type { TicketGate, TicketModel } from '../src/wallet/ticket';
 import { useUi } from '../src/store';
 import { setReducedMotion } from '../src/test/media';
 import { DeathSheet, GameHud, RoundChip, RoundCountdown, RoundOverSheet } from '../src/ui/game';
@@ -17,14 +18,14 @@ import { HeldBanner } from '../src/ui/lobby/HeldBanner';
 import { QuickPlay } from '../src/ui/lobby/QuickPlay';
 import { TicketList } from '../src/ui/lobby/TicketList';
 
-const M = 1_000_000; // one whole token (6 decimals)
+const M = 1_000_000; // one whole token in ledger units (6 decimals of the 18-decimal token)
 /** A round boundary: round N starts here (default 5-minute rounds). */
 const N = 5_800_000;
 const START = N * RULES.roundMs;
 const R: RoundInfo = { n: N, endsAt: START + RULES.roundMs, joinsCloseAt: START + RULES.roundMs - RULES.roundJoinCloseMs };
-const ARENA: RoomInfo = { id: 'arena-1-1', mode: 'arena', name: 'Penny Pond', width: 6400, height: 6400, players: 3, bots: 10, maxPlayers: 50, arenaId: 1, entryFee: 1000 * M, round: R };
+const ARENA: RoomInfo = { id: 'arena-1-1', mode: 'arena', name: 'Asphodel Meadow', width: 6400, height: 6400, players: 3, bots: 10, maxPlayers: 50, arenaId: 1, entryFee: 1000 * M, round: R };
 const STATS: DeathStats = { aliveMs: 94_000, finalMass: 0, maxMass: 640, foodEaten: 88, cellsEaten: 1, playersEaten: 1, bestRank: 5 };
-const CHAIN = { enabled: true, cluster: 'devnet', programId: null, rpcUrl: null, arenasEnabled: true, tokenReady: true, token: { mint: 'M', symbol: '$SLANA', decimals: 6 }, feeBps: null };
+const CHAIN = chainStatus({ feeBps: null });
 // jsdom has no canvas: the same null it returns, without the "not implemented" warning
 HTMLCanvasElement.prototype.getContext = (() => null) as never;
 const initial = useUi.getState();
@@ -213,7 +214,7 @@ describe('Round over sheet', () => {
     );
     expect(screen.getByRole('dialog', { name: 'Round over' })).toBeTruthy();
     // the round is named by its start time, not by its index since 1970
-    expect(screen.getByText(`SLANA · ${roundStartLabel(N, R)} ROUND`)).toBeTruthy();
+    expect(screen.getByText(`ELYMUM · ${roundStartLabel(N, R)} ROUND`)).toBeTruthy();
     expect(roundStartLabel(N, R)).toMatch(/^\d\d:\d\d$/);
     expect(document.body.textContent).not.toContain(String(N));
     expect(screen.getByText('Your till')).toBeTruthy();
@@ -221,8 +222,8 @@ describe('Round over sheet', () => {
     expect(screen.getByText('Fee 5%')).toBeTruthy();
     expect(screen.getByText('≈ −100')).toBeTruthy();
     expect(screen.getByText('Paid')).toBeTruthy();
-    expect(document.querySelector('.g-receipt__net')?.textContent).toBe('≈ 2,900$SLANA');
-    expect(screen.getByRole('status').textContent).toContain('Settling on Solana');
+    expect(document.querySelector('.g-receipt__net')?.textContent).toBe('≈ 2,900$ELYMUM');
+    expect(screen.getByRole('status').textContent).toContain('Settling on Elysium');
     // my place and the room's top 5 at the bell
     expect(screen.getByText('Your place').nextElementSibling?.textContent).toBe('3rd');
     const top = screen.getByRole('region', { name: 'Top 5 at the bell' });
@@ -232,7 +233,7 @@ describe('Round over sheet', () => {
     expect(screen.getByRole('button', { name: /Next round/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /Lobby/ })).toBeTruthy();
 
-    act(() => useUi.setState({ lastSettlement: { session: 'SessMine', arenaId: 1, signature: '5igSig'.padEnd(88, 'x'), payout: 3000 * M, fee: 100 * M, net: 2900 * M, at: Date.now() } }));
+    act(() => useUi.setState({ lastSettlement: { session: 'SessMine', arenaId: 1, txHash: `0x${'5a'.repeat(32)}`, payout: 3000 * M, fee: 100 * M, net: 2900 * M, at: Date.now() } }));
     expect(screen.getByText('−100')).toBeTruthy();
     expect(screen.getByRole('link', { name: /View transaction/ })).toBeTruthy();
   });
@@ -293,7 +294,7 @@ describe('death sheet in an arena', () => {
   it('"Buy back in" with the fee while joins are open', () => {
     clockAt(START + 30_000);
     eaten();
-    expect(screen.getByRole('button', { name: /^Buy back in · 1K \$SLANA/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Buy back in · 1K \$ELYMUM/ })).toBeTruthy();
     expect(screen.queryByText(/Next round in/)).toBeNull();
   });
 
@@ -307,7 +308,7 @@ describe('death sheet in an arena', () => {
 
 describe('lobby tickets and the held ticket', () => {
   const practice: TicketModel = { key: 'practice', arenaId: null, entryFee: 0n, humans: 0, bots: 0, loot: 0, open: true };
-  const penny: TicketModel = { key: 'arena:1', arenaId: 1, entryFee: 1000n * 1_000_000n, humans: 3, bots: 10, loot: 0, open: true };
+  const penny: TicketModel = { key: 'arena:1', arenaId: 1, entryFee: 1000n * 10n ** 18n, humans: 3, bots: 10, loot: 0, open: true };
   const list = () =>
     render(
       <Kb>

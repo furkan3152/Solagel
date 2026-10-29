@@ -16,14 +16,14 @@ describe('the landing (/)', { timeout: 30_000 }, () => {
   it('renders the hero, the sections, the CTAs and the footer, with no way into the game', async () => {
     ({ restore } = mockFetch({ 'GET /api/site/settings': { settings: { ...SETTINGS, collabOpen: false } } }));
     render(<Landing />);
-    expect(screen.getByRole('heading', { level: 1, name: 'Slana' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: 'Elymum' })).toBeTruthy();
     expect(screen.getByText('Last the round.')).toBeTruthy();
     const wl = screen.getAllByRole('link', { name: /Join the WL/ });
     expect(wl.every((a) => a.getAttribute('href') === '/wl')).toBe(true);
     await waitFor(() => expect(screen.getByRole('link', { name: 'Collab, soon' }).getAttribute('href')).toBe('/collab'));
     for (const h of ['Coins that eat coins.', 'Four tickets, one round.', 'Meet the pond.', 'Small print.']) expect(screen.getByRole('heading', { name: h })).toBeTruthy();
     expect(screen.getByText('Coming soon')).toBeTruthy();
-    expect(screen.getAllByRole('link', { name: /@slanaio/ }).some((a) => a.getAttribute('href') === 'https://x.com/slanaio')).toBe(true);
+    expect(screen.getAllByRole('link', { name: /@elymum/ }).some((a) => a.getAttribute('href') === 'https://x.com/elymum')).toBe(true);
     expect(screen.queryByRole('link', { name: /^Play$/ })).toBeNull();
     expect(document.querySelector('a[href="/play"]')).toBeNull();
     // sound is off until the visitor turns it on
@@ -31,7 +31,7 @@ describe('the landing (/)', { timeout: 30_000 }, () => {
   });
 
   it('shows Collab without "Soon" when collabs are open, and Play when the game is public', async () => {
-    ({ restore } = mockFetch({ 'GET /api/site/settings': { settings: { ...SETTINGS, collabOpen: true, gamePublic: true } } }));
+    ({ restore } = mockFetch({ 'GET /api/site/settings': { settings: { ...SETTINGS, collabOpen: true, gameAccess: 'public' } } }));
     render(<Landing />);
     await waitFor(() => expect(screen.getByRole('link', { name: /^Play$/ }).getAttribute('href')).toBe('/play'));
     expect(screen.queryByRole('link', { name: 'Collab, soon' })).toBeNull();

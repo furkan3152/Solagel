@@ -1,11 +1,12 @@
 import { lookForBasicSkin } from '@elymum/art';
+import type { GameAccess } from '@elymum/shared';
 import { BASIC_SKINS } from '@elymum/shared';
 import { motion, type Variants } from 'motion/react';
 import { useCallback, useRef, useState, type ReactNode } from 'react';
 import { Icon, Stamp, useReducedMotion } from '../../design';
 import { Link } from '../router';
 import { SiteFooter, SiteHeader, Wordmark, XIcon } from '../Shell';
-import { X_URL, useSiteSettings } from '../settings';
+import { X_URL, siteHost, useSiteSettings } from '../settings';
 import { Kb } from '../../design';
 import { CoinArt } from './CoinArt';
 import { CoinPond } from './CoinPond';
@@ -43,7 +44,7 @@ function RegMark({ className }: { className: string }) {
   );
 }
 
-function Hero({ collabOpen, gamePublic, wlOpen, sound }: { collabOpen: boolean; gamePublic: boolean; wlOpen: boolean; sound: ReturnType<typeof useLandingSound> }) {
+function Hero({ collabOpen, gameAccess, wlOpen, sound }: { collabOpen: boolean; gameAccess: GameAccess; wlOpen: boolean; sound: ReturnType<typeof useLandingSound> }) {
   const reduced = useReducedMotion();
   const copy = useRef<HTMLDivElement>(null);
   const avoid = useCallback(() => copy.current?.getBoundingClientRect() ?? null, []);
@@ -55,7 +56,7 @@ function Hero({ collabOpen, gamePublic, wlOpen, sound }: { collabOpen: boolean; 
       <RegMark className="ld-reg--bl" />
       <RegMark className="ld-reg--br" />
       <div className="ld-hero__copy" ref={copy}>
-        <p className="ld-hero__kicker mono">On-chain coin arenas · Solana · 5-minute rounds</p>
+        <p className="ld-hero__kicker mono">On-chain coin arenas · Elysium · 5-minute rounds</p>
         <h1 id="ld-hero-title" className="ld-hero__title">
           <Wordmark size="xl" live={!reduced} />
         </h1>
@@ -78,15 +79,15 @@ function Hero({ collabOpen, gamePublic, wlOpen, sound }: { collabOpen: boolean; 
               <span className="ld-soon mono">Soon</span>
             </Link>
           )}
-          {gamePublic && (
+          {gameAccess !== 'admins' && (
             <a href="/play" className="ld-btn ld-btn--ink" onClick={sound.click}>
               <Icon name="play" size={20} />
-              <span>Play</span>
+              <span>{gameAccess === 'holders' ? 'Play (holders)' : 'Play'}</span>
             </a>
           )}
         </div>
-        <p className="ld-hero__note mono">{wlOpen ? 'WL is open · signing in is free, no transaction' : 'WL is closed for now · follow @slanaio'}</p>
-        <Stamp className="ld-hero__stamp" text={wlOpen ? 'WL open' : 'WL soon'} sub="slana.io" tone={wlOpen ? 'pink' : 'teal'} round size="md" rotate={-12} animateIn={!reduced} delay={0.9} />
+        <p className="ld-hero__note mono">{wlOpen ? 'WL is open · signing in is free, no transaction' : 'WL is closed for now · follow @elymum'}</p>
+        <Stamp className="ld-hero__stamp" text={wlOpen ? 'WL open' : 'WL soon'} sub={siteHost()} tone={wlOpen ? 'pink' : 'teal'} round size="md" rotate={-12} animateIn={!reduced} delay={0.9} />
       </div>
       <div className="ld-hero__foot">
         <span className="ld-hero__edition mono">No. 001 · Autumn 2026 · Tap the paper to feed them</span>
@@ -101,7 +102,7 @@ function Hero({ collabOpen, gamePublic, wlOpen, sound }: { collabOpen: boolean; 
 
 const FACTS: { big: string; label: string; body: string; tone: string }[] = [
   { big: '5:00', label: 'Minutes a round', body: 'Short rounds on a wall clock. Every arena rings its bell on time.', tone: 'pink' },
-  { big: 'SOL', label: 'Arenas on Solana', body: 'Tickets and payouts settle on-chain, in the open.', tone: 'teal' },
+  { big: 'HYPE', label: 'Arenas on Elysium', body: 'Tickets and payouts settle on-chain, in the open. Gas is paid in HYPE.', tone: 'teal' },
   { big: 'Bell', label: 'Alive is paid', body: 'Everyone still on the paper at the bell is paid their till.', tone: 'mustard' },
 ];
 
@@ -111,7 +112,7 @@ function What() {
       <SectionHead no="01" kicker="What it is" title="Coins that eat coins." id="ld-what-h" />
       <div className="ld-what__grid">
         <motion.p className="ld-lede" variants={rise} initial="hidden" whileInView="show" viewport={view} custom={1}>
-          Slana is a cute arena game with an on-chain heart. You are a jelly coin on a sheet of riso paper. Eat confetti and smaller coins to grow, slip
+          Elymum is a cute arena game with an on-chain heart. You are a jelly coin on a sheet of riso paper. Eat confetti and smaller coins to grow, slip
           away from the bigger ones, and still be on the paper when the bell rings.
         </motion.p>
         <ul className="ld-facts">
@@ -182,7 +183,7 @@ const STEPS: { no: string; title: string; body: string; stamp: string; tone: 'pi
   { no: '01', title: 'Buy a ticket', body: 'Pick an arena and punch a ticket. The entry is the value your coin carries in.', stamp: 'Punched', tone: 'teal', art: <ArtTicket /> },
   { no: '02', title: 'Eat', body: 'Swallow confetti and smaller coins. Whatever they carried is now in your till.', stamp: 'Nom', tone: 'pink', art: <ArtEat /> },
   { no: '03', title: 'The bell', body: 'Five minutes on the clock. Dodge the big ones until it rings.', stamp: 'Ding', tone: 'mustard', art: <ArtBell /> },
-  { no: '04', title: 'Paid', body: 'Every coin still alive at the bell is paid its till, settled on Solana.', stamp: 'Paid', tone: 'ink', art: <ArtPaid /> },
+  { no: '04', title: 'Paid', body: 'Every coin still alive at the bell is paid its till, settled on Elysium.', stamp: 'Paid', tone: 'ink', art: <ArtPaid /> },
 ];
 
 function Round() {
@@ -221,7 +222,7 @@ function Round() {
           </motion.li>
         ))}
       </motion.ol>
-      <p className="ld-round__foot mono">The arena opens soon · follow @slanaio for the first bell</p>
+      <p className="ld-round__foot mono">The arena opens soon · follow @elymum for the first bell</p>
     </section>
   );
 }
@@ -299,11 +300,11 @@ function Nft() {
         <motion.div className="ld-nft__copy" variants={rise} initial="hidden" whileInView="show" viewport={view}>
           <span className="ld-nft__kicker mono">04 · On the press</span>
           <h2 className="ld-nft__title" id="ld-nft-h">
-            Slana NFT
+            Elymum NFT
             <span className="ld-nft__soon mono">Coming soon</span>
           </h2>
           <p className="ld-nft__text">
-            The first Slana collection is still on the press. WL holders and collab communities get first access to the mint. The date lands on @slanaio
+            The Elymum NFT mints at $1 in HYPE: WL first, then public. WL holders and collab communities get first access to the mint. The date lands on @elymum
             first.
           </p>
           <div className="ld-nft__ctas">
@@ -313,7 +314,7 @@ function Nft() {
             </Link>
             <a href={X_URL} target="_blank" rel="noreferrer" className="ld-btn ld-btn--ghost">
               <XIcon size={18} />
-              <span>Follow @slanaio</span>
+              <span>Follow @elymum</span>
             </a>
           </div>
         </motion.div>
@@ -330,17 +331,17 @@ function Nft() {
 /* ── FAQ ──────────────────────────────────────────────────────────── */
 
 const FAQ: { q: string; a: ReactNode }[] = [
-  { q: 'What is Slana?', a: 'A cute arena game where coins eat coins, with arenas, tickets and payouts on Solana. Rounds last five minutes.' },
+  { q: 'What is Elymum?', a: 'A cute arena game where coins eat coins, with arenas, tickets and payouts on Elysium. Rounds last five minutes.' },
   {
     q: 'Can I play now?',
     a: (
       <>
-        Not yet. The arena opens soon, and the launch lands on <a href={X_URL} target="_blank" rel="noreferrer">@slanaio</a> first. The player guide is
-        already up at <Link href="/docs">slana.io/docs</Link>.
+        Not yet. The arena opens soon, and the launch lands on <a href={X_URL} target="_blank" rel="noreferrer">@elymum</a> first. The player guide is
+        already up at <Link href="/docs">the guide</Link>.
       </>
     ),
   },
-  { q: 'What is the WL?', a: 'The allowlist for the Slana NFT mint. A few short tasks on X, your handle and your Solana wallet. Every entry is checked by hand.' },
+  { q: 'What is the WL?', a: 'The allowlist for the Elymum NFT mint. A few short tasks on X, your handle and your EVM wallet. Every entry is checked by hand.' },
   { q: 'Does signing in cost anything?', a: 'No. You sign one message with your wallet to prove it is yours. It is free and sends no transaction.' },
   {
     q: 'How do collabs work?',
@@ -351,7 +352,7 @@ const FAQ: { q: string; a: ReactNode }[] = [
       </>
     ),
   },
-  { q: 'When is the mint?', a: 'Soon. The date, the price and the supply are posted on @slanaio first. We never DM first and never ask for a seed phrase.' },
+  { q: 'When is the mint?', a: 'Soon. The date, the price and the supply are posted on @elymum first. We never DM first and never ask for a seed phrase.' },
 ];
 
 function Faq() {
@@ -401,7 +402,7 @@ function Closing({ collabOpen }: { collabOpen: boolean }) {
   );
 }
 
-/** `/`: the slana.io landing. No way into the game unless the game is public. */
+/** `/`: the landing. No way into the game unless the game is public. */
 export function Landing() {
   const { settings } = useSiteSettings();
   const sound = useLandingSound();
@@ -412,7 +413,7 @@ export function Landing() {
       </a>
       <SiteHeader />
       <main id="main" className="ld-main" tabIndex={-1}>
-        <Hero collabOpen={settings.collabOpen} gamePublic={settings.gamePublic} wlOpen={settings.wlOpen} sound={sound} />
+        <Hero collabOpen={settings.collabOpen} gameAccess={settings.gameAccess} wlOpen={settings.wlOpen} sound={sound} />
         <What />
         <Round />
         <Coins />

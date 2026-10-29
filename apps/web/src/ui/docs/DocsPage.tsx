@@ -1,6 +1,6 @@
 import { useMemo, useRef } from 'react';
 import { Dateline, Icon, Receipt, Rule, Stamp, useReducedMotion, type ReceiptLine } from '../../design';
-import { feeBps } from '../../solana/ticket';
+import { feeBps } from '../../wallet/ticket';
 import { useUi } from '../../store';
 import { useTokenText } from '../lobby/useLobby';
 import { PageHead } from '../PageHead';

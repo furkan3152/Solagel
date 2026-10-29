@@ -1,9 +1,10 @@
-import { SITE_SETTINGS_DEFAULT, type SiteSettings } from '@elymum/shared';
+import { SITE_SETTINGS_DEFAULT, SITE_X_HANDLE_DEFAULT, type SiteSettings } from '@elymum/shared';
 import { useEffect, useState } from 'react';
 import { site } from './api';
 
-/** The X account and the site, for links and copy. */
-export const X_URL = 'https://x.com/slanaio';
+/** The project's X account (the default handle; pages that know the settings use `xProfile(settings.xHandle)`). */
+export const X_HANDLE = SITE_X_HANDLE_DEFAULT;
+export const X_URL = `https://x.com/${X_HANDLE}`;
 
 let cache: SiteSettings | null = null;
 let pending: Promise<SiteSettings> | null = null;
@@ -46,4 +47,14 @@ export const xProfile = (handle: string): string => `https://x.com/${handle.repl
 export const xIntent = (text: string, inReplyTo?: string | null): string =>
   `https://x.com/intent/post?text=${encodeURIComponent(text)}${inReplyTo ? `&in_reply_to=${encodeURIComponent(inReplyTo)}` : ''}`;
 
-export const shortWallet = (w: string): string => (w.length > 12 ? `${w.slice(0, 4)}…${w.slice(-4)}` : w);
+/** The host this site is served at (never hard-coded: `PUBLIC_URL` decides). */
+export function siteHost(): string {
+  try {
+    return window.location.host;
+  } catch {
+    return '';
+  }
+}
+
+/** `0x1234…abcd` for an EVM address; other (legacy) wallets keep 4 characters at each end. */
+export const shortWallet = (w: string): string => (w.length <= 12 ? w : w.startsWith('0x') ? `${w.slice(0, 6)}…${w.slice(-4)}` : `${w.slice(0, 4)}…${w.slice(-4)}`);

@@ -118,9 +118,9 @@ function Collab() {
     <div className="st-page cb-page">
       <header className="cb-head">
         <div>
-          <span className="st-kicker mono">Collab · Slana NFT</span>
+          <span className="st-kicker mono">Collab · Elymum NFT</span>
           <h1 className="st-title">Bring your community.</h1>
-          <p className="st-deck">DAOs, guilds, alpha groups and NFT projects can get Slana WL spots to raffle to their members. Tell us about yours.</p>
+          <p className="st-deck">DAOs, guilds, alpha groups and NFT projects can get Elymum WL spots to raffle to their members. Tell us about yours.</p>
         </div>
         <ol className="cb-progress" aria-label="Collab steps">
           {['Apply', 'Review', 'Add wallets'].map((label, i) => (
@@ -187,7 +187,7 @@ function Collab() {
             )}
           </section>
           <p className="st-note">
-            Questions? DM <a href={X_URL} target="_blank" rel="noreferrer">@slanaio</a> on X.
+            Questions? DM <a href={X_URL} target="_blank" rel="noreferrer">@elymum</a> on X.
           </p>
         </aside>
 
@@ -228,11 +228,11 @@ function ClosedCard({ onSignIn }: { onSignIn?: () => void }) {
       <Stamp text="Closed" tone="pink" size="md" rotate={-8} />
       <h2 className="cb-state__title">Applications are closed.</h2>
       <p className="cb-state__text">
-        We are not taking new communities right now. Follow <a href={X_URL} target="_blank" rel="noreferrer">@slanaio</a> on X for the next round.
+        We are not taking new communities right now. Follow <a href={X_URL} target="_blank" rel="noreferrer">@elymum</a> on X for the next round.
       </p>
       <div className="st-row">
         <a className="st-linkbtn st-linkbtn--ink" href={X_URL} target="_blank" rel="noreferrer">
-          <XIcon /> Follow @slanaio
+          <XIcon /> Follow @elymum
         </a>
         {onSignIn && (
           <button type="button" className="st-textlink" onClick={onSignIn}>
@@ -334,11 +334,11 @@ export function ApplyForm({ d, setD, onApplied, onCancel }: { d: ApplyDraft; set
         <Select id="cb-role" label="Your role" value={d.role} onChange={set('role')} options={COLLAB_ROLES.map((r) => [r, ROLE_LABEL[r]])} error={errors.role} />
         <Field
           className="cb-span2"
-          label="Your post about Slana on X"
+          label="Your post about Elymum on X"
           value={d.postUrl}
           onChange={(e) => set('postUrl')(e.target.value)}
           error={errors.postUrl}
-          hint="Post about Slana on your community's X (tag @slanaio), then paste the link here. You cannot apply without it."
+          hint="Post about Elymum on your community's X (tag @elymum), then paste the link here. You cannot apply without it."
           placeholder="https://x.com/yourcommunity/status/…"
           inputMode="url"
           spellCheck={false}
@@ -429,6 +429,17 @@ function StateCard({ stamp, tone, title, children, c }: { stamp: string; tone: '
   );
 }
 
+/** A collab whose applicant wallet predates the move to Elysium: its rows need EVM wallets. */
+function LegacyNote({ c }: { c: CollabPublic }) {
+  if (!c.legacy && !c.wallets.some((w) => !/^0x[0-9a-fA-F]{40}$/.test(w.wallet))) return null;
+  return (
+    <p className="st-note cb-legacy" role="note" data-testid="cb-legacy">
+      Some wallets here are from before the move to Elysium. Only EVM wallets (0x…) go on the allowlist: replace them with EVM wallets
+      {c.phase === 'approved' ? ' before you submit.' : ', or DM @elymum on X if the list is already locked.'}
+    </p>
+  );
+}
+
 export function CollabView({ collab: c, onChange, onGuide, onExpired }: { collab: CollabPublic; onChange: (c: CollabPublic) => void; onGuide: () => void; onExpired: () => void }) {
   if (c.phase === 'in_review')
     return (
@@ -439,7 +450,7 @@ export function CollabView({ collab: c, onChange, onGuide, onExpired }: { collab
   if (c.phase === 'rejected')
     return (
       <StateCard stamp="Not this time" tone="red" title="Not this time." c={c}>
-        Thanks for applying. We cannot offer spots to this community this round. DM <a href={X_URL} target="_blank" rel="noreferrer">@slanaio</a> on X if something changed.
+        Thanks for applying. We cannot offer spots to this community this round. DM <a href={X_URL} target="_blank" rel="noreferrer">@elymum</a> on X if something changed.
       </StateCard>
     );
   return <SpotsView c={c} onChange={onChange} onGuide={onGuide} onExpired={onExpired} />;
@@ -573,7 +584,7 @@ function SpotsView({ c, onChange, onGuide, onExpired }: { c: CollabPublic; onCha
         <Stamp text="Submitted" tone="ink" size="md" rotate={-7} />
         <h2 className="cb-state__title">The list is in.</h2>
         <p className="cb-state__text">
-          {c.wallets.length} {c.wallets.length === 1 ? 'wallet is' : 'wallets are'} on the way to the Slana WL. The list is locked; DM <a href={X_URL} target="_blank" rel="noreferrer">@slanaio</a> if you need a change.
+          {c.wallets.length} {c.wallets.length === 1 ? 'wallet is' : 'wallets are'} on the way to the Elymum WL. The list is locked; DM <a href={X_URL} target="_blank" rel="noreferrer">@elymum</a> if you need a change.
         </p>
       </>
     ) : c.phase === 'closed' ? (
@@ -581,7 +592,7 @@ function SpotsView({ c, onChange, onGuide, onExpired }: { c: CollabPublic; onCha
         <Stamp text="Closed" tone="pink" size="md" rotate={-7} />
         <h2 className="cb-state__title">The deadline passed.</h2>
         <p className="cb-state__text">
-          The list was not submitted in time. DM <a href={X_URL} target="_blank" rel="noreferrer">@slanaio</a> on X if you need more time.
+          The list was not submitted in time. DM <a href={X_URL} target="_blank" rel="noreferrer">@elymum</a> on X if you need more time.
         </p>
       </>
     ) : (
@@ -610,6 +621,7 @@ function SpotsView({ c, onChange, onGuide, onExpired }: { c: CollabPublic; onCha
   return (
     <div className="st-card cb-state cb-spotsview" data-phase={c.phase}>
       {head}
+      <LegacyNote c={c} />
       <div className="cb-raffle">
         {locked ? (
           c.raffleUrl && (
@@ -686,7 +698,7 @@ function SpotsView({ c, onChange, onGuide, onExpired }: { c: CollabPublic; onCha
                           onPaste={onPaste(i)}
                           spellCheck={false}
                           autoComplete="off"
-                          placeholder="Solana wallet"
+                          placeholder="0x… wallet"
                         />
                         {err && (
                           <span className="cb-cell__err" role="alert">

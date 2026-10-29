@@ -82,6 +82,7 @@ function Detail({ collab: c, onClose, onChanged, api }: { collab: CollabAdmin; o
             <dt className="mono">Applicant wallet</dt>
             <dd>
               <code>{c.wallet}</code>
+              {c.legacy && <span className="ad-bad ad-legacy"> legacy (not an EVM wallet)</span>}
             </dd>
           </div>
           <div>
@@ -181,6 +182,7 @@ function Detail({ collab: c, onClose, onChanged, api }: { collab: CollabAdmin; o
                     <td>{w.name || '—'}</td>
                     <td>
                       <code>{w.wallet}</code>
+                      {w.legacy && <span className="ad-bad ad-legacy"> legacy: not in the allowlist</span>}
                     </td>
                     <td>
                       {w.dupWl && <span className="ad-bad">on the WL </span>}

@@ -10,7 +10,7 @@ export const KIND_LABEL: Record<WlTaskKind, string> = {
   engage_x: 'Like / repost / reply (link)',
   join_link: 'Join a link (self-attested)',
   text: 'Free answer',
-  wallet: 'Solana wallet (signed in)',
+  wallet: 'EVM wallet (signed in)',
 };
 
 const NEEDS_TARGET: WlTaskKind[] = ['follow_x', 'engage_x', 'join_link'];
@@ -177,7 +177,7 @@ export function TasksTab({ api }: TabProps) {
             setLaunchErr(null);
           }}
           error={launchErr ?? undefined}
-          placeholder="https://x.com/slanaio/status/…"
+          placeholder="https://x.com/elymum/status/…"
         />
         <div className="ad-actions">
           <InkButton variant="pink" size="sm" onClick={() => void saveLaunch()} disabled={(launch.trim() || null) === launchSaved}>

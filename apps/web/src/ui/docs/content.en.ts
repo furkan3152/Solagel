@@ -4,16 +4,14 @@ const nf = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
 const num = (n: number): string => nf.format(n);
 /** `500` → `5%`, `450` → `4.5%`. */
 const pct = (bps: number): string => `${nf.format(bps / 100)}%`;
-/** Lamports as SOL with every significant digit (`20000` → `0.00002`). */
-const sol = (lamports: number): string => new Intl.NumberFormat('en-US', { maximumFractionDigits: 9 }).format(lamports / 1e9);
 
 const S = F.server;
 const R = F.rules;
-const sym = '$SLANA';
+const sym = '$ELYMUM';
 
 /**
  * The player guide in English. Every number comes from `FACTS` (see facts.ts); the fee rate is
- * the server's `feeBps` (the on-chain `Config.fee_bps`) when known, else the program default.
+ * the server's `feeBps` (the arena contract's `config().feeBps`) when known, else the contract default.
  */
 export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps): DocsContent => {
   const ex = feeExample(feeBps);
@@ -22,7 +20,7 @@ export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps): DocsCo
   num,
   kicker: 'Guide · Player handbook',
   title: 'Ticket, coin, receipt.',
-  deck: `How Slana plays, where your money goes and what lives on-chain: short and plain. Numbers are the defaults in the game's code; the admin can change some of them. The amounts on the ticket confirmation are the ones that count.`,
+  deck: `How Elymum plays, where your money goes and what lives on-chain: short and plain. Numbers are the defaults in the game's code; the admin can change some of them. The amounts on the ticket confirmation are the ones that count.`,
   feeBps,
   dateline: [
     `Fee ${pct(feeBps)} of profit`,
@@ -95,7 +93,7 @@ export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps): DocsCo
             },
             {
               term: 'Arenas',
-              text: `are accounts on-chain. Your entry fee goes into the arena's vault, an account of the program that nobody holds a private key for. Arenas are open 24/7 and play in rounds (see Rounds and payout); bots play while they are empty. A room instance holds up to ${F.capacity.arena} real players; when it is full, a new instance opens on the same vault.`,
+              text: `live in one smart contract on Elysium. Your entry fee goes into the arena's vault inside that contract; nobody holds a key that can withdraw it. Arenas are open 24/7 and play in rounds (see Rounds and payout); bots play while they are empty. A room instance holds up to ${F.capacity.arena} real players; when it is full, a new instance opens on the same vault.`,
             },
             { term: 'One ticket:', text: 'You can hold one open ticket per arena at a time. Each arena also caps how many tickets are open at once.' },
             {
@@ -117,7 +115,7 @@ export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps): DocsCo
         },
         {
           kind: 'p',
-          text: `A ticket needs a wallet, at least the entry fee in ${symbol} and a little SOL: the network fee, the payout deposit and the ticket account's rent (it comes back when the ticket closes). Your first ticket also opens your on-chain profile and, if needed, your ${symbol} token account in the same transaction; you pay their rent and the accounts stay yours.`,
+          text: `A ticket needs an EVM wallet (MetaMask, Rabby or any browser wallet), at least the entry fee in ${symbol} and a little HYPE on Elysium for network fees. Buying takes at most two signatures: the first allows the arena to take exactly the entry fee (only when it is not allowed yet), the second buys the ticket. Your name and coin live on your profile on the game server, not on chain.`,
         },
       ],
     },
@@ -146,7 +144,7 @@ export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps): DocsCo
             { term: 'Loot', text: 'stays on the floor until the bell, when it is burned. Only real players can pick it up; bots pass through it.' },
             { term: 'Mass is not value.', text: 'Tipping mass (W), cactus pops and mass decay do not change your value; value only changes hands by eating.' },
             { term: 'If you disconnect,', text: `your coin stays in the arena (it can still be eaten) and you carry on if you come back. If you are still alive at the bell, you are paid as usual.` },
-            { term: 'If you die,', text: 'your value goes to the player who ate you, or to loot if a bot did. The ticket closes and its account rent comes back to you.' },
+            { term: 'If you die,', text: 'your value goes to the player who ate you, or to loot if a bot did. The ticket closes.' },
             { term: 'No early exit:', text: 'There is no cash-out in an arena. Your till is paid only when the round ends; a ticket never outlives its round.' },
           ],
         },
@@ -155,7 +153,7 @@ export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps): DocsCo
           tone: 'info',
           stamp: 'Vault',
           title: 'A payout never exceeds the vault',
-          text: "Every value in play (live coins, loot on the floor, payouts waiting to be sent) is backed by the tokens in the arena's vault. The program never pays out more than the vault holds. The server writes live values and loot to disk on every change; if it crashes, open tickets are settled automatically at their last saved value. Loot still on the floor at the bell is burned from the arena vault.",
+          text: "Every value in play (live coins, loot on the floor, payouts waiting to be sent) is backed by the tokens in the arena's vault. The contract never pays out more than the vault holds. The server writes live values and loot to disk on every change; if it crashes, open tickets are settled automatically at their last saved value. Loot still on the floor at the bell is burned from the arena vault.",
         },
       ],
     },
@@ -174,21 +172,17 @@ export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps): DocsCo
         },
         {
           kind: 'p',
-          text: `The fee is charged on profit only: profit = till at the bell − entry fee. At a loss or break-even there is no fee. The rate is ${pct(feeBps)} of profit; the program caps it at ${pct(F.fee.maxBps)}. The rate is written into your ticket when you buy it, and the payout uses that rate even if the admin changes the setting meanwhile. Example: entry ${num(F.example.entry)}, till at the bell ${num(F.example.cashout)}, fee ${num(Number(ex.fee))}, you get ${num(Number(ex.player))}.`,
+          text: `The fee is charged on profit only: profit = till at the bell − entry fee. At a loss or break-even there is no fee. The rate is ${pct(feeBps)} of profit; the contract caps it at ${pct(F.fee.maxBps)}. The rate is written into your ticket when you buy it, and the payout uses that rate even if the admin changes the setting meanwhile. Example: entry ${num(F.example.entry)}, till at the bell ${num(F.example.cashout)}, fee ${num(Number(ex.fee))}, you get ${num(Number(ex.player))}.`,
         },
         { kind: 'fee-example' },
         {
           kind: 'p',
-          text: "The whole fee goes to the operator's wallet (the fee wallet set in the program's config); it is the team's income. Nothing else is taken from your payout.",
+          text: "The whole fee goes to the operator's wallet (the fee wallet set in the arena contract); it is the team's income. Nothing else is taken from your payout.",
         },
         {
           kind: 'list',
           items: [
-            {
-              term: 'Deposit:',
-              text: `When you buy a ticket you put a small SOL deposit on the ticket account (default ${num(F.settleFeeLamports)} lamports = ◎${sol(F.settleFeeLamports)}). The server sends the payout transaction and the deposit pays its network fee, so the server wallet spends nothing net on it.`,
-            },
-            { term: 'Rent:', text: "The ticket account's rent comes back to you when the ticket closes." },
+            { term: 'Network fees:', text: 'You pay the HYPE network fee of your own transactions (buying, refunding, collecting). The server pays the network fee of every payout.' },
             { term: 'Unplayed ticket:', text: `If you buy a ticket and never enter the room, the server closes it at its entry fee after about ${S.staleTicketMinutes} minutes (no profit, so no fee).` },
           ],
         },
@@ -196,8 +190,8 @@ export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps): DocsCo
           kind: 'note',
           tone: 'warn',
           stamp: 'Collect',
-          title: 'No token account? Your game still settles',
-          text: `The server never pays rent for player accounts. If you have no ${symbol} token account when your game ends (or it refuses the payout), the server settles the game anyway: the fee is taken from the profit and your payout stays in the arena vault, recorded on your ticket. The lobby then shows "Collect payout": one transaction opens your token account if needed (≈◎0.002 rent, paid by you, the account is yours) and pays you the exact amount. There is no waiting time, and nobody else can take it. Only a ticket the server never settled at all can be refunded, ${F.refundHours} hours after it opened: your entry fee (if the vault holds it) and all the SOL, deposit included, come back.`,
+          title: 'Transfer refused? Your game still settles',
+          text: `If the ${symbol} transfer to your wallet fails when your game ends, the server settles the game anyway: the fee is taken from the profit and your payout stays in the arena vault, recorded on your ticket. The lobby then shows "Collect payout": one transaction pays you the exact amount. There is no waiting time, and nobody else can take it. Only a ticket the server never settled at all can be refunded, ${F.refundHours} hours after it opened: your entry fee comes back (if the vault holds it).`,
         },
       ],
     },
@@ -209,7 +203,7 @@ export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps): DocsCo
         {
           kind: 'compare',
           left: {
-            title: 'On-chain: program rules anyone can verify',
+            title: 'On-chain: contract rules anyone can verify',
             items: [
               "Entry fees sit in the arena's vault; a payout can never exceed it.",
               `Fees only on profit, capped at ${pct(F.fee.maxBps)}, paid to the fee wallet.`,
@@ -243,23 +237,23 @@ export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps): DocsCo
           tone: 'warn',
           stamp: 'Unaudited',
           title: 'The smart contract is not audited',
-          text: 'The program has not been through an independent security audit. Only play with what you can afford to lose.',
+          text: 'The contracts have not been through an independent security audit. Only play with what you can afford to lose.',
         },
       ],
     },
     {
       id: 'wallet',
       title: 'Wallet safety',
-      lede: 'Read before you sign. Slana never asks for your secret recovery phrase.',
+      lede: 'Read before you sign. Elymum never asks for your secret recovery phrase.',
       blocks: [
         {
           kind: 'list',
           items: [
-            { term: 'Sign-in', text: '(verification) is only a message signature: it starts with "Slana wants you to sign in with your Solana account", sends no transaction and costs nothing.' },
-            { term: 'A ticket transaction', text: `should show only the entry fee in ${symbol} and small SOL amounts (network fee, deposit, rent). If you see more, do not sign.` },
+            { term: 'Sign-in', text: '(verification) is only a message signature: it names this site, says "wants you to sign in with your Ethereum account" and "Sign in to Elymum. This is free and sends no transaction.", sends no transaction and costs nothing.' },
+            { term: 'A ticket', text: `takes at most two transactions: an approval for exactly the entry fee in ${symbol}, then the ticket itself, each with a small HYPE network fee. If your wallet asks for an unlimited approval or for more, do not sign.` },
             { term: 'Anyone asking', text: 'for your recovery phrase or private key, site, person or "support", is a scammer.' },
             { term: 'Use a separate wallet', text: 'for games and keep only what you want to play with in it.' },
-            { term: 'Links:', text: 'Check the address bar. Do not click "airdrop" or "mint" links sent in DMs.' },
+            { term: 'Links:', text: 'Check the address bar. Do not click "airdrop" or "mint" links sent in DMs: the only mint is the Mint page of this site.' },
           ],
         },
       ],
@@ -275,7 +269,7 @@ export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps): DocsCo
             { q: 'Do I need a wallet for practice?', a: 'No. Practice is free; no wallet, token or NFT needed.' },
             {
               q: `Where do I get ${symbol}?`,
-              a: 'On a decentralized exchange. Check the correct mint address only through official channels; the program accepts the single mint the admin records once, after launch.',
+              a: 'On a decentralized exchange. Check the correct token address only through official channels; the arena contract accepts the single token the admin sets once, after launch.',
             },
             {
               q: 'Why do the arenas say "Opening soon"?',
@@ -287,7 +281,7 @@ export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps): DocsCo
             { q: 'I bought a ticket but never played.', a: `The server closes it at its entry fee after about ${S.staleTicketMinutes} minutes. If it does not, refund it yourself after ${F.refundHours} hours.` },
             {
               q: 'My payout has not arrived.',
-              a: `Check the payout banner in the lobby. If it says "Collect payout", your game is settled and the payout waits in the vault: collect it with one transaction (your token account is opened in it if needed), right away. If it says the payout is on the way, the server is still sending it and retries by itself on network trouble.`,
+              a: `Check the payout banner in the lobby. If it says "Collect payout", your game is settled and the payout waits in the vault: collect it with one transaction, right away. If it says the payout is on the way, the server is still sending it and retries by itself on network trouble.`,
             },
             { q: 'Who gets the fee?', a: `The operator's wallet gets the whole fee (${pct(feeBps)} of profit). Floor loot left at the bell is burned.` },
             { q: 'Are there prizes for the Standings?', a: 'No. The Today and All-time standings are kept by the game server for fun; they pay nothing.' },

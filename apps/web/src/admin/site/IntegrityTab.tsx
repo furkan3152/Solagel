@@ -1,3 +1,4 @@
+import { ledgerDecimals } from '@elymum/sdk';
 import {
   INTEGRITY_FLAG_KINDS,
   INTEGRITY_THRESHOLD_RANGES,
@@ -58,7 +59,7 @@ const HOUR = 3_600_000;
 const shortW = (w: string) => (w.length > 12 ? `${w.slice(0, 6)}…${w.slice(-4)}` : w);
 const scoreTone = (s: number): 'pink' | 'mustard' | 'ink' => (s >= 80 ? 'pink' : s >= 60 ? 'mustard' : 'ink');
 
-/** Token amounts in the game token's units when the chain reports them (raw units otherwise). */
+/** Token amounts (the server's ledger units, at most 6 decimals) in the game token's units when the chain reports them. */
 function useMoney(): (raw: number) => string {
   const [token, setToken] = useState<ChainStatus['token']>(null);
   useEffect(() => {
@@ -67,7 +68,7 @@ function useMoney(): (raw: number) => string {
       () => {},
     );
   }, []);
-  return useCallback((raw: number) => (token ? `${formatToken(raw, token.decimals)} ${token.symbol}` : `${raw} (raw units)`), [token]);
+  return useCallback((raw: number) => (token ? `${formatToken(raw, ledgerDecimals(token.decimals))} ${token.symbol}` : `${raw} (ledger units)`), [token]);
 }
 
 function Wallet({ w }: { w: string }) {

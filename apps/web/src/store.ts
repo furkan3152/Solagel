@@ -87,7 +87,8 @@ const PAGES: readonly LobbyPage[] = ['play', 'ranks', 'profile', 'docs'];
 const DOCS_PATH = /^\/docs\/?$/;
 
 export interface AuthState {
-  pubkey: string;
+  /** The signed-in wallet, EIP-55 checksummed. */
+  address: string;
   token: string;
   profile: ProfileSummary | null;
 }
@@ -130,8 +131,8 @@ export interface UiState {
    */
   held: { arenaId: number; opensAt: number } | null;
   /** Last `settled` message; `session` matches it to a ticket (R16). */
-  /** `collect`: R24, settled without a usable token account; the net waits in the vault for "Collect payout". */
-  lastSettlement: { session: string | null; arenaId: number | null; signature: string; payout: number; fee?: number; net?: number; collect?: boolean; at: number } | null;
+  /** `collect`: the token transfer to the player failed; the net waits in the arena vault for "Collect payout". Amounts are ledger units. */
+  lastSettlement: { session: string | null; arenaId: number | null; txHash: string; payout: number; fee?: number; net?: number; collect?: boolean; at: number } | null;
   spectateTarget: number | null;
   toasts: Toast[];
   modal: Modal;
@@ -145,7 +146,9 @@ export interface UiState {
   settings: Settings;
 }
 
-const SETTINGS_KEY = 'slana.settings.v1';
+const SETTINGS_KEY = 'elymum.settings.v1';
+/** The settings key before the move to Elysium: read once, so players keep their name, skin and levels. */
+const LEGACY_SETTINGS_KEY = 'slana.settings.v1';
 
 function loadSettings(): Settings {
   const defaults: Settings = {
@@ -169,9 +172,9 @@ function loadSettings(): Settings {
     lastArena: null,
   };
   try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
+    const raw = localStorage.getItem(SETTINGS_KEY) ?? localStorage.getItem(LEGACY_SETTINGS_KEY);
     if (raw) {
-      // retired fields: `lang` (the interface is English only) and `passSkin` (the Slana Pass is gone)
+      // retired fields: `lang` (the interface is English only) and `passSkin` (the old pass is gone)
       const { lang: _lang, passSkin: _passSkin, ...saved } = JSON.parse(raw) as Partial<Settings> & { lang?: unknown; passSkin?: unknown };
       return { ...defaults, ...saved };
     }

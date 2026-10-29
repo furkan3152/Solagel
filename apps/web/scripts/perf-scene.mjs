@@ -67,7 +67,7 @@ async function renderScene(page, name, s) {
       const cy = s.world ? s.world.camera.y : (s.cy ?? 2800);
       const spanX = s.w / s.zoom;
       const spanY = s.h / s.zoom;
-      const NAMES = ['mochi_moon', 'bonk_bae', 'lil_lamport', 'rug_ruth', 'pixel_penny', 'Daphne', 'whale.sol', 'gm_gm', 'satoshi_snack', 'coinie'];
+      const NAMES = ['mochi_moon', 'bonk_bae', 'lil_gwei', 'rug_ruth', 'pixel_penny', 'Daphne', 'whale.hype', 'gm_gm', 'satoshi_snack', 'coinie'];
       let id = 1;
       const ent = (kind, x, y, r, extra = {}) => {
         const e = {

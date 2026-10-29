@@ -20,19 +20,19 @@ export function CollabGuide({ open, onClose, community, spots, deadline }: { ope
     <Sheet open={open} onClose={onClose} title="Run your raffle." kicker="Collab guide" closeLabel="Close the guide" className="cb-guide">
       <ol className="cb-guide__steps">
         <li>
-          <strong>Apply</strong> with your community and a post about Slana on its X. We review every application by hand and DM you on X.
+          <strong>Apply</strong> with your community and a post about Elymum on its X. We review every application by hand and DM you on X.
         </li>
         <li>
-          <strong>Get your spots.</strong> Once approved, this page shows how many Slana WL spots you have and a timer to hand them out.
+          <strong>Get your spots.</strong> Once approved, this page shows how many Elymum WL spots you have and a timer to hand them out.
         </li>
         <li>
-          <strong>Post your raffle</strong> on your community&apos;s X. Use the post below or your own, with @slanaio in it.
+          <strong>Post your raffle</strong> on your community&apos;s X. Use the post below or your own, with @elymum in it.
         </li>
         <li>
-          <strong>Add the winners</strong> here: a name (Discord or X) and a Solana wallet per person. Paste a whole list at once if you like. Save as you go.
+          <strong>Add the winners</strong> here: a name (Discord or X) and an EVM wallet (0x…) per person. Paste a whole list at once if you like. Save as you go.
         </li>
         <li>
-          <strong>Submit</strong> with the link to your raffle post, before the timer ends. Submitted wallets go on the Slana WL for the mint.
+          <strong>Submit</strong> with the link to your raffle post, before the timer ends. Submitted wallets go on the Elymum WL for the mint.
         </li>
       </ol>
       <h3 className="cb-guide__h">Rules</h3>
@@ -40,9 +40,9 @@ export function CollabGuide({ open, onClose, community, spots, deadline }: { ope
         <li>One X account can send up to 2 applications.</li>
         <li>The raffle runs in public, in a post on X. We need its link to take your list.</li>
         <li>One person per spot, one wallet per person.</li>
-        <li>Solana wallets only. No exchange deposit addresses.</li>
+        <li>EVM wallets only (0x…). No exchange deposit addresses.</li>
         <li>No bots, no farms. We may remove wallets that look like either, and flag wallets already on another list.</li>
-        <li>After you submit, the list is locked. DM @slanaio on X if you need a change.</li>
+        <li>After you submit, the list is locked. DM @elymum on X if you need a change.</li>
       </ul>
       <h3 className="cb-guide__h">A post for your raffle</h3>
       <label className="kb-sr" htmlFor="cb-raffle-post">
@@ -54,7 +54,7 @@ export function CollabGuide({ open, onClose, community, spots, deadline }: { ope
           {copied ? 'Copied' : 'Copy the post'}
         </InkButton>
         <span className="st-note" role="status">
-          {copied ? 'The post is on your clipboard.' : 'It mentions @slanaio and slana.io.'}
+          {copied ? 'The post is on your clipboard.' : 'It mentions @elymum and this site.'}
         </span>
       </div>
     </Sheet>

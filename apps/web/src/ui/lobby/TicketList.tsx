@@ -5,7 +5,7 @@ import { STAGGER, Ticket, TicketGroup, TicketStub, useReducedMotion } from '../.
 import { formatCountdown, useRound } from '../../game/round';
 import { useT } from '../../i18n';
 import { useUi } from '../../store';
-import { bpsPercent, feeBps, type TicketGate, type TicketKey, type TicketModel } from '../../solana/ticket';
+import { bpsPercent, feeBps, type TicketGate, type TicketKey, type TicketModel } from '../../wallet/ticket';
 import { ticketName, useTokenText } from './useLobby';
 
 /**
@@ -83,7 +83,7 @@ export function TicketList({
           ? [t('lo.practiceMeta'), tk.humans > 0 ? count(tk.humans, 'lo.humans1', 'lo.humans') : null].filter(Boolean).join(' · ')
           : soon
             ? t('lo.soonMeta')
-            : [count(tk.humans, 'lo.humans1', 'lo.humans'), count(tk.bots, 'lo.bots1', 'lo.bots'), t('lo.onFloor', { n: tok.compact(tk.loot), sym: tok.symbol })]
+            : [count(tk.humans, 'lo.humans1', 'lo.humans'), count(tk.bots, 'lo.bots1', 'lo.bots'), t('lo.onFloor', { n: tok.wireCompact(tk.loot), sym: tok.symbol })]
               .filter(Boolean)
               .join(' · ');
         const style = { '--kl-ink': practice ? 'var(--ink-2)' : arenaMeta(tk.arenaId!).ink } as CSSProperties;

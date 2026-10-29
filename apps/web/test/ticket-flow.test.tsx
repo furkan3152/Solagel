@@ -1,191 +1,190 @@
-import { WalletContext, type WalletContextState } from '@solana/wallet-adapter-react';
-import { Keypair } from '@solana/web3.js';
+import type { ArenaInfo, ContractCall, SessionInfo } from '@elymum/sdk';
 import { act, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Kb } from '../src/design';
-import { useChainData } from '../src/solana/chain';
-import { fakeConfig } from '../src/solana/devFake';
-import { TicketFlow } from '../src/solana/TicketFlow';
-import type { TicketModel } from '../src/solana/ticket';
 import { useUi } from '../src/store';
+import { useChainData } from '../src/wallet/chain';
+import { fakeConfig } from '../src/wallet/devFake';
+import { resetWallets, useWallet } from '../src/wallet/store';
+import { TicketFlow } from '../src/wallet/TicketFlow';
+import type { TicketModel } from '../src/wallet/ticket';
+import { ALICE, ONE, chainStatus, detail, fakeProvider } from './evm-helpers';
+
+const ARENA = '0x00000000000000000000000000000000000a4e4a';
+const TOKEN = '0x0000000000000000000000000000000000007e57';
+const HASH = `0x${'ab'.repeat(32)}` as const;
+
+const approveCall = { address: TOKEN, abi: [], functionName: 'approve', args: [ARENA, 1000n * ONE] } as unknown as ContractCall;
+const joinCall = { address: ARENA, abi: [], functionName: 'join', args: [1] } as unknown as ContractCall;
 
 const spies = vi.hoisted(() => ({
-  buildTicketTx: vi.fn(async () => ({ steps: ['join'], ixs: [] })),
-  buildCloseTx: vi.fn(async () => ({ steps: ['ata', 'collect'], ixs: [] })),
-  fetchSession: vi.fn(),
-  sendTx: vi.fn(async () => ({ ok: true as const, signature: 'sig' })),
-  fetchArena: vi.fn(),
-  fetchConfig: vi.fn(),
-  client: null as unknown,
+  planJoin: vi.fn(),
+  getArenaConfig: vi.fn(),
+  getSession: vi.fn(),
+  sendWalletCall: vi.fn(),
 }));
-spies.client = {
-  ix: {},
-  programId: null,
-  fetchArena: (id: number) => spies.fetchArena(id),
-  fetchConfig: () => spies.fetchConfig(),
-  fetchSession: (id: number, owner: string) => spies.fetchSession(id, owner),
-  rentExemptMinimum: async (b: number) => (b + 128) * 6960,
-};
-// the money path's network edges: the arena re-read, the build and the wallet send
-vi.mock('../src/solana/chain', async (orig) => ({
-  ...(await orig<typeof import('../src/solana/chain')>()),
-  useSlanaClient: () => spies.client,
+// the money path's network edges: the fresh chain reads and the wallet send
+vi.mock('@elymum/sdk', async (orig) => ({
+  ...(await orig<typeof import('@elymum/sdk')>()),
+  planJoin: spies.planJoin,
+  getArenaConfig: spies.getArenaConfig,
+  getSession: spies.getSession,
 }));
-vi.mock('../src/solana/ticket', async (orig) => ({ ...(await orig<typeof import('../src/solana/ticket')>()), buildTicketTx: spies.buildTicketTx, buildCloseTx: spies.buildCloseTx }));
-vi.mock('../src/solana/tx', async (orig) => ({ ...(await orig<typeof import('../src/solana/tx')>()), sendTx: spies.sendTx }));
+vi.mock('../src/wallet/chain', async (orig) => ({ ...(await orig<typeof import('../src/wallet/chain')>()), useReadClient: () => ({}) }));
+vi.mock('../src/wallet/tx', async (orig) => ({ ...(await orig<typeof import('../src/wallet/tx')>()), sendWalletCall: spies.sendWalletCall }));
 
-const M = 1_000_000n;
-const CHAIN = {
-  enabled: true,
-  cluster: 'devnet',
-  programId: null,
-  rpcUrl: null,
-  arenasEnabled: true,
-  tokenReady: true,
-  token: { mint: 'M', symbol: '$SLANA', decimals: 6 },
-  feeBps: 500,
-};
-const PENNY: TicketModel = { key: 'arena:1', arenaId: 1, entryFee: 1000n * M, humans: 3, bots: 10, loot: 0, open: true };
-const arena = (id: number, entryFee: bigint) => ({
+const CHAIN = chainStatus();
+const PENNY: TicketModel = { key: 'arena:1', arenaId: 1, entryFee: 1000n * ONE, humans: 3, bots: 10, loot: 0, open: true };
+const arena = (id: number, entryFee: bigint): ArenaInfo => ({
   id,
-  address: `A${id}`,
   entryFee,
+  vault: 0n,
+  owed: 0n,
   maxSessions: 300,
   openSessions: 0,
   enabled: true,
-  vault: `V${id}`,
-  pot: 0n,
+  exists: true,
+  totalDeposited: 0n,
+  totalPaidOut: 0n,
+  totalBurned: 0n,
+  lastSweepId: 0n,
 });
-/** A finalized session (R24) of arena 1 with `owed` to collect. */
-const finalized = (owed: bigint) => ({
-  address: 'S1',
-  id: 9,
-  player: 'P',
-  arena: 'A1',
-  arenaId: 1,
-  entryFee: 1000n * M,
-  openedAt: 1,
-  settleFee: 20_000,
-  feeBps: 500,
-  finalized: true,
-  owed,
-});
+const session = (o: Partial<SessionInfo> = {}): SessionInfo => ({ arenaId: 1, player: ALICE, id: 9n, entryFee: 1000n * ONE, openedAt: 1, feeBps: 500, finalized: false, owed: 0n, ...o });
 const ui0 = useUi.getState();
 const chain0 = useChainData.getState();
+const config = () => ({ ...fakeConfig(CHAIN), address: ARENA as `0x${string}`, token: TOKEN as `0x${string}` });
+const settle = () => act(async () => new Promise((r) => setTimeout(r, 30)));
 
 beforeEach(() => {
-  walletOn = true;
-  spies.buildTicketTx.mockClear();
-  spies.buildCloseTx.mockClear();
-  spies.fetchSession.mockReset();
-  spies.fetchSession.mockImplementation(async (id: number) => useChainData.getState().sessions[id] ?? null);
-  spies.sendTx.mockClear();
-  spies.fetchArena.mockReset();
-  spies.fetchArena.mockImplementation(async (id: number) => (id === 1 ? arena(1, 1000n * M) : arena(3, 50_000n * M)));
-  spies.fetchConfig.mockReset();
-  spies.fetchConfig.mockImplementation(async () => useChainData.getState().config);
+  spies.planJoin.mockReset();
+  spies.planJoin.mockImplementation(async () => ({ entryFee: 1000n * ONE, allowance: 0n, balance: 12_450n * ONE, approve: approveCall, join: joinCall, calls: [approveCall, joinCall] }));
+  spies.getArenaConfig.mockReset();
+  spies.getArenaConfig.mockImplementation(async () => config());
+  spies.getSession.mockReset();
+  spies.getSession.mockImplementation(async (_c: unknown, _a: unknown, id: number) => useChainData.getState().sessions[id] ?? session({ id: 0n }));
+  spies.sendWalletCall.mockReset();
+  spies.sendWalletCall.mockImplementation(async (_call: unknown, opts: { onPhase?: (p: string, h?: string) => void }) => {
+    opts.onPhase?.('signing');
+    opts.onPhase?.('confirming', HASH);
+    return { ok: true, hash: HASH, receipt: { status: 'success', logs: [] } };
+  });
+  resetWallets();
+  useWallet.setState({ status: 'connected', address: ALICE, chainId: 99801, current: detail(fakeProvider({ chainId: 99801, known: [99801] })) });
   useUi.setState({ settings: { ...ui0.settings, name: 'Daphne', skin: 4 }, chain: CHAIN });
   useChainData.setState({
-    config: { ...fakeConfig(CHAIN), settleFeeLamports: 50_000 },
+    config: config(),
     sessions: {},
-    tokenBalance: 12_450n * M,
-    balance: 420_000_000,
-    ataExists: true,
+    tokenBalance: 12_450n * ONE,
+    balance: 42n * 10n ** 16n,
+    allowance: 0n,
     profile: null,
     pending: [],
-    arenas: [arena(1, 1000n * M), arena(3, 50_000n * M)],
+    fake: false,
+    arenas: [arena(1, 1000n * ONE), arena(3, 50_000n * ONE)],
   });
 });
 afterEach(() => {
   act(() => {
     useUi.setState(ui0, true);
     useChainData.setState(chain0, true);
+    resetWallets();
   });
 });
 
-let walletOn = true;
-const wallet = () => ({ publicKey: walletOn ? Keypair.generate().publicKey : null, connected: walletOn, wallets: [] }) as unknown as WalletContextState;
 const open = (ticket: TicketModel, mode: 'buy' | 'refund' | 'collect' = 'buy') =>
   render(
-    <WalletContext.Provider value={wallet()}>
-      <Kb>
-        <TicketFlow open mode={mode} ticket={ticket} onClose={() => {}} />
-      </Kb>
-    </WalletContext.Provider>,
+    <Kb>
+      <TicketFlow open mode={mode} ticket={ticket} onClose={() => {}} />
+    </Kb>,
   );
 
 describe('ticket confirm sheet', () => {
-  it('shows the exact amount, the fee policy, the deposit and every instruction before signing', () => {
+  it('shows the exact amount, the fee policy, the network fee and both calls before signing', () => {
     open(PENNY);
     const dialog = screen.getByRole('dialog');
-    expect(within(dialog).getAllByText('1,000 $SLANA').length).toBeGreaterThan(0);
+    expect(within(dialog).getAllByText('1,000 $ELYMUM').length).toBeGreaterThan(0);
     expect(within(dialog).getByText('5% · on profit only · fixed for this ticket')).toBeTruthy();
-    expect(within(dialog).getByText('0.00005 SOL')).toBeTruthy();
-    expect(within(dialog).getByText('12,450 → 11,450 $SLANA')).toBeTruthy();
-    const steps = within(within(dialog).getByRole('region', { name: 'This transaction' })).getAllByRole('listitem');
-    // no profile yet: it is created in the same transaction
-    expect(steps.map((s) => s.textContent)).toEqual(['1Create your on-chain profile · Daphne', '2Buy the ticket · Penny Pond']);
-    expect((within(dialog).getByRole('button', { name: /Pay 1,000 \$SLANA/ }) as HTMLButtonElement).disabled).toBe(false);
+    expect(within(dialog).getByText(/paid in HYPE on Elysium Testnet · you have 0.42 HYPE/)).toBeTruthy();
+    expect(within(dialog).getByText('12,450 → 11,450 $ELYMUM')).toBeTruthy();
+    const steps = within(within(dialog).getByRole('region', { name: 'Your wallet signs' })).getAllByRole('listitem');
+    // no allowance yet: an exact approval first, then the ticket
+    expect(steps.map((s) => s.textContent)).toEqual(['1Allow the arena to take exactly 1,000 $ELYMUM', '2Buy the ticket · Asphodel Meadow']);
+    expect((within(dialog).getByRole('button', { name: /Pay 1,000 \$ELYMUM/ }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('one call only when the allowance already covers the entry fee', () => {
+    useChainData.setState({ allowance: 5000n * ONE });
+    open(PENNY);
+    const steps = within(screen.getByRole('region', { name: 'Your wallet signs' })).getAllByRole('listitem');
+    expect(steps.map((s) => s.textContent)).toEqual(['1Buy the ticket · Asphodel Meadow']);
   });
 
   it('cannot sign without a wallet', () => {
-    walletOn = false;
+    act(() => resetWallets());
     open(PENNY);
     expect((screen.getByRole('button', { name: /^Pay / }) as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('never offers to sign a price the arena account does not confirm', () => {
-    useChainData.setState({ arenas: [arena(1, 1200n * M)] });
+  it('never offers to sign a price the arena does not confirm', () => {
+    useChainData.setState({ arenas: [arena(1, 1200n * ONE)] });
     open(PENNY);
-    // the sheet shows the ticket's price, but the chain disagrees: no signing
     expect((screen.getByRole('button', { name: /^Pay / }) as HTMLButtonElement).disabled).toBe(true);
-  });
-
-  it("shows the server's fee rate and signs it as the bound (fee to the operator's wallet, on profit only)", async () => {
-    useUi.setState({ chain: { ...CHAIN, feeBps: 450 } });
-    useChainData.setState({ config: { ...useChainData.getState().config!, feeBps: 450 } });
-    open(PENNY);
-    expect(screen.getByText('4.5% · on profit only · fixed for this ticket')).toBeTruthy();
-    act(() => screen.getByRole('button', { name: /^Pay / }).click());
-    await act(async () => new Promise((r) => setTimeout(r, 30)));
-    expect(spies.buildTicketTx.mock.calls[0]).toEqual([expect.anything(), expect.objectContaining({ maxFeeBps: 450 })]);
   });
 
   it('cannot sign while the game token is not set on chain', () => {
     useUi.setState({ chain: { ...CHAIN, tokenReady: false, token: null, arenasEnabled: false } });
-    useChainData.setState({ config: fakeConfig({ ...CHAIN, tokenReady: false, token: null }) });
+    useChainData.setState({ config: { ...config(), token: null } });
     const view = open(PENNY);
     expect((screen.getByRole('button', { name: /^Pay / }) as HTMLButtonElement).disabled).toBe(true);
     view.unmount();
-    // and an "Opening soon" ticket never can
-    useChainData.setState({ config: fakeConfig(CHAIN) });
+    useChainData.setState({ config: config() });
     open({ ...PENNY, soon: true, open: false });
     expect((screen.getByRole('button', { name: /^Pay / }) as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('R24: the collect sheet shows the payout, the SOL it moves, and signs the account creation + collect', () => {
-    useChainData.setState({ ataExists: false, sessions: { 1: finalized(2150n * M) } });
-    open(PENNY, 'collect');
-    expect(screen.getAllByText('2,150 $SLANA').length).toBeGreaterThan(0);
-    const steps = within(screen.getByRole('region', { name: 'This transaction' })).getAllByRole('listitem');
-    expect(steps.map((li) => li.textContent)).toEqual([expect.stringContaining('Open your token account if it is missing'), expect.stringContaining('Collect your payout')]);
-    expect(screen.getByText(/network fee and token account rent if needed/)).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Collect · 2,150 \$SLANA/ })).toBeTruthy();
+  it('warns when the wallet has no HYPE for gas', () => {
+    useChainData.setState({ balance: 0n });
+    open(PENNY);
+    expect(screen.getByText(/You have no HYPE on Elysium Testnet/)).toBeTruthy();
   });
 
-  it('discloses the SOL the transaction moves and what comes back', () => {
-    open(PENNY);
-    expect(screen.getByText('SOL in this transaction')).toBeTruthy();
-    expect(screen.getByText(/≈ [\d.]+ SOL \([\d.]+ comes back\)/)).toBeTruthy();
+  it('the collect sheet shows the payout and one refund call', () => {
+    useChainData.setState({ sessions: { 1: session({ finalized: true, owed: 2150n * ONE }) } });
+    open(PENNY, 'collect');
+    expect(screen.getAllByText('2,150 $ELYMUM').length).toBeGreaterThan(0);
+    const steps = within(screen.getByRole('region', { name: 'Your wallet signs' })).getAllByRole('listitem');
+    expect(steps.map((li) => li.textContent)).toEqual([expect.stringContaining('Collect your payout')]);
+    expect(screen.getByRole('button', { name: /Collect · 2,150 \$ELYMUM/ })).toBeTruthy();
   });
 });
 
-describe('ticket flow races', () => {
-  const settle = () => act(async () => new Promise((r) => setTimeout(r, 30)));
-
-  it('a double click (or two Enters) builds and sends exactly one transaction', async () => {
+describe('ticket flow: two prompts, progress and races', () => {
+  it('approve then join, each through the wallet, with "Step n of 2" progress', async () => {
+    let release: () => void = () => {};
+    spies.sendWalletCall.mockImplementationOnce(async (_c: unknown, opts: { onPhase?: (p: string) => void }) => {
+      opts.onPhase?.('signing');
+      await new Promise<void>((r) => (release = r));
+      return { ok: true, hash: HASH, receipt: { status: 'success', logs: [] } };
+    });
     open(PENNY);
-    const pay = screen.getByRole('button', { name: /Pay 1,000 \$SLANA/ });
+    act(() => screen.getByRole('button', { name: /^Pay / }).click());
+    await settle();
+    expect(screen.getByTestId('tf-step').textContent).toBe('Step 1 of 2 · Allow the arena to take exactly 1,000 $ELYMUM');
+    expect(screen.getByText('Approve the amount in your wallet')).toBeTruthy();
+    await act(async () => release());
+    await settle();
+    expect(spies.sendWalletCall).toHaveBeenCalledTimes(2);
+    expect(spies.sendWalletCall.mock.calls[0][0]).toBe(approveCall);
+    expect(spies.sendWalletCall.mock.calls[1][0]).toBe(joinCall);
+    // the server's chain rides along: the wallet is switched to it before each prompt
+    expect(spies.sendWalletCall.mock.calls[0][1]).toMatchObject({ chain: CHAIN });
+  });
+
+  it('a double click (or two Enters) plans and sends once', async () => {
+    useChainData.setState({ allowance: 5000n * ONE });
+    spies.planJoin.mockImplementation(async () => ({ entryFee: 1000n * ONE, allowance: 5000n * ONE, balance: 12_450n * ONE, approve: null, join: joinCall, calls: [joinCall] }));
+    open(PENNY);
+    const pay = screen.getByRole('button', { name: /Pay 1,000 \$ELYMUM/ });
     act(() => {
       pay.click();
       pay.click();
@@ -193,15 +192,59 @@ describe('ticket flow races', () => {
       pay.click();
     });
     await settle();
-    expect(spies.fetchArena).toHaveBeenCalledTimes(1);
-    expect(spies.buildTicketTx).toHaveBeenCalledTimes(1);
-    expect(spies.sendTx).toHaveBeenCalledTimes(1);
-    // the join carries the fee shown on the frozen review as its on-chain bound
-    expect(spies.buildTicketTx.mock.calls[0]).toEqual([expect.anything(), expect.objectContaining({ maxFeeBps: 500, maxEntryFee: 1000n * M, maxSettleFee: 50_000 })]);
+    expect(spies.planJoin).toHaveBeenCalledTimes(1);
+    expect(spies.sendWalletCall).toHaveBeenCalledTimes(1);
+    expect(spies.planJoin.mock.calls[0][1]).toEqual({ arena: ARENA, arenaId: 1, player: ALICE, token: TOKEN });
   });
 
-  it('R24: collect is guarded and re-checks the session on chain', async () => {
-    useChainData.setState({ sessions: { 1: finalized(2150n * M) } });
+  it('a failed approval stops before the join, and the retry re-plans', async () => {
+    spies.sendWalletCall.mockImplementationOnce(async () => ({ ok: false, hash: null, error: { kind: 'rejected', name: 'UserRejectedRequestError', args: [], code: 4001, message: 'declined' } }));
+    open(PENNY);
+    act(() => screen.getByRole('button', { name: /^Pay / }).click());
+    await settle();
+    expect(spies.sendWalletCall).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('alert').textContent).toMatch(/You cancelled in your wallet/);
+    act(() => screen.getByRole('button', { name: 'Try again' }).click());
+    await settle();
+    expect(spies.planJoin).toHaveBeenCalledTimes(2);
+  });
+
+  it('re-reads the config right before the wallet and refuses a changed fee rate', async () => {
+    spies.getArenaConfig.mockImplementation(async () => ({ ...config(), feeBps: 1_000 }));
+    open(PENNY);
+    act(() => screen.getByRole('button', { name: /^Pay / }).click());
+    await settle();
+    expect(spies.sendWalletCall).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert').textContent).toMatch(/The fee changed a moment ago/);
+  });
+
+  it('re-reads the arena and refuses a changed price, a full room or a short balance', async () => {
+    spies.planJoin.mockImplementationOnce(async () => ({ entryFee: 1500n * ONE, allowance: 0n, balance: 0n, approve: approveCall, join: joinCall, calls: [] }));
+    open(PENNY);
+    act(() => screen.getByRole('button', { name: /^Pay / }).click());
+    await settle();
+    expect(screen.getByRole('alert').textContent).toMatch(/changed a moment ago/);
+    spies.planJoin.mockImplementationOnce(async () => {
+      throw new RangeError('arena #1 is full');
+    });
+    act(() => screen.getByRole('button', { name: 'Try again' }).click());
+    await settle();
+    expect(screen.getByRole('alert').textContent).toMatch(/The room is full/);
+    expect(spies.sendWalletCall).not.toHaveBeenCalled();
+  });
+
+  it('never sells a ticket for an arena the server keeps closed', async () => {
+    open(PENNY);
+    act(() => useUi.setState({ blockedArenas: [1] }));
+    expect((screen.getByRole('button', { name: /^Pay / }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/This room is under maintenance right now/)).toBeTruthy();
+    act(() => screen.getByRole('button', { name: /^Pay / }).click());
+    await settle();
+    expect(spies.planJoin).not.toHaveBeenCalled();
+  });
+
+  it('collect is guarded and re-checks the session on chain', async () => {
+    useChainData.setState({ sessions: { 1: session({ finalized: true, owed: 2150n * ONE }) } });
     open(PENNY, 'collect');
     const btn = screen.getByRole('button', { name: /Collect · 2,150/ });
     act(() => {
@@ -209,21 +252,29 @@ describe('ticket flow races', () => {
       btn.click();
     });
     await settle();
-    expect(spies.fetchSession).toHaveBeenCalledTimes(1);
-    expect(spies.buildCloseTx).toHaveBeenCalledTimes(1);
-    expect(spies.buildCloseTx.mock.calls[0]).toEqual([expect.anything(), expect.objectContaining({ arenaId: 1, finalized: true })]);
-    expect(spies.sendTx).toHaveBeenCalledTimes(1);
+    expect(spies.getSession).toHaveBeenCalledTimes(1);
+    expect(spies.sendWalletCall).toHaveBeenCalledTimes(1);
+    expect(spies.sendWalletCall.mock.calls[0][0]).toMatchObject({ address: ARENA, functionName: 'refund', args: [1] });
   });
 
-  it('R24: collect refuses when the on-chain session changed since the sheet opened', async () => {
-    useChainData.setState({ sessions: { 1: finalized(2150n * M) } });
-    spies.fetchSession.mockImplementation(async () => ({ ...finalized(1n), id: 9 }));
+  it('collect refuses when the on-chain session changed since the sheet opened', async () => {
+    useChainData.setState({ sessions: { 1: session({ finalized: true, owed: 2150n * ONE }) } });
+    spies.getSession.mockImplementation(async () => session({ finalized: true, owed: 1n }));
     open(PENNY, 'collect');
     act(() => screen.getByRole('button', { name: /Collect · 2,150/ }).click());
     await settle();
-    expect(spies.buildCloseTx).not.toHaveBeenCalled();
-    expect(spies.sendTx).not.toHaveBeenCalled();
+    expect(spies.sendWalletCall).not.toHaveBeenCalled();
     expect(screen.getByRole('alert').textContent).toMatch(/This ticket changed a moment ago/);
+  });
+
+  it('a refund before 24 h is refused before the wallet opens', async () => {
+    const fresh = session({ openedAt: Math.floor(Date.now() / 1000) - 60 });
+    useChainData.setState({ sessions: { 1: fresh } });
+    open(PENNY, 'refund');
+    act(() => screen.getByRole('button', { name: /Refund · 1,000/ }).click());
+    await settle();
+    expect(spies.sendWalletCall).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert').textContent).toMatch(/Refunds open 24 hours/);
   });
 
   it('focus never starts on the pay button', async () => {
@@ -234,59 +285,8 @@ describe('ticket flow races', () => {
     expect(screen.getByRole('dialog').contains(document.activeElement)).toBe(true);
   });
 
-  it('re-reads the config right before building and refuses a changed fee rate (it is fixed into the ticket)', async () => {
-    spies.fetchConfig.mockImplementation(async () => ({ ...useChainData.getState().config!, feeBps: 1_000 }));
-    open(PENNY);
-    act(() => screen.getByRole('button', { name: /^Pay / }).click());
-    await settle();
-    expect(spies.fetchConfig).toHaveBeenCalledTimes(1);
-    expect(spies.buildTicketTx).not.toHaveBeenCalled();
-    expect(spies.sendTx).not.toHaveBeenCalled();
-    expect(screen.getByRole('alert').textContent).toMatch(/The fee or the deposit changed a moment ago/);
-  });
-
-  it('R20: never builds a ticket for an arena the server keeps closed', async () => {
-    open(PENNY);
-    const pay = screen.getByRole('button', { name: /^Pay / }) as HTMLButtonElement;
-    expect(pay.disabled).toBe(false);
-    // the server reports the arena blocked while the sheet is open
-    act(() => useUi.setState({ blockedArenas: [1] }));
-    expect((screen.getByRole('button', { name: /^Pay / }) as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText(/This room is under maintenance right now/)).toBeTruthy();
-    act(() => screen.getByRole('button', { name: /^Pay / }).click());
-    await settle();
-    expect(spies.buildTicketTx).not.toHaveBeenCalled();
-    expect(spies.sendTx).not.toHaveBeenCalled();
-  });
-
-  it('R20: the fresh re-check refuses an arena blocked while the chain was being read', async () => {
-    spies.fetchArena.mockImplementation(async () => {
-      useUi.setState({ blockedArenas: [1] });
-      return arena(1, 1000n * M);
-    });
-    open(PENNY);
-    act(() => screen.getByRole('button', { name: /^Pay / }).click());
-    await settle();
-    expect(spies.buildTicketTx).not.toHaveBeenCalled();
-    expect(screen.getByRole('alert').textContent).toMatch(/under maintenance/);
-  });
-
-  it('re-reads the arena right before building and refuses a changed price', async () => {
-    spies.fetchArena.mockImplementation(async () => arena(1, 1500n * M));
-    open(PENNY);
-    act(() => screen.getByRole('button', { name: /^Pay / }).click());
-    await settle();
-    expect(spies.buildTicketTx).not.toHaveBeenCalled();
-    expect(spies.sendTx).not.toHaveBeenCalled();
-    expect(screen.getByRole('alert').textContent).toMatch(/changed a moment ago/);
-  });
-
   it('offers "Resume" instead of paying again when the ticket turns out to be open', () => {
-    useChainData.setState({
-      sessions: {
-        1: { address: 'S', id: 1, player: 'P', arena: 'A1', arenaId: 1, entryFee: 1000n * M, openedAt: 1, settleFee: 20_000, feeBps: 500, finalized: false, owed: 0n },
-      },
-    });
+    useChainData.setState({ sessions: { 1: session() } });
     open(PENNY);
     expect(screen.getByRole('button', { name: /Resume/ })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /^Pay / })).toBeNull();

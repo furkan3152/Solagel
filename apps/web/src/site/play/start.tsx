@@ -7,13 +7,13 @@ import { PlayGate } from './PlayGate';
 async function launchGame(root: HTMLElement, session: SiteSession | null): Promise<void> {
   const [{ mount }, { useUi }] = await Promise.all([import('../../app-entry'), import('../../store')]);
   // the engine sends this token on `welcome`, before its first room entry (the gate checks the session)
-  if (session && !useUi.getState().auth) useUi.setState({ auth: { pubkey: session.pubkey, token: session.token, profile: null } });
+  if (session && !useUi.getState().auth) useUi.setState({ auth: { address: session.address, token: session.token, profile: null } });
   mount(root);
 }
 
 /** `/play`: the arena, behind the game gate. */
 export function startPlay(root: HTMLElement): void {
-  document.title = 'Slana · Arena';
+  document.title = 'Elymum · Arena';
   // the arena handles its own pinch and drag: no page zoom there (the site pages keep zoom)
   document.querySelector('meta[name="viewport"]')?.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
   const holder = document.createElement('div');

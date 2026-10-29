@@ -62,7 +62,7 @@ describe('the English string table', () => {
   });
 
   it('fills placeholders and leaves unknown keys readable', () => {
-    expect(translate('lo.onFloor', { n: '84,200', sym: '$SLANA' })).toBe('84,200 $SLANA on the floor');
+    expect(translate('lo.onFloor', { n: '84,200', sym: '$ELYMUM' })).toBe('84,200 $ELYMUM on the floor');
     expect(translate('nope.missing' as TKey)).toBe('nope.missing');
   });
 });

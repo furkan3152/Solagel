@@ -5,17 +5,13 @@
 // Needs a dev server (pnpm dev) whose game server runs NODE_ENV=development DEV_FAKE_CHAIN=1
 // (with DEV_FAKE_TOKEN=1 for every step but `soon`, which needs the token unset and then sets it
 // through POST /api/dev/token to shoot the live flip):
-// the web dev build then uses its fake chain stand-in (src/solana/devFake.ts), so no
-// transaction is signed. A Wallet Standard test wallet is injected (it signs the free login
-// message with a throwaway key and refuses transactions).
+// the web dev build then uses its fake chain stand-in (src/wallet/devFake.ts), so no
+// transaction is signed. An EIP-6963 dev wallet is injected (scripts/evm-wallet.mjs: a viem local
+// account with a throwaway key; it signs the free SIWE login message and refuses transactions).
 // Usage: node scripts/lobby.mjs <baseUrl> <outDir> [step ...]   → <outDir>/lobby-*.png
 import { existsSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { chromium } from 'playwright';
-
-const require = createRequire(new URL('../../server/package.json', import.meta.url));
-const nacl = require('tweetnacl');
-const bs58 = require('bs58').default ?? require('bs58');
+import { installEvmWallet, newDevKey, signInGame } from './evm-wallet.mjs';
 
 const [base, out, ...which] = process.argv.slice(2);
 const want = (k) => which.length === 0 || which.includes(k);
@@ -23,81 +19,8 @@ const exe = process.env.CHROME_PATH;
 const browser = await chromium.launch({ executablePath: exe, args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const logs = [];
 
-const M = 1_000_000;
-const ICON =
-  'data:image/svg+xml;base64,' +
-  Buffer.from(
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#1B1732"/><circle cx="16" cy="16" r="8" fill="#FB2F85"/></svg>',
-  ).toString('base64');
-
-/** Injects a Wallet Standard wallet ("Test Wallet") whose key lives in this script. */
-async function installWallet(ctx, kp, autoConnect) {
-  const address = bs58.encode(kp.publicKey);
-  await ctx.exposeBinding('__kbSign', (_src, bytes) => Array.from(nacl.sign.detached(Uint8Array.from(bytes), kp.secretKey)));
-  await ctx.addInitScript(
-    ({ address, pub, icon, autoConnect }) => {
-      if (autoConnect) localStorage.setItem('walletName', JSON.stringify('Test Wallet'));
-      const chains = ['solana:devnet', 'solana:mainnet', 'solana:testnet', 'solana:localnet'];
-      const account = { address, publicKey: Uint8Array.from(pub), chains, features: ['solana:signMessage', 'solana:signTransaction'], label: 'Test' };
-      const listeners = new Set();
-      const wallet = {
-        version: '1.0.0',
-        name: 'Test Wallet',
-        icon,
-        chains,
-        accounts: [],
-        features: {
-          'standard:connect': {
-            version: '1.0.0',
-            connect: async () => {
-              wallet.accounts = [account];
-              listeners.forEach((l) => l({ accounts: wallet.accounts }));
-              return { accounts: wallet.accounts };
-            },
-          },
-          'standard:disconnect': {
-            version: '1.0.0',
-            disconnect: async () => {
-              wallet.accounts = [];
-              listeners.forEach((l) => l({ accounts: [] }));
-            },
-          },
-          'standard:events': {
-            version: '1.0.0',
-            on: (ev, l) => {
-              if (ev !== 'change') return () => {};
-              listeners.add(l);
-              return () => listeners.delete(l);
-            },
-          },
-          'solana:signMessage': {
-            version: '1.0.0',
-            signMessage: async (...inputs) =>
-              Promise.all(
-                inputs.map(async ({ message }) => ({ signedMessage: message, signature: Uint8Array.from(await window.__kbSign(Array.from(message))) })),
-              ),
-          },
-          'solana:signTransaction': {
-            version: '1.0.0',
-            supportedTransactionVersions: ['legacy', 0],
-            signTransaction: async () => {
-              throw new Error('test wallet refuses transactions');
-            },
-          },
-        },
-      };
-      const register = ({ register }) => register(wallet);
-      window.addEventListener('wallet-standard:app-ready', (e) => register(e.detail));
-      try {
-        window.dispatchEvent(new CustomEvent('wallet-standard:register-wallet', { detail: register }));
-      } catch {
-        /* ignore */
-      }
-    },
-    { address, pub: Array.from(kp.publicKey), icon: ICON, autoConnect },
-  );
-  return address;
-}
+/** One whole token of the fake chain's 18-decimal game token. */
+const ONE = 10n ** 18n;
 
 async function newPage({ viewport, mobile = false, theme = 'light', wallet = true, verified = true, pending = null, reduced = false, tokenReady = true }) {
   const ctx = await browser.newContext({
@@ -123,33 +46,27 @@ async function newPage({ viewport, mobile = false, theme = 'light', wallet = tru
         showMinimap: true,
         showChat: true,
       };
-      localStorage.setItem('slana.settings.v1', JSON.stringify({ ...def, ...s }));
+      localStorage.setItem('elymum.settings.v1', JSON.stringify({ ...def, ...s }));
     },
     { theme },
   );
   if (pending) await ctx.route('**/api/pending*', (r) => r.fulfill({ json: { pending } }));
-  const kp = nacl.sign.keyPair();
   let address = null;
-  if (wallet) address = await installWallet(ctx, kp, true);
+  let account = null;
+  if (wallet) ({ address, account } = await installEvmWallet(ctx, { privateKey: newDevKey(), autoConnect: true, allowTransactions: false }));
   const page = await ctx.newPage();
   page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}`));
   page.on('console', (m) => m.type() === 'error' && logs.push(`[console.error] ${m.text()}`));
   await page.goto(base, { waitUntil: 'networkidle' });
-  await page.waitForFunction(() => !!window.__slana && window.__slana.useUi.getState().connected, null, { timeout: 15000 });
-  if (wallet && verified) {
-    const res = await fetch(`${base.replace(/\/$/, '')}/api/auth/nonce?pubkey=${address}`);
-    const { message } = await res.json();
-    const sig = bs58.encode(nacl.sign.detached(new TextEncoder().encode(message), kp.secretKey));
-    await page.evaluate(([p, m, s]) => window.__slana.engine.authSignature(p, m, s), [address, message, sig]);
-    await page.waitForFunction(() => !!window.__slana.useUi.getState().auth, null, { timeout: 10000 });
-  }
+  await page.waitForFunction(() => !!window.__elymum && window.__elymum.useUi.getState().connected, null, { timeout: 15000 });
+  if (wallet && verified) await signInGame(page, base, account);
   // (the token balance is only read once the game token is set)
   if (wallet && tokenReady)
-    await page.waitForFunction(() => !!window.__slanaChain?.fakeWallet && window.__slanaChain.useChainData.getState().tokenBalance !== null, null, {
+    await page.waitForFunction(() => !!window.__elymumChain?.fakeWallet && window.__elymumChain.useChainData.getState().tokenBalance !== null, null, {
       timeout: 10000,
     });
-  await page.waitForFunction(() => !!window.__slanaChain?.fakeWallet, null, { timeout: 10000 });
-  await page.evaluate(() => window.__slanaChain.refresh());
+  await page.waitForFunction(() => !!window.__elymumChain?.fakeWallet, null, { timeout: 10000 });
+  await page.evaluate(() => window.__elymumChain.refresh());
   await page.waitForTimeout(1600);
   return { ctx, page, address };
 }
@@ -217,7 +134,7 @@ for (const [k, viewport, mobile, theme, reduced] of [
   await page.waitForSelector('.tf-sheet', { timeout: 5000 });
   await page.waitForTimeout(700);
   await shot(page, `ticket-sheet-${k}`);
-  await page.evaluate(() => (window.__slanaChain.fakeWallet.delayMs = 700));
+  await page.evaluate(() => (window.__elymumChain.fakeWallet.delayMs = 700));
   await page.locator('.tf-sheet .kb-btn--pink').click();
   await page.waitForTimeout(350);
   await shot(page, `ticket-signing-${k}`);
@@ -226,7 +143,7 @@ for (const [k, viewport, mobile, theme, reduced] of [
   await shot(page, `ticket-stamp-${k}`);
   await page.waitForTimeout(reduced ? 200 : 520);
   await shot(page, `ticket-tear-${k}`);
-  await page.waitForFunction(() => window.__slana.useUi.getState().screen === 'playing', null, { timeout: 15000 });
+  await page.waitForFunction(() => window.__elymum.useUi.getState().screen === 'playing', null, { timeout: 15000 });
   await page.waitForTimeout(1500);
   await shot(page, `ticket-ingame-${k}`);
   await ctx.close();
@@ -239,7 +156,7 @@ if (want('frames')) {
   await cta(page).click();
   await page.waitForSelector('.tf-sheet');
   await page.waitForTimeout(600);
-  await page.evaluate(() => (window.__slanaChain.fakeWallet.delayMs = 400));
+  await page.evaluate(() => (window.__elymumChain.fakeWallet.delayMs = 400));
   await page.locator('.tf-sheet .kb-btn--pink').click();
   await page.waitForSelector('.tf-ticket__stamp', { timeout: 5000 });
   const box = await page.locator('.tf-ticket').boundingBox();
@@ -257,12 +174,12 @@ if (want('newticket')) {
   await pickTicket(page, 'arena:2');
   await cta(page).click();
   await page.waitForSelector('.tf-sheet');
-  await page.evaluate(() => (window.__slanaChain.fakeWallet.delayMs = 300));
+  await page.evaluate(() => (window.__elymumChain.fakeWallet.delayMs = 300));
   await page.locator('.tf-sheet .kb-btn--pink').click();
-  await page.waitForFunction(() => window.__slana.useUi.getState().screen === 'playing', null, { timeout: 15000 });
+  await page.waitForFunction(() => window.__elymum.useUi.getState().screen === 'playing', null, { timeout: 15000 });
   await page.waitForTimeout(800);
   await page.evaluate(() =>
-    window.__slana.engine['onMessage']({
+    window.__elymum.engine['onMessage']({
       t: 'death',
       stats: { aliveMs: 61_000, finalMass: 0, maxMass: 300, foodEaten: 40, cellsEaten: 0, playersEaten: 0, bestRank: 4, valueLost: 10_000_000_000 },
       killer: 'Nakamoto',
@@ -271,7 +188,7 @@ if (want('newticket')) {
   );
   await page.waitForTimeout(1200);
   await page.locator('.g-death .kb-btn--pink').click();
-  await page.waitForFunction(() => window.__slana.useUi.getState().screen === 'lobby', null, { timeout: 5000 });
+  await page.waitForFunction(() => window.__elymum.useUi.getState().screen === 'lobby', null, { timeout: 5000 });
   await page.waitForTimeout(1500);
   await shot(page, 'newticket-lobby');
   await ctx.close();
@@ -281,8 +198,8 @@ if (want('newticket')) {
 if (want('goldlake')) {
   const { ctx, page } = await newPage({ viewport: D });
   await page.evaluate(() => {
-    window.__slanaChain.fakeWallet.tokenBalance = 62_450_000_000n;
-    window.__slanaChain.refresh();
+    window.__elymumChain.fakeWallet.tokenBalance = 62_450n * 10n ** 18n;
+    window.__elymumChain.refresh();
   });
   await page.waitForTimeout(900);
   await pickTicket(page, 'arena:3');
@@ -291,7 +208,7 @@ if (want('goldlake')) {
   await page.waitForTimeout(700);
   await shot(page, 'ticket-sheet-goldlake');
   // ArenaFull: the chain refuses the join
-  await page.evaluate(() => (window.__slanaChain.fakeWallet.failNext = 'ArenaFull'));
+  await page.evaluate(() => (window.__elymumChain.fakeWallet.failNext = 'ArenaFull'));
   await page.locator('.tf-sheet .kb-btn--pink').click();
   await page.waitForSelector('.tf-error', { timeout: 6000 });
   await page.waitForTimeout(300);
@@ -308,7 +225,7 @@ if (want('soon')) {
     ['mobile', P, true],
   ]) {
     const { ctx, page } = await newPage({ viewport, mobile, tokenReady: false });
-    const ready = await page.evaluate(() => window.__slana.useUi.getState().chain?.tokenReady);
+    const ready = await page.evaluate(() => window.__elymum.useUi.getState().chain?.tokenReady);
     if (ready) {
       logs.push('[soon] the server already has the token set: run it without DEV_FAKE_TOKEN');
       await ctx.close();
@@ -319,8 +236,8 @@ if (want('soon')) {
       // the server sets the token and pushes `chain`: the arenas open with no reload
       const res = await fetch(`${api}/api/dev/token`, { method: 'POST' });
       logs.push(`[soon] POST /api/dev/token → ${res.status}`);
-      await page.waitForFunction(() => window.__slana.useUi.getState().chain?.tokenReady === true, null, { timeout: 10000 });
-      await page.waitForFunction(() => window.__slana.useUi.getState().rooms.some((r) => r.mode === 'arena'), null, { timeout: 15000 });
+      await page.waitForFunction(() => window.__elymum.useUi.getState().chain?.tokenReady === true, null, { timeout: 10000 });
+      await page.waitForFunction(() => window.__elymum.useUi.getState().rooms.some((r) => r.mode === 'arena'), null, { timeout: 15000 });
       await page.waitForTimeout(1200);
       await shot(page, 'soon-flipped-mobile');
     }
@@ -328,40 +245,36 @@ if (want('soon')) {
   }
 }
 
-// ── R24: a finalized session waits for the player to collect the payout ──
+// ── a finalized session waits for the player to collect the payout ──
 if (want('pending')) {
   for (const [k, viewport, mobile] of [
     ['desktop', D, false],
     ['mobile', P, true],
   ]) {
     const { ctx, page } = await newPage({ viewport, mobile });
-    // the server settled the game without a usable token account: the session is finalized
-    // and its payout (`owed`) waits in the arena vault
+    // the token transfer to the player failed at settlement: the session is finalized and its
+    // payout (`owed`) waits in the arena vault
     await page.evaluate(
-      ([owed]) => {
-        const w = window.__slanaChain.fakeWallet;
-        w.ataExists = false;
+      ([owed, player]) => {
+        const w = window.__elymumChain.fakeWallet;
         w.sessions[1] = {
-          address: 'DevFinalizedSession1',
-          id: 1,
-          player: 'DevPlayer',
-          arena: 'DevArena1',
           arenaId: 1,
-          entryFee: 1_000_000_000n,
+          player,
+          id: 1n,
+          entryFee: 1000n * 10n ** 18n,
           openedAt: Math.floor(Date.now() / 1000) - 600,
-          settleFee: 20_000,
           feeBps: 500,
           finalized: true,
           owed: BigInt(owed),
         };
-        window.__slanaChain.refresh();
+        window.__elymumChain.refresh();
       },
-      [String(2_150 * M)],
+      [String(2_150n * ONE), address],
     );
     await page.waitForTimeout(1200);
     await shot(page, `pending-${k}`);
     if (k === 'mobile') {
-      // "Collect payout" opens the collect sheet (one transaction, the token account is created)
+      // "Collect payout" opens the collect sheet (one `refund` transaction)
       await page.locator('.kl-owed .kb-btn').click();
       await page.waitForSelector('.tf-sheet');
       await page.waitForTimeout(700);
@@ -387,7 +300,7 @@ if (want('sheets')) {
   await shot(page, 'tab-ranks');
   await ctx.close();
   const g = await newPage({ viewport: P, mobile: true, wallet: true, verified: false });
-  await g.page.evaluate(() => window.__slana.useUi.setState({ modal: 'wallet' }));
+  await g.page.evaluate(() => window.__elymum.useUi.setState({ modal: 'wallet' }));
   await g.page.waitForTimeout(700);
   await shot(g.page, 'wallet-sheet-unverified');
   await g.ctx.close();

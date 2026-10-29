@@ -1,21 +1,21 @@
 import type { ReactNode } from 'react';
 import { Kb } from '../design';
 import { Link, usePath } from './router';
-import { X_URL } from './settings';
+import { X_URL, siteHost } from './settings';
 import './site.css';
 
 /** The riso wordmark: ink over a pink (and a faint teal) pass printed off register. */
 export function Wordmark({ size = 'sm', as: Tag = 'span', live = false }: { size?: 'sm' | 'xl'; as?: 'span' | 'h1'; live?: boolean }) {
   return (
-    <Tag className={`st-mark st-mark--${size}${live ? ' is-live' : ''}`} aria-label="Slana">
+    <Tag className={`st-mark st-mark--${size}${live ? ' is-live' : ''}`} aria-label="Elymum">
       <span className="st-mark__teal" aria-hidden="true">
-        slana
+        elymum
       </span>
       <span className="st-mark__pink" aria-hidden="true">
-        slana
+        elymum
       </span>
       <span className="st-mark__ink" aria-hidden="true">
-        slana
+        elymum
       </span>
     </Tag>
   );
@@ -31,6 +31,7 @@ export function XIcon({ size = 18 }: { size?: number }) {
 
 const NAV: { href: string; label: string }[] = [
   { href: '/wl', label: 'WL' },
+  { href: '/mint', label: 'Mint' },
   { href: '/collab', label: 'Collab' },
   { href: '/docs', label: 'Guide' },
 ];
@@ -40,7 +41,7 @@ export function SiteHeader({ cta = true }: { cta?: boolean }) {
   return (
     <header className="st-head">
       <div className="st-head__inner">
-        <Link href="/" className="st-head__home" aria-label="Slana home">
+        <Link href="/" className="st-head__home" aria-label="Elymum home">
           <Wordmark />
         </Link>
         <nav className="st-nav" aria-label="Site">
@@ -49,7 +50,7 @@ export function SiteHeader({ cta = true }: { cta?: boolean }) {
               {n.label}
             </Link>
           ))}
-          <a className="st-nav__x" href={X_URL} target="_blank" rel="noreferrer" aria-label="Slana on X (@slanaio)">
+          <a className="st-nav__x" href={X_URL} target="_blank" rel="noreferrer" aria-label="Elymum on X (@elymum)">
             <XIcon />
           </a>
           {cta && path !== '/wl' && (
@@ -74,11 +75,14 @@ export function SiteFooter() {
         </div>
         <nav className="st-foot__links" aria-label="Footer">
           <a href={X_URL} target="_blank" rel="noreferrer" className="st-foot__x">
-            <XIcon size={20} /> <span>@slanaio</span>
+            <XIcon size={20} /> <span>@elymum</span>
           </a>
-          <a href="https://slana.io" className="mono">
-            slana.io
-          </a>
+          <Link href="/" className="mono">
+            {siteHost()}
+          </Link>
+          <Link href="/mint" className="mono">
+            Mint
+          </Link>
           <Link href="/wl" className="mono">
             WL
           </Link>
@@ -90,8 +94,8 @@ export function SiteFooter() {
           </Link>
         </nav>
         <p className="st-foot__small mono">
-          <span>Slana · 2026</span>
-          <span>Printed in riso on Solana</span>
+          <span>Elymum · 2026</span>
+          <span>Played on Elysium</span>
         </p>
       </div>
     </footer>

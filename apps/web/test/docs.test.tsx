@@ -1,8 +1,9 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { CAPACITY, RULES } from '@elymum/shared';
 import { act, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
+import { chainStatus } from './evm-helpers';
 import { Kb } from '../src/design';
 import { pageFromUrl, urlForPage, useUi } from '../src/store';
 import { DocsPage } from '../src/ui/docs/DocsPage';
@@ -26,9 +27,8 @@ describe('player guide facts', () => {
     expect(feeExample(450)).toEqual({ fee: 45n, player: 1955n });
   });
 
-  it('quotes the program and admin defaults', () => {
+  it('quotes the contract defaults', () => {
     expect(FACTS.fee).toEqual({ bps: 500, maxBps: 1000 });
-    expect(FACTS.settleFeeLamports).toBe(20_000);
     expect(FACTS.refundHours).toBe(24);
     expect(FACTS.rules).toMatchObject({ roundMin: 5, joinCloseS: 60, afkS: 45, lootMin: 3, lootMax: 24, lootEntryDiv: 4 });
     expect(FACTS.rules.roundMin).toBe(RULES.roundMs / 60_000);
@@ -47,25 +47,26 @@ describe('player guide facts', () => {
     const src = (rel: string) => readFileSync(resolve(process.cwd(), '../server/src', rel), 'utf8');
     const manager = src('rooms/manager.ts');
     const room = src('rooms/room.ts');
-    const solana = src('chain/solana.ts');
+    // the chain gateway: chain/evm.ts on Elysium (chain/solana.ts until the server port lands)
+    const gateway = existsSync(resolve(process.cwd(), '../server/src/chain/evm.ts')) ? src('chain/evm.ts') : src('chain/solana.ts');
     expect(manager).toMatch(new RegExp(`export const PRO_LEVEL = ${SERVER.proLevel};`));
     expect(manager).toMatch(new RegExp(`export const PROMOTE_MAX_MASS = ${SERVER.promoteMaxMass};`));
     expect(manager).toMatch(new RegExp(`export const PROMOTE_KILLS = ${SERVER.promoteKills};`));
     expect(manager).toMatch(new RegExp(`export const PROMOTION_MS = ${SERVER.promotionHours} \\* 3600_000;`));
     expect(manager).toMatch(new RegExp(`length: ${SERVER.privateCodeLength} }`));
     expect(room).toMatch(new RegExp(`export const MAX_STAKE_SESSION_AGE_S = ${SERVER.maxTicketHours} \\* 3600;`));
-    expect(solana).toMatch(new RegExp(`export const STALE_SESSION_AFTER_S = ${SERVER.staleTicketMinutes} \\* 60;`));
+    expect(gateway).toMatch(new RegExp(`export const STALE_SESSION_AFTER_S = ${SERVER.staleTicketMinutes} \\* 60;`));
   });
 });
 
 describe('player guide content', () => {
-  const en = docsEn('$SLANA');
+  const en = docsEn('$ELYMUM');
 
   it("quotes the server's fee rate and uses it in the worked example", () => {
     const text = (c: typeof en) => JSON.stringify([c.dateline, c.sections]);
     expect(text(en)).toContain('fee 50, you get 1,950');
     expect(text(en)).toContain('Fee 5% of profit');
-    const live = docsEn('$SLANA', 300);
+    const live = docsEn('$ELYMUM', 300);
     expect(live.feeBps).toBe(300);
     expect(text(live)).toContain('fee 30, you get 1,970');
     expect(text(live)).toContain('Fee 3% of profit');
@@ -107,8 +108,11 @@ describe('player guide content', () => {
     }
   });
 
-  it('uses no emoji, no SOL arenas and no Turkish', () => {
+  it('uses no emoji, nothing from Solana and no Turkish', () => {
     const text = JSON.stringify(en);
+    expect(text).not.toMatch(/Solana|Slana|lamport|\bSOL\b|◎|\brent\b|token account/);
+    expect(text).toContain('HYPE');
+    expect(text).toContain('Elysium');
     expect(text).not.toMatch(/\p{Extended_Pictographic}/u);
     expect(text).not.toMatch(/SOL arena/i);
     expect(text).not.toMatch(/record_game/);
@@ -144,7 +148,7 @@ describe('player guide page', () => {
   it("follows the server's fee rate (ChainStatus.feeBps)", () => {
     act(() =>
       useUi.setState({
-        chain: { enabled: true, cluster: 'devnet', programId: null, rpcUrl: null, arenasEnabled: true, tokenReady: true, token: null, feeBps: 400 },
+        chain: chainStatus({ token: null, feeBps: 400 }),
       }),
     );
     render(

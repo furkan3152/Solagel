@@ -1,15 +1,14 @@
-import { useWallet } from '@solana/wallet-adapter-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
 import { DUR, Dateline, Icon, Kb, Rule, Tabs, presets, springs, themeFromSettings, useReducedMotion, type IconName, type TabItem } from '../../design';
 import { engine } from '../../game/instance';
 import { sound } from '../../audio';
 import { useT } from '../../i18n';
-import { ProfileCard } from '../../solana/ProfileCard';
-import { signInWithWallet } from '../../solana/siws';
-import { TicketFlow, type FlowMode } from '../../solana/TicketFlow';
-import { bpsPercent, feeBps, sessionsToCollect, type TicketKey } from '../../solana/ticket';
-import { WalletButton } from '../../solana/WalletButton';
+import { ProfileCard } from '../../wallet/ProfileCard';
+import { signInWithWallet } from '../../wallet/signIn';
+import { TicketFlow, type FlowMode } from '../../wallet/TicketFlow';
+import { bpsPercent, feeBps, sessionsToCollect, type TicketKey } from '../../wallet/ticket';
+import { WalletButton } from '../../wallet/WalletButton';
 import { goPage, openModal, updateSettings, useUi, type LobbyPage } from '../../store';
 import { DocsPage } from '../docs/DocsPage';
 import { Leaderboards } from '../news/Leaderboards';
@@ -33,7 +32,6 @@ export function Lobby() {
   const theme = useUi((s) => s.settings.theme);
   const connected = useUi((s) => s.connected);
   const intent = useUi((s) => s.lobbyIntent);
-  const wallet = useWallet();
   const model = useLobbyModel();
   const wide = useMedia('(min-width: 1100px)');
   const mid = useMedia('(min-width: 760px)');
@@ -114,7 +112,7 @@ export function Lobby() {
         openModal('wallet');
         return;
       case 'verify':
-        void signInWithWallet(wallet, true);
+        void signInWithWallet(true);
         return;
       case 'resume': {
         sound.punch();
@@ -357,12 +355,12 @@ function Masthead({ full, wide }: { full: boolean; wide: boolean }) {
       <header className="kl-mast">
         <div className="kl-mast__brand">
           {wide && <span className="kl-mast__kicker mono">{today}</span>}
-          <h1 className="kl-wordmark" aria-label="slana">
+          <h1 className="kl-wordmark" aria-label="elymum">
             <span className="kl-wordmark__ink" aria-hidden="true">
-              slana
+              elymum
             </span>
             <span className="kl-wordmark__pink" aria-hidden="true">
-              slana
+              elymum
             </span>
             <CoinMark />
           </h1>

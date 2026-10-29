@@ -47,7 +47,7 @@ function letters(text: string, cx: number, top: number, h: number, color = INK, 
 }
 
 /** Die-cut base: ink hairline, card border, then `fill`. */
-function dieCut(shape: string, fill = CARD): string {
+function dieCut(shape: string, fill: string = CARD): string {
   return (
     `<g stroke-linejoin="round">` +
     `<g fill="${INK}" stroke="${INK}" stroke-width="9" opacity=".9">${shape}</g>` +

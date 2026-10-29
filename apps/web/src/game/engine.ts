@@ -13,6 +13,7 @@ import {
   type ServerMessage,
   type SnapshotData,
 } from '@elymum/shared';
+import { ledgerDecimals } from '@elymum/sdk';
 import { SERVER } from '../config';
 import { DROP_LAND, DUR, SLOWMO_TOTAL, slowmoScale } from '../design/curves';
 import { t } from '../i18n';
@@ -37,7 +38,7 @@ const WHALE_MASS = 500;
 /** The world stands still this long on the bell (the receipt prints over it), then catches up. */
 export const BELL_FREEZE_MS = 2500;
 
-const TOKEN_KEY = 'slana.auth.v1';
+const TOKEN_KEY = 'elymum.auth.v1';
 const REDUCED_QUERY = '(prefers-reduced-motion: reduce)';
 let killId = 1;
 let chatId = 1;
@@ -147,9 +148,9 @@ export class GameEngine {
       }
       this.particles.lowQuality = s.quality === 'low' || this.renderer.autoLow;
     };
-    // `localStorage['slana.autoQuality'] = 'off'` keeps full quality whatever the frame rate (testing)
+    // `localStorage['elymum.autoQuality'] = 'off'` keeps full quality whatever the frame rate (testing)
     try {
-      this.governor.enabled = localStorage.getItem('slana.autoQuality') !== 'off';
+      this.governor.enabled = localStorage.getItem('elymum.autoQuality') !== 'off';
     } catch {
       /* storage blocked: keep the default */
     }
@@ -161,7 +162,7 @@ export class GameEngine {
     this.reducedQuery?.addEventListener?.('change', this.onReducedChange);
     this.onReducedChange();
     // dev builds, and production builds made for the perf benchmark (scripts/perf.mjs --prod)
-    if (import.meta.env.DEV || import.meta.env.VITE_PERF_HOOK === '1') (window as unknown as { __slana?: unknown }).__slana = { engine: this, useUi };
+    if (import.meta.env.DEV || import.meta.env.VITE_PERF_HOOK === '1') (window as unknown as { __elymum?: unknown }).__elymum = { engine: this, useUi };
     this.resize();
     window.addEventListener('resize', this.resize);
     this.net.connect();
@@ -327,8 +328,9 @@ export class GameEngine {
     this.net.send({ t: 'auth', token });
   }
 
-  authSignature(pubkey: string, message: string, signature: string): void {
-    this.net.send({ t: 'auth', pubkey, message, signature });
+  /** SIWE sign-in: `message` is the rebuilt `siweMessage`, `signature` the wallet's `personal_sign` (0x hex). */
+  authSignature(address: string, message: string, signature: string): void {
+    this.net.send({ t: 'auth', address, message, signature });
   }
 
   logout(): void {
@@ -336,12 +338,12 @@ export class GameEngine {
     useUi.setState({ auth: null });
   }
 
-  static storedToken(pubkey: string): string | null {
+  static storedToken(address: string): string | null {
     try {
       const raw = localStorage.getItem(TOKEN_KEY);
       if (!raw) return null;
-      const data = JSON.parse(raw) as { pubkey: string; token: string; exp: number };
-      return data.pubkey === pubkey && data.exp > Date.now() + 60_000 ? data.token : null;
+      const data = JSON.parse(raw) as { address: string; token: string; exp: number };
+      return typeof data.address === 'string' && data.address.toLowerCase() === address.toLowerCase() && data.exp > Date.now() + 60_000 ? data.token : null;
     } catch {
       return null;
     }
@@ -401,9 +403,9 @@ export class GameEngine {
         useUi.setState({ rooms: m.rooms, online: m.online, blockedArenas: (m.blocked ?? []).map((b) => b.arenaId) });
         return;
       case 'authed': {
-        useUi.setState({ auth: { pubkey: m.pubkey, token: m.token, profile: m.profile } });
+        useUi.setState({ auth: { address: m.address, token: m.token, profile: m.profile } });
         try {
-          localStorage.setItem(TOKEN_KEY, JSON.stringify({ pubkey: m.pubkey, token: m.token, exp: Date.now() + 23 * 3600_000 }));
+          localStorage.setItem(TOKEN_KEY, JSON.stringify({ address: m.address, token: m.token, exp: Date.now() + 23 * 3600_000 }));
         } catch {
           /* ignore */
         }
@@ -541,7 +543,7 @@ export class GameEngine {
           lastSettlement: {
             session: m.session ?? null,
             arenaId: m.arenaId ?? null,
-            signature: m.signature,
+            txHash: m.txHash,
             payout: m.payout,
             fee: m.fee,
             net: m.net,
@@ -708,12 +710,12 @@ export class GameEngine {
     }
   }
 
-  /** Floating "+X $SLANA" ink numbers from `value` messages. */
+  /** Floating "+X $ELYMUM" ink numbers from `value` messages (ledger units). */
   private handleFloats(): void {
     const floats = this.world.drainFloats();
     if (floats.length === 0) return;
     const ui = useUi.getState();
-    const decimals = ui.chain?.token?.decimals ?? 6;
+    const decimals = ledgerDecimals(ui.chain?.token?.decimals ?? 18);
     for (const f of floats) {
       const amount = formatToken(Math.abs(f.delta), decimals, { compact: true, maxFrac: 1 });
       // dust that rounds to nothing floats nothing (no "+0" / "−0")

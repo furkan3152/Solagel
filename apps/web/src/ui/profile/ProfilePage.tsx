@@ -1,4 +1,3 @@
-import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { BASIC_SKINS, MAX_NAME_LENGTH, isBasicSkin, sanitizeName, shortAddress, utf8Length } from '@elymum/shared';
 import { useEffect, useId, useRef, useState } from 'react';
 import { motion } from 'motion/react';
@@ -6,24 +5,23 @@ import { Field, Icon, InkButton, staggerIn, useReducedMotion } from '../../desig
 import { levelProgress } from '../../game/engine';
 import { sound } from '../../audio';
 import { useT } from '../../i18n';
-import { refreshChain, useChainData, useSlanaClient } from '../../solana/chain';
-import { loadDevFake } from '../../solana/devFakeLoader';
-import { signInWithWallet } from '../../solana/siws';
-import { sendWalletTx } from '../../solana/tx';
+import { useChainData } from '../../wallet/chain';
+import { saveProfile } from '../../wallet/profile';
+import { signInWithWallet } from '../../wallet/signIn';
+import { useAddress } from '../../wallet/store';
 import { openModal, toast, updateSettings, useUi } from '../../store';
 import { CoinPortrait } from '../game/CoinPortrait';
-import { useTokenText } from '../lobby/useLobby';
 import { PageHead } from '../PageHead';
 import { SettingsPage } from './SettingsPage';
 import './profile.css';
 
-/** On-chain names are at most 16 UTF-8 bytes (the program's `InvalidName`). */
+/** Names are at most 16 UTF-8 bytes (the server refuses longer ones). */
 const MAX_NAME_BYTES = 16;
 
 /**
- * Profile: the member card (coin, name, level and XP), the name (saved on
- * chain with `updateProfile` when an on-chain profile exists), the coin you
- * wear and the record; settings sit next to it.
+ * Profile: the member card (coin, name, level and XP), the name and the coin you wear (saved on
+ * the server with `PUT /api/profile` once the wallet is signed in; locally otherwise) and the
+ * record; settings sit next to it.
  */
 export function ProfilePage() {
   const t = useT();
@@ -55,19 +53,15 @@ function MemberCard() {
   const settings = useUi((s) => s.settings);
   const auth = useUi((s) => s.auth);
   const profile = useChainData((s) => s.profile);
-  const wallet = useWallet();
-  const owner = wallet.publicKey?.toBase58() ?? null;
+  const owner = useAddress();
   const nf = new Intl.NumberFormat('en-US');
   const name = profile?.name ?? auth?.profile?.name ?? (settings.name || t('pf.guest'));
-  const xp = profile?.xp ?? auth?.profile?.xp ?? 0;
+  const xp = auth?.profile?.xp ?? 0;
   const prog = levelProgress(xp);
-  const since = profile?.createdAt
-    ? new Date(profile.createdAt * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
-    : null;
   return (
     <section className="pf-card" aria-labelledby="pf-card-h">
       <span className="pf-card__band mono" aria-hidden="true">
-        {t('pf.card')} · SLANA
+        {t('pf.card')} · ELYMUM
       </span>
       <div className="pf-card__grid">
         <span className="pf-card__photo">
@@ -86,8 +80,7 @@ function MemberCard() {
                 <span style={{ width: `${Math.round(prog.pct * 100)}%` }} />
               </span>
               <span className="pf-card__meta mono">
-                {shortAddress(owner, 4, 4)}
-                {since && ` · ${t('pf.since', { date: since })}`}
+                {shortAddress(owner, 6, 4)}
               </span>
             </>
           ) : (
@@ -108,17 +101,15 @@ function MemberCard() {
 function NameAndCoin() {
   const t = useT();
   const settings = useUi((s) => s.settings);
-  const wallet = useWallet();
-  const { connection } = useConnection();
-  const client = useSlanaClient();
+  const owner = useAddress();
+  const token = useUi((s) => (s.auth && owner && s.auth.address.toLowerCase() === owner.toLowerCase() ? s.auth.token : null));
   const profile = useChainData((s) => s.profile);
-  const fake = useChainData((s) => s.fake);
   const groupId = useId();
   const [name, setName] = useState(profile?.name ?? settings.name);
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
 
-  // the on-chain name arrives after the page: take it unless the player already typed
+  // the server's name arrives after the page: take it unless the player already typed
   const typed = useRef(false);
   useEffect(() => {
     if (!typed.current) setName(profile?.name ?? settings.name);
@@ -129,39 +120,26 @@ function NameAndCoin() {
   const bytes = utf8Length(clean);
   const valid = clean.length > 0 && bytes <= MAX_NAME_BYTES;
   const skin = isBasicSkin(settings.skin) ? settings.skin : 0;
-  const chainDiff = !!profile && (clean !== profile.name || skin !== profile.skin);
+  const serverDiff = !!token && (!profile || clean !== profile.name || skin !== profile.skin);
   const localDiff = clean !== settings.name;
-  const dirty = valid && (chainDiff || localDiff);
+  const dirty = valid && (serverDiff || localDiff);
 
   const save = async () => {
     if (inFlight.current || !valid) return;
     inFlight.current = true;
     sound.click();
     try {
-      if (chainDiff && profile && wallet.publicKey) {
+      if (serverDiff && token) {
         setBusy(true);
-        if (fake) {
-          const dev = await loadDevFake();
-          await dev?.fakeSimpleTx(
-            () => {},
-            () => {
-              if (dev.fakeWallet.profile) dev.fakeWallet.profile = { ...dev.fakeWallet.profile, name: clean, skin };
-            },
-          );
+        try {
+          const saved = await saveProfile(token, { name: clean, skin });
+          useChainData.setState({ profile: saved });
           toast('success', t('pf.saved'), undefined, 2500);
-        } else {
-          if (!client) return;
-          const ix = await client.ix.updateProfile(wallet.publicKey, {
-            name: clean !== profile.name ? clean : undefined,
-            skin: skin !== profile.skin ? skin : undefined,
-          });
-          const sig = await sendWalletTx(client, connection, wallet, [ix], { success: t('pf.saved') });
-          if (!sig) return;
-          // the server reads the verified name from the profile on sign-in
-          await signInWithWallet(wallet);
+        } catch (err) {
+          toast('error', (err as Error).message, undefined, 6000);
+          return;
         }
         updateSettings({ name: clean });
-        refreshChain();
       } else {
         updateSettings({ name: clean });
         toast('success', t('pf.saved'), undefined, 2500);
@@ -221,11 +199,16 @@ function NameAndCoin() {
 
       <div className={`pf-save${dirty ? ' is-dirty' : ''}`}>
         <span className="pf-save__state mono" role="status">
-          {busy ? t('pf.chainSave') : dirty ? t('pf.unsaved') : profile ? t('pf.chainNote') : t('pf.createNote')}
+          {busy ? t('pf.saving') : dirty ? t('pf.unsaved') : token ? t('pf.serverNote') : t('pf.createNote')}
         </span>
         <InkButton variant={dirty ? 'pink' : 'paper'} size="md" icon="check" disabled={!dirty || busy} onClick={() => void save()}>
-          {chainDiff && !fake ? t('pf.saveChain') : t('pf.save')}
+          {t('pf.save')}
         </InkButton>
+        {owner && !token && (
+          <InkButton variant="paper" size="md" lead="key" disabled={busy} onClick={() => void signInWithWallet(true)}>
+            {t('wl.verify')}
+          </InkButton>
+        )}
       </div>
     </section>
   );
@@ -235,7 +218,6 @@ function Record() {
   const t = useT();
   const reduced = useReducedMotion();
   const profile = useChainData((s) => s.profile);
-  const tok = useTokenText();
   const nf = new Intl.NumberFormat('en-US');
   if (!profile) {
     return (
@@ -249,12 +231,9 @@ function Record() {
     );
   }
   const stats: [string, string][] = [
-    [t('pf.games'), nf.format(profile.gamesPlayed)],
-    [t('pf.kills'), nf.format(profile.kills)],
-    [t('pf.best'), nf.format(profile.bestScore)],
-    [t('pf.totalScore'), nf.format(profile.totalScore)],
-    [t('pf.staked'), nf.format(profile.stakeGames)],
-    [t('pf.won'), `${tok.fee(profile.totalWon)} ${tok.symbol}`],
+    [t('pf.games'), nf.format(profile.stats.games)],
+    [t('pf.kills'), nf.format(profile.stats.kills)],
+    [t('pf.best'), nf.format(profile.stats.best)],
   ];
   return (
     <section className="pf-box" aria-labelledby="pf-record-h">

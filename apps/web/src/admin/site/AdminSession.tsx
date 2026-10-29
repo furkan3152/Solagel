@@ -1,14 +1,15 @@
-import { useWallet } from '@solana/wallet-adapter-react';
 import { useEffect, useState } from 'react';
 import { InkButton } from '../../design';
 import { SiteApiError, adminApi } from '../../site/api';
 import { signIn, signOut, useSession, type SiteSession } from '../../site/session';
+import { providerSigner } from '../../wallet/siwe';
+import { connected, useWallet } from '../../wallet/store';
 import { WalletBox } from '../AdminPanel';
 
 export type AdminState = { kind: 'none' } | { kind: 'checking' } | { kind: 'admin'; session: SiteSession } | { kind: 'denied'; session: SiteSession } | { kind: 'error'; message: string };
 
 /**
- * The admin's site session: SIWS (one free signature) traded for the server's session token, then
+ * The admin's site session: SIWE (one free signature) traded for the server's session token, then
  * checked with `/api/admin/me`. Every WL / collab / settings call carries it as a Bearer token,
  * and `/play` reads the same token.
  */
@@ -43,10 +44,9 @@ export function useAdminSession(): AdminState {
 }
 
 export function AdminSessionBar({ state }: { state: AdminState }) {
-  const wallet = useWallet();
+  const address = useWallet((s) => (s.status === 'connected' ? s.address : null));
   const signing = useSession((s) => s.signing);
   const error = useSession((s) => s.error);
-  const pubkey = wallet.publicKey?.toBase58() ?? null;
   const session = state.kind === 'admin' || state.kind === 'denied' ? state.session : null;
 
   return (
@@ -62,7 +62,7 @@ export function AdminSessionBar({ state }: { state: AdminState }) {
       {session ? (
         <div className="ad-actions">
           <span className="ad-note">
-            Signed in as <code>{session.pubkey}</code>
+            Signed in as <code>{session.address}</code>
           </span>
           <InkButton variant="paper" size="sm" onClick={() => signOut()}>
             Sign out
@@ -70,10 +70,18 @@ export function AdminSessionBar({ state }: { state: AdminState }) {
         </div>
       ) : (
         <div className="ad-actions">
-          <InkButton variant="pink" size="sm" disabled={!pubkey || signing || state.kind === 'checking'} onClick={() => void signIn(wallet).catch(() => {})}>
+          <InkButton
+            variant="pink"
+            size="sm"
+            disabled={!address || signing || state.kind === 'checking'}
+            onClick={() => {
+              const w = connected();
+              if (w) void signIn(providerSigner(w.provider, w.address)).catch(() => {});
+            }}
+          >
             {signing ? 'Check your wallet…' : 'Sign in (free, no transaction)'}
           </InkButton>
-          <span className="ad-note">{pubkey ? 'Sign one message to open the WL, collab and site tabs.' : 'Connect the admin wallet first.'}</span>
+          <span className="ad-note">{address ? 'Sign one message to open the WL, collab and site tabs and the server steps.' : 'Connect the admin wallet first.'}</span>
         </div>
       )}
       {state.kind === 'denied' && <p className="ad-bad">This wallet is not in ADMIN_WALLETS. Sign in with the admin wallet.</p>}

@@ -11,6 +11,6 @@ describe('browser fingerprint', () => {
     expect(fp).toHaveLength(32);
     expect(fingerprint()).toBe(fp);
     // only a random install id is stored
-    expect(localStorage.getItem('slana.device.v1')).toMatch(/^[0-9a-f]{32}$/);
+    expect(localStorage.getItem('elymum.device.v1')).toMatch(/^[0-9a-f]{32}$/);
   });
 });

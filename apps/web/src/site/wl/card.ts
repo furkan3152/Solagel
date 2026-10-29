@@ -1,6 +1,7 @@
 import { CARD_PAPER, INK, PAPER, RISO } from '@elymum/art';
 import { drawCoinLook } from '../../render/coin';
 import { lookForHandle, seeded, hash32, ticketNo } from '../coinLook';
+import { siteHost } from '../settings';
 
 /** The shareable WL ticket card: 1200 × 675 (X shows 16:9 images whole). */
 export const CARD_W = 1200;
@@ -140,7 +141,7 @@ export function drawTicketCard(canvas: HTMLCanvasElement, handle: string): void 
   ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = PINK_TEXT;
   ctx.font = `500 26px ${MONO}`;
-  ctx.fillText('SLANA  ·  WL TICKET', tx, Y + 86);
+  ctx.fillText('ELYMUM  ·  WL TICKET', tx, Y + 86);
 
   const at = `@${name}`;
   const size = fitFont(ctx, at, '800', DISPLAY, 104, maxW);
@@ -172,9 +173,9 @@ export function drawTicketCard(canvas: HTMLCanvasElement, handle: string): void 
   ctx.fillStyle = INK;
   ctx.fillText('WL', sx, Y + 228);
   ctx.font = `500 26px ${MONO}`;
-  ctx.fillText('SLANA.IO', sx, Y + 290);
+  ctx.fillText(siteHost().toUpperCase(), sx, Y + 290);
   ctx.fillStyle = INK_2;
-  ctx.fillText('@SLANAIO', sx, Y + 326);
+  ctx.fillText('@ELYMUM', sx, Y + 326);
 
   // the stamp
   ctx.save();

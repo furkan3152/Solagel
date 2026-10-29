@@ -1,4 +1,3 @@
-import '../polyfills';
 import type { ChainStatus } from '@elymum/shared';
 import { useEffect } from 'react';
 import { SERVER } from '../config';

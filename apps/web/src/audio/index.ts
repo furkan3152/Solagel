@@ -133,10 +133,10 @@ export function startAudio(): () => void {
     }),
   );
   if (import.meta.env.DEV) {
-    const w = window as unknown as { __slanaAudioTap?: () => MediaStream | null; __slanaAudio?: unknown };
+    const w = window as unknown as { __elymumAudioTap?: () => MediaStream | null; __elymumAudio?: unknown };
     // recording (scripts/record-walkthrough.mjs): the master output, after the limiter
-    w.__slanaAudioTap = () => mixer.tap();
-    w.__slanaAudio = { mixer, sound, music, announcer };
+    w.__elymumAudioTap = () => mixer.tap();
+    w.__elymumAudio = { mixer, sound, music, announcer };
   }
 
   return () => {

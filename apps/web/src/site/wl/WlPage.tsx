@@ -6,7 +6,7 @@ import { SiteApiError, site } from '../api';
 import { ticketNo } from '../coinLook';
 import { Link } from '../router';
 import { dropExpired, signOut } from '../session';
-import { X_URL, shortWallet, useSiteSettings, xIntent } from '../settings';
+import { X_HANDLE, X_URL, shortWallet, siteHost, useSiteSettings, xIntent } from '../settings';
 import { SitePage, XIcon } from '../Shell';
 import { SiteWalletProvider, WalletSignIn, useSiteSession } from '../wallet/SiteWallet';
 import { CardPreview, SaveCardButton } from './CardPreview';
@@ -34,6 +34,8 @@ function Wl() {
   const [fresh, setFresh] = useState(false);
   /** A returning visitor: their status is looked up before the form is shown (later sign-ins keep the form mounted). */
   const [booting, setBooting] = useState(() => !!session);
+  /** A legacy (pre-Elysium) entry whose owner chose to re-apply with an EVM wallet. */
+  const [reapply, setReapply] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -71,7 +73,7 @@ function Wl() {
     };
   }, [session]);
 
-  if (entry) return <WlStatus entry={entry} fresh={fresh} />;
+  if (entry && !(entry.legacy && reapply)) return <WlStatus entry={entry} fresh={fresh} onReapply={entry.legacy ? () => setReapply(true) : undefined} />;
   if (loadError)
     return (
       <div className="st-page">
@@ -104,14 +106,14 @@ function WlClosed() {
   const [signin, setSignin] = useState(false);
   return (
     <div className="st-page wl-closed">
-      <span className="st-kicker mono">WL · Slana NFT</span>
+      <span className="st-kicker mono">WL · Elymum NFT</span>
       <h1 className="st-title">Applications are closed.</h1>
       <p className="st-deck">
-        We are not taking new WL entries right now. Follow <a href={X_URL} target="_blank" rel="noreferrer">@slanaio</a> on X for the next round.
+        We are not taking new WL entries right now. Follow <a href={X_URL} target="_blank" rel="noreferrer">@elymum</a> on X for the next round.
       </p>
       <div className="st-row" style={{ marginTop: 24 }}>
         <a className="st-linkbtn st-linkbtn--ink" href={X_URL} target="_blank" rel="noreferrer">
-          <XIcon /> Follow @slanaio
+          <XIcon /> Follow @elymum
         </a>
         <button type="button" className="st-textlink" onClick={() => setSignin((v) => !v)} aria-expanded={signin}>
           Applied before? Sign in
@@ -134,16 +136,16 @@ const STATUS_COPY = {
     tone: 'mustard',
     body: 'Every entry is checked by hand: the follow, your post and your reply. Sign in with the same wallet any time to see your status.',
   },
-  approved: { title: "You're on the list.", stamp: 'Approved', tone: 'teal', body: 'Your wallet is on the Slana WL. The mint date lands on @slanaio first.' },
+  approved: { title: "You're on the list.", stamp: 'Approved', tone: 'teal', body: 'Your wallet is on the Elymum WL. The mint date lands on @elymum first.' },
   rejected: {
     title: 'Not this time.',
     stamp: 'Rejected',
     tone: 'red',
-    body: 'We could not verify every task on this entry. Follow @slanaio for the next round.',
+    body: 'We could not verify every task on this entry. Follow @elymum for the next round.',
   },
 } as const;
 
-export function WlStatus({ entry, fresh = false }: { entry: WlEntryPublic; fresh?: boolean }) {
+export function WlStatus({ entry, fresh = false, onReapply }: { entry: WlEntryPublic; fresh?: boolean; onReapply?: () => void }) {
   const c = STATUS_COPY[entry.status];
   const reduced = useReducedMotion();
   return (
@@ -153,6 +155,19 @@ export function WlStatus({ entry, fresh = false }: { entry: WlEntryPublic; fresh
           <span className="st-kicker mono">{fresh ? 'Entry received' : 'Your WL entry'}</span>
           <h1 className="st-title">{c.title}</h1>
           <p className="st-deck">{c.body}</p>
+          {entry.legacy && (
+            <div className="st-note wl-legacy" role="note" data-testid="wl-legacy">
+              <p>
+                <strong>This entry is from before the move to Elysium.</strong> Its wallet is not an EVM address, so it cannot go on the allowlist. Re-apply with an EVM
+                wallet (MetaMask, Rabby or any browser wallet) and the same X handle: your new entry replaces this one and goes back to review.
+              </p>
+              {onReapply && (
+                <InkButton variant="pink" size="sm" icon="arrow" onClick={onReapply}>
+                  Re-apply with an EVM wallet
+                </InkButton>
+              )}
+            </div>
+          )}
           <dl className="wl-facts">
             <div>
               <dt className="mono">Status</dt>
@@ -180,10 +195,10 @@ export function WlStatus({ entry, fresh = false }: { entry: WlEntryPublic; fresh
           <div className="st-row" style={{ marginTop: 24 }}>
             <SaveCardButton handle={entry.xHandle} label="Save card again" />
             <a className="st-linkbtn" href={X_URL} target="_blank" rel="noreferrer">
-              <XIcon /> Follow @slanaio
+              <XIcon /> Follow @elymum
             </a>
             <Link className="st-textlink" href="/">
-              Back to slana.io
+              Back home
             </Link>
             <button type="button" className="st-textlink" onClick={() => signOut()}>
               Sign out
@@ -292,12 +307,12 @@ function WlStepper({ tasks, settings, onEntry }: { tasks: PublicWlTask[]; settin
   };
 
   const total = steps.length;
-  const postText = `I'm on my way to the @slanaio WL. Coins eat coins on Solana, and the arena opens soon.${no ? ` Ticket No. ${no}.` : ''} slana.io/wl`;
+  const postText = `I'm on my way to the @elymum WL. Coins eat coins on Elysium, and the arena opens soon.${no ? ` Ticket No. ${no}.` : ''} ${siteHost()}/wl`;
 
   return (
     <div className="st-page wl-page">
       <header className="wl-intro">
-        <span className="st-kicker mono">WL · Slana NFT · Round 001</span>
+        <span className="st-kicker mono">WL · Elymum NFT · Round 001</span>
         <h1 className="st-title">Join the WL.</h1>
         <p className="st-deck">
           {total} short steps. You get a riso ticket card with your own coin on it, and your wallet goes on the list. Every entry is checked by hand.
@@ -428,7 +443,7 @@ function StepBody({
   no: string;
   settings: SiteSettings;
 }) {
-  const xHandle = settings.xHandle || 'slanaio';
+  const xHandle = settings.xHandle || X_HANDLE;
   switch (step.kind) {
     case 'handle':
       return (
@@ -566,8 +581,23 @@ function StepBody({
       );
     }
     case 'sign':
-      return <WalletSignIn />;
+      return <SignStep />;
     default:
       return null;
   }
+}
+
+/** The wallet step: sign in, then the EVM address that goes on the list, in full. */
+function SignStep() {
+  const session = useSiteSession();
+  return (
+    <div>
+      <WalletSignIn />
+      {session && (
+        <p className="st-note wl-wallet" data-testid="wl-wallet">
+          This EVM address goes on the list: <code>{session.address}</code>
+        </p>
+      )}
+    </div>
+  );
 }

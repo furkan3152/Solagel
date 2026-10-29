@@ -1,24 +1,22 @@
-import { useWallet } from '@solana/wallet-adapter-react';
 import { InkButton } from '../design';
 import { levelProgress } from '../game/engine';
 import { useT } from '../i18n';
 import { useUi } from '../store';
 import { CoinPortrait } from '../ui/game/CoinPortrait';
-import { useTokenText } from '../ui/lobby/useLobby';
 import { useChainData } from './chain';
+import { useAddress } from './store';
 
-/** Name, level and the on-chain record, printed like a membership card. */
+/** Name, level and the server's record of the player, printed like a membership card. */
 export function ProfileCard({ onEdit }: { onEdit?: () => void }) {
   const t = useT();
-  const wallet = useWallet();
+  const address = useAddress();
   const settings = useUi((s) => s.settings);
   const auth = useUi((s) => s.auth);
   const profile = useChainData((s) => s.profile);
-  const tok = useTokenText();
   const nf = new Intl.NumberFormat('en-US');
-  const connected = wallet.connected && !!wallet.publicKey;
+  const connected = address !== null;
   const name = profile?.name ?? auth?.profile?.name ?? (settings.name || t('pf.guest'));
-  const xp = profile?.xp ?? auth?.profile?.xp ?? 0;
+  const xp = auth?.profile?.xp ?? 0;
   const prog = levelProgress(xp);
 
   return (
@@ -48,21 +46,15 @@ export function ProfileCard({ onEdit }: { onEdit?: () => void }) {
         <dl className="kl-stats">
           <div>
             <dt className="mono">{t('pf.games')}</dt>
-            <dd>{nf.format(profile.gamesPlayed)}</dd>
+            <dd>{nf.format(profile.stats.games)}</dd>
           </div>
           <div>
             <dt className="mono">{t('pf.kills')}</dt>
-            <dd>{nf.format(profile.kills)}</dd>
+            <dd>{nf.format(profile.stats.kills)}</dd>
           </div>
           <div>
             <dt className="mono">{t('pf.best')}</dt>
-            <dd>{nf.format(profile.bestScore)}</dd>
-          </div>
-          <div>
-            <dt className="mono">{t('pf.won')}</dt>
-            <dd>
-              {tok.fee(profile.totalWon)} <span className="mono kl-unit">{tok.symbol}</span>
-            </dd>
+            <dd>{nf.format(profile.stats.best)}</dd>
           </div>
         </dl>
       )}

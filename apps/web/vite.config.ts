@@ -3,9 +3,14 @@ import { defineConfig } from 'vite';
 
 const gameServer = process.env.GAME_SERVER ?? 'http://127.0.0.1:8787';
 
+// index.html uses %VITE_PUBLIC_URL% for its absolute canonical / Open Graph URLs (they must be
+// absolute: crawlers need them, and Vite would try to bundle a relative og:image). Default: the
+// server's PUBLIC_URL, else the planned public domain. Set VITE_PUBLIC_URL (or PUBLIC_URL) at build time.
+process.env.VITE_PUBLIC_URL = (process.env.VITE_PUBLIC_URL || process.env.PUBLIC_URL || 'https://elymum.io').replace(/\/+$/, '');
+
 /**
  * Dev / preview proxy to the game server. `/api` keeps the browser's Host header
- * (no `changeOrigin`): the server names the request host in the SIWS sign-in
+ * (no `changeOrigin`): the server names the request host in the SIWE sign-in
  * message, and the client only signs a message for the page it is on
  * (`localhost:5173`), not for the proxy target (`127.0.0.1:8787`).
  * The WebSocket carries no host-bound data, so it keeps the target's host.
@@ -19,13 +24,6 @@ export function gameServerProxy(target: string) {
 
 export default defineConfig({
   plugins: [react()],
-  define: {
-    // web3.js / anchor expect a node-ish global
-    global: 'globalThis',
-  },
-  resolve: {
-    alias: { buffer: 'buffer/' },
-  },
   server: {
     port: 5173,
     host: true,
@@ -44,9 +42,8 @@ export default defineConfig({
         // long-term cacheable vendor chunks
         manualChunks(id: string) {
           if (!id.includes('node_modules')) return undefined;
-          // package roots only (`node_modules/<pkg>/`): a bare `/buffer` also matched motion-dom's stats/buffer.mjs and
-          // pulled the whole Solana chunk into the landing
-          if (/node_modules[\\/](@solana|@anchor-lang|@wallet-standard|bn\.js|borsh|buffer|bs58|base-x|superstruct|@noble|rpc-websockets|jayson|eventemitter3)[\\/]/.test(id)) return 'solana';
+          // package roots only (`node_modules/<pkg>/`): viem and its crypto / ABI dependencies in one cacheable chunk
+          if (/node_modules[\\/](viem|ox|abitype|@noble|@scure|isows)[\\/]/.test(id)) return 'viem';
           if (/node_modules[\\/](react|react-dom|scheduler|zustand)[\\/]/.test(id)) return 'react';
           return undefined;
         },

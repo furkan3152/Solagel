@@ -46,7 +46,7 @@ export function SaveCardButton({ handle, label = 'Save card' }: { handle: string
         try {
           await cardFonts();
           const blob = await cardBlob(norm);
-          if (blob) saveBlob(blob, `slana-wl-${norm}.png`);
+          if (blob) saveBlob(blob, `elymum-wl-${norm}.png`);
         } finally {
           setBusy(false);
         }

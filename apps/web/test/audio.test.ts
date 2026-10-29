@@ -455,7 +455,7 @@ describe('audio settings persist', () => {
   });
 
   it('an older save (master only) gains the bus defaults', async () => {
-    localStorage.setItem('slana.settings.v1', JSON.stringify({ sound: false, volume: 0.3 }));
+    localStorage.setItem('elymum.settings.v1', JSON.stringify({ sound: false, volume: 0.3 }));
     const { useUi } = await import('../src/store');
     const p = prefsFromSettings(useUi.getState().settings);
     expect(p).toMatchObject({ muted: true, master: 0.3, music: 0.25, sfx: 0.7, voice: 0.5, voiceOn: true });

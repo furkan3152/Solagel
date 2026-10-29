@@ -3,15 +3,14 @@ import { useEffect, useRef } from 'react';
 import { startAudio } from './audio';
 import { GameEngine } from './game/engine';
 import { setEngine } from './game/instance';
-import { useChainSync } from './solana/chain';
-import { SolanaProvider } from './solana/provider';
-import { useWalletAuth } from './solana/useWalletAuth';
+import { useChainSync } from './wallet/chain';
+import { useWalletAuth } from './wallet/useWalletAuth';
 import { useUi } from './store';
 import { AnimatePresence } from 'motion/react';
 import { Kb, ScreenTransition, themeFromSettings, type Box } from './design';
 import { Lobby } from './ui/lobby/Lobby';
 import { Toasts } from './ui/Toasts';
-import { WalletModal } from './solana/WalletModal';
+import { WalletModal } from './wallet/WalletModal';
 import { DeathSheet, GameHud, HowToSheet, RoundOverSheet, SettingsSheet } from './ui/game';
 import { GameClosedSheet } from './ui/gate/GameClosedSheet';
 
@@ -83,12 +82,10 @@ export function App() {
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? NIGHT.paper : PAPER);
   }, [theme]);
   return (
-    <SolanaProvider>
-      <div className="app" data-theme={theme}>
-        <GameCanvas />
-        <ChainSync />
-        <Screens />
-      </div>
-    </SolanaProvider>
+    <div className="app" data-theme={theme}>
+      <GameCanvas />
+      <ChainSync />
+      <Screens />
+    </div>
   );
 }

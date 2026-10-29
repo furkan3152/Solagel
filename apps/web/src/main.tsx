@@ -27,6 +27,6 @@ if (path === '/admin') {
   // The arena (lobby + game engine), behind the game gate: admins only until the game is public.
   void import('./site/play/start').then((m) => m.startPlay(root));
 } else {
-  // slana.io: the landing, the WL and collab applications and the player guide. No game engine.
+  // The site: the landing, the WL and collab applications, the mint and the player guide. No game engine.
   void import('./site/mount').then((m) => m.mount(root));
 }

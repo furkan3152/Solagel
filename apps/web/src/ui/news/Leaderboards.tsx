@@ -1,5 +1,5 @@
-import { useWallet } from '@solana/wallet-adapter-react';
 import { motion } from 'motion/react';
+import { useAddress } from '../../wallet/store';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Chip, Icon, STAGGER, Skeleton, StampSpinner, Tabs, tabPanelProps, useReducedMotion, type TabItem } from '../../design';
 import { SERVER } from '../../config';
@@ -68,7 +68,7 @@ export function Leaderboards() {
 
 function OffchainFront({ kind, boards }: { kind: 'today' | 'all'; boards: Boards }) {
   const t = useT();
-  const me = useWallet().publicKey?.toBase58() ?? null;
+  const me = useAddress();
   const nf = new Intl.NumberFormat('en-US');
   const rows = boards.state === 'ok' ? (kind === 'today' ? boards.daily : boards.allTime) : [];
   const top = rows[0];
@@ -104,7 +104,7 @@ function OffchainFront({ kind, boards }: { kind: 'today' | 'all'; boards: Boards
               key: `${r.wallet ?? r.name}:${i}`,
               name: r.name,
               skin: r.skin,
-              me: !!me && r.wallet === me,
+              me: !!me && !!r.wallet && r.wallet.toLowerCase() === me.toLowerCase(),
               value: nf.format(Math.round(r.score)),
               extra: nf.format(r.kills),
             }))}

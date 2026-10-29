@@ -3,11 +3,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { Icon, InkButton, Receipt, Sheet, Stamp, useReducedMotion, type ReceiptLine } from '../../design';
 import { engine } from '../../game/instance';
 import { roundStartLabel } from '../../game/round';
-import { useChainData } from '../../solana/chain';
-import { feeBps } from '../../solana/ticket';
+import { useChainData } from '../../wallet/chain';
+import { isFakeHash } from '../../wallet/devFake';
+import { feeBps } from '../../wallet/ticket';
 import { sound } from '../../audio';
 import { useT } from '../../i18n';
-import { explorerTx } from '../../solana/links';
+import { explorerTx } from '../../wallet/links';
 import { requestTicket, useUi } from '../../store';
 import { formatClock, ordinal, roomName, useTokenFormat } from './format';
 
@@ -32,7 +33,7 @@ export function receiptNumbers(payout: number, entryFee: number, bps: number, se
   return { gain, fee, net, pct, final };
 }
 
-/** The settlement for this ticket: matched by on-chain session address only (R16). */
+/** The settlement for this ticket: matched by its session key only. */
 export function settlementFor<T extends { session: string | null }>(settled: T | null, ticketSession: string | null | undefined): T | null {
   return settled && ticketSession && settled.session === ticketSession ? settled : null;
 }
@@ -132,11 +133,18 @@ export function RoundOverSheet() {
     },
   ];
   const date = new Date(since).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const txHref = settled && !isFakeHash(settled.txHash) ? explorerTx(settled.txHash, chain?.explorerUrl) : null;
   const footer = settled ? (
-    <a className="g-receipt__tx" href={explorerTx(settled.signature, chain?.cluster ?? 'devnet')} target="_blank" rel="noreferrer">
-      {t('gr.viewTx')} · {settled.signature.slice(0, 4)}…{settled.signature.slice(-4)}
-      <Icon name="arrow" size={14} />
-    </a>
+    txHref ? (
+      <a className="g-receipt__tx" href={txHref} target="_blank" rel="noreferrer">
+        {t('gr.viewTx')} · {settled.txHash.slice(0, 6)}…{settled.txHash.slice(-4)}
+        <Icon name="arrow" size={14} />
+      </a>
+    ) : (
+      <span className="g-receipt__tx mono">
+        {settled.txHash.slice(0, 6)}…{settled.txHash.slice(-4)}
+      </span>
+    )
   ) : (
     <span className="g-receipt__pending" role="status">
       {t('gr.settling')}
@@ -180,13 +188,13 @@ export function RoundOverSheet() {
             title={exit ? t('gr.receiptExit') : t('gr.receipt', { time: roundTime })}
             meta={`${date}${res?.stats ? ` · ${formatClock(res.stats.aliveMs)}` : ''}`}
             lines={lines}
-            code={settled?.signature ?? `pending-${since}`}
+            code={settled?.txHash ?? `pending-${since}`}
             footer={footer}
           />
           <AnimatePresence>
             {settled && printed && (
               <motion.div className="g-roundover__stamp" initial={false} exit={{ opacity: 0 }}>
-                <Stamp text={t('gr.paid')} sub="SOLANA" round size="lg" tone="teal" rotate={-12} animateIn={!reduced} />
+                <Stamp text={t('gr.paid')} sub="ELYSIUM" round size="lg" tone="teal" rotate={-12} animateIn={!reduced} />
               </motion.div>
             )}
           </AnimatePresence>

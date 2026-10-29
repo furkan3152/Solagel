@@ -1,7 +1,7 @@
 import { useSyncExternalStore, type AnchorHTMLAttributes, type MouseEvent } from 'react';
 
 /** Paths the site app renders itself; anything else (`/play`, `/admin`) is a full page load. */
-export const SITE_PATHS = ['/', '/wl', '/collab', '/docs'] as const;
+export const SITE_PATHS = ['/', '/wl', '/collab', '/docs', '/mint'] as const;
 export type SitePath = (typeof SITE_PATHS)[number];
 
 const EVENT = 'site:navigate';

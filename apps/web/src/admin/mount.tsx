@@ -1,30 +1,26 @@
-import '../polyfills';
-import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
-import { StrictMode, useEffect, useMemo, useState } from 'react';
+import { StrictMode, useCallback, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Kb, StampSpinner } from '../design';
+import { initWallets } from '../wallet/store';
 import { AdminHome } from './site/AdminHome';
 import { fetchServerChain, resolveNetwork, type AdminNetwork } from './net';
 
 function AdminApp() {
   const [net, setNet] = useState<AdminNetwork | null>(null);
+  const reloadNet = useCallback(async () => setNet(resolveNetwork(await fetchServerChain({ fresh: true }))), []);
   useEffect(() => {
+    initWallets();
     let live = true;
     void fetchServerChain().then((chain) => live && setNet(resolveNetwork(chain)));
     return () => {
       live = false;
     };
   }, []);
-  const wallets = useMemo(() => [], []);
   const theme = window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'night' : 'paper';
   return (
     <Kb theme={theme} className="ad-root">
       {net ? (
-        <ConnectionProvider endpoint={net.rpcUrl} config={{ commitment: 'confirmed' }}>
-          <WalletProvider wallets={wallets} autoConnect onError={(e) => console.warn('wallet error', e)}>
-            <AdminHome net={net} />
-          </WalletProvider>
-        </ConnectionProvider>
+        <AdminHome net={net} reloadNet={reloadNet} />
       ) : (
         <div className="ad-page">
           <StampSpinner label="Loading" />
@@ -34,9 +30,9 @@ function AdminApp() {
   );
 }
 
-/** `/admin`: the operator's panel (chain admin + slana.io site tabs), a separate lazily loaded entry (main.tsx). */
+/** `/admin`: the operator's panel (contracts + site tabs), a separate lazily loaded entry (main.tsx). */
 export function mount(root: HTMLElement): void {
-  document.title = 'Slana admin';
+  document.title = 'Elymum admin';
   createRoot(root).render(
     <StrictMode>
       <AdminApp />
