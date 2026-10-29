@@ -1,15 +1,15 @@
 export interface ArenaEntry {
   pid: number;
-  /** Wallet (base58). */
+  /** Wallet, EIP-55 checksummed. */
   player: string;
-  /** Session PDA (base58). */
+  /** Session key `<arenaId>:<player lowercase>:<sessionId>` (the settlement's journal key). */
   session: string;
-  /** On-chain session id (PDAs are reused across joins; the id is unique). */
+  /** On-chain session id (global, never reused). */
   sessionId: number;
   arenaId: number;
-  /** Entry fee paid for this session, raw token units. */
+  /** Entry fee paid for this session, ledger units. */
   entryFee: number;
-  /** Current in-game value, raw token units. */
+  /** Current in-game value, ledger units. */
   value: number;
   /** On-chain session open time (unix seconds). */
   openedAt: number;

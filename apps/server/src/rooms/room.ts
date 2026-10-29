@@ -73,9 +73,9 @@ export interface RoomDeps {
 export interface BellSettled {
   arenaId: number;
   wallet: string;
-  /** Session PDA (the settlement's journal key). */
+  /** Session key `<arenaId>:<player lowercase>:<sessionId>` (the settlement's journal key). */
   session: string;
-  /** On-chain session id (PDAs are reused by later tickets; the id is not). */
+  /** On-chain session id (global, never reused). */
   sessionId: number;
   round: number;
 }
@@ -451,7 +451,7 @@ export class Room {
     });
   }
 
-  /** Arena entry fee in raw token units (0 outside arenas). */
+  /** Arena entry fee in ledger units (0 outside arenas). */
   get entryFee(): number {
     return this.opts.stake?.buyIn ?? 0;
   }
@@ -732,7 +732,7 @@ export class Room {
     for (const a of ev.airdrops) this.broadcast({ t: 'event', kind: 'airdrop', state: 'start', x: a.x, y: a.y, powerUp: a.type });
     if (ev.coinRain) {
       this.broadcast({ t: 'event', kind: 'coinrain', state: ev.coinRain, ms: ev.coinRain === 'start' ? world.coinRainUntil - world.now : 0 });
-      if (ev.coinRain === 'start') this.pushChat({ pid: 0, from: 'Slana', skin: 1, text: 'COIN RAIN!', system: true });
+      if (ev.coinRain === 'start') this.pushChat({ pid: 0, from: 'Elymum', skin: 1, text: 'COIN RAIN!', system: true });
     }
 
     if (this.bots) {

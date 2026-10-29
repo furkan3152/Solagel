@@ -2,22 +2,20 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } fro
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { PROTOCOL_VERSION, type CollabAdmin, type CollabPublic, type ServerMessage, type WlEntryAdmin, type WlEntryPublic } from '@elymum/shared';
-import { PublicKey, SystemProgram } from '@solana/web3.js';
-import bs58 from 'bs58';
-import nacl from 'tweetnacl';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { createApp, type App } from '../src/app';
-import { DEFAULT_ADMIN_WALLET, loadConfig, parseAdminWallets } from '../src/config';
+import { loadConfig, parseAdminWallets } from '../src/config';
 import { Limiter } from '../src/net/limiter';
 import { SiteApi } from '../src/site/routes';
 import { SITE_FILES, SiteStore, csvCell } from '../src/site/store';
 import { isUserWallet } from '../src/site/validate';
 import { ArenaChain, arena } from './helpers';
+import { testSigner } from './signers';
 
-const wallet = () => bs58.encode(nacl.sign.keyPair().publicKey);
-/** A valid 32-byte address that is not on the curve (a PDA): never a user wallet. */
-const offCurve = PublicKey.findProgramAddressSync([Buffer.from('slana')], SystemProgram.programId)[0].toBase58();
+const wallet = () => testSigner().address;
+/** A pre-Elysium (base58) wallet: never an EVM wallet. */
+const legacyWallet = 'D2Ts7yCiVjedo6uwqpkM44QA8J45NdVU1J3k5m6iWtvm';
 const post = (h = 'alice', id = '1790000000000000001') => `https://x.com/${h}/status/${id}`;
 const HOUR = 3_600_000;
 
@@ -32,7 +30,7 @@ interface Harness {
 }
 
 async function harness(env: Record<string, string> = {}, limits?: ConstructorParameters<typeof SiteApi>[3]): Promise<Harness> {
-  const dir = mkdtempSync(join(tmpdir(), 'slana-site-'));
+  const dir = mkdtempSync(join(tmpdir(), 'elymum-site-'));
   const admin = wallet();
   const clock = { t: Date.now() };
   const cfg = loadConfig({ PORT: '0', HOST: '127.0.0.1', DATA_DIR: dir, BOT_TARGET: '2', BOT_MIN: '0', BOT_MAX: '2', ADMIN_WALLETS: admin, TRUST_PROXY: '0', ...env } as NodeJS.ProcessEnv);
@@ -84,24 +82,27 @@ const collabBody = (contactX: string, extra: Record<string, unknown> = {}) => ({
 });
 
 describe('admin wallets config', () => {
-  it('defaults to SLANA_ADMIN from scripts/admin.env', () => {
-    const env = readFileSync(resolve(__dirname, '../../../scripts/admin.env'), 'utf8');
-    const fromFile = /^SLANA_ADMIN=(\S+)$/m.exec(env)?.[1];
-    expect(fromFile).toBe(DEFAULT_ADMIN_WALLET);
-    expect(loadConfig({} as NodeJS.ProcessEnv).adminWallets).toEqual([DEFAULT_ADMIN_WALLET]);
-    expect(parseAdminWallets('')).toEqual([DEFAULT_ADMIN_WALLET]);
+  it('has no default: nobody is admin until ADMIN_WALLETS lists 0x addresses', () => {
+    expect(loadConfig({} as NodeJS.ProcessEnv).adminWallets).toEqual([]);
+    expect(parseAdminWallets('')).toEqual([]);
     const a = wallet();
     const b = wallet();
-    expect(parseAdminWallets(` ${a}, ${b},not-a-key,${a}`)).toEqual([a, b]);
-    expect(loadConfig({} as NodeJS.ProcessEnv).gamePublic).toBe(false);
-    expect(loadConfig({ GAME_PUBLIC: '1' } as NodeJS.ProcessEnv).gamePublic).toBe(true);
+    expect(parseAdminWallets(` ${a.toLowerCase()}, ${b},not-a-key,${a},${legacyWallet}`)).toEqual([a, b]);
+    expect(loadConfig({} as NodeJS.ProcessEnv).gameAccess).toBeNull();
+    expect(loadConfig({ GAME_ACCESS: 'public' } as NodeJS.ProcessEnv).gameAccess).toBe('public');
   });
 
-  it('user wallets must be on the curve', () => {
-    expect(isUserWallet(wallet())).toBe(true);
-    expect(isUserWallet(offCurve)).toBe(false);
+  it('user wallets are EVM addresses', () => {
+    const w = wallet();
+    expect(isUserWallet(w)).toBe(true);
+    expect(isUserWallet(w.toLowerCase())).toBe(true);
+    expect(isUserWallet(`0x${w.slice(2).toUpperCase()}`)).toBe(true);
+    // a mixed-case typo fails the EIP-55 checksum
+    const typo = w.slice(0, 2) + (w[2] === w[2].toLowerCase() ? w[2].toUpperCase() : w[2].toLowerCase()) + w.slice(3);
+    if (/[a-fA-F]/.test(w[2])) expect(isUserWallet(typo)).toBe(false);
+    expect(isUserWallet(`0x${'0'.repeat(40)}`)).toBe(false);
+    expect(isUserWallet(legacyWallet)).toBe(false);
     expect(isUserWallet('nope')).toBe(false);
-    expect(isUserWallet('1'.repeat(44))).toBe(false);
   });
 });
 
@@ -116,37 +117,49 @@ describe('site API', () => {
 
   describe('auth', () => {
     it('admin routes: 401 without a session, 403 for a non-admin, 200 for the admin', async () => {
-      for (const path of ['/api/admin/me', '/api/admin/settings', '/api/admin/wl', '/api/admin/collabs', '/api/admin/counts', '/api/admin/wl.csv', '/api/admin/tasks']) {
+      for (const path of [
+        '/api/admin/me',
+        '/api/admin/settings',
+        '/api/admin/wl',
+        '/api/admin/collabs',
+        '/api/admin/counts',
+        '/api/admin/wl.csv',
+        '/api/admin/tasks',
+        '/api/admin/contracts',
+        '/api/admin/mint/allowlist',
+      ]) {
         expect((await h.call('GET', path)).status).toBe(401);
         const r = await h.call('GET', path, { wallet: wallet() });
         expect(r.status).toBe(403);
         expect(r.body.error).toBe('forbidden');
         expect((await h.call('GET', path, { wallet: h.admin })).status).toBe(200);
       }
-      expect((await h.call('PUT', '/api/admin/settings', { wallet: wallet(), body: { gamePublic: true } })).status).toBe(403);
-      expect((await h.call('GET', '/api/admin/settings', { wallet: h.admin })).body.settings.gamePublic).toBe(false);
+      expect((await h.call('PUT', '/api/admin/settings', { wallet: wallet(), body: { gameAccess: 'public' } })).status).toBe(403);
+      expect((await h.call('GET', '/api/admin/settings', { wallet: h.admin })).body).toMatchObject({ settings: { gameAccess: 'admins' }, gameAccessEnv: null });
+      // admin addresses compare case-insensitively
+      expect((await h.call('GET', '/api/admin/me', { wallet: h.admin.toLowerCase() })).body).toEqual({ address: h.admin, admin: true });
       // a forged token
       const res = await fetch(`http://127.0.0.1:${h.port}/api/admin/me`, { headers: { Authorization: `Bearer ${h.admin}.9999999999999.forged` } });
       expect(res.status).toBe(401);
     });
 
-    it('logs in over HTTP with a signed SIWS message', async () => {
-      const kp = nacl.sign.keyPair();
-      const pubkey = bs58.encode(kp.publicKey);
-      const nonce = (await (await fetch(`http://127.0.0.1:${h.port}/api/auth/nonce?pubkey=${pubkey}`)).json()) as { message: string };
-      const bad = await h.call('POST', '/api/auth/login', { body: { pubkey, message: nonce.message, signature: bs58.encode(new Uint8Array(64)) } });
+    it('logs in over HTTP with a signed SIWE message', async () => {
+      const signer = testSigner();
+      const address = signer.address;
+      const nonce = (await (await fetch(`http://127.0.0.1:${h.port}/api/auth/nonce?address=${address}`)).json()) as { message: string };
+      const bad = await h.call('POST', '/api/auth/login', { body: { address, message: nonce.message, signature: await testSigner().sign(nonce.message) } });
       expect(bad.status).toBe(401);
       expect(bad.body.error).toBe('auth_failed');
-      const sig = bs58.encode(nacl.sign.detached(new TextEncoder().encode(nonce.message), kp.secretKey));
-      const ok = await h.call('POST', '/api/auth/login', { body: { pubkey, message: nonce.message, signature: sig } });
+      const sig = await signer.sign(nonce.message);
+      const ok = await h.call('POST', '/api/auth/login', { body: { address: address.toLowerCase(), message: nonce.message, signature: sig } });
       expect(ok.status).toBe(200);
-      expect(ok.body).toMatchObject({ pubkey, admin: false });
+      expect(ok.body).toMatchObject({ address, admin: false });
       const me = await fetch(`http://127.0.0.1:${h.port}/api/auth/me`, { headers: { Authorization: `Bearer ${ok.body.token}` } });
-      expect(await me.json()).toEqual({ pubkey, admin: false });
+      expect(await me.json()).toEqual({ address, admin: false, holder: false, canPlay: false });
       // the nonce is single-use
-      expect((await h.call('POST', '/api/auth/login', { body: { pubkey, message: nonce.message, signature: sig } })).status).toBe(401);
+      expect((await h.call('POST', '/api/auth/login', { body: { address, message: nonce.message, signature: sig } })).status).toBe(401);
       expect((await h.call('GET', '/api/auth/me')).status).toBe(401);
-      expect((await h.call('GET', '/api/auth/me', { wallet: h.admin })).body).toEqual({ pubkey: h.admin, admin: true });
+      expect((await h.call('GET', '/api/auth/me', { wallet: h.admin })).body).toEqual({ address: h.admin, admin: true, holder: false, canPlay: true });
     });
 
     it('my WL and my collabs need a session', async () => {
@@ -167,7 +180,7 @@ describe('site API', () => {
   describe('public settings and tasks', () => {
     it('serves the defaults; the launch-post task opens when the link is set', async () => {
       const s = await h.call('GET', '/api/site/settings');
-      expect(s.body.settings).toEqual({ wlOpen: true, collabOpen: false, gamePublic: false, xHandle: 'slanaio', launchPostUrl: null });
+      expect(s.body.settings).toEqual({ wlOpen: true, collabOpen: false, gameAccess: 'admins', xHandle: 'elymum', launchPostUrl: null });
       const t = await h.call('GET', '/api/site/tasks');
       expect(t.body.tasks.map((x: { id: string }) => x.id)).toEqual(['follow_x', 'post_x', 'engage_launch', 'x_handle', 'wallet']);
       const engage = t.body.tasks[2];
@@ -229,21 +242,21 @@ describe('site API', () => {
       // the task list changes later: the entry keeps what was answered
       expect((await h.call('PUT', '/api/admin/tasks/follow_x', { wallet: h.admin, body: { title: 'Follow us' } })).status).toBe(200);
       const after = (await h.call('GET', '/api/site/wl', { wallet: w })).body.entry as WlEntryPublic;
-      expect(after.tasks.find((t) => t.id === 'follow_x')?.title).toBe('Follow @slanaio');
-      expect((await h.call('PUT', '/api/admin/tasks/follow_x', { wallet: h.admin, body: { title: 'Follow @slanaio' } })).status).toBe(200);
+      expect(after.tasks.find((t) => t.id === 'follow_x')?.title).toBe('Follow @elymum');
+      expect((await h.call('PUT', '/api/admin/tasks/follow_x', { wallet: h.admin, body: { title: 'Follow @elymum' } })).status).toBe(200);
     });
 
     it('requires the launch-post task once its link is live; closes with wlOpen', async () => {
-      const set = await h.call('PUT', '/api/admin/settings', { wallet: h.admin, body: { launchPostUrl: 'https://x.com/slanaio/status/42' } });
-      expect(set.body.settings.launchPostUrl).toBe('https://x.com/slanaio/status/42');
+      const set = await h.call('PUT', '/api/admin/settings', { wallet: h.admin, body: { launchPostUrl: 'https://x.com/elymum/status/42' } });
+      expect(set.body.settings.launchPostUrl).toBe('https://x.com/elymum/status/42');
       const tasks = (await h.call('GET', '/api/site/tasks')).body.tasks;
-      expect(tasks[2]).toMatchObject({ target: 'https://x.com/slanaio/status/42', available: true, required: true });
+      expect(tasks[2]).toMatchObject({ target: 'https://x.com/elymum/status/42', available: true, required: true });
       const w = wallet();
       const miss = await h.call('POST', '/api/site/wl', { wallet: w, body: wlBody('bob') });
       expect([miss.status, miss.body.field]).toEqual([400, 'answers.engage_launch']);
       const ok = await h.call('POST', '/api/site/wl', { wallet: w, body: { ...wlBody('bob'), answers: { ...wlBody('bob').answers, engage_launch: post('bob', '77') } } });
       expect(ok.status).toBe(201);
-      expect((ok.body.entry as WlEntryPublic).tasks[2]).toMatchObject({ target: 'https://x.com/slanaio/status/42', answer: post('bob', '77') });
+      expect((ok.body.entry as WlEntryPublic).tasks[2]).toMatchObject({ target: 'https://x.com/elymum/status/42', answer: post('bob', '77') });
       expect((await h.call('PUT', '/api/admin/settings', { wallet: h.admin, body: { launchPostUrl: 'https://example.com/x' } })).status).toBe(400);
       await h.call('PUT', '/api/admin/settings', { wallet: h.admin, body: { launchPostUrl: null, wlOpen: false } });
       const closed = await h.call('POST', '/api/site/wl', { wallet: wallet(), body: wlBody('carol') });
@@ -251,7 +264,10 @@ describe('site API', () => {
       await h.call('PUT', '/api/admin/settings', { wallet: h.admin, body: { wlOpen: true } });
       expect((await h.call('PUT', '/api/admin/settings', { wallet: h.admin, body: { wlOpen: 'yes' } })).body.field).toBe('wlOpen');
       expect((await h.call('PUT', '/api/admin/settings', { wallet: h.admin, body: { bogus: 1 } })).body.field).toBe('bogus');
-      expect((await h.call('PUT', '/api/admin/settings', { wallet: h.admin, body: { xHandle: '@SlanaIO' } })).body.settings.xHandle).toBe('slanaio');
+      expect((await h.call('PUT', '/api/admin/settings', { wallet: h.admin, body: { xHandle: '@ElymumIO' } })).body.settings.xHandle).toBe('elymumio');
+      expect((await h.call('PUT', '/api/admin/settings', { wallet: h.admin, body: { gameAccess: 'everyone' } })).body.field).toBe('gameAccess');
+      expect((await h.call('PUT', '/api/admin/settings', { wallet: h.admin, body: { gamePublic: true } })).body.field).toBe('gamePublic');
+      await h.call('PUT', '/api/admin/settings', { wallet: h.admin, body: { xHandle: 'elymum' } });
     });
   });
 
@@ -262,7 +278,7 @@ describe('site API', () => {
       expect([bad.status, bad.body.field]).toEqual([400, 'kind']);
       expect((await h.call('POST', '/api/admin/tasks', { wallet: a, body: { kind: 'text', title: '' } })).body.field).toBe('title');
       expect((await h.call('POST', '/api/admin/tasks', { wallet: a, body: { kind: 'join_link', title: 'Discord', target: 'javascript:alert(1)' } })).body.field).toBe('target');
-      const made = await h.call('POST', '/api/admin/tasks', { wallet: a, body: { kind: 'join_link', title: 'Join the Discord', target: 'https://discord.gg/slana', required: false } });
+      const made = await h.call('POST', '/api/admin/tasks', { wallet: a, body: { kind: 'join_link', title: 'Join the Discord', target: 'https://discord.gg/elymum', required: false } });
       expect(made.status).toBe(201);
       const id = made.body.task.id as string;
       let list = (await h.call('GET', '/api/admin/tasks', { wallet: a })).body.tasks as { id: string; order: number }[];
@@ -348,10 +364,11 @@ describe('site API', () => {
       expect((await h.call('POST', `/api/admin/collabs/${id}/approve`, { wallet: wallet(), body: { spots: 2, deadline: h.clock.t + HOUR } })).status).toBe(403);
       const ok = await approve({ spots: 2, deadline: h.clock.t + HOUR });
       expect(ok.body.collab).toMatchObject({ status: 'approved', phase: 'approved', spots: 2, deadline: h.clock.t + HOUR });
-      // drafts: validated, at most `spots`, unique, on-curve; someone else's collab reads as not found
+      // drafts: validated, at most `spots`, unique (any case), EVM; someone else's collab reads as not found
       expect((await put({ wallets: [{ name: 'a', wallet: w1 }] }, wallet())).status).toBe(404);
       expect((await put({ wallets: [{ name: 'a', wallet: w1 }, { name: 'b', wallet: w2 }, { name: 'c', wallet: w3 }] })).body.error).toBe('too_many_wallets');
-      expect((await put({ wallets: [{ name: 'pda', wallet: offCurve }] })).body.field).toBe('wallets[0].wallet');
+      expect((await put({ wallets: [{ name: 'sol', wallet: legacyWallet }] })).body.field).toBe('wallets[0].wallet');
+      expect((await put({ wallets: [{ name: 'a', wallet: w1 }, { name: 'b', wallet: w1.toLowerCase() }] })).body.field).toBe('wallets[1].wallet');
       expect((await put({ wallets: [{ name: 'x', wallet: 'notakey' }] })).body.field).toBe('wallets[0].wallet');
       expect((await put({ wallets: [{ name: 'a', wallet: w1 }, { name: 'b', wallet: w1 }] })).body.field).toBe('wallets[1].wallet');
       expect((await put({ wallets: [{ name: 'n'.repeat(41), wallet: w1 }] })).body.field).toBe('wallets[0].name');
@@ -437,7 +454,7 @@ describe('site API', () => {
       expect(one.headers.get('content-type')).toContain('text/csv');
       expect(one.headers.get('content-disposition')).toContain('attachment');
       const lines = one.text.trim().split('\r\n');
-      expect(lines[0]).toBe('collab_id,community,name,wallet,dup_wl,dup_collabs');
+      expect(lines[0]).toBe('collab_id,community,name,wallet,legacy,dup_wl,dup_collabs');
       expect(lines).toHaveLength(4);
       expect(lines[1].startsWith(`${collabId},Coin Guild,a,`)).toBe(true);
       const all = await h.call('GET', '/api/admin/collabs/wallets.csv', { wallet: h.admin });
@@ -483,7 +500,7 @@ describe('site API', () => {
       expect((await h.call('GET', '/api/admin/wl?q=hyperlink', { wallet: a })).body.total).toBe(1);
       // CSV: approved only by default, or all; formulas defused
       const csvA = (await h.call('GET', '/api/admin/wl.csv', { wallet: a })).text.trim().split('\r\n');
-      expect(csvA[0]).toBe('wallet,x_handle,status,created_at,dup_collabs,note');
+      expect(csvA[0]).toBe('wallet,x_handle,status,legacy,created_at,dup_collabs,note');
       expect(csvA.slice(1).every((l) => l.split(',')[2] === 'approved')).toBe(true);
       expect(csvA.some((l) => l.includes(`"'=HYPERLINK(""x"") checked"`))).toBe(true);
       const total = (await h.call('GET', '/api/admin/counts', { wallet: a })).body;
@@ -523,7 +540,7 @@ describe('site API', () => {
     });
 
     it('starts fresh (and keeps the bad file) when a file is unreadable', () => {
-      const dir = mkdtempSync(join(tmpdir(), 'slana-site-bad-'));
+      const dir = mkdtempSync(join(tmpdir(), 'elymum-site-bad-'));
       const a = new SiteStore(dir);
       a.updateSettings({ collabOpen: true });
       writeFileSync(join(dir, SITE_FILES.wl), '{not json');
@@ -534,7 +551,7 @@ describe('site API', () => {
       expect(readdirSync(join(dir, 'site')).some((f) => f.startsWith('wl.json.corrupt-'))).toBe(true);
       expect(logs.join()).toMatch(/unreadable/);
       // no files until something changes
-      const empty = mkdtempSync(join(tmpdir(), 'slana-site-empty-'));
+      const empty = mkdtempSync(join(tmpdir(), 'elymum-site-empty-'));
       new SiteStore(empty);
       expect(existsSync(join(empty, 'site'))).toBe(false);
     });
@@ -543,13 +560,13 @@ describe('site API', () => {
       const x = await harness();
       const w = wallet();
       expect((await x.call('POST', '/api/site/wl', { wallet: w, body: wlBody('restart') })).status).toBe(201);
-      await x.call('PUT', '/api/admin/settings', { wallet: x.admin, body: { gamePublic: true } });
+      await x.call('PUT', '/api/admin/settings', { wallet: x.admin, body: { gameAccess: 'holders' } });
       await x.app.close();
       const cfg = loadConfig({ PORT: '0', HOST: '127.0.0.1', DATA_DIR: x.dir, ADMIN_WALLETS: x.admin } as NodeJS.ProcessEnv);
       const app2 = await createApp(cfg, { chain: new ArenaChain([]), log: () => {}, persist: true });
       try {
         expect(app2.site.store.myWl(w)?.xHandle).toBe('restart');
-        expect(app2.site.store.settings.gamePublic).toBe(true);
+        expect(app2.site.store.settings.gameAccess).toBe('holders');
       } finally {
         await app2.close();
       }
@@ -582,7 +599,7 @@ describe('site rate limits', () => {
   });
 
   it('limits HTTP sign-ins per IP', async () => {
-    const body = { pubkey: wallet(), message: 'x', signature: 'y' };
+    const body = { address: wallet(), message: 'x', signature: '0x00' };
     expect((await h.call('POST', '/api/auth/login', { body })).status).toBe(401);
     expect((await h.call('POST', '/api/auth/login', { body })).status).toBe(401);
     expect((await h.call('POST', '/api/auth/login', { body })).status).toBe(429);
@@ -686,9 +703,9 @@ describe('game gate', () => {
     c.close();
   });
 
-  it('lets everyone in once gamePublic is on, and closes again when it is off', async () => {
-    expect((await h.call('PUT', '/api/admin/settings', { wallet: h.admin, body: { gamePublic: true } })).body.settings.gamePublic).toBe(true);
-    expect((await h.call('GET', '/api/site/settings')).body.settings.gamePublic).toBe(true);
+  it('lets everyone in once gameAccess is public, and closes again when it is admins', async () => {
+    expect((await h.call('PUT', '/api/admin/settings', { wallet: h.admin, body: { gameAccess: 'public' } })).body.settings.gameAccess).toBe('public');
+    expect((await h.call('GET', '/api/site/settings')).body.settings.gameAccess).toBe('public');
     const guest = await Ws.open(h.port);
     expect((await guest.attempt(entries[0])).t).toBe('joined');
     const watcher = await Ws.open(h.port);
@@ -697,21 +714,22 @@ describe('game gate', () => {
     // arena: past the gate (a guest needs a wallet for a ticket)
     expect(await guest.attempt(entries[2])).toMatchObject({ t: 'error', code: 'auth_required' });
     guest.close();
-    await h.call('PUT', '/api/admin/settings', { wallet: h.admin, body: { gamePublic: false } });
+    await h.call('PUT', '/api/admin/settings', { wallet: h.admin, body: { gameAccess: 'admins' } });
     const late = await Ws.open(h.port);
     expect(await late.attempt(entries[0])).toMatchObject({ t: 'error', code: 'game_closed' });
     late.close();
   });
 
-  it('GAME_PUBLIC=1 opens the game whatever the setting; /api/config stays public', async () => {
-    const cfg = loadConfig({ GAME_PUBLIC: '1', ADMIN_WALLETS: h.admin } as NodeJS.ProcessEnv);
+  it('GAME_ACCESS=public opens the game whatever the setting; /api/config stays public', async () => {
+    const cfg = loadConfig({ GAME_ACCESS: 'public', ADMIN_WALLETS: h.admin } as NodeJS.ProcessEnv);
     const api = new SiteApi(cfg, h.app.auth, new SiteStore(null));
-    expect(api.gameOpenFor(null)).toBe(true);
-    expect(api.publicSettings().gamePublic).toBe(true);
+    expect(await api.gameOpenFor(null)).toBe(true);
+    expect(api.publicSettings().gameAccess).toBe('public');
     const closed = new SiteApi(loadConfig({ ADMIN_WALLETS: h.admin } as NodeJS.ProcessEnv), h.app.auth, new SiteStore(null));
-    expect(closed.gameOpenFor(null)).toBe(false);
-    expect(closed.gameOpenFor(wallet())).toBe(false);
-    expect(closed.gameOpenFor(h.admin)).toBe(true);
+    expect(await closed.gameOpenFor(null)).toBe(false);
+    expect(await closed.gameOpenFor(wallet())).toBe(false);
+    expect(await closed.gameOpenFor(h.admin)).toBe(true);
+    expect(await closed.gameOpenFor(h.admin.toLowerCase())).toBe(true);
     const res = await fetch(`http://127.0.0.1:${h.port}/api/config`);
     expect(res.status).toBe(200);
     expect(((await res.json()) as { chain: { enabled: boolean } }).chain.enabled).toBe(true);

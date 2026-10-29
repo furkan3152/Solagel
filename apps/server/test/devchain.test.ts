@@ -1,5 +1,6 @@
 import type { AddressInfo } from 'node:net';
-import { Keypair } from '@solana/web3.js';
+import { randomBytes } from 'node:crypto';
+import { getAddress } from 'viem';
 import { describe, expect, it } from 'vitest';
 import { createChain, dataFileNames } from '../src/chain';
 import { DevFakeChain } from '../src/chain/dev-fake';
@@ -9,7 +10,7 @@ import { createHttpServer } from '../src/http';
 import { settledMessage } from '../src/net/gateway';
 import { Journal, type SettlementItem } from '../src/stake/journal';
 
-const wallet = () => Keypair.generate().publicKey.toBase58();
+const wallet = () => getAddress(`0x${randomBytes(20).toString('hex')}`);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 describe('DEV_FAKE_CHAIN', () => {
@@ -28,31 +29,40 @@ describe('DEV_FAKE_CHAIN', () => {
   });
 
   it('refuses next to a real chain configuration', async () => {
-    await expect(refused({ DEV_FAKE_CHAIN: '1', NODE_ENV: 'development', PROGRAM_ID: 'Prog1111' })).rejects.toThrow(/PROGRAM_ID/);
-    await expect(refused({ DEV_FAKE_CHAIN: '1', NODE_ENV: 'development', SERVER_KEYPAIR: '/k.json' })).rejects.toThrow(/SERVER_KEYPAIR/);
+    await expect(refused({ DEV_FAKE_CHAIN: '1', NODE_ENV: 'development', EVM_RPC_URL: 'http://127.0.0.1:8545' })).rejects.toThrow(/EVM_RPC_URL/);
+    await expect(refused({ DEV_FAKE_CHAIN: '1', NODE_ENV: 'development', SERVER_PRIVATE_KEY: 'auto' })).rejects.toThrow(/SERVER_PRIVATE_KEY/);
   });
 
-  it('keeps its own journal and leaderboard files', () => {
+  it('keeps its own journal, leaderboard and profile files', () => {
     expect(dataFileNames(loadConfig(env({ DEV_FAKE_CHAIN: '1', NODE_ENV: 'development' })))).toEqual({
       journal: 'journal.dev-fake.json',
       leaderboards: 'leaderboards.dev-fake.json',
+      profiles: 'profiles.dev-fake.json',
     });
-    expect(dataFileNames(loadConfig(env({})))).toEqual({ journal: 'journal.json', leaderboards: 'leaderboards.json' });
+    expect(dataFileNames(loadConfig(env({})))).toEqual({ journal: 'journal.json', leaderboards: 'leaderboards.json', profiles: 'profiles.json' });
   });
 
   it('creates the fake chain outside production, with the token unset unless DEV_FAKE_TOKEN=1', async () => {
     const cfg = loadConfig(env({ DEV_FAKE_CHAIN: '1', NODE_ENV: 'development' }));
     const chain = await createChain(cfg, new Journal(null), () => {});
     expect(chain).toBeInstanceOf(DevFakeChain);
-    expect(chain.status()).toMatchObject({ enabled: true, tokenReady: false, arenasEnabled: false, token: null, feeBps: 500 });
+    expect(chain.status()).toMatchObject({ enabled: true, chainId: 31337, tokenReady: false, arenasEnabled: false, token: null, feeBps: 500 });
+    expect(chain.status().arenaAddress).toMatch(/^0x[0-9a-fA-F]{40}$/);
     expect(chain.tokenReady).toBe(false);
     expect(chain.stakeEnabled).toBe(false);
     expect(await chain.listArenas()).toEqual([]);
     await chain.stop();
 
     const ready = await createChain(loadConfig(env({ DEV_FAKE_CHAIN: '1', NODE_ENV: 'development', DEV_FAKE_TOKEN: '1' })), new Journal(null), () => {});
-    expect(ready.status()).toMatchObject({ tokenReady: true, arenasEnabled: true, token: { decimals: 6 }, feeBps: 500 });
-    expect((await ready.listArenas()).map((a) => a.id)).toEqual([1, 2, 3, 4]);
+    expect(ready.status()).toMatchObject({ tokenReady: true, arenasEnabled: true, token: { decimals: 18, symbol: '$ELYMUM' }, feeBps: 500 });
+    expect(ready.status().token!.address).toMatch(/^0x[0-9a-fA-F]{40}$/);
+    // ledger units: 1,000 tokens of the first tier = 1e9 (6 ledger decimals), a safe JS number
+    expect((await ready.listArenas()).map((a) => [a.id, a.entryFee])).toEqual([
+      [1, 1_000 * 1e6],
+      [2, 10_000 * 1e6],
+      [3, 50_000 * 1e6],
+      [4, 250_000 * 1e6],
+    ]);
     await ready.stop();
   });
 
@@ -75,6 +85,10 @@ describe('DEV_FAKE_CHAIN', () => {
     const a = await chain.getSession(1, w);
     expect(a).not.toBeNull();
     expect(await chain.getSession(1, w)).toBe(a);
+    expect(await chain.getSession(1, w.toLowerCase())).toBe(a);
+    expect(a!.key).toBe(`1:${w.toLowerCase()}:${a!.id}`);
+    expect(a!.player).toBe(w);
+    expect(await chain.getSession(1, 'not-a-wallet')).toBeNull();
     expect('hasPass' in a!).toBe(false);
     // every arena is open to everyone
     expect(await chain.getSession(3, w)).not.toBeNull();
@@ -116,7 +130,8 @@ describe('DEV_FAKE_CHAIN', () => {
     const chain = new DevFakeChain(journal, () => {}, 10);
     const events: SettledEvent[] = [];
     chain.onSettled((e) => events.push(e));
-    const real = item('RealSessionPda1111', wallet(), 5_000_000);
+    const w = wallet();
+    const real = item(`1:${w.toLowerCase()}:77`, w, 5_000_000, 77);
     journal.commit({ enqueue: [real] });
     await chain.start();
     chain.kick();
@@ -138,10 +153,10 @@ describe('DEV_FAKE_CHAIN', () => {
       enqueue: [
         {
           kind: 'settle',
-          key: s.address,
+          key: s.key,
           player: w,
           arenaId: 1,
-          session: s.address,
+          session: s.key,
           sessionId: s.id,
           payout,
           score: 10,
@@ -159,6 +174,8 @@ describe('DEV_FAKE_CHAIN', () => {
     await sleep(80);
     expect(events).toHaveLength(1);
     expect(events[0].payout).toBe(payout);
+    expect(events[0].txHash).toMatch(/^0x[0-9a-f]{64}$/);
+    expect(events[0].player).toBe(w);
     expect(events[0].fee).toBe(Math.floor((s.entryFee * 2 * 500) / 10_000));
     expect(journal.pending).toHaveLength(0);
     // the ticket closed: a new one is issued next time
@@ -169,18 +186,20 @@ describe('DEV_FAKE_CHAIN', () => {
 
 describe('settled message (R16)', () => {
   it('names the session and arena so the client can match its receipt', () => {
-    expect(settledMessage({ key: 'Sess1', player: 'P', arenaId: 2, signature: 'sig', payout: 300, fee: 10 })).toEqual({
+    const tx = `0x${'ab'.repeat(32)}`;
+    expect(settledMessage({ key: '2:0xabc:9', player: 'P', arenaId: 2, txHash: tx, payout: 300, fee: 10 })).toEqual({
       t: 'settled',
       kind: 'payout',
-      session: 'Sess1',
+      session: '2:0xabc:9',
       arenaId: 2,
-      signature: 'sig',
+      txHash: tx,
       payout: 300,
       fee: 10,
       net: 290,
     });
     // late confirmations without fee / arena stay well-formed
-    expect(settledMessage({ key: 'Sess2', player: 'P', signature: 's', payout: 0 })).toEqual({ t: 'settled', kind: 'death', session: 'Sess2', signature: 's', payout: 0 });
+    expect(settledMessage({ key: 'k2', player: 'P', txHash: tx, payout: 0 })).toEqual({ t: 'settled', kind: 'death', session: 'k2', txHash: tx, payout: 0 });
+    expect(settledMessage({ key: 'k3', player: 'P', txHash: tx, payout: 50, fee: 0, collect: true })).toMatchObject({ collect: true, net: 50 });
   });
 });
 

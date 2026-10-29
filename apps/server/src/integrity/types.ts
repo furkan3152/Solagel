@@ -33,7 +33,7 @@ export interface InputSummary {
 
 /** Summary of one arena ticket, kept in memory and persisted under `DATA_DIR/integrity/log/`. */
 export interface SessionSummary {
-  /** `<session PDA>#<session id>` (PDAs are reused by later tickets, ids are not). */
+  /** `<session key>#<session id>` (the session key already holds the id; the suffix keeps old records unique). */
   key: string;
   wallet: string;
   arenaId: number;

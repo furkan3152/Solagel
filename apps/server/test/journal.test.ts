@@ -15,7 +15,7 @@ const live = (session: string, value: number): LiveStake => ({
   kills: 2,
 });
 
-const tmpPath = () => join(mkdtempSync(join(tmpdir(), 'slana-journal-')), 'journal.json');
+const tmpPath = () => join(mkdtempSync(join(tmpdir(), 'elymum-journal-')), 'journal.json');
 
 describe('journal v2', () => {
   it('loot survives restart', () => {
@@ -46,7 +46,7 @@ describe('journal v2', () => {
     expect(j3.lootTotal()).toBe(3);
   });
 
-  it('drops the Slana Pass flag that older v2 files carry on live stakes', () => {
+  it('drops the old Pass flag that older v2 files carry on live stakes', () => {
     const path = tmpPath();
     writeFileSync(path, JSON.stringify({ version: 2, pending: [], live: [{ ...live('s-p', 90), hasPass: true }], loot: [], updatedAt: 1 }));
     const j = new Journal(path);
@@ -129,5 +129,42 @@ describe('journal v2', () => {
     writeFileSync(path, JSON.stringify({ version: 2, pending: [], live: [], loot: [{ arenaId: 3, x: 1, y: 2, value: 9 }], updatedAt: 1 }));
     const j = new Journal(path);
     expect(j.recoverLoot(3)).toEqual([{ roomId: 'arena-3-1', arenaId: 3, x: 1, y: 2, value: 9 }]);
+  });
+});
+
+describe('sweep ids and the contract binding (EVM)', () => {
+  const sweep = (key: string, arenaId = 1) => ({ kind: 'sweep' as const, key, arenaId, roomId: `arena-${arenaId}-1`, round: 1, amount: 10, attempts: 0, nextAttemptAt: 0, createdAt: 0 });
+
+  it('assigns monotonic sweep ids per arena, above the on-chain lastSweepId, and keeps them across reloads', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'elymum-journal-sweep-'));
+    const path = join(dir, 'journal.json');
+    const j = new Journal(path);
+    j.commit({ enqueue: [sweep('a'), sweep('b'), sweep('c', 2)] });
+    expect(j.assignSweepId('a', 0)).toBe(1);
+    expect(j.assignSweepId('a', 0)).toBe(1); // an item keeps its id
+    expect(j.assignSweepId('b', 7)).toBe(8); // above the chain's last id
+    expect(j.assignSweepId('c', 0)).toBe(1); // per arena
+    j.markSent('b', '0xabc', 5);
+    j.remove('a');
+    j.remove('b');
+    const back = new Journal(path);
+    expect(back.lastSweepId(1)).toBe(8);
+    back.enqueue(sweep('d'));
+    expect(back.assignSweepId('d', 0)).toBe(9);
+    expect((back.pending.find((p) => p.key === 'c') as { sweepId?: number }).sweepId).toBe(1);
+  });
+
+  it('binds to one arena contract; another one only once nothing is owed', () => {
+    const j = new Journal(null);
+    expect(j.contract).toBeNull();
+    expect(j.bindContract('0x00000000000000000000000000000000000000AA')).toBe(true);
+    expect(j.contract).toBe('0x00000000000000000000000000000000000000aa');
+    j.enqueue(sweep('x'));
+    expect(j.bindContract('0x00000000000000000000000000000000000000BB')).toBe(false);
+    expect(j.bindContract('0x00000000000000000000000000000000000000aa')).toBe(true);
+    j.remove('x');
+    expect(j.isIdle()).toBe(true);
+    expect(j.bindContract('0x00000000000000000000000000000000000000BB')).toBe(true);
+    expect(j.lastSweepId(1)).toBe(0);
   });
 });

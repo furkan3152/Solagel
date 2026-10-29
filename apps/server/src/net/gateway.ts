@@ -8,24 +8,20 @@ import {
   decodeClientInput,
   isBasicSkin,
   isFingerprint,
-  levelFromXp,
   parseJoinTarget,
   sanitizeName,
   type ErrorCode,
-  type ProfileSummary,
   type ServerMessage,
 } from '@elymum/shared';
 import { WebSocketServer, type RawData, type WebSocket } from 'ws';
 import type { Auth } from '../auth';
-import type { ChainGateway, ChainProfile, SettledEvent } from '../chain/types';
+import type { ChainGateway, SettledEvent } from '../chain/types';
 import type { ServerConfig } from '../config';
+import type { ProfileStore } from '../profiles';
 import type { RoomManager } from '../rooms/manager';
 import { MAX_STAKE_SESSION_AGE_S } from '../rooms/room';
 import type { Journal } from '../stake/journal';
 import { Conn } from './conn';
-
-export const profileSummary = (p: ChainProfile | null): ProfileSummary | null =>
-  p ? { name: p.name, skin: p.skin, xp: p.xp, level: levelFromXp(p.xp), premiumSkins: p.premiumSkins } : null;
 
 export function clientIp(req: IncomingMessage, trustProxy: boolean): string {
   if (trustProxy) {
@@ -43,8 +39,8 @@ function toBytes(data: RawData): Uint8Array {
 }
 
 /**
- * The `settled` message for a settlement event: it names the on-chain session
- * (and arena) so a client matches it to the ticket it paid out (R16).
+ * The `settled` message for a settlement event: it names the session key (and arena) so a client
+ * matches it to the ticket it paid out, and the settlement transaction (`txHash`).
  */
 export function settledMessage(e: SettledEvent): Extract<ServerMessage, { t: 'settled' }> {
   const kind = e.payout > 0 ? 'payout' : 'death';
@@ -53,7 +49,7 @@ export function settledMessage(e: SettledEvent): Extract<ServerMessage, { t: 'se
     kind,
     session: e.key,
     ...(e.arenaId === undefined ? {} : { arenaId: e.arenaId }),
-    signature: e.signature,
+    txHash: e.txHash,
     payout: e.payout,
     ...(e.fee === undefined ? {} : { fee: e.fee, net: e.payout - e.fee }),
     ...(e.collect ? { collect: true } : {}),
@@ -67,7 +63,9 @@ export class Gateway {
   private readonly alive = new WeakMap<WebSocket, boolean>();
   private timers: NodeJS.Timeout[] = [];
   /** Who may enter a room (join or spectate); null: everyone (unit tests that build a bare gateway). */
-  private gameGate: ((wallet: string | null) => boolean) | null = null;
+  private gameGate: ((wallet: string | null) => boolean | Promise<boolean>) | null = null;
+  /** Server profiles (names, skins, XP); null: none (bare unit tests). */
+  private profiles: ProfileStore | null = null;
   /** Wallets the admin banned from arenas (integrity); null: nobody (bare unit tests). */
   private banGate: ((wallet: string) => boolean) | null = null;
 
@@ -84,15 +82,19 @@ export class Gateway {
       for (const conn of this.rooms.connsByWallet(e.player)) {
         conn.send(settledMessage(e));
       }
-      void this.refreshProfile(e.player);
     });
     // the token was set (or another status change clients must see): push the new chain status
     chain.onStatusChange(() => this.broadcastChain());
   }
 
-  /** Sets who may enter rooms (the site's game gate: public, or an admin wallet). */
-  setGameGate(gate: ((wallet: string | null) => boolean) | null): void {
+  /** Sets who may enter rooms (the site's game gate: admins, NFT holders, or everyone). */
+  setGameGate(gate: ((wallet: string | null) => boolean | Promise<boolean>) | null): void {
     this.gameGate = gate;
+  }
+
+  /** Sets the profile store the sign-in and joins read names from. */
+  setProfiles(profiles: ProfileStore | null): void {
+    this.profiles = profiles;
   }
 
   /** Sets who is banned from arena joins (the integrity ban list). Practice is never gated by it. */
@@ -100,10 +102,12 @@ export class Gateway {
     this.banGate = gate;
   }
 
-  /** Refuses (`game_closed`) a room entry while the game is not public and the session is no admin. */
-  private gameClosed(conn: Conn): boolean {
-    if (!this.gameGate || this.gameGate(conn.wallet)) return false;
-    this.error(conn, 'game_closed', 'The game is not open yet. Follow @slanaio for the launch.');
+  /** Refuses (`game_closed`) a room entry the game gate does not allow for this session. */
+  private async gameClosed(conn: Conn): Promise<boolean> {
+    if (!this.gameGate) return false;
+    const open = await Promise.resolve(this.gameGate(conn.wallet)).catch(() => false);
+    if (open) return false;
+    this.error(conn, 'game_closed', conn.wallet ? 'The game is not open to this wallet yet.' : 'The game is not open yet. Sign in with your wallet if you hold an Elymum NFT.');
     return true;
   }
 
@@ -198,14 +202,6 @@ export class Gateway {
     return true;
   }
 
-  private async refreshProfile(wallet: string): Promise<void> {
-    const profile = await this.chain.getProfile(wallet, true).catch(() => null);
-    for (const conn of this.rooms.connsByWallet(wallet)) {
-      conn.profile = profile;
-      if (profile) conn.send({ t: 'xp', xp: profile.xp, level: levelFromXp(profile.xp) });
-    }
-  }
-
   async onMessage(conn: Conn, data: RawData, isBinary: boolean): Promise<void> {
     if (!conn.allow(isBinary ? 1 : 3)) return;
     if (isBinary) {
@@ -225,7 +221,7 @@ export class Gateway {
     switch (msg.t) {
       case 'hello': {
         if (msg.v !== PROTOCOL_VERSION) {
-          this.error(conn, 'version_mismatch', 'A new version of Slana is available — please refresh.');
+          this.error(conn, 'version_mismatch', 'A new version of Elymum is available. Please refresh.');
           return;
         }
         conn.helloed = true;
@@ -252,7 +248,7 @@ export class Gateway {
         await this.onJoin(conn, msg);
         return;
       case 'spectate': {
-        if (this.gameClosed(conn)) return;
+        if (await this.gameClosed(conn)) return;
         const room =
           typeof msg.room === 'string' ? this.rooms.rooms.get(msg.room) : (conn.room ?? this.rooms.lobbyRoom());
         if (!room) {
@@ -295,22 +291,27 @@ export class Gateway {
     }
     let wallet: string | null = null;
     if (typeof msg.token === 'string') wallet = this.auth.verifyToken(msg.token);
-    else if (typeof msg.pubkey === 'string' && typeof msg.message === 'string' && typeof msg.signature === 'string') {
-      wallet = this.auth.verifySignature(msg.pubkey, msg.message, msg.signature) ? msg.pubkey : null;
+    else if (typeof msg.address === 'string' && typeof msg.message === 'string' && typeof msg.signature === 'string') {
+      wallet = await this.auth.verifySignature(msg.address, msg.message, msg.signature);
     }
     if (!wallet) {
-      this.error(conn, 'auth_failed', 'Wallet login failed — please sign again.');
+      this.error(conn, 'auth_failed', 'Wallet sign-in failed. Please sign again.');
       return;
     }
     conn.wallet = wallet;
-    conn.profile = await this.chain.getProfile(wallet, true).catch(() => null);
-    conn.send({ t: 'authed', pubkey: wallet, token: this.auth.issueToken(wallet), profile: profileSummary(conn.profile) });
+    conn.profile = this.profiles?.summary(wallet) ?? null;
+    conn.send({ t: 'authed', address: wallet, token: this.auth.issueToken(wallet), profile: conn.profile });
   }
 
   private async onJoin(conn: Conn, msg: Record<string, unknown>): Promise<void> {
     if (conn.joining) return;
     // every room entry (practice, private, arena ticket) is gated before anything else is looked at
-    if (this.gameClosed(conn)) return;
+    conn.joining = true;
+    try {
+      if (await this.gameClosed(conn)) return;
+    } finally {
+      conn.joining = false;
+    }
     const target = typeof msg.room === 'string' ? parseJoinTarget(msg.room) : null;
     if (!target) {
       this.error(conn, 'bad_request', 'Unknown room');
@@ -321,7 +322,7 @@ export class Gateway {
     conn.fp = isFingerprint(msg.fp) ? msg.fp : null;
     try {
       const skin = Number.isInteger(msg.skin) && (msg.skin as number) >= 0 && (msg.skin as number) < SKIN_COUNT ? (msg.skin as number) : 0;
-      if (conn.wallet) conn.profile = await this.chain.getProfile(conn.wallet).catch(() => conn.profile);
+      if (conn.wallet) conn.profile = this.profiles?.summary(conn.wallet) ?? null;
       // only the basic skins can be picked
       if (!isBasicSkin(skin)) {
         this.error(conn, 'skin_locked', 'That skin is locked.');
@@ -360,7 +361,7 @@ export class Gateway {
 
       // stake arena
       if (this.chain.enabled && !this.chain.tokenReady) {
-        // initialized without a mint: arenas open once `set-token` runs (picked up without a restart)
+        // no arena registered or the token not set yet: arenas open once it is (picked up without a restart)
         this.error(conn, 'token_not_set', 'Arenas are opening soon: the game token is not set yet. Practice is open.');
         return;
       }
@@ -421,11 +422,11 @@ export class Gateway {
         return;
       }
       if (session.finalized) {
-        // R24: this game is over (settled without a token account); the payout waits for the player
+        // this game is over (settled, but the transfer to the player failed); the payout waits for the player
         this.error(conn, 'payout_waiting', 'Your last game in this arena is settled. Collect your payout first.');
         return;
       }
-      if (this.journal.pending.some((p) => p.key === session.address)) {
+      if (this.journal.pending.some((p) => p.key === session.key)) {
         this.error(conn, 'no_session', 'Your previous game in this arena is still being settled.');
         return;
       }
@@ -440,12 +441,12 @@ export class Gateway {
         return;
       }
       // re-check after the awaits above: another tab may have joined with the same ticket meanwhile (in any instance)
-      if (this.rooms.findArenaStake(target.arenaId, conn.wallet) || this.rooms.liveSessions().has(session.address)) {
+      if (this.rooms.findArenaStake(target.arenaId, conn.wallet) || this.rooms.liveSessions().has(session.key)) {
         this.error(conn, 'session_busy', 'You are already playing in this arena.');
         return;
       }
       // I1: a settlement (e.g. a stale refund) may have been queued for this session during the awaits
-      if (this.journal.pending.some((p) => p.key === session.address)) {
+      if (this.journal.pending.some((p) => p.key === session.key)) {
         this.error(conn, 'no_session', 'Your previous game in this arena is still being settled.');
         return;
       }
@@ -463,7 +464,7 @@ export class Gateway {
         flags: flags | PlayerFlag.Staker,
         stake: {
           player: conn.wallet,
-          session: session.address,
+          session: session.key,
           sessionId: session.id,
           arenaId: target.arenaId,
           entryFee: session.entryFee,

@@ -1,84 +1,105 @@
 import type { ChainStatus } from '@elymum/shared';
+import type { EvmClient } from './evm-client';
 
-export interface ChainProfile {
-  owner: string;
-  name: string;
-  skin: number;
-  xp: number;
-  level: number;
-  premiumSkins: number;
-  gamesPlayed: number;
-  bestScore: number;
+/**
+ * Amounts in this module are **ledger units** (see `toLedger` / `fromLedger` in `@elymum/sdk`): the game
+ * token with at most 6 decimals, a safe JS integer. The EVM gateway converts at the chain boundary only.
+ */
+
+/** Journal key of an arena ticket: `<arenaId>:<player lowercase>:<sessionId>` (session ids are global and never reused). */
+export function sessionKey(arenaId: number, player: string, sessionId: number | bigint): string {
+  return `${arenaId}:${player.toLowerCase()}:${sessionId}`;
+}
+
+/** Parts of a session key; null when it is not one. */
+export function parseSessionKey(key: string): { arenaId: number; player: string; sessionId: number } | null {
+  const m = /^(\d{1,5}):(0x[0-9a-f]{40}):(\d{1,20})$/.exec(key);
+  if (!m) return null;
+  const sessionId = Number(m[3]);
+  return Number.isSafeInteger(sessionId) ? { arenaId: Number(m[1]), player: m[2], sessionId } : null;
 }
 
 export interface ChainSession {
-  address: string;
-  /** On-chain `Session::id` (must be echoed in settle_session). */
+  /** Journal key `<arenaId>:<player lowercase>:<sessionId>` (the settlement's key). */
+  key: string;
+  /** On-chain session id (must be echoed in `settle`). */
   id: number;
+  /** Player wallet, EIP-55 checksummed. */
   player: string;
   arenaId: number;
-  /** Ticket price, raw token units. */
+  /** Ticket price, ledger units. */
   entryFee: number;
   /** Unix seconds. */
   openedAt: number;
   /**
-   * R24: already settled without the player's token account; the result is final and
-   * `owed` waits for the player to collect it. Never playable, never refunded as stale.
+   * Already settled but the token transfer to the player failed; the result is final and
+   * `owed` waits for the player to collect it (`refund`). Never playable, never settled again.
    */
   finalized: boolean;
-  /** Raw token units the player can collect (finalized sessions; 0 otherwise). */
+  /** Ledger units the player can collect (finalized sessions; 0 otherwise). */
   owed: number;
 }
 
 export interface ChainArena {
   id: number;
-  address: string;
-  /** Ticket price, raw token units. */
+  /** Ticket price, ledger units. */
   entryFee: number;
   /** On-chain cap on open sessions. */
   maxSessions: number;
   openSessions: number;
   enabled: boolean;
   /**
-   * Raw token units held by the arena vault; null when the gateway has no real vault
+   * Ledger units the arena vault can spend (rounded down); null when the gateway has no real vault
    * (dev-fake), which skips the vault-vs-journal guard.
    */
   pot: number | null;
 }
 
 export interface SettledEvent {
-  /** Journal key (session PDA). */
+  /** Journal key (`<arenaId>:<player lowercase>:<sessionId>`). */
   key: string;
+  /** Player wallet, EIP-55 checksummed. */
   player: string;
   /** Arena of the settled session (absent on journal items written before it existed). */
   arenaId?: number;
-  signature: string;
-  /** Raw token units paid out of the vault (before the fee). */
+  /** The settlement transaction (0x hash). */
+  txHash: string;
+  /** Ledger units paid out of the vault (before the fee). */
   payout: number;
-  /** Fee on profit, raw token units (absent when unknown, e.g. a late confirmation). */
+  /** Fee on profit, ledger units (absent when unknown, e.g. a late confirmation). */
   fee?: number;
-  /** R24: settled without a usable token account; the player collects the net payout. */
+  /** The transfer to the player failed; the session is finalized and the player collects the net payout. */
   collect?: boolean;
 }
 
-/** Everything the rooms need from Solana. `NullChain` is used when disabled. */
+/** The server key and its gas balance (admins see it in `/api/config` and `/admin`). */
+export interface ServerKeyInfo {
+  /** EIP-55 address of the server key; null when there is none. */
+  address: string | null;
+  /** HYPE balance in wei (decimal string); null when unknown. */
+  balanceWei: string | null;
+  /** The balance is below the warning threshold. */
+  low: boolean;
+}
+
+/** Everything the rooms need from the chain. `NullChain` is used when it is off. */
 export interface ChainGateway {
+  /** The server talks to an EVM RPC (`EVM_RPC_URL` reachable). */
   readonly enabled: boolean;
   /**
-   * The game token is set on chain (`isTokenSet(config)`). False while the program is
-   * initialized without a mint: practice only, arena joins answer `token_not_set`.
+   * The game token is set on the arena contract (`setToken`). False while no arena is registered or
+   * the token is not set: practice only, arena joins answer `token_not_set`.
    */
   readonly tokenReady: boolean;
   /** Arena tickets can be played (chain on, token set and usable, server authorized). */
   readonly stakeEnabled: boolean;
   status(): ChainStatus;
-  getProfile(owner: string, fresh?: boolean): Promise<ChainProfile | null>;
   getSession(arenaId: number, player: string): Promise<ChainSession | null>;
   /** On-chain arenas; cached briefly unless `fresh` (a re-read that bypasses the cache). */
   listArenas(fresh?: boolean): Promise<ChainArena[]>;
   /** Wake the settlement worker (new journal items). */
   kick(): void;
-  /** Ids of sessions currently owned by a room (live); never refunded as stale. */
+  /** Keys of sessions currently owned by a room (live): never settled as stale. */
   setLiveSessionProvider(fn: () => Set<string>): void;
   onSettled(fn: (e: SettledEvent) => void): void;
   /**
@@ -86,6 +107,17 @@ export interface ChainGateway {
    * `tokenReady` turned true and arenas can attach). Listeners re-read `status()`.
    */
   onStatusChange(fn: () => void): void;
+  /** The server key and its HYPE balance. */
+  serverInfo(): ServerKeyInfo;
+  /**
+   * Verifies a signed message on chain (ERC-1271 / ERC-6492 smart wallets). Absent or false when the
+   * chain is off; EOA signatures are checked without it.
+   */
+  verifyMessage?(address: string, message: string, signature: string): Promise<boolean>;
+  /** The EVM access (the site reads the NFT and checks registered contracts through it); absent or null when off. */
+  evm?(): EvmClient | null;
+  /** Re-reads the registry and the arena config now (after a registry change). */
+  refresh?(): Promise<void>;
   start(): Promise<void>;
   stop(): Promise<void>;
 }
@@ -94,21 +126,22 @@ export class NullChain implements ChainGateway {
   readonly enabled = false;
   readonly tokenReady = false;
   readonly stakeEnabled = false;
-  constructor(private readonly cluster = 'disabled') {}
+  constructor(private readonly chainName = 'Elysium') {}
   status(): ChainStatus {
     return {
       enabled: false,
-      cluster: this.cluster,
-      programId: null,
+      chainId: null,
+      chainName: this.chainName,
       rpcUrl: null,
+      explorerUrl: null,
+      arenaAddress: null,
+      nftAddress: null,
       arenasEnabled: false,
       tokenReady: false,
       token: null,
       feeBps: null,
+      serverKey: null,
     };
-  }
-  async getProfile(): Promise<ChainProfile | null> {
-    return null;
   }
   async getSession(): Promise<ChainSession | null> {
     return null;
@@ -120,6 +153,9 @@ export class NullChain implements ChainGateway {
   setLiveSessionProvider(): void {}
   onSettled(): void {}
   onStatusChange(): void {}
+  serverInfo(): ServerKeyInfo {
+    return { address: null, balanceWei: null, low: false };
+  }
   async start(): Promise<void> {}
   async stop(): Promise<void> {}
 }

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Authoritative Slana game server: simulation, rooms, smart bots, Solana settlement",
+  "description": "Authoritative Elymum game server: simulation, rooms, smart bots, settlement on Elysium",
   "main": "./dist/index.js",
   "scripts": {
     "dev": "tsx watch --clear-screen=false src/index.ts",

@@ -1,16 +1,17 @@
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { extname, join, normalize, resolve, sep } from 'node:path';
-import { PROTOCOL_VERSION, siwsChainId } from '@elymum/shared';
-import { isValidPubkey, type Auth, type SiwsOrigin } from './auth';
+import { ELYSIUM_TESTNET_CHAIN_ID, PROTOCOL_VERSION } from '@elymum/shared';
+import { checksumAddress, type Auth, type SiweOrigin } from './auth';
 import type { DevFakeChainActions } from './chain/dev-fake';
 import type { ChainGateway } from './chain/types';
 import type { ServerConfig } from './config';
 import type { Leaderboards } from './leaderboards';
 import { clientIp } from './net/gateway';
 import { Limiter } from './net/limiter';
+import type { PriceKeeper } from './chain/price-keeper';
 import type { RoomManager } from './rooms/manager';
-import type { SiteApi } from './site/routes';
+import { bearerWallet, type SiteApi } from './site/routes';
 import type { Journal } from './stake/journal';
 
 const MIME: Record<string, string> = {
@@ -38,8 +39,10 @@ interface Ctx {
   startedAt: number;
   /** Settlements owed (for `/api/pending`). */
   journal?: Journal;
-  /** The slana.io site API (`/api/site/*`, `/api/admin/*`, `/api/auth/login`, `/api/auth/me`). */
+  /** The site API (`/api/site/*`, `/api/admin/*`, `/api/auth/login`, `/api/auth/me`, `/api/profile`, `/api/nft/*`). */
   site?: SiteApi;
+  /** The NFT price keeper (its last outcome is shown to admins in `/api/config`). */
+  priceKeeper?: PriceKeeper | null;
   /** The per-IP limiter of every `/api/*` request (default 240 a minute); tests inject a larger one. */
   apiLimiter?: Limiter;
 }
@@ -60,12 +63,13 @@ export function publicBaseUrl(cfg: ServerConfig, req: IncomingMessage, trustProx
 }
 
 /**
- * SIWS origin of a login (M1): the domain is the `PUBLIC_URL` host, else the request host
- * (as in `publicBaseUrl`); the URI is that base URL; the chain id names the cluster.
+ * SIWE origin of a login (M1): the domain is the `PUBLIC_URL` host, else the request host (as in
+ * `publicBaseUrl`); the URI is that base URL; the chain id is the server's (`eth_chainId` of its RPC),
+ * or the Elysium testnet's while the chain is off.
  */
-export function siwsOrigin(cfg: ServerConfig, req: IncomingMessage, trustProxy: boolean): SiwsOrigin {
+export function siweOrigin(cfg: ServerConfig, req: IncomingMessage, trustProxy: boolean, chainId: number | null): SiweOrigin {
   const uri = publicBaseUrl(cfg, req, trustProxy);
-  return { domain: new URL(uri).host, uri, chainId: siwsChainId(cfg.chain.cluster) };
+  return { domain: new URL(uri).host, uri, chainId: chainId ?? ELYSIUM_TESTNET_CHAIN_ID };
 }
 
 function json(res: ServerResponse, status: number, body: unknown): void {
@@ -133,27 +137,37 @@ export function createHttpServer(cfg: ServerConfig, ctx: Ctx): Server {
           case '/api/leaderboard':
             // the standings: off-chain daily / all-time best scores, no prizes
             return json(res, 200, ctx.leaderboards.snapshot());
-          case '/api/config':
+          case '/api/config': {
             // `chain.tokenReady` false: practice only, arenas "opening soon" (the server picks the token up by itself)
-            return json(res, 200, { protocol: PROTOCOL_VERSION, chain: ctx.chain.status() });
+            const body: Record<string, unknown> = { protocol: PROTOCOL_VERSION, chain: ctx.chain.status() };
+            // admins also see the server key's gas balance (and the price keeper)
+            const wallet = bearerWallet(ctx.auth, req);
+            if (wallet && ctx.site?.isAdmin(wallet)) {
+              const info = ctx.chain.serverInfo();
+              body.server = { address: info.address, balanceWei: info.balanceWei, low: info.low, priceKeeper: ctx.priceKeeper?.last ?? null };
+            }
+            return json(res, 200, body);
+          }
           case '/api/auth/nonce': {
             if (!nonceLimiter.allow(ip)) return json(res, 429, { error: 'rate_limited' });
-            const pubkey = url.searchParams.get('pubkey');
-            if (!isValidPubkey(pubkey)) return json(res, 400, { error: 'invalid pubkey' });
-            return json(res, 200, ctx.auth.issueNonce(pubkey, siwsOrigin(cfg, req, trustProxy)));
+            const address = checksumAddress(url.searchParams.get('address'));
+            if (!address) return json(res, 400, { error: 'bad_request', message: 'address must be an EVM address (0x…)' });
+            return json(res, 200, ctx.auth.issueNonce(address, siweOrigin(cfg, req, trustProxy, ctx.chain.status().chainId)));
           }
           case '/api/pending': {
-            // settlements the server still has to send for a wallet. Finalized sessions (R24: settled,
-            // payout waiting to be collected) live on chain; the web reads them there (SessionView.finalized/owed)
-            const wallet = url.searchParams.get('wallet');
-            if (!isValidPubkey(wallet)) return json(res, 400, { error: 'invalid wallet' });
+            // settlements the server still has to send for a wallet (payouts in ledger units). Finalized sessions
+            // (settled, payout waiting to be collected) live on chain; the web reads them there (getSession)
+            const wallet = checksumAddress(url.searchParams.get('wallet'));
+            if (!wallet) return json(res, 400, { error: 'bad_request', message: 'wallet must be an EVM address (0x…)' });
             const pending = (ctx.journal?.pending ?? [])
               // loot sweeps (`kind: 'sweep'`) belong to no wallet
-              .flatMap((p) => (p.kind === 'settle' && p.player === wallet ? [{ key: p.key, arenaId: p.arenaId ?? null, payout: p.payout ?? 0 }] : []));
+              .flatMap((p) =>
+                p.kind === 'settle' && p.player.toLowerCase() === wallet.toLowerCase() ? [{ key: p.key, arenaId: p.arenaId ?? null, payout: p.payout ?? 0 }] : [],
+              );
             return json(res, 200, { pending });
           }
           case '/api/dev/token': {
-            // DEV ONLY: sets the fake chain's game token, like `pnpm admin set-token` (absent unless
+            // DEV ONLY: sets the fake chain's game token, like `setToken` from /admin (absent unless
             // DEV_FAKE_CHAIN=1, which needs NODE_ENV=development); shows the "opening soon" → open transition
             const dev = cfg.devFakeChain ? (ctx.chain as Partial<DevFakeChainActions>) : null;
             if (!dev?.devSetToken) return json(res, 404, { error: 'not found' });
@@ -168,7 +182,7 @@ export function createHttpServer(cfg: ServerConfig, ctx: Ctx): Server {
       if (cfg.webDist && (req.method === 'GET' || req.method === 'HEAD') && serveStatic(cfg.webDist, req, res, url.pathname)) return;
       if (url.pathname === '/') {
         res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-        res.end('Slana game server: connect via /ws');
+        res.end('Elymum game server: connect via /ws');
         return;
       }
       json(res, 404, { error: 'not found' });

@@ -16,11 +16,11 @@ describe('static web client', () => {
   });
 
   async function start(): Promise<string> {
-    const web = mkdtempSync(join(tmpdir(), 'slana-web-'));
-    writeFileSync(join(web, 'index.html'), '<!doctype html><title>Slana</title>');
+    const web = mkdtempSync(join(tmpdir(), 'elymum-web-'));
+    writeFileSync(join(web, 'index.html'), '<!doctype html><title>Elymum</title>');
     mkdirSync(join(web, 'assets'));
     writeFileSync(join(web, 'assets', 'app-1234.js'), 'console.log(1)');
-    const cfg = loadConfig({ DATA_DIR: mkdtempSync(join(tmpdir(), 'slana-data-')), WEB_DIST: web } as NodeJS.ProcessEnv);
+    const cfg = loadConfig({ DATA_DIR: mkdtempSync(join(tmpdir(), 'elymum-data-')), WEB_DIST: web } as NodeJS.ProcessEnv);
     server = createHttpServer(cfg, { chain: new NullChain(), rooms: {} as never, leaderboards: {} as never, auth: {} as never, startedAt: Date.now() });
     await new Promise<void>((r) => server!.listen(0, '127.0.0.1', () => r()));
     const addr = server.address();
@@ -34,7 +34,7 @@ describe('static web client', () => {
       expect(res.status, path).toBe(200);
       expect(res.headers.get('content-type'), path).toMatch(/text\/html/);
       expect(res.headers.get('cache-control'), path).toBe('no-cache');
-      expect(await res.text(), path).toContain('<title>Slana</title>');
+      expect(await res.text(), path).toContain('<title>Elymum</title>');
     }
   });
 

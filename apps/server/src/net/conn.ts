@@ -1,6 +1,5 @@
-import type { ServerMessage } from '@elymum/shared';
+import type { ProfileSummary, ServerMessage } from '@elymum/shared';
 import { WebSocket } from 'ws';
-import type { ChainProfile } from '../chain/types';
 import type { Player } from '../game/entities';
 import { ViewState } from '../rooms/visibility';
 import type { Room } from '../rooms/room';
@@ -20,7 +19,8 @@ export class Conn {
   wallet: string | null = null;
   /** Browser fingerprint sent with the last join (untrusted, integrity evidence only; see `isFingerprint`). */
   fp: string | null = null;
-  profile: ChainProfile | null = null;
+  /** The signed-in wallet's server profile (name, skin, XP); null for guests and wallets without a name. */
+  profile: ProfileSummary | null = null;
   helloed = false;
   joining = false;
   /** Name used for chat while dead/spectating after having played. */
@@ -32,7 +32,7 @@ export class Conn {
 
   private tokens = 120;
   private lastRefill = Date.now();
-  /** Separate, much smaller budget for messages that hit the Solana RPC (auth, stake joins). */
+  /** Separate, much smaller budget for messages that hit the chain RPC (auth, stake joins). */
   private chainTokens = 6;
   private chainRefill = Date.now();
 

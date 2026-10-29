@@ -36,7 +36,7 @@ const summary = (key: string, endedAt: number): SessionSummary => ({
 
 describe('integrity store', () => {
   it('appends immutable chunks, prunes by age and count, and reads the window back', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'slana-ist-'));
+    const dir = mkdtempSync(join(tmpdir(), 'elymum-ist-'));
     const clock = { t: T - 40 * DAY };
     const store = new IntegrityStore(dir, { now: () => clock.t, retentionDays: 30, maxFiles: 5 });
     store.appendLog({ sessions: [summary('old', clock.t)], transfers: [] });
@@ -60,7 +60,7 @@ describe('integrity store', () => {
   });
 
   it('keeps one secret across restarts; quarantines an unreadable state file and starts safe (auto-hold off)', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'slana-ist-'));
+    const dir = mkdtempSync(join(tmpdir(), 'elymum-ist-'));
     const a = new IntegrityStore(dir);
     const b = new IntegrityStore(dir);
     expect(a.secret.equals(b.secret)).toBe(true);

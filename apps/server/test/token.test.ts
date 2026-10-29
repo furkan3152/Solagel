@@ -1,17 +1,16 @@
 import { PROTOCOL_VERSION, type RoomInfo, type ServerMessage } from '@elymum/shared';
-import bs58 from 'bs58';
-import nacl from 'tweetnacl';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { createApp, type App } from '../src/app';
 import { DevFakeChain } from '../src/chain/dev-fake';
 import { loadConfig } from '../src/config';
+import { testSigner } from './signers';
 
 /**
- * Slana Simple: the program is initialized without a mint; `set-token` comes later. The server
- * runs practice only until it sees the mint, answers arena joins with `token_not_set`, then
- * attaches the arenas and pushes the new chain status, all without a restart. Driven through the
- * fake chain's dev route (`POST /api/dev/token`), which stands in for `pnpm admin set-token`.
+ * The arena contract is deployed without a game token; `setToken` comes later. The server runs
+ * practice only until it sees the token, answers arena joins with `token_not_set`, then attaches the
+ * arenas and pushes the new chain status, all without a restart. Driven through the fake chain's dev
+ * route (`POST /api/dev/token`), which stands in for `setToken` from /admin.
  */
 
 class Client {
@@ -56,7 +55,7 @@ class Client {
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const newWallet = () => bs58.encode(nacl.sign.keyPair().publicKey);
+const newWallet = () => testSigner().address;
 
 let app: App;
 let port: number;
@@ -85,8 +84,8 @@ beforeAll(async () => {
     ARENA_BOT_TARGET: '2',
     ARENA_BOT_MIN: '0',
     ARENA_BOT_MAX: '2',
-    // the game gate (site setting `gamePublic`) is covered in site.test.ts
-    GAME_PUBLIC: '1',
+    // the game gate (site setting `gameAccess`) is covered in site.test.ts
+    GAME_ACCESS: 'public',
   });
   app = await createApp(cfg, { log: () => {}, persist: false });
   port = await app.listen();
@@ -129,7 +128,7 @@ describe('token set after deploy', () => {
     expect(res.status).toBe(200);
     for (const client of [c, other]) {
       const pushed = await client.wait('chain', (m) => m.chain.tokenReady);
-      expect(pushed.chain).toMatchObject({ tokenReady: true, arenasEnabled: true, token: { decimals: 6 } });
+      expect(pushed.chain).toMatchObject({ tokenReady: true, arenasEnabled: true, token: { decimals: 18 } });
     }
     expect(await config()).toMatchObject({ tokenReady: true, arenasEnabled: true });
 

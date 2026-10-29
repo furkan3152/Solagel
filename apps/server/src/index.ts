@@ -1,16 +1,20 @@
 import { createApp } from './app';
-import { loadConfig } from './config';
+import { invalidAdminWallets, loadConfig } from './config';
 
 const log = (m: string) => console.log(`[${new Date().toISOString()}] ${m}`);
 
 async function main(): Promise<void> {
   const cfg = loadConfig();
   if (!process.env.AUTH_SECRET) log('auth: AUTH_SECRET not set — login tokens reset on every restart');
+  const badAdmins = invalidAdminWallets(process.env.ADMIN_WALLETS);
+  if (badAdmins.length > 0) log(`!!! ADMIN_WALLETS: ignoring ${badAdmins.length} entr${badAdmins.length === 1 ? 'y' : 'ies'} that are not 0x addresses (${badAdmins.join(', ')})`);
   const app = await createApp(cfg, { log });
   const port = await app.listen();
   const status = app.chain.status();
   log(
-    `Slana server on http://${cfg.host}:${port} (ws: /ws) — chain: ${status.enabled ? `${status.cluster} · ${status.programId}` : 'off (free play only)'}`,
+    `Elymum server on http://${cfg.host}:${port} (ws: /ws) — chain: ${
+      status.enabled ? `${status.chainName} (${status.chainId}) · arena ${status.arenaAddress ?? 'not registered yet'}` : 'off (practice only)'
+    }`,
   );
 
   let stopping = false;

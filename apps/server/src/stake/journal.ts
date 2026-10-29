@@ -10,15 +10,15 @@ export type SettleReason = 'cashout' | 'death' | 'afk' | 'crash' | 'stale' | 'ma
 export interface SettlementItem {
   /** v1 journals also held free-play `record` items; v2 drops them on load. */
   kind: 'settle';
-  /** Unique key: the session PDA. */
+  /** Unique key: `<arenaId>:<player lowercase>:<sessionId>`. */
   key: string;
-  /** Wallet (base58). */
+  /** Wallet, EIP-55 checksummed. */
   player: string;
   arenaId?: number;
   session?: string;
-  /** On-chain session id (settle only); guards against settling a re-joined session. */
+  /** On-chain session id: `settle` refuses (skips) an item whose id no longer matches. */
   sessionId?: number;
-  /** Raw token units owed. */
+  /** Ledger units owed (the token with at most 6 decimals; converted to base units only when sent). */
   payout?: number;
   score: number;
   kills: number;
@@ -28,12 +28,6 @@ export interface SettlementItem {
   nextAttemptAt: number;
   createdAt: number;
   lastError?: string;
-  /**
-   * Attempts that failed on the player's token account itself (closed meanwhile, owner
-   * changed, Token-2022 MemoTransfer required, ...). After a few, the worker settles without
-   * the account and the session is finalized with `owed` (R24).
-   */
-  tokenFailures?: number;
   /**
    * Integrity auto-hold: the settlement waits for an admin decision (`Journal.release` or
    * `Journal.settleZero`). The chain worker never sends a held item; it still counts as owed.
@@ -58,8 +52,10 @@ export interface ForfeitRecord {
 
 /**
  * Floor loot an arena instance still held at a round end, burned from the arena vault by
- * `sweep_loot` (server-signed). Only the loot value the room computed is ever swept: never
- * live stakes or owed payouts. Idempotent by `key` = `sweep:<roomId>:<round>`.
+ * `sweepLoot` (server-signed). Only the loot value the room computed is ever swept: never
+ * live stakes or owed payouts. Idempotent by `key` = `sweep:<roomId>:<round>` here, and on chain by
+ * `sweepId`: the contract refuses a sweep id that is not above the arena's `lastSweepId`, so a resend
+ * can never burn twice.
  */
 export interface SweepItem {
   kind: 'sweep';
@@ -70,28 +66,26 @@ export interface SweepItem {
   roomId: string;
   /** Round number (`roundAt(...).n`) that ended. */
   round: number;
-  /** Raw token units to burn from the arena vault (> 0). */
+  /** Ledger units to burn from the arena vault (> 0). */
   amount: number;
   attempts: number;
   nextAttemptAt: number;
   createdAt: number;
   lastError?: string;
   /**
-   * The last transaction sent for this sweep, when (Unix ms) and the `lastValidBlockHeight` of
-   * its blockhash. A sweep has no on-chain marker, so it is sent again only once that
-   * transaction provably cannot land: the block height ('confirmed') is past
-   * `sentLastValidBlockHeight` AND its signature did not land. Persisted before each send, so
-   * a restart keeps the guard.
+   * The on-chain sweep id, assigned (and persisted) before the first send and never changed: the
+   * sweep landed exactly when the arena's `lastSweepId` reaches it.
    */
-  sentSignature?: string;
+  sweepId?: number;
+  /** The last transaction sent for this sweep and when (Unix ms). */
+  sentTx?: string;
   sentAt?: number;
-  sentLastValidBlockHeight?: number;
 }
 
 /** Everything the chain worker executes: ticket settlements and loot sweeps. */
 export type JournalItem = SettlementItem | SweepItem;
 
-/** Raw token units a journal item still owes out of its arena vault. */
+/** Ledger units a journal item still owes out of its arena vault. */
 export const itemAmount = (item: JournalItem): number => (item.kind === 'sweep' ? item.amount : (item.payout ?? 0));
 
 export const sweepKey = (roomId: string, round: number): string => `sweep:${roomId}:${round}`;
@@ -107,7 +101,7 @@ export interface LiveStake {
   kills: number;
 }
 
-/** A loot piece lying on an arena instance's floor (value in raw token units). */
+/** A loot piece lying on an arena instance's floor (value in ledger units). */
 export interface LootRecord {
   /** The arena instance (room id) whose floor holds the piece. */
   roomId: string;
@@ -127,6 +121,10 @@ interface JournalFile {
   loot: LootRecord[];
   /** Integrity: value forfeited from held settlements (absent in older files). */
   forfeits?: ForfeitRecord[];
+  /** Highest sweep id assigned per arena id (monotonic, never reused). */
+  sweepSeq?: Record<string, number>;
+  /** The arena contract the items belong to (lower-case 0x); null until bound. */
+  contract?: string | null;
   updatedAt: number;
 }
 
@@ -148,7 +146,7 @@ interface JournalFileV1 {
  * values and loot together.
  *
  * File format v2 adds `loot`; v1 files are migrated on load. (A `hasPass` field that older v2
- * files carry on live stakes is ignored: the Slana Pass is gone.)
+ * files carry on live stakes is ignored: the Pass is gone.)
  * Loot is keyed by arena instance (room id), so instances of one arena never
  * overwrite each other's records; on restart an arena's first instance adopts
  * every instance's loot (`adoptLoot`). Records written before instances
@@ -159,6 +157,8 @@ export class Journal {
   private liveByRoom = new Map<string, LiveStake[]>();
   private lootByRoom = new Map<string, LootRecord[]>();
   private forfeitList: ForfeitRecord[] = [];
+  private sweepSeqV: Record<string, number> = {};
+  private contractV: string | null = null;
   /** Arenas whose loot was already adopted in this process (restored once only). */
   private readonly adopted = new Set<number>();
   /** `load` quarantined an unreadable file in this process. */
@@ -193,6 +193,8 @@ export class Journal {
         this.lootByRoom.set(l.roomId, list);
       }
       this.forfeitList = data.forfeits ?? [];
+      this.sweepSeqV = { ...(data.sweepSeq ?? {}) };
+      this.contractV = typeof data.contract === 'string' ? data.contract.toLowerCase() : null;
       if (legacy > 0) this.persist();
     } catch (err) {
       this.quarantinedHere = true;
@@ -253,7 +255,7 @@ export class Journal {
 
   /**
    * What the journal says arena `arenaId`'s vault owes: Σ pending payouts and loot sweeps + Σ loot
-   * on its floors + Σ live ticket values (raw token units). The vault must hold at least this.
+   * on its floors + Σ live ticket values (ledger units). The vault must hold at least this.
    */
   owedByArena(arenaId: number): number {
     let sum = 0;
@@ -333,24 +335,57 @@ export class Journal {
   }
 
   /**
-   * Records the transaction just sent for a sweep item with its blockhash's
-   * `lastValidBlockHeight` (persisted before the send is awaited); an empty `signature` clears
-   * it (the program rejected it: nothing moved).
+   * Assigns the next sweep id of the sweep's arena: above both the journal's own high-water mark and
+   * `onchainLast` (the arena's `lastSweepId`). Persisted before anything is sent; an item keeps its id.
    */
-  markSent(key: string, signature: string, at = Date.now(), lastValidBlockHeight?: number): void {
+  assignSweepId(key: string, onchainLast: number): number {
+    const item = this.pendingItems.find((p) => p.key === key);
+    if (!item || item.kind !== 'sweep') throw new Error(`no sweep item ${key}`);
+    if (item.sweepId !== undefined) return item.sweepId;
+    const id = Math.max(this.lastSweepId(item.arenaId), onchainLast) + 1;
+    item.sweepId = id;
+    this.sweepSeqV[String(item.arenaId)] = id;
+    this.persist();
+    return id;
+  }
+
+  /** Highest sweep id this journal assigned for an arena (0 when none). */
+  lastSweepId(arenaId: number): number {
+    return this.sweepSeqV[String(arenaId)] ?? 0;
+  }
+
+  /** Records the transaction just sent for a sweep item. */
+  markSent(key: string, txHash: string, at = Date.now()): void {
     const item = this.pendingItems.find((p) => p.key === key);
     if (!item || item.kind !== 'sweep') return;
-    if (signature) {
-      item.sentSignature = signature;
-      item.sentAt = at;
-      if (lastValidBlockHeight === undefined) delete item.sentLastValidBlockHeight;
-      else item.sentLastValidBlockHeight = lastValidBlockHeight;
-    } else {
-      delete item.sentSignature;
-      delete item.sentAt;
-      delete item.sentLastValidBlockHeight;
-    }
+    item.sentTx = txHash;
+    item.sentAt = at;
     this.persist();
+  }
+
+  /** The arena contract (lower-case) this journal's money records belong to; null until bound. */
+  get contract(): string | null {
+    return this.contractV;
+  }
+
+  /** Nothing is owed: no pending items, no live stakes and no loot. */
+  isIdle(): boolean {
+    return this.pendingItems.length === 0 && this.liveByRoom.size === 0 && this.lootByRoom.size === 0;
+  }
+
+  /**
+   * Binds the journal to an arena contract. Allowed when it is unbound, already bound to the same one,
+   * or idle (nothing owed: the sweep ids restart with the new contract). False otherwise: the records
+   * belong to another contract and must never be sent to this one.
+   */
+  bindContract(address: string): boolean {
+    const a = address.toLowerCase();
+    if (this.contractV === a) return true;
+    if (this.contractV !== null && !this.isIdle()) return false;
+    if (this.contractV !== null) this.sweepSeqV = {};
+    this.contractV = a;
+    this.persist();
+    return true;
   }
 
   /* ---------------------------------------------------------------- */
@@ -415,16 +450,14 @@ export class Journal {
 
   /**
    * Records a failed attempt with exponential backoff (max 5 minutes), or after
-   * `opts.delayMs` when given. `tokenFailure` counts a failure caused by the player's
-   * token account (`tokenFailures`).
+   * `opts.delayMs` when given.
    */
-  retryLater(key: string, error: string, now = Date.now(), opts: { delayMs?: number; tokenFailure?: boolean } = {}): void {
+  retryLater(key: string, error: string, now = Date.now(), opts: { delayMs?: number } = {}): void {
     const item = this.pendingItems.find((p) => p.key === key);
     if (!item) return;
     item.attempts++;
     item.lastError = error.slice(0, 300);
     item.nextAttemptAt = now + (opts.delayMs ?? Math.min(300_000, 2000 * 2 ** Math.min(item.attempts, 8)));
-    if (opts.tokenFailure && item.kind === 'settle') item.tokenFailures = (item.tokenFailures ?? 0) + 1;
     this.persist();
   }
 
@@ -451,6 +484,8 @@ export class Journal {
       live: this.live(),
       loot: [...this.lootByRoom.values()].flat(),
       ...(this.forfeitList.length > 0 ? { forfeits: this.forfeitList } : {}),
+      ...(Object.keys(this.sweepSeqV).length > 0 ? { sweepSeq: this.sweepSeqV } : {}),
+      ...(this.contractV ? { contract: this.contractV } : {}),
       updatedAt: Date.now(),
     };
     mkdirSync(dirname(this.path), { recursive: true });
@@ -482,7 +517,9 @@ function migrate(data: JournalFile | JournalFileV1): JournalFile {
     const sw = p as SweepItem;
     if (typeof sw.key !== 'string' || !Number.isSafeInteger(sw.amount) || sw.amount <= 0) throw new Error('bad sweep item');
     if (!Number.isInteger(sw.arenaId) || sw.arenaId < 0 || typeof sw.roomId !== 'string' || !Number.isInteger(sw.round)) throw new Error('bad sweep item');
+    if (sw.sweepId !== undefined && (!Number.isSafeInteger(sw.sweepId) || sw.sweepId <= 0)) throw new Error('bad sweep item');
   }
+  if (data.sweepSeq !== undefined && (typeof data.sweepSeq !== 'object' || data.sweepSeq === null)) throw new Error('bad journal shape');
   for (const l of data.loot) {
     if (!Number.isSafeInteger(l.value) || l.value <= 0 || !Number.isFinite(l.x) || !Number.isFinite(l.y)) throw new Error('bad loot record');
     if (!Number.isInteger(l.arenaId) || l.arenaId < 0) throw new Error('bad loot record');
@@ -490,7 +527,7 @@ function migrate(data: JournalFile | JournalFileV1): JournalFile {
     if (l.roomId === undefined) l.roomId = firstArenaInstance(l.arenaId);
     else if (typeof l.roomId !== 'string' || l.roomId.length === 0) throw new Error('bad loot record');
   }
-  // written while the Slana Pass existed: drop the field so it is not carried on
+  // written while the old Pass existed: drop the field so it is not carried on
   data.live = data.live.map((l) => {
     const { hasPass: _gone, ...rest } = l as LiveStake & { hasPass?: unknown };
     return rest;

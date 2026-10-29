@@ -1,31 +1,38 @@
 import { randomBytes } from 'node:crypto';
-import { DEFAULT_ARENAS, TOKEN_SYMBOL_DEFAULT, type ChainStatus } from '@elymum/shared';
-import bs58 from 'bs58';
+import { DEFAULT_ARENAS, LOCALNET_CHAIN_ID, TOKEN_SYMBOL_DEFAULT, type ChainStatus } from '@elymum/shared';
+import { getAddress } from 'viem';
 import type { Journal } from '../stake/journal';
-import type { ChainArena, ChainGateway, ChainProfile, ChainSession, SettledEvent } from './types';
+import { sessionKey, type ChainArena, type ChainGateway, type ChainSession, type ServerKeyInfo, type SettledEvent } from './types';
 
-/** Token decimals of the fake mint (pump.fun style). */
-const DECIMALS = 6;
-/** Fee on profit, basis points (the program default: 5 %). */
+/** Decimals of the fake token (18 like the real one; the ledger keeps 6 of them). */
+const DECIMALS = 18;
+/** Ledger decimals (`ledgerDecimals(18)`): what the rooms and the wire count in. */
+const LEDGER_DECIMALS = 6;
+/** Fee on profit, basis points (the contract default: 5 %). */
 const FEE_BPS = 500;
-const FAKE_MINT = 'DevFakeMint11111111111111111111111111111111';
+const FAKE_TOKEN = '0x00000000000000000000000000000000DE7f4CE1';
+const FAKE_ARENA = '0x00000000000000000000000000000000DE7a12e4';
+const FAKE_SERVER = '0x00000000000000000000000000000000De75e12f';
+
+/** A fake 0x transaction hash (32 random bytes). */
+export const fakeTxHash = (): string => `0x${randomBytes(32).toString('hex')}`;
 
 /** Dev-only actions the HTTP server exposes under `/api/dev/` when the fake chain runs. */
 export interface DevFakeChainActions {
-  /** Sets the fake game token (like `pnpm admin set-token`); false when it was already set. */
+  /** Sets the fake game token (like `setToken` from /admin); false when it was already set. */
   devSetToken(): boolean;
 }
 
 /**
  * DEV ONLY (`DEV_FAKE_CHAIN=1` with `NODE_ENV=development`, see `assertDevFakeChainAllowed`). An in-memory chain so
  * the arena flow (ticket → play → death / round-end payout → settlement) can be driven
- * locally without a validator:
+ * locally without a node:
  *  - the game token starts unset (practice only, arenas "opening soon") unless `tokenSet`
  *    (`DEV_FAKE_TOKEN=1`); `devSetToken` (the dev route `POST /api/dev/token`) sets it, which
- *    shows the default arenas and fires `onStatusChange`, like `set-token` on a real chain;
+ *    shows the default arenas and fires `onStatusChange`, like `setToken` on a real chain;
  *  - once set, every signed-in wallet has an open ticket in every default arena;
  *  - settlements are simulated `settleMs` after the journal item appears: the
- *    item is removed, the ticket closes and a `settled` event with the fee fires.
+ *    item is removed, the ticket closes and a `settled` event with the fee and a fake 0x hash fires.
  *    Loot sweeps are "burned" (counted in `burned`).
  *    Only items for tickets this instance issued are ever touched; it also runs
  *    on its own journal file (`journal.dev-fake.json`).
@@ -33,7 +40,7 @@ export interface DevFakeChainActions {
 export class DevFakeChain implements ChainGateway, DevFakeChainActions {
   readonly enabled = true;
   private readonly sessions = new Map<string, ChainSession>();
-  private readonly byAddress = new Map<string, ChainSession>();
+  private readonly byKey = new Map<string, ChainSession>();
   private readonly listeners: ((e: SettledEvent) => void)[] = [];
   private readonly statusListeners: (() => void)[] = [];
   private readonly timers = new Set<NodeJS.Timeout>();
@@ -41,7 +48,7 @@ export class DevFakeChain implements ChainGateway, DevFakeChainActions {
   private nextId = 1;
   private stopped = false;
   private tokenSet: boolean;
-  /** Raw token units of floor loot burned at round ends. */
+  /** Ledger units of floor loot burned at round ends. */
   burned = 0;
 
   constructor(
@@ -64,21 +71,29 @@ export class DevFakeChain implements ChainGateway, DevFakeChainActions {
   status(): ChainStatus {
     return {
       enabled: true,
-      cluster: 'devnet',
-      programId: 'DevFakeChain1111111111111111111111111111111',
+      chainId: LOCALNET_CHAIN_ID,
+      chainName: 'Localnet (dev fake)',
       rpcUrl: null,
+      explorerUrl: null,
+      arenaAddress: FAKE_ARENA,
+      nftAddress: null,
       arenasEnabled: this.tokenSet,
       tokenReady: this.tokenSet,
-      token: this.tokenSet ? { mint: FAKE_MINT, symbol: TOKEN_SYMBOL_DEFAULT, decimals: DECIMALS } : null,
+      token: this.tokenSet ? { address: FAKE_TOKEN, symbol: TOKEN_SYMBOL_DEFAULT, decimals: DECIMALS } : null,
       feeBps: FEE_BPS,
+      serverKey: FAKE_SERVER,
     };
+  }
+
+  serverInfo(): ServerKeyInfo {
+    return { address: FAKE_SERVER, balanceWei: (10n ** 18n).toString(), low: false };
   }
 
   /** DEV ONLY: sets the fake game token; arenas appear and status listeners fire. */
   devSetToken(): boolean {
     if (this.tokenSet) return false;
     this.tokenSet = true;
-    this.log(`chain(dev-fake): game token set (${FAKE_MINT}) — arenas open`);
+    this.log(`chain(dev-fake): game token set (${FAKE_TOKEN}) — arenas open`);
     for (const fn of this.statusListeners) {
       try {
         fn();
@@ -89,40 +104,41 @@ export class DevFakeChain implements ChainGateway, DevFakeChainActions {
     return true;
   }
 
-  async getProfile(_owner: string): Promise<ChainProfile | null> {
-    return null;
-  }
-
   async getSession(arenaId: number, player: string): Promise<ChainSession | null> {
     const arena = (await this.listArenas()).find((a) => a.id === arenaId);
     if (!arena) return null;
-    const key = `${arenaId}:${player}`;
-    let s = this.sessions.get(key);
+    let wallet: string;
+    try {
+      wallet = getAddress(player);
+    } catch {
+      return null;
+    }
+    const slot = `${arenaId}:${wallet.toLowerCase()}`;
+    let s = this.sessions.get(slot);
     if (!s) {
       const id = this.nextId++;
       s = {
-        address: `DevSession${id}x${player.slice(0, 8)}`,
+        key: sessionKey(arenaId, wallet, id),
         id,
-        player,
+        player: wallet,
         arenaId,
         entryFee: arena.entryFee,
         openedAt: Math.floor(Date.now() / 1000),
         finalized: false,
         owed: 0,
       };
-      this.sessions.set(key, s);
-      this.byAddress.set(s.address, s);
+      this.sessions.set(slot, s);
+      this.byKey.set(s.key, s);
     }
     return s;
   }
 
-  /** The default arenas once the token is set (none before: `create_arena` needs the mint). */
+  /** The default arenas once the token is set (none before: `createArena` needs the token). */
   async listArenas(): Promise<ChainArena[]> {
     if (!this.tokenSet) return [];
     return DEFAULT_ARENAS.map((a) => ({
       id: a.id,
-      address: `DevArena${a.id}`,
-      entryFee: a.entryTokens * 10 ** DECIMALS,
+      entryFee: a.entryTokens * 10 ** LEDGER_DECIMALS,
       maxSessions: a.maxSessions,
       openSessions: 0,
       enabled: true,
@@ -135,7 +151,7 @@ export class DevFakeChain implements ChainGateway, DevFakeChainActions {
     if (this.stopped) return;
     for (const item of this.journal.pending) {
       // only tickets this fake chain issued (and loot sweeps of its own journal file): anything else is real money, never touched
-      if (item.kind === 'settle' && !this.byAddress.has(item.key)) continue;
+      if (item.kind === 'settle' && !this.byKey.has(item.key)) continue;
       if (item.kind !== 'settle' && item.kind !== 'sweep') continue;
       // integrity holds wait for an admin decision
       if (item.kind === 'settle' && item.held) continue;
@@ -154,23 +170,23 @@ export class DevFakeChain implements ChainGateway, DevFakeChainActions {
     const item = this.journal.pending.find((p) => p.key === key);
     if (!item || this.stopped || (item.kind === 'settle' && item.held)) return;
     if (item.kind === 'sweep') {
-      // sweep_loot: the floor loot of a finished round is burned from the arena vault
+      // sweepLoot: the floor loot of a finished round is burned from the arena vault
       this.journal.remove(key);
       this.burned += item.amount;
       this.log(`chain(dev-fake): burned ${item.amount} loot of ${item.roomId} round ${item.round}`);
       return;
     }
-    const session = this.byAddress.get(key);
+    const session = this.byKey.get(key);
     if (!session) return;
     const payout = item.payout ?? 0;
     const profit = Math.max(0, payout - session.entryFee);
     const fee = Math.floor((profit * FEE_BPS) / 10_000);
     this.journal.remove(key);
-    this.sessions.delete(`${session.arenaId}:${session.player}`);
-    this.byAddress.delete(key);
-    const signature = bs58.encode(randomBytes(64));
+    this.sessions.delete(`${session.arenaId}:${session.player.toLowerCase()}`);
+    this.byKey.delete(key);
+    const txHash = fakeTxHash();
     this.log(`chain(dev-fake): settled ${key} payout=${payout} fee=${fee}`);
-    for (const fn of this.listeners) fn({ key, player: item.player, arenaId: session.arenaId, signature, payout, fee });
+    for (const fn of this.listeners) fn({ key, player: session.player, arenaId: session.arenaId, txHash, payout, fee });
   }
 
   setLiveSessionProvider(): void {}

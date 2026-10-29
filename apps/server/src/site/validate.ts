@@ -1,4 +1,3 @@
-import { PublicKey } from '@solana/web3.js';
 import {
   COLLAB_ROLES,
   COLLAB_TYPES,
@@ -11,7 +10,7 @@ import {
   type SiteErrorCode,
   type WlTaskKind,
 } from '@elymum/shared';
-import { isValidPubkey } from '../auth';
+import { checksumAddress } from '../auth';
 
 /** A refused site / admin request: HTTP status, error code, message and the offending field. */
 export class SiteFail extends Error {
@@ -27,15 +26,21 @@ export class SiteFail extends Error {
 
 export const bad = (field: string, message: string): SiteFail => new SiteFail(400, 'bad_request', message, field);
 
-/** A user wallet: a base58 32-byte key on the ed25519 curve (a PDA cannot sign, so it cannot be a wallet). */
+/** A user wallet: an EVM address (any case; a mixed-case one must carry a valid EIP-55 checksum), not the zero address. */
 export function isUserWallet(s: unknown): s is string {
-  if (!isValidPubkey(s)) return false;
-  try {
-    return PublicKey.isOnCurve(new PublicKey(s).toBytes());
-  } catch {
-    return false;
-  }
+  const c = checksumAddress(typeof s === 'string' ? s.trim() : s);
+  return c !== null && !/^0x0{40}$/i.test(c);
 }
+
+/** The EIP-55 form of a user wallet (throws a 400 on the field otherwise). */
+export function userWallet(v: unknown, field: string, message = `${field} is not an EVM wallet address`): string {
+  const t = typeof v === 'string' ? v.trim() : v;
+  if (!isUserWallet(t)) throw bad(field, message);
+  return checksumAddress(t)!;
+}
+
+/** True for a stored wallet that is not an EVM address (from before the move to Elysium). */
+export const isLegacyWallet = (w: string): boolean => !/^0x[0-9a-fA-F]{40}$/.test(w);
 
 /** Removes control characters (keeps newlines when `multiline`) and trims. */
 export function cleanText(s: string, multiline = false): string {
@@ -129,17 +134,16 @@ export function collabApply(body: Record<string, unknown>): Omit<CollabApplyRequ
   };
 }
 
-/** Validates a collab wallet list (names optional, wallets on-curve and unique). */
+/** Validates a collab wallet list (names optional, EVM wallets, unique case-insensitively, stored checksummed). */
 export function walletRows(v: unknown, max: number): CollabWalletRow[] {
   if (!Array.isArray(v)) throw bad('wallets', 'wallets must be a list');
   if (v.length > max) throw new SiteFail(400, 'too_many_wallets', `At most ${max} wallets (your spots)`, 'wallets');
   const seen = new Set<string>();
   return v.map((row, i) => {
     const r = obj(row, `wallets[${i}]`);
-    const wallet = typeof r.wallet === 'string' ? r.wallet.trim() : r.wallet;
-    if (!isUserWallet(wallet)) throw bad(`wallets[${i}].wallet`, `Row ${i + 1}: not a Solana wallet address`);
-    if (seen.has(wallet)) throw bad(`wallets[${i}].wallet`, `Row ${i + 1}: the wallet is listed twice`);
-    seen.add(wallet);
+    const wallet = userWallet(r.wallet, `wallets[${i}].wallet`, `Row ${i + 1}: not an EVM wallet address (0x…)`);
+    if (seen.has(wallet.toLowerCase())) throw bad(`wallets[${i}].wallet`, `Row ${i + 1}: the wallet is listed twice`);
+    seen.add(wallet.toLowerCase());
     return { name: text(r.name, `wallets[${i}].name`, SITE_LIMITS.walletName), wallet };
   });
 }

@@ -18,7 +18,7 @@ export function maskProfanity(text: string): string {
   return text.replace(PATTERN, (_m, pre: string, word: string) => pre + '♥'.repeat(Array.from(word).length));
 }
 
-/** Rejects obvious scam bait in chat (links, "send sol", seed phrase talk). */
+/** Rejects obvious scam bait in chat (links, "send hype", seed phrase talk). */
 export function looksLikeScam(text: string): boolean {
-  return /(https?:\/\/|www\.|\.(com|io|xyz|gg|app|net|org)\b|t\.me\/|seed phrase|private key|send (me )?sol|airdrop claim)/i.test(text);
+  return /(https?:\/\/|www\.|\.(com|io|xyz|gg|app|net|org)\b|t\.me\/|seed phrase|private key|send (me )?(hype|eth|sol)\b|airdrop claim)/i.test(text);
 }
