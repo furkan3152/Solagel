@@ -1,23 +1,17 @@
-/* ─────────────────────── Paper Ticket · profile ───────────────────────
- * The member card, name and coin, record and settings.
+/* ─────────────────────────── Ring Storybook · profile ───────────────────────────
+ * The membership card (a cream sticker with a mist band and a teal photo
+ * panel), the name and the coin you wear as sticker tiles, the record in mono
+ * figures, and the settings, each a sticker panel on the page.
  * ------------------------------------------------------------------------- */
 
 .pf-page {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
+  max-width: 1240px;
 }
 .pf-cols {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 0 clamp(24px, 3vw, 44px);
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
   align-items: start;
-}
-@media (max-width: 899px) {
-  .pf-cols {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 28px;
-  }
+  gap: 32px;
 }
 .pf-col {
   display: flex;
@@ -25,149 +19,233 @@
   gap: 28px;
   min-width: 0;
 }
-.pf-box {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-.pf-box > .kl-h3 {
-  padding-bottom: 10px;
-  border-bottom: 2px solid var(--ink);
+@media (max-width: 1099px) {
+  .pf-cols {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
 }
 
-/* member card */
+/* ── the membership card ──────────────────────────────────────────────── */
 .pf-card {
+  --ink: #04181c;
+  --ink-2: #4a453b;
+  --ink-3: #6b655a;
+  --teal-ink: #2d7388;
   position: relative;
-  border: 2px solid var(--ink);
-  border-radius: var(--r-card);
-  background-color: var(--card);
-  background-image: repeating-radial-gradient(circle at -10% 120%, transparent 0 12px, var(--line-soft) 12px 13px);
-  box-shadow: 5px 5px 0 var(--pink);
+  border: var(--stroke) solid var(--outline);
+  border-radius: var(--r-panel);
+  background: var(--sticker);
+  color: var(--ink);
+  box-shadow: var(--sh-5);
+  overflow: hidden;
+  transform: rotate(-1deg);
 }
 .pf-card__band {
-  display: block;
-  padding: 7px 16px;
-  border-radius: 12px 12px 0 0;
-  background: var(--ink);
-  color: var(--on-ink);
-  font-size: var(--t-label);
-  letter-spacing: 0.22em;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 20px;
+  border-bottom: var(--stroke) solid var(--outline);
+  background: var(--mist);
+  font-size: 11px;
+  color: #1e6f8c;
+}
+.pf-card__waves {
+  position: absolute;
+  right: -20px;
+  bottom: -6px;
+  width: 64%;
+  height: auto;
+  opacity: 0.18;
+  pointer-events: none;
 }
 .pf-card__grid {
-  display: flex;
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 18px;
-  padding: 18px;
+  gap: 20px;
+  padding: 20px 22px 24px;
 }
 .pf-card__photo {
-  flex: none;
   display: grid;
   place-items: center;
-  width: 124px;
-  height: 124px;
-  border-radius: 10px;
-  background: var(--paper-fixed);
-  box-shadow:
-    inset 0 0 0 2px var(--ink-fixed),
-    3px 3px 0 var(--teal);
+  width: 128px;
+  height: 128px;
+  border: var(--stroke) solid var(--outline);
+  border-radius: 50%;
+  background: var(--teal);
+  box-shadow: inset -8px -8px 0 var(--teal-s), var(--sh-2);
 }
 .pf-card__id {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 7px;
+  gap: 6px;
   min-width: 0;
-  flex: 1;
 }
 .pf-card__name {
   max-width: 100%;
-  font-size: 34px;
-  font-weight: 800;
-  font-stretch: 84%;
-  line-height: 0.95;
-  letter-spacing: -0.03em;
   overflow: hidden;
+  font-size: clamp(30px, 3vw, 40px);
+  line-height: 1;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .pf-card__lvl,
 .pf-card__meta {
-  font-size: var(--t-label);
-  color: var(--ink-2);
+  font-size: 11px;
+  color: var(--ink-3);
 }
 .pf-card__xp {
   width: 100%;
-  height: 8px;
-  border-radius: 4px;
-}
-@media (max-width: 459px) {
-  .pf-card__grid {
-    gap: 14px;
-    padding: 14px;
-  }
-  .pf-card__photo {
-    width: 84px;
-    height: 84px;
-  }
-  .pf-card__photo canvas {
-    width: 80px !important;
-    height: 80px !important;
-  }
-  .pf-card__name {
-    font-size: 27px;
-  }
-  .pf-card__meta {
-    line-height: 1.5;
-  }
 }
 
-/* save bar */
+/* ── panels ───────────────────────────────────────────────────────────── */
+.pf-box {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px 20px 20px;
+  border: var(--stroke) solid var(--outline);
+  border-radius: var(--r-card);
+  background: var(--surface);
+  box-shadow: var(--sh-3);
+}
+.pf-box > .kl-h3 {
+  padding-bottom: 10px;
+  border-bottom: 2px dashed var(--rule);
+}
+
+/* the coin you wear: sticker tiles */
+.pf-looks {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.pf-cap {
+  margin-bottom: 10px;
+  padding: 0;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.pf-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(86px, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.pf-look {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 4px 8px;
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: var(--r-btn);
+  background: var(--sticker);
+  color: var(--on-sticker);
+  box-shadow: var(--sh-1);
+  cursor: pointer;
+  transition: transform var(--dur-micro) var(--ease-press), box-shadow var(--dur-micro) var(--ease-press), background-color 120ms linear;
+}
+.pf-look input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.pf-look:hover {
+  transform: translate(-1px, -1px) rotate(-2deg);
+  box-shadow: var(--sh-2);
+}
+.pf-look.is-on {
+  background: var(--sun);
+  box-shadow: var(--sh-3);
+  transform: rotate(-2deg);
+}
+.pf-look:has(input:focus-visible) {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+.pf-look__name {
+  font-size: 13px;
+  font-weight: 700;
+}
+.pf-looks:disabled .pf-look {
+  cursor: progress;
+  opacity: 0.7;
+}
+
 .pf-save {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px 14px;
-  padding: 12px 14px;
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--ink) 5%, transparent);
-  transition: background-color var(--dur-micro) linear;
-}
-.pf-save.is-dirty {
-  background: color-mix(in srgb, var(--pink) 13%, transparent);
+  gap: 10px 12px;
+  padding-top: 14px;
+  border-top: 2px dashed var(--rule);
 }
 .pf-save__state {
-  flex: 1 1 220px;
-  font-size: var(--t-label);
-  line-height: 1.5;
-  color: var(--ink-2);
+  flex: 1 1 200px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: var(--ink-3);
+}
+.pf-save.is-dirty .pf-save__state {
+  color: var(--sun-ink);
 }
 
-/* record */
+/* the record */
 .pf-stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px 18px;
-}
-@media (max-width: 459px) {
-  .pf-stats {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 .pf-stats > div {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding-top: 8px;
-  border-top: 1.5px dotted var(--line);
+  padding: 4px 14px 2px;
+}
+.pf-stats > div:first-child {
+  padding-left: 0;
+}
+.pf-stats > div + div {
+  border-left: 2px dashed var(--rule);
 }
 .pf-stats dt {
-  font-size: var(--t-label);
-  color: var(--ink-2);
+  font-size: 11px;
+  color: var(--ink-3);
 }
 .pf-stats dd {
-  font-size: 24px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
+  font-size: 34px;
+  line-height: 1.15;
+}
+
+@media (max-width: 639px) {
+  .pf-card {
+    transform: none;
+  }
+  .pf-card__grid {
+    gap: 14px;
+    padding: 16px;
+  }
+  .pf-card__photo {
+    width: 96px;
+    height: 96px;
+  }
+  .pf-box {
+    padding: 14px 14px 16px;
+  }
+  .pf-stats dd {
+    font-size: 26px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pf-look:hover {
+    transform: none;
+  }
 }

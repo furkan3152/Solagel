@@ -1,4 +1,4 @@
-import { DUR, InkButton, Sheet, Stamp, useReducedMotion } from '../../design';
+import { Button, DUR, Sheet, useReducedMotion } from '../../design';
 import { engine } from '../../game/instance';
 import { formatCountdown, useRound } from '../../game/round';
 import { sound } from '../../audio';
@@ -12,7 +12,7 @@ import { useEffect, useState } from 'react';
 export const DEATH_SHEET_DELAY_MS = Math.round((DUR.slowmo + 0.12) * 1000);
 
 /**
- * Death: an "EATEN" verdict stamp, who ate us (or the bot line: our tokens
+ * Death: "Eaten.", who ate us (or the bot line: our tokens
  * spilled across the map), the value lost and two ways on: a new ticket or
  * practice. In an arena the new ticket re-enters the same round ("Buy back in")
  * while joins are open; in the final minute it says when the next round opens.
@@ -68,13 +68,13 @@ export function DeathSheet() {
   const closed = round?.phase === 'closing';
   const fee = ticket?.entryFee ?? room?.entryFee ?? 0;
   const buyBack = closed ? (
-    <InkButton variant="pink" size="lg" icon="ticket" sub={t('gd.nextRoundSub')} onClick={newTicket} data-autofocus>
+    <Button variant="primary" size="lg" icon="ticket" sub={t('gd.nextRoundSub')} onClick={newTicket} data-autofocus>
       {t('gd.nextRoundIn', { time: formatCountdown(round.msLeft) })}
-    </InkButton>
+    </Button>
   ) : (
-    <InkButton variant="pink" size="lg" icon="ticket" onClick={newTicket} data-autofocus>
+    <Button variant="primary" size="lg" icon="ticket" sub={t('gd.buyBackSub')} onClick={newTicket} data-autofocus>
       {t('gd.buyBack', { fee: tf.fmt(fee, { compact: true, maxFrac: 1 }), sym: tf.symbol })}
-    </InkButton>
+    </Button>
   );
   const killerLine = death?.killer ? (byBot ? t('gd.byBot') : t('gd.byPlayer', { name: death.killer })) : t('gd.byNobody');
 
@@ -85,23 +85,23 @@ export function DeathSheet() {
       closeLabel={t('gd.close')}
       kicker={t('gd.kicker', { room: roomName(room) })}
       className="g-sheet g-death"
-      title={<Stamp text={t('gd.stamp')} size="lg" tone="red" rotate={-7} animateIn delay={0.12} />}
+      title={<span className="g-death__title">{t('gd.stamp')}</span>}
       footer={
         arena ? (
           <>
             {buyBack}
-            <InkButton variant="paper" size="lg" icon="play" onClick={practice}>
+            <Button variant="secondary" size="lg" icon="play" onClick={practice}>
               {t('gd.practice')}
-            </InkButton>
+            </Button>
           </>
         ) : (
           <>
-            <InkButton variant="pink" size="lg" icon="play" onClick={practice} data-autofocus>
+            <Button variant="primary" size="lg" icon="play" onClick={practice} data-autofocus>
               {t('gd.practice')}
-            </InkButton>
-            <InkButton variant="paper" size="lg" icon="ticket" onClick={newTicket}>
+            </Button>
+            <Button variant="secondary" size="lg" icon="ticket" onClick={newTicket}>
               {t('gd.newTicket')}
-            </InkButton>
+            </Button>
           </>
         )
       }
@@ -109,11 +109,15 @@ export function DeathSheet() {
       {s && (
         <div className="g-death__body">
           <div className="g-death__who">
-            <div className="g-death__portraits" aria-hidden="true">
-              <CoinPortrait skin={me?.skin ?? 0} size={74} expression="dead" seed={3} className="g-death__me" />
-              {death?.killer && <CoinPortrait skin={death.killerSkin ?? 0} size={92} expression="proud" seed={7} className="g-death__killer" />}
+            <div className="g-death__scene" aria-hidden="true">
+              {death?.killer && <CoinPortrait skin={death.killerSkin ?? 0} size={104} expression="proud" seed={7} className="g-death__killer" />}
+              <CoinPortrait skin={me?.skin ?? 0} size={64} expression="dead" seed={3} className="g-death__me" />
+              <span className="g-death__ground" />
             </div>
-            <p className="g-death__line">{killerLine}</p>
+            <div className="g-death__said">
+              <p className="g-death__line">{killerLine}</p>
+              <p className="g-death__quip">{t(arena ? 'gd.quipArena' : 'gd.quip')}</p>
+            </div>
           </div>
 
           {arena && (
@@ -121,7 +125,7 @@ export function DeathSheet() {
               <div>
                 <dt className="mono">{t('gd.valueLost')}</dt>
                 <dd>
-                  <span className="g-death__amount">{lost > 0 ? `−${tf.fmt(lost)}` : tf.fmt(0)}</span>
+                  <span className="g-death__amount num">{lost > 0 ? `−${tf.fmt(lost)}` : tf.fmt(0)}</span>
                   <span className="mono g-death__unit">{tf.symbol}</span>
                 </dd>
               </div>

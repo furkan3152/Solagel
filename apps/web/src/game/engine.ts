@@ -309,6 +309,8 @@ export class GameEngine {
       sound.cashout();
       announce('paid');
     }
+    // the bell rolls out over the floor from my coin (a still, shorter ring with reduced motion)
+    if (me && kind === 'round') this.particles.wave(me.x, me.y, Math.max(80, me.maxR * 1.3));
     if (me && !this.reduced) this.particles.coinBurst(me.x, me.y, Math.max(60, me.maxR), 36);
     this.wasArena = null;
     useUi.setState({

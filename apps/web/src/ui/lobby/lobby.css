@@ -1,8 +1,13 @@
-/* ─────────────────────── Paper Ticket · lobby & ticket flow ───────────────────────
- * Phones get a single column of tickets;
- * desktop is a newspaper front page whose photo is a window cut into the
- * paper (a CSS mask) onto the live game canvas. Everything lives under the
- * `.kl-root` Kb root or in portalled `.kb-sheet` panels (tf-, wl-, pf-).
+/* ─────────────────────── Ring Storybook · lobby, wallet & boarding ───────────────────────
+ * The lobby is a page of the picture book (spec §6.9): a masthead with the
+ * mark and page tabs, a plate caption, then the departures board of the four
+ * Elysian arenas (cream boarding passes pinned to a night board) with the one
+ * sun button under it; wide screens add the live window onto the floor (a
+ * CSS mask cut through the page onto the game canvas) and the membership
+ * sticker. Also here: the wallet sticker and sheet (wl-), the boarding
+ * sequence (tf-), banners, page heads (pg-, shared with the guide).
+ * Everything lives under the `.kl-root` Kb root or in portalled `.kb-sheet`
+ * panels.
  * ------------------------------------------------------------------------- */
 
 .kl-root {
@@ -17,7 +22,7 @@
   scrollbar-gutter: stable;
   -webkit-overflow-scrolling: touch;
 }
-/* the front-page photo: everything but the frame's window is paper */
+/* the live window: everything but the frame's window is page */
 .kl-root.has-hole {
   -webkit-mask-image: linear-gradient(#000 0 0), linear-gradient(#000 0 0);
   -webkit-mask-size:
@@ -38,49 +43,28 @@
   mask-repeat: no-repeat;
   mask-composite: exclude;
 }
-
 .kl-sheet-page {
   flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
   width: 100%;
-  max-width: 1440px;
-  margin: 0 auto;
-  padding: 0 18px;
-}
-.kl-root.is-wide .kl-sheet-page,
-.kl-root.is-mid .kl-sheet-page {
-  padding: 0 clamp(20px, 3vw, 44px) 32px;
 }
 
-/* ── type helpers ─────────────────────────────────────────────────────── */
-.kl-h2 {
-  font-size: var(--t-h2);
-  font-weight: 800;
-  font-stretch: var(--display-stretch);
-  line-height: 0.95;
-  letter-spacing: -0.035em;
-}
+/* ── shared bits ──────────────────────────────────────────────────────── */
 .kl-h3 {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 22px;
-  font-weight: 800;
-  font-stretch: 88%;
-  line-height: 1;
-  letter-spacing: -0.02em;
+  font-size: var(--t-h4);
+  line-height: 1.1;
 }
-.kl-sub {
-  font-size: var(--t-label);
-  color: var(--ink-2);
+.kl-h3 .kb-icon {
+  color: var(--teal-ink);
 }
 .kl-note {
   font-size: var(--t-small);
-  line-height: 1.45;
+  line-height: 1.5;
   color: var(--ink-2);
-}
-.kl-unit {
-  font-size: var(--t-label);
-  font-weight: 500;
 }
 .kl-link {
   display: inline-flex;
@@ -90,187 +74,272 @@
   padding: 0;
   border: 0;
   background: none;
-  color: var(--pink-text);
+  color: var(--teal-ink);
   font-size: var(--t-label);
-  text-decoration: underline;
-  text-underline-offset: 4px;
+  text-decoration: underline wavy;
   text-decoration-thickness: 1.5px;
+  text-underline-offset: 5px;
+  text-decoration-color: color-mix(in srgb, currentColor 55%, transparent);
   cursor: pointer;
 }
 .kl-link:hover {
   color: var(--ink);
+  text-decoration-color: var(--sun);
 }
 .kl-link:disabled {
-  color: var(--ink-2);
-  cursor: default;
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.kl-live-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border: 1.5px solid var(--outline);
+  border-radius: 50%;
+  background: var(--up);
+  vertical-align: 0;
+  animation: kl-beat 1.6s ease-in-out infinite;
+}
+@keyframes kl-beat {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.35); }
+}
+.kl-dots {
+  display: inline-block;
+  width: 18px;
+  height: 6px;
+  margin-right: 8px;
+  background: radial-gradient(circle, currentColor 2px, transparent 2.4px) 0 50% / 6px 6px repeat-x;
+  animation: kl-dots 1.2s steps(3) infinite;
+}
+@keyframes kl-dots {
+  from { clip-path: inset(0 100% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
 }
 
 /* ── masthead ─────────────────────────────────────────────────────────── */
 .kl-mast {
   display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 22px 0 10px;
+  align-items: center;
+  gap: 18px;
+  padding: 18px var(--gutter) 14px;
 }
 .kl-mast__brand {
   display: flex;
-  flex-direction: column;
-  gap: 18px;
+  align-items: center;
+  gap: 10px;
   min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+.kl-mast__brand:hover {
+  text-decoration: none;
+}
+.kl-mast__word {
+  display: block;
+  width: auto;
 }
 .kl-mast__kicker {
+  align-self: flex-end;
+  margin: 0 0 4px 4px;
   font-size: var(--t-label);
-  color: var(--ink-2);
-}
-.kl-wordmark {
-  position: relative;
-  display: inline-flex;
-  align-items: flex-start;
-  font-weight: 800;
-  font-stretch: 85%;
-  font-size: 46px;
-  line-height: 0.86;
-  letter-spacing: -0.045em;
-}
-.kl-root.is-wide .kl-wordmark,
-.kl-root.is-mid .kl-wordmark {
-  font-size: clamp(58px, 6.4vw, 92px);
-}
-.kl-wordmark__ink {
-  position: relative;
-  z-index: 1;
-}
-.kl-wordmark__pink {
-  position: absolute;
-  left: 0;
-  top: 0;
-  z-index: 0;
-  color: var(--pink);
-  transform: translate(0.035em, 0.03em);
-  mix-blend-mode: var(--stamp-blend);
-}
-.kb[data-theme='night'] .kl-wordmark__pink {
-  z-index: 2;
-  opacity: 0.55;
-}
-.kl-wordmark__coin {
-  width: 0.5em;
-  height: 0.5em;
-  margin: -0.28em 0 0 0.02em;
-  animation: kl-float 3.4s ease-in-out infinite;
-}
-@keyframes kl-float {
-  0%,
-  100% {
-    transform: translate(0, 0) rotate(-3deg);
-  }
-  50% {
-    transform: translate(0, -3px) rotate(3deg);
-  }
+  color: var(--ink-3);
+  white-space: nowrap;
 }
 .kl-mast__right {
   display: flex;
   align-items: center;
   gap: 10px;
-}
-.kl-controls {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding-right: 6px;
-}
-.kl-root.is-phone .kl-mast .kb-iconbtn {
-  width: 44px;
-  height: 44px;
-  border-width: 0;
-  box-shadow: none;
-  background: transparent;
+  margin-left: auto;
 }
 
-/* wallet slip */
-.kl-wallet {
+/* page tabs: a sun sticker slides under the open page */
+.kl-sections {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 3px;
-  min-height: 48px;
-  padding: 6px 10px;
-  border: 1.5px dashed var(--ink);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--ink);
-  cursor: pointer;
-  transition:
-    transform var(--dur-micro) var(--ease-spring),
-    box-shadow var(--dur-micro) var(--ease-spring),
-    background-color var(--dur-micro) linear;
-}
-.kl-wallet:hover {
-  background: var(--card);
-  box-shadow: 3px 3px 0 var(--pink);
-  transform: translate(-1px, -1px);
-}
-.kl-wallet:active {
-  transform: translate(1px, 1px);
-  box-shadow: 0 0 0 var(--pink);
-}
-.kl-wallet__top {
-  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: var(--t-label);
-  color: var(--ink-2);
+  gap: 4px;
+  margin-left: 12px;
+  padding: 4px;
+  border: var(--stroke) solid var(--outline);
+  border-radius: var(--r-pill);
+  background: var(--surface);
 }
-.kl-wallet__dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--pink);
-  box-shadow: 0 0 0 1.5px var(--card);
-}
-.kl-wallet__main {
+.kl-sections__item {
+  position: relative;
   display: inline-flex;
-  align-items: baseline;
-  gap: 5px;
-  font-size: 18px;
-  font-weight: 800;
-  line-height: 1;
-  letter-spacing: -0.01em;
-  font-variant-numeric: tabular-nums;
-}
-.kl-wallet__sym {
-  font-size: var(--t-label);
-  font-weight: 500;
-}
-.kl-wallet.is-off .kl-wallet__main {
   align-items: center;
   gap: 7px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--ink-2);
+  font-weight: 700;
+  font-size: 15px;
+  cursor: pointer;
+  isolation: isolate;
+}
+.kl-sections__item:hover {
+  color: var(--ink);
+}
+.kl-sections__item.is-on {
+  color: var(--ink-fixed);
+}
+.kl-sections__ink {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: var(--r-pill);
+  background: var(--sun);
+  box-shadow: var(--sh-1);
+}
+.kl-sections__item:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* the plate caption and the arena's status */
+.kl-plate {
+  display: flex;
+  flex-direction: column;
+}
+.kl-plate .kb-plate {
+  padding-top: 14px;
+  padding-bottom: 12px;
+}
+.kl-plate .kb-plate__aside .kl-status {
+  padding: 0;
+  flex-wrap: nowrap;
+}
+.kl-plate .kb-plate__aside .kl-status__item {
+  font-size: 11px;
+}
+/* the sheets' tape sits over the top-left corner: the kicker starts clear of it */
+.tf-sheet:not(.is-bottom) .kb-sheet__kicker,
+.wl-sheet:not(.is-bottom) .kb-sheet__kicker,
+.g-sheet:not(.is-bottom) .kb-sheet__kicker,
+.kb-wallets:not(.is-bottom) .kb-sheet__kicker {
+  padding-left: 30px;
+}
+.kl-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 0 var(--gutter) 6px;
+}
+.kl-status__item {
+  font-size: var(--t-label);
+  color: var(--ink-3);
+}
+
+/* ── wallet sticker ───────────────────────────────────────────────────── */
+.kl-wallet {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 5px 16px 5px 6px;
+  border: var(--stroke) solid var(--outline);
+  border-radius: var(--r-btn);
+  background: var(--sticker);
+  color: var(--ink-fixed);
+  box-shadow: var(--sh-2);
+  text-align: left;
+  cursor: pointer;
+  transition: transform var(--dur-micro) var(--ease-press), box-shadow var(--dur-micro) var(--ease-press);
+}
+.kl-wallet:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 var(--shadow-ink);
+}
+.kl-wallet:active {
+  transform: translate(2px, 2px);
+  box-shadow: var(--sh-press);
+}
+.kl-wallet__coin {
+  position: relative;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: 50%;
+  background: var(--cyan);
+  box-shadow: inset -4px -4px 0 var(--cyan-s);
+}
+.kl-wallet__coin::after {
+  /* the fat cream E of the coin mark, as two strokes */
+  content: '';
+  position: absolute;
+  left: 9px;
+  top: 7px;
+  width: 9px;
+  height: 13px;
+  border: 3px solid var(--cream);
+  border-right: 0;
+  border-radius: 3px 0 0 3px;
+}
+.kl-wallet__dot {
+  position: absolute;
+  right: -4px;
+  top: -4px;
+  z-index: 1;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--outline);
+  border-radius: 50%;
+  background: var(--sun);
+}
+.kl-wallet__text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+.kl-wallet__top {
+  font-size: 11px;
+  color: #6b655a;
+}
+.kl-wallet__main {
+  font-size: 17px;
+  white-space: nowrap;
+}
+.kl-wallet__sym {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: none;
+}
+.kl-wallet.is-off {
+  padding: 6px 16px 6px 12px;
+  background: var(--teal);
+  color: var(--cream);
+}
+.kl-wallet.is-off .kl-wallet__main {
+  font-family: var(--font-body);
+  font-weight: 700;
   font-size: 16px;
 }
-
-.kl-dateline {
-  margin-bottom: 2px;
+.kl-wallet.is-off .kl-wallet__top {
+  color: #dbf2f9;
+}
+.kl-wallet:disabled {
+  cursor: progress;
+  opacity: 0.7;
 }
 
-/* ── layout ───────────────────────────────────────────────────────────── */
+/* ── the front: board 7, side 5 ───────────────────────────────────────── */
 .kl-front {
   display: grid;
-  grid-template-columns: minmax(360px, 1fr) 1px minmax(300px, 380px);
-  gap: 0 clamp(20px, 2.4vw, 36px);
-  padding-top: 22px;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  align-items: start;
+  gap: 40px;
+  padding: 18px var(--gutter) 56px;
 }
-.kl-front.has-photo {
-  grid-template-columns: minmax(360px, 420px) 1px minmax(380px, 1fr) 1px minmax(290px, 340px);
-}
-.kl-vrule.kb-rule {
-  border-top: 0;
-  width: 1px;
-  height: auto;
-  margin: 6px 0 0;
-  border: 0;
-  background: var(--ink);
-  align-self: stretch;
+.kl-root.is-mid .kl-front {
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 28px;
 }
 .kl-col {
   display: flex;
@@ -279,165 +348,276 @@
   min-width: 0;
 }
 .kl-col--side {
-  gap: 22px;
+  gap: 28px;
 }
-.kl-section-head {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
+.kl-section {
+  padding: 18px var(--gutter) 56px;
 }
-.kl-cta-slot {
-  margin-top: 6px;
-}
-
 .kl-phone-main {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  padding: 14px 0 24px;
+  gap: 22px;
+  padding: 14px 16px 28px;
 }
 
-/* the phone dock: Quick Play over the bottom tabs */
-.kl-dock {
-  position: sticky;
-  bottom: 0;
-  z-index: 4;
-  padding: 18px 18px max(4px, env(safe-area-inset-bottom));
-  /* the same grain as the page, fading in at the top edge */
-  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 18px);
-  mask-image: linear-gradient(to bottom, transparent, #000 18px);
-}
-.kl-dock__cta {
-  padding: 0 0 12px;
-}
-
-/* ── tickets ──────────────────────────────────────────────────────────── */
-.kl-tickets {
+/* ── the departures board ─────────────────────────────────────────────── */
+.kl-board {
+  --ink: #f6eeda;
+  --ink-2: #bfd8dd;
+  --ink-3: #93d9ee;
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
+  padding: 18px 20px 14px;
+  border: var(--stroke) solid var(--outline);
+  border-radius: var(--r-panel);
+  background: var(--reef);
+  color: var(--cream);
+  box-shadow: var(--sh-5);
 }
-.kl-ticket .kb-ticket__face {
-  min-height: 76px;
-}
-/* the arena's riso ink, printed as a stripe at the torn-off edge */
-.kl-ticket .kb-ticket__body {
-  position: relative;
-  gap: 5px;
-  padding: 12px 14px 12px 18px;
-}
-.kl-ticket .kb-ticket__body::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 10px;
-  bottom: 10px;
-  width: 5px;
-  border-radius: 0 3px 3px 0;
-  background: var(--kl-ink);
-  opacity: 0.9;
-}
-.kl-ticket__head {
+.kl-board__head {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 8px;
-  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
 }
-.kl-ticket__head .kb-ticket__title {
-  overflow: visible;
+.kl-board__titles {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
-.kl-ticket__flag {
-  flex: none;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: var(--ink);
-  color: var(--on-ink);
+.kl-board__kicker {
   font-size: var(--t-label);
-  line-height: 1.3;
+  color: var(--foam);
 }
-.kl-ticket__flag.is-open {
-  background: var(--pink);
-  color: var(--ink-fixed);
+.kl-board__title {
+  font-size: clamp(34px, 3.6vw, 46px);
+  line-height: 0.95;
+  color: var(--cream);
 }
-.kl-ticket .kb-ticket__meta {
-  display: block;
-  line-height: 1.45;
+.kl-board__cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) var(--stub-w);
+  gap: 12px;
+  padding: 2px 4px 8px 18px;
+  border-bottom: 2px dashed var(--current);
+  font-size: 11px;
+  color: var(--foam);
 }
-.kl-ticket .kl-live-dot {
-  display: inline-block;
-  margin-right: 6px;
-  vertical-align: 1px;
+.kl-root[data-theme='night'] .kl-board {
+  background: var(--deep);
 }
-.kl-ticket__round {
-  display: block;
-  text-transform: none;
-  letter-spacing: 0.01em;
-  font-size: 12px;
-  line-height: 1.35;
-  color: var(--ink-2);
-  font-variant-numeric: tabular-nums;
+.kl-board__cols span:last-child {
+  text-align: center;
 }
-/* the final minute: joins closed until the next round (mustard-text: 5.26 on paper, 6.14 on card) */
-.kl-ticket__round.is-closed {
-  color: var(--mustard-text);
-  font-weight: 500;
+.kl-board__foot {
+  padding-top: 6px;
+  font-size: 11px;
+  color: var(--foam);
 }
-.kl-ticket__fee {
-  /* verbatim sentence case ("Fee 5% of profit only"), not a caps label */
-  text-transform: none;
-  letter-spacing: 0.01em;
-  font-size: 12px;
-  color: var(--teal-ink);
-  line-height: 1.3;
-}
-.kl-live-dot {
+
+/* the shared bell: a sun badge, tilted */
+.kl-bell {
   flex: none;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--green);
-  box-shadow: 0 0 0 0 color-mix(in srgb, var(--green) 60%, transparent);
-  animation: kl-pulse 2.2s ease-out infinite;
-}
-@keyframes kl-pulse {
-  0% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--green) 55%, transparent);
-  }
-  70%,
-  100% {
-    box-shadow: 0 0 0 7px color-mix(in srgb, var(--green) 0%, transparent);
-  }
-}
-
-/* ── Quick Play CTA ───────────────────────────────────────────────────── */
-.kl-cta .kb-btn__sub {
-  /* room for accents and descenders above and below the cap height */
-  line-height: 1.4;
-  margin-bottom: -3px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* ── R10: payout waiting slip ─────────────────────────────────────────── */
-.kl-owed {
-  position: relative;
-  filter: drop-shadow(3px 4px 0 var(--line));
-}
-.kl-owed__slip {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 8px;
-  padding: 14px 16px 22px;
-  background: var(--card);
-  /* torn receipt bottom */
-  -webkit-mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 14px 100%;
-  mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 14px 100%;
+  padding: 9px 14px 8px;
+  border: var(--stroke) solid var(--outline);
+  border-radius: var(--r-btn);
+  background: var(--sun);
+  color: var(--ink-fixed);
+  box-shadow: var(--sh-3);
+  transform: rotate(3deg);
+}
+.kl-bell__time {
+  font-size: 26px;
+  line-height: 1;
+}
+.kl-bell__label {
+  margin-top: 2px;
+  font-size: 11px;
+  color: #3a2e0a;
+}
+.kl-bell.is-closed {
+  background: var(--sticker);
+}
+
+/* tickets: cream boarding passes pinned to the board */
+.kl-tickets {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.kl-ticket {
+  --stub-w: 112px;
+  /* day tokens: the pass is cream stock on the night board */
+  --ink: #04181c;
+  --ink-2: #4a453b;
+  --ink-3: #6b655a;
+  --teal-ink: #2d7388;
+  --up-ink: #2b7465;
+  --sun-ink: #8a5f0e;
+  --focus: #6fcdea;
+  color: var(--ink);
+}
+.kl-ticket .kb-ticket__face {
+  min-height: 78px;
+}
+.kl-ticket .kb-ticket__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 6px 12px;
+  padding: 10px 14px 10px 18px;
+  /* the arena's paint as a band at the left edge */
+  box-shadow: inset 8px 0 0 var(--kl-ink, var(--teal));
+}
+.kl-ticket__main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding-left: 4px;
+}
+.kl-ticket__head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+.kl-ticket__coin {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: 50%;
+  background: var(--kl-ink, var(--teal));
+  box-shadow: inset -3px -3px 0 rgba(4, 24, 28, 0.22);
+}
+.kl-ticket .kb-ticket__title {
+  font-size: 23px;
+}
+.kl-ticket .kb-ticket__meta {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+.kl-ticket__loot {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--sun-ink);
+}
+.kl-ticket__state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  min-width: 0;
+}
+.kl-ticket__round {
+  display: inline-block;
+  padding: 2px 8px;
+  border: 2px solid var(--outline);
+  border-radius: var(--r-tag);
+  background: var(--mist);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  max-width: 100%;
+}
+.kl-ticket__round.is-closed {
+  background: var(--sun);
+}
+.kl-ticket__fee {
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--teal-ink);
+}
+.kl-ticket__flag {
+  display: inline-block;
+  padding: 1px 8px;
+  border: 2px solid var(--outline);
+  border-radius: var(--r-pill);
+  background: var(--sand);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.kl-ticket__flag.is-open {
+  background: #e3f1ec;
+  color: var(--up-ink);
+}
+.kl-ticket .kb-ticket__value {
+  font-size: 21px;
+}
+.kl-ticket.is-practice .kb-ticket__stub {
+  background-color: var(--linen);
+}
+.kl-ticket.is-practice.is-selected .kb-ticket__stub,
+.kl-ticket .kb-ticket.is-selected .kb-ticket__stub {
+  background-color: var(--sun);
+}
+/* a closed pass keeps its words readable (the design dims disabled passes) */
+.kl-ticket.is-closed .kb-ticket {
+  opacity: 0.86;
+}
+.kl-tickets__divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0 -2px;
+  font-size: 11px;
+  color: var(--foam);
+}
+.kl-tickets__divider::before,
+.kl-tickets__divider::after {
+  content: '';
+  flex: 1;
+  border-top: 2.5px dotted var(--current);
+}
+.kl-tickets__divider::before {
+  flex: 0 0 18px;
+}
+
+.kl-cta-slot {
+  margin-top: 6px;
+  padding-top: 14px;
+  border-top: 2px dashed var(--current);
+}
+.kl-cta.kb-btn--lg {
+  min-height: 72px;
+}
+
+/* ── banners: a payout waiting, a ticket held ─────────────────────────── */
+.kl-owed__slip {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 14px 18px 16px;
+  border: var(--stroke) solid var(--outline);
+  border-radius: var(--r-card);
+  background: var(--sticker);
+  color: var(--on-sticker);
+  box-shadow: var(--sh-3);
+  --ink: #04181c;
+  --ink-2: #4a453b;
+  --teal-ink: #2d7388;
 }
 .kl-owed.is-action .kl-owed__slip {
-  border-top: 5px solid var(--pink);
+  background: #fbe7b0;
+}
+.kl-held .kl-owed__slip {
+  background: var(--mist);
 }
 .kl-owed__top {
   display: flex;
@@ -448,815 +628,826 @@
 }
 .kl-owed__kicker {
   font-size: var(--t-label);
-  color: var(--pink-text);
+  color: var(--teal-ink);
 }
 .kl-owed__amount {
-  font-size: 24px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 22px;
 }
 .kl-owed__amount .mono {
-  font-size: var(--t-label);
-  font-weight: 500;
+  font-size: 11px;
+  text-transform: none;
 }
 .kl-owed__title {
-  font-size: 18px;
-  font-weight: 700;
-  line-height: 1.2;
+  font-family: var(--font-display);
+  font-variation-settings: var(--fv-display);
+  font-weight: 800;
+  font-size: 20px;
+  line-height: 1.15;
 }
 .kl-owed__note {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   font-size: var(--t-small);
   color: var(--ink-2);
-  line-height: 1.4;
 }
 .kl-owed__note.mono {
-  font-size: var(--t-label);
-}
-
-/* a ticket held for the next round (bought while joins were closed) */
-.kl-held .kl-owed__slip {
-  border-top: 5px solid var(--mustard);
-}
-.kl-held__kicker {
-  color: var(--mustard-text);
-}
-.kl-held .kl-owed__title {
-  font-variant-numeric: tabular-nums;
-}
-
-/* three printer dots */
-.kl-dots {
-  --d-off: color-mix(in srgb, currentColor 22%, transparent);
-  flex: none;
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  margin-right: 18px;
-  border-radius: 50%;
-  color: var(--pink-text);
-  background: currentColor;
-  box-shadow:
-    9px 0 0 var(--d-off),
-    18px 0 0 var(--d-off);
-  animation: kl-dots 1.05s steps(1, end) infinite;
-}
-@keyframes kl-dots {
-  0% {
-    background: currentColor;
-    box-shadow:
-      9px 0 0 var(--d-off),
-      18px 0 0 var(--d-off);
-  }
-  33% {
-    background: var(--d-off);
-    box-shadow:
-      9px 0 0 currentColor,
-      18px 0 0 var(--d-off);
-  }
-  66% {
-    background: var(--d-off);
-    box-shadow:
-      9px 0 0 var(--d-off),
-      18px 0 0 currentColor;
-  }
-}
-
-/* ── profile card ─────────────────────────────────────────────────────── */
-.kl-card {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 14px;
-  border-radius: var(--r-card);
-  background: var(--card);
-  box-shadow: 0 1.5px 0 var(--line);
-}
-.kl-profile__top {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 12px;
-  width: 100%;
-}
-.kl-profile__coin {
-  flex: none;
-}
-.kl-profile__id {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  flex: 1;
-  min-width: 0;
-}
-.kl-profile__name {
-  font-size: 22px;
-  font-weight: 800;
-  line-height: 1;
-  letter-spacing: -0.02em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.kl-profile__lvl {
   font-size: var(--t-label);
-  color: var(--ink-2);
-}
-.kl-xp {
-  position: relative;
-  display: block;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--line-soft);
-  overflow: hidden;
-}
-.kl-xp > span {
-  position: absolute;
-  inset: 0 auto 0 0;
-  background: var(--pink);
-}
-.kl-stats {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px 14px;
-  width: 100%;
-  padding-top: 10px;
-  border-top: 1.5px dashed var(--line);
-}
-.kl-stats dt {
-  font-size: var(--t-label);
-  color: var(--ink-2);
-}
-.kl-stats dd {
-  font-size: 19px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
 }
 
-/* ── live frame (front-page photo) ────────────────────────────────────── */
+/* ── the live window onto the floor ───────────────────────────────────── */
 .kl-live {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
   margin: 0;
 }
 .kl-live__frame {
   position: relative;
   padding: 10px;
-  border: 2px solid var(--ink);
-  background: var(--card);
-  box-shadow: 6px 6px 0 var(--ink);
+  border: var(--stroke) solid var(--outline);
+  border-radius: var(--r-card);
+  background: var(--sticker);
+  box-shadow: var(--sh-4);
+  transform: rotate(0.8deg);
 }
 .kl-live__window {
   position: relative;
   display: grid;
   place-items: center;
-  aspect-ratio: 4 / 3;
-  max-height: 52vh;
-  width: 100%;
-  outline: 1.5px solid var(--ink);
+  aspect-ratio: 16 / 10;
+  border: var(--stroke) solid var(--outline);
+  border-radius: 10px;
+}
+.kl-root:not(.has-hole) .kl-live__window {
+  background: var(--trench);
 }
 .kl-live__wait {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--cream);
   font-size: var(--t-label);
-  color: var(--ink-2);
 }
 .kl-live__badge {
   position: absolute;
   left: 22px;
-  top: 22px;
-  z-index: 2;
+  top: -14px;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  border-radius: 4px;
-  background: var(--ink);
-  color: var(--on-ink);
-  font-size: var(--t-label);
+  gap: 7px;
+  padding: 3px 10px;
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: var(--r-pill);
+  background: var(--sticker);
+  color: var(--ink-fixed);
+  box-shadow: var(--sh-1);
+  font-size: 11px;
+  font-weight: 600;
 }
-/* the badge sits on the photo: keep it outside the mask hole's paint by
-   drawing it on the frame (it overlaps the window edge, not the middle) */
 .kl-live__rec {
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid var(--outline);
   border-radius: 50%;
-  background: var(--red);
-  animation: kl-rec 1.4s steps(2, jump-none) infinite;
-}
-@keyframes kl-rec {
-  50% {
-    opacity: 0.25;
-  }
+  background: var(--down);
+  animation: kl-beat 1.6s ease-in-out infinite;
 }
 .kl-live__cap {
   display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: baseline;
-  gap: 2px 12px;
-  padding: 6px 2px 8px;
-  border-bottom: 1px solid var(--ink);
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0 12px;
+  padding: 12px 4px 0;
 }
 .kl-live__room {
-  font-size: 20px;
+  overflow: hidden;
+  font-family: var(--font-display);
+  font-variation-settings: var(--fv-display);
   font-weight: 800;
-  letter-spacing: -0.02em;
+  font-size: 20px;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .kl-live__meta {
-  grid-column: 1 / -1;
-  grid-row: 2;
-  font-size: var(--t-label);
-  color: var(--ink-2);
+  grid-column: 1;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.kl-live__cap .kl-link {
+  grid-column: 2;
+  grid-row: 1 / span 2;
 }
 
+/* how a round goes, acted out */
 .kl-deck {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-width: 62ch;
-}
-.kl-deck__title {
-  font-size: 30px;
-  font-weight: 800;
-  font-stretch: 85%;
-  line-height: 1;
-  letter-spacing: -0.03em;
-}
-.kl-deck__body {
-  font-size: var(--t-body);
-  line-height: 1.5;
-  columns: 2 220px;
-  column-gap: 24px;
-  column-rule: 1px solid var(--line);
-}
-.kl-deck__body::first-letter {
-  float: left;
-  margin: 2px 6px 0 0;
-  font-size: 3.1em;
-  font-weight: 800;
-  line-height: 0.82;
-  color: var(--pink-text);
-}
-
-/* the hole is cut from the root, so the badge must not be inside it */
-.kl-root.has-hole .kl-live__badge {
-  top: -12px;
-  left: 18px;
-}
-
-/* ════════════════════════ sheets ════════════════════════ */
-
-/* ── ticket flow ──────────────────────────────────────────────────────── */
-.tf-sheet.kb-sheet {
-  width: min(540px, 100%);
-}
-.tf-body {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-.tf-lede {
-  font-size: var(--t-body);
-  line-height: 1.45;
-}
-
-/* the ticket being cut */
-.tf-ticket {
-  --tf-stub: 116px;
-  --tf-notch: 10px;
-  position: relative;
-  display: flex;
-  min-height: 132px;
-  margin: 4px 4px 6px 0;
-}
-/* each half carries its own printed shadow, so the falling stub fades as one piece */
-.tf-ticket__half {
-  display: flex;
-  filter: drop-shadow(0 1.5px 0 var(--line)) drop-shadow(4px 4px 0 var(--ink));
-}
-.tf-ticket__half.is-main {
-  flex: 1;
-  min-width: 0;
-}
-.tf-ticket__half.is-stub {
-  flex: none;
-  transform-origin: 20% 80%;
-}
-.tf-ticket__main,
-.tf-ticket__stub {
-  position: relative;
-  background: var(--card);
-}
-.tf-ticket__main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 6px;
-  padding: 16px 18px 16px 22px;
-  border-radius: 12px 0 0 12px;
-  -webkit-mask:
-    radial-gradient(circle at 100% 0, #0000 var(--tf-notch), #000 calc(var(--tf-notch) + 0.5px)) top / 100% 51% no-repeat,
-    radial-gradient(circle at 100% 100%, #0000 var(--tf-notch), #000 calc(var(--tf-notch) + 0.5px)) bottom / 100% 51% no-repeat;
-  mask:
-    radial-gradient(circle at 100% 0, #0000 var(--tf-notch), #000 calc(var(--tf-notch) + 0.5px)) top / 100% 51% no-repeat,
-    radial-gradient(circle at 100% 100%, #0000 var(--tf-notch), #000 calc(var(--tf-notch) + 0.5px)) bottom / 100% 51% no-repeat;
-}
-.tf-ticket__main::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 8px;
-  background: var(--kl-ink);
-}
-.tf-ticket__stub {
-  flex: none;
-  width: var(--tf-stub);
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  justify-content: center;
-  gap: 4px;
-  padding: 12px 8px;
-  border-radius: 0 12px 12px 0;
-  background-image: linear-gradient(to bottom, var(--line) 55%, transparent 0);
-  background-size: 2px 8px;
-  background-repeat: repeat-y;
-  background-position: 0 4px;
-  background-color: var(--card);
-  -webkit-mask:
-    radial-gradient(circle at 0 0, #0000 var(--tf-notch), #000 calc(var(--tf-notch) + 0.5px)) top / 100% 51% no-repeat,
-    radial-gradient(circle at 0 100%, #0000 var(--tf-notch), #000 calc(var(--tf-notch) + 0.5px)) bottom / 100% 51% no-repeat;
-  mask:
-    radial-gradient(circle at 0 0, #0000 var(--tf-notch), #000 calc(var(--tf-notch) + 0.5px)) top / 100% 51% no-repeat,
-    radial-gradient(circle at 0 100%, #0000 var(--tf-notch), #000 calc(var(--tf-notch) + 0.5px)) bottom / 100% 51% no-repeat;
+  gap: 16px;
+  padding: 4px 4px 0;
 }
-/* once torn, both edges are ragged paper instead of a perforation */
-.tf-ticket.is-torn .tf-ticket__main {
-  clip-path: polygon(
-    0 0,
-    100% 0,
-    calc(100% - 3px) 8%,
-    100% 16%,
-    calc(100% - 4px) 25%,
-    100% 33%,
-    calc(100% - 2px) 42%,
-    100% 50%,
-    calc(100% - 4px) 58%,
-    100% 67%,
-    calc(100% - 3px) 75%,
-    100% 84%,
-    calc(100% - 4px) 92%,
-    100% 100%,
-    0 100%
-  );
-}
-.tf-ticket.is-torn .tf-ticket__stub {
-  clip-path: polygon(3px 0, 100% 0, 100% 100%, 0 100%, 4px 92%, 0 84%, 3px 75%, 0 67%, 4px 58%, 0 50%, 2px 42%, 0 33%, 4px 25%, 0 16%, 3px 8%);
-  background-image: none;
-}
-.tf-ticket__kicker {
-  font-size: var(--t-label);
-  color: var(--ink-2);
-}
-.tf-ticket__room {
-  font-size: 30px;
-  font-weight: 800;
-  font-stretch: 86%;
-  line-height: 0.95;
-  letter-spacing: -0.03em;
-}
-.tf-ticket__serial {
-  font-size: var(--t-label);
-  color: var(--ink-2);
-}
-.tf-ticket__stamp {
-  position: absolute;
-  right: 14px;
-  top: 50%;
-  translate: 0 -50%;
-  pointer-events: none;
-}
-.tf-ticket__stamp .kb-stamp--lg {
-  font-size: 34px;
-}
-.tf-ticket__fee {
-  font-size: 24px;
-  font-weight: 800;
-  line-height: 1;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-}
-.tf-ticket__sym {
-  font-size: var(--t-label);
-  color: var(--ink-2);
-}
-
-/* the lines of what is signed */
-.tf-lines {
+.kl-deck__cast {
   display: flex;
-  flex-direction: column;
+  align-items: flex-end;
   gap: 2px;
 }
-.tf-line {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 5px 0;
+.kl-deck__title {
+  font-size: var(--t-h4);
+  line-height: 1.1;
+  margin-bottom: 4px;
 }
-.tf-line dt {
-  flex: none;
-  font-size: var(--t-label);
-  color: var(--ink-2);
-}
-.tf-line::after {
-  content: '';
-  order: 1;
-  flex: 1;
-  min-width: 12px;
-  border-bottom: 1.5px dotted var(--line);
-  transform: translateY(-3px);
-}
-.tf-line dd {
-  order: 2;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-.tf-line.is-strong dd {
-  font-size: 22px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-}
-.tf-note {
+.kl-deck__body {
   font-size: var(--t-small);
-  line-height: 1.45;
   color: var(--ink-2);
 }
 
-/* the transaction, step by step */
-.tf-steps {
-  padding: 12px 14px;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--ink) 5%, transparent);
-}
-.tf-steps__h {
-  margin-bottom: 8px;
-  font-size: var(--t-label);
-  font-weight: 500;
-  color: var(--ink-2);
-}
-.tf-steps ol {
+/* ── the membership sticker ───────────────────────────────────────────── */
+.kl-card {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 14px;
+  padding: 0 18px 18px;
+  border: var(--stroke) solid var(--outline);
+  border-radius: var(--r-card);
+  background: var(--sticker);
+  color: var(--on-sticker);
+  box-shadow: var(--sh-3);
+  overflow: hidden;
+  --ink: #04181c;
+  --ink-2: #4a453b;
+  --ink-3: #6b655a;
+  --teal-ink: #2d7388;
 }
-.tf-steps li {
+.kl-profile {
+  transform: rotate(-0.8deg);
+}
+.kl-profile__band {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
-  font-size: var(--t-small);
-  line-height: 1.35;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 -18px;
+  padding: 7px 18px;
+  border-bottom: var(--stroke) solid var(--outline);
+  background: var(--mist);
+  font-size: 11px;
+  color: #1e6f8c;
 }
-.tf-steps__n {
-  flex: none;
-  display: inline-grid;
-  place-items: center;
-  width: 20px;
-  height: 20px;
-  border: 1.5px solid var(--ink);
-  border-radius: 50%;
-  font-size: var(--t-label);
-  line-height: 1;
-  transform: translateY(3px);
-}
-.tf-warn {
-  padding: 10px 12px;
-  border-left: 4px solid var(--mustard);
-  background: color-mix(in srgb, var(--mustard) 14%, transparent);
-  font-size: var(--t-small);
-  line-height: 1.4;
-}
-.tf-error {
-  display: flex;
-  gap: 10px;
-  padding: 12px 14px;
-  border: 2px solid var(--red-ink);
-  border-radius: 10px;
-  color: var(--ink);
-  background: color-mix(in srgb, var(--red) 8%, transparent);
-  font-size: var(--t-small);
-  line-height: 1.45;
-}
-.tf-error > svg {
-  flex: none;
-  margin-top: 1px;
-  color: var(--red-ink);
-}
-.tf-status {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  width: 100%;
-  min-height: 64px;
-  justify-content: center;
-}
-.tf-status__line {
+.kl-profile__top {
   display: flex;
   align-items: center;
-  gap: 12px;
-  font-size: 20px;
-  font-weight: 800;
-  letter-spacing: -0.01em;
+  gap: 14px;
 }
-.tf-status__note,
-.tf-status__tx {
-  font-size: var(--t-label);
-  color: var(--ink-2);
+.kl-profile__photo {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 76px;
+  height: 76px;
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: 50%;
+  background: var(--linen);
 }
-.tf-status__tx {
-  color: var(--pink-text);
+.kl-profile__id {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+.kl-profile__name {
+  overflow: hidden;
+  font-size: 26px;
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kl-profile__lvl {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.kl-xp {
+  display: block;
+  height: 14px;
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: var(--r-pill);
+  background: #fff;
+  overflow: hidden;
+}
+.kl-xp > span {
+  display: block;
+  height: 100%;
+  min-width: 6px;
+  background: var(--up);
+  border-right: var(--stroke-sm) solid var(--outline);
+}
+.kl-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 2px dashed var(--rule);
+  border-bottom: 2px dashed var(--rule);
+}
+.kl-stats > div {
+  padding: 8px 0 6px;
+}
+.kl-stats > div + div {
+  padding-left: 12px;
+  border-left: 2px dashed var(--rule);
+}
+.kl-stats dt {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.kl-stats dd {
+  font-size: 22px;
+  line-height: 1.2;
+}
+.kl-profile__edit {
   align-self: flex-start;
 }
 
-/* ── wallet sheet ─────────────────────────────────────────────────────── */
-.wl-body,
-.pf-body {
+/* ── colophon ─────────────────────────────────────────────────────────── */
+.kl-colophon {
+  margin-top: auto;
+  padding-top: 20px;
+  border-top: var(--stroke) solid var(--outline);
+  overflow: hidden;
+}
+.kl-colophon__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 24px;
+  padding: 0 var(--gutter) 14px;
+}
+.kl-colophon__name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--t-label);
+  color: var(--ink-3);
+}
+.kl-colophon__link {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-height: 44px;
+  align-items: center;
+  color: var(--ink);
+  text-decoration: none;
+}
+.kl-colophon__link .kb-icon {
+  color: var(--teal-ink);
+}
+.kl-colophon__label {
+  font-weight: 700;
+  text-decoration: underline wavy;
+  text-decoration-color: var(--sun);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 5px;
+}
+.kl-colophon__sub {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.kl-colophon__waves {
+  display: block;
+  width: 100%;
+  height: 52px;
+}
+
+/* ── phones ───────────────────────────────────────────────────────────── */
+.kl-root.is-phone .kl-mast {
+  gap: 8px;
+  padding: 12px 16px 10px;
+}
+.kl-root.is-phone .kl-mast__brand {
+  gap: 7px;
+}
+.kl-root.is-phone .kl-mast__right {
+  gap: 8px;
+}
+.kl-root.is-phone .kl-wallet {
+  min-height: 44px;
+  padding: 4px 10px 4px 5px;
+  gap: 7px;
+}
+.kl-root.is-phone .kl-wallet__coin {
+  width: 26px;
+  height: 26px;
+}
+.kl-root.is-phone .kl-wallet__coin::after {
+  left: 7px;
+  top: 5px;
+  width: 7px;
+  height: 10px;
+  border-width: 2.5px;
+}
+.kl-root.is-phone .kl-wallet__main {
+  font-size: 14px;
+}
+.kl-root.is-phone .kl-wallet.is-off .kl-wallet__top {
+  display: none;
+}
+.kl-root.is-phone .kl-status {
+  padding: 0 16px 2px;
+}
+.kl-root.is-phone .kl-board {
+  margin: 0 -4px;
+  padding: 18px 12px 14px;
+  box-shadow: var(--sh-3);
+}
+.kl-root.is-phone .kl-board__title {
+  font-size: 36px;
+}
+.kl-root.is-phone .kl-bell {
+  padding: 7px 10px 6px;
+}
+.kl-root.is-phone .kl-bell__time {
+  font-size: 21px;
+}
+.kl-root.is-phone .kl-ticket {
+  --stub-w: 92px;
+}
+.kl-root.is-phone .kl-ticket .kb-ticket__body {
+  grid-template-columns: minmax(0, 1fr);
+  padding: 12px 10px 12px 16px;
+}
+.kl-root.is-phone .kl-ticket .kb-ticket__title {
+  font-size: 20px;
+  white-space: normal;
+}
+.kl-root.is-phone .kl-ticket__loot {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--sun-ink);
+}
+.kl-ticket__state {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding-left: 4px;
+}
+.kl-root.is-phone .kl-ticket__fee:not(:only-child) {
+  /* the plate caption carries the fee on phones */
+  display: none;
+}
+.kl-root.is-phone .kl-ticket .kb-ticket__face {
+  min-height: 0;
+}
+.kl-root.is-phone .kl-ticket__round {
+  font-size: 11px;
+}
+.kl-root.is-phone .kl-board__head {
+  align-items: center;
+}
+.kl-root.is-phone .kl-board__kicker {
+  font-size: 11px;
+}
+.kl-root.is-phone .kl-ticket .kb-ticket__value {
+  font-size: 17px;
+}
+.kl-root.is-phone .kl-profile {
+  transform: none;
+}
+.kl-dock {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px max(8px, env(safe-area-inset-bottom));
+  border-top: var(--stroke) solid var(--outline);
+  background: var(--paper);
+}
+.kl-dock .kl-cta.kb-btn--lg {
+  min-height: 64px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kl-live-dot,
+  .kl-live__rec,
+  .kl-dots {
+    animation: none;
+  }
+  .kl-wallet:hover,
+  .kl-wallet:active {
+    transform: none;
+  }
+}
+
+/* ── page heads (also the guide's) ────────────────────────────────────── */
+.pg-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  padding-bottom: 18px;
+  margin-bottom: 26px;
+  border-bottom: 2px dashed var(--rule);
+}
+.pg-head__text {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.pg-head__kicker {
+  font-size: var(--t-label);
+  color: var(--teal-ink);
+}
+.pg-head__title {
+  font-size: var(--t-h1);
+  line-height: 0.98;
+}
+.pg-head__deck {
+  max-width: var(--measure);
+  font-size: var(--t-lede);
+  color: var(--ink-2);
+}
+.pg-head__aside {
+  flex: none;
+}
+
+/* ─────────────────────────── the wallet sheet ─────────────────────────── */
+.wl-body {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
-.wl-cap,
-.pf-cap {
-  font-size: var(--t-label);
-  color: var(--ink-2);
+.wl-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: var(--r-card);
+  background: var(--mist);
+}
+.wl-card__coin {
+  flex: none;
 }
 .wl-addr {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
+  min-width: 0;
+}
+.wl-cap {
+  font-size: 11px;
+  color: var(--ink-3);
 }
 .wl-addr__full {
   font-family: var(--font-mono);
-  font-size: 13.5px;
-  word-break: break-all;
-  padding: 10px 12px;
-  border: 1.5px dashed var(--ink);
-  border-radius: 8px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
 }
 .wl-addr__actions {
   display: flex;
-  align-items: center;
-  gap: 16px;
   flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
 }
 .wl-bal {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px 18px;
-  padding: 12px 0;
-  border-top: 2px solid var(--ink);
-  border-bottom: 1px solid var(--ink);
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  border-top: 2px dashed var(--rule);
 }
-.wl-bal > div:first-child {
-  grid-column: 1 / -1;
+.wl-bal > div {
+  padding: 10px 12px 10px 0;
+  border-bottom: 2px dashed var(--rule);
 }
 .wl-bal dd {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  margin-top: 3px;
-  font-variant-numeric: tabular-nums;
+  margin-top: 2px;
+}
+.wl-bal dd .mono {
+  font-size: 11px;
+  text-transform: none;
 }
 .wl-bal__big {
-  font-size: 34px;
-  font-weight: 800;
-  letter-spacing: -0.03em;
-  line-height: 1;
+  font-size: 26px;
 }
 .wl-bal__mid {
-  font-size: 20px;
-  font-weight: 800;
-}
-.wl-ok {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--green-ink);
-  font-size: var(--t-label);
+  font-size: 18px;
 }
 .wl-verify {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 10px;
+  padding: 12px 14px;
+  border: var(--stroke-sm) dashed var(--outline);
+  border-radius: var(--r-card);
 }
-.wl-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.wl-item {
-  display: flex;
+.wl-ok {
+  display: inline-flex;
   align-items: center;
-  gap: 12px;
-  width: 100%;
-  min-height: 60px;
-  padding: 10px 14px;
-  border: 2px solid var(--ink);
-  border-radius: 12px;
-  background: var(--card);
-  color: var(--ink);
-  font-size: 18px;
-  font-weight: 700;
-  cursor: pointer;
-  box-shadow: 3px 3px 0 var(--ink);
-  transition:
-    transform var(--dur-micro) var(--ease-spring),
-    box-shadow var(--dur-micro) var(--ease-spring);
-}
-.wl-item:hover {
-  box-shadow: 4px 4px 0 var(--pink);
-  transform: translate(-1px, -1px);
-}
-.wl-item:active {
-  transform: translate(2px, 2px);
-  box-shadow: 0 0 0 var(--ink);
-}
-.wl-item img {
-  border-radius: 8px;
-}
-.wl-item__name {
-  flex: 1;
-  text-align: left;
-}
-.wl-item__tag {
-  font-size: var(--t-label);
-  font-weight: 500;
-  color: var(--green-ink);
+  gap: 6px;
+  align-self: flex-start;
+  padding: 3px 11px;
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: var(--r-pill);
+  background: #e3f1ec;
+  color: var(--up-ink);
+  font-size: 12px;
 }
 .wl-install {
-  display: flex;
-  align-items: center;
-  gap: 18px;
+  display: inline-flex;
   flex-wrap: wrap;
-  text-decoration: none;
-}
-.wl-install .kb-btn {
-  text-decoration: none;
+  gap: 0 16px;
 }
 
-/* ── profile sheet ────────────────────────────────────────────────────── */
-.pf-hero {
-  display: grid;
-  place-items: center;
-  padding: 6px 0 0;
-}
-.pf-looks {
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-.pf-looks legend {
-  margin-bottom: 8px;
-}
-.pf-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
-  gap: 8px;
-}
-.pf-look {
+/* ─────────────────────────── the boarding sequence ─────────────────────────── */
+.tf-body {
   position: relative;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  min-height: 92px;
-  padding: 6px 4px 8px;
-  border: 2px solid transparent;
-  border-radius: 10px;
-  background: var(--card);
-  box-shadow: 0 1.5px 0 var(--line);
-  cursor: pointer;
-  transition: transform var(--dur-micro) var(--ease-spring);
+  gap: 16px;
 }
-.pf-look:hover {
-  transform: translateY(-2px);
+.tf-lede,
+.tf-note {
+  font-size: var(--t-small);
+  color: var(--ink-2);
 }
-.pf-look input {
-  position: absolute;
-  inset: 0;
-  margin: 0;
-  opacity: 0;
-  cursor: inherit;
+
+/* the boarding pass */
+.tf-ticket {
+  position: relative;
+  display: flex;
+  filter: drop-shadow(4px 4px 0 var(--shadow-ink));
 }
-.pf-look:has(input:focus-visible) {
-  outline: 3px solid var(--focus);
-  outline-offset: 2px;
+.tf-ticket__half.is-main {
+  flex: 1;
+  min-width: 0;
 }
-.pf-look.is-on {
-  border-color: var(--ink);
-  box-shadow: 3px 3px 0 var(--pink);
+.tf-ticket__main {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 100%;
+  padding: 14px 16px 14px 24px;
+  border: var(--stroke) solid var(--outline);
+  border-right: 0;
+  border-radius: var(--r-card) 0 0 var(--r-card);
+  background: #fff;
+  box-shadow: inset 9px 0 0 var(--kl-ink, var(--teal));
 }
-.pf-look__name {
-  font-size: 12.5px;
+.tf-ticket__kicker {
+  padding-right: 62px;
+  font-size: 11px;
+  color: var(--teal-ink);
+}
+.tf-ticket__room {
+  padding-right: 60px;
+  font-family: var(--font-display);
+  font-variation-settings: var(--fv-wonk);
+  font-weight: 800;
+  font-size: 28px;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+.tf-ticket__fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin-top: 4px;
+}
+.tf-ticket__fields > span {
+  display: flex;
+  flex-direction: column;
+}
+.tf-ticket__fields i {
+  font-style: normal;
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+.tf-ticket__fields b {
+  font-size: 12px;
   font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.tf-ticket__serial {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.tf-ticket__coin {
+  position: absolute;
+  right: 12px;
+  top: 10px;
+}
+.tf-ticket__stamp {
+  position: absolute;
+  right: 26px;
+  bottom: 6px;
+  z-index: 2;
+}
+.tf-ticket__half.is-stub {
+  flex: none;
+  width: 116px;
+}
+.tf-ticket__stub {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 100%;
+  padding: 10px 6px;
+  border: var(--stroke) solid var(--outline);
+  border-left: 2.5px dashed var(--outline);
+  border-radius: 0 var(--r-card) var(--r-card) 0;
+  background: var(--sun);
   text-align: center;
-  line-height: 1.15;
 }
-.pf-look__name.mono {
-  font-size: var(--t-label);
+.tf-ticket__fee {
+  font-size: 22px;
+  line-height: 1;
+}
+.tf-ticket__sym {
+  font-size: 11px;
+  color: #3a2e0a;
+  text-transform: none;
+}
+
+/* what is signed */
+.tf-lines {
+  display: flex;
+  flex-direction: column;
+}
+.tf-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 0;
+  border-bottom: 2px dashed var(--rule);
+}
+.tf-line dt {
+  flex: none;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.tf-line dd {
+  font-size: 14.5px;
+  text-align: right;
+}
+.tf-line.is-strong dd {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 20px;
+}
+
+/* the calls, as a boarding sequence */
+.tf-steps {
+  padding: 14px 16px;
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: var(--r-card);
+  background: var(--linen);
+}
+.tf-steps__h {
+  margin-bottom: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
   font-weight: 500;
+  letter-spacing: 0.08em;
+  color: var(--teal-ink);
+}
+.tf-steps ol {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.tf-steps li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  font-size: 15px;
+  border-radius: var(--r-tag);
+  transition: background-color 160ms linear;
+}
+.tf-steps li + li::before {
+  /* the dotted path from one step to the next */
+  content: '';
+  position: absolute;
+  left: 15px;
+  top: -12px;
+  height: 14px;
+  border-left: 2.5px dotted var(--outline);
+}
+.tf-steps__n {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: 50%;
+  background: var(--sticker);
+  font-size: 14px;
+}
+.tf-steps li.is-active {
+  background: #fbe7b0;
+  box-shadow: 0 0 0 6px #fbe7b0;
+}
+.tf-steps li.is-active .tf-steps__n {
+  background: var(--sun);
+  animation: tf-nudge 1.2s ease-in-out infinite;
+}
+.tf-steps li.is-done .tf-steps__n {
+  background: var(--up);
+  color: var(--cream);
+}
+.tf-steps li.is-done > span:last-child {
+  color: var(--ink-3);
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+}
+@keyframes tf-nudge {
+  0%, 100% { transform: rotate(0); }
+  50% { transform: rotate(-8deg) scale(1.06); }
 }
 
-/* ── responsive ───────────────────────────────────────────────────────── */
-@media (max-width: 759px) {
-  .kl-dateline {
-    gap: 4px 10px;
-  }
-  .kl-ticket .kb-ticket__title {
-    font-size: 20px;
-  }
-}
-@media (max-width: 380px) {
-  .kl-wordmark {
-    font-size: 40px;
-  }
-  .kl-ticket .kb-ticket__meta,
-  .kl-ticket__fee {
-    letter-spacing: 0.02em;
-  }
-}
-
-/* boot: the wordmark prints in two passes, ink first, then the pink pass lands off
-   register and snaps into its (slightly off) place */
-.kb-screen[data-entrance='boot'] .kl-wordmark__ink {
-  animation: kl-print-ink 0.2s linear 0.12s both;
-}
-.kb-screen[data-entrance='boot'] .kl-wordmark__pink {
-  animation: kl-print-pink 0.46s cubic-bezier(0.3, 0.7, 0.2, 1.25) 0.3s both;
-}
-@keyframes kl-print-ink {
-  from {
-    opacity: 0;
-  }
-}
-@keyframes kl-print-pink {
-  0% {
-    opacity: 0;
-    transform: translate(0.22em, -0.1em);
-  }
-  35% {
-    opacity: 1;
-    transform: translate(0.12em, -0.04em);
-  }
-  100% {
-    transform: translate(0.035em, 0.03em);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .kb-screen[data-entrance='boot'] .kl-wordmark__ink,
-  .kb-screen[data-entrance='boot'] .kl-wordmark__pink,
-  .kl-wordmark__coin,
-  .kl-live-dot,
-  .kl-live__rec,
-  .kl-dots {
-    animation: none !important;
-  }
-}
-
-.kb-sheet.is-bottom .tf-cancel {
-  display: none;
-}
-
-/* ── landed ticket, scroll cue, compact preview ───────────────────────── */
+.tf-error,
+.tf-warn,
 .tf-ok {
   display: flex;
+  align-items: flex-start;
   gap: 10px;
-  padding: 12px 14px;
-  border: 2px solid var(--green-ink);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--green) 9%, transparent);
+  padding: 10px 14px;
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: var(--r-card);
   font-size: var(--t-small);
-  line-height: 1.45;
 }
-.tf-ok > svg {
+.tf-error {
+  background: #ffe1dc;
+}
+.tf-error .kb-icon {
   flex: none;
-  margin-top: 1px;
-  color: var(--green-ink);
+  color: var(--down-ink);
+}
+.tf-warn {
+  background: #fbe7b0;
+}
+.tf-ok {
+  background: #e3f1ec;
+}
+.tf-ok .kb-icon {
+  flex: none;
+  color: var(--up-ink);
+}
+
+.tf-status {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+.tf-status__step {
+  display: inline-block;
+  align-self: flex-start;
+  padding: 2px 9px;
+  border: 2px solid var(--outline);
+  border-radius: var(--r-pill);
+  background: var(--sun);
+  font-size: 11px;
+}
+.tf-status__line {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-display);
+  font-variation-settings: var(--fv-display);
+  font-weight: 800;
+  font-size: 20px;
+}
+.tf-status__note {
+  font-size: 11px;
+  color: var(--ink-3);
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+.tf-status__tx {
+  font-size: 11px;
+  color: var(--teal-ink);
+}
+.tf-sheet .kb-sheet__foot .kb-btn {
+  white-space: nowrap;
+}
+.tf-sheet:not(.is-bottom) .tf-pay {
+  flex: 1 1 auto;
 }
 .tf-end {
   display: block;
   height: 1px;
-  margin-top: -16px;
 }
-/* sits on the bottom edge of the scrolling body while there is more to read */
 .tf-more {
   position: sticky;
   bottom: -18px;
@@ -1267,7 +1458,7 @@
   height: 56px;
   margin: -56px -22px -18px;
   padding-bottom: 10px;
-  background: linear-gradient(to bottom, transparent, var(--paper) 70%);
+  background: linear-gradient(to bottom, transparent, var(--sticker) 70%);
   pointer-events: none;
   opacity: 0;
   transition: opacity 160ms linear;
@@ -1279,207 +1470,28 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 3px 9px;
-  border-radius: 999px;
-  background: var(--ink);
-  color: var(--on-ink);
-  font-size: var(--t-label);
+  padding: 3px 10px;
+  border: 2px solid var(--outline);
+  border-radius: var(--r-pill);
+  background: var(--sticker);
+  font-size: 11px;
 }
 .tf-more__pill svg {
   transform: rotate(90deg);
 }
-@media (max-width: 639px), (max-height: 760px) {
-  .tf-ticket {
-    min-height: 0;
+@media (prefers-reduced-motion: reduce) {
+  .tf-steps li.is-active .tf-steps__n {
+    animation: none;
   }
-  .tf-ticket__main {
-    gap: 4px;
-    padding: 11px 14px 11px 20px;
+}
+@media (max-width: 480px) {
+  .tf-ticket__half.is-stub {
+    width: 92px;
   }
   .tf-ticket__room {
-    font-size: 25px;
-  }
-  .tf-ticket__stub {
-    width: 96px;
+    font-size: 23px;
   }
   .tf-ticket__fee {
-    font-size: 21px;
+    font-size: 18px;
   }
-  .tf-body {
-    gap: 12px;
-  }
-  .tf-line {
-    padding: 3px 0;
-  }
-  .tf-line.is-strong dd {
-    font-size: 20px;
-  }
-}
-
-/* ── section index (desktop), section pages, page heads ───────────────── */
-.kl-sections {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px 6px;
-  margin-top: 6px;
-  border-bottom: 2px solid var(--ink);
-}
-.kl-sections__item {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  min-height: 50px;
-  padding: 8px 18px 10px 8px;
-  border: 0;
-  background: none;
-  color: var(--ink-2);
-  font-family: var(--font-display);
-  font-size: 18px;
-  font-weight: 750;
-  font-stretch: 90%;
-  letter-spacing: -0.01em;
-  cursor: pointer;
-  transition: color var(--dur-micro) linear;
-}
-.kl-sections__item:hover,
-.kl-sections__item.is-on {
-  color: var(--ink);
-}
-.kl-sections__letter {
-  display: inline-grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  border: 1.5px solid currentColor;
-  border-radius: 4px;
-  font-size: 11px;
-  letter-spacing: 0;
-  transition:
-    background-color var(--dur-micro) linear,
-    transform var(--dur-micro) var(--ease-spring);
-}
-.kl-sections__item:hover .kl-sections__letter {
-  transform: rotate(-6deg);
-}
-.kl-sections__item.is-on .kl-sections__letter {
-  border-color: var(--ink);
-  background: var(--ink);
-  color: var(--on-ink);
-}
-.kl-sections__ink {
-  position: absolute;
-  left: 6px;
-  right: 10px;
-  bottom: -2px;
-  height: 5px;
-  border-radius: 2px 2px 0 0;
-  background: var(--pink);
-}
-.kl-section {
-  padding: 20px 0 8px;
-}
-
-.pg-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 14px 28px;
-  padding-bottom: 14px;
-  border-bottom: 2px solid var(--ink);
-  box-shadow:
-    0 3px 0 0 var(--paper),
-    0 4px 0 0 var(--ink);
-}
-.pg-head__text {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-}
-.pg-head__kicker {
-  font-size: var(--t-label);
-  color: var(--pink-text);
-}
-.pg-head__title {
-  font-size: clamp(40px, 5vw, 64px);
-  font-weight: 800;
-  font-stretch: 76%;
-  line-height: 0.88;
-  letter-spacing: -0.045em;
-}
-.pg-head__deck {
-  max-width: 54ch;
-  margin-top: 4px;
-  font-size: 17px;
-  line-height: 1.4;
-  color: var(--ink-2);
-  text-wrap: pretty;
-}
-.pg-head__aside {
-  flex: none;
-}
-.kl-root.is-phone .pg-head {
-  gap: 10px;
-  padding-bottom: 12px;
-}
-.kl-root.is-phone .pg-head__title {
-  font-size: 42px;
-}
-.kl-root.is-phone .pg-head__deck {
-  font-size: 15px;
-}
-@media (prefers-reduced-motion: reduce) {
-  .kl-sections__item:hover .kl-sections__letter {
-    transform: none;
-  }
-}
-
-/* ── colophon: page footer with the player guide link ───────────────── */
-.kl-colophon {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 28px 0 22px;
-}
-.kl-colophon__row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px 24px;
-}
-.kl-colophon__name {
-  font-size: var(--t-label);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ink-2);
-}
-.kl-colophon__link {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 10px;
-  min-height: 44px;
-  padding: 6px 2px;
-  color: var(--ink);
-  text-decoration: none;
-}
-.kl-colophon__label {
-  font-weight: 750;
-  text-decoration: underline;
-  text-decoration-thickness: 2px;
-  text-underline-offset: 4px;
-  text-decoration-color: var(--pink);
-}
-.kl-colophon__link:hover .kl-colophon__label {
-  color: var(--pink-text);
-}
-.kl-colophon__sub {
-  font-size: 12px;
-  color: var(--ink-2);
-}
-.kl-root.is-phone .kl-colophon {
-  padding: 18px 0 16px;
 }

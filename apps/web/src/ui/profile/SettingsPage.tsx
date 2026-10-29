@@ -61,9 +61,9 @@ function Level({ label, value, disabled, onChange, onCommit }: { label: string; 
 function Row({ label, note, children }: { label: string; note?: string; children: ReactNode }) {
   return (
     <div className="g-set__row">
-      <span className="st-label">
+      <span className="gs-label">
         <span className="g-set__label">{label}</span>
-        {note && <span className="st-note">{note}</span>}
+        {note && <span className="gs-note">{note}</span>}
       </span>
       <div className="g-set__ctl">{children}</div>
     </div>
@@ -86,8 +86,8 @@ export function SettingsPage({ headings = true }: { headings?: boolean }) {
     ['gs.fps', 'showFps'],
   ];
   return (
-    <div className="st-page">
-      {headings && <h3 className="st-h mono">{t('st.look')}</h3>}
+    <div className="gs-page">
+      {headings && <h3 className="gs-h mono">{t('st.look')}</h3>}
       <div className="g-set">
         <Row label={t('gs.theme')}>
           <Chip icon="sun" selected={s.theme === 'light'} onClick={() => set({ theme: 'light' })}>
@@ -117,7 +117,7 @@ export function SettingsPage({ headings = true }: { headings?: boolean }) {
           <Punch on={s.quality === 'low'} onChange={(v) => set({ quality: v ? 'low' : 'high' })} label={t('st.perf')} />
         </Row>
       </div>
-      {headings && <h3 className="st-h mono">{t('st.game')}</h3>}
+      {headings && <h3 className="gs-h mono">{t('st.game')}</h3>}
       <div className="g-set">
         <Row label={t('gs.minimap')}>
           <Punch on={s.showMinimap} onChange={(v) => set({ showMinimap: v })} label={t('gs.minimap')} />
@@ -128,12 +128,12 @@ export function SettingsPage({ headings = true }: { headings?: boolean }) {
           </Row>
         ))}
       </div>
-      <div className="st-foot">
+      <div className="gs-foot">
         <button type="button" className="kl-link mono" onClick={() => openModal('howto')}>
           <Icon name="docs" size={16} />
           {t('st.howto')}
         </button>
-        <span className="st-version mono">{t('st.version', { v: APP_VERSION })}</span>
+        <span className="gs-version mono">{t('st.version', { v: APP_VERSION })}</span>
       </div>
     </div>
   );

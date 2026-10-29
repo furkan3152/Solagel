@@ -1,4 +1,4 @@
-import { InkButton } from '../../design';
+import { Button } from '../../design';
 import { useT } from '../../i18n';
 import { openSessionOf, useChainData } from '../../wallet/chain';
 import { sessionsToCollect, type OpenSession } from '../../wallet/ticket';
@@ -37,9 +37,9 @@ export function PendingBanner({ onCollect }: { onCollect: () => void }) {
           <>
             <p className="kl-owed__title">{t('lo.pending.collect')}</p>
             <p className="kl-owed__note">{t('lo.pending.collectNote')}</p>
-            <InkButton variant="pink" size="sm" icon="arrow" onClick={onCollect}>
+            <Button variant="teal" size="sm" icon="arrow" onClick={onCollect}>
               {t('lo.pending.collectCta')}
-            </InkButton>
+            </Button>
           </>
         ) : (
           <p className="kl-owed__note mono">

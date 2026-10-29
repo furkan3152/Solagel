@@ -1,9 +1,27 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
-import { DUR, Dateline, Icon, Kb, Rule, Tabs, presets, springs, themeFromSettings, useReducedMotion, type IconName, type TabItem } from '../../design';
+import {
+  CoinCharacter,
+  CoinMark,
+  DUR,
+  Icon,
+  Kb,
+  PlateLabel,
+  Seigaiha,
+  StatusPill,
+  Tabs,
+  Wordmark,
+  presets,
+  springs,
+  themeFromSettings,
+  useReducedMotion,
+  type IconName,
+  type TabItem,
+} from '../../design';
+import { formatCountdown, useRound } from '../../game/round';
 import { engine } from '../../game/instance';
 import { sound } from '../../audio';
-import { useT } from '../../i18n';
+import { useT, type TKey } from '../../i18n';
 import { ProfileCard } from '../../wallet/ProfileCard';
 import { signInWithWallet } from '../../wallet/signIn';
 import { TicketFlow, type FlowMode } from '../../wallet/TicketFlow';
@@ -22,10 +40,11 @@ import { TicketList } from './TicketList';
 import { useLobbyModel, useMedia } from './useLobby';
 
 /**
- * The lobby. Phones get a single column (masthead, wallet slip, dateline,
- * tickets, Quick Play, bottom tabs). Desktop is a newspaper front page:
- * tickets on the left, the live room as the front-page photo in the middle,
- * the profile on the right.
+ * The lobby, a page of the picture book: the masthead (mark, page tabs, wallet), a plate
+ * caption with the arena's status, then the departures board of the four Elysian arenas
+ * (and practice) with the one primary button under it. Wide screens add the live window
+ * onto the floor and the membership sticker on the right; phones dock the button and the
+ * page tabs at the bottom.
  */
 export function Lobby() {
   const t = useT();
@@ -149,93 +168,94 @@ export function Lobby() {
     <section className="kl-col kl-col--tickets" aria-labelledby="kl-tickets-h">
       {mid && <PendingBanner onCollect={collect} />}
       <HeldBanner />
-      <div className="kl-section-head">
-        <h2 id="kl-tickets-h" className="kl-h2">
-          {t('lo.tickets')}
-        </h2>
-        <span className="kl-sub mono">{t('lo.ticketsSub')}</span>
-      </div>
-      <TicketList
-        tickets={model.tickets}
-        gates={model.gates}
-        openTickets={Object.entries(model.sessions)
-          .filter(([, s]) => s !== null)
-          .map(([k]) => Number(k))}
-        value={selectedKey}
-        onChange={setPicked}
-        onActivate={act}
-        punched={punched}
-      />
-      {mid && (
-        <div className="kl-cta-slot">
-          <QuickPlay ticket={ticket} gate={gate} onPress={act} busy={!connected} />
+      <div className="kl-board">
+        <div className="kl-board__head">
+          <div className="kl-board__titles">
+            <span className="kl-board__kicker mono">{t('lo.ticketsSub')}</span>
+            <h2 id="kl-tickets-h" className="kl-board__title">
+              {t('lo.boardTitle')}
+            </h2>
+          </div>
+          <NextBell />
         </div>
-      )}
+        {mid && (
+          <div className="kl-board__cols mono" aria-hidden="true">
+            <span>{t('lo.col.arena')}</span>
+            <span>{t('lo.col.round')}</span>
+            <span>{t('lo.col.fee')}</span>
+          </div>
+        )}
+        <TicketList
+          tickets={model.tickets}
+          gates={model.gates}
+          openTickets={Object.entries(model.sessions)
+            .filter(([, s]) => s !== null)
+            .map(([k]) => Number(k))}
+          value={selectedKey}
+          onChange={setPicked}
+          onActivate={act}
+          punched={punched}
+        />
+        {mid && (
+          <div className="kl-cta-slot">
+            <QuickPlay ticket={ticket} gate={gate} onPress={act} busy={!connected} />
+          </div>
+        )}
+      </div>
     </section>
   );
 
   const side = (
     <aside className="kl-col kl-col--side">
+      {wide && (
+        <section className="kl-col--photo" aria-label={t('lo.live')}>
+          <LiveFrame />
+        </section>
+      )}
       <ProfileCard onEdit={() => setTab('profile')} />
+      {wide && <Deck />}
     </aside>
   );
 
   return (
-    <Kb ref={root} theme={themeFromSettings(theme)} className={`kl-root${wide ? ` is-wide${tab === 'play' ? ' has-hole' : ''}` : mid ? ' is-mid' : ' is-phone'}`}>
+    <Kb
+      ref={root}
+      theme={themeFromSettings(theme)}
+      className={`kl-root${wide ? ` is-wide${tab === 'play' ? ' has-hole' : ''}` : mid ? ' is-mid' : ' is-phone'}`}
+    >
       <div className="kl-sheet-page">
-        <Masthead full={mid} wide={wide} />
-        {mid && <SectionNav page={tab} onChange={setTab} />}
+        <Masthead full={mid} wide={wide} page={tab} onPage={setTab} />
+        <Plate page={tab} inline={mid} />
 
         <AnimatePresence mode="wait" initial={false} custom={dir}>
-        {mid && tab !== 'play' ? (
-          <motion.main
-            key={tab}
-            className="kl-section"
-            {...pageMotion}
-          >
-            <SectionPage page={tab} />
-          </motion.main>
-        ) : mid ? (
-          <motion.main
-            key="play"
-            className={`kl-front${wide ? ' has-photo' : ''}`}
-            {...pageMotion}
-          >
-            {tickets}
-            {wide && (
-              <>
-                <Rule className="kl-vrule" aria-hidden="true" />
-                <section className="kl-col kl-col--photo" aria-label={t('lo.live')}>
-                  <LiveFrame />
-                  <Deck />
-                </section>
-              </>
-            )}
-            <Rule className="kl-vrule" aria-hidden="true" />
-            {side}
-          </motion.main>
-        ) : (
-          <motion.main
-            key={tab}
-            className="kl-phone-main"
-            {...pageMotion}
-          >
-            {tab === 'play' ? (
-              <>
-                <PendingBanner onCollect={collect} />
-                {tickets}
-              </>
-            ) : (
+          {mid && tab !== 'play' ? (
+            <motion.main key={tab} className="kl-section" {...pageMotion}>
               <SectionPage page={tab} />
-            )}
-          </motion.main>
-        )}
+            </motion.main>
+          ) : mid ? (
+            <motion.main key="play" className={`kl-front${wide ? ' has-photo' : ''}`} {...pageMotion}>
+              {tickets}
+              {side}
+            </motion.main>
+          ) : (
+            <motion.main key={tab} className="kl-phone-main" {...pageMotion}>
+              {tab === 'play' ? (
+                <>
+                  <PendingBanner onCollect={collect} />
+                  {tickets}
+                  <ProfileCard onEdit={() => setTab('profile')} />
+                </>
+              ) : (
+                <SectionPage page={tab} />
+              )}
+            </motion.main>
+          )}
         </AnimatePresence>
-        <Colophon onDocs={() => setTab('docs')} />
+        <Colophon onDocs={() => setTab('docs')} night={themeFromSettings(theme) === 'night'} />
       </div>
 
       {!mid && (
-        <footer className="kl-dock paper">
+        <footer className="kl-dock">
           {tab === 'play' && (
             <div className="kl-dock__cta">
               <QuickPlay ticket={ticket} gate={gate} onPress={act} busy={!connected} />
@@ -247,6 +267,56 @@ export function Lobby() {
 
       <TicketFlow open={!!flow?.open} mode={flow?.mode ?? 'buy'} ticket={flowTicket} onClose={() => setFlow((f) => (f ? { ...f, open: false } : f))} />
     </Kb>
+  );
+}
+
+/** The bell every arena shares: a sun badge on the departures board. */
+function NextBell() {
+  const t = useT();
+  const round = useRound(null);
+  if (!round) return null;
+  const closed = round.phase === 'closing';
+  return (
+    <span className={`kl-bell${closed ? ' is-closed' : ''}`} aria-hidden="true">
+      <span className="kl-bell__time num">{formatCountdown(round.msLeft)}</span>
+      <span className="kl-bell__label mono">{closed ? t('lo.bell.closed') : t('lo.bell')}</span>
+    </span>
+  );
+}
+
+/** The plate caption under the masthead: which page of the book this is, and the arena's status. */
+function Plate({ page, inline }: { page: LobbyPage; inline: boolean }) {
+  const t = useT();
+  const online = useUi((st) => st.online);
+  const connected = useUi((st) => st.connected);
+  const chain = useUi((st) => st.chain);
+  const items = [
+    chain?.enabled ? (chain.tokenReady ? t('lo.arenasOpen') : t('lo.arenasSoon')) : null,
+    chain?.enabled ? t('lo.feeDate', { pct: bpsPercent(feeBps(chain.feeBps)) }) : null,
+    connected ? t('lo.online', { n: online }) : t('lo.live.connecting'),
+  ].filter((x): x is string => x !== null);
+  const titles: Record<LobbyPage, TKey> = { play: 'lo.plate.play', ranks: 'lo.plate.ranks', profile: 'lo.plate.profile', docs: 'lo.plate.docs' };
+  const numerals: Record<LobbyPage, string> = { play: 'III', ranks: 'V', profile: 'VI', docs: 'VII' };
+  const status = (
+    <ul className="kl-status" aria-label={t('lo.dateline')}>
+      {items.map((x, i) => (
+        <li key={x}>
+          {i === 0 && chain?.enabled ? (
+            <StatusPill tone={chain.tokenReady ? 'live' : 'warn'} size="sm">
+              {x}
+            </StatusPill>
+          ) : (
+            <span className="kl-status__item mono">{x}</span>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+  return (
+    <div className="kl-plate">
+      <PlateLabel numeral={numerals[page]} title={t(titles[page])} aside={inline ? status : undefined} />
+      {!inline && status}
+    </div>
   );
 }
 
@@ -267,22 +337,25 @@ const SECTIONS: { id: LobbyPage; key: 'lo.tickets' | 'lo.tab.ranks' | 'lo.tab.pr
   { id: 'docs', key: 'lo.tab.docs', icon: 'docs' },
 ];
 
-/** Desktop section index under the dateline: the newspaper's pages, A to D. */
+/** Desktop page tabs in the masthead: a sun sticker slides under the open page. */
 function SectionNav({ page, onChange }: { page: LobbyPage; onChange: (p: LobbyPage) => void }) {
   const t = useT();
-  const spring = springs.dial;
+  const reduced = useReducedMotion();
   return (
     <nav className="kl-sections" aria-label={t('nav.sections')}>
-      {SECTIONS.map((s, i) => {
+      {SECTIONS.map((s) => {
         const on = s.id === page;
         return (
-          <button key={s.id} type="button" className={`kl-sections__item${on ? ' is-on' : ''}`} aria-current={on ? 'page' : undefined} onClick={() => onChange(s.id)}>
-            <span className="kl-sections__letter mono" aria-hidden="true">
-              {String.fromCharCode(65 + i)}
-            </span>
+          <button
+            key={s.id}
+            type="button"
+            className={`kl-sections__item${on ? ' is-on' : ''}`}
+            aria-current={on ? 'page' : undefined}
+            onClick={() => onChange(s.id)}
+          >
+            {on && <motion.span layoutId="kl-sections-ink" className="kl-sections__ink" transition={reduced ? { duration: 0 } : springs.pop} />}
             <Icon name={s.icon} size={18} />
             <span className="kl-sections__label">{t(s.key)}</span>
-            {on && <motion.span layoutId="kl-sections-ink" className="kl-sections__ink" transition={spring} />}
           </button>
         );
       })}
@@ -300,14 +373,16 @@ function PhoneTabs({ tab, setTab }: { tab: LobbyPage; setTab: (t: LobbyPage) => 
   return <Tabs variant="nav" items={items} value={tab} onChange={setTab} label={t('lo.nav')} className="kl-tabs" />;
 }
 
-/** The page footer: the paper's colophon with the link to the player guide (also at `/docs`). */
-function Colophon({ onDocs }: { onDocs: () => void }) {
+/** The page footer: the ring's horizon with the link to the player guide (also at `/docs`). */
+function Colophon({ onDocs, night }: { onDocs: () => void; night: boolean }) {
   const t = useT();
   return (
     <footer className="kl-colophon">
-      <Rule variant="double" />
       <div className="kl-colophon__row">
-        <span className="kl-colophon__name mono">{t('lo.colophon')}</span>
+        <span className="kl-colophon__name mono">
+          <CoinMark size={22} />
+          {t('lo.colophon')}
+        </span>
         <a
           className="kl-colophon__link"
           href="/docs"
@@ -322,89 +397,63 @@ function Colophon({ onDocs }: { onDocs: () => void }) {
           <span className="kl-colophon__sub mono">{t('lo.colophon.docsSub')}</span>
         </a>
       </div>
+      <Seigaiha rows={2} r={26} tone={night ? 'night' : 'day'} className="kl-colophon__waves" />
     </footer>
   );
 }
 
-/** The newspaper deck under the photo. */
+/** A short note under the live window: how a round goes, with three coins acting it out. */
 function Deck() {
   const t = useT();
   return (
     <div className="kl-deck">
-      <h2 className="kl-deck__title">{t('lo.deck.title')}</h2>
-      <p className="kl-deck__body">{t('lo.deck.body')}</p>
+      <div className="kl-deck__cast" aria-hidden="true">
+        <CoinCharacter paint="sun" mood="chomp" size={58} bob />
+        <CoinCharacter paint="foam" mood="scared" size={34} sweat />
+      </div>
+      <div>
+        <h2 className="kl-deck__title">{t('lo.deck.title')}</h2>
+        <p className="kl-deck__body">{t('lo.deck.body')}</p>
+      </div>
     </div>
   );
 }
 
-function Masthead({ full, wide }: { full: boolean; wide: boolean }) {
+function Masthead({ full, wide, page, onPage }: { full: boolean; wide: boolean; page: LobbyPage; onPage: (p: LobbyPage) => void }) {
   const t = useT();
   const s = useUi((st) => st.settings);
-  const online = useUi((st) => st.online);
-  const connected = useUi((st) => st.connected);
-  const chain = useUi((st) => st.chain);
-  const items = [
-    chain?.enabled ? (chain.tokenReady ? t('lo.arenasOpen') : t('lo.arenasSoon')) : null,
-    chain?.enabled ? t('lo.feeDate', { pct: bpsPercent(feeBps(chain.feeBps)) }) : null,
-    wide ? (connected ? t('lo.online', { n: online }) : t('lo.live.connecting')) : null,
-  ].filter((x): x is string => x !== null);
-  const today = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-
   return (
-    <>
-      <header className="kl-mast">
-        <div className="kl-mast__brand">
-          {wide && <span className="kl-mast__kicker mono">{today}</span>}
-          <h1 className="kl-wordmark" aria-label="elymum">
-            <span className="kl-wordmark__ink" aria-hidden="true">
-              elymum
-            </span>
-            <span className="kl-wordmark__pink" aria-hidden="true">
-              elymum
-            </span>
-            <CoinMark />
-          </h1>
-        </div>
-        <div className="kl-mast__right">
-          {full && (
-            <div className="kl-controls">
-              <button
-                type="button"
-                className="kb-iconbtn"
-                aria-label={`${t('lo.theme')}: ${s.theme === 'dark' ? t('lo.theme.night') : t('lo.theme.paper')}`}
-                aria-pressed={s.theme === 'dark'}
-                onClick={() => updateSettings({ theme: s.theme === 'dark' ? 'light' : 'dark' })}
-              >
-                <Icon name={s.theme === 'dark' ? 'moon' : 'sun'} size={20} />
-              </button>
-              <button
-                type="button"
-                className="kb-iconbtn"
-                aria-label={t('lo.sound')}
-                aria-pressed={s.sound}
-                onClick={() => updateSettings({ sound: !s.sound })}
-              >
-                <Icon name={s.sound ? 'sound' : 'mute'} size={20} />
-              </button>
-            </div>
-          )}
+    <header className="kl-mast">
+      <a className="kl-mast__brand" href="/" aria-label={t('lo.home')}>
+        <CoinMark size={wide ? 44 : 36} />
+        <Wordmark height={wide ? 40 : full ? 32 : 24} className="kl-mast__word" title="Elymum" />
+        {wide && <span className="kl-mast__kicker mono">{t('lo.kicker')}</span>}
+      </a>
+      {full && <SectionNav page={page} onChange={onPage} />}
+      <div className="kl-mast__right">
+        {full && (
+          <>
+            <button
+              type="button"
+              className="kb-iconbtn"
+              aria-label={`${t('lo.theme')}: ${s.theme === 'dark' ? t('lo.theme.night') : t('lo.theme.paper')}`}
+              aria-pressed={s.theme === 'dark'}
+              onClick={() => updateSettings({ theme: s.theme === 'dark' ? 'light' : 'dark' })}
+            >
+              <Icon name={s.theme === 'dark' ? 'moon' : 'sun'} size={20} />
+            </button>
+            <button type="button" className="kb-iconbtn" aria-label={t('lo.sound')} aria-pressed={s.sound} onClick={() => updateSettings({ sound: !s.sound })}>
+              <Icon name={s.sound ? 'sound' : 'mute'} size={20} />
+            </button>
+          </>
+        )}
+        {full && (
           <button type="button" className="kb-iconbtn" aria-label={t('lo.settings')} onClick={() => openModal('settings')}>
             <Icon name="settings" size={20} />
           </button>
-          <WalletButton />
-        </div>
-      </header>
-      <Dateline items={items} label={t('lo.dateline')} className="kl-dateline" />
-    </>
-  );
-}
-
-function CoinMark() {
-  return (
-    <svg className="kl-wordmark__coin" viewBox="0 0 40 40" aria-hidden="true">
-      <circle cx="22" cy="22" r="15" style={{ fill: 'var(--teal)' }} />
-      <circle cx="19" cy="19" r="15" style={{ fill: 'var(--pink)', mixBlendMode: 'multiply' }} />
-      <circle cx="19" cy="19" r="10" fill="none" style={{ stroke: 'var(--ink-fixed)' }} strokeWidth="1.6" opacity="0.5" />
-    </svg>
+        )}
+        <WalletButton />
+      </div>
+    </header>
   );
 }

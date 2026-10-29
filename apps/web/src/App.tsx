@@ -24,15 +24,8 @@ function GameCanvas() {
       engine.destroy();
     };
   }, []);
-  const theme = useUi((s) => s.settings.theme);
-  const quality = useUi((s) => s.settings.quality);
-  return (
-    <>
-      <canvas ref={ref} className="game-canvas" />
-      {/* paper grain over the world: a static composited layer (a per-frame canvas fill cost ~10 fps) */}
-      {quality === 'high' && <div className="kb g-grain" data-theme={themeFromSettings(theme)} aria-hidden="true" />}
-    </>
-  );
+  // the floor is drawn flat, like the picture book: no grain over it
+  return <canvas ref={ref} className="game-canvas" />;
 }
 
 function ChainSync() {
@@ -54,11 +47,11 @@ function Screens() {
   const theme = useUi((s) => s.settings.theme);
   return (
     <>
-      {/* lobby ↔ game: the paper wipes open onto the world and closes around it on the way back */}
+      {/* lobby <-> game: the page opens onto the world and closes around it on the way back */}
       <ScreenTransition show={screen === 'lobby'} home={lobbyWindow}>
         <Lobby />
       </ScreenTransition>
-      {/* Paper Ticket game view, sheets and toasts (portalled; themed from this root) */}
+      {/* the HUD stickers, sheets and toasts (portalled; themed from this root) */}
       <Kb theme={themeFromSettings(theme)} paper={false} className="g-root">
         <AnimatePresence>{screen !== 'lobby' && <GameHud key="hud" />}</AnimatePresence>
         <DeathSheet />

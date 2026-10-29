@@ -69,7 +69,7 @@ describe('emote stickers', () => {
 });
 
 describe('death sheet', () => {
-  it('stamps EATEN, names the bot line and shows the value lost', async () => {
+  it('says Eaten., names the bot line and shows the value lost', async () => {
     useUi.setState({
       screen: 'dead',
       room: ARENA,
@@ -82,7 +82,7 @@ describe('death sheet', () => {
     );
     // the sheet waits out the death slow motion
     expect(screen.queryByRole('dialog')).toBeNull();
-    expect(await screen.findByRole('dialog', { name: 'Eaten' })).toBeTruthy();
+    expect(await screen.findByRole('dialog', { name: 'Eaten.' })).toBeTruthy();
     expect(screen.getByText('Bot · your tokens spilled across the map')).toBeTruthy();
     expect(screen.getByText('−1,450')).toBeTruthy();
     expect(screen.getByRole('button', { name: /Buy back in/ })).toBeTruthy();

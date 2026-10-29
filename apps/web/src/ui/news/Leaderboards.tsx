@@ -1,7 +1,7 @@
 import { motion } from 'motion/react';
 import { useAddress } from '../../wallet/store';
 import { useEffect, useState, type ReactNode } from 'react';
-import { Chip, Icon, STAGGER, Skeleton, StampSpinner, Tabs, tabPanelProps, useReducedMotion, type TabItem } from '../../design';
+import { Chip, Icon, STAGGER, Skeleton, StampSpinner, Tabs, springs, tabPanelProps, useReducedMotion, type TabItem } from '../../design';
 import { SERVER } from '../../config';
 import { useT } from '../../i18n';
 import { CoinPortrait } from '../game/CoinPortrait';
@@ -41,8 +41,8 @@ function useOffchainBoards(active: boolean): Boards {
 }
 
 /**
- * The standings as a newspaper page: Today / All time tabs over the server's
- * off-chain records (best single games, bots excluded). No prizes: the
+ * The standings: Today / All time tabs over the server's off-chain records (best single
+ * games, bots excluded), the top three on a podium of terraces, then the table. No prizes: the
  * standings are for bragging rights only.
  */
 export function Leaderboards() {
@@ -98,6 +98,7 @@ function OffchainFront({ kind, boards }: { kind: 'today' | 'all'; boards: Boards
           </>
         )}
         {boards.state === 'ok' && rows.length === 0 && <p className="nw-note">{t('nw.empty')}</p>}
+        {rows.length > 0 && <Podium rows={rows} />}
         {rows.length > 0 && (
           <Standings
             rows={rows.map((r, i) => ({
@@ -113,6 +114,38 @@ function OffchainFront({ kind, boards }: { kind: 'today' | 'all'; boards: Boards
           />
         )}
       </article>
+    </div>
+  );
+}
+
+/* ── the podium: the top three coins on terraces ──────────────────────── */
+
+function Podium({ rows }: { rows: LbRecord[] }) {
+  const nf = new Intl.NumberFormat('en-US');
+  const reduced = useReducedMotion();
+  // second, first, third: the winner stands on the tallest terrace in the middle
+  const order = [1, 0, 2].filter((i) => rows[i]);
+  return (
+    <div className="nw-podium" aria-hidden="true">
+      {order.map((i, k) => {
+        const r = rows[i];
+        return (
+          <motion.div
+            key={`${i}-${r.name}`}
+            className={`nw-podium__spot is-${i + 1}`}
+            initial={reduced ? false : { opacity: 0, y: -18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={reduced ? { duration: 0 } : { ...springs.drop, delay: k * STAGGER * 2 }}
+          >
+            <CoinPortrait skin={r.skin} size={i === 0 ? 96 : 72} expression={i === 0 ? 'proud' : 'happy'} seed={i + 4} still={reduced} />
+            <span className="nw-podium__name">{r.name}</span>
+            <span className="nw-podium__step">
+              <span className="nw-podium__n display">{i + 1}</span>
+              <span className="nw-podium__score num">{nf.format(Math.round(r.score))}</span>
+            </span>
+          </motion.div>
+        );
+      })}
     </div>
   );
 }
@@ -176,7 +209,7 @@ function Standings({
                 <CoinPortrait skin={r.skin} size={i < 3 ? 38 : 30} still seed={i + 1} className="nw-table__coin" />
                 <span className="nw-table__label">{r.name}</span>
                 {r.me && (
-                  <Chip tone="pink" className="nw-table__me">
+                  <Chip tone="sun" className="nw-table__me">
                     {t('nw.you')}
                   </Chip>
                 )}

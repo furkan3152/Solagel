@@ -1,4 +1,5 @@
-import { InkButton } from '../design';
+import { shortAddress } from '@elymum/shared';
+import { Button } from '../design';
 import { levelProgress } from '../game/engine';
 import { useT } from '../i18n';
 import { useUi } from '../store';
@@ -6,7 +7,10 @@ import { CoinPortrait } from '../ui/game/CoinPortrait';
 import { useChainData } from './chain';
 import { useAddress } from './store';
 
-/** Name, level and the server's record of the player, printed like a membership card. */
+/**
+ * The player as a membership sticker: a mist band with the member number, the coin they
+ * wear, name, level and XP, and the server's record of them in three mono figures.
+ */
 export function ProfileCard({ onEdit }: { onEdit?: () => void }) {
   const t = useT();
   const address = useAddress();
@@ -21,8 +25,14 @@ export function ProfileCard({ onEdit }: { onEdit?: () => void }) {
 
   return (
     <section className="kl-card kl-profile" aria-labelledby="kl-profile-h">
+      <div className="kl-profile__band mono" aria-hidden="true">
+        <span>{t('pf.member')}</span>
+        <span>{connected ? shortAddress(address, 4, 4) : t('pf.guestNo')}</span>
+      </div>
       <div className="kl-profile__top">
-        <CoinPortrait skin={settings.skin} size={64} expression="happy" seed={9} className="kl-profile__coin" />
+        <span className="kl-profile__photo">
+          <CoinPortrait skin={settings.skin} size={64} expression="happy" seed={9} className="kl-profile__coin" />
+        </span>
         <div className="kl-profile__id">
           <h3 id="kl-profile-h" className="kl-profile__name">
             {name}
@@ -46,22 +56,22 @@ export function ProfileCard({ onEdit }: { onEdit?: () => void }) {
         <dl className="kl-stats">
           <div>
             <dt className="mono">{t('pf.games')}</dt>
-            <dd>{nf.format(profile.stats.games)}</dd>
+            <dd className="num">{nf.format(profile.stats.games)}</dd>
           </div>
           <div>
             <dt className="mono">{t('pf.kills')}</dt>
-            <dd>{nf.format(profile.stats.kills)}</dd>
+            <dd className="num">{nf.format(profile.stats.kills)}</dd>
           </div>
           <div>
             <dt className="mono">{t('pf.best')}</dt>
-            <dd>{nf.format(profile.stats.best)}</dd>
+            <dd className="num">{nf.format(profile.stats.best)}</dd>
           </div>
         </dl>
       )}
       {onEdit && (
-        <InkButton variant="paper" size="sm" lead="user" onClick={onEdit}>
+        <Button variant="secondary" size="sm" lead="user" onClick={onEdit} className="kl-profile__edit">
           {t('pf.edit')}
-        </InkButton>
+        </Button>
       )}
     </section>
   );

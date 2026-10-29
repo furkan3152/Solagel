@@ -1,7 +1,7 @@
 import { BASIC_SKINS, MAX_NAME_LENGTH, isBasicSkin, sanitizeName, shortAddress, utf8Length } from '@elymum/shared';
 import { useEffect, useId, useRef, useState } from 'react';
 import { motion } from 'motion/react';
-import { Field, Icon, InkButton, staggerIn, useReducedMotion } from '../../design';
+import { Button, Field, Icon, Seigaiha, staggerIn, useReducedMotion } from '../../design';
 import { levelProgress } from '../../game/engine';
 import { sound } from '../../audio';
 import { useT } from '../../i18n';
@@ -61,8 +61,10 @@ function MemberCard() {
   return (
     <section className="pf-card" aria-labelledby="pf-card-h">
       <span className="pf-card__band mono" aria-hidden="true">
-        {t('pf.card')} · ELYMUM
+        <span>{t('pf.card')} · ELYMUM</span>
+        <span>{owner ? `NO. ${owner.slice(2, 6).toUpperCase()}` : t('pf.guestNo')}</span>
       </span>
+      <Seigaiha rows={3} r={22} span={600} tone="ink" className="pf-card__waves" />
       <div className="pf-card__grid">
         <span className="pf-card__photo">
           <CoinPortrait skin={settings.skin} size={104} expression="proud" seed={11} />
@@ -87,9 +89,9 @@ function MemberCard() {
             <>
               <span className="pf-card__lvl mono">{t('pf.guest')}</span>
               <p className="kl-note">{t('pf.guestNote')}</p>
-              <InkButton variant="ink" size="md" lead="wallet" onClick={() => openModal('wallet')}>
+              <Button variant="teal" size="md" lead="wallet" onClick={() => openModal('wallet')}>
                 {t('wl.connect')}
-              </InkButton>
+              </Button>
             </>
           )}
         </div>
@@ -201,13 +203,13 @@ function NameAndCoin() {
         <span className="pf-save__state mono" role="status">
           {busy ? t('pf.saving') : dirty ? t('pf.unsaved') : token ? t('pf.serverNote') : t('pf.createNote')}
         </span>
-        <InkButton variant={dirty ? 'pink' : 'paper'} size="md" icon="check" disabled={!dirty || busy} onClick={() => void save()}>
+        <Button variant={dirty ? 'primary' : 'secondary'} size="md" icon="check" disabled={!dirty || busy} onClick={() => void save()}>
           {t('pf.save')}
-        </InkButton>
+        </Button>
         {owner && !token && (
-          <InkButton variant="paper" size="md" lead="key" disabled={busy} onClick={() => void signInWithWallet(true)}>
+          <Button variant="secondary" size="md" lead="key" disabled={busy} onClick={() => void signInWithWallet(true)}>
             {t('wl.verify')}
-          </InkButton>
+          </Button>
         )}
       </div>
     </section>
@@ -245,7 +247,7 @@ function Record() {
         {stats.map(([k, v], i) => (
           <motion.div key={k} {...staggerIn(i, reduced)}>
             <dt className="mono">{k}</dt>
-            <dd>{v}</dd>
+            <dd className="num">{v}</dd>
           </motion.div>
         ))}
       </dl>

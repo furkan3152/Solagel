@@ -135,7 +135,7 @@ describe('HUD round chip', () => {
     renderChip();
     const chip = screen.getByRole('timer', { name: 'Round ends in 3:12' });
     expect(chip.dataset.phase).toBe('open');
-    expect(chip.textContent).toBe('Round3:12');
+    expect(chip.textContent).toBe('3:12until the bell');
     expect(screen.queryByTestId('round-count')).toBeNull();
   });
 
@@ -144,7 +144,7 @@ describe('HUD round chip', () => {
     renderChip();
     const chip = screen.getByRole('timer', { name: 'Final minute: 0:42 left' });
     expect(chip.className).toContain('is-closing');
-    expect(chip.textContent).toBe('Final minute0:42');
+    expect(chip.textContent).toBe('0:42Final minute');
     expect(screen.queryByTestId('round-count')).toBeNull();
   });
 
@@ -152,7 +152,7 @@ describe('HUD round chip', () => {
     clockAt(R.endsAt - 6_500);
     renderChip();
     expect(screen.getByTestId('round-count').textContent).toBe('7');
-    expect(screen.getByRole('timer').textContent).toBe('Final minute0:07');
+    expect(screen.getByRole('timer').textContent).toBe('0:07Final minute');
   });
 
   it('is not shown outside arenas', () => {

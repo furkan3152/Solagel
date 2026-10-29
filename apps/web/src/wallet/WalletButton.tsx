@@ -7,8 +7,8 @@ import { useChainData } from './chain';
 import { useWallet } from './store';
 
 /**
- * The wallet label in the masthead: a dashed slip with the short address over the $ELYMUM
- * balance. Disconnected, it is the "connect" slip.
+ * The wallet in the masthead: a cream sticker with a little coin, the short address over the
+ * $ELYMUM balance. Disconnected, it is a teal "connect" sticker (practice needs none).
  */
 export function WalletButton() {
   const t = useT();
@@ -24,10 +24,10 @@ export function WalletButton() {
     const connecting = status === 'connecting';
     return (
       <button type="button" className="kl-wallet is-off" onClick={() => openModal('wallet')} disabled={connecting} aria-busy={connecting}>
-        <span className="kl-wallet__top mono">{t('wl.connectSub')}</span>
-        <span className="kl-wallet__main">
-          <Icon name="wallet" size={18} />
-          {t('wl.connect')}
+        <Icon name="wallet" size={20} className="kl-wallet__icon" />
+        <span className="kl-wallet__text">
+          <span className="kl-wallet__main">{t('wl.connect')}</span>
+          <span className="kl-wallet__top mono">{t('wl.connectSub')}</span>
         </span>
       </button>
     );
@@ -43,18 +43,20 @@ export function WalletButton() {
       aria-label={bal === null ? t('wl.labelNoBal', { addr: short }) : t('wl.label', { addr: short, bal, sym: tok.symbol })}
       title={address}
     >
-      <span className="kl-wallet__top mono">
+      <span className="kl-wallet__coin" aria-hidden="true">
         {!verified && <span className="kl-wallet__dot" title={t('wl.unverified')} />}
-        {short}
       </span>
-      <span className="kl-wallet__main">
-        {soon ? (
-          <span className="kl-wallet__sym mono">{t('wl.tokenSoon')}</span>
-        ) : (
-          <>
-            {bal ?? '…'} <span className="kl-wallet__sym mono">{tok.symbol}</span>
-          </>
-        )}
+      <span className="kl-wallet__text">
+        <span className="kl-wallet__top mono">{short}</span>
+        <span className="kl-wallet__main num">
+          {soon ? (
+            <span className="kl-wallet__sym mono">{t('wl.tokenSoon')}</span>
+          ) : (
+            <>
+              {bal ?? '…'} <span className="kl-wallet__sym mono">{tok.symbol}</span>
+            </>
+          )}
+        </span>
       </span>
     </button>
   );

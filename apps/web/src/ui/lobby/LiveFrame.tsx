@@ -6,7 +6,7 @@ import { useUi } from '../../store';
 import { roomName } from '../game/format';
 
 /**
- * The front-page photo: a window cut into the lobby paper through which the
+ * The live window: a sticker frame cut into the lobby page through which the
  * live game canvas (spectating the busiest room) shows. The hole is a CSS mask
  * on the lobby root (`--hole-*`), kept in sync with this element's box, so the
  * world is rendered once by the engine and never copied.
@@ -52,8 +52,7 @@ export function LiveFrame() {
   return (
     <figure className="kl-live">
       <div className="kl-live__frame">
-        <Tape rotate={-6} width={96} style={{ left: -18, top: -10 }} />
-        <Tape rotate={8} width={84} tone="pink" style={{ right: -16, bottom: -8 }} />
+        <Tape rotate={-4} width={96} style={{ left: '50%', marginLeft: -48, top: -15 }} />
         <div ref={windowRef} className="kl-live__window" role="img" aria-label={room ? t('lo.live.label', { room: name }) : t('lo.live.connecting')}>
           {!connected && (
             <span className="kl-live__wait mono kb-wait">

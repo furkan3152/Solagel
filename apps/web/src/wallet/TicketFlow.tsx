@@ -3,7 +3,7 @@ import { arenaMeta } from '@elymum/shared';
 import { motion } from 'motion/react';
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { Address, Hash } from 'viem';
-import { Icon, InkButton, Sheet, Stamp, StampSpinner, markTransitionOrigin, useReducedMotion } from '../design';
+import { Button, CoinCharacter, Icon, Sheet, Stamp, StampSpinner, markTransitionOrigin, useReducedMotion } from '../design';
 import { engine } from '../game/instance';
 import { announce, sound } from '../audio';
 import { useT } from '../i18n';
@@ -173,7 +173,10 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
     try {
       // re-read the arena, the allowance and the config: the price and the fee rate (fixed into the
       // ticket at join) signed must be the ones shown
-      const [p, fresh] = await Promise.all([planJoin(client, { arena: arenaAddress, arenaId, player: owner, token: config.token! }), getArenaConfig(client, arenaAddress)]);
+      const [p, fresh] = await Promise.all([
+        planJoin(client, { arena: arenaAddress, arenaId, player: owner, token: config.token! }),
+        getArenaConfig(client, arenaAddress),
+      ]);
       if (p.entryFee !== review.fee) return failName('PriceChanged');
       if (fresh.feeBps !== review.bps) return failName('FeeChanged');
       if (fresh.paused) return failName('Paused');
@@ -245,26 +248,29 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
         : t('tf.collect.cta', { amount: tok.exact(v.owed), sym: tok.symbol });
 
   const stepIndex = step ? v.steps.indexOf(step) + 1 : 0;
-  const stepLabel = step === 'approve' ? t('tf.step.approve', { fee: tok.exact(v.fee), sym: tok.symbol }) : step === 'join' ? t('tf.step.join', { room }) : null;
+  /** Calls already confirmed on the way (the boarding sequence ticks them off). */
+  const doneCount = phase === 'stamped' ? v.steps.length : stepIndex > 0 ? stepIndex - 1 : 0;
+  const stepLabel =
+    step === 'approve' ? t('tf.step.approve', { fee: tok.exact(v.fee), sym: tok.symbol }) : step === 'join' ? t('tf.step.join', { room }) : null;
 
   const footer = landed ? (
     <>
-      <InkButton variant="pink" size="lg" icon="play" onClick={resume}>
+      <Button variant="primary" size="lg" icon="play" onClick={resume}>
         {t('lo.cta.resume')}
-      </InkButton>
-      <InkButton variant="paper" size="lg" onClick={onClose} className="tf-cancel">
+      </Button>
+      <Button variant="secondary" size="lg" onClick={onClose} className="tf-cancel">
         {t('tf.close')}
-      </InkButton>
+      </Button>
     </>
   ) : phase === 'review' || phase === 'error' ? (
     <>
       {/* no autofocus here: the Enter that opened the sheet must never land on the pay button */}
-      <InkButton variant="pink" size="lg" icon={mode === 'buy' ? 'ticket' : 'arrow'} disabled={!canConfirm} onClick={() => void confirm()}>
+      <Button variant="primary" size="lg" icon={mode === 'buy' ? 'ticket' : 'arrow'} disabled={!canConfirm} onClick={() => void confirm()} className="tf-pay">
         {phase === 'error' ? t('tf.retry') : confirmLabel}
-      </InkButton>
-      <InkButton variant="paper" size="lg" onClick={onClose} className="tf-cancel">
+      </Button>
+      <Button variant="secondary" size="lg" onClick={onClose} className="tf-cancel">
         {t('tf.cancel')}
-      </InkButton>
+      </Button>
     </>
   ) : (
     <div className="tf-status" role="status" aria-live="polite">
@@ -345,6 +351,28 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
           )
         )}
 
+        <section className="tf-steps" aria-label={t('tf.signs')}>
+          <h3 className="tf-steps__h mono">{v.steps.length > 1 && mode === 'buy' ? t('tf.signsTwo') : t('tf.signs')}</h3>
+          <ol>
+            {(mode === 'buy' ? v.steps : ([mode] as const)).map((s, i) => (
+              <li key={s} className={mode === 'buy' && i < doneCount ? 'is-done' : step === s || (mode !== 'buy' && busy) ? 'is-active' : undefined}>
+                <span className="tf-steps__n num" aria-hidden="true">
+                  {i + 1}
+                </span>
+                <span>
+                  {s === 'approve'
+                    ? t('tf.step.approve', { fee: tok.exact(v.fee), sym: tok.symbol })
+                    : s === 'collect'
+                      ? t('tf.step.collect', { room })
+                      : s === 'refund'
+                        ? t('tf.step.refund', { room })
+                        : t('tf.step.join', { room })}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </section>
+
         {mode === 'collect' && (
           <>
             <p className="tf-lede">{t('tf.collect.body')}</p>
@@ -368,27 +396,6 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
         {maintenance && <p className="tf-warn">{t('tf.err.Maintenance')}</p>}
         {lowGas && !busy && <p className="tf-warn">{t('tf.lowGas', { chain: chainName })}</p>}
 
-        <section className="tf-steps" aria-label={t('tf.signs')}>
-          <h3 className="tf-steps__h mono">{v.steps.length > 1 && mode === 'buy' ? t('tf.signsTwo') : t('tf.signs')}</h3>
-          <ol>
-            {(mode === 'buy' ? v.steps : ([mode] as const)).map((s, i) => (
-              <li key={s} className={step === s ? 'is-active' : undefined}>
-                <span className="tf-steps__n mono" aria-hidden="true">
-                  {i + 1}
-                </span>
-                <span>
-                  {s === 'approve'
-                    ? t('tf.step.approve', { fee: tok.exact(v.fee), sym: tok.symbol })
-                    : s === 'collect'
-                      ? t('tf.step.collect', { room })
-                      : s === 'refund'
-                        ? t('tf.step.refund', { room })
-                        : t('tf.step.join', { room })}
-                </span>
-              </li>
-            ))}
-          </ol>
-        </section>
         <span ref={endRef} className="tf-end" aria-hidden="true" />
         <span className={`tf-more${moreBelow ? ' is-on' : ''}`} aria-hidden="true">
           <span className="tf-more__pill mono">
@@ -424,7 +431,7 @@ function Line({ label, value, strong = false }: { label: string; value: string; 
   );
 }
 
-/** The ticket itself: stamped "VALID" on confirmation, then its stub tears off. */
+/** The boarding pass itself: stamped "VALID" on confirmation, then its stub tears off. */
 function TicketPreview({
   ticket,
   room,
@@ -447,14 +454,17 @@ function TicketPreview({
       setTorn(false);
       return;
     }
-    const id = setTimeout(() => {
-      setTorn(true);
-      if (!reduced) sound.tear();
-    }, reduced ? 200 : TEAR_AT_MS);
+    const id = setTimeout(
+      () => {
+        setTorn(true);
+        if (!reduced) sound.tear();
+      },
+      reduced ? 200 : TEAR_AT_MS,
+    );
     return () => clearTimeout(id);
   }, [stamped, reduced]);
   const now = new Date();
-  const date = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  const date = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
   const time = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
   const serial = `${String(ticket.arenaId).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
   const style = { '--kl-ink': arenaMeta(ticket.arenaId ?? 0).ink } as CSSProperties;
@@ -471,12 +481,29 @@ function TicketPreview({
             {t('tf.admit')} · {t('tf.seat')}
           </span>
           <span className="tf-ticket__room">{room}</span>
-          <span className="tf-ticket__serial mono">
-            {t('tf.serial', { n: serial })} · {date} {time}
+          <span className="tf-ticket__fields">
+            <span>
+              <i className="mono">{t('tf.field.from')}</i>
+              <b className="mono">{t('tf.field.fromV')}</b>
+            </span>
+            <span>
+              <i className="mono">{t('tf.field.to')}</i>
+              <b className="mono">{t('tf.field.toV')}</b>
+            </span>
+            <span>
+              <i className="mono">{t('tf.field.date')}</i>
+              <b className="mono">
+                {date} {time}
+              </b>
+            </span>
+          </span>
+          <span className="tf-ticket__serial mono">{t('tf.serial', { n: serial })}</span>
+          <span className="tf-ticket__coin">
+            <CoinCharacter paint="sun" mood={stamped ? 'happy' : 'smile'} size={54} bob={!reduced} />
           </span>
           {stamped && (
             <span className="tf-ticket__stamp">
-              <Stamp text={t('tf.stamped')} tone="teal" size="lg" rotate={-9} animateIn />
+              <Stamp text={t('tf.stamped')} tone="up" size="lg" rotate={-9} animateIn />
             </span>
           )}
         </div>
@@ -490,7 +517,7 @@ function TicketPreview({
         }
       >
         <div className="tf-ticket__stub">
-          <span className="tf-ticket__fee">{fee}</span>
+          <span className="tf-ticket__fee num">{fee}</span>
           <span className="tf-ticket__sym mono">{sym}</span>
         </div>
       </motion.div>

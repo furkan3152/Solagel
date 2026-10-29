@@ -1,4 +1,4 @@
-import { InkButton, type IconName } from '../../design';
+import { Button, type IconName } from '../../design';
 import { formatCountdown } from '../../game/round';
 import { useT } from '../../i18n';
 import type { TicketGate, TicketModel } from '../../wallet/ticket';
@@ -54,7 +54,7 @@ export function useCtaText(ticket: TicketModel | undefined, gate: TicketGate | u
 }
 
 /**
- * Quick Play: the printed CTA under the tickets. The lobby preselects Quick
+ * Quick Play: the one sun button under the departures board. The lobby preselects Quick
  * Play's pick (practice without a wallet or tokens, else the open ticket, the
  * last arena or the cheapest affordable one); the button acts on whatever
  * ticket is selected. It never signs anything itself: paid tickets open the
@@ -75,10 +75,20 @@ export function QuickPlay({
   const held = useHeldCountdown();
   let text = useCtaText(ticket, gate);
   // this ticket is held for the next round: it joins by itself, nothing to press
-  if (held && ticket?.arenaId === held.arenaId) text = { label: t('lo.cta.held'), sub: t('lo.cta.heldSub', { time: formatCountdown(held.msLeft) }), icon: 'ticket', inert: true };
+  if (held && ticket?.arenaId === held.arenaId)
+    text = { label: t('lo.cta.held'), sub: t('lo.cta.heldSub', { time: formatCountdown(held.msLeft) }), icon: 'ticket', inert: true };
   return (
-    <InkButton size="lg" block className="kl-cta" icon={text.icon} sub={text.sub} disabled={text.inert || busy} onClick={onPress}>
+    <Button
+      variant={text.inert ? 'secondary' : 'primary'}
+      size="lg"
+      block
+      className="kl-cta"
+      icon={text.icon}
+      sub={text.sub}
+      disabled={text.inert || busy}
+      onClick={onPress}
+    >
       {text.label}
-    </InkButton>
+    </Button>
   );
 }
