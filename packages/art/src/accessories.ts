@@ -1,4 +1,4 @@
-import { CARD_PAPER, INK, RISO } from './palette';
+import { CARD_PAPER, INK, RISO, shadeOf } from './palette';
 import type { AccessoryKind } from './looks';
 
 const TAU = Math.PI * 2;
@@ -6,7 +6,7 @@ const TAU = Math.PI * 2;
 export interface AccessoryColors {
   /** Body ink of the coin. */
   body: string;
-  /** Overprint ink: used as the accent of hats & co. */
+  /** Accent paint (the look's `overprint`): hats & co. */
   accent: string;
   /** Ink line width. */
   lineW: number;
@@ -35,7 +35,8 @@ export function symbolAnchor(kind: AccessoryKind, r: number): { x: number; y: nu
     case 'cowboy':
       return { x: 0, y: -r * 0.86, s: r * 0.1, onTop: true };
     default:
-      return { x: 0, y: -r * 0.5, s: r * 0.17, onTop: false };
+      // a small embossed mark on the forehead, above the big eyes
+      return { x: 0, y: -r * 0.64, s: r * 0.105, onTop: false };
   }
 }
 
@@ -137,11 +138,10 @@ export function drawAccessoryFront(ctx: CanvasRenderingContext2D, kind: Accessor
       ctx.quadraticCurveTo(r * 0.8, -r * 0.36, r * 0.1, -r * 0.42);
       ctx.closePath();
       inked(ctx, c.accent, lw * 0.85);
-      ctx.save();
-      ctx.globalCompositeOperation = 'multiply';
-      ctx.fillStyle = 'rgba(27,23,50,0.25)'; // INK at 25 %
+      // the brim's underside: the accent's one shade tone
+      ctx.fillStyle = shadeOf(c.accent);
       ctx.fill();
-      ctx.restore();
+      ctx.stroke();
       domePath(ctx, r, 0.8, 0.46, 1.27);
       inked(ctx, c.accent, lw * 0.85);
       ctx.strokeStyle = INK;

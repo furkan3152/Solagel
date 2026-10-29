@@ -125,15 +125,16 @@ function silhouette(ctx: CanvasRenderingContext2D, kind: SymbolKind, s: number):
 }
 
 /**
- * Draws a coin symbol in riso style: an overprint-ink copy nudged by the
- * misregistration (multiply), then a flat paper knock-out with an ink line.
- * `s` is the half-size; `lineW` the ink line width.
+ * Draws a coin symbol in the Storybook style: a hard offset shadow in
+ * `overprint` (down-right, no blur), then a flat `fill` with an ink line.
+ * `emboss` draws only the flat silhouette in `fill` (a mark struck into the
+ * coin: no line, no shadow, no inner details). `s` is the half-size.
  */
 export function drawSymbol(
   ctx: CanvasRenderingContext2D,
   kind: SymbolKind,
   s: number,
-  o: { fill: string; ink: string; overprint: string; lineW: number; offX?: number; offY?: number },
+  o: { fill: string; ink: string; overprint: string; lineW: number; offX?: number; offY?: number; emboss?: boolean },
 ): void {
   ctx.save();
   ctx.lineJoin = 'round';
@@ -153,10 +154,14 @@ export function drawSymbol(
       ctx.lineTo(0, s);
       ctx.stroke();
     };
+    if (o.emboss) {
+      strokeS(o.fill, w);
+      ctx.restore();
+      return;
+    }
     ctx.save();
-    ctx.globalCompositeOperation = 'multiply';
     ctx.translate(offX, offY);
-    strokeS(o.overprint, w);
+    strokeS(o.overprint, w + o.lineW * 2);
     ctx.restore();
     strokeS(o.ink, w + o.lineW * 2);
     strokeS(o.fill, w);
@@ -164,17 +169,26 @@ export function drawSymbol(
     return;
   }
 
-  // overprint ghost
+  if (o.emboss) {
+    ctx.fillStyle = o.fill;
+    silhouette(ctx, kind, s);
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+
+  // hard shadow
   ctx.save();
-  ctx.globalCompositeOperation = 'multiply';
   ctx.translate(offX, offY);
   ctx.fillStyle = o.overprint;
+  ctx.strokeStyle = o.overprint;
+  ctx.lineWidth = o.lineW * 2;
   silhouette(ctx, kind, s);
+  ctx.stroke();
   ctx.fill();
   ctx.restore();
 
-  // knock-out + ink line
-  // ink outline around the union of the shape: a double-width stroke under the fill
+  // flat fill + ink line around the union of the shape: a double-width stroke under the fill
   ctx.fillStyle = o.fill;
   ctx.strokeStyle = o.ink;
   ctx.lineWidth = o.lineW * 2;

@@ -1,6 +1,6 @@
 import { lookForBasicSkin, type CoinLook } from '@elymum/art';
 
-/** Coin looks by basic skin id, cached (one riso look per skin). */
+/** Coin looks by basic skin id, cached (one Storybook look per skin). */
 export class LookCache {
   private readonly looks = new Map<number, CoinLook>();
 

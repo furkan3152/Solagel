@@ -12,12 +12,13 @@ export interface CoinOpts {
   flags?: number;
   seed?: number;
   alpha?: number;
-  /** Cached halftone shade provider (see `SpriteCache.halftone`). */
+  /** @deprecated the riso halftone is gone; ignored. */
   halftone?: (r: number, spacing: number) => CanvasImageSource | null;
   /** Cached interior provider (see `SpriteCache.coinInterior`). */
   interior?: (look: CoinLook, r: number) => CoinInterior | null;
-  /** Live-renderer speed-ups (see `CoinState` in @elymum/art). */
+  /** @deprecated ignored (every body is one flat fill now). */
   fastBody?: boolean;
+  /** Below this many screen px of radius the fine interior details are skipped (see `CoinState`). */
   minPrintPx?: number;
 }
 
@@ -31,7 +32,7 @@ export function drawCoinLook(ctx: CanvasRenderingContext2D, x: number, y: number
 
 /**
  * Draws a coin character centred at (x, y) with world radius r using the
- * shared risograph drawing from `@elymum/art` (basic skins map onto riso looks).
+ * shared Storybook coin drawing from `@elymum/art` (basic skins map onto Elysium looks).
  */
 export function drawCoin(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, skin: SkinDef, o: CoinOpts): void {
   drawCoinLook(ctx, x, y, r, lookForBasicSkin(skin.id), o);

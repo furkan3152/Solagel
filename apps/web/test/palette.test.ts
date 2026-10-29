@@ -212,12 +212,15 @@ describe('tokens.css matches the shared palette', () => {
 });
 
 describe('canvas world labels', () => {
-  it.each(['light', 'dark'] as const)('%s: name and mass labels read on the world paper and their halo', (theme) => {
+  it('name stickers: ink and teal on cream stock, ink on my sun stock', () => {
+    expect(contrast(INK, CARD_PAPER)).toBeGreaterThanOrEqual(AA);
+    expect(contrast(TEXT_INKS.day.teal, CARD_PAPER)).toBeGreaterThanOrEqual(AA);
+    expect(contrast(INK, ELYSIUM.sun)).toBeGreaterThanOrEqual(AA);
+  });
+  it.each(['light', 'dark'] as const)('%s: the floor is a night floor and the cream stickers stand out on it', (theme) => {
     const w = WORLD_THEMES[theme];
-    for (const bg of [w.paper, w.labelHalo]) {
-      expect(contrast(w.label, bg)).toBeGreaterThanOrEqual(AA);
-      expect(contrast(w.labelSub, bg)).toBeGreaterThanOrEqual(AA);
-    }
+    expect(luminance(w.floor)).toBeLessThan(luminance(ELYSIUM.reef));
+    expect(contrast(CARD_PAPER, w.floor)).toBeGreaterThanOrEqual(AA);
   });
 });
 

@@ -1,4 +1,4 @@
-import { RISO } from './palette';
+import { ELYSIUM, shadeOf } from './palette';
 
 /** Symbols a coin can carry on its face. */
 export type SymbolKind = 'coin' | 'heart' | 'star' | 'bolt' | 'moon' | 'flower' | 'clover' | 'dollar' | 'crown' | 'diamond';
@@ -23,35 +23,50 @@ export type AccessoryKind =
 
 /** Everything `drawRisoCoin` needs to know about a character's appearance. */
 export interface CoinLook {
-  /** Body ink colour (hex). */
+  /** Body paint (hex): the flat cel fill. */
   body: string;
-  /** Overprint (second ink) colour (hex). */
+  /** Accent paint (hex): hats, sparks, crumbs. (Was the riso overprint ink.) */
   overprint: string;
-  /** Overprint misregistration in units of r/40. */
+  /** @deprecated riso misregistration; ignored by the Storybook drawing (kept so old looks still type-check). */
   offset: { dx: number; dy: number };
   symbol: SymbolKind;
   eyes: EyesKind;
   mouth: MouthKind;
   accessory: AccessoryKind;
+  /** The body's one hard shadow tone; default `shadeOf(body)`. */
+  shade?: string;
 }
 
+const P = ELYSIUM;
+const look = (body: string, overprint: string, symbol: SymbolKind, eyes: EyesKind, mouth: MouthKind, accessory: AccessoryKind): CoinLook => ({
+  body,
+  overprint,
+  offset: { dx: 0, dy: 0 },
+  symbol,
+  eyes,
+  mouth,
+  accessory,
+  shade: shadeOf(body),
+});
+
+/** The eight free skins in the Storybook coin paints (`COIN_PAINTS`). */
 const BASIC: readonly CoinLook[] = [
   // 0 Solly
-  { body: RISO.purple, overprint: RISO.mint, offset: { dx: 3, dy: 3 }, symbol: 'coin', eyes: 'round', mouth: 'smile', accessory: 'none' },
+  look(P.cyan, P.sun, 'coin', 'round', 'smile', 'none'),
   // 1 Goldie
-  { body: RISO.mustard, overprint: RISO.orange, offset: { dx: 3, dy: 2 }, symbol: 'star', eyes: 'round', mouth: 'grin', accessory: 'none' },
+  look(P.sun, P.coral, 'star', 'round', 'grin', 'none'),
   // 2 Penny
-  { body: RISO.orange, overprint: RISO.red, offset: { dx: -3, dy: 3 }, symbol: 'coin', eyes: 'round', mouth: 'smile', accessory: 'none' },
+  look(P.coral, P.sun, 'coin', 'round', 'smile', 'none'),
   // 3 Minty
-  { body: RISO.mint, overprint: RISO.teal, offset: { dx: 3, dy: 3 }, symbol: 'dollar', eyes: 'round', mouth: 'grin', accessory: 'none' },
+  look(P.up, P.sun, 'dollar', 'round', 'grin', 'none'),
   // 4 Bubbles
-  { body: RISO.fluoPink, overprint: RISO.teal, offset: { dx: 3, dy: 3 }, symbol: 'heart', eyes: 'round', mouth: 'cat', accessory: 'flower' },
+  look(P.cream, P.coral, 'heart', 'round', 'cat', 'flower'),
   // 5 Skye
-  { body: RISO.aqua, overprint: RISO.blue, offset: { dx: 2, dy: 3 }, symbol: 'moon', eyes: 'sleepy', mouth: 'o', accessory: 'none' },
+  look(P.spray, P.teal, 'moon', 'sleepy', 'o', 'none'),
   // 6 Zesty
-  { body: RISO.mustard, overprint: RISO.green, offset: { dx: -3, dy: 3 }, symbol: 'bolt', eyes: 'wink', mouth: 'tongue', accessory: 'none' },
+  look(P.teal, P.sun, 'bolt', 'wink', 'tongue', 'none'),
   // 7 Grape
-  { body: RISO.lilac, overprint: RISO.purple, offset: { dx: 3, dy: 3 }, symbol: 'diamond', eyes: 'round', mouth: 'cat', accessory: 'none' },
+  look(P.foam, P.teal, 'diamond', 'round', 'cat', 'none'),
 ];
 
 /** Looks of the eight free basic skins (ids 0..7; other ids wrap). */
