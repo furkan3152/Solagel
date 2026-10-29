@@ -132,7 +132,7 @@ describe('/mint page', { timeout: 30_000 }, () => {
     expect((await screen.findByTestId('mt-phase')).textContent).toBe('Closed');
     expect(screen.getByRole('heading', { name: 'Sealed. For now.' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Join the WL' }).getAttribute('href')).toBe('/wl');
-    expect(screen.getByTestId('mt-price').textContent).toMatch(/0.03 HYPE ≈ \$1.00/);
+    expect(screen.getByTestId('mt-price').textContent).toMatch(/0\.0300\s*HYPE.*\$1\.00/);
   });
 
   it('Allowlist: eligibility, quantity bounded by the limit, and the mint call with the proof', async () => {
@@ -145,11 +145,11 @@ describe('/mint page', { timeout: 30_000 }, () => {
       return { ok: true, hash: `0x${'cd'.repeat(32)}`, receipt: { status: 'success', logs: [transferLog(ALICE, 11n), transferLog(ALICE, 12n)] } };
     });
     render(<Mint pollMs={0} />);
-    await waitFor(() => expect(screen.getByTestId('mt-eligibility').textContent).toBe('This wallet is on the allowlist.'));
+    await waitFor(() => expect(screen.getByTestId('mt-eligibility').textContent).toMatch(/is on the allowlist\./));
     fireEvent.click(screen.getByRole('button', { name: 'One more' }));
-    expect(screen.getByTestId('mt-qty').textContent).toBe('2');
+    expect(screen.getByRole('spinbutton', { name: 'How many emblems' }).textContent).toBe('2');
     expect((screen.getByRole('button', { name: 'One more' }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(screen.getByRole('button', { name: 'Mint 2' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Mint 2 emblems' }));
     await screen.findByTestId('mt-done');
     const call = spies.sendWalletCall.mock.calls[0][0];
     expect(call).toMatchObject({ address: NFT, functionName: 'mintAllowlist', args: [2n, [`0x${'11'.repeat(32)}`]] });
@@ -167,13 +167,22 @@ describe('/mint page', { timeout: 30_000 }, () => {
     expect((screen.getByRole('button', { name: /^Mint/ }) as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it('Allowlist: on the list, but the root is not on the contract yet', async () => {
+    connect();
+    ({ restore } = mockFetch({ 'GET /api/site/mint': mintState(contract()), [`GET /api/site/mint/proof?wallet=${ALICE}`]: proof(true, `0x${'00'.repeat(32)}`) }));
+    render(<Mint pollMs={0} />);
+    await waitFor(() => expect(screen.getByTestId('mt-eligibility').textContent).toMatch(/not on the contract yet/));
+    expect(screen.getByTestId('mt-blocker').textContent).toMatch(/not published/);
+    expect((screen.getByRole('button', { name: /^Mint/ }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it('a refusal at the fresh re-check stops before the wallet', async () => {
     connect();
     ({ restore } = mockFetch({ 'GET /api/site/mint': mintState(contract({ phase: 'public' })), [`GET /api/site/mint/proof?wallet=${ALICE}`]: proof(false) }));
     spies.getMintState.mockResolvedValue({ phase: 2, phaseName: 'public', price: 1n, minPrice: 0n, maxPrice: 0n, keeper: null, root: ROOT, maxSupply: 10, totalSupply: 10, wlLimit: 1, publicLimit: 2, treasury: ALICE, frozen: false, soldOut: true });
     render(<Mint pollMs={0} />);
-    await waitFor(() => expect((screen.getByRole('button', { name: 'Mint 1' }) as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.click(screen.getByRole('button', { name: 'Mint 1' }));
+    await waitFor(() => expect((screen.getByRole('button', { name: 'Mint 1 emblem' }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(screen.getByRole('button', { name: 'Mint 1 emblem' }));
     expect((await screen.findByTestId('mt-error')).textContent).toMatch(/sold out/);
     expect(spies.sendWalletCall).not.toHaveBeenCalled();
   });

@@ -54,7 +54,8 @@ export function ArcGauge({ value, max, tone = 'up', size = 150, readout = true, 
           strokeLinecap="round"
           pathLength={100}
           initial={false}
-          animate={{ strokeDasharray: `${pct} 100` }}
+          // round caps would still paint a dot at each end of an empty arc
+          animate={{ strokeDasharray: `${pct} 100`, opacity: pct > 0 ? 1 : 0 }}
           transition={reduced ? { duration: 0 } : springs.dial}
         />
         <path d={ARC} fill="none" stroke="var(--outline)" strokeWidth={2.5} strokeDasharray="1.5 11.07" pathLength={100} opacity={0.5} />

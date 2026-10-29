@@ -1,11 +1,13 @@
 import type { GameAccess } from '@elymum/shared';
 import { useEffect, useState } from 'react';
-import { StampSpinner, Stamp } from '../../design';
+import { CoinCharacter, Kb, PlateLabel, RingScene, StampSpinner, Sticker } from '../../design';
 import { auth, site } from '../api';
 import { readStoredSession, type SiteSession } from '../session';
 import { X_URL } from '../settings';
 import { SitePage, XIcon } from '../Shell';
+import { LinkButton } from '../mint/MintArt';
 import { SiteWalletProvider, WalletSignIn } from '../wallet/SiteWallet';
+import './play.css';
 
 export type PlayAccess =
   | { allowed: true; reason: 'public' | 'admin' | 'holder'; session: SiteSession | null }
@@ -42,51 +44,76 @@ export async function playAccess(): Promise<PlayAccess> {
 
 /** The friendly page for everyone the arena is not open to yet (holders mode: sign in with the wallet that holds the NFT). */
 export function ArenaSoon({ holders = false, onSignedIn }: { holders?: boolean; onSignedIn?: () => void }) {
-  if (holders) {
-    return (
-      <SitePage>
-        <div className="st-gate">
-          <div className="st-gate__card">
-            <Stamp text="Holders" sub="arena" tone="teal" round size="lg" rotate={-10} />
-            <h1 className="st-gate__title">
-              The arena is open <span>to holders.</span>
-            </h1>
-            <p>Sign in with the wallet that holds your Elymum NFT. No NFT yet? It mints at $1 in HYPE.</p>
-            <SiteWalletProvider>
-              <WalletSignIn label="Sign in to play" onSession={() => onSignedIn?.()} />
-            </SiteWalletProvider>
-            <div className="st-row" style={{ justifyContent: 'center' }}>
-              <a className="st-linkbtn st-linkbtn--pink" href="/mint">
-                Go to the mint
-              </a>
-              <a className="st-linkbtn" href="/">
-                Back home
-              </a>
+  return (
+    <SitePage className="pg-root">
+      <PlateLabel numeral="III" title={holders ? 'The ring, members only' : 'The ring, after hours'} aside="/play" className="pg-platelabel" />
+      <Kb theme="night" className="pg-night">
+        <RingScene time="night" variant="full" className="pg-scene">
+          <div className="pg-wrap">
+            <Sticker tone="cream" lift="lg" pad="lg" round="lg" tape className="pg-card" as="section">
+              <span className="kicker pg-kicker">{holders ? 'Arena · holders only' : 'Arena · closed'}</span>
+              {holders ? (
+                <h1 className="pg-h display">
+                  Holders only.
+                  <br />
+                  <em>Mint</em> to play.
+                </h1>
+              ) : (
+                <h1 className="pg-h display">
+                  The ring is closed.
+                  <br />
+                  <em>For now.</em>
+                </h1>
+              )}
+              {holders ? (
+                <>
+                  <p className="pg-lede">Sign in with the wallet that holds your Elymum emblem and the gate swings open. No emblem yet? One dollar in HYPE.</p>
+                  <div className="pg-signin">
+                    <SiteWalletProvider>
+                      <WalletSignIn label="Sign in to play" onSession={() => onSignedIn?.()} />
+                    </SiteWalletProvider>
+                  </div>
+                  <div className="pg-actions">
+                    <LinkButton href="/mint" variant="primary" size="lg" icon="arrow">
+                      Go to the mint
+                    </LinkButton>
+                    <LinkButton href="/wl" variant="secondary" size="md">
+                      Join the WL
+                    </LinkButton>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="pg-lede">The coins are asleep and the food is still cooking. Get on the WL, mint an emblem, and listen for the first bell on @elymum.</p>
+                  <div className="pg-actions">
+                    <LinkButton href="/wl" variant="primary" size="lg" icon="arrow">
+                      Join the WL
+                    </LinkButton>
+                    <LinkButton href="/mint" variant="secondary" size="md">
+                      Go to the mint
+                    </LinkButton>
+                  </div>
+                </>
+              )}
+              <p className="pg-links">
+                <a href="/">Back home</a>
+                <span aria-hidden="true">·</span>
+                <a href={X_URL} target="_blank" rel="noreferrer">
+                  <XIcon size={14} /> Follow @elymum
+                </a>
+              </p>
+            </Sticker>
+            <div className="pg-cast" aria-hidden="true">
+              <span className="pg-post">
+                <span className="pg-sign mono">{holders ? 'Holders only' : 'Closed'}</span>
+              </span>
+              <CoinCharacter paint={holders ? 'sun' : 'cyan'} mood={holders ? 'smug' : 'sleepy'} size={170} feet ground className="pg-coin pg-coin--big" />
+              <CoinCharacter paint="teal" mood="sleepy" size={84} feet ground phase={1.3} className="pg-coin pg-coin--b" />
+              <CoinCharacter paint="cream" mood={holders ? 'open' : 'sleepy'} size={64} feet ground phase={2.1} className="pg-coin pg-coin--c" />
             </div>
           </div>
-        </div>
-      </SitePage>
-    );
-  }
-  return (
-    <SitePage>
-      <div className="st-gate">
-        <div className="st-gate__card">
-          <Stamp text="Soon" sub="arena" tone="pink" round size="lg" rotate={-10} />
-          <h1 className="st-gate__title">
-            The arena <span>opens soon.</span>
-          </h1>
-          <p>The coins are still warming up. Join the WL and follow @elymum to hear the first bell.</p>
-          <div className="st-row" style={{ justifyContent: 'center' }}>
-            <a className="st-linkbtn st-linkbtn--pink" href="/">
-              Back home
-            </a>
-            <a className="st-linkbtn" href={X_URL} target="_blank" rel="noreferrer">
-              <XIcon /> Follow @elymum
-            </a>
-          </div>
-        </div>
-      </div>
+        </RingScene>
+      </Kb>
     </SitePage>
   );
 }
@@ -112,8 +139,9 @@ export function PlayGate({ onAllowed, check = playAccess }: { onAllowed: (sessio
   if (state === 'closed') return <ArenaSoon />;
   if (state === 'holders') return <ArenaSoon holders onSignedIn={() => setRound((n) => n + 1)} />;
   return (
-    <div className="kb paper st-gate" data-theme="paper" style={{ minHeight: '100vh' }}>
+    <Kb theme="night" className="pg-wait">
       <StampSpinner label={state === 'open' ? 'Opening the arena' : 'Checking'} />
-    </div>
+      <span className="mono pg-wait__label">{state === 'open' ? 'Opening the ring…' : 'Checking the gate…'}</span>
+    </Kb>
   );
 }

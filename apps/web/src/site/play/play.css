@@ -1,0 +1,198 @@
+/* /play gate: the ring at night, closed (or members only), drawn as Plate III of the book. */
+
+.pg-platelabel {
+  padding: 18px var(--gutter);
+}
+
+.pg-night {
+  background: var(--trench);
+  color: var(--cream);
+}
+.pg-scene {
+  width: 100%;
+  aspect-ratio: auto;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: min(880px, calc(100svh - 120px));
+}
+.pg-scene > .kb-ring__over {
+  width: 100%;
+}
+.pg-wrap {
+  position: relative;
+  height: 100%;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: clamp(40px, 6vw, 88px) var(--gutter) clamp(160px, 16vw, 240px);
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: 32px;
+  align-items: start;
+}
+
+.pg-card {
+  max-width: 500px;
+  transform: rotate(-0.8deg);
+}
+.pg-kicker {
+  display: block;
+  color: var(--ink-3);
+}
+.pg-h {
+  margin: 10px 0 14px;
+  font-size: clamp(36px, 4.2vw, 54px);
+  line-height: 1;
+}
+.pg-h em {
+  font-style: normal;
+  color: var(--teal-ink);
+  font-variation-settings: var(--fv-wonk);
+}
+.pg-lede {
+  margin: 0 0 20px;
+  font-size: 17px;
+  color: var(--ink-2);
+}
+.pg-signin {
+  margin: 0 0 18px;
+  padding: 14px 0;
+  border-top: 2.5px dashed var(--sand-2);
+  border-bottom: 2.5px dashed var(--sand-2);
+}
+.pg-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.pg-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin: 18px 0 0;
+  font-size: 14px;
+  color: var(--ink-3);
+}
+.pg-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  color: var(--ink);
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
+.pg-links a:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* the sleepy cast on the terrace, with the sign */
+.pg-cast {
+  position: relative;
+  align-self: end;
+  justify-self: center;
+  width: 360px;
+  height: 300px;
+  margin-bottom: -40px;
+}
+.pg-coin {
+  position: absolute;
+}
+.pg-coin--big {
+  left: 90px;
+  bottom: 0;
+}
+.pg-coin--b {
+  left: -40px;
+  bottom: 6px;
+}
+.pg-coin--c {
+  right: 20px;
+  bottom: 4px;
+}
+.pg-post {
+  position: absolute;
+  left: 52px;
+  bottom: 8px;
+  width: 12px;
+  height: 200px;
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: 4px 4px 2px 2px;
+  background: var(--sand-2);
+  transform: rotate(-4deg);
+  transform-origin: 50% 100%;
+}
+.pg-sign {
+  position: absolute;
+  left: 50%;
+  top: -10px;
+  z-index: 1;
+  padding: 7px 14px;
+  border: var(--stroke) solid var(--outline);
+  border-radius: var(--r-tag);
+  background: var(--sun);
+  color: var(--ink-fixed);
+  box-shadow: var(--sh-3);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transform: translateX(-50%) rotate(-5deg);
+  transform-origin: 50% 100%;
+  animation: pg-swing 4.2s ease-in-out infinite;
+}
+@keyframes pg-swing {
+  0%,
+  100% {
+    transform: translateX(-50%) rotate(-5deg);
+  }
+  50% {
+    transform: translateX(-50%) rotate(-2deg);
+  }
+}
+
+/* checking the gate */
+.pg-wait {
+  min-height: 100vh;
+  min-height: 100svh;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 14px;
+  background: var(--trench);
+  color: var(--foam);
+}
+.pg-wait__label {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 900px) {
+  .pg-wrap {
+    grid-template-columns: minmax(0, 1fr);
+    padding-bottom: 40px;
+  }
+  .pg-card {
+    max-width: none;
+    transform: none;
+  }
+  .pg-cast {
+    width: 300px;
+    height: 250px;
+    margin: 0 auto -10px;
+    transform: scale(0.85);
+    transform-origin: 50% 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pg-sign {
+    animation: none;
+  }
+}

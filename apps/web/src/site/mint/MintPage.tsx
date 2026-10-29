@@ -1,19 +1,22 @@
-import { formatHypeAmount, getMintState, getMintedBy, mintAllowlistCall, mintPublicCall, type MintState as ChainMintState } from '@elymum/sdk';
+import { getMintState, getMintedBy, mintAllowlistCall, mintPublicCall, type MintState as ChainMintState } from '@elymum/sdk';
 import type { ChainStatus, MintContractState, MintProofResponse, MintState, WlEntryPublic } from '@elymum/shared';
-import { useEffect, useRef, useState } from 'react';
+import { motion } from 'motion/react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Address, Hash, Hex } from 'viem';
-import { InkButton, StampSpinner } from '../../design';
+import { AddressChip, ArcGauge, Button, CoinCharacter, FoodBit, HypeAmount, Icon, Kb, PlateLabel, QuantityStepper, Seigaiha, StampSpinner, useMoves, useReducedMotion } from '../../design';
 import { SERVER } from '../../config';
 import { explorerTx } from '../../wallet/links';
 import { fetchServerChain, publicClientFor } from '../../wallet/network';
 import { useWallet } from '../../wallet/store';
 import { sendWalletCall, txErrorText, type TxPhase } from '../../wallet/tx';
 import { site } from '../api';
-import { Link } from '../router';
 import { dropExpired } from '../session';
+import { X_URL } from '../settings';
 import { SitePage } from '../Shell';
 import { SiteWalletProvider, WalletSignIn, useSiteSession } from '../wallet/SiteWallet';
+import { EmblemPanel, FoodConfetti, LinkButton, Starburst, MintSky, MintTrack, type TrackStage } from './MintArt';
 import { mintBlocker, mintKind, mintView, mintedTokenIds, playOpenForHolders, remaining, usdText, type MintView } from './logic';
+import './mint.css';
 
 /** The NFT emblem image the server draws for a token id. */
 export const nftImageUrl = (id: bigint | number | string): string => `${SERVER.http}/api/nft/${id.toString()}.svg`;
@@ -44,7 +47,7 @@ export function toContractState(s: ChainMintState): MintContractState {
   };
 }
 
-/** `/mint`: the Elymum NFT mint (Closed / Allowlist / Public / Sold out). Visuals come later (classNames `mt-`). */
+/** `/mint`: Plate II, "The mint, after dark" (Closed / Allowlist / Public / Sold out, and the minted moment). */
 export function MintPage() {
   return (
     <SitePage className="mt-root" cta={false}>
@@ -57,8 +60,39 @@ export function MintPage() {
 
 type Phase = 'idle' | 'preparing' | TxPhase | 'done' | 'error';
 
+const fmt = (n: number) => n.toLocaleString('en-US');
+const plural = (n: number, one: string, many = `${one}s`) => (n === 1 ? one : many);
+
+/** "4s ago", "3 min ago": how old the price on screen is. Ticks by itself. */
+function Age({ since }: { since: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const s = Math.max(0, Math.round((now - since) / 1000));
+  return <>{s < 60 ? `${s}s ago` : `${Math.floor(s / 60)} min ago`}</>;
+}
+
+/** The night plate every state of the page sits on. */
+function NightPlate({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <>
+      <PlateLabel numeral="II" title="The mint, after dark" aside="/mint" className="mt-platelabel" />
+      <Kb theme="night" className={`mt-night${className ? ` ${className}` : ''}`}>
+        <MintSky />
+        {children}
+        <div className="mt-band" aria-hidden="true">
+          <Seigaiha rows={3} r={40} tone="night" />
+        </div>
+      </Kb>
+    </>
+  );
+}
+
 export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
   const [state, setState] = useState<MintState | null>(null);
+  const [loadedAt, setLoadedAt] = useState(0);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [chain, setChain] = useState<ChainStatus | null>(null);
   const address = useWallet((s) => (s.status === 'connected' ? s.address : null));
@@ -74,6 +108,10 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
   const [ids, setIds] = useState<bigint[]>([]);
   const inFlight = useRef(false);
   const [tick, setTick] = useState(0);
+  const mv = useMoves();
+  const reduced = useReducedMotion();
+  // the minted stickers land one after another, slower than a list (it is a moment, not a menu)
+  const dropIn = reduced ? mv.stagger : { hidden: {}, shown: { transition: { staggerChildren: 0.2, delayChildren: 0.12 } } };
 
   // the server's mint state (and the chain it is on), refreshed while the page is open
   useEffect(() => {
@@ -83,6 +121,7 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
         (s) => {
           if (!live) return;
           setState(s);
+          setLoadedAt(Date.now());
           setLoadErr(null);
         },
         (e: Error) => live && setLoadErr(e.message),
@@ -135,19 +174,37 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
     };
   }, [session]);
 
+  // the minted moment replaces a long card: bring the top of the plate into view
+  useEffect(() => {
+    if (phase !== 'done') return;
+    const el = document.querySelector<HTMLElement>('.mt-platelabel');
+    if (el && el.getBoundingClientRect().top < 0) el.scrollIntoView?.({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
+  }, [phase, reduced]);
+
   if (loadErr && !state)
     return (
-      <div className="st-page mt-page">
-        <p className="st-err" role="alert">
-          {loadErr}
-        </p>
-      </div>
+      <NightPlate className="mt-night--quiet">
+        <div className="mt-wrap mt-wrap--quiet">
+          <CoinCharacter paint="sun" mood="scared" size={120} sweat />
+          <div>
+            <h1 className="mt-quiet__h display">The mint is not answering.</h1>
+            <p className="mt-err" role="alert">
+              {loadErr}
+            </p>
+            <Button variant="secondary" onClick={() => setTick((n) => n + 1)}>
+              Try again
+            </Button>
+          </div>
+        </div>
+      </NightPlate>
     );
   if (!state)
     return (
-      <div className="st-page mt-page">
-        <StampSpinner label="Loading" />
-      </div>
+      <NightPlate className="mt-night--quiet">
+        <div className="mt-wrap mt-wrap--quiet mt-wrap--loading">
+          <StampSpinner label="Loading" />
+        </div>
+      </NightPlate>
     );
 
   const view = mintView(state);
@@ -158,11 +215,13 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
   const priceWei = c ? BigInt(c.priceWei) : 0n;
   const busy = phase === 'preparing' || phase === 'switching' || phase === 'signing' || phase === 'confirming';
   const blocker = c && kind && address ? mintBlocker(c, minted, { kind, qty: q, proof }) : null;
+  const playOpen = playOpenForHolders(state.gameAccess);
 
   const mint = async () => {
     if (inFlight.current || !c || !kind || !address || !nft || !chain) return;
     inFlight.current = true;
     setError(null);
+    setHash(null);
     setPhase('preparing');
     const fail = (msg: string) => {
       inFlight.current = false;
@@ -198,159 +257,398 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
     setTick((n) => n + 1);
   };
 
+  /* ---------------- minted: the stickers drop in ---------------- */
   if (phase === 'done') {
     const tx = hash ? explorerTx(hash, chain?.explorerUrl) : null;
+    const n = ids.length;
     return (
-      <div className="st-page mt-page mt-done" data-testid="mt-done">
-        <span className="st-kicker mono">Minted</span>
-        <h1 className="st-title">{ids.length === 1 ? 'Your Elymum is here.' : `Your ${ids.length || ''} Elymum are here.`}</h1>
-        <ul className="mt-tokens">
-          {ids.map((id) => (
-            <li key={id.toString()} className="mt-token">
-              <img src={nftImageUrl(id)} alt={`Elymum #${id.toString()}`} width={240} height={240} />
-              <span className="mono">#{id.toString()}</span>
-            </li>
-          ))}
-        </ul>
-        <div className="st-row">
-          {playOpenForHolders(state.gameAccess) && (
-            <a className="st-linkbtn st-linkbtn--pink mt-play" href="/play">
-              Play
-            </a>
-          )}
-          {tx && (
-            <a className="st-linkbtn" href={tx} target="_blank" rel="noreferrer">
-              View transaction
-            </a>
-          )}
-          <button type="button" className="st-textlink" onClick={() => setPhase('idle')}>
-            Back to the mint
-          </button>
+      <NightPlate className="mt-night--done">
+        <div className="mt-wrap mt-wrap--done mt-done" data-testid="mt-done">
+          <div className="mt-copy">
+            <MintTrack at="play" />
+            <span className="kicker mt-kicker">Minted{n > 0 ? ` · No. ${ids.map((i) => i.toString()).join(', ')}` : ''}</span>
+            <h1 className="mt-h display">
+              {n <= 1 ? (
+                <>
+                  Your Elymum
+                  <br />
+                  <em>is here.</em>
+                </>
+              ) : (
+                <>
+                  Your {n} Elymum
+                  <br />
+                  <em>are here.</em>
+                </>
+              )}
+            </h1>
+            <p className="mt-lede">
+              {n <= 1 ? 'Unsealed and in your wallet.' : 'Unsealed, all of them, and in your wallet.'}{' '}
+              {playOpen ? 'The ring is open to holders. It is feeding time.' : 'The ring opens to holders soon. The first bell rings on @elymum.'}
+            </p>
+            <div className="mt-done__cta">
+              {playOpen ? (
+                <LinkButton href="/play" variant="primary" size="lg" icon="arrow" className="mt-play">
+                  Play
+                </LinkButton>
+              ) : (
+                <LinkButton href={X_URL} variant="primary" size="lg" target="_blank" rel="noreferrer">
+                  Follow @elymum
+                </LinkButton>
+              )}
+              {tx && (
+                <LinkButton href={tx} variant="secondary" target="_blank" rel="noreferrer">
+                  View transaction
+                </LinkButton>
+              )}
+              <button type="button" className="mt-textlink" onClick={() => setPhase('idle')}>
+                Back to the mint
+              </button>
+            </div>
+          </div>
+          <div className={`mt-pile mt-pile--${Math.min(n, 4)}`}>
+            <Starburst />
+            <FoodConfetti count={n > 1 ? 44 : 36} />
+            <motion.ul className="mt-tokens" variants={dropIn} initial="hidden" animate="shown">
+              {ids.map((id, i) => {
+                const tilt = [-3, 2.5, -1.5, 3.5][i % 4];
+                return (
+                  <motion.li key={id.toString()} className="mt-token" variants={mv.stickerDrop} custom={tilt}>
+                    <img src={nftImageUrl(id)} alt={`Elymum #${id.toString()}`} width={240} height={240} />
+                    <motion.span
+                      className="mt-token__tag mono"
+                      initial={reduced ? { opacity: 0 } : { scale: 0, rotate: -40 }}
+                      animate={reduced ? { opacity: 1 } : { scale: 1, rotate: i % 2 ? 8 : -8 }}
+                      transition={reduced ? { duration: 0.12, delay: 0.3 } : { type: 'spring', stiffness: 600, damping: 14, delay: 0.75 + i * 0.2 }}
+                    >
+                      Yours
+                    </motion.span>
+                  </motion.li>
+                );
+              })}
+            </motion.ul>
+            <div className="mt-pile__ground" aria-hidden="true">
+              <CoinCharacter paint="cyan" mood="chomp" size={104} feet className="mt-pile__eater" />
+              <FoodBit kind="pear" size={26} className="mt-pile__snack" />
+              <FoodBit kind="seed" paint="foam" size={16} className="mt-pile__snack mt-pile__snack--2" />
+            </div>
+          </div>
         </div>
-      </div>
+      </NightPlate>
     );
   }
 
-  return (
-    <div className="st-page mt-page" data-view={view}>
-      <span className="st-kicker mono">Elymum NFT</span>
-      <h1 className="st-title">{view === 'soldout' ? 'Sold out.' : view === 'closed' ? 'Sealed. For now.' : view === 'unavailable' ? 'The mint is not live yet.' : 'The mint is open.'}</h1>
-      <dl className="mt-facts">
-        <div>
-          <dt className="mono">Phase</dt>
-          <dd className="mt-phase" data-testid="mt-phase">
-            {PHASE_LABEL[view]}
-          </dd>
+  /* ---------------- the mint card ---------------- */
+  const stage: TrackStage = view === 'soldout' ? 'play' : kind ? 'mint' : 'wl';
+  const nextNo = c ? (view === 'soldout' ? c.maxSupply : c.totalSupply + 1) : null;
+  const noText = nextNo === null ? 'NO. ????' : kind && q > 1 ? `NO. ${nextNo}–${nextNo + q - 1}` : `NO. ${nextNo}`;
+  const pct = c && c.maxSupply > 0 ? Math.floor((c.totalSupply / c.maxSupply) * 100) : 0;
+  const gaugeCaption = !c
+    ? null
+    : view === 'soldout'
+      ? 'All of them. Every last snack.'
+      : c.totalSupply === 0
+        ? 'None yet. Someone has to be first.'
+        : `${pct}% minted. The rest are still deciding.`;
+
+  const emblem =
+    view === 'unavailable' ? (
+      <EmblemPanel no={noText} mood="sleepy" ribbon="Not struck yet." phase={PHASE_LABEL[view]} />
+    ) : view === 'closed' ? (
+      <EmblemPanel no={noText} mood="smug" ribbon="Sealed. For now." ribbonAs="h2" phase={PHASE_LABEL[view]} />
+    ) : view === 'soldout' ? (
+      <EmblemPanel no={noText} mood="happy" ribbon="All gone. Good." phase={PHASE_LABEL[view]} phaseTone="done" />
+    ) : (
+      <EmblemPanel no={noText} mood={busy ? 'open' : 'smug'} ribbon={busy ? 'Unsealing…' : 'Sealed. For now.'} phase={PHASE_LABEL[view]} phaseTone="live" />
+    );
+
+  const priceRow = c && (
+    <div className="mt-price">
+      <span data-testid="mt-price" className="mt-price__fig">
+        <HypeAmount wei={priceWei} decimals={4} usd={state.priceUsd} size="lg" />
+      </span>
+      <p className="mt-price__tick num">
+        {state.hypeUsd !== null ? <>HYPE/USD {state.hypeUsd.toFixed(2)} · updated {loadedAt ? <Age since={loadedAt} /> : 'just now'}</> : 'HYPE/USD feed is napping; the contract price stands'}
+        {' · gas on Elysium, also in HYPE'}
+      </p>
+    </div>
+  );
+
+  const gauge = c && <ArcGauge value={c.totalSupply} max={c.maxSupply} caption={gaugeCaption} label="Emblems minted" />;
+
+  let right: ReactNode;
+  if (view === 'unavailable') {
+    right = (
+      <>
+        <div className="mt-card__head">
+          <span className="kicker mt-card__kick">Status</span>
+          <h2 className="mt-card__h display">The mint is not live yet.</h2>
+          <p>The contract is not on Elysium yet. When it lands: one dollar in HYPE, the WL goes first, then everyone else.</p>
         </div>
-        {c && (
+        <dl className="mt-facts">
+          <div>
+            <dt className="kicker">Price</dt>
+            <dd className="num">$1.00 in HYPE</dd>
+          </div>
+          <div>
+            <dt className="kicker">Order</dt>
+            <dd className="num">WL, then public</dd>
+          </div>
+        </dl>
+        <LinkButton href="/wl" route variant="primary" size="lg" block icon="arrow">
+          Join the WL
+        </LinkButton>
+        <WlNote tone="idle" glyph="info">
+          Three small chores get you on the list. <b>About a minute, all told.</b>
+        </WlNote>
+      </>
+    );
+  } else if (view === 'closed') {
+    right = (
+      <>
+        {gauge}
+        {priceRow}
+        <p className="mt-card__teaser">WL first, then public. The date lands on @elymum before it lands anywhere else.</p>
+        {session ? (
+          <ClosedWlStatus wl={wl} address={session.address} />
+        ) : (
+          <div className="mt-signin">
+            <span className="kicker mt-card__kick">Your WL status</span>
+            <WalletSignIn label="Sign in to see my WL status" />
+          </div>
+        )}
+        {session && wl && !wl.legacy && wl.status === 'approved' ? (
+          <LinkButton href={X_URL} variant="secondary" size="lg" block target="_blank" rel="noreferrer">
+            Follow @elymum for the date
+          </LinkButton>
+        ) : (
+          <LinkButton href="/wl" route variant="primary" size="lg" block icon="arrow">
+            Join the WL
+          </LinkButton>
+        )}
+      </>
+    );
+  } else if (view === 'soldout') {
+    right = (
+      <>
+        {gauge}
+        <div className="mt-card__head">
+          <span className="kicker mt-card__kick">{fmt(state.holders)} {plural(state.holders, 'holder')}</span>
+          <h2 className="mt-card__h display">Sold out.</h2>
+          <p>Every emblem found a pocket. Holders, the ring is {playOpen ? 'open: go eat.' : 'warming up; the first bell rings on @elymum.'}</p>
+        </div>
+        {playOpen ? (
+          <LinkButton href="/play" variant="primary" size="lg" block icon="arrow">
+            Play
+          </LinkButton>
+        ) : (
+          <LinkButton href={X_URL} variant="primary" size="lg" block target="_blank" rel="noreferrer">
+            Follow @elymum
+          </LinkButton>
+        )}
+        <WlNote tone="idle" glyph="info">
+          Missed it? Emblems change hands on NFT marketplaces. The ring checks your wallet, not your receipt.
+        </WlNote>
+      </>
+    );
+  } else if (c && kind) {
+    const steps = busy || (phase === 'error' && hash) ? <MintSteps phase={phase} hash={hash} explorer={chain?.explorerUrl ?? null} /> : null;
+    right = (
+      <>
+        {gauge}
+        {priceRow}
+        {!address ? (
+          <div className="mt-signin">
+            <span className="kicker mt-card__kick">{kind === 'allowlist' ? 'Allowlist mint' : 'Public mint'}</span>
+            <p className="mt-card__teaser">Connect the wallet you mint with.</p>
+            <WalletSignIn label="Sign in" />
+          </div>
+        ) : (
           <>
-            <div>
-              <dt className="mono">Supply</dt>
-              <dd className="mt-supply">
-                {c.totalSupply.toLocaleString('en-US')} / {c.maxSupply.toLocaleString('en-US')}
-              </dd>
-            </div>
-            <div>
-              <dt className="mono">Price</dt>
-              <dd className="mt-price" data-testid="mt-price">
-                {formatHypeAmount(priceWei, 6)}
-                {usdText(state.priceUsd) && <span className="mt-usd"> ≈ {usdText(state.priceUsd)}</span>}
-              </dd>
-            </div>
-            {state.hypeUsd !== null && (
+            <div className="mt-qty">
               <div>
-                <dt className="mono">HYPE</dt>
-                <dd className="mt-tick mono">{usdText(state.hypeUsd)}</dd>
+                <div className="kicker mt-card__kick mt-qty__lbl">How many</div>
+                <QuantityStepper value={q} onChange={setQty} max={Math.max(1, left)} label="How many emblems" lessLabel="One less" disabled={busy || left <= 1} data-testid="mt-qty" />
               </div>
-            )}
-            <div>
-              <dt className="mono">Per wallet</dt>
-              <dd>
-                Allowlist {c.wlLimit} · Public {c.publicLimit}
-              </dd>
+              <div className="mt-total">
+                <span className="kicker mt-card__kick">Total</span>
+                <HypeAmount wei={priceWei * BigInt(q)} decimals={4} size="md" className="mt-total__fig" />
+                <span className="mt-total__sub num">
+                  {state.priceUsd !== null && `≈ ${usdText(state.priceUsd * q)} · `}max {left}
+                </span>
+              </div>
             </div>
+            <Button variant="primary" size="lg" block loading={busy} disabled={!busy && (!!blocker || !chain)} onClick={() => void mint()} className="mt-mintbtn">
+              {busy ? BUSY_LABEL[phase as keyof typeof BUSY_LABEL] : `Mint ${q} ${plural(q, 'emblem')}`}
+            </Button>
+            {steps}
+            {blocker && !busy && (
+              <p className="mt-why" role="alert" data-testid="mt-blocker">
+                <span className="kicker">Not yet</span> {cap(blocker)}.
+              </p>
+            )}
+            {error && (
+              <p className="mt-why mt-why--error" role="alert" data-testid="mt-error">
+                <span className="kicker">Hm</span> {error}
+              </p>
+            )}
+            {kind === 'allowlist' ? (
+              <AllowlistStatus proof={proof} address={address} />
+            ) : (
+              <WlNote tone="ok" glyph="check">
+                <AddressChip address={address} size="sm" copy={false} /> <span>Public mint: any wallet, {c.publicLimit} max. Nobody&rsquo;s rushing you. Well, a little.</span>
+              </WlNote>
+            )}
+            <p className="mt-fine">Your wallet adds a tiny buffer to the price; the contract refunds anything above it in the same transaction.</p>
           </>
         )}
-      </dl>
+      </>
+    );
+  }
 
-      {view === 'unavailable' && <p className="st-deck">The contract is not deployed yet. Join the WL to be first in line.</p>}
+  const kicker = c ? `Sealed emblems · supply ${fmt(c.maxSupply)}` : 'Sealed emblems · on Elysium';
 
-      {view === 'closed' && (
-        <div className="mt-teaser">
-          <p className="st-deck">WL first, then public. The price is $1 in HYPE. The date lands on @elymum first.</p>
-          {session ? (
-            <p className="st-note" data-testid="mt-wl">
-              {wl === undefined
-                ? 'Checking your WL entry…'
-                : wl === null
-                  ? 'This wallet has no WL entry.'
-                  : wl.legacy
-                    ? 'Your WL entry is from before the move to Elysium: re-apply with an EVM wallet.'
-                    : `Your WL entry: ${wl.status}.`}
+  return (
+    <NightPlate>
+      <div className="mt-wrap mt-page" data-view={view}>
+        <div className="mt-copy">
+          <span className="kicker mt-kicker">{kicker}</span>
+          <h1 className="mt-h display">
+            One emblem.
+            <br />
+            One <em>dollar.</em>
+            <br />
+            Many snacks.
+          </h1>
+          <p className="mt-lede">
+            Your emblem is your ticket to the ring. The price is pinned to a dollar and paid in HYPE, so the number on the button wiggles with the market. We do the arithmetic; you do the
+            eating.
+          </p>
+          <MintTrack at={stage} />
+          {c && (
+            <p className="mt-limits num">
+              Allowlist {c.wlLimit} per wallet · Public {c.publicLimit} per wallet
             </p>
-          ) : (
-            <WalletSignIn label="Sign in to see my WL status" />
           )}
-          <Link className="st-linkbtn" href="/wl">
-            Join the WL
-          </Link>
         </div>
-      )}
+        <motion.div className="mt-card kb-island" variants={mv.stickerDrop} custom={0.6} initial="hidden" animate="shown">
+          {emblem}
+          <div className="mt-card__right">{right}</div>
+        </motion.div>
+      </div>
+    </NightPlate>
+  );
+}
 
-      {view === 'soldout' && (
-        <div className="st-row">
-          {playOpenForHolders(state.gameAccess) && (
-            <a className="st-linkbtn st-linkbtn--pink" href="/play">
-              Play
-            </a>
-          )}
-        </div>
-      )}
+const BUSY_LABEL = {
+  preparing: 'Checking the price…',
+  switching: 'Switching network…',
+  signing: 'Confirm in your wallet…',
+  confirming: 'Minting…',
+} as const;
 
-      {kind && c && (
-        <div className="mt-mint">
-          {!address ? (
-            <WalletSignIn label="Sign in" />
-          ) : (
-            <>
-              {kind === 'allowlist' && (
-                <p className="st-note mt-eligibility" data-testid="mt-eligibility">
-                  {proof === null ? 'Checking the allowlist…' : proof.eligible ? 'This wallet is on the allowlist.' : 'This wallet is not on the allowlist.'}
-                </p>
-              )}
-              <div className="mt-qty" role="group" aria-label="Quantity">
-                <button type="button" className="mt-qty__btn" aria-label="One less" disabled={busy || q <= 1} onClick={() => setQty(q - 1)}>
-                  −
-                </button>
-                <output className="mt-qty__n mono" aria-live="polite" data-testid="mt-qty">
-                  {q}
-                </output>
-                <button type="button" className="mt-qty__btn" aria-label="One more" disabled={busy || q >= left} onClick={() => setQty(q + 1)}>
-                  +
-                </button>
-              </div>
-              <p className="mt-total mono">
-                Total {formatHypeAmount(priceWei * BigInt(q), 6)}
-                {state.priceUsd !== null && ` ≈ ${usdText(state.priceUsd * q)}`}
-              </p>
-              {blocker && (
-                <p className="st-note is-error mt-blocker" role="alert" data-testid="mt-blocker">
-                  {blocker}
-                </p>
-              )}
-              <InkButton variant="pink" size="lg" disabled={busy || !!blocker || !chain} onClick={() => void mint()}>
-                {busy ? (phase === 'switching' ? 'Switching network…' : phase === 'signing' ? 'Confirm in your wallet…' : phase === 'confirming' ? 'Minting…' : 'Preparing…') : `Mint ${q}`}
-              </InkButton>
-              <p className="st-note">Your wallet adds a tiny buffer to the price; the contract refunds anything above the price in the same transaction.</p>
-              {error && (
-                <p className="st-note is-error" role="alert" data-testid="mt-error">
-                  {error}
-                </p>
-              )}
-            </>
-          )}
-        </div>
-      )}
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** The two wallet steps while a mint is in flight: sign, then the chain. */
+function MintSteps({ phase, hash, explorer }: { phase: Phase; hash: Hash | null; explorer: string | null }) {
+  const first = phase === 'preparing' ? 'Reading the fresh price' : phase === 'switching' ? 'Switch to Elysium' : 'Approve in your wallet';
+  const s1 = phase === 'confirming' || phase === 'error' ? 'done' : 'on';
+  const s2 = phase === 'confirming' ? 'on' : phase === 'error' ? 'off' : 'wait';
+  const link = hash ? explorerTx(hash, explorer) : null;
+  return (
+    <ol className="mt-steps" aria-live="polite">
+      <li className={`mt-steps__s is-${s1}`}>
+        <span className="mt-steps__n num">{s1 === 'done' ? <Icon name="check" size={14} /> : '1'}</span>
+        {first}
+      </li>
+      <li className={`mt-steps__s is-${s2}`}>
+        <span className="mt-steps__n num">2</span>
+        Minting on Elysium
+        {hash && (
+          <AddressChip address={hash} chars={4} size="sm" href={link ?? undefined} copy={false} label="Transaction" className="mt-steps__hash" />
+        )}
+      </li>
+    </ol>
+  );
+}
+
+/** A small status sticker under the mint button (WL status, public notes). */
+function WlNote({ tone, glyph, children, testId }: { tone: 'ok' | 'no' | 'wait' | 'idle'; glyph: 'check' | 'close' | 'info' | 'lock'; children: ReactNode; testId?: string }) {
+  return (
+    <div className={`mt-wl mt-wl--${tone}`} data-testid={testId}>
+      <span className="mt-wl__dot" aria-hidden="true">
+        <Icon name={glyph} size={15} />
+      </span>
+      <div className="mt-wl__text">{children}</div>
     </div>
+  );
+}
+
+/** Allowlist phase: is the connected wallet on the list (and is the list on the contract yet)? */
+function AllowlistStatus({ proof, address }: { proof: MintProofResponse | null; address: string }) {
+  const chip = <AddressChip address={address} size="sm" copy={false} />;
+  if (proof === null)
+    return (
+      <WlNote tone="wait" glyph="info" testId="mt-eligibility">
+        Checking the allowlist for {chip}…
+      </WlNote>
+    );
+  if (!proof.eligible)
+    return (
+      <WlNote tone="no" glyph="close" testId="mt-eligibility">
+        {chip} <span>is not on the allowlist. The public mint follows; or try the wallet you applied with.</span>
+      </WlNote>
+    );
+  const published = !!proof.root && !!proof.onchainRoot && proof.root.toLowerCase() === proof.onchainRoot.toLowerCase();
+  if (!published)
+    return (
+      <WlNote tone="wait" glyph="lock" testId="mt-eligibility">
+        {chip} <span>is on the allowlist. The list is not on the contract yet; give it a minute.</span>
+      </WlNote>
+    );
+  return (
+    <WlNote tone="ok" glyph="check" testId="mt-eligibility">
+      {chip} <span>is on the allowlist. Nobody&rsquo;s rushing you. Well, a little.</span>
+    </WlNote>
+  );
+}
+
+/** Closed phase: the signed-in visitor's WL entry. */
+function ClosedWlStatus({ wl, address }: { wl: WlEntryPublic | null | undefined; address: string }) {
+  const chip = <AddressChip address={address} size="sm" copy={false} />;
+  if (wl === undefined)
+    return (
+      <WlNote tone="wait" glyph="info" testId="mt-wl">
+        Checking the WL for {chip}…
+      </WlNote>
+    );
+  if (wl === null)
+    return (
+      <WlNote tone="idle" glyph="info" testId="mt-wl">
+        {chip} <span>has no WL entry yet. Three chores fix that.</span>
+      </WlNote>
+    );
+  if (wl.legacy)
+    return (
+      <WlNote tone="no" glyph="info" testId="mt-wl">
+        Your WL entry is from before the move to Elysium: re-apply with an EVM wallet.
+      </WlNote>
+    );
+  if (wl.status === 'approved')
+    return (
+      <WlNote tone="ok" glyph="check" testId="mt-wl">
+        {chip} <span>is on the list. You mint first when the seal breaks.</span>
+      </WlNote>
+    );
+  if (wl.status === 'pending')
+    return (
+      <WlNote tone="wait" glyph="info" testId="mt-wl">
+        {chip} <span>is in the queue. Someone is reading your chores, slowly.</span>
+      </WlNote>
+    );
+  return (
+    <WlNote tone="no" glyph="close" testId="mt-wl">
+      {chip} <span>did not make the WL this time. The public mint is for you.</span>
+    </WlNote>
   );
 }
