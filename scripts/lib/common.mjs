@@ -53,7 +53,7 @@ export async function waitForHttp(url, timeoutMs, isAborted = () => false) {
 
 /**
  * Chromium for Playwright. Order: CHROME_PATH, then Playwright's own browser cache (its normal
- * resolution, `pnpm -F @slana/web exec playwright install chromium`), then a pre-installed build
+ * resolution, `pnpm -F @slana/web exec playwright install chromium`).
  * Returns { executablePath } (undefined = let Playwright pick) or throws.
  */
 export function resolveChromium(chromium) {
@@ -69,8 +69,6 @@ export function resolveChromium(chromium) {
     /* no browser registered for this Playwright version */
   }
   if (own && existsSync(own)) return { executablePath: undefined };
-  const fallback = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
-  if (existsSync(fallback)) return { executablePath: fallback };
   throw new Error(
     'No Chromium found. Install one with `pnpm -F @slana/web exec playwright install chromium`, ' +
       'or point CHROME_PATH at a Chrome/Chromium binary.',

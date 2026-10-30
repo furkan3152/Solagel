@@ -9,7 +9,6 @@
 // transaction is signed. A Wallet Standard test wallet is injected (it signs the free login
 // message with a throwaway key and refuses transactions).
 // Usage: node scripts/lobby.mjs <baseUrl> <outDir> [step ...]   → <outDir>/lobby-*.png
-import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { chromium } from 'playwright';
 

@@ -4,7 +4,6 @@
 // Shots are saved as <outDir>/game-*.png; results (fps, settlement) are printed as JSON.
 // Death sheets are driven by injecting a "death" message (a real death cannot be scripted).
 // SHOT_THEME=dark prints every step at night (default: the theme each step sets, paper otherwise).
-import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { chromium } from 'playwright';
 

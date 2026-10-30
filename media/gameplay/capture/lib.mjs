@@ -26,7 +26,7 @@ const { installDevWallet, loadOrCreateKeypair } = await import(resolve(ROOT, 'sc
 import { attachJournal } from './journal.mjs';
 
 export const BASE = process.env.SLANA_URL || 'http://localhost:5173/play';
-export const CHROME = process.env.CHROME_PATH || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+export const CHROME = process.env.CHROME_PATH;
 export const FFMPEG = process.env.FFMPEG || '/usr/bin/ffmpeg';
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const T0 = Date.now();
