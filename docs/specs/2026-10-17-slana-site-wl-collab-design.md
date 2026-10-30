@@ -53,7 +53,7 @@ A stepper of tasks. The admin owns the task list. Each task has:
   5. Your Solana wallet.
 - Wallet ownership: the applicant signs in with their Solana wallet (SIWS, already in the app). The wallet field is
   that wallet. Signing is free and sends no transaction. One application per wallet and one per X handle, both unique.
-- **Validation:**
+- Validation:
   - X post links must match `x.com|twitter.com/<handle>/status/<id>`.
   - Handles are normalised.
   - A honeypot field.
@@ -80,7 +80,7 @@ The same flow and fields as fhecat.com/collab, adapted:
   - about your community (≤ 600 characters).
   
   Signed with the applicant's Solana wallet. One X account can apply at most 2 times.
-- **States:**
+- States:
   - in review;
   - not this time;
   - approved, with N spots and a deadline set by the admin, a countdown and a raffle-post link field;
@@ -102,11 +102,11 @@ Existing chain admin stays. New tabs:
   - Notes.
   - CSV export (approved wallets only, or all).
   - Counts.
-- **Tasks:**
+- Tasks:
   - Add, edit, reorder, enable and disable WL tasks with the fields above.
   - Set the launch-post link.
   - Changes apply to new applicants. Existing answers keep the task snapshot they answered.
-- **Collabs:**
+- Collabs:
   - List and detail.
   - Approve with spots + deadline, or reject.
   - Extend the deadline, unlock a submitted list, view and export its wallets (CSV), with duplicate flags.

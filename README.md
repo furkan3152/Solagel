@@ -120,7 +120,7 @@ Configuration: copy `apps/server/.env.example` to `apps/server/.env` (and `apps/
 Key variables: `SOLANA_CLUSTER`, `SOLANA_RPC_URL`, `PROGRAM_ID`, `SERVER_KEYPAIR`, `AUTH_SECRET`, `PUBLIC_URL`,
 `DATA_DIR`. Without `PROGRAM_ID` the server runs in practice-only mode.
 
-**Docker:**
+Docker:
 
 ```bash
 docker build -t slana .

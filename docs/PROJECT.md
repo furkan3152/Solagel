@@ -123,7 +123,7 @@ player = payout - fee
 ```
 
 Example with a 1,000 ticket and a till of 2,000 at the bell: profit 1,000, fee 50 (to the fee wallet), the player gets
-**1,950**.
+1,950.
 
 ### 3.2 Where tokens live
 
