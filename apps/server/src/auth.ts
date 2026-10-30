@@ -6,7 +6,7 @@ import { verifyEoa } from './chain/evm-client';
 /** A nonce is single use and valid this long. */
 export const NONCE_TTL_MS = 10 * 60_000;
 const TOKEN_TTL_MS = 24 * 60 * 60_000;
-/** Hard cap on outstanding nonces: the oldest are evicted beyond it (M2). */
+/** Hard cap on outstanding nonces: the oldest are evicted beyond it. */
 export const MAX_NONCES = 10_000;
 
 /** Where a login message says the player signs in (SIWE `domain`, `URI`, `Chain ID`). */

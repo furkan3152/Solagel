@@ -167,7 +167,7 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
       return enterRoom(res.hash);
     }
     if (!client || !arenaAddress) return failName('NetworkError');
-    // R20: the server keeps this arena closed (vault short of its journal): never sell a ticket
+    // the server keeps this arena closed (vault short of its journal): never sell a ticket
     if (useUi.getState().blockedArenas.includes(arenaId)) return failName('Maintenance');
     let plan;
     try {

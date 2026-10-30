@@ -471,7 +471,7 @@ export class Gateway {
         this.error(conn, 'session_busy', 'You are already playing in this arena.');
         return;
       }
-      // I1: a settlement (e.g. a stale refund) may have been queued for this session during the awaits
+      // a settlement (e.g. a stale refund) may have been queued for this session during the awaits
       if (this.journal.pending.some((p) => p.key === session.key)) {
         this.error(conn, 'no_session', 'Your previous game in this arena is still being settled.');
         return;

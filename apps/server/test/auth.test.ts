@@ -141,7 +141,7 @@ describe('SIWE login message (EIP-4361)', () => {
   });
 });
 
-describe('nonce map (M2)', () => {
+describe('nonce map', () => {
   it('is capped: the oldest nonces are evicted', async () => {
     const auth = new Auth(Buffer.alloc(32, 1));
     const { address, sign } = testSigner();

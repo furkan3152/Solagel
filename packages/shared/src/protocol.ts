@@ -142,7 +142,7 @@ export interface RoundStanding {
 }
 
 /**
- * An arena the server keeps closed although it is enabled on chain (R20: its vault
+ * An arena the server keeps closed although it is enabled on chain (its vault
  * cannot cover the loot, pending payouts and tickets the server journaled). No ticket may be sold.
  */
 export interface BlockedArena {

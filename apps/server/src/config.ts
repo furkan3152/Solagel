@@ -90,7 +90,7 @@ export interface ServerConfig {
     staleSessionAfterS: number;
     /**
      * `STALE_SWEEP_ACK=1`: the operator reviewed a quarantined journal (`journal.json.corrupt-*`)
-     * and allows the stale-session sweeper to run again (M9). Without it the sweeper stays off
+     * and allows the stale-session sweeper to run again. Without it the sweeper stays off
      * after a quarantine, so it cannot refund sessions whose real result was in the lost journal.
      */
     staleSweepAck: boolean;

@@ -152,7 +152,7 @@ describe('buildTickets', () => {
     expect(list[2].open).toBe(false);
   });
 
-  it('R20: marks arenas the server keeps closed (vault short of its journal)', () => {
+  it('marks arenas the server keeps closed (vault short of its journal)', () => {
     const list = buildTickets(ROOMS, [{ id: 1, entryFee: 1000n * ONE, enabled: true }, { id: 2, entryFee: 5000n * ONE, enabled: true }], [2, 99]);
     expect(list.find((t) => t.arenaId === 2)?.blocked).toBe(true);
     expect(list.find((t) => t.arenaId === 1)?.blocked).toBeFalsy();

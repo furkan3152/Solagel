@@ -1,5 +1,5 @@
 /**
- * Emote stickers (R4: no emoji in UI chrome). Each system emote is a
+ * Emote stickers (no emoji in UI chrome). Each system emote is a
  * die-cut risograph sticker: a card-stock border with an ink hairline, flat
  * riso inks with a misregistered second pass (multiply) and hand-lettered
  * stroke type (no fonts: SVG used as an image cannot load web fonts).

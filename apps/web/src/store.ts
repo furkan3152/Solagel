@@ -101,7 +101,7 @@ export interface UiState {
   fps: number;
   online: number;
   rooms: RoomInfo[];
-  /** Arenas the server keeps closed (R20: vault short of its journal); their tickets are not sold. */
+  /** Arenas the server keeps closed (vault short of its journal); their tickets are not sold. */
   blockedArenas: number[];
   chain: ChainStatus | null;
   room: RoomInfo | null;
@@ -130,7 +130,7 @@ export interface UiState {
    * itself when the next round opens (`opensAt`, server clock).
    */
   held: { arenaId: number; opensAt: number } | null;
-  /** Last `settled` message; `session` matches it to a ticket (R16). */
+  /** Last `settled` message; `session` matches it to a ticket. */
   /** `collect`: the token transfer to the player failed; the net waits in the arena vault for "Collect payout". Amounts are ledger units. */
   lastSettlement: { session: string | null; arenaId: number | null; txHash: string; payout: number; fee?: number; net?: number; collect?: boolean; at: number } | null;
   spectateTarget: number | null;

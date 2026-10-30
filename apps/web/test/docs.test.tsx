@@ -93,7 +93,7 @@ describe('player guide content', () => {
     expect(JSON.stringify(en.sections)).not.toContain('"key":"C"');
   });
 
-  it('R24: describes collecting a settled payout, not a 24 h refund of the entry fee only', () => {
+  it('describes collecting a settled payout, not a 24 h refund of the entry fee only', () => {
     const t = JSON.stringify(en.sections);
     expect(t).not.toMatch(/never includes winnings|create the token account rather|returns your entry fee only/);
     expect(t).toContain('Collect payout');

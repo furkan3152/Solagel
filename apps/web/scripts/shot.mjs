@@ -1,5 +1,4 @@
 // Usage: node scripts/shot.mjs <url> <out.png> [width=1440] [height=900] [waitMs=1500] [mobile=0]
-import { existsSync } from 'node:fs';
 import { chromium } from 'playwright';
 
 const [url, out, w = '1440', h = '900', wait = '1500', mobile = '0'] = process.argv.slice(2);

@@ -60,7 +60,7 @@ export interface TicketModel {
   loot: number;
   /** The arena exists on chain and is open (practice: always). */
   open: boolean;
-  /** The server keeps this arena closed (R20: its vault cannot cover the journal): "under maintenance", no sales. */
+  /** The server keeps this arena closed (its vault cannot cover the journal): "under maintenance", no sales. */
   blocked?: boolean;
   /**
    * The game token is not set on chain yet: a default arena shown as "Opening soon" (its
@@ -220,7 +220,7 @@ export type TicketGate =
   /** The game token is not set on chain yet: the arena opens soon (nothing is sold; practice plays). */
   | { kind: 'soon' }
   | { kind: 'offline' }
-  /** R20: the server keeps this arena closed (its vault cannot cover the journal); nothing is sold. */
+  /** The server keeps this arena closed (its vault cannot cover the journal); nothing is sold. */
   | { kind: 'maintenance' }
   | { kind: 'connect' }
   /** The last game here is settled and its payout waits for the player: "Collect payout" (base units). */
@@ -264,7 +264,7 @@ export function ticketGate(g: GateInput): TicketGate {
     if (g.nowS - g.session.openedAt >= REFUND_DELAY_SECS) return { kind: 'refund' };
     return g.verified ? { kind: 'resume' } : { kind: 'verify' };
   }
-  // R20: the server keeps this arena closed; nothing new is sold
+  // the server keeps this arena closed; nothing new is sold
   if (t.blocked) return { kind: 'maintenance' };
   if (!g.verified) return { kind: 'verify' };
   if (g.balance !== null && g.balance < t.entryFee) return { kind: 'insufficient', missing: t.entryFee - g.balance };

@@ -50,7 +50,7 @@ const SECS = Number(opt('--secs', '20'));
 const WARM = Number(opt('--warm', '6'));
 const PROFILE = flag('--profile');
 const TRACE = flag('--trace');
-const CHROME = process.env.CHROME_PATH;
+const CHROME = process.env.CHROME_PATH || chromium.executablePath();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (...a) => console.error('[perf]', ...a);
 

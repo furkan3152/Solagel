@@ -1,5 +1,5 @@
 // Lobby and ticket-flow tour: screenshots of the lobby (desktop / mobile,
-// paper / night), the ticket confirm sheet, the stamp-and-tear frame, the R24 collect-payout slip,
+// paper / night), the ticket confirm sheet, the stamp-and-tear frame, the collect-payout slip,
 // a refused transaction, the wallet / profile sheets, and the "Opening soon" lobby before the
 // game token is set (step `soon`).
 // Needs a dev server (pnpm dev) whose game server runs NODE_ENV=development DEV_FAKE_CHAIN=1
@@ -9,7 +9,6 @@
 // transaction is signed. An EIP-6963 dev wallet is injected (scripts/evm-wallet.mjs: a viem local
 // account with a throwaway key; it signs the free SIWE login message and refuses transactions).
 // Usage: node scripts/lobby.mjs <baseUrl> <outDir> [step ...]   → <outDir>/lobby-*.png
-import { existsSync } from 'node:fs';
 import { chromium } from 'playwright';
 import { installEvmWallet, newDevKey, signInGame } from './evm-wallet.mjs';
 

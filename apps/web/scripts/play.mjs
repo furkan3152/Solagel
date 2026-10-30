@@ -1,6 +1,5 @@
 // Usage: node scripts/play.mjs <url> <outPrefix> [width=1440] [height=900] [seconds=6] [mobile=0]
 // Joins a free game, wanders around with the mouse, splits once and saves screenshots.
-import { existsSync } from 'node:fs';
 import { chromium } from 'playwright';
 
 const [url, out, w = '1440', h = '900', secs = '6', mobile = '0'] = process.argv.slice(2);

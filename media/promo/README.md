@@ -49,10 +49,9 @@ mention (the gameplay kit's `nft` component with `plain`, one bar, on the 82 BPM
 
 ## Voice
 
-Kokoro TTS (local ONNX, `kokoro-v1.0`), voice **`af_heart`**, for every video. Three
-representative lines (the hook, the bell rule, the fee example) were auditioned in eight voices;
-the reels are in `audio/auditions/<voice>.m4a` and the measurements in
-`audio/auditions/audition.json` (`media/gameplay/render/voice.py audition`):
+Kokoro TTS (local ONNX, `kokoro-v1.0`), voice `af_heart`, for every video. Three
+representative lines (the hook, the bell rule, the fee example) were auditioned in eight voices
+with `media/gameplay/render/voice.py audition`, which writes the reels and `audition.json`:
 
 | Voice | Kokoro grade | Read (words/min) | Pitch movement (semitones, sd) |
 | --- | --- | --- | --- |
@@ -66,8 +65,8 @@ the reels are in `audio/auditions/<voice>.m4a` and the measurements in
 | bm_george | C | 105-130 | 4.4-5.0 |
 
 `af_heart` is chosen: the highest Kokoro grade, a natural conversational pace, and the liveliest
-intonation of the top-graded voices (af_bella and bf_emma measure flatter). The reels are kept
-for comparison, and switching is one flag (`tts.py --voice`).
+intonation of the top-graded voices (af_bella and bf_emma measure flatter). Switching is one flag
+(`tts.py --voice`).
 
 The scripts are written for the ear: short sentences, contractions, numbers in words ("one
 thousand", "five percent", "at elymum"). Script marks (`voice.py`): `|` a breath, `||` a beat,

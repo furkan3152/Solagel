@@ -184,7 +184,7 @@ describe('DEV_FAKE_CHAIN', () => {
   });
 });
 
-describe('settled message (R16)', () => {
+describe('settled message', () => {
   it('names the session and arena so the client can match its receipt', () => {
     const tx = `0x${'ab'.repeat(32)}`;
     expect(settledMessage({ key: '2:0xabc:9', player: 'P', arenaId: 2, txHash: tx, payout: 300, fee: 10 })).toEqual({

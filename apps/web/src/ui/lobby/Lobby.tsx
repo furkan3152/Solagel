@@ -155,7 +155,7 @@ export function Lobby() {
     }
   };
 
-  // R24: the first arena whose settled game waits to be collected
+  // the first arena whose settled game waits to be collected
   const collect = () => {
     const first = sessionsToCollect(model.sessions)[0];
     const key = first ? (`arena:${first.arenaId}` as TicketKey) : undefined;

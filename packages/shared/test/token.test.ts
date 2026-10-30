@@ -100,7 +100,7 @@ describe('formatToken', () => {
   });
 
   describe('compact', () => {
-    it('uses K, M and B without a space (R15)', () => {
+    it('uses K, M and B without a space', () => {
       expect(formatToken(12_400_000_000, 6, { compact: true })).toBe('12.4K');
       expect(formatToken(1_000_000_000n, 6, { compact: true })).toBe('1K');
       expect(formatToken(1_500_000_000, 6, { compact: true })).toBe('1.5K');

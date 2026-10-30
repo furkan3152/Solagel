@@ -178,7 +178,7 @@ describe('matchmaking', () => {
     expect(m2.blockedArenas()).toEqual([]);
   });
 
-  it('R20 while running: a swept arena with live loot stays blocked when re-enabled', async () => {
+  it('while running: a swept arena with live loot stays blocked when re-enabled', async () => {
     const journal = new Journal(null);
     const logs: string[] = [];
     const chain = new ArenaChain([{ ...arena(1, FEE), pot: 0 }]);
@@ -220,7 +220,7 @@ describe('matchmaking', () => {
     expect(logs.some((l) => /arena #1: vault .* now covers the journal/.test(l))).toBe(true);
   });
 
-  it('R20: disable → sweep → re-enable between two refreshes is still caught (every arena, every refresh)', async () => {
+  it('disable → sweep → re-enable between two refreshes is still caught (every arena, every refresh)', async () => {
     const journal = new Journal(null);
     const logs: string[] = [];
     const chain = new ArenaChain([{ ...arena(1, FEE), pot: 0 }]);
@@ -250,7 +250,7 @@ describe('matchmaking', () => {
     expect(logs.filter((l) => /arena #1 KEPT DISABLED/.test(l))).toHaveLength(1);
   });
 
-  it('R20: a stale (cached) pot of a running arena is not blocked when the fresh read covers it', async () => {
+  it('a stale (cached) pot of a running arena is not blocked when the fresh read covers it', async () => {
     const journal = new Journal(null);
     const chain = new ArenaChain([{ ...arena(1, FEE), pot: 0 }]);
     const cfg = loadConfig({ DATA_DIR: mkdtempSync(join(tmpdir(), 'elymum-mm-')) });
@@ -265,7 +265,7 @@ describe('matchmaking', () => {
     expect(await m.arenaRoom(1)).toBe(a1);
   });
 
-  it('R20: a disabled → enabled flip is re-checked even without a sweep in between', async () => {
+  it('a disabled → enabled flip is re-checked even without a sweep in between', async () => {
     const journal = new Journal(null);
     journal.commit({ loot: { roomId: 'arena-1-1', arenaId: 1, items: [{ x: 1, y: 1, value: 2 * FEE }] } });
     const chain = new ArenaChain([{ ...arena(1, FEE), enabled: false, pot: 2 * FEE }]);

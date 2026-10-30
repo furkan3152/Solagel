@@ -21,7 +21,7 @@ function Cta() {
   return <p data-testid="cta">{`${cta.label}|${cta.sub}|${cta.inert}`}</p>;
 }
 
-describe('R20: lobby shows a server-blocked arena as under maintenance', () => {
+describe('lobby shows a server-blocked arena as under maintenance', () => {
   it('flags the ticket and disables it', () => {
     render(
       <Kb>

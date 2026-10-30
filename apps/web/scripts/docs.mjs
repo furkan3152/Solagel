@@ -1,6 +1,5 @@
 // Player guide tour: /docs on desktop 1440×900 and phone 390×844 (DPR 2), paper / night.
 // Needs a dev server (pnpm dev). Usage: node scripts/docs.mjs <baseUrl> <outDir>  -> <outDir>/docs-*.png
-import { existsSync } from 'node:fs';
 import { chromium } from 'playwright';
 
 const [base = 'http://127.0.0.1:5173', out = '.'] = process.argv.slice(2);

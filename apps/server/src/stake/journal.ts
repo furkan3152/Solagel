@@ -467,7 +467,7 @@ export class Journal {
 
   /**
    * Quarantined journal files next to this one (`<name>.corrupt-<ts>`, moved aside by
-   * `load`). While any exists, what the server owed at that time is unknown (M9).
+   * `load`). While any exists, what the server owed at that time is unknown.
    */
   quarantinedFiles(): string[] {
     if (!this.path) return this.quarantinedHere ? ['(in-memory)'] : [];

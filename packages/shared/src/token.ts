@@ -38,7 +38,7 @@ const DECIMAL = '.';
 
 /**
  * Compact tiers, ascending. `exp` is the power of ten of whole tokens the suffix
- * stands for. R15: K / M / B (thousand / million / billion), the crypto convention.
+ * stands for: K / M / B (thousand / million / billion), the crypto convention.
  */
 const TIERS = [
   { exp: 0, suffix: '' },

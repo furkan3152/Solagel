@@ -238,7 +238,7 @@ describe('server over websocket', () => {
     c.close();
   });
 
-  it('R20: arenas kept closed by the vault guard reach the lobby payloads', async () => {
+  it('arenas kept closed by the vault guard reach the lobby payloads', async () => {
     const underfunded = (app.rooms as unknown as { underfunded: Map<number, string> }).underfunded;
     underfunded.set(7, 'vault short');
     try {
@@ -628,7 +628,7 @@ describe('server over websocket', () => {
     }
   });
 
-  it('R24: a finalized session cannot be played: collect the payout first', async () => {
+  it('a finalized session cannot be played: collect the payout first', async () => {
     const player = newWallet();
     const c = await signedIn(player);
     chain.sessions.set(`1:${player}`, session(player, { finalized: true, owed: 7_000_000 }));
@@ -640,7 +640,7 @@ describe('server over websocket', () => {
     c.close();
   });
 
-  it('I1: a settlement queued while the join awaits blocks the join', async () => {
+  it('a settlement queued while the join awaits blocks the join', async () => {
     const player = newWallet();
     const c = await signedIn(player);
     const s = session(player);

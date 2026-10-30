@@ -6,7 +6,7 @@ import { engine } from '../../game/instance';
 import { useT, type TKey } from '../../i18n';
 import { useUi, type KillItem } from '../../store';
 
-/** System lines are UI chrome: no emoji there (R4); player text stays as typed. */
+/** System lines are UI chrome: no emoji there; player text stays as typed. */
 const stripEmoji = (s: string) =>
   s
     .replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu, '')
