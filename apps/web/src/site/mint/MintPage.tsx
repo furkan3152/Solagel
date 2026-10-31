@@ -12,11 +12,13 @@ import { sendWalletCall, txErrorText, type TxPhase } from '../../wallet/tx';
 import { site } from '../api';
 import { dropExpired } from '../session';
 import { X_URL } from '../settings';
+import { isTestnetChain } from '../serverChain';
 import { SitePage } from '../Shell';
 import { SiteWalletProvider, WalletSignIn, useSiteSession } from '../wallet/SiteWallet';
 import { EmblemPanel, FoodConfetti, LinkButton, Starburst, MintSky, MintTrack, type TrackStage } from './MintArt';
 import { EmblemHand, Flap, FlipCard, SealBreak } from './MintRitual';
-import { mintBlocker, mintKind, mintView, mintedTokenIds, playOpenForHolders, remaining, usdText, type MintView } from './logic';
+import { EmblemPerks } from './Perks';
+import { emblemPerks, mintBlocker, mintKind, mintView, mintedTokenIds, playOpenForHolders, remaining, usdText, type MintView } from './logic';
 import './mint.css';
 
 /** The NFT emblem image the server draws for a token id. */
@@ -565,6 +567,8 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
           {emblem}
           <div className="mt-card__right">{right}</div>
         </motion.div>
+        {/* under the lede on wide screens, under the mint card on phones (the card comes first there) */}
+        <EmblemPerks perks={emblemPerks(isTestnetChain(chain), { feeBps: chain?.feeBps ?? null })} />
       </div>
     </NightPlate>
   );

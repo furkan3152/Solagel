@@ -24,6 +24,10 @@ export interface StickerLabel {
   /** Value (mass) printed after the name in teal, or null. */
   value: string | null;
   verified: boolean;
+  /** A server bot: a small ink "BOT" chip after the name. */
+  bot?: boolean;
+  /** An Elymum emblem holder: a small laurel before the name. */
+  holder?: boolean;
   /** My coin: a sun sticker instead of cream. */
   mine: boolean;
   /** Sticker centre, world units. */
@@ -97,8 +101,16 @@ export class LabelCache {
     const name = o.name ? this.text(o.name, INK, want) : null;
     const value = o.value ? this.text(o.value, o.mine ? INK : TEXT_INKS.day.teal, want) : null;
     const tick = o.name && o.verified ? fs * 0.95 : 0;
+    // the BOT chip: paper letters on an ink pill, a size smaller than the name (one cached sprite)
+    const bot = o.name && o.bot ? this.text('BOT', CARD_PAPER, want * 0.72) : null;
+    const botPad = fs * 0.28;
+    const botS = bot ? (fs * 0.72) / bot.px : 0; // world units per BOT sprite px
+    const botW = bot ? bot.tw * botS : 0;
+    const botBox = bot ? botW + botPad * 2 : 0;
+    const botGap = bot ? fs * 0.4 : 0;
     const gap = name && value ? fs * 0.62 : 0;
-    const textW = (name ? name.tw * k(name) : 0) + tick + gap + (value ? value.tw * k(value) : 0);
+    const laurel = o.name && o.holder ? fs * 1.15 : 0;
+    const textW = laurel + (name ? name.tw * k(name) : 0) + tick + botGap + botBox + gap + (value ? value.tw * k(value) : 0);
     const padX = fs * 0.62;
     const w = textW + padX * 2;
     const h = fs * 1.78;
@@ -121,6 +133,10 @@ export class LabelCache {
     ctx.strokeStyle = INK;
     ctx.stroke();
     let x = x0 + padX;
+    if (laurel) {
+      drawLaurel(ctx, x + fs * 0.45, o.y, fs * 0.5, edge * 0.5);
+      x += laurel;
+    }
     if (name) {
       const s = k(name);
       ctx.drawImage(name.canvas, x, o.y - (name.h / 2) * s, name.w * s, name.h * s);
@@ -146,6 +162,16 @@ export class LabelCache {
       ctx.stroke();
       x += tick;
     }
+    if (bot) {
+      x += botGap;
+      const bh = fs * 1.02;
+      ctx.beginPath();
+      ctx.roundRect(x, o.y - bh / 2, botBox, bh, Math.min(4 / o.zoom, bh * 0.3));
+      ctx.fillStyle = INK;
+      ctx.fill();
+      ctx.drawImage(bot.canvas, x + botPad, o.y - (bot.h / 2) * botS, bot.w * botS, bot.h * botS);
+      x += botBox;
+    }
     if (value) {
       x += gap;
       const s = k(value);
@@ -153,6 +179,26 @@ export class LabelCache {
     }
     ctx.globalAlpha = prev;
   }
+}
+
+/** A laurel sprig (two leafy arcs) centred at (cx, cy), half-height h: the emblem holder's mark. */
+function drawLaurel(ctx: CanvasRenderingContext2D, cx: number, cy: number, h: number, lw: number): void {
+  ctx.save();
+  ctx.fillStyle = TEXT_INKS.day.teal;
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = lw;
+  for (const side of [-1, 1]) {
+    for (let i = 0; i < 3; i++) {
+      const a = (-0.9 + i * 0.75) * side;
+      const lx = cx + side * h * 0.55 * Math.cos(i * 0.6);
+      const ly = cy + h * (0.55 - i * 0.55);
+      ctx.beginPath();
+      ctx.ellipse(lx, ly, h * 0.22, h * 0.42, a, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
 }
 
 let measureCtx: CanvasRenderingContext2D | null = null;

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Landing } from '../src/site/landing/Landing';
 import { SiteApp } from '../src/site/mount';
@@ -33,11 +33,15 @@ describe('the landing (/)', { timeout: 30_000 }, () => {
     // the NFT plate links to the mint; the header has the nav and Connect
     expect(screen.getAllByRole('link', { name: 'See the mint' })[0].getAttribute('href')).toBe('/mint');
     const nav = screen.getByRole('navigation', { name: 'Site' });
-    for (const n of ['The feast', 'Arenas', 'Mint', 'WL', 'Docs']) expect(nav.textContent).toContain(n);
+    // the header nav is short: Play · Mint · (Faucet on testnet) · WL · Docs
+    for (const n of ['Play', 'Mint', 'WL', 'Docs']) expect(nav.textContent).toContain(n);
+    expect(nav.textContent).not.toContain('Faucet');
     expect(screen.getByRole('button', { name: /Connect/ })).toBeTruthy();
     expect(screen.getAllByRole('link', { name: /@elymumio/ }).some((a) => a.getAttribute('href') === 'https://x.com/elymumio')).toBe(true);
-    expect(screen.queryByRole('link', { name: /^Play$/ })).toBeNull();
-    expect(document.querySelector('a[href="/play"]')).toBeNull();
+    // the page itself offers no way into the closed game (the header's Play leads to the gate)
+    const main = document.querySelector('main')!;
+    expect(within(main).queryByRole('link', { name: /^Play$/ })).toBeNull();
+    expect(main.querySelector('a[href="/play"]')).toBeNull();
     // sound is off until the visitor turns it on
     expect(screen.getByRole('button', { name: /Sound off/ }).getAttribute('aria-pressed')).toBe('false');
   });
@@ -45,7 +49,7 @@ describe('the landing (/)', { timeout: 30_000 }, () => {
   it('shows Collab without "Soon" when collabs are open, and Play when the game is public', async () => {
     ({ restore } = mockFetch({ 'GET /api/site/settings': { settings: { ...SETTINGS, collabOpen: true, gameAccess: 'public' } } }));
     render(<Landing />);
-    await waitFor(() => expect(screen.getByRole('link', { name: /^Play$/ }).getAttribute('href')).toBe('/play'));
+    await waitFor(() => expect(within(document.querySelector('main')!).getByRole('link', { name: /^Play$/ }).getAttribute('href')).toBe('/play'));
     expect(screen.queryByRole('link', { name: 'Collab, soon' })).toBeNull();
     expect(screen.getAllByRole('link', { name: /Collab/ })[0].getAttribute('href')).toBe('/collab');
   });

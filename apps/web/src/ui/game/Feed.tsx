@@ -1,8 +1,9 @@
-import { lookForBasicSkin } from '@elymum/art';
+import { lookForSkin as lookForBasicSkin } from '../../render/looks';
 import { AnimatePresence, motion } from 'motion/react';
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Icon, usePreset, useReducedMotion } from '../../design';
 import { engine } from '../../game/instance';
+import { BotTag } from './BotTag';
 import { useT, type TKey } from '../../i18n';
 import { useUi, type KillItem } from '../../store';
 
@@ -25,21 +26,22 @@ const EAT_LINES: readonly TKey[] = ['g.kill.0', 'g.kill.1', 'g.kill.2', 'g.kill.
 /** One kill as a sentence: the killer and the victim keep their dots; "you" is printed in sun. */
 function KillLine({ k, myName }: { k: KillItem; myName: string | null }) {
   const t = useT();
-  const key = k.cause === 'virus' ? 'g.kill.cactus' : EAT_LINES[k.id % EAT_LINES.length];
-  const who = (name: string, skin: number, mark: string) => {
-    const me = myName !== null && name === myName;
+  const key = k.cause === 'left' ? 'g.wentHome' : k.cause === 'virus' ? 'g.kill.cactus' : EAT_LINES[k.id % EAT_LINES.length];
+  const who = (name: string, skin: number, bot: boolean | undefined, mark: string) => {
+    const me = myName !== null && name === myName && !bot;
     return (
       <b className={me ? 'is-me' : undefined} key={mark}>
         <InkDot skin={skin} />
         {me ? t('g.youName') : name}
+        {bot && <BotTag />}
       </b>
     );
   };
   // the sentence comes from the copy with two markers for the names
   const text = t(key as 'g.kill.0', { k: '\u0001', v: '\u0002' });
   const parts: ReactNode[] = text.split(/(\u0001|\u0002)/).map((p, i) => {
-    if (p === '\u0001') return who(k.killer, k.killerSkin, `k${i}`);
-    if (p === '\u0002') return who(k.victim, k.victimSkin, `v${i}`);
+    if (p === '\u0001') return who(k.killer, k.killerSkin, k.killerIsBot, `k${i}`);
+    if (p === '\u0002') return who(k.victim, k.victimSkin, k.victimIsBot, `v${i}`);
     return <Fragment key={i}>{p}</Fragment>;
   });
   return <>{parts}</>;

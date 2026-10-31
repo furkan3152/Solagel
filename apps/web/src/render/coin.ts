@@ -1,4 +1,5 @@
-import { drawRisoCoin, lookForBasicSkin, type CoinInterior, type CoinLook, type Expression, type JellyLike } from '@elymum/art';
+import { lookForSkin } from './looks';
+import { drawRisoCoin, type CoinInterior, type CoinLook, type Expression, type JellyLike } from '@elymum/art';
 import type { SkinDef } from '@elymum/shared';
 
 export interface CoinOpts {
@@ -35,5 +36,5 @@ export function drawCoinLook(ctx: CanvasRenderingContext2D, x: number, y: number
  * shared Storybook coin drawing from `@elymum/art` (basic skins map onto Elysium looks).
  */
 export function drawCoin(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, skin: SkinDef, o: CoinOpts): void {
-  drawCoinLook(ctx, x, y, r, lookForBasicSkin(skin.id), o);
+  drawCoinLook(ctx, x, y, r, lookForSkin(skin.id), o);
 }

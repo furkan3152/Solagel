@@ -41,6 +41,8 @@ export function useCtaText(ticket: TicketModel | undefined, gate: TicketGate | u
       return { label: t('lo.cta.collect'), sub: t('lo.cta.collectSub', { amount: tok.fee(gate.owed), sym: tok.symbol }), icon: 'coin', inert: false };
     case 'refund':
       return { label: t('lo.cta.refund'), sub: t('lo.cta.refundSub', { room }), icon: 'coin', inert: false };
+    case 'holders':
+      return { label: t('lo.cta.holders'), sub: t('lo.cta.holdersSub', { room }), icon: 'lock', inert: false };
     case 'insufficient':
       return {
         label: t('lo.cta.insufficient', { sym: tok.symbol }),

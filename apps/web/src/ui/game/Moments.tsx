@@ -1,4 +1,4 @@
-import { lookForBasicSkin } from '@elymum/art';
+import { lookForSkin as lookForBasicSkin } from '../../render/looks';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { springs, useReducedMotion } from '../../design';

@@ -15,7 +15,7 @@ import { loadDevFake } from './devFakeLoader';
 import { explorerTx } from './links';
 import { serverChainInfo } from './network';
 import { useAddress } from './store';
-import { bpsPercent, feeBps, planErrorName, ticketSteps, type TicketModel, type TicketStep } from './ticket';
+import { bpsPercent, feeBps, planErrorName, ticketFeeBps, ticketSteps, type TicketModel, type TicketStep } from './ticket';
 import { sendWalletCall, txErrorText, type TxPhase } from './tx';
 
 /** `collect`: a finalized session's payout; `refund`: an unsettled ticket after 24 h. */
@@ -101,7 +101,10 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
   // the game token must be set for any ticket transaction (the lobby lists none before)
   const config = data.config?.token ? data.config : null;
   const arenaAddress = (chain?.arenaAddress ?? null) as Address | null;
-  const bps = feeBps(serverBps, config);
+  const normalBps = feeBps(serverBps, config);
+  // emblem holders get the holder rate, fixed into the ticket at join (planJoin's feeBps)
+  const holderRate = ticketFeeBps(normalBps, config, data.holder);
+  const bps = holderRate.bps;
   const fee = mode === 'refund' ? (session?.entryFee ?? ticket.entryFee) : ticket.entryFee;
   const steps: TicketStep[] = ticketSteps(data.allowance, fee);
   const busy = phase === 'preparing' || phase === 'switching' || phase === 'signing' || phase === 'confirming' || phase === 'stamped';
@@ -184,7 +187,9 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
         getArenaConfig(client, arenaAddress),
       ]);
       if (p.entryFee !== review.fee) return failName('PriceChanged');
-      if (fresh.feeBps !== review.bps) return failName('FeeChanged');
+      // the rate this ticket will be fixed at: the holder rate for holders (planJoin reads it on chain)
+      const rate = p.feeBps ?? ticketFeeBps(fresh.feeBps, fresh, p.holder).bps;
+      if (rate !== review.bps) return failName('FeeChanged');
       if (fresh.paused) return failName('Paused');
       plan = p;
     } catch (err) {
@@ -391,7 +396,12 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
 
         <dl className="tf-lines">
           {mode !== 'collect' && <Line label={t('tf.entry')} value={`${tok.exact(v.fee)} ${tok.symbol}`} strong />}
-          {mode === 'buy' && <Line label={t('tf.fee')} value={t('tf.feeV', { n: bpsPercent(v.bps) })} />}
+          {mode === 'buy' && (
+            <Line
+              label={t('tf.fee')}
+              value={holderRate.discount ? `${t('tf.feeV', { n: bpsPercent(v.bps) })} · ${t('tf.feeHolder', { std: bpsPercent(normalBps) })}` : t('tf.feeV', { n: bpsPercent(v.bps) })}
+            />
+          )}
           <Line label={t('tf.gas')} value={t('tf.gasV', { chain: chainName, hype: v.wei === null ? '…' : formatHypeAmount(v.wei, 4) })} />
           {mode === 'buy' && v.balance !== null && (
             <Line label={t('tf.balance')} value={`${tok.fee(v.balance)} → ${tok.fee(v.balance - v.fee)} ${tok.symbol}`} />

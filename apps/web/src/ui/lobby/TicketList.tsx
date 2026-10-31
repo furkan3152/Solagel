@@ -1,11 +1,12 @@
 import { arenaMeta } from '@elymum/shared';
 import { motion } from 'motion/react';
 import type { CSSProperties } from 'react';
-import { STAGGER, Ticket, TicketGroup, TicketStub, springs, useReducedMotion } from '../../design';
+import { Laurel, STAGGER, Ticket, TicketGroup, TicketStub, springs, useReducedMotion } from '../../design';
+import { useChainData } from '../../wallet/chain';
 import { formatCountdown, useRound } from '../../game/round';
 import { useT } from '../../i18n';
 import { useUi } from '../../store';
-import { bpsPercent, feeBps, type TicketGate, type TicketKey, type TicketModel } from '../../wallet/ticket';
+import { bpsPercent, feeBps, ticketFeeBps, type TicketGate, type TicketKey, type TicketModel } from '../../wallet/ticket';
 import { ArenaVignette } from './ArenaVignette';
 import { ticketName, useTokenText } from './useLobby';
 
@@ -24,6 +25,16 @@ export function RoundLine({ arenaId }: { arenaId: number }) {
     <span key={`${round.n}-${round.phase}`} className={`kl-ticket__round mono${closed ? ' is-closed' : ''}`} data-phase={round.phase}>
       {closed ? t('lo.round.closed', { time }) : t('lo.round.ends', { time })}
     </span>
+  );
+}
+
+/** A tiny padlock for the laurel tag of a holders-only arena (non-holders). */
+function LockGlyph() {
+  return (
+    <svg width={11} height={11} viewBox="0 0 24 24" aria-hidden="true" className="kl-ticket__lock">
+      <rect x={5} y={10} width={14} height={11} rx={2.5} fill="currentColor" />
+      <path d="M8 10V7.5a4 4 0 0 1 8 0V10" fill="none" stroke="currentColor" strokeWidth={3} />
+    </svg>
   );
 }
 
@@ -58,7 +69,12 @@ export function TicketList({
   const tok = useTokenText();
   const reduced = useReducedMotion();
   const held = useUi((s) => s.held);
-  const feeLine = t('lo.feeLine', { fee: bpsPercent(feeBps(serverBps)) });
+  const holder = useChainData((s) => s.holder);
+  const config = useChainData((s) => s.config);
+  const normalBps = feeBps(serverBps, config);
+  const mine = ticketFeeBps(normalBps, config, holder);
+  // emblem holders see the rate their ticket gets (fixed at join)
+  const feeLine = mine.discount ? t('lo.feeLineHolder', { fee: bpsPercent(mine.bps), std: bpsPercent(normalBps) }) : t('lo.feeLine', { fee: bpsPercent(normalBps) });
 
   const count = (n: number, one: 'lo.humans1' | 'lo.bots1', many: 'lo.humans' | 'lo.bots') => (n === 1 ? t(one) : t(many, { n }));
 
@@ -130,8 +146,15 @@ export function TicketList({
           <span className="kl-ticket__state">
             {closed && <span className="kl-ticket__flag mono">{maintenance ? t('lo.maintenance') : soon ? t('lo.soon') : t('lo.closed')}</span>}
             {status && <span className="kl-ticket__flag is-open mono">{status}</span>}
+            {tk.holdersOnly && (
+              <span className={`kl-ticket__laurel mono${holder ? ' is-mine' : ''}`} data-testid="holders-only" title={t('lo.cta.holdersSub', { room: name })}>
+                <Laurel size={13} />
+                {!holder && <LockGlyph />}
+                {holder ? t('lo.holdersOnlyYou') : t('lo.holdersOnly')}
+              </span>
+            )}
             {!practice && !closed && <RoundLine arenaId={tk.arenaId!} />}
-            {!practice && !soon && <span className="kl-ticket__fee mono">{feeLine}</span>}
+            {!practice && !soon && <span className={`kl-ticket__fee mono${mine.discount ? ' is-holder' : ''}`}>{feeLine}</span>}
             {practice && <span className="kl-ticket__fee mono">{t('lo.practiceNote')}</span>}
           </span>
         </Ticket>

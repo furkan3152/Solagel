@@ -3,6 +3,7 @@ import { CoinMark, Icon, Kb, RingScene, Wordmark as InkWordmark, type IconName }
 import { FooterLife } from './FooterLife';
 import { usePeelLetters } from './peel';
 import { Link, usePath } from './router';
+import { isTestnetChain, useServerChain } from './serverChain';
 import { siteHost, useSiteSettings, xProfile } from './settings';
 import './site.css';
 
@@ -80,14 +81,20 @@ export function SiteLinkButton({
   );
 }
 
-/** The site nav: two plates of the landing, then the pages. */
-const NAV: { href: string; label: string }[] = [
-  { href: '/#feast', label: 'The feast' },
-  { href: '/#arenas', label: 'Arenas' },
+/**
+ * The site nav, kept short: Play, Mint, Faucet (testnet only), WL, Docs. Every link warms its page
+ * on hover / touch (router `Link`), so the click turns the page at once.
+ */
+export const NAV: { href: string; label: string; testnet?: true }[] = [
+  { href: '/play', label: 'Play' },
   { href: '/mint', label: 'Mint' },
+  { href: '/faucet', label: 'Faucet', testnet: true },
   { href: '/wl', label: 'WL' },
   { href: '/docs', label: 'Docs' },
 ];
+
+/** The nav for a network: the Faucet link only where test tokens exist (hidden while unknown). */
+export const navFor = (testnet: boolean | null) => NAV.filter((n) => !n.testnet || testnet === true);
 
 function ConnectFallback() {
   return (
@@ -103,6 +110,7 @@ function ConnectFallback() {
 export function SiteHeader({ cta: _cta = true, children }: { cta?: boolean; /** Extras hung under the header line (the landing's seed rail). */ children?: ReactNode }) {
   const path = usePath();
   const peel = usePeelLetters<HTMLSpanElement>();
+  const testnet = isTestnetChain(useServerChain());
   const [menu, setMenu] = useState(false);
   useEffect(() => setMenu(false), [path]);
   useEffect(() => {
@@ -111,8 +119,8 @@ export function SiteHeader({ cta: _cta = true, children }: { cta?: boolean; /** 
     window.addEventListener('keydown', esc);
     return () => window.removeEventListener('keydown', esc);
   }, [menu]);
-  const links = NAV.map((n) => {
-    const on = !n.href.includes('#') && path === n.href;
+  const links = navFor(testnet).map((n) => {
+    const on = path === n.href;
     return (
       <Link
         key={n.href}
@@ -154,9 +162,16 @@ export function SiteHeader({ cta: _cta = true, children }: { cta?: boolean; /** 
         </div>
       </div>
       {menu && (
-        <nav id="st-menu" className="st-menu kb-sticker kb-sticker--cream" aria-label="Site menu">
-          {links}
-        </nav>
+        <>
+          <button type="button" className="st-menu__scrim" aria-label="Close the menu" tabIndex={-1} onClick={() => setMenu(false)} />
+          {/* phones: a sheet from the bottom edge, so every link and the Play button sit under the thumb */}
+          <nav id="st-menu" className="st-menu kb-sticker kb-sticker--cream" aria-label="Site menu">
+            {links.filter((l) => l.key !== '/play')}
+            <SiteLinkButton href="/play" variant="primary" size="lg" icon="arrow" className="st-menu__play" onClick={() => setMenu(false)}>
+              Play now
+            </SiteLinkButton>
+          </nav>
+        </>
       )}
       {children}
     </header>
@@ -166,6 +181,7 @@ export function SiteHeader({ cta: _cta = true, children }: { cta?: boolean; /** 
 export function SiteFooter() {
   const { settings } = useSiteSettings();
   const handle = settings.xHandle.replace(/^@/, '');
+  const testnetFoot = isTestnetChain(useServerChain()) === true;
   return (
     <Kb theme="night" paper={false} className="st-foot-kb">
     <footer className="st-foot">
@@ -183,7 +199,9 @@ export function SiteFooter() {
           <a href={xProfile(handle)} target="_blank" rel="noreferrer" className="st-foot__x">
             <XIcon size={18} /> <span>@{handle}</span>
           </a>
+          <Link href="/play">Play</Link>
           <Link href="/mint">Mint</Link>
+          {testnetFoot && <Link href="/faucet">Faucet</Link>}
           <Link href="/wl">WL</Link>
           <Link href="/collab">Collab</Link>
           <Link href="/docs">Docs</Link>

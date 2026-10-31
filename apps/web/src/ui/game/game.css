@@ -1537,3 +1537,19 @@
   line-height: 1.7;
   color: var(--ink-3);
 }
+
+/* the BOT chip next to a server bot's name (BotTag.tsx; the canvas name tag draws the same) */
+.g-bot {
+  display: inline-block;
+  flex: none;
+  margin-left: 5px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--ink-fixed);
+  color: var(--paper-fixed);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 15px;
+  letter-spacing: 0.06em;
+  vertical-align: 1px;
+}

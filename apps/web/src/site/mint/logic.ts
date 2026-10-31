@@ -69,3 +69,33 @@ export function usdText(usd: number | null | undefined): string | null {
   if (usd === null || usd === undefined || !Number.isFinite(usd)) return null;
   return `$${usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
+
+/** One line of "What the emblem does". */
+export interface EmblemPerk {
+  id: 'access' | 'fee' | 'isles' | 'wl' | 'skin' | 'faucet';
+  title: string;
+  note: string;
+}
+
+/**
+ * What an Elymum emblem does, for the mint page (and in one line on the landing). On a testnet
+ * the game is open and the mint public, so the copy says what holds there and only promises the
+ * mainnet WL; on mainnet the testnet-only lines (the WL import, the faucet bonus) are left out.
+ * `testnet` null (unknown): the mainnet copy without the testnet lines.
+ */
+export function emblemPerks(testnet: boolean | null, fee: { holderBps?: number | null; feeBps?: number | null } = {}): EmblemPerk[] {
+  const pct = (bps: number) => `${(bps / 100).toFixed(2).replace(/\.?0+$/, '')}%`;
+  const holder = pct(fee.holderBps ?? 300);
+  const normal = pct(fee.feeBps ?? 500);
+  const out: EmblemPerk[] = [
+    testnet
+      ? { id: 'access', title: 'Game access', note: 'On testnet the ring is open to everyone. On mainnet the emblem is the key.' }
+      : { id: 'access', title: 'Game access', note: 'The emblem is your key to the ring when the doors are for holders.' },
+    { id: 'fee', title: `${holder} fee instead of ${normal}`, note: 'On profit only, fixed into your ticket when you join.' },
+    { id: 'isles', title: 'The Isles of the Blessed', note: 'The top arena is for holders only.' },
+  ];
+  if (testnet) out.push({ id: 'wl', title: 'Testnet emblem, mainnet WL', note: 'Holders are carried onto the mainnet allowlist.' });
+  out.push({ id: 'skin', title: 'Your coin, in the game', note: 'Its face and colour as your skin, and a laurel on your name tag.' });
+  if (testnet) out.push({ id: 'faucet', title: '2x from the faucet', note: 'Holders claim twice the test tokens.' });
+  return out;
+}

@@ -1,4 +1,5 @@
 import {
+  isArenaHolder,
   getAllowance,
   getArenaConfig,
   getSession,
@@ -41,6 +42,10 @@ export interface ChainData {
   profileLoaded: boolean;
   /** Payouts the server still owes this wallet (`/api/pending`). */
   pending: PendingPayout[];
+  /** The wallet holds the arena's holder NFT (lower fee, holders-only arenas); null while unknown or the perks are off. */
+  holder: boolean | null;
+  /** Arena ids marked holders-only on chain. */
+  holdersOnly: number[];
   loading: boolean;
 }
 
@@ -56,6 +61,8 @@ export const useChainData = create<ChainData>(() => ({
   profile: null,
   profileLoaded: false,
   pending: [],
+  holder: null,
+  holdersOnly: [],
   loading: false,
 }));
 
@@ -110,13 +117,13 @@ export async function readChain(
   client: PublicClient,
   chain: ChainStatus,
   owner: Address | null,
-): Promise<Pick<ChainData, 'deployed' | 'config' | 'arenas' | 'sessions' | 'balance' | 'tokenBalance' | 'allowance'>> {
+): Promise<Pick<ChainData, 'deployed' | 'config' | 'arenas' | 'sessions' | 'balance' | 'tokenBalance' | 'allowance' | 'holder' | 'holdersOnly'>> {
   const arena = chain.arenaAddress as Address;
   let config: ArenaConfig;
   try {
     config = await getArenaConfig(client, arena);
   } catch {
-    return { deployed: false, config: null, arenas: [], sessions: {}, balance: null, tokenBalance: null, allowance: null };
+    return { deployed: false, config: null, arenas: [], sessions: {}, balance: null, tokenBalance: null, allowance: null, holder: null, holdersOnly: [] };
   }
   // no token yet: no arena can exist (createArena needs it)
   const arenas = config.token ? await listArenas(client, arena).catch(() => [] as ArenaInfo[]) : [];
@@ -124,21 +131,25 @@ export async function readChain(
   let balance: bigint | null = null;
   let tokenBalance: bigint | null = null;
   let allowance: bigint | null = null;
+  let holder: boolean | null = null;
   if (owner) {
     const token = config.token;
-    const [wei, tokens, allowed, list] = await Promise.all([
+    const [wei, tokens, allowed, list, isHolder] = await Promise.all([
       client.getBalance({ address: owner }).catch(() => null),
       token ? getTokenBalance(client, token, owner).catch(() => null) : Promise.resolve(null),
       token ? getAllowance(client, token, owner, arena).catch(() => null) : Promise.resolve(null),
       Promise.all(arenas.map((a) => getSession(client, arena, a.id, owner).catch(() => null))),
+      config.holderNft ? isArenaHolder(client, arena, owner).catch(() => null) : Promise.resolve(null),
     ]);
+    holder = isHolder;
     balance = wei;
     tokenBalance = tokens;
     allowance = allowed;
     arenas.forEach((a, i) => (sessions[a.id] = list[i] && list[i]!.id !== 0n ? list[i] : null));
   }
   arenas.sort((a, b) => (a.entryFee < b.entryFee ? -1 : a.entryFee > b.entryFee ? 1 : a.id - b.id));
-  return { deployed: true, config, arenas, sessions, balance, tokenBalance, allowance };
+  const holdersOnly = arenas.filter((a) => a.holdersOnly).map((a) => a.id);
+  return { deployed: true, config, arenas, sessions, balance, tokenBalance, allowance, holder, holdersOnly };
 }
 
 /**
@@ -164,9 +175,11 @@ export function useChainSync(): void {
     if (fake && chain) {
       const dev = await loadDevFake();
       if (!dev) return;
-      const { fakeConfig, fakeWallet } = dev;
+      const { fakeConfig, fakeWallet, fakeFaucet, fakePerks } = dev;
       const ready = chain.tokenReady;
       set({
+        holder: owner ? fakeFaucet.holder : null,
+        holdersOnly: [...fakePerks.holdersOnly],
         deployed: true,
         fake: true,
         config: fakeConfig(chain),
@@ -199,7 +212,7 @@ export function useChainSync(): void {
   useEffect(() => {
     generation++;
     currentOwner = owner;
-    useChainData.setState({ profileLoaded: !owner, sessions: {}, balance: null, tokenBalance: null, allowance: null, pending: [], ...(owner ? {} : { profile: null }) });
+    useChainData.setState({ profileLoaded: !owner, sessions: {}, balance: null, tokenBalance: null, allowance: null, pending: [], holder: null, ...(owner ? {} : { profile: null }) });
     void refresh();
     const id = window.setInterval(() => void refresh(), 20_000);
     refreshNow = () => {

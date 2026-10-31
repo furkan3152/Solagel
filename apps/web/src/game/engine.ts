@@ -498,6 +498,12 @@ export class GameEngine {
       case 'kf':
         useUi.setState((s) => ({ killfeed: [...s.killfeed.slice(-4), { id: killId++, ...m, at: Date.now() }] }));
         return;
+      case 'feed': {
+        // a player left without dying (a bot making room for a person, or going home): one feed line
+        const item = { id: killId++, killer: '', killerSkin: 0, victim: m.name, victimSkin: m.skin, victimIsBot: m.isBot, cause: 'left' as const, at: Date.now() };
+        useUi.setState((s) => ({ killfeed: [...s.killfeed.slice(-4), item] }));
+        return;
+      }
       case 'chat':
         useUi.setState((s) => ({ chat: [...s.chat.slice(-59), { id: chatId++, pid: m.pid, from: m.from, skin: m.skin, text: m.text, system: m.system, at: Date.now() }] }));
         return;

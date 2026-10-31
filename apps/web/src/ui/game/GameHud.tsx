@@ -1,9 +1,10 @@
-import { lookForBasicSkin } from '@elymum/art';
+import { lookForSkin as lookForBasicSkin } from '../../render/looks';
 import { PowerUpType, RULES } from '@elymum/shared';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
 import { Counter, DUR, Icon, Stamp, springs, useReducedMotion } from '../../design';
 import { engine } from '../../game/instance';
+import { BotTag } from './BotTag';
 import { useT } from '../../i18n';
 import { openModal, useUi } from '../../store';
 import { useTicker } from '../ticker';
@@ -160,7 +161,7 @@ function Standings({ compact }: { compact: boolean }) {
             <span className="g-standings__sw" aria-hidden="true" style={{ background: lookForBasicSkin(e.skin).body }} />
             <span className="g-standings__name">
               <span className="g-standings__nm">{playing && e.pid === me?.pid ? t('g.youName') : e.name}</span>
-              {e.bot && <span className="kb-sr">{t('g.bot')}</span>}
+              {(e.isBot ?? e.bot) && <BotTag />}
               {e.verified && <Icon name="check" size={12} className="g-standings__ver" />}
             </span>
             <span className="g-standings__score num">{score(e.value, e.score)}</span>

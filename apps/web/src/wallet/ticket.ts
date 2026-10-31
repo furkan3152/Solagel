@@ -68,6 +68,8 @@ export interface TicketModel {
    * price from `DEFAULT_ARENAS`), not for sale. Practice still plays.
    */
   soon?: boolean;
+  /** The arena admits Elymum emblem holders only (on-chain `holdersOnly`): a small laurel lock for everyone else. */
+  holdersOnly?: boolean;
 }
 
 /** What the lobby knows about the game token (`ChainStatus`). */
@@ -115,6 +117,8 @@ export function buildTickets(
   arenas: readonly ArenaLike[],
   blocked: readonly number[] = [],
   token: TokenState = { enabled: true, tokenReady: true, decimals: 18 },
+  /** Arena ids marked holders-only on chain. */
+  holdersOnly: readonly number[] = [],
 ): TicketModel[] {
   const practice: TicketModel = { key: 'practice', arenaId: null, entryFee: 0n, humans: 0, bots: 0, loot: 0, open: true };
   for (const r of rooms) {
@@ -154,6 +158,10 @@ export function buildTickets(
     const t = byId.get(id);
     if (t) t.blocked = true;
   }
+  for (const id of holdersOnly) {
+    const t = byId.get(id);
+    if (t) t.holdersOnly = true;
+  }
   const list = [...byId.values()].sort((a, b) => (a.entryFee < b.entryFee ? -1 : a.entryFee > b.entryFee ? 1 : (a.arenaId ?? 0) - (b.arenaId ?? 0)));
   return [practice, ...list];
 }
@@ -168,6 +176,8 @@ export interface QuickPlayInput {
   lastArena: number | null;
   /** Arenas where the wallet already has an open ticket (playing them costs nothing). */
   openSessions?: readonly number[];
+  /** The wallet holds an emblem (false: holders-only arenas are skipped). */
+  holder?: boolean | null;
 }
 
 /**
@@ -179,7 +189,7 @@ export function quickPlayTarget(input: QuickPlayInput): TicketKey {
     const resumable = input.walletConnected ? input.tickets.find((t) => t.arenaId !== null && input.openSessions?.includes(t.arenaId)) : undefined;
     return resumable ? resumable.key : 'practice';
   }
-  const arenas = input.tickets.filter((t) => t.arenaId !== null && t.open && !t.blocked && !t.soon);
+  const arenas = input.tickets.filter((t) => t.arenaId !== null && t.open && !t.blocked && !t.soon && !(t.holdersOnly && input.holder === false));
   const open = arenas.find((t) => input.openSessions?.includes(t.arenaId!));
   if (open) return open.key;
   const balance = input.balance;
@@ -233,6 +243,8 @@ export type TicketGate =
   | { kind: 'verify' }
   /** An open ticket, no transaction. */
   | { kind: 'resume' }
+  /** A holders-only arena and the wallet holds no emblem: the CTA points to the mint. */
+  | { kind: 'holders' }
   /** Base units missing. */
   | { kind: 'insufficient'; missing: bigint }
   | { kind: 'buy' };
@@ -246,6 +258,8 @@ export interface GateInput {
   session: OpenSession | null;
   pending: readonly PendingPayout[];
   nowS: number;
+  /** The wallet holds an emblem; null / undefined while unknown (the contract checks at join anyway). */
+  holder?: boolean | null;
 }
 
 export function ticketGate(g: GateInput): TicketGate {
@@ -267,6 +281,8 @@ export function ticketGate(g: GateInput): TicketGate {
   }
   // the server keeps this arena closed; nothing new is sold
   if (t.blocked) return { kind: 'maintenance' };
+  // holders-only and no emblem: nothing to sell (planJoin refuses it with HoldersOnly too)
+  if (t.holdersOnly && g.holder === false) return { kind: 'holders' };
   if (!g.verified) return { kind: 'verify' };
   if (g.balance !== null && g.balance < t.entryFee) return { kind: 'insufficient', missing: t.entryFee - g.balance };
   return { kind: 'buy' };
@@ -283,6 +299,19 @@ export { DEFAULT_FEE_BPS };
  */
 export function feeBps(server: number | null | undefined, config: { feeBps: number } | null = null): number {
   return server ?? config?.feeBps ?? DEFAULT_FEE_BPS;
+}
+
+/**
+ * The fee a ticket of this wallet gets (`planJoin`'s `feeBps`): the holder rate for emblem holders
+ * while the perks are on (`min(feeBps, holderFeeBps)`), else the normal rate.
+ */
+export function ticketFeeBps(
+  normal: number,
+  config: { holderNft: string | null; holderFeeBps: number } | null,
+  holder: boolean | null | undefined,
+): { bps: number; discount: boolean } {
+  if (holder === true && config?.holderNft && config.holderFeeBps < normal) return { bps: config.holderFeeBps, discount: true };
+  return { bps: normal, discount: false };
 }
 
 /** `500` → `5`, `250` → `2.5`. */
