@@ -296,11 +296,10 @@ vault balance, the same trust as a payout, so the server key must be protected.
 
 | Piece | Where |
 |---|---|
-| Game server + web (one Docker container) | Render web service `slana` (`srv-db9jejmq1p3s738fsncg`), Frankfurt, Starter plan, auto-deploys the default branch |
+| Game server + web (one Docker container) | a Render web service built from the `Dockerfile`; it auto-deploys on push |
 | Persistent disk | 2 GB at `/data`: the server key, the money journal, standings and the site data (WL, collabs, tasks, settings). The Docker entrypoint makes the disk writable for the `node` user |
 | RPC | a QuickNode Solana mainnet endpoint (URL only in the Render environment); the same endpoint is handed to browsers, so restrict it to the slana.io referrer in QuickNode |
-| Domain | slana.io, registered at Vercel; Vercel DNS has `A @ 216.24.57.1` and `CNAME www slana-wo00.onrender.com`; Render holds the custom domain and its TLS certificate. Add `www.slana.io` in Render too for its certificate |
-| Fallback URL | https://slana-wo00.onrender.com |
+| Domain | slana.io (and www.slana.io), pointed at the Render service; Render holds the custom domain and its TLS certificate |
 
 **Render environment.** `NODE_ENV=production`, `SOLANA_CLUSTER=mainnet-beta`, `SOLANA_RPC_URL`, `PUBLIC_RPC_URL`,
 `VITE_RPC_URL`, `PROGRAM_ID`, `SERVER_KEYPAIR=auto`, `DATA_DIR=/data`, `TOKEN_SYMBOL=$SLANA`,
