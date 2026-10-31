@@ -84,8 +84,8 @@ const collabBody = (contactX: string, extra: Record<string, unknown> = {}) => ({
 });
 
 describe('admin wallets config', () => {
-  it('defaults to SLANA_ADMIN from scripts/admin.env', () => {
-    const env = readFileSync(resolve(__dirname, '../../../scripts/admin.env'), 'utf8');
+  it('defaults to SLANA_ADMIN from scripts/admin-wallet.conf', () => {
+    const env = readFileSync(resolve(__dirname, '../../../scripts/admin-wallet.conf'), 'utf8');
     const fromFile = /^SLANA_ADMIN=(\S+)$/m.exec(env)?.[1];
     expect(fromFile).toBe(DEFAULT_ADMIN_WALLET);
     expect(loadConfig({} as NodeJS.ProcessEnv).adminWallets).toEqual([DEFAULT_ADMIN_WALLET]);

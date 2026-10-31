@@ -10,10 +10,10 @@ done
 export PATH
 
 # SLANA_ADMIN: the admin wallet (public key).
-# shellcheck source=scripts/admin.env
-source "$ROOT/scripts/admin.env"
+# shellcheck source=scripts/admin-wallet.conf
+source "$ROOT/scripts/admin-wallet.conf"
 [[ -n "${SLANA_ADMIN:-}" ]] || {
-  echo "error: SLANA_ADMIN is not set in scripts/admin.env" >&2
+  echo "error: SLANA_ADMIN is not set in scripts/admin-wallet.conf" >&2
   exit 1
 }
 

@@ -88,7 +88,7 @@ export interface ServerConfig {
 }
 
 /**
- * The admin wallet: `SLANA_ADMIN` in scripts/admin.env (a public key; a test checks the
+ * The admin wallet: `SLANA_ADMIN` in scripts/admin-wallet.conf (a public key; a test checks the
  * two stay equal). Used when `ADMIN_WALLETS` is unset or empty.
  */
 export const DEFAULT_ADMIN_WALLET = 'D2Ts7yCiVjedo6uwqpkM44QA8J45NdVU1J3k5m6iWtvm';

@@ -14,7 +14,7 @@
 #
 # Fee payer and upgrade authority are the Solana CLI defaults (`solana config get`) unless the
 # extra args say otherwise (`--keypair`, `--upgrade-authority`). After a successful deploy the
-# upgrade authority is moved to SLANA_ADMIN (scripts/admin.env) with
+# upgrade authority is moved to SLANA_ADMIN (scripts/admin-wallet.conf) with
 #   solana program set-upgrade-authority <ID> --new-upgrade-authority <ADMIN> \
 #     --skip-new-upgrade-authority-signer-check
 # unless it already is the admin or --keep-authority is given. The before and after states are

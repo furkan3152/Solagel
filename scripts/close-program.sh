@@ -5,7 +5,7 @@
 #   scripts/close-program.sh <cluster-url> <admin-keypair> [--force] [--program <id>]
 #   e.g. scripts/close-program.sh mainnet-beta ~/keys/admin.json
 #
-#   <admin-keypair>  the current upgrade authority (the admin wallet, SLANA_ADMIN in scripts/admin.env).
+#   <admin-keypair>  the current upgrade authority (the admin wallet, SLANA_ADMIN in scripts/admin-wallet.conf).
 #                    It signs the close and receives the reclaimed SOL. A hardware wallet URL
 #                    (usb://ledger) also works for the close itself, but the state report
 #                    (`pnpm admin status`) needs a keypair file, so with usb:// the report is skipped.
@@ -59,7 +59,7 @@ AUTHORITY=$(program_field "$CLUSTER" "$PROGRAM_ID" authority) || die "program $P
 [[ "$AUTHORITY" != "none" ]] || die "program $PROGRAM_ID is immutable (no upgrade authority): it cannot be closed"
 [[ "$AUTHORITY" == "$ADMIN" ]] || die "upgrade authority is $AUTHORITY but $ADMIN_KP is $ADMIN"
 if [[ "$ADMIN" != "$SLANA_ADMIN" ]]; then
-  echo "note: $ADMIN is not the project admin wallet ($SLANA_ADMIN in scripts/admin.env)" >&2
+  echo "note: $ADMIN is not the project admin wallet ($SLANA_ADMIN in scripts/admin-wallet.conf)" >&2
 fi
 
 echo "=== program $PROGRAM_ID on $CLUSTER ==="

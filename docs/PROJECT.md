@@ -260,7 +260,7 @@ pnpm program:test                # LiteSVM suite on both programs, clippy, size 
 | Admin CLI, the fee wallet, monitoring, log lines, emergency pause and program close (`scripts/close-program.sh`) | [OPERATIONS.md](OPERATIONS.md) |
 | Money flow, invariants, trust model, server internals | [ARCHITECTURE.md](ARCHITECTURE.md) |
 
-The admin wallet is `D2Ts7yCiVjedo6uwqpkM44QA8J45NdVU1J3k5m6iWtvm` (`scripts/admin.env`). It is the program's upgrade
+The admin wallet is `D2Ts7yCiVjedo6uwqpkM44QA8J45NdVU1J3k5m6iWtvm` (`scripts/admin-wallet.conf`). It is the program's upgrade
 authority and the Config admin. The program is never made immutable, so the admin can close it at any time and reclaim
 its rent.
 

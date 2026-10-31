@@ -162,7 +162,7 @@ The `keys/` folder is not tracked by git (`.gitignore`: `keys/`, `*.keypair.json
 
 | Key | What it does | Recommendation |
 |---|---|---|
-| Admin wallet (`SLANA_ADMIN` in `scripts/admin.env`: `D2Ts7yCiVjedo6uwqpkM44QA8J45NdVU1J3k5m6iWtvm`) | the project's main wallet; the program's upgrade authority; `init` can only be signed by it; it becomes the Config `admin`; every admin command is run by this wallet (`--keypair <its keypair file>`); it is also the default fee wallet | a wallet you control yourself; a multisig (Squads) is optional later |
+| Admin wallet (`SLANA_ADMIN` in `scripts/admin-wallet.conf`: `D2Ts7yCiVjedo6uwqpkM44QA8J45NdVU1J3k5m6iWtvm`) | the project's main wallet; the program's upgrade authority; `init` can only be signed by it; it becomes the Config `admin`; every admin command is run by this wallet (`--keypair <its keypair file>`); it is also the default fee wallet | a wallet you control yourself; a multisig (Squads) is optional later |
 | Temporary deployer (`keys/deployer.json`) | pays for the deploy and is the upgrade authority only until `deploy-lean.sh` hands it to the admin | throwaway; keep a little SOL, delete it afterwards |
 | Server (`SERVER_KEYPAIR=auto`, or `keys/server.json`) | signs `settle_session` and `sweep_loot` (`Config.server_authority`) | a separate hot key on the server that only settles sessions and burns arena floor loot (up to the vault balance); it can never withdraw to a wallet, upgrade or administer; a little SOL |
 | Fee wallet | receives the whole fee of every settlement and the vault of a swept arena | the admin wallet by default (`init --fee-wallet <pubkey>` or `update-config --fee-wallet` choose another) |
@@ -173,7 +173,7 @@ solana-keygen new -o keys/server.json --no-bip39-passphrase
 solana-keygen new -o keys/deployer.json --no-bip39-passphrase   # temporary deployer, see section 3
 ```
 
-The admin wallet's address lives in one place, `scripts/admin.env` (`SLANA_ADMIN=...`); it is a public key and is
+The admin wallet's address lives in one place, `scripts/admin-wallet.conf` (`SLANA_ADMIN=...`); it is a public key and is
 committed. Its secret key never touches the repository or the server.
 
 ## 3. Deploy the program (devnet)

@@ -5,7 +5,7 @@ backup. Setup: [DEPLOY.md](DEPLOY.md). Money flow and trust model: [ARCHITECTURE
 exists in `pnpm admin help`.
 
 The commands take `--url`, `--keypair` (default `~/.config/solana/id.json`; it must be the admin wallet
-`D2Ts7yCiVjedo6uwqpkM44QA8J45NdVU1J3k5m6iWtvm`, `SLANA_ADMIN` in `scripts/admin.env`) and `--program`; see
+`D2Ts7yCiVjedo6uwqpkM44QA8J45NdVU1J3k5m6iWtvm`, `SLANA_ADMIN` in `scripts/admin-wallet.conf`) and `--program`; see
 [DEPLOY.md](DEPLOY.md). Every admin command is run by this wallet; the server key is a separate hot key that only
 settles sessions and burns floor loot. `pnpm admin` reads a keypair file only (no `usb://ledger`); the admin panel below signs with a browser wallet or a Ledger instead. Before and after every operation:
 
