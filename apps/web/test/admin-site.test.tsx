@@ -25,7 +25,7 @@ const wl = (id: string, xHandle: string): WlEntryAdmin => ({
   note: '',
   dupCollabs: [],
 });
-const task = (id: string, order: number): WlTask => ({ id, kind: 'follow_x', title: `Task ${id}`, body: '', target: 'https://x.com/elymum', required: true, enabled: true, order });
+const task = (id: string, order: number): WlTask => ({ id, kind: 'follow_x', title: `Task ${id}`, body: '', target: 'https://x.com/elymumio', required: true, enabled: true, order });
 const cb = (over: Partial<CollabAdmin> = {}): CollabAdmin => ({
   id: 'c1',
   wallet: W,
@@ -162,15 +162,5 @@ describe('admin: site tabs (Bearer session, mocked fetch)', { timeout: 30_000 },
     ({ calls, restore } = mockFetch({ 'GET /api/admin/settings': { settings: SETTINGS, gameAccessEnv: 'public' } }));
     ui(<SettingsTab api={api} />);
     expect(await screen.findByText(/GAME_ACCESS=public is set on the server/)).toBeTruthy();
-  });
-
-  it('WL and collab rows mark legacy (pre-Elysium) wallets', async () => {
-    ({ calls, restore } = mockFetch({
-      'GET /api/admin/wl': { items: [{ ...wl('w1', 'alice'), wallet: '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin', legacy: true }], total: 1, page: 1, pageSize: 50 },
-      'GET /api/admin/counts': COUNTS,
-    }));
-    ui(<WlTab api={api} />);
-    await screen.findByText('@alice');
-    expect(screen.getAllByText(/legacy/).length).toBeGreaterThan(0);
   });
 });

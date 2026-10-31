@@ -14,8 +14,8 @@ import { ArenaChain, arena } from './helpers';
 import { testSigner } from './signers';
 
 const wallet = () => testSigner().address;
-/** A pre-Elysium (base58) wallet: never an EVM wallet. */
-const legacyWallet = 'D2Ts7yCiVjedo6uwqpkM44QA8J45NdVU1J3k5m6iWtvm';
+/** Not an EVM address: never a user wallet. */
+const notEvmWallet = 'not-an-evm-wallet';
 const post = (h = 'alice', id = '1790000000000000001') => `https://x.com/${h}/status/${id}`;
 const HOUR = 3_600_000;
 
@@ -87,7 +87,7 @@ describe('admin wallets config', () => {
     expect(parseAdminWallets('')).toEqual([]);
     const a = wallet();
     const b = wallet();
-    expect(parseAdminWallets(` ${a.toLowerCase()}, ${b},not-a-key,${a},${legacyWallet}`)).toEqual([a, b]);
+    expect(parseAdminWallets(` ${a.toLowerCase()}, ${b},not-a-key,${a},${notEvmWallet}`)).toEqual([a, b]);
     expect(loadConfig({} as NodeJS.ProcessEnv).gameAccess).toBeNull();
     expect(loadConfig({ GAME_ACCESS: 'public' } as NodeJS.ProcessEnv).gameAccess).toBe('public');
   });
@@ -101,7 +101,7 @@ describe('admin wallets config', () => {
     const typo = w.slice(0, 2) + (w[2] === w[2].toLowerCase() ? w[2].toUpperCase() : w[2].toLowerCase()) + w.slice(3);
     if (/[a-fA-F]/.test(w[2])) expect(isUserWallet(typo)).toBe(false);
     expect(isUserWallet(`0x${'0'.repeat(40)}`)).toBe(false);
-    expect(isUserWallet(legacyWallet)).toBe(false);
+    expect(isUserWallet(notEvmWallet)).toBe(false);
     expect(isUserWallet('nope')).toBe(false);
   });
 });
@@ -180,7 +180,7 @@ describe('site API', () => {
   describe('public settings and tasks', () => {
     it('serves the defaults; the launch-post task opens when the link is set', async () => {
       const s = await h.call('GET', '/api/site/settings');
-      expect(s.body.settings).toEqual({ wlOpen: true, collabOpen: false, gameAccess: 'admins', xHandle: 'elymum', launchPostUrl: null });
+      expect(s.body.settings).toEqual({ wlOpen: true, collabOpen: false, gameAccess: 'admins', xHandle: 'elymumio', launchPostUrl: null });
       const t = await h.call('GET', '/api/site/tasks');
       expect(t.body.tasks.map((x: { id: string }) => x.id)).toEqual(['follow_x', 'post_x', 'engage_launch', 'x_handle', 'wallet']);
       const engage = t.body.tasks[2];
@@ -242,21 +242,21 @@ describe('site API', () => {
       // the task list changes later: the entry keeps what was answered
       expect((await h.call('PUT', '/api/admin/tasks/follow_x', { wallet: h.admin, body: { title: 'Follow us' } })).status).toBe(200);
       const after = (await h.call('GET', '/api/site/wl', { wallet: w })).body.entry as WlEntryPublic;
-      expect(after.tasks.find((t) => t.id === 'follow_x')?.title).toBe('Follow @elymum');
-      expect((await h.call('PUT', '/api/admin/tasks/follow_x', { wallet: h.admin, body: { title: 'Follow @elymum' } })).status).toBe(200);
+      expect(after.tasks.find((t) => t.id === 'follow_x')?.title).toBe('Follow @elymumio');
+      expect((await h.call('PUT', '/api/admin/tasks/follow_x', { wallet: h.admin, body: { title: 'Follow @elymumio' } })).status).toBe(200);
     });
 
     it('requires the launch-post task once its link is live; closes with wlOpen', async () => {
-      const set = await h.call('PUT', '/api/admin/settings', { wallet: h.admin, body: { launchPostUrl: 'https://x.com/elymum/status/42' } });
-      expect(set.body.settings.launchPostUrl).toBe('https://x.com/elymum/status/42');
+      const set = await h.call('PUT', '/api/admin/settings', { wallet: h.admin, body: { launchPostUrl: 'https://x.com/elymumio/status/42' } });
+      expect(set.body.settings.launchPostUrl).toBe('https://x.com/elymumio/status/42');
       const tasks = (await h.call('GET', '/api/site/tasks')).body.tasks;
-      expect(tasks[2]).toMatchObject({ target: 'https://x.com/elymum/status/42', available: true, required: true });
+      expect(tasks[2]).toMatchObject({ target: 'https://x.com/elymumio/status/42', available: true, required: true });
       const w = wallet();
       const miss = await h.call('POST', '/api/site/wl', { wallet: w, body: wlBody('bob') });
       expect([miss.status, miss.body.field]).toEqual([400, 'answers.engage_launch']);
       const ok = await h.call('POST', '/api/site/wl', { wallet: w, body: { ...wlBody('bob'), answers: { ...wlBody('bob').answers, engage_launch: post('bob', '77') } } });
       expect(ok.status).toBe(201);
-      expect((ok.body.entry as WlEntryPublic).tasks[2]).toMatchObject({ target: 'https://x.com/elymum/status/42', answer: post('bob', '77') });
+      expect((ok.body.entry as WlEntryPublic).tasks[2]).toMatchObject({ target: 'https://x.com/elymumio/status/42', answer: post('bob', '77') });
       expect((await h.call('PUT', '/api/admin/settings', { wallet: h.admin, body: { launchPostUrl: 'https://example.com/x' } })).status).toBe(400);
       await h.call('PUT', '/api/admin/settings', { wallet: h.admin, body: { launchPostUrl: null, wlOpen: false } });
       const closed = await h.call('POST', '/api/site/wl', { wallet: wallet(), body: wlBody('carol') });
@@ -266,8 +266,7 @@ describe('site API', () => {
       expect((await h.call('PUT', '/api/admin/settings', { wallet: h.admin, body: { bogus: 1 } })).body.field).toBe('bogus');
       expect((await h.call('PUT', '/api/admin/settings', { wallet: h.admin, body: { xHandle: '@ElymumIO' } })).body.settings.xHandle).toBe('elymumio');
       expect((await h.call('PUT', '/api/admin/settings', { wallet: h.admin, body: { gameAccess: 'everyone' } })).body.field).toBe('gameAccess');
-      expect((await h.call('PUT', '/api/admin/settings', { wallet: h.admin, body: { gamePublic: true } })).body.field).toBe('gamePublic');
-      await h.call('PUT', '/api/admin/settings', { wallet: h.admin, body: { xHandle: 'elymum' } });
+      await h.call('PUT', '/api/admin/settings', { wallet: h.admin, body: { xHandle: 'elymumio' } });
     });
   });
 
@@ -367,7 +366,7 @@ describe('site API', () => {
       // drafts: validated, at most `spots`, unique (any case), EVM; someone else's collab reads as not found
       expect((await put({ wallets: [{ name: 'a', wallet: w1 }] }, wallet())).status).toBe(404);
       expect((await put({ wallets: [{ name: 'a', wallet: w1 }, { name: 'b', wallet: w2 }, { name: 'c', wallet: w3 }] })).body.error).toBe('too_many_wallets');
-      expect((await put({ wallets: [{ name: 'sol', wallet: legacyWallet }] })).body.field).toBe('wallets[0].wallet');
+      expect((await put({ wallets: [{ name: 'x', wallet: notEvmWallet }] })).body.field).toBe('wallets[0].wallet');
       expect((await put({ wallets: [{ name: 'a', wallet: w1 }, { name: 'b', wallet: w1.toLowerCase() }] })).body.field).toBe('wallets[1].wallet');
       expect((await put({ wallets: [{ name: 'x', wallet: 'notakey' }] })).body.field).toBe('wallets[0].wallet');
       expect((await put({ wallets: [{ name: 'a', wallet: w1 }, { name: 'b', wallet: w1 }] })).body.field).toBe('wallets[1].wallet');
@@ -454,7 +453,7 @@ describe('site API', () => {
       expect(one.headers.get('content-type')).toContain('text/csv');
       expect(one.headers.get('content-disposition')).toContain('attachment');
       const lines = one.text.trim().split('\r\n');
-      expect(lines[0]).toBe('collab_id,community,name,wallet,legacy,dup_wl,dup_collabs');
+      expect(lines[0]).toBe('collab_id,community,name,wallet,dup_wl,dup_collabs');
       expect(lines).toHaveLength(4);
       expect(lines[1].startsWith(`${collabId},Coin Guild,a,`)).toBe(true);
       const all = await h.call('GET', '/api/admin/collabs/wallets.csv', { wallet: h.admin });
@@ -500,7 +499,7 @@ describe('site API', () => {
       expect((await h.call('GET', '/api/admin/wl?q=hyperlink', { wallet: a })).body.total).toBe(1);
       // CSV: approved only by default, or all; formulas defused
       const csvA = (await h.call('GET', '/api/admin/wl.csv', { wallet: a })).text.trim().split('\r\n');
-      expect(csvA[0]).toBe('wallet,x_handle,status,legacy,created_at,dup_collabs,note');
+      expect(csvA[0]).toBe('wallet,x_handle,status,created_at,dup_collabs,note');
       expect(csvA.slice(1).every((l) => l.split(',')[2] === 'approved')).toBe(true);
       expect(csvA.some((l) => l.includes(`"'=HYPERLINK(""x"") checked"`))).toBe(true);
       const total = (await h.call('GET', '/api/admin/counts', { wallet: a })).body;

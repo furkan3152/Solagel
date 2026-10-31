@@ -45,7 +45,7 @@ import dsp
 KSR = 24000
 # words the G2P must not guess (espeak IPA, as Kokoro expects); the media/gameplay set plus WL, NFT
 FIXED = {
-    "@elymum": "æt ˈɛlɪməm",
+    "@elymumio": "æt ˈɛlɪməm ˈaɪ ˈoʊ",
     "$ELYMUM": "ˈɛlɪməm",
     "Elymum's": "ˈɛlɪməmz",
     "Elymum": "ˈɛlɪməm",
@@ -166,7 +166,7 @@ class Voice:
 # misaki (the PyTorch Kokoro's G2P) spells some vowels with its own letters (I = aɪ, A = eɪ, O = oʊ);
 # custom pronunciations go inline as [word](/phonemes/), and [word](+1) raises a word's stress
 FIXED_MISAKI = {
-    "@elymum": "æt ˈɛlɪməm",
+    "@elymumio": "æt ˈɛlɪməm ˈI ˈO",
     "Elymum's": "ˈɛlɪməmz",
     "Elymum": "ˈɛlɪməm",
     "Elysium's": "ɪlˈɪziəmz",

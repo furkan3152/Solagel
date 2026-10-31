@@ -47,8 +47,6 @@ function Wl() {
   const [fresh, setFresh] = useState(false);
   /** A returning visitor: their status is looked up before the form is shown (later sign-ins keep the form mounted). */
   const [booting, setBooting] = useState(() => !!session);
-  /** A legacy (pre-Elysium) entry whose owner chose to re-apply with an EVM wallet. */
-  const [reapply, setReapply] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -86,7 +84,7 @@ function Wl() {
     };
   }, [session]);
 
-  if (entry && !(entry.legacy && reapply)) return <WlStatus entry={entry} fresh={fresh} onReapply={entry.legacy ? () => setReapply(true) : undefined} />;
+  if (entry) return <WlStatus entry={entry} fresh={fresh} />;
   if (loadError)
     return (
       <WlPlate title="Three small chores">
@@ -130,13 +128,13 @@ function WlClosed() {
           <p className="wl-deck">
             We are not taking new WL entries right now. The next round gets announced on{' '}
             <a href={X_URL} target="_blank" rel="noreferrer">
-              @elymum
+              @elymumio
             </a>{' '}
             first. Nobody gets in early by asking nicely. We checked.
           </p>
           <div className="wl-row">
             <a className="kb-btn kb-btn--teal kb-btn--md" href={X_URL} target="_blank" rel="noreferrer">
-              <XIcon /> Follow @elymum
+              <XIcon /> Follow @elymumio
             </a>
             <button type="button" className="wl-textlink" onClick={() => setSignin((v) => !v)} aria-expanded={signin}>
               Applied before? Sign in
@@ -184,7 +182,7 @@ const STATUS_COPY = {
     pill: 'ok',
     mood: 'happy',
     sticker: 'Mint spot held',
-    body: 'Your wallet is on the Elymum WL. The mint date lands on @elymum first. Keep the pass; it looks good on you.',
+    body: 'Your wallet is on the Elymum WL. The mint date lands on @elymumio first. Keep the pass; it looks good on you.',
   },
   rejected: {
     title: 'Not this time.',
@@ -193,11 +191,11 @@ const STATUS_COPY = {
     pill: 'danger',
     mood: 'scared',
     sticker: 'Try next round',
-    body: 'We could not verify every chore on this entry. Follow @elymum for the next round; the ring is patient.',
+    body: 'We could not verify every chore on this entry. Follow @elymumio for the next round; the ring is patient.',
   },
 } as const;
 
-export function WlStatus({ entry, fresh = false, onReapply }: { entry: WlEntryPublic; fresh?: boolean; onReapply?: () => void }) {
+export function WlStatus({ entry, fresh = false }: { entry: WlEntryPublic; fresh?: boolean }) {
   const c = STATUS_COPY[entry.status];
   const reduced = useReducedMotion();
   return (
@@ -207,25 +205,6 @@ export function WlStatus({ entry, fresh = false, onReapply }: { entry: WlEntryPu
           <span className="kicker wl-kicker">{fresh ? 'Entry received' : 'Your WL entry'}</span>
           <h1 className="wl-title">{c.title}</h1>
           <p className="wl-deck">{c.body}</p>
-          {entry.legacy && (
-            <Sticker className="wl-legacy" tone="sun" tilt={-0.6} pad="sm" role="note" data-testid="wl-legacy">
-              <Tape className="wl-legacy__tape" rotate={-4} width={86} />
-              <span className="wl-legacy__coin" aria-hidden="true">
-                <CoinCharacter paint="cream" mood="scared" size={64} sweat />
-              </span>
-              <div>
-                <p>
-                  <strong>This entry is from before the move to Elysium.</strong> Its wallet is not an EVM address, so it cannot go on the allowlist. Re-apply with an EVM
-                  wallet (MetaMask, Rabby or any browser wallet) and the same X handle: your new entry goes to review, and an admin checks the handle claim.
-                </p>
-                {onReapply && (
-                  <Button variant="secondary" size="sm" icon="arrow" onClick={onReapply}>
-                    Re-apply with an EVM wallet
-                  </Button>
-                )}
-              </div>
-            </Sticker>
-          )}
           <dl className="wl-manifest">
             <div>
               <dt>Status</dt>
@@ -253,7 +232,7 @@ export function WlStatus({ entry, fresh = false, onReapply }: { entry: WlEntryPu
           <div className="wl-row wl-status__actions">
             <SaveCardButton handle={entry.xHandle} label="Save my pass" />
             <a className="kb-btn kb-btn--teal kb-btn--sm" href={X_URL} target="_blank" rel="noreferrer">
-              <XIcon /> Follow @elymum
+              <XIcon /> Follow @elymumio
             </a>
           </div>
           <div className="wl-row">
@@ -469,7 +448,7 @@ function WlStepper({ tasks, settings, onEntry }: { tasks: PublicWlTask[]; settin
   const total = steps.length;
   // the wallet chore counts as done once signed in (it is the last terrace before the feast)
   const doneCount = steps.filter((s) => done.has(s.key) || (s.kind === 'sign' && !!session)).length;
-  const postText = `I'm on my way to the @elymum WL. Coins eat coins on Elysium, and the arena opens soon.${no ? ` Boarding pass No. ${no}.` : ''} ${siteHost()}/wl`;
+  const postText = `I'm on my way to the @elymumio WL. Coins eat coins on Elysium, and the arena opens soon.${no ? ` Boarding pass No. ${no}.` : ''} ${siteHost()}/wl`;
 
   return (
     <WlPlate title={`${countWord(total)} small chores`}>

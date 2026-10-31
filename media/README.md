@@ -16,7 +16,7 @@ rendered in the repository; the outputs go to `out/videos/` (gitignored).
 ## Re-rendering after the move to Elysium
 
 The films were made for the app before the move to Elysium. Their text, voice lines, handles and arena names now
-say Elymum, Elysium, HYPE, `$ELYMUM`, @elymum and the four Elysian arenas, and the hand-drawn scenes
+say Elymum, Elysium, HYPE, `$ELYMUM`, @elymumio and the four Elysian arenas, and the hand-drawn scenes
 use the Ring Storybook palette (`#04181C` ink, cream, sun, cyan, teal, trench night) and type
 (Fraunces, DM Sans, Geist Mono, from `apps/web`'s `@fontsource-variable` packages). The captured
 films (gameplay, how-to-play, the promo's footage) record the real UI, so they pick up the new

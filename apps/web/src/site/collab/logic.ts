@@ -43,7 +43,7 @@ export function applyErrors(d: ApplyDraft): ApplyErrors {
   const members = Number(d.members.replace(/[\s,._]/g, ''));
   if (!d.members.trim()) e.members = 'How many members does it have?';
   else if (!Number.isInteger(members) || members < 1 || members > SITE_LIMITS.members) e.members = 'Use a whole number from 1 to 10,000,000.';
-  if (!normalizeXHandle(d.communityX)) e.communityX = "That is not an X handle. Use the community's handle, like @elymum.";
+  if (!normalizeXHandle(d.communityX)) e.communityX = "That is not an X handle. Use the community's handle, like @elymumio.";
   if (!normalizeXHandle(d.contactX)) e.contactX = 'That is not an X handle. Use your own handle, like @yourname.';
   if (d.discord.trim().length > SITE_LIMITS.discord) e.discord = `Keep it under ${SITE_LIMITS.discord} characters.`;
   if (!COLLAB_ROLES.includes(d.role as CollabRole)) e.role = 'Pick your role.';
@@ -164,12 +164,12 @@ export function rafflePost(community: string, spots: number | null, deadline: nu
   const n = spots ? `${spots} ` : '';
   const when = deadline ? new Date(deadline).toLocaleDateString('en-US', { day: 'numeric', month: 'short' }) : 'soon';
   return [
-    `${community || 'Our community'} x @elymum`,
+    `${community || 'Our community'} x @elymumio`,
     '',
     `We have ${n}Elymum WL spots to raffle. Coins eat coins on Elysium, and the arena opens soon.`,
     '',
     'To enter:',
-    '1. Follow @elymum',
+    '1. Follow @elymumio',
     '2. Like and repost this post',
     '3. Reply with your EVM wallet (0x…)',
     '',

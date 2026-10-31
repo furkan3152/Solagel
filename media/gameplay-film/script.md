@@ -152,9 +152,9 @@ Intent: the reward, warm and honest. Emphasis: *yours*. Pace: relaxed; the fee i
 a fact that is fine to hear, not small print.
 
 **17 · close** `[end card]` (0.94)
-> Elymum. || Join the WL. | Follow *@elymum.* || And bring an appetite.
+> Elymum. || Join the WL. | Follow *@elymumio.* || And bring an appetite.
 
-Intent: a sign-off, a small callback to the first line. Emphasis: "@elymum" ("at Elymum"). Pace:
+Intent: a sign-off, a small callback to the first line. Emphasis: "@elymumio" ("at elymum eye-oh"). Pace:
 slowest of the film; the last line soft, with a smile you can just about hear.
 
 ## Facts the lines rely on
@@ -163,4 +163,4 @@ All from `docs/PROJECT.md` and the spec: rounds are 5 minutes on the wall clock 
 at the bell every live ticket is paid its value on chain minus a fee on profit only (5 % by
 default); joins close in the final minute; bigger coins are slower (speed falls with radius);
 split is `Space` (a button on phones); the flow is WL → Mint ($1 in HYPE) → Play; the X handle is
-@elymum. If the fee or the handle changes in the admin settings, lines 16 and 17 change with it.
+@elymumio. If the fee or the handle changes in the admin settings, lines 16 and 17 change with it.

@@ -6,7 +6,7 @@
  */
 
 /** The X account of the project (no `@`). */
-export const SITE_X_HANDLE_DEFAULT = 'elymum';
+export const SITE_X_HANDLE_DEFAULT = 'elymumio';
 
 /**
  * Who may play (practice, arenas, private rooms, spectating): `admins` only, NFT `holders`
@@ -95,13 +95,8 @@ export interface WlTaskAnswer {
 /** The applicant's own view of their WL entry. */
 export interface WlEntryPublic {
   id: string;
-  /** The applicant's wallet: an EVM address, except on legacy entries. */
+  /** The applicant's wallet (an EVM address). */
   wallet: string;
-  /**
-   * The entry predates the move to Elysium: its wallet is not a `0x` address. Kept for the record,
-   * never in the allowlist; re-applying with an EVM wallet and the same X handle replaces it.
-   */
-  legacy?: boolean;
   xHandle: string;
   status: WlStatus;
   tasks: WlTaskAnswer[];
@@ -167,8 +162,6 @@ export interface CollabPublic {
   id: string;
   /** The applicant's (signed-in) wallet. */
   wallet: string;
-  /** The applicant's wallet is not an EVM address (from before the move to Elysium). */
-  legacy?: boolean;
   community: string;
   type: CollabType;
   members: number;
@@ -192,8 +185,6 @@ export interface CollabPublic {
 }
 
 export interface CollabWalletRowAdmin extends CollabWalletRow {
-  /** Not an EVM address (a legacy row): never in the allowlist. */
-  legacy?: boolean;
   /** The wallet has a WL entry. */
   dupWl: boolean;
   /** Other collabs whose list holds the wallet. */

@@ -2,7 +2,7 @@
 // The promo's vertical cut for X and Reels: 1080x1920, 60 fps, about 32 s (eleven bars of the game's
 // 82 BPM score). Real gameplay, full bleed, reframed around Daphne's coin from the replayed takes
 // (media/gameplay/capture/replay.mjs), with the promo's riso headline, its voice lines (Kokoro
-// af_heart, cache/vo-raw), a plain NFT mention ("Elymum NFTs.", $1 in HYPE) and the SITE_HOST / @elymum
+// af_heart, cache/vo-raw), a plain NFT mention ("Elymum NFTs.", $1 in HYPE) and the SITE_HOST / @elymumio
 // end card.
 //   node media/promo/vertical.mjs
 //   MASTER_AUDIO=192k media/gameplay/render/render.sh media/promo/cache/vertical/vertical.json \
@@ -99,7 +99,7 @@ wipe(tN + ND, ['ink', 'card']);
 const tOut = tN + ND;
 e.add('card', tOut - 0.05, bars(2.5) + 0.05, {
   variant: 'outro', kicker: 'ELYMUM / ON ELYSIUM', tagline: 'Eat. Grow. Last the round.', tagAccent: 4, tagAt: 0.7, tagGap: 0.26,
-  foot: `${SITE}  /  @ELYMUM`, footAt: 1.5, footY: 860, footSize: 46, oy: 420,
+  foot: `${SITE}  /  @ELYMUMIO`, footAt: 1.5, footY: 860, footSize: 46, oy: 420,
   coins: [
     { skin: 4, r: 110, x: 120, y: -150, expression: 'happy' },
     { skin: 7, r: 130, x: 760, y: -230, expression: 'proud' },

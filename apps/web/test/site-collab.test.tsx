@@ -70,8 +70,8 @@ describe('collab logic', () => {
       'Listed twice (row 1).',
       null,
     ]);
-    // a Solana-era wallet is not an EVM address
-    expect(rowErrors([{ name: 'old', wallet: '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin' }])[0]).toMatch(/Not an EVM wallet/);
+    // anything that is not 0x + 40 hex is refused
+    expect(rowErrors([{ name: 'old', wallet: 'not-an-evm-address' }])[0]).toMatch(/Not an EVM wallet/);
   });
 
   it('validates EVM wallets: any single case, a valid EIP-55 checksum when mixed, never the zero address', () => {
@@ -90,16 +90,16 @@ describe('collab logic', () => {
     expect(filledRows([{ name: ' x ', wallet: a.toLowerCase() }])).toEqual([{ name: 'x', wallet: a }]);
   });
 
-  it('counts down and writes a raffle post that names @elymum and this site', () => {
+  it('counts down and writes a raffle post that names @elymumio and this site', () => {
     expect(countdown(1000 + 3_723_000, 1000)).toBe('01:02:03');
     expect(countdown(2 * 86_400_000 + 5000, 0)).toBe('2d 00:00:05');
     expect(countdown(0, 5000)).toBe('00:00:00');
     const post = rafflePost('Riso Guild', 20, Date.UTC(2026, 9, 20), 'elymum.test');
-    expect(post).toMatch(/@elymum/);
+    expect(post).toMatch(/@elymumio\b/);
+    expect(post).not.toMatch(/@elymum(?![a-z0-9_])/i);
     expect(post).toMatch(/elymum\.test/);
     expect(post).toMatch(/20 Elymum WL spots/);
     expect(post).toMatch(/EVM wallet/);
-    expect(post).not.toMatch(/Solana/);
   });
 });
 
@@ -192,7 +192,7 @@ describe('/collab', { timeout: 30_000 }, () => {
     await waitFor(() => expect(screen.getAllByText('Not this time.').length).toBeGreaterThan(0));
     fireEvent.click(screen.getByRole('button', { name: /Collab guide/ }));
     const post = (await screen.findByLabelText('Raffle post')) as HTMLTextAreaElement;
-    expect(post.value).toMatch(/@elymum/);
+    expect(post.value).toMatch(/@elymumio/);
     expect(screen.getByRole('button', { name: 'Copy the post' })).toBeTruthy();
   });
 });

@@ -28,7 +28,7 @@ import soundfile as sf
 
 # words the G2P must not guess (espeak IPA, as Kokoro expects)
 FIXED = {
-    "@elymum": "æt ˈɛlɪməm",
+    "@elymumio": "æt ˈɛlɪməm ˈaɪ ˈoʊ",
     "$ELYMUM": "ˈɛlɪməm",
     "Elymum's": "ˈɛlɪməmz",
     "Elymum": "ˈɛlɪməm",

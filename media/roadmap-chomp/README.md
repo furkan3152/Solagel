@@ -7,7 +7,7 @@ notes. It wakas along a dotted line and eats the roadmap one heading at a time, 
 grows with a pop on each downbeat: **01 WL OPEN** (4.0 s), **02 $1 MINT** (6.0 s), **03 GAME LIVE**
 (8.0 s): the product order, WL → Mint → Play. It reaches the end, takes a big bite on 9.0 and settles as the closing card on
 10.0: the coin grins, the wordmark, the site's host (`SITE_HOST`, the `PUBLIC_URL` host; default
-elymum.io), @elymum. No VO: music and sound only, 120 BPM.
+elymum.io), @elymumio. No VO: music and sound only, 120 BPM.
 
 Landscape runs the headings in one row; portrait and square run three rows as a snake.
 

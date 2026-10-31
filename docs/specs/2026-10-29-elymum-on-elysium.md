@@ -1,18 +1,17 @@
-# Elymum on Elysium: chain migration, mint, and the Elysian design language
+# Elymum on Elysium: contracts, mint, and the Elysian design language
 
-Status: accepted (2026-10-29). This spec is the single source of truth for the move from Solana to Elysium and for
-the new interface.
+Status: accepted (2026-10-29). This spec is the single source of truth for Elymum on Elysium: the contracts, the
+server and web chain layer, the site and mint, and the interface.
 
-## 0. What changes in one paragraph
+## 0. Elymum in one paragraph
 
-The project was "Slana", a coin-eats-coin arena game with money rules in a Solana program. It becomes Elymum on
-Elysium, Kinetiq's Arbitrum Orbit L2 that settles to HyperEVM and uses HYPE as its gas token (EVM, 18 decimals).
-Gameplay, rounds, fees, the off-chain ledger and the journal stay the same. The Solana programs become two Solidity
-contracts, the Solana wallet layer becomes an EVM wallet layer (EIP-6963 + viem), sign-in becomes SIWE (EIP-4361), and an
-Elymum NFT with a $1-in-HYPE mint is added. The product flow is WL → Mint → the game activates for holders.
+Elymum is a coin-eats-coin arena game on Elysium, Kinetiq's Arbitrum Orbit L2 that settles to HyperEVM and uses HYPE
+as its gas token (EVM, 18 decimals). Gameplay, rounds, fees, the off-chain ledger and the journal run on the game
+server; the money rules live in two Solidity contracts, the web app talks to EVM wallets (EIP-6963 + viem), sign-in is
+SIWE (EIP-4361), and the Elymum NFT mints at $1 in HYPE. The product flow is WL → Mint → the game activates for holders.
 For now the public site only collects WL applications, but the whole mint system is ready and run from `/admin`, and
-the owner deploys every contract from their own wallet in `/admin`. The whole interface is redesigned in an Elysium
-language (section 6). Nothing about Solana or Slana remains in code, copy, docs, brand or media.
+the owner deploys every contract from their own wallet in `/admin`. The interface is drawn in an Elysium language
+(section 6).
 
 ## 1. Names and constants
 
@@ -23,9 +22,9 @@ language (section 6). Nothing about Solana or Slana remains in code, copy, docs,
 | Game token | ERC-20 set once by the admin after deploy. Display symbol from `TOKEN_SYMBOL`, default **`$ELYMUM`** |
 | NFT | **Elymum NFT** (ERC-721 name `Elymum`, symbol `ELYMUM`) |
 | Packages | `@elymum/shared`, `@elymum/art`, `@elymum/sdk`, `@elymum/contracts`, `@elymum/server`, `@elymum/web` |
-| Domain | Never hard-coded in UI copy. The site is served at whatever `PUBLIC_URL` says (today `https://slana.io`, later `https://elymum.io`). Web copy uses relative links or `location.host`. `index.html` uses `%VITE_PUBLIC_URL%` for absolute OG URLs. |
-| X handle | admin setting `xHandle`, default `elymum`. A stored value of `slanaio` is migrated to the default on load. |
-| Arenas | Same four tiers, renamed to Elysian places: **Asphodel Meadow** (1,000), **Lethe Shore** (10,000), **Golden Bough** (50,000), **Isles of the Blessed** (250,000). Ids 1–4 stay. |
+| Domain | Never hard-coded in UI copy. The site is served at whatever `PUBLIC_URL` says (for example `https://elymum.io`). Web copy uses relative links or `location.host`. `index.html` uses `%VITE_PUBLIC_URL%` for absolute OG URLs. |
+| X handle | admin setting `xHandle`, default `elymumio` (https://x.com/elymumio). A stored value equal to an earlier default (`elymum`) is switched to the default on load, and the seeded WL tasks' text and links are pointed at the current handle; admin-written tasks and WL answers are never rewritten. |
+| Arenas | Four tiers, named after Elysian places: **Asphodel Meadow** (1,000), **Lethe Shore** (10,000), **Golden Bough** (50,000), **Isles of the Blessed** (250,000). Ids 1–4. |
 
 ## 2. Chains
 
@@ -53,7 +52,7 @@ hash differs from the bundled artifact). `scripts/export-artifacts.mjs` writes `
 creation bytecode, `runtimeCodeHash`) which is committed; `src/index.ts` re-exports it. Nothing else in the repository
 compiles Solidity.
 
-### 3.1 `ElymumArena` (port of the old program)
+### 3.1 `ElymumArena`
 
 Ownable2Step (owner = the admin wallet, set by the constructor argument), ReentrancyGuard, SafeERC20.
 
@@ -167,8 +166,6 @@ Elysium Testnet before `$ELYMUM` exists. `/admin` offers it only when the chain 
 | `TOKEN_SYMBOL` | Default `$ELYMUM` |
 | `GAME_ACCESS` | Overrides the admin setting: `admins`, `holders` or `public` |
 
-`SOLANA_*`, `PROGRAM_ID`, `SERVER_KEYPAIR`, `PRIORITY_FEE_MICROLAMPORTS` are gone.
-
 ### 4.2 Chain gateway
 
 `chain/evm.ts` implements the existing `ChainGateway` with viem: it reads `config()` until the token is set (every 30 s,
@@ -176,10 +173,10 @@ then pushes `chain` to clients), lists arenas, reads sessions, and runs the sett
 due items of an arena in **one `settle` batch** (chunked at 40), reconciles each item by reading the session afterwards
 (a skipped or reverted item is retried with backoff; an item whose session id no longer matches is marked settled by
 someone else), burns floor loot with `sweepLoot` using a monotonic `sweepId` stored in the journal, refunds nothing on
-its own (players refund after 24 h) but settles stale sessions at their entry fee like before. Gas comes from the
+its own (players refund after 24 h) but settles stale sessions at their entry fee. Gas comes from the
 server key (HYPE); a low-balance warning is logged and shown in `/admin`. Journal keys become
-`<arenaId>:<player lowercase>:<sessionId>`. `chain/dev-fake.ts` stays (0x addresses, fake hashes).
-`ChainStatus` becomes `{ enabled, chainId, chainName, rpcUrl, explorerUrl, arenaAddress, nftAddress, arenasEnabled,
+`<arenaId>:<player lowercase>:<sessionId>`. `chain/dev-fake.ts` is the offline fake (0x addresses, fake hashes).
+`ChainStatus` is `{ enabled, chainId, chainName, rpcUrl, explorerUrl, arenaAddress, nftAddress, arenasEnabled,
 tokenReady, token: { address, symbol, decimals } | null, feeBps, serverKey }`.
 
 ### 4.3 Sign-in (SIWE, EIP-4361)
@@ -187,16 +184,13 @@ tokenReady, token: { address, symbol, decimals } | null, feeBps, serverKey }`.
 `packages/shared/src/siwe.ts` builds and parses the exact message (domain, address checksummed, statement
 "Sign in to Elymum. This is free and sends no transaction.", URI, Version 1, Chain ID (the server's), Nonce, Issued At).
 The server verifies with viem `verifyMessage` (EOA) and falls back to `publicClient.verifyMessage` (ERC-1271/6492
-smart wallets). Addresses are compared and stored checksummed. Same nonce rules as before (single use, 10 min).
+smart wallets). Addresses are compared and stored checksummed. Nonces are single use and expire after 10 min.
 
 ### 4.4 Site, mint and profiles
 
-- WL / collab: wallets are EVM addresses. Entries whose wallet is not `0x…` (from the Solana era) are kept and marked
-  `legacy: true`; they are never in the allowlist. A user who applies with an EVM wallet and the X handle of a legacy
-  entry gets a fresh `pending` entry noted "claims legacy handle @x (legacy status: <status>, ...)" for manual review;
-  the legacy entry is kept, and only this one legacy→EVM claim per handle is allowed.
-- Settings: `gamePublic: boolean` becomes `gameAccess: 'admins' | 'holders' | 'public'` (stored `gamePublic: true`
-  migrates to `public`, else `admins`). `holders` = wallets with `balanceOf > 0` on the NFT (cached 15 s, re-read uncached at every arena seat) plus admins.
+- WL / collab: wallets are EVM addresses (`0x` + 40 hex, stored checksummed); anything else is refused. One WL entry
+  per wallet and per X handle.
+- Settings: `gameAccess: 'admins' | 'holders' | 'public'`. `holders` = wallets with `balanceOf > 0` on the NFT (cached 15 s, re-read uncached at every arena seat) plus admins.
 - Contracts registry: `GET /api/site/contracts` (public), `POST /api/admin/contracts` `{ kind: 'arena'|'nft'|'token',
   address, txHash }`: the server checks the code hash, the owner (= the signed-in admin), and for the arena that the
   server authority is the server key, then stores it. `DELETE` clears a kind.
@@ -212,7 +206,7 @@ smart wallets). Addresses are compared and stored checksummed. Same nonce rules 
 
 ## 5. Web (`apps/web`)
 
-- `src/wallet/` replaces `src/solana/`: EIP-6963 discovery (fallback `window.ethereum`), connect, account/chain events,
+- `src/wallet/`: EIP-6963 discovery (fallback `window.ethereum`), connect, account/chain events,
   `wallet_switchEthereumChain` → `wallet_addEthereumChain` with the server's chain, `personal_sign` for SIWE, viem
   `createWalletClient(custom(provider))` for transactions, receipts via a public client on the server's RPC.
 - Ticket flow: `approve` (only when the allowance is short; exact amount) → `join`. Refund / collect with `refund`.
@@ -232,7 +226,7 @@ smart wallets). Addresses are compared and stored checksummed. Same nonce rules 
 The design direction is **Ring Storybook**. The reference is `docs/design/storybook-reference.html` and its render
 `docs/design/storybook-reference.png`; the live proof of every token, component and motif is `?gallery`
 (`apps/web/src/design/Gallery.tsx`, `?gallery&theme=night` for night). This section is the guide every screen follows.
-The UI matters most in this migration: it must look hand-drawn.
+The UI matters most: it must look hand-drawn.
 
 ### 6.1 Sources
 

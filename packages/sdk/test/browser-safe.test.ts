@@ -46,10 +46,4 @@ describe('browser safety', () => {
       expect(/\bprocess\.|\b__dirname\b|\brequire\(|\bBuffer\b/.test(body), `${file} uses a Node global`).toBe(false);
     }
   });
-
-  it('no Solana left in the SDK', () => {
-    for (const file of new Set([...files, ...opsFiles])) {
-      expect(/solana|anchor|lamport|\bpda\b|slana/i.test(readFileSync(file, 'utf8')), file).toBe(false);
-    }
-  });
 });

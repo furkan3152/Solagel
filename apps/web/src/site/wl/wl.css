@@ -712,26 +712,6 @@
   font-size: 12px;
   font-weight: 600;
 }
-.wl-legacy {
-  display: grid;
-  grid-template-columns: 64px minmax(0, 1fr);
-  gap: 14px;
-  align-items: start;
-  max-width: 620px;
-  margin-top: 6px;
-}
-.wl-legacy p {
-  margin: 0 0 12px;
-  font-size: 15px;
-  line-height: 1.5;
-}
-.wl-legacy__tape {
-  top: -14px;
-  left: 34px;
-}
-.wl-legacy__coin {
-  padding-top: 4px;
-}
 @media (max-width: 759px) {
   .wl-plate__cloud {
     display: none;
@@ -761,15 +741,6 @@
   .wl-status__sticker {
     left: 18px;
     top: 6px;
-  }
-  .wl-legacy {
-    grid-template-columns: 1fr;
-    padding-top: 30px !important;
-  }
-  .wl-legacy__coin {
-    position: absolute;
-    top: -26px;
-    right: 12px;
   }
 }
 

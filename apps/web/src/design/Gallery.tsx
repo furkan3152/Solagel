@@ -511,7 +511,7 @@ export function Gallery() {
                 id: 'follow',
                 state: 'done',
                 meta: 'Chore 1 · X',
-                title: 'Follow @elymum',
+                title: 'Follow @elymumio',
                 body: 'Done. The ring noticed, and so did our follower count.',
                 art: <CoinCharacter paint="up" mood="happy" size={76} />,
               },
@@ -644,7 +644,7 @@ export function Gallery() {
               <div className="gal-counter">
                 <Counter value={minted} unit="minted" />
               </div>
-              <Field label="X handle" placeholder="elymum" prefix="@" hint="We check it once. No DMs." />
+              <Field label="X handle" placeholder="elymumio" prefix="@" hint="We check it once. No DMs." />
               <Field label="Token address" defaultValue="0xnope" error="That is not an address. It is a mood." />
               <Tabs
                 label="Board"

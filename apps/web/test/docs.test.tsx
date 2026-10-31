@@ -81,7 +81,7 @@ describe('player guide content', () => {
 
   it('has no Pass, mint, season, treasury or prize-pool chapter or wording', () => {
     const t = JSON.stringify(en);
-    expect(t).not.toMatch(/Slana Pass|\bPass\b|NFT mint/);
+    expect(t).not.toMatch(/\bPass\b|NFT mint/);
     expect(t).not.toMatch(/season|treasury|prize pool|reveal/i);
   });
 
@@ -107,13 +107,12 @@ describe('player guide content', () => {
     }
   });
 
-  it('uses no emoji, nothing from Solana and no Turkish', () => {
+  it('uses no emoji and no Turkish, and names Elysium and HYPE', () => {
     const text = JSON.stringify(en);
-    expect(text).not.toMatch(/Solana|Slana|lamport|\bSOL\b|◎|\brent\b|token account/);
+    expect(text).not.toMatch(/\brent\b|token account/);
     expect(text).toContain('HYPE');
     expect(text).toContain('Elysium');
     expect(text).not.toMatch(/\p{Extended_Pictographic}/u);
-    expect(text).not.toMatch(/SOL arena/i);
     expect(text).not.toMatch(/record_game/);
     // the CI guard's Turkish letters, written as escapes so this file passes the guard itself
     expect(text).not.toMatch(/[\u00e7\u011f\u0131\u00f6\u015f\u00fc\u00c7\u011e\u0130\u00d6\u015e\u00dc]/);

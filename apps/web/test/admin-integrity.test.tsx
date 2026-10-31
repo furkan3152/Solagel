@@ -7,9 +7,9 @@ import { adminApi } from '../src/site/api';
 import { installDomStubs, mockFetch, type Call } from './site-helpers';
 
 const api = adminApi('admin-token');
-const A = '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin';
-const B = 'D2Ts7yCiVjedo6uwqpkM44QA8J45NdVU1J3k5m6iWtvm';
-const KEY = 'Sess1111111111111111111111111111111111111';
+const A = '0x9a1E5bC3d4F60718293A4b5C6d7E8f9012345678';
+const B = '0xD2a7C0FfeE00112233445566778899AaBbCcDd01';
+const KEY = 'held-0xd2a7c0ffee00112233445566778899aabbccdd01-7';
 
 const flag: IntegrityFlag = {
   id: 'pair_transfer:0123456789abcdef',
@@ -19,7 +19,7 @@ const flag: IntegrityFlag = {
   wallets: [B, A],
   beneficiary: B,
   arenaId: 1,
-  summary: 'D2Ts…tvm took value from 9xQe…VFin on 6 occasions in 6 rounds.',
+  summary: '0xD2a7…dd01 took value from 0x9a1E…5678 on 6 occasions in 6 rounds.',
   evidence: { occasions: 6, rounds: 6, pValue: 0.00001, afkEaterOccasions: 2 },
   firstSeen: 1,
   lastSeen: 2,

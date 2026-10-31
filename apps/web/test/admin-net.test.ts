@@ -142,7 +142,7 @@ describe('launch checklist and allowlist warnings', () => {
       net,
       status: status({ nft: true, token: BOB, arenas: [1, 2, 3, 4], phase: 'allowlist', root: `0x${'ab'.repeat(32)}` }),
       allowlist: { snapshot: { root: `0x${'ab'.repeat(32)}`, count: 3, wallets: [], builtAt: 1, builtBy: ALICE, sources: { wl: 2, collab: 1 } }, diff: { added: [], removed: [] }, onchainRoot: null, published: true },
-      settings: { wlOpen: true, collabOpen: false, gameAccess: 'holders', xHandle: 'elymum', launchPostUrl: null },
+      settings: { wlOpen: true, collabOpen: false, gameAccess: 'holders', xHandle: 'elymumio', launchPostUrl: null },
       quote: { hypeUsd: 33.3, targetUsdCents: 100, priceWei: '30000000000000000', fetchedAt: 1 },
     });
     const by = Object.fromEntries(items.map((i) => [i.id, i.ok]));

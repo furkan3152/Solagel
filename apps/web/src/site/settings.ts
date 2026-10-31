@@ -56,5 +56,5 @@ export function siteHost(): string {
   }
 }
 
-/** `0x1234…abcd` for an EVM address; other (legacy) wallets keep 4 characters at each end. */
-export const shortWallet = (w: string): string => (w.length <= 12 ? w : w.startsWith('0x') ? `${w.slice(0, 6)}…${w.slice(-4)}` : `${w.slice(0, 4)}…${w.slice(-4)}`);
+/** `0x1234…abcd` for an EVM address. */
+export const shortWallet = (w: string): string => (w.length <= 12 ? w : `${w.slice(0, 6)}…${w.slice(-4)}`);

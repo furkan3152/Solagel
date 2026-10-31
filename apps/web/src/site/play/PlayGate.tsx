@@ -93,7 +93,7 @@ export function ArenaSoon({ holders = false, onSignedIn }: { holders?: boolean; 
                 </>
               ) : (
                 <>
-                  <p className="pg-lede">The coins are asleep and the food is still cooking. Get on the WL, mint an emblem, and listen for the first bell on @elymum.</p>
+                  <p className="pg-lede">The coins are asleep and the food is still cooking. Get on the WL, mint an emblem, and listen for the first bell on @elymumio.</p>
                   <div className="pg-actions">
                     <LinkButton href="/wl" variant="primary" size="lg" icon="arrow">
                       Join the WL
@@ -108,7 +108,7 @@ export function ArenaSoon({ holders = false, onSignedIn }: { holders?: boolean; 
                 <a href="/">Back home</a>
                 <span aria-hidden="true">·</span>
                 <a href={X_URL} target="_blank" rel="noreferrer">
-                  <XIcon size={14} /> Follow @elymum
+                  <XIcon size={14} /> Follow @elymumio
                 </a>
               </p>
             </Sticker>

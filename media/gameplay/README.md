@@ -93,6 +93,6 @@ the final minute, the last gulp, the bell and the receipt) and `spill` (eaten by
   round chip shows real five-minute times.
 - The rivals (`mochi_moon`, `bonk_bae`, `lil_wei`, `rug_ruth`, `pixel_penny`) are real wallets
   with real (fake-chain) tickets, played by the capture script. Bots are the game's own.
-- The end card reads the site's host (`SITE_HOST`, the `PUBLIC_URL` host; default elymum.io) and @elymum (X).
+- The end card reads the site's host (`SITE_HOST`, the `PUBLIC_URL` host; default elymum.io) and @elymumio (X).
 - Colours follow the Ring Storybook palette (spec section 6.3, `packages/shared/src/palette.ts`);
   `motion/` repeats the hex values under the old names, so update both when the palette moves.

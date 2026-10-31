@@ -773,15 +773,6 @@
   font-size: 11px;
   color: #6B655A;
 }
-.cb-legacy {
-  margin: 0;
-  padding: 12px 14px;
-  border: var(--stroke-sm) dashed #8A5F0E;
-  border-radius: 12px;
-  background: #FCF1D2;
-  font-size: 14.5px;
-}
-
 /* the wallet table */
 .cb-table-head {
   display: flex;

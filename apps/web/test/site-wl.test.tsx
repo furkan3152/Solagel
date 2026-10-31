@@ -11,7 +11,7 @@ const WALLET = '0xAbCdEf0123456789aBcDeF0123456789AbCdEf01';
 const POST = 'https://x.com/riso_rita/status/1849000000000000001';
 
 const TASKS: PublicWlTask[] = [
-  { id: 'follow_x', kind: 'follow_x', title: 'Follow @elymum', body: 'Follow us.', target: 'https://x.com/elymum', required: true, available: true },
+  { id: 'follow_x', kind: 'follow_x', title: 'Follow @elymumio', body: 'Follow us.', target: 'https://x.com/elymumio', required: true, available: true },
   { id: 'post_x', kind: 'post_x', title: 'Post about Elymum on X', body: 'Post and paste the link.', target: null, required: true, available: true },
   { id: 'engage_launch', kind: 'engage_x', title: 'Like, repost and reply', body: '', target: null, required: false, available: false },
   { id: 't_join', kind: 'join_link', title: 'Join the Discord', body: '', target: 'https://discord.gg/elymum', required: true, available: true },
@@ -75,7 +75,7 @@ describe('/wl', { timeout: 30_000 }, () => {
     render(<WlPage />);
     await screen.findByRole('heading', { name: 'Seven small chores, then the feast.' });
     // every kind renders its step
-    for (const t of ['Your X handle', 'Follow @elymum', 'Post about Elymum on X', 'Like, repost and reply', 'Join the Discord', 'Why Elymum?', 'Your EVM wallet']) expect(screen.getAllByText(t).length).toBeGreaterThan(0);
+    for (const t of ['Your X handle', 'Follow @elymumio', 'Post about Elymum on X', 'Like, repost and reply', 'Join the Discord', 'Why Elymum?', 'Your EVM wallet']) expect(screen.getAllByText(t).length).toBeGreaterThan(0);
 
     const next = () => fireEvent.click(within(document.querySelector<HTMLElement>('.wl-step.is-active')!).getByRole('button', { name: /^(Next|Skip for now)$/ }));
     fireEvent.change(screen.getByLabelText('Your X handle'), { target: { value: 'bad handle!' } });
@@ -84,7 +84,7 @@ describe('/wl', { timeout: 30_000 }, () => {
     fireEvent.change(screen.getByLabelText('Your X handle'), { target: { value: '@Riso_Rita' } });
     next();
     // follow: the link points at the target, the tick is required
-    expect(screen.getByRole('link', { name: /Follow @elymum/ }).getAttribute('href')).toBe('https://x.com/elymum');
+    expect(screen.getByRole('link', { name: /Follow @elymum/ }).getAttribute('href')).toBe('https://x.com/elymumio');
     next();
     expect(screen.getByText('Tick this once you follow.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'I follow' }));
@@ -148,11 +148,11 @@ describe('/wl', { timeout: 30_000 }, () => {
     expect(screen.getByTestId('wl-status').textContent).toBe(status);
   });
 
-  it('says applications are closed (follow @elymum) when the WL is off', async () => {
+  it('says applications are closed (follow @elymumio) when the WL is off', async () => {
     ({ restore } = mockFetch({ 'GET /api/site/settings': { settings: { ...SETTINGS, wlOpen: false } }, 'GET /api/site/tasks': { tasks: TASKS } }));
     render(<WlPage />);
     expect(await screen.findByRole('heading', { name: 'Applications are closed.' })).toBeTruthy();
-    expect(screen.getAllByRole('link', { name: /@elymum/ })[0].getAttribute('href')).toBe('https://x.com/elymum');
+    expect(screen.getAllByRole('link', { name: /@elymum/ })[0].getAttribute('href')).toBe('https://x.com/elymumio');
   });
 
   it('the wallet step shows the full EVM address that goes on the list', async () => {
@@ -166,19 +166,5 @@ describe('/wl', { timeout: 30_000 }, () => {
     fireEvent.change(await screen.findByLabelText('Your X handle'), { target: { value: 'riso_rita' } });
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     expect((await screen.findByTestId('wl-wallet')).textContent).toContain(WALLET);
-  });
-
-  it('a legacy (pre-Elysium) entry says to re-apply with an EVM wallet, and the form opens again', async () => {
-    ({ restore } = mockFetch({
-      'GET /api/site/settings': { settings: SETTINGS },
-      'GET /api/site/tasks': { tasks: TASKS },
-      'GET /api/site/wl': { entry: { ...entry('approved'), wallet: '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin', legacy: true } },
-    }));
-    useSession.setState({ session: { address: WALLET, token: 'tok', admin: false } });
-    render(<WlPage />);
-    const note = await screen.findByTestId('wl-legacy');
-    expect(note.textContent).toMatch(/before the move to Elysium/);
-    fireEvent.click(within(note).getByRole('button', { name: 'Re-apply with an EVM wallet' }));
-    expect(await screen.findByLabelText('Your X handle')).toBeTruthy();
   });
 });

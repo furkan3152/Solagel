@@ -47,15 +47,14 @@ until you publish a root.
 |---|---|
 | Open or close the WL and collabs; the X handle | **Settings** |
 | Review WL entries | **WL**: counts, filter, search (wallet, handle, note, id), open an entry for its answers, approve / reject / reset, a note; bulk actions on up to 500 rows |
-| Export | **WL** → CSV (approved or all): `wallet,x_handle,status,created_at,dup_collabs,legacy,note` |
+| Export | **WL** → CSV (approved or all): `wallet,x_handle,status,created_at,dup_collabs,note` |
 | Edit the WL steps | **Tasks**: add, edit, reorder, enable, delete; paste the launch post link to open the like / repost / reply step |
-| Communities | **Collabs**: approve with spots and a deadline, extend, unlock a submitted list, export wallets (with a `legacy` column) |
+| Communities | **Collabs**: approve with spots and a deadline, extend, unlock a submitted list, export wallets (`collab_id,community,name,wallet,dup_wl,dup_collabs`) |
 
-- Wallets are EVM addresses (checksummed). Entries from before the move whose wallet is not `0x...` are kept,
-  marked **legacy**, and never in the allowlist. A legacy entry's X handle can be claimed by exactly one EVM
-  application: it is a fresh **pending** entry with the note "claims legacy handle @x (legacy status: ...)" and
-  inherits nothing (anyone can type a handle). The legacy entry is kept; both show in the WL list. Verify the claim
-  (e.g. ask the X account) before approving.
+- Wallets are EVM addresses (checksummed); anything else is refused. One entry per wallet and per X handle.
+- The X handle (Settings) defaults to `elymumio`. A data dir that still holds the earlier default `elymum` is
+  switched to `elymumio` on start, and the seeded WL tasks (follow, post, launch post, handle, wallet) are pointed at
+  the current handle; tasks you wrote and the answers stored in WL entries are never rewritten.
 - Duplicates are flagged, never dropped: a collab wallet that is also on the WL (`dup_wl`) or in another list
   (`dup_collabs`) is marked; decide by hand.
 - **Publishing the allowlist** (Mint tab): the server snapshots every approved WL wallet plus every wallet of a

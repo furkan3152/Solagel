@@ -39,9 +39,6 @@ export function userWallet(v: unknown, field: string, message = `${field} is not
   return checksumAddress(t)!;
 }
 
-/** True for a stored wallet that is not an EVM address (from before the move to Elysium). */
-export const isLegacyWallet = (w: string): boolean => !/^0x[0-9a-fA-F]{40}$/.test(w);
-
 /** Removes control characters (keeps newlines when `multiline`) and trims. */
 export function cleanText(s: string, multiline = false): string {
   // eslint-disable-next-line no-control-regex

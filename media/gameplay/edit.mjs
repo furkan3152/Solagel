@@ -213,7 +213,7 @@ wipe(s8.end, ['pink', 'card']);
 const tOut = s8.end;
 e.add('card', tOut - 0.05, bars(2) + 0.05, {
   variant: 'outro', kicker: 'ELYMUM / ON ELYSIUM', tagline: 'Eat. Grow. Last the round.', tagAccent: 4, tagAt: 0.7, tagGap: 0.26,
-  foot: `WL → MINT → PLAY  /  ${SITE}  /  @ELYMUM`, footAt: 1.6, footY: 812,
+  foot: `WL → MINT → PLAY  /  ${SITE}  /  @ELYMUMIO`, footAt: 1.6, footY: 812,
 }, 50);
 for (let i = 0; i < 3; i++) e.cue('stamp', tOut + 0.7 + i * 0.26 + 0.1, 0.6);
 e.cue('sub', tOut + 0.4, 0.5);

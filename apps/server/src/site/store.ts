@@ -6,6 +6,7 @@ import {
   GAME_ACCESS_MODES,
   SITE_LIMITS,
   SITE_SETTINGS_DEFAULT,
+  SITE_X_HANDLE_DEFAULT,
   WL_STATUSES,
   WL_TASK_WALLET,
   WL_TASK_X_HANDLE,
@@ -29,15 +30,36 @@ import {
   type WlTaskAnswer,
 } from '@elymum/shared';
 import * as v from './validate';
-import { SiteFail, bad, isLegacyWallet } from './validate';
+import { SiteFail, bad } from './validate';
 
-/** Index key of a stored wallet: EVM addresses compare case-insensitively, legacy wallets as stored. */
-const wkey = (w: string): string => (isLegacyWallet(w) ? w : w.toLowerCase());
+/** Index key of a stored wallet: EVM addresses compare case-insensitively. */
+const wkey = (w: string): string => w.toLowerCase();
 
-/** The project's previous X handle, migrated to the default on load. */
-const OLD_X_HANDLE = 'slanaio';
-/** Seeded task text that still names the previous project or chain is replaced by the current default on load. */
-const OLD_TEXT = /slana|solana/i;
+/**
+ * Earlier defaults of the project's X handle. A stored `xHandle` equal to one of them is switched to
+ * `SITE_X_HANDLE_DEFAULT` on load, and the seeded tasks' text and links that name one are rewritten to
+ * the current handle (an admin-chosen handle, custom tasks and WL answers are never touched).
+ */
+export const PREVIOUS_X_HANDLES: readonly string[] = ['elymum'];
+
+/** The ids of the seeded tasks (`defaultTasks`), the only ones the handle migration rewrites. */
+const SEEDED_TASK_IDS = new Set(['follow_x', 'post_x', 'engage_launch', WL_TASK_X_HANDLE, WL_TASK_WALLET]);
+
+/** `@old` and `x.com/old` (also twitter.com) as whole handles, case-insensitive (handles are `[A-Za-z0-9_]`). */
+function handleRefs(old: string): RegExp[] {
+  return [new RegExp(`@${old}(?![A-Za-z0-9_])`, 'gi'), new RegExp(`((?:x|twitter)\\.com/)${old}(?![A-Za-z0-9_])`, 'gi')];
+}
+
+/** Rewrites every reference to a previous default handle in `text` to `handle`. */
+export function rewriteHandle(text: string, handle: string): string {
+  let out = text;
+  for (const old of PREVIOUS_X_HANDLES) {
+    if (old === handle) continue;
+    const [at, link] = handleRefs(old);
+    out = out.replace(at, `@${handle}`).replace(link, `$1${handle}`);
+  }
+  return out;
+}
 
 /** A WL entry as stored. */
 interface WlRecord {
@@ -81,9 +103,9 @@ export function defaultTasks(): WlTask[] {
     {
       id: 'follow_x',
       kind: 'follow_x',
-      title: 'Follow @elymum',
-      body: 'Follow @elymum on X.',
-      target: 'https://x.com/elymum',
+      title: `Follow @${SITE_X_HANDLE_DEFAULT}`,
+      body: `Follow @${SITE_X_HANDLE_DEFAULT} on X.`,
+      target: `https://x.com/${SITE_X_HANDLE_DEFAULT}`,
       required: true,
       enabled: true,
       order: 0,
@@ -92,7 +114,7 @@ export function defaultTasks(): WlTask[] {
       id: 'post_x',
       kind: 'post_x',
       title: 'Post about Elymum on X',
-      body: 'Post about Elymum on X, tag @elymum, then paste the link to your post.',
+      body: `Post about Elymum on X, tag @${SITE_X_HANDLE_DEFAULT}, then paste the link to your post.`,
       target: null,
       required: true,
       enabled: true,
@@ -202,36 +224,36 @@ export class SiteStore {
   }
 
   private load(): void {
-    const settings = this.read('settings', (x) => (x && typeof x === 'object' ? (x as Partial<SiteSettings> & { gamePublic?: unknown }) : null));
+    const settings = this.read('settings', (x) => (x && typeof x === 'object' ? (x as Partial<SiteSettings>) : null));
     if (settings) {
       const d = SITE_SETTINGS_DEFAULT;
-      // `gamePublic: boolean` became `gameAccess`: true → public, anything else → admins
-      const gameAccess = isGameAccess(settings.gameAccess) ? settings.gameAccess : settings.gamePublic === true ? 'public' : d.gameAccess;
       const handle = normalizeXHandle(settings.xHandle);
+      const previous = handle !== null && handle !== SITE_X_HANDLE_DEFAULT && PREVIOUS_X_HANDLES.includes(handle);
       this.settingsV = {
         wlOpen: typeof settings.wlOpen === 'boolean' ? settings.wlOpen : d.wlOpen,
         collabOpen: typeof settings.collabOpen === 'boolean' ? settings.collabOpen : d.collabOpen,
-        gameAccess,
-        xHandle: handle && handle !== OLD_X_HANDLE ? handle : d.xHandle,
+        gameAccess: isGameAccess(settings.gameAccess) ? settings.gameAccess : d.gameAccess,
+        xHandle: handle && !previous ? handle : d.xHandle,
         launchPostUrl: isXStatusUrl(settings.launchPostUrl) ? settings.launchPostUrl : null,
       };
-      if (!isGameAccess(settings.gameAccess) || 'gamePublic' in settings || handle === OLD_X_HANDLE) {
-        this.log(`site: settings migrated (gameAccess ${gameAccess}, xHandle @${this.settingsV.xHandle})`);
+      if (previous) {
+        this.log(`site: xHandle @${handle} is a previous default; now @${this.settingsV.xHandle}`);
         this.save('settings');
       }
     }
     const tasks = this.read('tasks', (x) => (Array.isArray(x) ? (x as WlTask[]) : null));
     if (tasks) {
-      const defaults = new Map(defaultTasks().map((t) => [t.id, t]));
+      const handle = this.settingsV.xHandle;
       let migrated = 0;
       this.tasksV = tasks.map((t) => {
-        const d = defaults.get(t.id);
-        if (!d || !OLD_TEXT.test(`${t.title} ${t.body} ${t.target ?? ''}`)) return t;
+        if (!SEEDED_TASK_IDS.has(t.id)) return t;
+        const next = { ...t, title: rewriteHandle(t.title, handle), body: rewriteHandle(t.body, handle), target: t.target === null ? null : rewriteHandle(t.target, handle) };
+        if (next.title === t.title && next.body === t.body && next.target === t.target) return t;
         migrated++;
-        return { ...t, kind: d.kind, title: d.title, body: d.body, target: d.target };
+        return next;
       });
       if (migrated > 0) {
-        this.log(`site: ${migrated} seeded WL task(s) migrated to the Elymum text`);
+        this.log(`site: ${migrated} seeded WL task(s) now name @${handle}`);
         this.save('tasks');
       }
     }
@@ -241,12 +263,8 @@ export class SiteStore {
     if (collabs) this.collabs = collabs;
     for (const e of this.wl) {
       this.wlByWallet.set(wkey(e.wallet), e);
-      // a legacy entry and the one EVM application that claimed its handle share it: the EVM one holds it
-      const prev = this.wlByHandle.get(e.xHandle);
-      if (!(prev && !isLegacyWallet(prev.wallet) && isLegacyWallet(e.wallet))) this.wlByHandle.set(e.xHandle, e);
+      this.wlByHandle.set(e.xHandle, e);
     }
-    const legacy = this.wl.filter((e) => isLegacyWallet(e.wallet)).length;
-    if (legacy > 0) this.log(`site: ${legacy} legacy WL entr${legacy === 1 ? 'y' : 'ies'} (non-EVM wallet) kept for the record, never in the allowlist`);
     this.sortTasks();
   }
 
@@ -379,7 +397,6 @@ export class SiteStore {
     return {
       id: e.id,
       wallet: e.wallet,
-      ...(isLegacyWallet(e.wallet) ? { legacy: true } : {}),
       xHandle: e.xHandle,
       status: e.status,
       tasks: e.tasks.map((t) => ({ ...t })),
@@ -402,10 +419,7 @@ export class SiteStore {
     if (!this.settingsV.wlOpen) throw new SiteFail(403, 'wl_closed', `Applications are closed. Follow @${this.settingsV.xHandle}.`);
     if (this.wlByWallet.has(wkey(wallet))) throw new SiteFail(409, 'already_applied', 'This wallet already applied.');
     const xHandle = v.handle(body.xHandle, 'xHandle');
-    const byHandle = this.wlByHandle.get(xHandle);
-    // handles are unique, with one exception: a legacy entry's (non-EVM wallet) handle may be claimed by exactly
-    // one EVM application, which is then a fresh entry flagged for manual review (the legacy one is kept)
-    if (byHandle && !isLegacyWallet(byHandle.wallet)) throw new SiteFail(409, 'handle_taken', 'This X handle already applied.', 'xHandle');
+    if (this.wlByHandle.has(xHandle)) throw new SiteFail(409, 'handle_taken', 'This X handle already applied.', 'xHandle');
     const answers = body.answers === undefined ? {} : v.obj(body.answers, 'answers');
     if (Object.keys(answers).length > 60) throw bad('answers', 'too many answers');
     const tasks: WlTaskAnswer[] = this.publicTasks().map((t) => {
@@ -428,13 +442,7 @@ export class SiteStore {
       return { id: t.id, kind: t.kind, title: t.title, target: t.target, required: t.required, answer };
     });
     const now = this.now();
-    // claiming a legacy handle inherits nothing (status, note): anyone can type a handle, so an admin decides
-    const note = byHandle ? `claims legacy handle @${xHandle} (legacy status: ${byHandle.status}, legacy entry ${byHandle.id}); verify before approving` : '';
-    const e: WlRecord = { id: newId('wl'), wallet, xHandle, status: 'pending', tasks, note, createdAt: now, updatedAt: now };
-    if (byHandle) {
-      const line = `handle claimed by EVM application ${e.id} (${wallet})`;
-      byHandle.note = byHandle.note ? `${byHandle.note}\n${line}` : line;
-    }
+    const e: WlRecord = { id: newId('wl'), wallet, xHandle, status: 'pending', tasks, note: '', createdAt: now, updatedAt: now };
     this.wl.push(e);
     this.wlByWallet.set(wkey(wallet), e);
     this.wlByHandle.set(xHandle, e);
@@ -498,8 +506,8 @@ export class SiteStore {
     const rows = this.wl
       .filter((e) => scope === 'all' || e.status === 'approved')
       .sort((a, b) => a.createdAt - b.createdAt)
-      .map((e) => [e.wallet, e.xHandle, e.status, isLegacyWallet(e.wallet) ? 'yes' : '', iso(e.createdAt), (dup.get(wkey(e.wallet)) ?? []).join(' '), e.note]);
-    return csv([['wallet', 'x_handle', 'status', 'legacy', 'created_at', 'dup_collabs', 'note'], ...rows]);
+      .map((e) => [e.wallet, e.xHandle, e.status, iso(e.createdAt), (dup.get(wkey(e.wallet)) ?? []).join(' '), e.note]);
+    return csv([['wallet', 'x_handle', 'status', 'created_at', 'dup_collabs', 'note'], ...rows]);
   }
 
   // ---------- collabs ----------
@@ -512,7 +520,7 @@ export class SiteStore {
 
   private collabPublic(c: CollabRecord): CollabPublic {
     const { note: _note, ...rest } = c;
-    return { ...rest, ...(isLegacyWallet(c.wallet) ? { legacy: true } : {}), wallets: c.wallets.map((w) => ({ ...w })), phase: this.phase(c) };
+    return { ...rest, wallets: c.wallets.map((w) => ({ ...w })), phase: this.phase(c) };
   }
 
   /** Wallet (index key) → ids of the (not rejected) collabs whose list holds it. */
@@ -531,7 +539,6 @@ export class SiteStore {
       note: c.note,
       wallets: c.wallets.map((w) => ({
         ...w,
-        ...(isLegacyWallet(w.wallet) ? { legacy: true } : {}),
         dupWl: this.wlByWallet.has(wkey(w.wallet)),
         dupCollabs: (dup.get(wkey(w.wallet)) ?? []).filter((id) => id !== c.id),
       })),
@@ -697,13 +704,12 @@ export class SiteStore {
       c.community,
       w.name,
       w.wallet,
-      isLegacyWallet(w.wallet) ? 'yes' : '',
       this.wlByWallet.has(wkey(w.wallet)) ? 'yes' : '',
       (dup.get(wkey(w.wallet)) ?? []).filter((x) => x !== c.id).join(' '),
     ]);
   }
 
-  static readonly COLLAB_CSV_HEADER = ['collab_id', 'community', 'name', 'wallet', 'legacy', 'dup_wl', 'dup_collabs'];
+  static readonly COLLAB_CSV_HEADER = ['collab_id', 'community', 'name', 'wallet', 'dup_wl', 'dup_collabs'];
 
   collabCsv(id: string): string {
     const c = this.collab(id);
@@ -721,13 +727,12 @@ export class SiteStore {
   }
 
   /**
-   * The allowlist sources: every approved WL wallet plus every wallet of a submitted collab list,
-   * EVM addresses only (legacy entries never count). Not de-duplicated across sources; `buildMerkleTree`
-   * normalizes (checksums, de-duplicates and sorts).
+   * The allowlist sources: every approved WL wallet plus every wallet of a submitted collab list.
+   * Not de-duplicated across sources; `buildMerkleTree` normalizes (checksums, de-duplicates and sorts).
    */
   allowlistSources(): { wl: string[]; collab: string[] } {
-    const wl = this.wl.filter((e) => e.status === 'approved' && !isLegacyWallet(e.wallet)).map((e) => e.wallet);
-    const collab = this.collabs.filter((c) => c.status === 'submitted').flatMap((c) => c.wallets.map((w) => w.wallet).filter((w) => !isLegacyWallet(w)));
+    const wl = this.wl.filter((e) => e.status === 'approved').map((e) => e.wallet);
+    const collab = this.collabs.filter((c) => c.status === 'submitted').flatMap((c) => c.wallets.map((w) => w.wallet));
     return { wl, collab };
   }
 

@@ -1,11 +1,11 @@
 // The Elymum brand kit templates. Each export returns { w, h, html } (CSS pixels; the generator
 // picks the device scale). Copy follows the spec: short, specific, a little wry; the product is
-// "Elymum", the chain "Elysium", the gas token HYPE, the mint "$1 in HYPE", the handle @elymum.
+// "Elymum", the chain "Elysium", the gas token HYPE, the mint "$1 in HYPE", the handle @elymumio.
 // No domain is written into the art (the site's domain is whatever PUBLIC_URL says).
 import { C, coin, coinMark, cloud, food, page, props, seigaiha, star, starfield, terraces, wordmark } from './art.mjs';
 import { ringScene } from './scene.mjs';
 
-const HANDLE = '@elymum';
+const HANDLE = '@elymumio';
 
 /** A positioned coin (left/top are the box's top-left in px). */
 const at = (x, y, html, extra = '') => `<div class="abs" style="left:${x}px;top:${y}px;${extra}">${html}</div>`;
@@ -166,7 +166,7 @@ export function postWlOpen() {
         <span class="mono" style="font-size:18px;font-weight:600">${HANDLE}</span>
       </div>
     </div>
-    ${chore(1, 'X', 'Follow @elymum', 'The ring noticed, and so did our follower count.', 'up', 'happy', 'Open X', true, 860, 128, -1.2)}
+    ${chore(1, 'X', 'Follow @elymumio', 'The ring noticed, and so did our follower count.', 'up', 'happy', 'Open X', true, 860, 128, -1.2)}
     ${chore(2, 'X &middot; about 20 seconds', 'Repost the pinned feast', 'The one with the coin eating a slightly smaller coin.', 'cyan', 'smile', 'Open X', false, 820, 318, 0.8)}
     ${chore(3, 'Wallet', 'Connect a wallet on Elysium', 'To sign a message, not a transaction. Nobody asks for your seed phrase. Nobody should.', 'cream', 'smile', 'Connect', false, 780, 508, -0.6)}
     ${at(1360, 724, coin('sun', { mood: 'smile', look: [-3, 0], size: 104, ground: true }))}

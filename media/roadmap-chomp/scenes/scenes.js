@@ -6,7 +6,7 @@
  *   01 WL OPEN (eaten by 4.0) -> 02 $1 MINT (6.0) -> 03 GAME LIVE (8.0)  (the product flow: WL -> Mint -> Play)
  * Each heading is eaten letter by letter as the mouth reaches it (a faint trace stays) and the
  * coin grows with a pop on the downbeat. 9.0 the big bite, 10.0 the closing card: the coin grins,
- * the wordmark, the site's host (SITE_HOST), @elymum.
+ * the wordmark, the site's host (SITE_HOST), @elymumio.
  *
  * Landscape (one row), portrait and square (three rows, a snake) from the same code (?w=&h=).
  */
@@ -255,7 +255,7 @@
       ctx.globalAlpha = E.outCubic(k3);
       font(ctx, Math.round(c.wm * 0.17), 500, 'mono'); ctx.letterSpacing = '6px';
       ctx.fillStyle = C.pinkText; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('@ELYMUM', W / 2, c.at + (1 - E.outExpo(k3)) * 20);
+      ctx.fillText('@ELYMUMIO', W / 2, c.at + (1 - E.outExpo(k3)) * 20);
       ctx.restore();
     }
   }

@@ -35,7 +35,7 @@ describe('the landing (/)', { timeout: 30_000 }, () => {
     const nav = screen.getByRole('navigation', { name: 'Site' });
     for (const n of ['The feast', 'Arenas', 'Mint', 'WL', 'Docs']) expect(nav.textContent).toContain(n);
     expect(screen.getByRole('button', { name: /Connect/ })).toBeTruthy();
-    expect(screen.getAllByRole('link', { name: /@elymum/ }).some((a) => a.getAttribute('href') === 'https://x.com/elymum')).toBe(true);
+    expect(screen.getAllByRole('link', { name: /@elymumio/ }).some((a) => a.getAttribute('href') === 'https://x.com/elymumio')).toBe(true);
     expect(screen.queryByRole('link', { name: /^Play$/ })).toBeNull();
     expect(document.querySelector('a[href="/play"]')).toBeNull();
     // sound is off until the visitor turns it on

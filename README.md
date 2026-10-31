@@ -15,7 +15,7 @@ collects WL applications for now. Elysium mainnet launches on Nov 9: until Kinet
 and explorer, everything runs on Elysium Testnet (chain id 99801). The contracts have not been
 audited, and a game played with a token of real value may need a licence where you operate.
 
-The single source of truth for the migration and the interface is
+The single source of truth for the system and the interface is
 [`docs/specs/2026-10-29-elymum-on-elysium.md`](docs/specs/2026-10-29-elymum-on-elysium.md); the visual
 reference is [`docs/design/storybook-reference.html`](docs/design/storybook-reference.html) (the "Ring
 Storybook" language).

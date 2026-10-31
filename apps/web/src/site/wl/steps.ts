@@ -45,7 +45,7 @@ export function stepError(step: Step, answers: Answers, handle: string, signedIn
   switch (step.kind) {
     case 'handle':
       if (!handle.trim()) return 'Enter your X handle.';
-      return normalizeXHandle(handle) ? null : 'That is not an X handle. Use 1 to 15 letters, numbers or underscores, like @elymum.';
+      return normalizeXHandle(handle) ? null : 'That is not an X handle. Use 1 to 15 letters, numbers or underscores, like @elymumio.';
     case 'sign':
       return signedIn ? null : 'Sign in with your wallet to finish.';
     case 'follow_x':

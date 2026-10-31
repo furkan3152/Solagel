@@ -21,7 +21,7 @@ brand's ticket chapter cards:
 7. Tips (warm up, split only when sure, play safe in the final minute), then
    the NFT card (one line: the Elymum NFT mints for $1 in HYPE, the WL comes first; the sealed cards
    of `media/mint-film/scenes/nft.js` through the gameplay kit's `nft` component) and the end card
-   (the site's host from `SITE_HOST`, @elymum)
+   (the site's host from `SITE_HOST`, @elymumio)
 
 Every rule and number on screen and in the voiceover comes from the in-app
 guide (`apps/web/src/ui/docs/content.en.ts` and `facts.ts`), `docs/PROJECT.md` and the controls
