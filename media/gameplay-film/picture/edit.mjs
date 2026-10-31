@@ -58,16 +58,20 @@ console.log({ playing, eat1, chase, split, eat3, bell, pay, splitToEat: +(eat3 -
 
 // ── segments: [filmStart, filmEnd, take, keyframes [[film, src], ...]] (linear between keys) ──
 const seg = [];
-const lin = (f0, f1, take, s0, rate = 1) => seg.push([f0, f1, take, [[f0, s0], [f1, s0 + (f1 - f0) * rate]]]);
-const keys = (f0, f1, take, k) => seg.push([f0, f1, take, k]);
+const lin = (f0, f1, take, s0, rate = 1, o = {}) => seg.push([f0, f1, take, [[f0, s0], [f1, s0 + (f1 - f0) * rate]], o]);
+const keys = (f0, f1, take, k, o = {}) => seg.push([f0, f1, take, k, o]);
+// a punch-in (1.2x) that keeps the HUD's till and round clock out of shots taken from other rounds
+const PUNCH = { crop: [160, 130, 1600, 900] };
 
 // site: the hero, the feast, the round plate, the WL chores, the mint
 lin(0, 9.5, 'site', S('hero'));
 lin(9.5, beat.round_plate - 0.5, 'site', S('toFeast'));
-lin(beat.round_plate - 0.5, beat.wl_page, 'site', S('toRound'));
+// cut to /wl right after the WL click (no half-loaded page), at the latest on the cue
+const toWl = Math.min(beat.wl_page, beat.round_plate - 0.5 + (S('toWl') - S('toRound')) + 0.08);
+lin(beat.round_plate - 0.5, toWl, 'site', S('toRound'));
 { // the second chore's stamp on the thump at 30.4
   const c2 = S('chore2');
-  lin(beat.wl_page, beat.mint_page, 'site', c2 - (30.4 - beat.wl_page));
+  lin(toWl, beat.mint_page, 'site', c2 - (30.4 - toWl));
 }
 { // the minted cards land on the stamp at 34.9 (they land 0.65 s after the receipt)
   const m0 = S('mint') + 0.05, land = S('minted') + 0.65;
@@ -91,16 +95,19 @@ lin(beat.drop_in, 50.0, LOBBY, playing + 1.05);
 // the first eat on 50.5, slowed through the gulp so the gain is still flying on "Dinner." (52.9)
 keys(50.0, beat.threat - 0.2, EAT, [[50.0, eat1 - 0.5], [50.5, eat1], [53.0, eat1 + 0.85], [54.0, eat1 + 1.75], [beat.threat - 0.2, eat1 + 1.75 + (beat.threat - 0.2 - 54.0)]]);
 // the threat: the big coin turns on her; she runs (and the phew)
-lin(beat.threat - 0.2, 64.85, THREAT, chase - 1.6);
+lin(beat.threat - 0.2, 64.85, THREAT, chase - 1.6, 1, PUNCH);
 // the split on the whoosh (64.85 -> Space at 65.0), the eat on 70.3
 {
-  // Space on "split" (~66.5): the lunge and the catch are 0.4 s of play, so the lunge runs in slow
-  // motion until the catch lands on the chomp at 70.3
-  const SPACE_AT = 66.5;
-  keys(64.85, beat.final_minute, SPLIT, [[64.85, split - (SPACE_AT - 64.85)], [SPACE_AT, split], [beat.split_pays, eat3], [beat.final_minute, eat3 + (beat.final_minute - beat.split_pays)]]);
+  // Space on the cue (65.0); the lunge and the catch are 0.3 s of play, eased to about quarter speed
+  // so the catch reads (it lands on "split", ~66.2); then the halves drift at full speed
+  const SPACE_AT = beat.split, CATCH_AT = SPACE_AT + 1.2;
+  // (the split take hits a virus about 9 s after the catch: the shot ends before it)
+  const SPLIT_END = 74.5;
+  keys(64.85, SPLIT_END, SPLIT, [[64.85, split - (SPACE_AT - 64.85)], [SPACE_AT, split], [CATCH_AT, eat3 + 0.05], [SPLIT_END, eat3 + 0.05 + (SPLIT_END - CATCH_AT)]], PUNCH);
 }
 // the final minute: the chip flips (joins close 60 s before the bell)
-lin(beat.final_minute, 84.6, MAIN, bell - 60 - 0.3);
+// the main take from 3 s before joins close (its till already holds the first eat): the chip flips on 77.5
+lin(74.5, 84.6, MAIN, bell - 60 - 0.3 - (beat.final_minute - 74.5));
 lin(84.6, beat.ten_seconds, MAIN, bell - 35);
 // the last ten seconds, the bell on 100 (it swings in 0.55 s after the server's round end), the landing report
 const BELL_LAG = 0.55;
@@ -118,7 +125,7 @@ for (let i = 0; i < Math.round(DUR * FPS); i++) {
   while (j + 2 < k.length && f > k[j + 1][0]) j++;
   const [fa, sa] = k[j], [fb, sb] = k[j + 1];
   const t = sa + ((f - fa) / (fb - fa)) * (sb - sa);
-  frames.push({ take: s[2], t: +t.toFixed(4) });
+  frames.push({ take: s[2], t: +t.toFixed(4), ...(s[4]?.crop ? { crop: s[4].crop } : {}) });
 }
 const per = {};
 for (const fr of frames) (per[fr.take] ||= new Set()).add(fr.t);

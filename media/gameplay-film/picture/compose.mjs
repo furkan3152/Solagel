@@ -3,13 +3,13 @@
 // H.264 1920x1080 30 fps CRF 18 + AAC 192k, plus four stills.
 //   node compose.mjs [--audio out/work/voice/preview/mix.wav] [--out out/videos/elymum-film-narrated.mp4]
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync, rmSync, symlinkSync, copyFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ROOT, WORK, log } from './lib.mjs';
 
 const argv = process.argv.slice(2);
 const opt = (n, d) => (argv.includes(n) ? argv[argv.indexOf(n) + 1] : d);
-const AUDIO = resolve(ROOT, opt('--audio', 'out/work/voice/preview/mix.wav'));
+const AUDIO = resolve(ROOT, opt('--audio', 'out/work/voice/preview-elymumio/mix.wav'));
 const OUT = resolve(ROOT, opt('--out', 'out/videos/elymum-film-narrated.mp4'));
 const plan = JSON.parse(readFileSync(resolve(WORK, 'edit/plan.json'), 'utf8'));
 const SEQ = resolve(WORK, 'seq');
@@ -26,7 +26,21 @@ const idx = (take, t) => {
   return k;
 };
 const src = (fr) => resolve(WORK, 'frames', fr.take, `f${String(idx(fr.take, fr.t)).padStart(5, '0')}.jpg`);
-plan.frames.forEach((fr, k) => symlinkSync(src(fr), resolve(SEQ, `f${String(k).padStart(5, '0')}.jpg`)));
+// punch-ins: crop and scale those frames (Lanczos) instead of linking them
+const crops = [];
+plan.frames.forEach((fr, k) => {
+  const out = resolve(SEQ, `f${String(k).padStart(5, '0')}.jpg`);
+  if (fr.crop) crops.push([src(fr), out, ...fr.crop]);
+  else symlinkSync(src(fr), out);
+});
+if (crops.length) {
+  writeFileSync(resolve(SEQ, 'crops.json'), JSON.stringify(crops));
+  execFileSync('python3', ['-c', `import json,sys
+from PIL import Image
+for a, b, x, y, w, h in json.load(open(sys.argv[1])):
+    Image.open(a).crop((x, y, x + w, y + h)).resize((1920, 1080), Image.LANCZOS).save(b, quality=95)`, resolve(SEQ, 'crops.json')], { stdio: 'inherit' });
+  log('punch-ins', crops.length);
+}
 mkdirSync(resolve(OUT, '..'), { recursive: true });
 log('encoding', plan.frames.length, 'frames');
 execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', String(plan.fps), '-i', resolve(SEQ, 'f%05d.jpg'), '-i', AUDIO,

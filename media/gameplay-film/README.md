@@ -99,7 +99,7 @@ virtual clock and screenshots exact take times, so the film runs at a true 30 fp
 | `picture/take-round.mjs`, `take-arena.mjs`, `players.mjs` | Arena takes (1920x1080, journals): the lobby and the ticket, a round with staged rival wallets (snacks that come at her, a big coin that turns on her, a small one she splits onto), the final minute, the bell, the landing report |
 | `picture/endcard/` | The end card: a page drawn with the app's design system (served by the dev server) |
 | `picture/edit.mjs` | The edit: every output frame is a take and a take time, cut to `cues.json` from the takes' marks and events |
-| `picture/replay.mjs`, `compose.mjs`, `render.sh` | Render the frames the edit uses, lay them out, encode with `out/work/voice/preview/mix.wav` |
+| `picture/replay.mjs`, `compose.mjs`, `render.sh` | Render the frames the edit uses, lay them out, encode with `out/work/voice/preview-elymumio/mix.wav` |
 
 ```bash
 # the stack: fake chain, public game, a fresh data dir, free ports

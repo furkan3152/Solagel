@@ -1,5 +1,5 @@
 // The film's end card (media/gameplay-film), drawn with the web app's own Ring Storybook design
-// system: the night ring, a taped cream card with the wordmark, "Join the WL" and @elymum (no
+// system: the night ring, a taped cream card with the wordmark, "Join the WL" and @elymumio (no
 // domain). Served by the web dev server (/@fs/...) and rendered frame by frame by replay.mjs.
 import '/src/design/tokens.css';
 import '/src/design/storybook.css';
@@ -33,7 +33,7 @@ function Card() {
             </motion.span>
             <motion.span className="ec-x" initial={{ scale: 0, rotate: 14 }} animate={{ scale: 1, rotate: 3 }} transition={{ type: 'spring', stiffness: 560, damping: 15, delay: 1.75 }}>
               <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M17.8 3h3.1l-6.8 7.8 8 10.2h-6.3l-4.9-6.4L5.3 21H2.2l7.3-8.3L1.8 3h6.4l4.4 5.8L17.8 3Zm-1.1 16.2h1.7L7.4 4.7H5.6l11.1 14.5Z"/></svg>
-              @elymum
+              @elymumio
             </motion.span>
           </div>
         </Sticker>
