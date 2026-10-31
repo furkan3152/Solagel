@@ -1,6 +1,6 @@
-# Canonicalize contributor identities so that `git shortlog -sne` and
-# GitHub's contributor graph show one author instead of several display
-# names. Every commit by the author was made under the same GitHub
-# noreply email (seen as both "Akdoin" and "Furkan Akdoğan"); this maps
-# that email to a single canonical name and address.
-Furkan Akdoğan <70746444+furkan3152@users.noreply.github.com> <70746444+furkan3152@users.noreply.github.com>
+# Canonicalize contributor identities so that `git shortlog -sne` shows one author instead of
+# several display names. Every commit by the author was made under the same GitHub noreply
+# email, with more than one display name; this maps that email to a single canonical name.
+# The name is written in ASCII (as in the README) because CI rejects Turkish letters in
+# tracked text files.
+Furkan Akdogan <70746444+furkan3152@users.noreply.github.com> <70746444+furkan3152@users.noreply.github.com>
