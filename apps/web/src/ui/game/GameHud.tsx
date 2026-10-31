@@ -11,6 +11,7 @@ import { EmoteBar } from './EmoteBar';
 import { Feed } from './Feed';
 import { counterFrac, roomName, sectorOf, useTokenFormat } from './format';
 import { MobileControls, useIsTouch } from './MobileControls';
+import { RoundIntro, SunsetSky, ValueFlyers } from './Moments';
 import { RoundChip, RoundCountdown } from './RoundChip';
 import { SpectateBar } from './SpectateBar';
 
@@ -123,6 +124,14 @@ function Standings({ compact }: { compact: boolean }) {
   const rows = lb.slice(0, compact ? 3 : 5);
   const playing = screen === 'playing';
   const inTop = rows.some((e) => e.pid === me?.pid);
+  // climbing a place: my row flashes sun once (a new key restarts the flash)
+  const prevRank = useRef(0);
+  const [climb, setClimb] = useState(0);
+  useEffect(() => {
+    const r = hud.rank;
+    if (playing && r > 0 && prevRank.current > 0 && r < prevRank.current) setClimb((n) => n + 1);
+    prevRank.current = playing ? r : 0;
+  }, [hud.rank, playing]);
   const score = (value: number | undefined, mass: number) =>
     arena && value !== undefined ? tf.fmt(value, { compact: true, maxFrac: 1 }) : Math.floor(mass).toLocaleString('en-US');
   return (
@@ -139,7 +148,15 @@ function Standings({ compact }: { compact: boolean }) {
             transition={springs.press}
             className={`g-standings__row${playing && e.pid === me?.pid ? ' is-me' : ''}`}
           >
-            <span className="g-standings__rank mono">{i + 1}</span>
+            {playing && e.pid === me?.pid && climb > 0 && !reduced && <span key={climb} className="g-standings__flash" aria-hidden="true" />}
+            <span className="g-standings__rank mono">
+              {i === 0 && (
+                <svg className="g-standings__crown" viewBox="0 0 24 16" aria-hidden="true">
+                  <path d="M2 14 L1 4 L7 8 L12 1 L17 8 L23 4 L22 14Z" />
+                </svg>
+              )}
+              {i + 1}
+            </span>
             <span className="g-standings__sw" aria-hidden="true" style={{ background: lookForBasicSkin(e.skin).body }} />
             <span className="g-standings__name">
               <span className="g-standings__nm">{playing && e.pid === me?.pid ? t('g.youName') : e.name}</span>
@@ -352,6 +369,8 @@ export function GameHud() {
       animate={{ opacity: 1, transition: reduced ? { duration: DUR.fade } : { delay: HUD_IN_DELAY, duration: 0.12 } }}
       exit={{ opacity: 0, transition: { duration: reduced ? DUR.fade : 0.14 } }}
     >
+      {/* behind the stickers: the final minute's sunset at the edges of the sky */}
+      <SunsetSky />
       <motion.div className="g-corner g-corner--tl" {...drop(0, 0)}>
         <div className="g-corner__row">
           {!roundOver && <RoundChip />}
@@ -397,6 +416,8 @@ export function GameHud() {
       )}
       {playing && touch && <MobileControls />}
       {screen === 'spectating' && <SpectateBar />}
+      <RoundIntro />
+      <ValueFlyers />
     </motion.div>
   );
 }

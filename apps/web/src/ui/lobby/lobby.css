@@ -1495,3 +1495,339 @@
     font-size: 18px;
   }
 }
+
+/* ── arena stamps: a tiny living picture on every pass (ArenaVignette) ─────────── */
+.av {
+  display: block;
+  flex: none;
+  width: 50px;
+  height: 57px;
+  transform: rotate(-3deg);
+  filter: drop-shadow(2px 2px 0 rgba(4, 24, 28, 0.9));
+  transition: transform 0.32s var(--ease-out);
+}
+.kl-ticket:nth-child(even) .av {
+  transform: rotate(2.5deg);
+}
+.kb-ticket.is-selected .av {
+  transform: rotate(0deg) scale(1.06);
+}
+.av__svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.av__stock {
+  fill: #fffdf7;
+  stroke: var(--outline);
+  stroke-width: 1.6;
+}
+.av__perf {
+  fill: var(--sticker);
+}
+.av__frame {
+  fill: none;
+  stroke: var(--outline);
+  stroke-width: 1.8;
+}
+.av svg * {
+  transform-box: fill-box;
+}
+.av-stem {
+  fill: none;
+  stroke: #2f6e4f;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+.av-petal-ink {
+  fill: none;
+  stroke: var(--outline);
+  stroke-width: 3.6;
+  stroke-linecap: round;
+}
+.av-petal {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+.av-eye {
+  fill: #f2c14e;
+  stroke: var(--outline);
+  stroke-width: 0.9;
+}
+.av-wave {
+  fill: none;
+  stroke: #dbf2f9;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+.av-wave.is-soft {
+  stroke: #93d9ee;
+  stroke-width: 1.3;
+}
+.av-sway {
+  transform-origin: 50% 100%;
+  animation: av-sway 3.2s ease-in-out infinite;
+}
+.av-cloud {
+  animation: av-drift 9s ease-in-out infinite alternate;
+}
+.av-flow {
+  animation: av-flow 2.4s linear infinite;
+}
+.av-flow.is-slow {
+  animation-duration: 4.2s;
+}
+.av-crown {
+  transform-origin: 50% 100%;
+  animation: av-sway 5s ease-in-out infinite;
+  --av-sway: 1.6deg;
+}
+.av-branch {
+  transform-origin: 0% 100%;
+  animation: av-sway 5s ease-in-out infinite;
+  animation-delay: -0.4s;
+  --av-sway: 3deg;
+}
+.av-glint {
+  transform-origin: 50% 50%;
+  animation: av-glint 3.4s ease-in-out infinite;
+}
+.av-boat {
+  transform-origin: 50% 100%;
+  animation: av-bob 2.6s ease-in-out infinite;
+}
+.av-boat.is-far {
+  animation-duration: 3.3s;
+  animation-delay: -1.1s;
+}
+.av-paddle {
+  transform-origin: 50% 50%;
+  animation: av-paddle 3s ease-in-out infinite;
+}
+/* the picked arena's stamp comes alive a little more */
+.kb-ticket.is-selected .av-sway,
+.kb-ticket.is-selected .av-boat {
+  animation-duration: 1.9s;
+}
+@keyframes av-sway {
+  0%,
+  100% {
+    transform: rotate(calc(var(--av-sway, 7deg) * -1));
+  }
+  50% {
+    transform: rotate(var(--av-sway, 7deg));
+  }
+}
+@keyframes av-drift {
+  to {
+    transform: translateX(14px);
+  }
+}
+@keyframes av-flow {
+  to {
+    transform: translateX(-12px);
+  }
+}
+@keyframes av-glint {
+  0%,
+  55%,
+  100% {
+    transform: scale(0) rotate(0deg);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.15) rotate(45deg);
+    opacity: 1;
+  }
+  85% {
+    transform: scale(0.7) rotate(80deg);
+    opacity: 1;
+  }
+}
+@keyframes av-bob {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-4deg);
+  }
+  50% {
+    transform: translateY(2.2px) rotate(4deg);
+  }
+}
+@keyframes av-paddle {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(-6deg);
+  }
+  50% {
+    transform: translate(9px, 1px) rotate(6deg);
+  }
+}
+
+/* phones: the stamp is stuck on the stub, above the price (the body keeps its width) */
+.kl-stub-av {
+  display: none;
+}
+.kl-root.is-phone .kl-ticket .kb-ticket__body > .av {
+  display: none;
+}
+.kl-root.is-phone .kl-stub-av {
+  display: block;
+  margin: 0 auto 6px;
+}
+.kl-root.is-phone .kl-stub-av .av {
+  width: 38px;
+  height: 43px;
+}
+.kl-root:not(.is-phone) .kl-ticket .kb-ticket__body {
+  grid-template-columns: auto minmax(0, 1.25fr) minmax(0, 1fr);
+}
+
+/* a round tag that changed flips over on its top hinge (a new round, or joins closing) */
+.kl-ticket__round {
+  transform-origin: 50% 0%;
+  animation: sf-flip 0.46s var(--ease-out) both;
+}
+
+/* ── split-flap letters (SplitFlap): the bell badge's clock ─────────────────── */
+.sf__cells {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 2px;
+  perspective: 160px;
+}
+.sf__cell {
+  position: relative;
+  display: inline-block;
+  min-width: 0.78em;
+  padding: 2px 2px 1px;
+  border-radius: 4px;
+  background: #04181c;
+  color: #f6eeda;
+  text-align: center;
+  overflow: hidden;
+}
+/* the hinge (a hairline gap), and the lower leaf a shade lighter */
+.sf__cell::after {
+  content: '';
+  position: absolute;
+  inset: 50% 0 0;
+  border-top: 1.5px solid #000507;
+  background: rgba(246, 238, 218, 0.07);
+  pointer-events: none;
+}
+.sf__sep {
+  color: var(--ink-fixed);
+}
+.sf__ch {
+  display: inline-block;
+  transform-origin: 50% 50%;
+  animation: sf-flip 0.42s var(--ease-out) both;
+  backface-visibility: hidden;
+}
+.sf__sep {
+  display: inline-block;
+  padding: 0 1px;
+}
+@keyframes sf-flip {
+  0% {
+    transform: rotateX(-88deg);
+    opacity: 0.4;
+  }
+  55% {
+    transform: rotateX(16deg);
+    opacity: 1;
+  }
+  78% {
+    transform: rotateX(-6deg);
+  }
+  100% {
+    transform: rotateX(0deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .av *,
+  .sf__ch,
+  .kl-ticket__round {
+    animation: none !important;
+  }
+}
+.kl-stub-av .av__perf {
+  fill: var(--mist);
+}
+.kl-ticket.is-practice .kl-stub-av .av__perf {
+  fill: var(--linen);
+}
+.kb-ticket.is-selected .kl-stub-av .av__perf {
+  fill: var(--sun);
+}
+
+/* ── boarding: behind the torn stub, the shuttle's hatch (TicketPreview) ─────── */
+.tf-ticket__half {
+  position: relative;
+  z-index: 1;
+}
+.tf-hatch {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 116px;
+  overflow: hidden;
+  border: var(--stroke) solid var(--outline);
+  border-radius: 0 var(--r-card) var(--r-card) 0;
+  background: #0f2a30;
+}
+.tf-hatch__svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.tf-hatch__svg * {
+  transform-box: view-box;
+}
+.tf-hatch__door {
+  transition: transform 0.26s cubic-bezier(0.5, 0, 0.2, 1);
+}
+/* open: the leaves folded into the frame */
+.tf-hatch__door.is-left {
+  transform-origin: 33px 0;
+  transform: scaleX(0.08);
+}
+.tf-hatch__door.is-right {
+  transform-origin: 83px 0;
+  transform: scaleX(0.08);
+}
+.tf-ticket.is-boarded .tf-hatch__door {
+  transform: scaleX(1);
+}
+.tf-hatch__lamp {
+  fill: #3c9a87;
+}
+.tf-ticket.is-torn:not(.is-boarded) .tf-hatch__lamp {
+  animation: tf-lamp 0.5s steps(1) infinite;
+}
+.tf-ticket.is-boarded .tf-hatch__lamp {
+  fill: #ff5252;
+}
+@keyframes tf-lamp {
+  50% {
+    fill: #f2c14e;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tf-hatch__door {
+    transition: none;
+  }
+  .tf-ticket.is-torn:not(.is-boarded) .tf-hatch__lamp {
+    animation: none;
+  }
+}
+@media (max-width: 480px) {
+  .tf-hatch {
+    width: 92px;
+  }
+}

@@ -1,4 +1,4 @@
-import { CARD_PAPER, INK, RISO } from '@elymum/art';
+import { CARD_PAPER, ELYSIUM, INK, RISO } from '@elymum/art';
 import {
   PowerUpType,
   arenaMeta,
@@ -28,6 +28,7 @@ import { Input } from './input';
 import { Net } from './net';
 import { Particles } from './particles';
 import { announce, sound, unlockAudio } from '../audio';
+import { VALUE_FLY_EVENT } from './moments';
 import { currentRound } from './round';
 import { RoundCues } from './roundCues';
 import { ClientWorld } from './state';
@@ -37,6 +38,11 @@ import { fingerprint } from '../integrity/fingerprint';
 const WHALE_MASS = 500;
 /** The world stands still this long on the bell (the receipt prints over it), then catches up. */
 export const BELL_FREEZE_MS = 2500;
+
+/** A near miss: scared this long (ms) and then safe again, still alive. */
+const NEAR_MISS_MS = 450;
+/** At most one "phew" this often (ms). */
+const PHEW_COOLDOWN_MS = 5000;
 
 const TOKEN_KEY = 'elymum.auth.v1';
 const REDUCED_QUERY = '(prefers-reduced-motion: reduce)';
@@ -56,6 +62,8 @@ export class GameEngine {
   private raf = 0;
   private last = performance.now();
   private lastExpr = 0;
+  /** Near-miss tracking: scared since (0: not scared), where, and the last "phew". */
+  private nearMiss = { since: 0, at: -Infinity, x: 0, y: 0, r: 0 };
   private lastHud = 0;
   private lastMinimap = 0;
   private lastTargetSent = 0;
@@ -723,8 +731,46 @@ export class GameEngine {
       // dust that rounds to nothing floats nothing (no "+0" / "−0")
       if (amount === '0') continue;
       const gain = f.delta > 0;
+      if (gain && !this.reduced && this.flyToTill(f.x, f.y, `+${amount}`)) continue;
       this.particles.text(f.x, f.y, `${gain ? '+' : '−'}${amount}`, gain ? undefined : RISO.red, gain ? 26 : 22, gain ? RISO.mustard : RISO.fluoPink);
     }
+  }
+
+  /**
+   * A gain pops off my coin as a sun sticker and flies into the till on the HUD (Moments.tsx);
+   * false when the till is not on screen (the canvas floats the sticker instead).
+   */
+  private flyToTill(x: number, y: number, text: string): boolean {
+    if (typeof window === 'undefined' || !document.querySelector('.g-till__value')) return false;
+    const p = this.camera.toScreen(x, y);
+    if (p.x < 0 || p.y < 0 || p.x > this.camera.w || p.y > this.camera.h) return false;
+    window.dispatchEvent(new CustomEvent(VALUE_FLY_EVENT, { detail: { x: p.x, y: p.y, text } }));
+    return true;
+  }
+
+  /**
+   * A near miss: one of my coins was scared of a bigger one (for a while) and got away. A
+   * sweat drop flies off it and a little "phew" sticker; at most once every few seconds.
+   */
+  private phew(now: number): void {
+    const cells = this.world.myCells();
+    let scared: (typeof cells)[number] | null = null;
+    for (const c of cells) if (c.expression === 'scared' && (!scared || c.r > scared.r)) scared = c;
+    const n = this.nearMiss;
+    if (scared) {
+      if (n.since === 0) n.since = now;
+      n.x = scared.x;
+      n.y = scared.y;
+      n.r = scared.r;
+      return;
+    }
+    if (n.since !== 0 && now - n.since >= NEAR_MISS_MS && now - n.at > PHEW_COOLDOWN_MS && cells.length > 0) {
+      const c = cells.reduce((a, b) => (b.r > a.r ? b : a));
+      n.at = now;
+      this.particles.sweat(c.x + c.r * 0.62, c.y - c.r * 0.78, c.r);
+      this.particles.text(c.x - c.r * 0.2, c.y - c.r * 1.25, t('g.phew'), undefined, 18, ELYSIUM.mist);
+    }
+    n.since = 0;
   }
 
   private frame = (): void => {
@@ -747,6 +793,7 @@ export class GameEngine {
       if (now - this.lastExpr > 150) {
         this.lastExpr = now;
         world.computeExpressions(now);
+        if (ui.screen === 'playing') this.phew(now);
       }
       this.handleEats();
       this.handleFloats();

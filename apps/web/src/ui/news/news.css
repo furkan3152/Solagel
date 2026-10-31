@@ -49,7 +49,7 @@
   justify-content: center;
   align-items: end;
   gap: 0 14px;
-  padding: 10px 0 0;
+  padding: 34px 0 0;
 }
 .nw-podium__spot {
   display: flex;
@@ -263,5 +263,47 @@
   }
   .nw-table__leader {
     display: none;
+  }
+}
+
+/* the podium's coins hop on their terraces (squash on landing); the winner wears a crown */
+.nw-podium__hop {
+  position: relative;
+  display: inline-block;
+  transform-origin: 50% 100%;
+  animation: nw-hop 2.4s cubic-bezier(0.3, 0, 0.4, 1) infinite;
+}
+.nw-podium__crown {
+  position: absolute;
+  left: 50%;
+  top: -26px;
+  z-index: 1;
+  width: 46px;
+  margin-left: -23px;
+  transform: rotate(-9deg);
+  filter: drop-shadow(2px 2px 0 #04181c);
+}
+@keyframes nw-hop {
+  0%,
+  58%,
+  100% {
+    transform: translateY(0) scale(1, 1);
+  }
+  64% {
+    transform: translateY(0) scale(1.1, 0.88);
+  }
+  76% {
+    transform: translateY(-16px) scale(0.95, 1.06);
+  }
+  88% {
+    transform: translateY(0) scale(1.08, 0.92);
+  }
+  94% {
+    transform: translateY(0) scale(0.98, 1.02);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nw-podium__hop {
+    animation: none;
   }
 }

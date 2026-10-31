@@ -50,7 +50,22 @@ export function ProfilePage() {
 
 function MemberCard() {
   const t = useT();
+  const reduced = useReducedMotion();
   const settings = useUi((s) => s.settings);
+  // the portrait swaps its coin at the edge-on moment of the flip
+  const [shownSkin, setShownSkin] = useState(settings.skin);
+  const [flip, setFlip] = useState(0);
+  useEffect(() => {
+    if (settings.skin === shownSkin) return;
+    if (reduced) {
+      setShownSkin(settings.skin);
+      return;
+    }
+    setFlip((n) => n + 1);
+    const id = setTimeout(() => setShownSkin(settings.skin), 160);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.skin, reduced]);
   const auth = useUi((s) => s.auth);
   const profile = useChainData((s) => s.profile);
   const owner = useAddress();
@@ -67,7 +82,24 @@ function MemberCard() {
       <Seigaiha rows={3} r={22} span={600} tone="ink" className="pf-card__waves" />
       <div className="pf-card__grid">
         <span className="pf-card__photo">
-          <CoinPortrait skin={settings.skin} size={104} expression="proud" seed={11} />
+          {/* trying on a coin: it flips on its edge, the new face comes round and lands */}
+          <motion.span
+            key={`flip-${flip}`}
+            className="pf-card__coin"
+            initial={false}
+            animate={reduced || flip === 0 ? { rotateY: 0 } : { rotateY: [0, 90, -90, 0], y: [0, -12, -12, 0], scale: [1, 0.94, 0.94, 1] }}
+            transition={{ duration: 0.42, times: [0, 0.38, 0.4, 1], ease: 'easeInOut' }}
+          >
+            <CoinPortrait skin={shownSkin} size={104} expression="proud" seed={11} />
+          </motion.span>
+          {!reduced && flip > 0 && (
+            <span key={`spark-${flip}`} className="pf-card__spark" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+              <i />
+            </span>
+          )}
         </span>
         <div className="pf-card__id">
           <h3 id="pf-card-h" className="pf-card__name">

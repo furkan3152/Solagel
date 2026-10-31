@@ -6,6 +6,7 @@ import { formatCountdown, useRound } from '../../game/round';
 import { useT } from '../../i18n';
 import { useUi } from '../../store';
 import { bpsPercent, feeBps, type TicketGate, type TicketKey, type TicketModel } from '../../wallet/ticket';
+import { ArenaVignette } from './ArenaVignette';
 import { ticketName, useTokenText } from './useLobby';
 
 /**
@@ -19,7 +20,8 @@ export function RoundLine({ arenaId }: { arenaId: number }) {
   const time = formatCountdown(round.msLeft);
   const closed = round.phase === 'closing';
   return (
-    <span className={`kl-ticket__round mono${closed ? ' is-closed' : ''}`} data-phase={round.phase}>
+    // a new round or the joins closing flips the whole tag over, like a departures board
+    <span key={`${round.n}-${round.phase}`} className={`kl-ticket__round mono${closed ? ' is-closed' : ''}`} data-phase={round.phase}>
       {closed ? t('lo.round.closed', { time }) : t('lo.round.ends', { time })}
     </span>
   );
@@ -104,11 +106,19 @@ export function TicketList({
               onActivate();
             }
           }}
-          stub={practice ? <TicketStub value={t('lo.free')} unit={t('lo.noTokens')} /> : <TicketStub value={tok.fee(tk.entryFee)} unit={tok.symbol} />}
+          stub={
+            <>
+              {/* phones: the arena's stamp rides on the stub (CSS picks one of the two) */}
+              <span className="kl-stub-av">
+                <ArenaVignette arenaId={tk.arenaId} />
+              </span>
+              {practice ? <TicketStub value={t('lo.free')} unit={t('lo.noTokens')} /> : <TicketStub value={tok.fee(tk.entryFee)} unit={tok.symbol} />}
+            </>
+          }
         >
+          <ArenaVignette arenaId={tk.arenaId} />
           <span className="kl-ticket__main">
             <span className="kl-ticket__head">
-              <span className="kl-ticket__coin" aria-hidden="true" />
               <span className="kb-ticket__title">{name}</span>
             </span>
             <span className="kb-ticket__meta mono">

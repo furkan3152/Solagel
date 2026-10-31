@@ -249,3 +249,82 @@
     transform: none;
   }
 }
+
+/* trying on a coin (MemberCard): flip-swap in the photo, four die-cut sparks */
+.pf-card__photo {
+  position: relative;
+  perspective: 420px;
+}
+.pf-card__coin {
+  display: grid;
+  place-items: center;
+}
+.pf-card__spark {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.pf-card__spark i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 20px;
+  height: 20px;
+  margin: -10px;
+  background: #f2c14e;
+  border: 2px solid #04181c;
+  clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%);
+  border-radius: 2px;
+  opacity: 0;
+  animation: pf-spark 0.7s 0.18s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.pf-card__spark i:nth-child(1) {
+  --to: translate(-70px, -52px) rotate(40deg);
+}
+.pf-card__spark i:nth-child(2) {
+  --to: translate(68px, -58px) rotate(-30deg);
+  background: #6fcde8;
+}
+.pf-card__spark i:nth-child(3) {
+  --to: translate(74px, 40px) rotate(60deg);
+}
+.pf-card__spark i:nth-child(4) {
+  --to: translate(-66px, 50px) rotate(-50deg);
+  background: #f6eeda;
+}
+@keyframes pf-spark {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) scale(0.4);
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: var(--to) scale(1.2);
+  }
+}
+/* the picked coin in the wardrobe hops once */
+.pf-look.is-on canvas {
+  animation: pf-hop 0.5s cubic-bezier(0.3, 0, 0.4, 1);
+}
+@keyframes pf-hop {
+  0% {
+    transform: translateY(0) scale(1.1, 0.9);
+  }
+  45% {
+    transform: translateY(-10px) scale(0.95, 1.06);
+  }
+  80% {
+    transform: translateY(0) scale(1.06, 0.94);
+  }
+  100% {
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pf-look.is-on canvas {
+    animation: none;
+  }
+}

@@ -11,7 +11,7 @@ import { Kb, ScreenTransition, themeFromSettings, type Box } from './design';
 import { Lobby } from './ui/lobby/Lobby';
 import { Toasts } from './ui/Toasts';
 import { WalletModal } from './wallet/WalletModal';
-import { DeathSheet, GameHud, HowToSheet, RoundOverSheet, SettingsSheet } from './ui/game';
+import { BellMoment, DeathMoment, DeathSheet, GameHud, HowToSheet, RoundOverSheet, SettingsSheet } from './ui/game';
 import { GameClosedSheet } from './ui/gate/GameClosedSheet';
 
 function GameCanvas() {
@@ -54,6 +54,9 @@ function Screens() {
       {/* the HUD stickers, sheets and toasts (portalled; themed from this root) */}
       <Kb theme={themeFromSettings(theme)} paper={false} className="g-root">
         <AnimatePresence>{screen !== 'lobby' && <GameHud key="hud" />}</AnimatePresence>
+        {/* the eater's mouth and the bell: beats over the world before their sheets */}
+        <DeathMoment />
+        <BellMoment />
         <DeathSheet />
         <RoundOverSheet />
         <SettingsSheet />

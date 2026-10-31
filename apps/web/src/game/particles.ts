@@ -1,6 +1,6 @@
 import { CARD_PAPER, ELYSIUM, INK, SHADE, TEXT_INKS } from '@elymum/art';
 
-type Kind = 'splat' | 'coin' | 'scrap' | 'ring' | 'text' | 'dot' | 'wave';
+type Kind = 'splat' | 'coin' | 'scrap' | 'ring' | 'text' | 'dot' | 'wave' | 'sweat';
 
 interface Particle {
   kind: Kind;
@@ -164,6 +164,28 @@ export class Particles {
     this.list.length = w;
   }
 
+  /**
+   * A near miss: one fat sweat drop flicked off a coin's brow (mist paint, ink edge, a white
+   * glint); it arcs out, falls a little and fades. `r`: the coin's radius.
+   */
+  sweat(x: number, y: number, r: number): void {
+    const size = Math.max(6, r * 0.22);
+    this.add({
+      kind: 'sweat',
+      x,
+      y,
+      vx: this.reduced ? 0 : size * 5,
+      vy: this.reduced ? 0 : -size * 6,
+      life: 0,
+      max: this.reduced ? 0.6 : 0.95,
+      size,
+      color: ELYSIUM.mist,
+      rot: 0.5,
+      vr: this.reduced ? 0 : 1.6,
+      g: this.reduced ? 0 : size * 28,
+    });
+  }
+
   /** Draws in world space; `zoom` keeps lines and text a constant on-screen size. */
   draw(ctx: CanvasRenderingContext2D, zoom: number): void {
     const ink = 1 / zoom;
@@ -250,6 +272,32 @@ export class Particles {
         case 'text':
           this.drawSticker(ctx, p, k, zoom);
           break;
+        case 'sweat': {
+          // a teardrop: round belly, a point up toward where it came from
+          const s = p.size * (k < 0.12 && !this.reduced ? 0.5 + (k / 0.12) * 0.5 : 1);
+          ctx.globalAlpha = k < 0.7 ? 1 : 1 - (k - 0.7) / 0.3;
+          ctx.save();
+          ctx.translate(p.x, p.y);
+          ctx.rotate(p.rot);
+          ctx.beginPath();
+          ctx.moveTo(0, -s * 1.5);
+          ctx.bezierCurveTo(s * 0.35, -s * 0.9, s, -s * 0.35, s, s * 0.2);
+          ctx.arc(0, s * 0.2, s, 0, Math.PI);
+          ctx.bezierCurveTo(-s, -s * 0.35, -s * 0.35, -s * 0.9, 0, -s * 1.5);
+          ctx.closePath();
+          ctx.fillStyle = p.color;
+          ctx.fill();
+          ctx.lineJoin = 'round';
+          ctx.lineWidth = Math.min(s * 0.3, 2.5 * ink);
+          ctx.strokeStyle = INK;
+          ctx.stroke();
+          ctx.fillStyle = ELYSIUM.white;
+          ctx.beginPath();
+          ctx.ellipse(-s * 0.38, s * 0.05, s * 0.18, s * 0.3, 0.4, 0, TAU);
+          ctx.fill();
+          ctx.restore();
+          break;
+        }
       }
     }
     ctx.globalAlpha = 1;

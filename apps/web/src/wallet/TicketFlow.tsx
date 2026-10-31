@@ -23,9 +23,15 @@ export type FlowMode = 'buy' | 'refund' | 'collect';
 
 type Phase = 'review' | 'preparing' | TxPhase | 'stamped' | 'error';
 
-/** Stamp (420 ms) → tear → into the room. */
+/**
+ * Stamp (420 ms) → tear → boarding: behind the torn stub is the shuttle's hatch; my coin hops
+ * off the pass, up to the door and in, the doors close with a chime → into the room.
+ */
 const TEAR_AT_MS = 560;
-const PLAY_AT_MS = 1_650;
+const BOARD_AT_MS = 820;
+const WALK_MS = 680;
+const DOORS_AT_MS = BOARD_AT_MS + WALK_MS;
+const PLAY_AT_MS = 2_000;
 
 /**
  * Cutting a ticket: a confirm sheet that shows exactly what is signed (entry fee, fee policy,
@@ -449,19 +455,44 @@ function TicketPreview({
 }) {
   const t = useT();
   const [torn, setTorn] = useState(false);
+  /** The coin's walk to the hatch (px from its seat on the pass), once boarding starts. */
+  const [walk, setWalk] = useState<{ dx: number; dy: number } | null>(null);
+  const [doors, setDoors] = useState(false);
+  const coinRef = useRef<HTMLSpanElement>(null);
+  const doorRef = useRef<HTMLSpanElement>(null);
   useEffect(() => {
     if (!stamped) {
       setTorn(false);
+      setWalk(null);
+      setDoors(false);
       return;
     }
-    const id = setTimeout(
-      () => {
-        setTorn(true);
-        if (!reduced) sound.tear();
-      },
-      reduced ? 200 : TEAR_AT_MS,
-    );
-    return () => clearTimeout(id);
+    const ids = [
+      setTimeout(
+        () => {
+          setTorn(true);
+          if (!reduced) sound.tear();
+        },
+        reduced ? 200 : TEAR_AT_MS,
+      ),
+      setTimeout(
+        () => {
+          const c = coinRef.current?.getBoundingClientRect();
+          const d = doorRef.current?.getBoundingClientRect();
+          if (!reduced && c && d) setWalk({ dx: d.left + d.width / 2 - (c.left + c.width / 2), dy: d.top + d.height * 0.62 - (c.top + c.height / 2) });
+        },
+        reduced ? 250 : BOARD_AT_MS,
+      ),
+      setTimeout(
+        () => {
+          setDoors(true);
+          // "doors closing": a two-note station chime
+          if (!reduced) sound.pin('success');
+        },
+        reduced ? 300 : DOORS_AT_MS,
+      ),
+    ];
+    return () => ids.forEach(clearTimeout);
   }, [stamped, reduced]);
   const now = new Date();
   const date = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
@@ -470,7 +501,31 @@ function TicketPreview({
   const style = { '--kl-ink': arenaMeta(ticket.arenaId ?? 0).ink } as CSSProperties;
   const tearTo = reduced ? { opacity: 0 } : { x: [0, 6, 30], y: [0, 4, 46], rotate: [0, 4, 14], opacity: [1, 1, 0] };
   return (
-    <div className={`tf-ticket${torn ? ' is-torn' : ''}`} style={style} aria-hidden="true">
+    <div className={`tf-ticket${torn ? ' is-torn' : ''}${doors ? ' is-boarded' : ''}`} style={style} aria-hidden="true">
+      {/* behind the stub: the shuttle's hatch, lit, waiting */}
+      <span ref={doorRef} className="tf-hatch">
+        <svg viewBox="0 0 116 120" preserveAspectRatio="xMidYMid slice" className="tf-hatch__svg" focusable="false">
+          <rect x="0" y="0" width="116" height="120" fill="#0F2A30" />
+          <path d="M-10 26 Q58 -6 126 26" stroke="#1E4D5A" strokeWidth="3" fill="none" />
+          <circle cx="20" cy="14" r="1.6" fill="#93D9EE" />
+          <circle cx="92" cy="10" r="1.3" fill="#93D9EE" />
+          <path d="M28 120 V58 a30 30 0 0 1 60 0 V120Z" fill="#04181C" />
+          <path d="M33 120 V60 a25 25 0 0 1 50 0 V120Z" fill="#F2C14E" />
+          <path d="M33 120 V60 a25 25 0 0 1 50 0 V120Z" fill="#F6EEDA" opacity="0.35" />
+          <g className="tf-hatch__door is-left">
+            <path d="M33 120 V60 a25 25 0 0 1 25 -25 V120Z" fill="#2D7388" stroke="#04181C" strokeWidth="2.5" />
+            <path d="M50 72 v18" stroke="#93D9EE" strokeWidth="2.5" strokeLinecap="round" />
+          </g>
+          <g className="tf-hatch__door is-right">
+            <path d="M83 120 V60 a25 25 0 0 0 -25 -25 V120Z" fill="#2D7388" stroke="#04181C" strokeWidth="2.5" />
+            <path d="M66 72 v18" stroke="#93D9EE" strokeWidth="2.5" strokeLinecap="round" />
+          </g>
+          <path d="M28 120 V58 a30 30 0 0 1 60 0 V120" stroke="#04181C" strokeWidth="4" fill="none" />
+          <circle cx="58" cy="22" r="5" className="tf-hatch__lamp" stroke="#04181C" strokeWidth="2.5" />
+          <path d="M14 120 L40 98 H76 L102 120Z" fill="#DDD6C7" stroke="#04181C" strokeWidth="2.5" strokeLinejoin="round" />
+          <path d="M30 112 H86 M38 104 H78" stroke="#04181C" strokeWidth="1.6" opacity="0.5" />
+        </svg>
+      </span>
       <motion.div
         className="tf-ticket__half is-main"
         animate={torn && !reduced ? { x: [0, -5, 0], rotate: [0, -0.6, 0] } : { x: 0, rotate: 0 }}
@@ -498,9 +553,26 @@ function TicketPreview({
             </span>
           </span>
           <span className="tf-ticket__serial mono">{t('tf.serial', { n: serial })}</span>
-          <span className="tf-ticket__coin">
-            <CoinCharacter paint="sun" mood={stamped ? 'happy' : 'smile'} size={54} bob={!reduced} />
-          </span>
+          <motion.span
+            ref={coinRef}
+            className="tf-ticket__coin"
+            initial={false}
+            animate={
+              walk
+                ? {
+                    // hop, hop, hop up the gangway and in through the hatch
+                    x: [0, walk.dx * 0.3, walk.dx * 0.62, walk.dx * 0.9, walk.dx],
+                    y: [0, -16, walk.dy * 0.5 - 12, walk.dy - 10, walk.dy],
+                    scale: [1, 1, 0.95, 0.85, 0.62],
+                    rotate: [0, 8, -6, 6, 0],
+                    opacity: [1, 1, 1, 1, 0],
+                  }
+                : { x: 0, y: 0, scale: 1, rotate: 0, opacity: 1 }
+            }
+            transition={walk ? { duration: WALK_MS / 1000, times: [0, 0.25, 0.55, 0.85, 1], ease: 'easeInOut' } : { duration: 0 }}
+          >
+            <CoinCharacter paint="sun" mood={stamped ? 'happy' : 'smile'} size={54} bob={!reduced && !walk} feet={!!walk} />
+          </motion.span>
           {stamped && (
             <span className="tf-ticket__stamp">
               <Stamp text={t('tf.stamped')} tone="up" size="lg" rotate={-9} animateIn />

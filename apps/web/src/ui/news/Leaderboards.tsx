@@ -137,7 +137,11 @@ function Podium({ rows }: { rows: LbRecord[] }) {
             animate={{ opacity: 1, y: 0 }}
             transition={reduced ? { duration: 0 } : { ...springs.drop, delay: k * STAGGER * 2 }}
           >
-            <CoinPortrait skin={r.skin} size={i === 0 ? 96 : 72} expression={i === 0 ? 'proud' : 'happy'} seed={i + 4} still={reduced} />
+            {/* the top three hop on their terraces, out of step; the winner wears the crown */}
+            <span className="nw-podium__hop" style={{ animationDelay: `${[0, 0.35, 0.7][i]}s` }}>
+              {i === 0 && <PodiumCrown />}
+              <CoinPortrait skin={r.skin} size={i === 0 ? 96 : 72} expression={i === 0 ? 'proud' : 'happy'} seed={i + 4} still={reduced} />
+            </span>
             <span className="nw-podium__name">{r.name}</span>
             <span className="nw-podium__step">
               <span className="nw-podium__n display">{i + 1}</span>
@@ -147,6 +151,21 @@ function Podium({ rows }: { rows: LbRecord[] }) {
         );
       })}
     </div>
+  );
+}
+
+/** A die-cut crown sticker for the day's winner: sun paint, one shade, ink edge, three jewels. */
+function PodiumCrown() {
+  return (
+    <svg className="nw-podium__crown" viewBox="0 0 64 44" aria-hidden="true" focusable="false">
+      <path d="M6 38 L4 12 L18 22 L32 4 L46 22 L60 12 L58 38 Z" fill="#F6EEDA" stroke="#04181C" strokeWidth="9" strokeLinejoin="round" />
+      <path d="M6 38 L4 12 L18 22 L32 4 L46 22 L60 12 L58 38 Z" fill="#F2C14E" stroke="#04181C" strokeWidth="3" strokeLinejoin="round" />
+      <path d="M44 24 L58 15 L56 36 H40Z" fill="#D49A2B" />
+      <path d="M6 38 H58" stroke="#04181C" strokeWidth="3" />
+      <circle cx="18" cy="31" r="3.4" fill="#F39B86" stroke="#04181C" strokeWidth="2" />
+      <circle cx="32" cy="30" r="3.8" fill="#6FCDE8" stroke="#04181C" strokeWidth="2" />
+      <circle cx="46" cy="31" r="3.4" fill="#3C9A87" stroke="#04181C" strokeWidth="2" />
+    </svg>
   );
 }
 

@@ -13,8 +13,8 @@ import { explorerTx } from '../../wallet/links';
 import { requestTicket, useUi } from '../../store';
 import { formatClock, ordinal, roomName, useTokenFormat } from './format';
 
-/** The receipt waits for the bell to ring over the frozen world (ms). */
-export const ROUND_SHEET_DELAY_MS = 900;
+/** The receipt waits for the bell to swing in and ring over the frozen world (ms). */
+export const ROUND_SHEET_DELAY_MS = 1500;
 
 /** Rows of the room's standings shown on the receipt sheet. */
 const TOP = 5;

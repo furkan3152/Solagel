@@ -36,6 +36,7 @@ import './lobby.css';
 import { HeldBanner } from './HeldBanner';
 import { PendingBanner } from './PendingBanner';
 import { QuickPlay } from './QuickPlay';
+import { SplitFlap } from './SplitFlap';
 import { TicketList } from './TicketList';
 import { useLobbyModel, useMedia } from './useLobby';
 
@@ -278,7 +279,7 @@ function NextBell() {
   const closed = round.phase === 'closing';
   return (
     <span className={`kl-bell${closed ? ' is-closed' : ''}`} aria-hidden="true">
-      <span className="kl-bell__time num">{formatCountdown(round.msLeft)}</span>
+      <SplitFlap text={formatCountdown(round.msLeft)} className="kl-bell__time num" />
       <span className="kl-bell__label mono">{closed ? t('lo.bell.closed') : t('lo.bell')}</span>
     </span>
   );

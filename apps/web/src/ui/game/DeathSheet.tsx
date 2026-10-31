@@ -8,8 +8,8 @@ import { CoinPortrait } from './CoinPortrait';
 import { formatClock, roomName, useTokenFormat } from './format';
 import { useEffect, useState } from 'react';
 
-/** The EATEN sheet waits for the death slow motion (ms). */
-export const DEATH_SHEET_DELAY_MS = Math.round((DUR.slowmo + 0.12) * 1000);
+/** The EATEN sheet waits for the death slow motion and the eater's mouth to shut (ms). */
+export const DEATH_SHEET_DELAY_MS = Math.round((DUR.slowmo + 0.42) * 1000);
 
 /**
  * Death: "Eaten.", who ate us (or the bot line: our tokens
