@@ -43,7 +43,7 @@ export function launchChecklist(i: {
       detail: i.net.serverKey ? `${i.net.serverKey}${a?.serverBalance != null ? ` · ${formatHypeAmount(a.serverBalance, 4)}` : ''}` : 'The server publishes no key.',
       tab: 'arena',
     },
-    { id: 'arena', label: 'ElymumArena deployed and registered', ok: !i.net.arenaAddress ? false : a ? a.code === 'ok' : null, detail: i.net.arenaAddress ? `${i.net.arenaAddress} · code ${a?.code ?? '…'}` : 'Not registered.', tab: 'deploy' },
+    { id: 'arena', label: 'ElymumArena deployed and registered', ok: !i.net.arenaAddress ? false : a ? a.code === 'ok' : null, detail: i.net.arenaAddress ? `${i.net.arenaAddress} · code ${a?.code ?? '…'}` : 'Not deployed yet: Setup.', tab: 'deploy' },
     {
       id: 'authority',
       label: "The arena settles with this server's key",
@@ -51,8 +51,8 @@ export function launchChecklist(i: {
       detail: cfg ? cfg.serverAuthority : '—',
       tab: 'arena',
     },
-    { id: 'nft', label: 'ElymumNFT deployed and registered', ok: !i.net.nftAddress ? false : n ? n.code === 'ok' : null, detail: i.net.nftAddress ? `${i.net.nftAddress} · code ${n?.code ?? '…'}` : 'Not registered.', tab: 'deploy' },
-    { id: 'token', label: 'The game token is set', ok: cfg ? !!cfg.token : i.net.arenaAddress ? null : false, detail: cfg?.token ?? 'Set it once from Deploy or Arena.', tab: 'arena' },
+    { id: 'nft', label: 'ElymumNFT deployed and registered', ok: !i.net.nftAddress ? false : n ? n.code === 'ok' : null, detail: i.net.nftAddress ? `${i.net.nftAddress} · code ${n?.code ?? '…'}` : 'Not deployed yet: Setup.', tab: 'deploy' },
+    { id: 'token', label: 'The game token is set', ok: cfg ? !!cfg.token : i.net.arenaAddress ? null : false, detail: cfg?.token ?? 'Setup → Finish setup (or confirm the registered token).', tab: 'deploy' },
     { id: 'arenas', label: 'The four default arenas exist', ok: missingArenas === null ? (cfg ? false : null) : missingArenas === 0, detail: missingArenas === null ? 'Needs the token.' : `${4 - missingArenas} / 4`, tab: 'arena' },
     {
       id: 'allowlist',

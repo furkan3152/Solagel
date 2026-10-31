@@ -1,4 +1,4 @@
-import { createArenaCall, formatHypeAmount, rescueCall, setFeeBpsCall, setFeeWalletCall, setPausedCall, setServerAuthorityCall, sweepArenaCall, updateArenaFrom } from '@elymum/sdk';
+import { createArenaCall, formatHypeAmount, rescueCall, setFeeBpsCall, setFeeWalletCall, setServerAuthorityCall, sweepArenaCall, updateArenaFrom } from '@elymum/sdk';
 import {
   SWEEP_WARNING,
   arenaName,
@@ -18,14 +18,19 @@ import { useState } from 'react';
 import type { Address } from 'viem';
 import { DefaultArenas, SetTokenForm } from './DeployTab';
 import type { Plan } from './plan';
-import { Addr, Btn, Card, FormError, Input, Row, useFormError, type ChainCtx } from './ui';
+import { Addr, Advanced, Btn, Card, FormError, Input, Row, useFormError, type ChainCtx } from './ui';
 
-/** `/admin → Arena`: the ElymumArena owner's controls (token, arenas, fee, pause, server key, sweeps, rescue). */
+/**
+ * `/admin → Game → the arena contract`: its status, the settler fix when it is not this server's
+ * key (one click, the key comes from the server), and every manual control (token, arenas, fee and
+ * fee wallet, sweeps, rescue) under one collapsed Advanced section, prefilled. The pause and the
+ * per-arena open / close are on Start / stop above.
+ */
 export function ArenaTab({ ctx }: { ctx: ChainCtx }) {
   const arena = ctx.net.arenaAddress;
   const a = ctx.status?.arena ?? null;
   const cfg = a?.config ?? null;
-  if (!arena) return <Card title="No arena yet" id="arena" tone="quiet" lede="Deploy and register ElymumArena first (Deploy drawer)." />;
+  if (!arena) return <Card title="No arena yet" id="arena" tone="quiet" lede="Deploy ElymumArena first (Setup)." />;
   if (!a || !cfg)
     return (
       <Card
@@ -139,18 +144,20 @@ export function ArenaTab({ ctx }: { ctx: ChainCtx }) {
           </div>
         )}
       </Card>
-      <div className="ad-mint__forms">
-        <SetTokenForm ctx={ctx} />
-        <FeeCard ctx={ctx} open={open} />
-      </div>
-      <DefaultArenas ctx={ctx} />
-      {cfg.token && <ArenaEdit ctx={ctx} open={open} />}
-      <h2 className="ad-zone mono">The red switches</h2>
-      <SwitchCard ctx={ctx} open={open} serverMismatch={serverMismatch} />
-      <div className="ad-mint__forms">
-        {cfg.token && <SweepCard ctx={ctx} open={open} />}
-        <RescueCard ctx={ctx} open={open} />
-      </div>
+      {serverMismatch && <SwitchCard ctx={ctx} open={open} serverMismatch={serverMismatch} />}
+      <Advanced title="Advanced: arena contract controls" testId="arena-advanced" section>
+        <div className="ad-mint__forms">
+          <SetTokenForm ctx={ctx} />
+          <FeeCard ctx={ctx} open={open} />
+        </div>
+        <DefaultArenas ctx={ctx} />
+        {cfg.token && <ArenaEdit ctx={ctx} open={open} />}
+        <h2 className="ad-zone mono">The red switches</h2>
+        <div className="ad-mint__forms">
+          {cfg.token && <SweepCard ctx={ctx} open={open} />}
+          <RescueCard ctx={ctx} open={open} />
+        </div>
+      </Advanced>
     </div>
   );
 }
@@ -240,19 +247,12 @@ function SwitchCard({ ctx, open, serverMismatch }: { ctx: ChainCtx; open: OpenFn
   const cfg = ctx.status!.arena!.config!;
   const arena = ctx.net.arenaAddress!;
   return (
-    <Card title="Pause and the settler" id="arena-switches" tone="danger" lede="Pause blocks joins only; settlements and refunds keep working. The settler is the key that pays out rounds.">
-      <div className="ad-dangerrow">
-        <p>
-          <strong>{cfg.paused ? 'Joins are paused.' : 'Joins are open.'}</strong> {cfg.paused ? 'Players cannot buy tickets until you resume.' : 'Pausing stops new tickets at once, on every arena.'}
-        </p>
-        <Btn danger={!cfg.paused} primary={cfg.paused} testId="arena-pause" onClick={() => open(cfg.paused ? 'Resume arena joins' : 'Pause arena joins', setPausedCall(arena, !cfg.paused), { note: cfg.paused ? undefined : 'Pause blocks joins only; settlements and refunds keep working.' })}>
-          {cfg.paused ? 'Resume joins' : 'Pause joins'}
-        </Btn>
-      </div>
+    <Card title="The settler" id="arena-switches" tone="danger" lede="The settler is the key that pays out rounds. It must be this game server's key.">
       <div className="ad-dangerrow">
         <p>
           <strong>Server authority.</strong> {serverMismatch ? 'It is not this server’s key: rounds cannot settle.' : 'It is this server’s key. Nothing to do.'}
         </p>
+        <Addr value={ctx.net.serverKey} net={ctx.net} />
         <Btn
           danger={serverMismatch}
           disabled={!serverMismatch || !ctx.net.serverKey}

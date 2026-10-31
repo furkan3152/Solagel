@@ -8,14 +8,12 @@ import { publicClientFor } from '../wallet/network';
 import { useWallet } from '../wallet/store';
 import type { ContractsRegistry, GameAccess, SiteSettings } from '@elymum/shared';
 import { site } from '../site/api';
-import { DeployTab } from './DeployTab';
 import { GameTab } from './GameTab';
 import { groupSummary, type AdminGroup } from './groups';
 import { LaunchTab, type ChecklistTab } from './LaunchTab';
 import { MintTab } from './MintTab';
 import { NetworkTab } from './NetworkTab';
-import { HolderPerksCard, HoldersOnlyCard, TestTokenAdminCard } from './SetupExtras';
-import { QuickSetup } from './QuickSetup';
+import { SetupTab } from './SetupTab';
 import { SummaryBar } from './SummaryBar';
 import { chainBlockers, walletChainNote, type AdminNetwork } from './net';
 import { readOwner, type Plan } from './plan';
@@ -89,7 +87,7 @@ export function AdminPanel({
       live = false;
     };
   }, [api, tab]);
-  const summary = groupSummary(tab, { net, status, settings: access?.settings ?? null, gameAccessEnv: access?.env ?? null });
+  const summary = groupSummary(tab, { net, status, registry, settings: access?.settings ?? null, gameAccessEnv: access?.env ?? null });
   const [plan, setPlan] = useState<Plan | null>(null);
   const [log, setLog] = useState<SignedEntry[]>([]);
   const [codes, setCodes] = useState<{ arena: string | null; nft: string | null }>({ arena: null, nft: null });
@@ -116,7 +114,7 @@ export function AdminPanel({
   const nftRole = !me || !net.nftAddress || !nftOwner ? null : sameAddress(nftOwner, me);
   useEffect(() => onRole?.({ arena: arenaRole, nft: nftRole }), [onRole, arenaRole, nftRole]);
 
-  const ctx: ChainCtx = { net, status, refresh, reloadNet, me, walletChainId, client, api, open: setPlan };
+  const ctx: ChainCtx = { net, status, refresh, reloadNet, me, walletChainId, client, api, open: setPlan, registry };
 
   return (
     <div className="ad-chain" aria-busy={loading}>
@@ -176,18 +174,7 @@ export function AdminPanel({
           <LaunchTab ctx={ctx} go={go} />
         </>
       )}
-      {tab === 'setup' && (
-        <>
-          <QuickSetup ctx={ctx} />
-          <DeployTab ctx={ctx} />
-          <h2 className="ad-h3 ad-section-h">Emblem perks</h2>
-          <div className="ad-mint__forms">
-            <HolderPerksCard ctx={ctx} />
-            <TestTokenAdminCard ctx={ctx} />
-          </div>
-          <HoldersOnlyCard ctx={ctx} />
-        </>
-      )}
+      {tab === 'setup' && <SetupTab ctx={ctx} />}
       {tab === 'mint' && <MintTab ctx={ctx} />}
       {tab === 'game' && <GameTab ctx={ctx} />}
 

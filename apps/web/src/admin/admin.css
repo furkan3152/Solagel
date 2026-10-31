@@ -1536,6 +1536,21 @@ body {
 .ad-more > :not(summary) {
   padding-bottom: 6px;
 }
+.ad-advanced__body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ad-advanced--section {
+  border: var(--stroke-xs) dashed var(--outline);
+  border-radius: 14px;
+  padding: 4px 16px;
+  background: color-mix(in srgb, var(--white) 40%, transparent);
+}
+.ad-advanced--section > .ad-advanced__body {
+  gap: 24px;
+  padding: 8px 0 16px;
+}
 .ad-sub {
   display: flex;
   flex-direction: column;

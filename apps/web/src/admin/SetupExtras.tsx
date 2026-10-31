@@ -2,17 +2,19 @@ import { DEFAULT_HOLDER_FEE_BPS, DEFAULT_HOLDERS_ONLY_ARENA_IDS, sameAddress, se
 import { arenaName, fmtTok, holderPerksRefusal, holderPerksWarnings, holdersOnlyRefusal, parseAddressInput, parseIntInput, setFaucetRefusal, testTokenRefusal } from '@elymum/sdk/ops';
 import { useState } from 'react';
 import type { Address } from 'viem';
-import { Addr, Btn, Card, FormError, Input, Row, useFormError, type ChainCtx } from './ui';
+import { Addr, Advanced, Btn, Card, FormError, Input, Row, useFormError, type ChainCtx } from './ui';
 
 /**
  * Setup → the emblem's perks on the arena: `setHolderPerks(nft, holderFeeBps)` (holders pay the
- * lower fee and may enter holders-only arenas) and `setArenaHoldersOnly(id, on)` per arena.
+ * lower fee and may enter holders-only arenas) and `setArenaHoldersOnly(id, on)` per arena. The NFT
+ * is the registered ElymumNFT (shown, not typed); another address is an override under Advanced.
  */
 export function HolderPerksCard({ ctx }: { ctx: ChainCtx }) {
   const arena = ctx.net.arenaAddress;
   const a = ctx.status?.arena ?? null;
   const cfg = a?.config ?? null;
-  const [nft, setNft] = useState<string>(cfg?.holderNft ?? ctx.net.nftAddress ?? '');
+  const registered = ctx.net.nftAddress;
+  const [override, setOverride] = useState('');
   const [bps, setBps] = useState(String(cfg?.holderNft ? cfg.holderFeeBps : DEFAULT_HOLDER_FEE_BPS));
   const [err, guard, setErr] = useFormError();
   if (!arena || !cfg) return null;
@@ -23,7 +25,8 @@ export function HolderPerksCard({ ctx }: { ctx: ChainCtx }) {
     let addr: Address | null = null;
     let fee = 0;
     try {
-      addr = off ? null : parseAddressInput('Holder NFT', nft);
+      if (!off && !override.trim() && !registered) throw new Error('No ElymumNFT is registered with the server yet: deploy it in Setup (or enter one under Advanced).');
+      addr = off ? null : override.trim() ? parseAddressInput('Holder NFT', override) : registered;
       fee = off ? cfg.holderFeeBps : parseIntInput('Holder fee', bps, 0, 1000);
     } catch (e) {
       setErr((e as Error).message);
@@ -57,10 +60,23 @@ export function HolderPerksCard({ ctx }: { ctx: ChainCtx }) {
       <dl className="ad-kv">
         <Row label="Holder NFT">{cfg.holderNft ? <Addr value={cfg.holderNft} net={ctx.net} /> : <span className="ad-none">none (perks off)</span>}</Row>
       </dl>
+      <dl className="ad-kv">
+        <Row label="Uses">
+          {registered ? (
+            <>
+              <Addr value={registered} net={ctx.net} /> <span className="ad-role">the registered ElymumNFT</span>
+            </>
+          ) : (
+            <span className="ad-none">no ElymumNFT registered yet</span>
+          )}
+        </Row>
+      </dl>
       <div className="ad-form2">
-        <Input label="NFT" value={nft} onChange={setNft} placeholder={ctx.net.nftAddress ?? '0x…'} hint="The registered ElymumNFT." />
         <Input label="Holder fee" value={bps} onChange={setBps} suffix="bps" hint="300 = 3%." />
       </div>
+      <Advanced title="Advanced: a different holder NFT" testId="holder-perks-advanced">
+        <Input label="Holder NFT (override)" value={override} onChange={setOverride} placeholder={registered ?? '0x…'} hint="Leave empty to use the registered ElymumNFT." />
+      </Advanced>
       <div className="ad-actions">
         <Btn sun testId="holder-perks" onClick={() => void preview(false)}>
           Preview holder perks
@@ -176,6 +192,12 @@ export function TestTokenAdminCard({ ctx }: { ctx: ChainCtx }) {
             <Row label="Holder NFT">{f.holderNft ? <Addr value={f.holderNft} net={ctx.net} /> : <span className="ad-none">none (no 2x)</span>}</Row>
           </>
         )}
+        <Row label="Server key">
+          <Addr value={server} net={ctx.net} /> <span className="ad-role">from the game server</span>
+        </Row>
+        <Row label="Emblem">
+          <Addr value={nft} net={ctx.net} /> <span className="ad-role">the registered ElymumNFT</span>
+        </Row>
         <Row label="Server key mints">{tt.serverIsMinter === null ? <span className="ad-none">no arena yet</span> : tt.serverIsMinter ? <span className="ad-code mono is-ok">yes</span> : <span className="ad-code mono is-bad">no</span>}</Row>
       </dl>
       <div className="ad-actions">
