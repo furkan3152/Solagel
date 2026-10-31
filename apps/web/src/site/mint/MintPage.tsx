@@ -15,6 +15,7 @@ import { X_URL } from '../settings';
 import { SitePage } from '../Shell';
 import { SiteWalletProvider, WalletSignIn, useSiteSession } from '../wallet/SiteWallet';
 import { EmblemPanel, FoodConfetti, LinkButton, Starburst, MintSky, MintTrack, type TrackStage } from './MintArt';
+import { EmblemHand, Flap, FlipCard, SealBreak } from './MintRitual';
 import { mintBlocker, mintKind, mintView, mintedTokenIds, playOpenForHolders, remaining, usdText, type MintView } from './logic';
 import './mint.css';
 
@@ -131,7 +132,12 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
   const mv = useMoves();
   const reduced = useReducedMotion();
   // the minted stickers land one after another, slower than a list (it is a moment, not a menu)
-  const dropIn = reduced ? mv.stagger : { hidden: {}, shown: { transition: { staggerChildren: 0.2, delayChildren: 0.12 } } };
+  const dropIn = reduced ? mv.stagger : { hidden: {}, shown: { transition: { staggerChildren: 0.2, delayChildren: 0.08 } } };
+  // the minted moment opens with the wax seal breaking; the emblems drop once it snaps
+  const [unsealed, setUnsealed] = useState(false);
+  useEffect(() => {
+    if (phase !== 'done') setUnsealed(false);
+  }, [phase]);
 
   // the server's mint state (and the chain it is on), refreshed while the page is open
   useEffect(() => {
@@ -327,19 +333,20 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
             </div>
           </div>
           <div className={`mt-pile mt-pile--${Math.min(n, 4)}`}>
-            <Starburst />
-            <FoodConfetti count={n > 1 ? 44 : 36} />
-            <motion.ul className="mt-tokens" variants={dropIn} initial="hidden" animate="shown">
+            {unsealed && <Starburst />}
+            {unsealed && <FoodConfetti count={n > 1 ? 44 : 36} delay={-0.2} />}
+            <SealBreak size={n > 1 ? 180 : 220} onSnap={() => setUnsealed(true)} />
+            <motion.ul className="mt-tokens" variants={dropIn} initial="hidden" animate={unsealed ? 'shown' : 'hidden'}>
               {ids.map((id, i) => {
                 const tilt = [-3, 2.5, -1.5, 3.5][i % 4];
                 return (
                   <motion.li key={id.toString()} className="mt-token" variants={mv.stickerDrop} custom={tilt}>
-                    <EmblemImage id={id} />
+                    <FlipCard front={<EmblemImage id={id} />} go={unsealed} delay={0.55 + i * 0.2} />
                     <motion.span
                       className="mt-token__tag mono"
                       initial={reduced ? { opacity: 0 } : { scale: 0, rotate: -40 }}
-                      animate={reduced ? { opacity: 1 } : { scale: 1, rotate: i % 2 ? 8 : -8 }}
-                      transition={reduced ? { duration: 0.12, delay: 0.3 } : { type: 'spring', stiffness: 600, damping: 14, delay: 0.75 + i * 0.2 }}
+                      animate={!unsealed ? undefined : reduced ? { opacity: 1 } : { scale: 1, rotate: i % 2 ? 8 : -8 }}
+                      transition={reduced ? { duration: 0.12, delay: 0.3 } : { type: 'spring', stiffness: 600, damping: 14, delay: 1.05 + i * 0.2 }}
                     >
                       Yours
                     </motion.span>
@@ -375,17 +382,19 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
     view === 'unavailable' ? (
       <EmblemPanel no={noText} mood="sleepy" ribbon="Not struck yet." phase={PHASE_LABEL[view]} />
     ) : view === 'closed' ? (
-      <EmblemPanel no={noText} mood="smug" ribbon="Sealed. For now." ribbonAs="h2" phase={PHASE_LABEL[view]} />
+      <EmblemPanel no={noText} mood="smug" ribbon="Sealed. For now." ribbonAs="h2" phase={PHASE_LABEL[view]} seal="sealed" />
     ) : view === 'soldout' ? (
       <EmblemPanel no={noText} mood="happy" ribbon="All gone. Good." phase={PHASE_LABEL[view]} phaseTone="done" />
     ) : (
-      <EmblemPanel no={noText} mood={busy ? 'open' : 'smug'} ribbon={busy ? 'Unsealing…' : 'Sealed. For now.'} phase={PHASE_LABEL[view]} phaseTone="live" />
+      <EmblemPanel no={noText} mood={busy ? 'open' : 'smug'} ribbon={busy ? 'Unsealing…' : 'Sealed. For now.'} phase={PHASE_LABEL[view]} phaseTone="live" seal={busy ? 'trembling' : 'sealed'} />
     );
 
   const priceRow = c && (
     <div className="mt-price">
       <span data-testid="mt-price" className="mt-price__fig">
-        <HypeAmount wei={priceWei} decimals={4} usd={state.priceUsd} size="lg" />
+        <Flap value={c.priceWei}>
+          <HypeAmount wei={priceWei} decimals={4} usd={state.priceUsd} size="lg" />
+        </Flap>
       </span>
       <p className="mt-price__tick num">
         {state.hypeUsd !== null ? <>HYPE/USD {state.hypeUsd.toFixed(2)} · updated {loadedAt ? <Age since={loadedAt} /> : 'just now'}</> : 'HYPE/USD feed is napping; the contract price stands'}
@@ -490,6 +499,7 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
                 <div className="kicker mt-card__kick mt-qty__lbl">How many</div>
                 <QuantityStepper value={q} onChange={setQty} max={Math.max(1, left)} label="How many emblems" lessLabel="One less" disabled={busy || left <= 1} data-testid="mt-qty" />
               </div>
+              <EmblemHand count={q} />
               <div className="mt-total">
                 <span className="kicker mt-card__kick">Total</span>
                 <HypeAmount wei={priceWei * BigInt(q)} decimals={4} size="md" className="mt-total__fig" />

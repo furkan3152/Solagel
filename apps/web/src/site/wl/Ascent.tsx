@@ -92,13 +92,41 @@ export function Ascent({ total, done, paint, active, labels, goal = 'Feast' }: A
           {goal.toUpperCase()}
         </text>
       </g>
+      {/* dust kicked up where the coin lands (one puff left, one right, a speck) */}
+      {!reduced && done > 0 && (
+        <g key={`dust${done}`} transform={`translate(${cx + (done >= n ? -30 : 0)} ${cy - 2})`} className="wl-ascent__dust">
+          <g className="wl-ascent__puff wl-ascent__puff--l">
+            <circle r={5.5} cx={-2} fill="#FFFFFF" stroke={INK} strokeWidth={2} />
+            <circle r={3.6} cx={-9} cy={1} fill="#FFFFFF" stroke={INK} strokeWidth={2} />
+          </g>
+          <g className="wl-ascent__puff wl-ascent__puff--r">
+            <circle r={5.5} cx={2} fill="#FFFFFF" stroke={INK} strokeWidth={2} />
+            <circle r={3.6} cx={9} cy={1} fill="#FFFFFF" stroke={INK} strokeWidth={2} />
+          </g>
+          <circle className="wl-ascent__puff wl-ascent__puff--c" r={2.4} cy={-6} fill={ELYSIUM.sand2} stroke={INK} strokeWidth={1.6} />
+        </g>
+      )}
+      {/* at the top: a little victory burst of sparkles over the feast */}
+      {!reduced && done >= n && (
+        <g key="win" transform={`translate(${feast[0] - 10} ${feast[1] - 34})`} className="wl-ascent__win">
+          {[-38, -12, 14, 40].map((dx, i) => (
+            <path key={i} className="wl-ascent__spark" style={{ ['--dx' as string]: `${dx}px`, animationDelay: `${0.5 + i * 0.06}s` }} d="M0 -6 Q1 -1 6 0 Q1 1 0 6 Q-1 1 -6 0 Q-1 -1 0 -6Z" fill={i % 2 ? ELYSIUM.sun : ELYSIUM.foam} stroke={INK} strokeWidth={1.6} strokeLinejoin="round" />
+          ))}
+        </g>
+      )}
       {/* the visitor's coin */}
       <motion.g initial={false} animate={{ x: cx + (done >= n ? -30 : 0), y: cy - 20 }} transition={reduced ? { duration: 0 } : springs.drop}>
         <motion.g
           key={done}
           initial={false}
-          animate={reduced || done === 0 ? { y: 0 } : { y: [0, -26, 0, -4, 0], scaleY: [1, 1.06, 0.86, 1, 1] }}
-          transition={{ duration: 0.62, times: [0, 0.38, 0.62, 0.8, 1], ease: 'easeOut' }}
+          animate={
+            reduced || done === 0
+              ? { y: 0 }
+              : done >= n
+                ? { y: [0, -26, 0, -4, 0, -18, 0, -6, 0], scaleY: [1, 1.06, 0.86, 1, 1, 1.05, 0.9, 1, 1], rotate: [0, 0, 0, 0, 0, -12, 0, 8, 0] }
+                : { y: [0, -26, 0, -4, 0], scaleY: [1, 1.06, 0.86, 1, 1] }
+          }
+          transition={done >= n && !reduced ? { duration: 1.3, times: [0, 0.18, 0.3, 0.38, 0.46, 0.62, 0.76, 0.88, 1], ease: 'easeOut' } : { duration: 0.62, times: [0, 0.38, 0.62, 0.8, 1], ease: 'easeOut' }}
         >
           <ellipse cy={18} rx={11} ry={3} fill={INK} opacity={0.2} />
           <circle r={14} fill={shade} stroke={INK} strokeWidth={2.6} />

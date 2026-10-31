@@ -1,12 +1,13 @@
 import type { GameAccess } from '@elymum/shared';
 import { useEffect, useState } from 'react';
-import { CoinCharacter, Kb, PlateLabel, RingScene, StampSpinner, Sticker } from '../../design';
+import { CoinCharacter, Kb, PlateLabel, RingScene, Sticker, useReducedMotion } from '../../design';
 import { auth, site } from '../api';
 import { readStoredSession, type SiteSession } from '../session';
 import { X_URL } from '../settings';
 import { SitePage, XIcon } from '../Shell';
 import { LinkButton } from '../mint/MintArt';
 import { SiteWalletProvider, WalletSignIn } from '../wallet/SiteWallet';
+import { GateScene } from './GateScene';
 import './play.css';
 
 export type PlayAccess =
@@ -44,6 +45,8 @@ export async function playAccess(): Promise<PlayAccess> {
 
 /** The friendly page for everyone the arena is not open to yet (holders mode: sign in with the wallet that holds the NFT). */
 export function ArenaSoon({ holders = false, onSignedIn }: { holders?: boolean; onSignedIn?: () => void }) {
+  // the guard looks over while the visitor is at the sign-in
+  const [attention, setAttention] = useState(false);
   return (
     <SitePage className="pg-root">
       <PlateLabel numeral="III" title={holders ? 'The ring, members only' : 'The ring, after hours'} aside="/play" className="pg-platelabel" />
@@ -68,7 +71,13 @@ export function ArenaSoon({ holders = false, onSignedIn }: { holders?: boolean; 
               {holders ? (
                 <>
                   <p className="pg-lede">Sign in with the wallet that holds your Elymum emblem and the gate swings open. No emblem yet? One dollar in HYPE.</p>
-                  <div className="pg-signin">
+                  <div
+                    className="pg-signin"
+                    onPointerEnter={() => setAttention(true)}
+                    onPointerLeave={() => setAttention(false)}
+                    onFocus={() => setAttention(true)}
+                    onBlur={() => setAttention(false)}
+                  >
                     <SiteWalletProvider>
                       <WalletSignIn label="Sign in to play" onSession={() => onSignedIn?.()} />
                     </SiteWalletProvider>
@@ -103,13 +112,10 @@ export function ArenaSoon({ holders = false, onSignedIn }: { holders?: boolean; 
                 </a>
               </p>
             </Sticker>
-            <div className="pg-cast" aria-hidden="true">
-              <span className="pg-post">
-                <span className="pg-sign mono">{holders ? 'Holders only' : 'Closed'}</span>
-              </span>
-              <CoinCharacter paint={holders ? 'sun' : 'cyan'} mood={holders ? 'smug' : 'sleepy'} size={170} feet ground className="pg-coin pg-coin--big" />
-              <CoinCharacter paint="teal" mood="sleepy" size={84} feet ground phase={1.3} className="pg-coin pg-coin--b" />
-              <CoinCharacter paint="cream" mood={holders ? 'open' : 'sleepy'} size={64} feet ground phase={2.1} className="pg-coin pg-coin--c" />
+            <div className={`pg-cast${holders ? ' pg-cast--holders' : ''}`} aria-hidden="true">
+              <GateScene mode={holders ? 'holders' : 'closed'} attention={attention} />
+              <CoinCharacter paint="teal" mood="sleepy" size={72} feet ground phase={1.3} className="pg-coin pg-coin--b" />
+              <CoinCharacter paint="cream" mood={holders ? 'open' : 'sleepy'} size={56} feet ground phase={2.1} className="pg-coin pg-coin--c" />
             </div>
           </div>
         </RingScene>
@@ -122,17 +128,22 @@ export function ArenaSoon({ holders = false, onSignedIn }: { holders?: boolean; 
 export function PlayGate({ onAllowed, check = playAccess }: { onAllowed: (session: SiteSession | null) => void; check?: () => Promise<PlayAccess> }) {
   const [state, setState] = useState<'checking' | 'closed' | 'holders' | 'open'>('checking');
   const [round, setRound] = useState(0);
+  const reduced = useReducedMotion();
   useEffect(() => {
     let live = true;
+    let lift: ReturnType<typeof setTimeout> | undefined;
     void check().then((r) => {
       if (!live) return;
       if (r.allowed) {
         setState('open');
-        onAllowed(r.session);
+        // the barrier swings up before the arena takes over (a beat, not a wait)
+        if (reduced) onAllowed(r.session);
+        else lift = setTimeout(() => onAllowed(r.session), 560);
       } else setState(r.reason === 'holders' ? 'holders' : 'closed');
     });
     return () => {
       live = false;
+      if (lift) clearTimeout(lift);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [round]);
@@ -140,8 +151,12 @@ export function PlayGate({ onAllowed, check = playAccess }: { onAllowed: (sessio
   if (state === 'holders') return <ArenaSoon holders onSignedIn={() => setRound((n) => n + 1)} />;
   return (
     <Kb theme="night" className="pg-wait">
-      <StampSpinner label={state === 'open' ? 'Opening the arena' : 'Checking'} />
-      <span className="mono pg-wait__label">{state === 'open' ? 'Opening the ring…' : 'Checking the gate…'}</span>
+      <div className="pg-wait__gate">
+        <GateScene mode={state === 'open' ? 'open' : 'checking'} />
+      </div>
+      <span className="mono pg-wait__label" role="status">
+        {state === 'open' ? 'Opening the ring…' : 'Checking the gate…'}
+      </span>
     </Kb>
   );
 }

@@ -171,7 +171,20 @@ function label(ctx: CanvasRenderingContext2D, text: string, x: number, y: number
 }
 
 /** Draws the Elysian boarding pass for `handle` (normalised, no `@`; empty shows a blank pass). */
-export function drawTicketCard(canvas: HTMLCanvasElement, handle: string): void {
+/**
+ * How much of the pass to draw (the on-page "assembly": the pass prints itself piece by piece).
+ * `upto`: 0 the night only, 1 + the blank pass, 2 + the wordmark and labels, 3 + the passenger
+ * (typed out to `chars` characters), 4 + the flight details, 5 + the stub (number and coin),
+ * 6 + the rubber stamp (pressed at `stampScale`, 1 = landed) and the Homer line. Default: all.
+ */
+export interface CardDrawOpts {
+  upto?: number;
+  chars?: number;
+  stampScale?: number;
+}
+
+export function drawTicketCard(canvas: HTMLCanvasElement, handle: string, opts: CardDrawOpts = {}): void {
+  const upto = opts.upto ?? 99;
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
   if (canvas.width !== CARD_W || canvas.height !== CARD_H) {
@@ -231,6 +244,7 @@ export function drawTicketCard(canvas: HTMLCanvasElement, handle: string): void 
   drawSeigaiha(ctx, 638, 40);
 
   // the pass
+  if (upto < 1) return;
   const X = 84;
   const Y = 70;
   const W = CARD_W - 168;
@@ -281,16 +295,28 @@ export function drawTicketCard(canvas: HTMLCanvasElement, handle: string): void 
   // the body
   const BX = X + 54;
   const maxW = PERF - BX - 44;
+  if (upto < 2) {
+    ctx.restore();
+    return;
+  }
   label(ctx, 'Elysian boarding pass', BX, Y + 62, TEAL_INK, 19);
   label(ctx, 'Class: small change', PERF - 40, Y + 62, STONE, 17, 'right');
   drawWordmark(ctx, BX - 4, Y + 84, 0.6);
 
   label(ctx, 'Passenger', BX, Y + 222);
+  if (upto < 3) {
+    ctx.restore();
+    return;
+  }
   const at = `@${name}`;
   const size = fitFont(ctx, at, '800', DISPLAY, 96, maxW);
   ctx.font = `800 ${size}px ${DISPLAY}`;
   ctx.fillStyle = handle ? INK : STONE;
-  ctx.fillText(at, BX - 2, Y + 230 + size * 0.86);
+  ctx.fillText(upto === 3 && opts.chars !== undefined ? at.slice(0, Math.max(0, opts.chars)) : at, BX - 2, Y + 230 + size * 0.86);
+  if (upto < 4) {
+    ctx.restore();
+    return;
+  }
 
   // dashed rule, then the flight details
   const RY = Y + 352;
@@ -318,6 +344,10 @@ export function drawTicketCard(canvas: HTMLCanvasElement, handle: string): void 
     ctx.fillText(v, cx, RY + 80);
   });
 
+  if (upto < 5) {
+    ctx.restore();
+    return;
+  }
   // the stub: number, the handle's own coin, admit one
   const SX = PERF + STUB / 2;
   label(ctx, 'No.', SX, Y + 58, INK, 17, 'center');
@@ -337,10 +367,16 @@ export function drawTicketCard(canvas: HTMLCanvasElement, handle: string): void 
   label(ctx, 'Admit one', SX, Y + H - 66, INK, 18, 'center');
   label(ctx, siteHost(), SX, Y + H - 38, INK, 15, 'center');
 
+  if (upto < 6) {
+    ctx.restore();
+    return;
+  }
   // the rubber stamp over the perforation
+  const ss = opts.stampScale ?? 1;
   ctx.save();
   ctx.translate(PERF - 6, Y + H - 118);
-  ctx.rotate(-0.24);
+  ctx.rotate(-0.24 + (ss - 1) * 0.3);
+  ctx.scale(ss, ss);
   ctx.globalAlpha = 0.9;
   ctx.strokeStyle = TEAL_INK;
   ctx.fillStyle = TEAL_INK;
@@ -361,6 +397,7 @@ export function drawTicketCard(canvas: HTMLCanvasElement, handle: string): void 
   ctx.restore();
 
   ctx.restore(); // the tilt
+  if (ss > 1.02) return; // the stamp is still in the air
 
   // the Homer line under the pass, on the night
   ctx.font = `italic 500 21px ${DISPLAY}`;

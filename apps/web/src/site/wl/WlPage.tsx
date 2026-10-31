@@ -12,6 +12,7 @@ import { SiteWalletProvider, WalletSignIn, useSiteSession } from '../wallet/Site
 import { Ascent } from './Ascent';
 import { CardPreview, SaveCardButton } from './CardPreview';
 import { ChoreArt, Moon, handlePaint } from './ChoreArt';
+import { InkSplat, StickerAlbum } from './Juice';
 import { StoryPlate } from './Plate';
 import { buildSteps, stepError, stepForField, submitBody, tweetId, type Answers, type Step } from './steps';
 import './wl.css';
@@ -266,7 +267,7 @@ export function WlStatus({ entry, fresh = false, onReapply }: { entry: WlEntryPu
         </div>
         <div className="wl-status__card">
           <Sticker tone="night" lift="lg" pad="sm" round="lg" className="wl-status__frame">
-            <CardPreview handle={entry.xHandle} />
+            <CardPreview handle={entry.xHandle} assemble />
           </Sticker>
           <Stamp className="wl-status__stamp" text={c.stamp} tone={c.tone} size="lg" rotate={-9} animateIn={fresh && !reduced} />
           <span className="wl-status__coin" aria-hidden="true">
@@ -348,7 +349,7 @@ function bodyFor(step: Step): string {
   }
 }
 
-function StepHead({ i, step, state, handle, as: Title = 'h2' }: { i: number; step: Step; state: 'done' | 'active' | 'todo'; handle: string; as?: 'h2' | 'span' }) {
+function StepHead({ i, step, state, handle, fresh = false, as: Title = 'h2' }: { i: number; step: Step; state: 'done' | 'active' | 'todo'; handle: string; fresh?: boolean; as?: 'h2' | 'span' }) {
   const soon = step.kind === 'engage_x' && !step.task.available;
   return (
     <span className="wl-step__head">
@@ -365,7 +366,10 @@ function StepHead({ i, step, state, handle, as: Title = 'h2' }: { i: number; ste
       <span className="wl-step__act">
         {state === 'done' ? (
           <>
-            <Stamp text="Done" tone="up" rotate={-7} />
+            <span className={`wl-step__stamp${fresh ? ' is-fresh' : ''}`}>
+              <Stamp text="Done" tone="up" rotate={-7} animateIn={fresh} />
+              {fresh && <InkSplat seed={i + 2} reach={40} className="kb-tone-up" />}
+            </span>
             <span className="wl-step__edit mono" aria-hidden="true">
               Edit
             </span>
@@ -384,6 +388,8 @@ function WlStepper({ tasks, settings, onEntry }: { tasks: PublicWlTask[]; settin
   const steps = useMemo(() => buildSteps(tasks), [tasks]);
   const [active, setActive] = useState(0);
   const [done, setDone] = useState<Set<string>>(() => new Set());
+  /** The chore that was just finished (its DONE stamp thumps on, once). */
+  const [justDone, setJustDone] = useState<string | null>(null);
   const [answers, setAnswers] = useState<Answers>({});
   const [handle, setHandle] = useState('');
   const [website, setWebsite] = useState('');
@@ -406,6 +412,7 @@ function WlStepper({ tasks, settings, onEntry }: { tasks: PublicWlTask[]; settin
     const err = stepError(s, answers, handle, !!session);
     setErrors((e) => ({ ...e, [s.key]: err }));
     if (err) return;
+    if (!done.has(s.key)) setJustDone(s.key);
     setDone((d) => new Set(d).add(s.key));
     const n = Math.min(i + 1, steps.length - 1);
     setActive(n);
@@ -485,9 +492,10 @@ function WlStepper({ tasks, settings, onEntry }: { tasks: PublicWlTask[]; settin
               </span>
             </div>
             <Ascent total={total} done={doneCount} paint={handlePaint(norm ?? '')} active={active} />
+            <StickerAlbum slots={steps.map((s) => ({ key: s.key, kind: s.kind, done: done.has(s.key) || (s.kind === 'sign' && !!session) }))} handle={norm ?? ''} title="Chore stickers" />
             <div className="wl-aside__card wl-desk-only">
               <Sticker tone="night" lift="md" pad="sm" round="lg" tilt={-1} className="wl-pass">
-                <CardPreview handle={handle} />
+                <CardPreview handle={handle} assemble />
               </Sticker>
               <div className="wl-row">
                 <SaveCardButton handle={handle} />
@@ -518,8 +526,8 @@ function WlStepper({ tasks, settings, onEntry }: { tasks: PublicWlTask[]; settin
                 {state === 'active' ? (
                   <StepHead i={i} step={s} state={state} handle={handle} />
                 ) : (
-                  <button type="button" className="wl-step__toggle" onClick={() => setActive(i)} aria-label={`Step ${i + 1}: ${s.title}${state === 'done' ? ', done. Edit' : ''}`}>
-                    <StepHead i={i} step={s} state={state} handle={handle} as="span" />
+                  <button type="button" className="wl-step__toggle" onClick={() => { setActive(i); setJustDone(null); }} aria-label={`Step ${i + 1}: ${s.title}${state === 'done' ? ', done. Edit' : ''}`}>
+                    <StepHead i={i} step={s} state={state} handle={handle} fresh={justDone === s.key} as="span" />
                   </button>
                 )}
                 <AnimatePresence initial={false}>

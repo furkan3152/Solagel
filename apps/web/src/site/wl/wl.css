@@ -852,3 +852,280 @@
     transition: none;
   }
 }
+
+/* ---------------------------------------------------------------- */
+/* Juice: stamp ink, the sticker album, the pass assembling itself   */
+/* ---------------------------------------------------------------- */
+
+/* the ink a stamp throws: drops fly out from the impact and dry as specks */
+.wl-splat {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  color: var(--up-ink);
+}
+.wl-splat i {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-radius: 99px;
+  background: currentColor;
+  opacity: 0;
+  transform: translate(-50%, -50%) rotate(var(--r)) scale(0.2);
+  animation: wl-splat 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.wl-splat.is-stay i:not(.is-flick) {
+  animation-name: wl-splat-stay;
+}
+@keyframes wl-splat {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(var(--r)) scale(0.2);
+  }
+  25% {
+    opacity: 0.95;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--x)), calc(-50% + var(--y))) rotate(var(--r)) scale(1);
+  }
+}
+@keyframes wl-splat-stay {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(var(--r)) scale(0.2);
+  }
+  25% {
+    opacity: 0.95;
+  }
+  100% {
+    opacity: 0.4;
+    transform: translate(calc(-50% + var(--x)), calc(-50% + var(--y))) rotate(var(--r)) scale(1);
+  }
+}
+.wl-splat.is-still i {
+  animation: none;
+  opacity: 0.45;
+  transform: translate(calc(-50% + var(--x)), calc(-50% + var(--y))) rotate(var(--r)) scale(1);
+}
+.wl-splat.is-still:not(.is-stay) i,
+.wl-splat.is-still i.is-flick {
+  opacity: 0;
+}
+
+/* a chore's DONE stamp: freshly thumped, the whole row takes the knock */
+.wl-step__stamp {
+  position: relative;
+  display: inline-flex;
+}
+.wl-step__stamp .wl-splat {
+  z-index: 0;
+}
+.wl-step__stamp .kb-stamp {
+  position: relative;
+  z-index: 1;
+}
+.wl-step.is-done:has(.wl-step__stamp.is-fresh) {
+  animation: wl-knock 420ms cubic-bezier(0.22, 1, 0.36, 1) 160ms both;
+}
+@keyframes wl-knock {
+  0%,
+  100% {
+    transform: none;
+  }
+  30% {
+    transform: translateY(3px) scaleY(0.985);
+  }
+  60% {
+    transform: translateY(-1px);
+  }
+}
+
+/* the sticker album */
+.wl-album {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  max-width: 440px;
+}
+.wl-album__head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.wl-album__page {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0;
+  padding: 12px;
+  list-style: none;
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: var(--r-card);
+  background: var(--linen);
+  box-shadow: var(--sh-2);
+  /* the album page has faint pencil grid lines */
+  background-image: repeating-linear-gradient(0deg, transparent 0 19px, rgba(4, 24, 28, 0.06) 19px 20px);
+}
+.wl-album__slot {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  border: 2.5px dashed var(--sand-2);
+  border-radius: 14px;
+}
+.wl-album__slot.is-done {
+  border-color: transparent;
+}
+.wl-album__no {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--stone);
+}
+.wl-album__slot.is-done .wl-album__no {
+  display: none;
+}
+.wl-album__sticker {
+  position: absolute;
+  inset: -4px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: 15px;
+  background: var(--cream);
+  box-shadow: var(--sh-2);
+}
+.wl-album__sticker .wl-art,
+.wl-album__sticker svg {
+  width: 44px;
+  height: 44px;
+}
+.wl-album__shine {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.75) 45%, transparent 60%);
+  transform: translateX(-120%);
+  animation: wl-shine 900ms ease-out 260ms both;
+}
+@keyframes wl-shine {
+  to {
+    transform: translateX(120%);
+  }
+}
+
+/* the pass prints itself: the frame takes the stamp's knock, and the ink lands on the stub */
+.wl-card__frame {
+  position: relative;
+}
+.wl-card__frame.is-thumped {
+  animation: wl-pass-knock 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes wl-pass-knock {
+  0%,
+  100% {
+    transform: none;
+  }
+  35% {
+    transform: translateY(3px) rotate(-0.4deg);
+  }
+  70% {
+    transform: translateY(-1px);
+  }
+}
+.wl-card__splat {
+  left: 67%;
+  top: 63%;
+  color: #2d7388;
+}
+.wl-card__splat i {
+  /* scale with the card: the canvas is drawn at 1200 px wide */
+  scale: 1.2;
+}
+.wl-card.is-printing .wl-card__cap {
+  opacity: 0.4;
+  transition: opacity 0.3s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wl-step.is-done:has(.wl-step__stamp.is-fresh),
+  .wl-card__frame.is-thumped,
+  .wl-album__shine {
+    animation: none;
+  }
+  .wl-album__shine {
+    display: none;
+  }
+}
+
+/* the ascent: dust where the coin lands, sparkles at the feast */
+.wl-ascent__puff {
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+  animation: wl-puff 620ms cubic-bezier(0.22, 1, 0.36, 1) 380ms both;
+}
+.wl-ascent__puff--l {
+  --px: -16px;
+}
+.wl-ascent__puff--r {
+  --px: 16px;
+}
+.wl-ascent__puff--c {
+  --px: 0px;
+  animation-name: wl-speck;
+}
+@keyframes wl-puff {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.3);
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--px), -6px) scale(1.15);
+  }
+}
+@keyframes wl-speck {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0);
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(4px, -16px);
+  }
+}
+.wl-ascent__spark {
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+  animation: wl-spark 900ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes wl-spark {
+  0% {
+    opacity: 0;
+    transform: translate(0, 10px) scale(0.2) rotate(0deg);
+  }
+  35% {
+    opacity: 1;
+    transform: translate(var(--dx), -14px) scale(1.2) rotate(45deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--dx), -4px) scale(0.6) rotate(90deg);
+  }
+}

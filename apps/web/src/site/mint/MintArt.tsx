@@ -2,6 +2,7 @@ import { motion } from 'motion/react';
 import type { AnchorHTMLAttributes, CSSProperties, ReactNode } from 'react';
 import { CoinCharacter, FoodBit, Icon, useReducedMotion, type CoinMood, type FoodKind, type IconName, type SeedPaint } from '../../design';
 import { Link } from '../router';
+import { WaxSeal } from './MintRitual';
 
 /* ------------------------------------------------------------------ */
 /* The night sky of the mint plate                                    */
@@ -79,6 +80,7 @@ export function EmblemPanel({
   ribbonAs = 'span',
   phase,
   phaseTone = 'idle',
+  seal = null,
 }: {
   no: string;
   mood?: CoinMood;
@@ -87,6 +89,8 @@ export function EmblemPanel({
   ribbonAs?: 'span' | 'h2';
   phase: ReactNode;
   phaseTone?: 'idle' | 'live' | 'done';
+  /** The wax seal on the ribbon: pressed, trembling (a mint in flight), or none. */
+  seal?: 'sealed' | 'trembling' | null;
 }) {
   const Rib = ribbonAs;
   return (
@@ -108,6 +112,7 @@ export function EmblemPanel({
         <CoinCharacter paint="sun" mood={mood} size={176} look={[2, 0]} bob blink={mood !== 'sleepy'} />
       </div>
       <Rib className="mt-emblem__rib display">{ribbon}</Rib>
+      {seal && <WaxSeal className="mt-emblem__wax" size={56} state={seal} />}
     </div>
   );
 }
@@ -208,7 +213,7 @@ function seeded(seed: number) {
  * Food bits burst out from behind the emblems and rain down past them, spinning. Reduced motion:
  * they are simply scattered around the pile, still.
  */
-export function FoodConfetti({ count = 40, seed = 11 }: { count?: number; seed?: number }) {
+export function FoodConfetti({ count = 40, seed = 11, delay = 0 }: { count?: number; seed?: number; delay?: number }) {
   const reduced = useReducedMotion();
   const rnd = seeded(seed);
   const bits = Array.from({ length: count }, (_, i) => {
@@ -222,7 +227,7 @@ export function FoodConfetti({ count = 40, seed = 11 }: { count?: number; seed?:
       y: Math.sin(angle) * dist * 0.75 - 90,
       fall: 260 + rnd() * 320,
       spin: (rnd() - 0.5) * 900,
-      delay: 0.3 + rnd() * 0.25,
+      delay: delay + 0.3 + rnd() * 0.25,
       dur: 2 + rnd() * 1.4,
     };
   });
@@ -276,7 +281,7 @@ function burstPath(points: number, outer: number, inner: number): string {
 }
 
 /** A chunky sun starburst (ink edge, one shade ring) that pops in behind the stickers and turns slowly. */
-export function Starburst() {
+export function Starburst({ delay = 0 }: { delay?: number }) {
   const reduced = useReducedMotion();
   return (
     <motion.div
@@ -284,7 +289,7 @@ export function Starburst() {
       aria-hidden="true"
       initial={reduced ? { opacity: 0 } : { scale: 0.2, opacity: 0, rotate: -30 }}
       animate={reduced ? { opacity: 1 } : { scale: 1, opacity: 1, rotate: 0 }}
-      transition={reduced ? { duration: 0.12 } : { type: 'spring', stiffness: 260, damping: 16, mass: 0.9, delay: 0.1 }}
+      transition={reduced ? { duration: 0.12 } : { type: 'spring', stiffness: 260, damping: 16, mass: 0.9, delay: delay + 0.1 }}
     >
       <svg className="mt-burst__art" viewBox="-260 -260 520 520" focusable="false">
         <path d={burstPath(18, 250, 196)} className="mt-burst__outer" />

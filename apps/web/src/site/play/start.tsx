@@ -16,6 +16,8 @@ export function startPlay(root: HTMLElement): void {
   document.title = 'Elymum · Arena';
   // the arena handles its own pinch and drag: no page zoom there (the site pages keep zoom)
   document.querySelector('meta[name="viewport"]')?.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
+  // the static boot loader from index.html (the other entries replace it by rendering into root)
+  root.querySelector(':scope > .boot')?.remove();
   const holder = document.createElement('div');
   root.appendChild(holder);
   const gate = createRoot(holder);

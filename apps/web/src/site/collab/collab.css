@@ -1087,3 +1087,412 @@
     margin-top: -12px;
   }
 }
+
+/* ---------------------------------------------------------------- */
+/* The plates' little stories                                         */
+/* ---------------------------------------------------------------- */
+.cb-art * {
+  transform-box: fill-box;
+}
+
+/* in review: the magnifier sweeps the application, ticking lines off */
+.cb-inspect__glass {
+  transform-origin: 75% 75%;
+  animation: cb-sweep 4.8s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+@keyframes cb-sweep {
+  0%,
+  100% {
+    transform: translate(-30px, -14px) rotate(-6deg);
+  }
+  20% {
+    transform: translate(-6px, -12px) rotate(4deg);
+  }
+  40% {
+    transform: translate(-30px, -2px) rotate(-4deg);
+  }
+  60% {
+    transform: translate(-8px, 0) rotate(6deg);
+  }
+  80% {
+    transform: translate(-26px, 10px) rotate(-2deg);
+  }
+}
+.cb-inspect__glint {
+  animation: cb-glint 4.8s ease-in-out infinite;
+}
+@keyframes cb-glint {
+  0%,
+  45%,
+  100% {
+    opacity: 0.9;
+  }
+  50% {
+    opacity: 0.2;
+  }
+}
+.cb-inspect__tick {
+  stroke-dasharray: 14;
+  stroke-dashoffset: 14;
+  animation: cb-tick 4.8s ease-out infinite;
+}
+.cb-inspect__tick--1 {
+  animation-name: cb-tick-1;
+}
+.cb-inspect__tick--2 {
+  animation-name: cb-tick-2;
+}
+.cb-inspect__tick--3 {
+  animation-name: cb-tick-3;
+}
+@keyframes cb-tick-1 {
+  0%,
+  22% {
+    stroke-dashoffset: 14;
+  }
+  28%,
+  92% {
+    stroke-dashoffset: 0;
+  }
+  100% {
+    stroke-dashoffset: 14;
+  }
+}
+@keyframes cb-tick-2 {
+  0%,
+  44% {
+    stroke-dashoffset: 14;
+  }
+  50%,
+  92% {
+    stroke-dashoffset: 0;
+  }
+  100% {
+    stroke-dashoffset: 14;
+  }
+}
+@keyframes cb-tick-3 {
+  0%,
+  64% {
+    stroke-dashoffset: 14;
+  }
+  70%,
+  92% {
+    stroke-dashoffset: 0;
+  }
+  100% {
+    stroke-dashoffset: 14;
+  }
+}
+.cb-vig--mist .cb-vig__prop {
+  bottom: 30px;
+}
+
+/* not this time: it rains on the coin */
+.cb-rain__cloud {
+  animation: cb-cloud 3.6s ease-in-out infinite;
+}
+@keyframes cb-cloud {
+  50% {
+    transform: translateX(4px);
+  }
+}
+.cb-rain__drop {
+  opacity: 0;
+  animation: cb-drop 1.35s cubic-bezier(0.55, 0, 1, 0.45) infinite;
+}
+@keyframes cb-drop {
+  0% {
+    opacity: 0;
+    transform: translateY(0);
+  }
+  12% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(84px) scaleY(0.6);
+  }
+}
+.cb-rain__ripple {
+  transform-origin: center;
+  animation: cb-ripple 1.35s ease-out infinite;
+}
+@keyframes cb-ripple {
+  0% {
+    opacity: 0.9;
+    transform: scale(0.4);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.8);
+  }
+}
+.cb-vig--linen .cb-vig__prop {
+  left: calc(18% + 12px);
+  bottom: 0;
+}
+
+/* submitted: the letter flies off, flapping */
+.cb-letter__body {
+  animation: cb-fly 2.4s ease-in-out infinite;
+}
+@keyframes cb-fly {
+  50% {
+    transform: translate(4px, -7px) rotate(-3deg);
+  }
+}
+.cb-letter__wing {
+  transform-origin: 50% 100%;
+  animation: cb-flap 0.42s ease-in-out infinite alternate;
+}
+.cb-letter__wing--back {
+  animation-delay: -0.21s;
+}
+@keyframes cb-flap {
+  to {
+    transform: scaleY(0.45) rotate(-8deg);
+  }
+}
+.cb-letter__speed path {
+  stroke-dasharray: 12;
+  animation: cb-speed 0.9s linear infinite;
+}
+.cb-letter__speed path:nth-child(2) {
+  animation-delay: -0.3s;
+}
+.cb-letter__speed path:nth-child(3) {
+  animation-delay: -0.6s;
+}
+@keyframes cb-speed {
+  from {
+    stroke-dashoffset: 24;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.cb-vig--sand .cb-vig__prop {
+  bottom: 50px;
+}
+
+/* approved: the feast bits hop, one after another */
+.cb-vig__feast > * {
+  animation: cb-hop 2.8s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+.cb-vig__feast > *:nth-child(2) {
+  animation-delay: 0.16s;
+}
+.cb-vig__feast > *:nth-child(3) {
+  animation-delay: 0.32s;
+}
+@keyframes cb-hop {
+  0%,
+  30%,
+  100% {
+    transform: none;
+  }
+  10% {
+    transform: translateY(-14px) rotate(-8deg);
+  }
+  20% {
+    transform: translateY(0) scale(1.08, 0.9);
+  }
+}
+
+/* asleep: z's float up off the coin */
+.cb-zzz {
+  position: absolute;
+  left: calc(18% + 70px);
+  bottom: 112px;
+  pointer-events: none;
+}
+.cb-zzz i {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  font-family: var(--font-display);
+  font-variation-settings: var(--fv-display);
+  font-weight: 900;
+  font-style: normal;
+  font-size: 18px;
+  color: var(--cream);
+  -webkit-text-stroke: 1.5px var(--outline);
+  paint-order: stroke fill;
+  opacity: 0;
+  animation: cb-z 3.6s ease-out infinite;
+}
+.cb-zzz i:nth-child(2) {
+  animation-delay: 1.2s;
+  font-size: 22px;
+}
+.cb-zzz i:nth-child(3) {
+  animation-delay: 2.4s;
+  font-size: 27px;
+}
+@keyframes cb-z {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) rotate(-10deg);
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(26px, -54px) rotate(12deg);
+  }
+}
+@media (max-width: 599px) {
+  .cb-zzz {
+    left: calc(8% + 64px);
+    bottom: 96px;
+  }
+}
+
+/* the courier on the mission log: carries the application to the current leg */
+.cb-log__leg.is-now .cb-log__dot:has(.cb-courier) {
+  overflow: visible;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  animation: none;
+}
+.cb-courier {
+  position: absolute;
+  left: 50%;
+  bottom: -2px;
+  display: block;
+  width: 30px;
+  height: 34px;
+  translate: -50% 0;
+  animation: cb-walk 0.9s ease-in-out infinite;
+}
+.cb-courier__coin {
+  display: block;
+}
+.cb-courier__letter {
+  position: absolute;
+  left: -11px;
+  top: 12px;
+  rotate: -14deg;
+}
+@keyframes cb-walk {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-5deg);
+  }
+  50% {
+    transform: translateY(-3px) rotate(5deg);
+  }
+}
+
+/* the spots as seats at the feast */
+.cb-seats {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+}
+.cb-seats__row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(26px, 1fr));
+  gap: 6px 4px;
+  margin: 0;
+  padding: 10px 12px 8px;
+  list-style: none;
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: 14px;
+  background: #DDEFE7;
+}
+.cb-seat {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  align-content: end;
+  height: 46px;
+}
+.cb-seat__stool {
+  display: block;
+  width: 26px;
+  height: 19px;
+}
+.cb-seat__coin {
+  margin-bottom: -6px;
+  animation: cb-sit 520ms cubic-bezier(0.34, 1.56, 0.64, 1) var(--hop, 0ms) both;
+}
+@keyframes cb-sit {
+  0% {
+    opacity: 0;
+    transform: translateY(-22px) scale(0.6);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(2px) scale(1.06, 0.9);
+  }
+  100% {
+    transform: none;
+  }
+}
+.cb-seats.is-locked .cb-seat__coin,
+.cb-seats.is-still .cb-seat__coin {
+  animation: none;
+}
+.cb-seats__key {
+  font-size: 11px;
+  color: #6b655a;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cb-inspect__glass,
+  .cb-inspect__glint,
+  .cb-rain__cloud,
+  .cb-rain__ripple,
+  .cb-letter__body,
+  .cb-letter__wing,
+  .cb-letter__speed path,
+  .cb-vig__feast > *,
+  .cb-courier,
+  .cb-seat__coin {
+    animation: none;
+  }
+  .cb-inspect__glass {
+    transform: translate(-8px, -2px);
+  }
+  .cb-inspect__tick {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+  .cb-rain__drop {
+    animation: none;
+    opacity: 1;
+  }
+  .cb-rain__drop:nth-child(n + 4) {
+    transform: translateY(22px);
+  }
+  .cb-zzz i {
+    animation: none;
+    opacity: 1;
+  }
+  .cb-zzz i:nth-child(2) {
+    transform: translate(12px, -22px);
+  }
+  .cb-zzz i:nth-child(3) {
+    transform: translate(26px, -48px);
+  }
+}
+.cb-vig.is-paused *,
+.cb-vig.is-paused *::before {
+  animation-play-state: paused !important;
+}
+@media (max-width: 599px) {
+  .cb-vig--linen {
+    height: 186px;
+  }
+  .cb-vig--linen .cb-vig__prop .cb-art {
+    width: 72px;
+    height: 129px;
+  }
+}

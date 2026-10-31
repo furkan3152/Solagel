@@ -1,13 +1,14 @@
 import { COLLAB_ROLES, COLLAB_TYPES, SITE_LIMITS, isXStatusUrl, type CollabPublic, type CollabWalletRow } from '@elymum/shared';
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type ReactNode } from 'react';
-import { Button, CoinCharacter, Field, FoodBit, Icon, Stamp, StampSpinner, Sticker, Tape, type CoinMood, type CoinPaint, type StampTone } from '../../design';
+import { Button, CoinCharacter, Field, FoodBit, Icon, Stamp, StampSpinner, Sticker, Tape, useOffscreenPause, type CoinMood, type CoinPaint, type StampTone } from '../../design';
 import { SiteApiError, site } from '../api';
 import { dropExpired } from '../session';
 import { X_URL, useSiteSettings, xProfile } from '../settings';
 import { SitePage, XIcon } from '../Shell';
 import { SiteWalletProvider, WalletSignIn, useSiteSession } from '../wallet/SiteWallet';
 import { Ascent } from '../wl/Ascent';
-import { ChoreArt, Magnifier, Moon, RainCloud, Sealed } from '../wl/ChoreArt';
+import { ChoreArt, Moon } from '../wl/ChoreArt';
+import { Courier, FlyingLetter, Inspection, RainyCloud, SeatRow, Snores } from './CollabArt';
 import { StoryPlate } from '../wl/Plate';
 import { CollabGuide } from './CollabGuide';
 import {
@@ -255,6 +256,7 @@ function Vignette({
   prop,
   second,
   night = false,
+  coinSize = 104,
 }: {
   tone: 'mist' | 'linen' | 'mint' | 'sand' | 'night' | 'sun';
   plate: string;
@@ -264,9 +266,12 @@ function Vignette({
   prop?: ReactNode;
   second?: { paint: CoinPaint; mood: CoinMood };
   night?: boolean;
+  /** A smaller coin leaves room for a prop over its head. */
+  coinSize?: number;
 }) {
+  const [ref, visible] = useOffscreenPause<HTMLElement>();
   return (
-    <figure className={`cb-vig cb-vig--${tone}`} aria-hidden="true">
+    <figure ref={ref} className={`cb-vig cb-vig--${tone}${visible ? '' : ' is-paused'}`} aria-hidden="true">
       <span className="cb-vig__ground" />
       {night && (
         <span className="cb-vig__stars">
@@ -277,7 +282,7 @@ function Vignette({
         </span>
       )}
       <span className="cb-vig__coin">
-        <CoinCharacter paint={coin} mood={mood} size={104} feet ground sweat={mood === 'scared'} bob={mood === 'happy'} look={[3, 0]} />
+        <CoinCharacter paint={coin} mood={mood} size={coinSize} feet ground sweat={mood === 'scared'} bob={mood === 'happy'} look={[3, 0]} />
       </span>
       {second && (
         <span className="cb-vig__coin cb-vig__coin--2">
@@ -285,6 +290,7 @@ function Vignette({
         </span>
       )}
       {prop && <span className="cb-vig__prop">{prop}</span>}
+      {mood === 'sleepy' && <Snores />}
       <figcaption className="cb-vig__cap mono">
         <span>{plate}</span>
         <span>{caption}</span>
@@ -528,7 +534,7 @@ function MissionLog({ c }: { c: CollabPublic }) {
       {legs.map((l) => (
         <li key={l.k} className={`cb-log__leg is-${l.state}`}>
           <span className="cb-log__dot" aria-hidden="true">
-            {l.state === 'done' ? <Icon name="check" size={12} /> : l.state === 'bad' ? <Icon name="close" size={12} /> : null}
+            {l.state === 'done' ? <Icon name="check" size={12} /> : l.state === 'bad' ? <Icon name="close" size={12} /> : l.state === 'now' ? <Courier /> : null}
           </span>
           <span className="cb-log__text">{l.text}</span>
           {l.at && <span className="cb-log__at num">{l.at}</span>}
@@ -582,7 +588,7 @@ export function CollabView({ collab: c, onChange, onGuide, onExpired }: { collab
         tone="sun"
         title="Thanks for applying."
         c={c}
-        vignette={<Vignette tone="mist" plate="Plate V.ii" caption="Someone is reading it" coin="cyan" mood="smug" prop={<Magnifier size={78} />} />}
+        vignette={<Vignette tone="mist" plate="Plate V.ii" caption="Someone is reading it" coin="cyan" mood="smug" prop={<Inspection size={116} />} />}
       >
         We are reviewing it and will DM <strong>@{c.contactX}</strong> on X. This page updates by itself once your spots are ready, so no need to refresh it every four
         minutes. (We would.)
@@ -595,7 +601,7 @@ export function CollabView({ collab: c, onChange, onGuide, onExpired }: { collab
         tone="down"
         title="Not this time."
         c={c}
-        vignette={<Vignette tone="linen" plate="Plate V.ii" caption="A little rain" coin="foam" mood="scared" prop={<RainCloud size={92} />} />}
+        vignette={<Vignette tone="linen" plate="Plate V.ii" caption="A little rain" coin="foam" mood="scared" coinSize={88} prop={<RainyCloud size={84} />} />}
       >
         Thanks for applying. We cannot offer spots to this community this round. DM{' '}
         <a className="cb-link" href={X_URL} target="_blank" rel="noreferrer">
@@ -759,7 +765,7 @@ function SpotsView({ c, onChange, onGuide, onExpired }: { c: CollabPublic; onCha
 
   const vignette =
     c.phase === 'submitted' ? (
-      <Vignette tone="sand" plate="Plate V.iv" caption="Sealed and sent" coin="teal" mood="happy" prop={<Sealed size={90} />} />
+      <Vignette tone="sand" plate="Plate V.iv" caption="Sealed and sent" coin="teal" mood="happy" prop={<FlyingLetter size={104} />} />
     ) : c.phase === 'closed' ? (
       <Vignette tone="night" plate="Plate V.iv" caption="The bell rang" coin="cream" mood="sleepy" prop={<Moon size={80} />} night />
     ) : (
@@ -870,6 +876,7 @@ function SpotsView({ c, onChange, onGuide, onExpired }: { c: CollabPublic; onCha
             {locked ? c.wallets.length : filled.length} / {spots}
           </span>
         </div>
+        <SeatRow spots={spots} filled={locked ? c.wallets.length : filled.length} locked={locked} />
         {!locked && (
           <p className="cb-paste">
             <span className="kb-key">Paste</span> a list (a name and a wallet on each line) into any row: it fills the rows below. One person per row.
