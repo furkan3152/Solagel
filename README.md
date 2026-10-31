@@ -5,14 +5,16 @@
 [![CI](https://github.com/furkan3152/Solagel/actions/workflows/ci.yml/badge.svg)](https://github.com/furkan3152/Solagel/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Slana (this repository is named Solagel) is a browser game where you play a coin: eat food and smaller coins, split,
-dodge bigger players. Paid arenas take a fixed ticket in the $SLANA token and the value of a player you eat moves to
-you; when the 5-minute round bell rings, everyone still alive is paid out on-chain. Real-time physics at 30 Hz cannot
-run on a blockchain, so Slana is a hybrid: an authoritative Node server runs the game, and a small Solana program
-holds the money rules (ticket vaults, settlements, the fee and loot burns) so a payout can never exceed what the arena
-actually holds.
+Slana is a browser game where you play a coin: eat food and smaller coins, split, dodge bigger players. Paid arenas
+take a fixed ticket in the $SLANA token and the value of a player you eat moves to you; when the 5-minute round bell
+rings, everyone still alive is paid out on-chain. Real-time physics at 30 Hz cannot run on a blockchain, so Slana is a
+hybrid: an authoritative Node server runs the game, and a small Solana program holds the money rules (ticket vaults,
+settlements, the fee and loot burns) so a payout can never exceed what the arena actually holds.
 
 - Website: [slana.io](https://slana.io) (landing page, NFT allowlist and collab applications).
+- Name: the product is **Slana** (the game, slana.io, the $SLANA token, the `@slana/*` packages and the
+  `slana-ref` / `slana-lean` program crates). **Solagel** is only the name of this GitHub repository and does not
+  appear in the code. Package, crate and program names are deployed or on-chain, so they stay `slana`.
 - Status: the program is deployed on Solana mainnet-beta but not initialized yet; paid arenas open once the $SLANA
   token is set. Until then the game is in a closed beta (see [docs/PROJECT.md](docs/PROJECT.md#7-live-deployment)).
 - The smart contract has not been audited, and a game played with a token of real value may need a licence where
