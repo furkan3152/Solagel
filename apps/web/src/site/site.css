@@ -888,3 +888,37 @@ html[data-turn='back']::view-transition-old(root) {
     animation: none;
   }
 }
+
+/* recover.tsx: a page that did not open (a stale tab after a deploy, or a crash inside a page) */
+.site-trouble {
+  min-height: 70vh;
+  display: grid;
+  place-items: center;
+  padding: 48px 20px;
+  background: var(--paper, #faf6ec);
+  font-family: var(--font-body);
+  color: var(--ink, #0f2a30);
+}
+.site-trouble__card {
+  max-width: 520px;
+  padding: 28px;
+  border: 3px solid var(--ink, #0f2a30);
+  border-radius: 24px;
+  background: var(--cream, #fff8e7);
+  box-shadow: 6px 6px 0 var(--ink, #0f2a30);
+  text-align: left;
+}
+.site-trouble__h {
+  margin: 8px 0 10px;
+  font-size: clamp(28px, 5vw, 40px);
+  line-height: 1.05;
+}
+.site-trouble__card p {
+  margin: 0 0 20px;
+  line-height: 1.5;
+}
+.site-trouble__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}

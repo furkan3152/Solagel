@@ -1,8 +1,9 @@
-import { lazy, StrictMode, Suspense, useEffect, type ComponentType } from 'react';
+import { lazy, StrictMode, Suspense, useEffect, useState, type ComponentType } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Landing } from './landing/Landing';
 import { NotFound } from './NotFound';
-import { isLazyPage, loadedPage, warmPage } from './pages';
+import { isLazyPage, loadPage, loadedPage } from './pages';
+import { installChunkRecovery, PageBoundary } from './recover';
 import { isSitePath, usePath } from './router';
 import { SiteLoader } from './SiteLoader';
 
@@ -12,8 +13,10 @@ const lazies = new Map<string, ComponentType>();
 function lazyPage(path: string): ComponentType {
   let c = lazies.get(path);
   if (!c) {
-    // warm already: the page itself; else a lazy wrapper (once resolved it never suspends again)
-    c = loadedPage(path) ?? lazy(() => warmPage(path).then((p) => ({ default: p ?? (() => <NotFound path={path} />) })));
+    // warm already: the page itself; else a lazy wrapper (once resolved it never suspends again).
+    // A failed download rejects: the boundary reloads once (a stale tab after a deploy) or offers
+    // a retry; it is never shown as "not found".
+    c = loadedPage(path) ?? lazy(() => loadPage(path).then((p) => ({ default: p })));
     lazies.set(path, c);
   }
   return c;
@@ -33,19 +36,35 @@ export function SiteApp() {
   useEffect(() => {
     document.title = TITLES[path] ?? (isSitePath(path) ? TITLES['/'] : 'Off the map · Elymum');
   }, [path]);
-  if (path === '/') return <Landing />;
+  const [attempt, setAttempt] = useState(0);
+  if (path === '/')
+    return (
+      <PageBoundary resetKey={path}>
+        <Landing />
+      </PageBoundary>
+    );
   if (!isLazyPage(path)) return <NotFound path={path} />;
   const Page = lazyPage(path);
   return (
-    <Suspense fallback={<SiteLoader />}>
-      <Page />
-    </Suspense>
+    <PageBoundary
+      resetKey={`${path}#${attempt}`}
+      onRetry={() => {
+        // a failed lazy keeps its rejection: build a fresh one for the next try
+        if (!loadedPage(path)) lazies.delete(path);
+        setAttempt((n) => n + 1);
+      }}
+    >
+      <Suspense fallback={<SiteLoader />}>
+        <Page />
+      </Suspense>
+    </PageBoundary>
   );
 }
 
 /** The public site: `/`, `/mint`, `/faucet`, `/wl`, `/collab`, `/docs`. */
 export function mount(root: HTMLElement): void {
   document.documentElement.dataset.theme = 'light';
+  installChunkRecovery();
   createRoot(root).render(
     <StrictMode>
       <SiteApp />

@@ -2,8 +2,8 @@
  * The mint page's logic, pure (no React, no network) so every state is unit-tested.
  * See docs/specs/2026-10-29-elymum-on-elysium.md (sections 3.2, 4.4 and 5).
  */
-import { MintPhase, elymumNFTAbi, mintRefusal } from '@elymum/sdk';
-import type { GameAccess, MintContractState, MintProofResponse, MintState } from '@elymum/shared';
+import { MintPhase, elymumNFTAbi, mintRefusal, type DescribedError } from '@elymum/sdk';
+import { isMainnet, type GameAccess, type MintContractState, type MintProofResponse, type MintState } from '@elymum/shared';
 import { parseEventLogs, type Address, type Log } from 'viem';
 
 /** What the page shows. `unavailable`: no NFT contract registered yet (or the chain is off). */
@@ -98,4 +98,69 @@ export function emblemPerks(testnet: boolean | null, fee: { holderBps?: number |
   out.push({ id: 'skin', title: 'Your coin, in the game', note: 'Its face and colour as your skin, and a laurel on your name tag.' });
   if (testnet) out.push({ id: 'faucet', title: '2x from the faucet', note: 'Holders claim twice the test tokens.' });
   return out;
+}
+
+/* ── price copy ─────────────────────────────────────────────────────── */
+
+/**
+ * What the page may say about the price. `testnet`: a fixed test price (say it plainly, and that
+ * mainnet is much cheaper). `dollar`: the price really tracks the USD target (within ±10 %), so
+ * the "one dollar" story holds. `plain`: neither (the feed is off or the price drifted): state
+ * the HYPE price and nothing more.
+ */
+export type PriceStory = 'testnet' | 'dollar' | 'plain';
+
+/** How far the USD price may sit from the target and still be called "a dollar". */
+export const DOLLAR_TOLERANCE = 0.1;
+
+export function priceStory(s: Pick<MintState, 'priceUsd' | 'targetUsdCents' | 'chainId'>, testnet: boolean | null): PriceStory {
+  const onTestnet = testnet ?? (s.chainId != null ? !isMainnet(s.chainId) : null);
+  if (onTestnet) return 'testnet';
+  const target = s.targetUsdCents / 100;
+  if (s.priceUsd !== null && Number.isFinite(s.priceUsd) && target > 0 && Math.abs(s.priceUsd - target) <= target * DOLLAR_TOLERANCE) return 'dollar';
+  return 'plain';
+}
+
+/** `1000000000000000000n` → `1`, `31250000000000000n` → `0.0313`: HYPE for prose (at most 4 decimals). */
+export function hypeText(wei: bigint): string {
+  if (wei < 0n) return `-${hypeText(-wei)}`;
+  // ten-thousandths of a HYPE, rounded half up
+  const units = (wei + 50_000_000_000_000n) / 100_000_000_000_000n;
+  if (units === 0n && wei > 0n) return '<0.0001';
+  const frac = (units % 10_000n).toString().padStart(4, '0').replace(/0+$/, '');
+  return frac ? `${units / 10_000n}.${frac}` : (units / 10_000n).toString();
+}
+
+/* ── funds and errors ──────────────────────────────────────────────── */
+
+/**
+ * Why this wallet's HYPE cannot pay `value` (the price times the quantity, plus the buffer the
+ * contract refunds), or null when it can, or when the balance is unknown (the wallet decides).
+ */
+export function fundsBlocker(balance: bigint | null, value: bigint): string | null {
+  if (balance === null || balance >= value) return null;
+  return `this mint sends ${hypeText(value)} HYPE plus gas, and this wallet holds ${hypeText(balance)} HYPE`;
+}
+
+/**
+ * Player-facing text for a failed mint: the cases that matter here get their own words, the
+ * rest falls back to `fallback` (the wallet layer's translated text).
+ */
+export function mintErrorText(e: Pick<DescribedError, 'kind' | 'name' | 'message'>, fallback: string): string {
+  if (e.kind === 'rejected') return 'You cancelled in your wallet. Nothing was minted and nothing was paid.';
+  if (e.kind === 'insufficient-funds') return 'Not enough HYPE in this wallet for the mint and its gas. Nothing was minted.';
+  switch (e.name) {
+    case 'SoldOut':
+      return 'Sold out: the last emblems went a moment ago. Nothing was charged.';
+    case 'PublicLimitExceeded':
+      return 'This wallet reached the public mint limit. Nothing was charged.';
+    case 'WlLimitExceeded':
+      return 'This wallet reached the allowlist limit. Nothing was charged.';
+    case 'MintClosed':
+      return 'The mint closed a moment ago. Nothing was charged.';
+    case 'InsufficientPayment':
+      return 'The price changed a moment ago. Nothing was charged; try again.';
+    default:
+      return fallback;
+  }
 }

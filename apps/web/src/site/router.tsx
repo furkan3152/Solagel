@@ -1,6 +1,6 @@
 import { useSyncExternalStore, type AnchorHTMLAttributes, type FocusEvent, type MouseEvent, type TouchEvent } from 'react';
 import { flushSync } from 'react-dom';
-import { isLazyPage, loadedPage, warmPage } from './pages';
+import { isLazyPage, loadedPage, pageFailed, warmPage } from './pages';
 
 /** Paths the site app renders itself; anything else (`/play`, `/admin`) is a full page load. */
 export const SITE_PATHS = ['/', '/play', '/mint', '/faucet', '/wl', '/collab', '/docs'] as const;
@@ -42,6 +42,9 @@ function whenReady(path: string): Promise<void> | null {
   return Promise.race([warmPage(path).then(() => undefined), new Promise<void>((r) => setTimeout(r, WARM_WAIT_MS))]);
 }
 
+/** The page at `path` is not loaded and its last download failed. */
+const staleChunk = (path: string): boolean => isLazyPage(path) && !loadedPage(path) && pageFailed(path);
+
 let popBound = false;
 /** Back / forward: the same page turn as a click (the URL already changed; the page follows once ready). */
 function bindPop(): void {
@@ -53,6 +56,10 @@ function bindPop(): void {
     const mine = ++seq;
     const go = () => {
       if (mine !== seq) return;
+      if (staleChunk(to)) {
+        location.reload();
+        return;
+      }
       turnPage(from, to, () => {
         emit();
         if (from !== to && !location.hash) window.scrollTo({ top: 0 });
@@ -128,6 +135,12 @@ export function navigate(href: string): void {
   const mine = ++seq;
   const go = () => {
     if (mine !== seq) return;
+    // the page's chunk failed to download: most often this tab predates a deploy and its chunk
+    // names are gone. A full load fetches the current index and chunks (a 404 page would be wrong).
+    if (staleChunk(to)) {
+      location.assign(url.href);
+      return;
+    }
     turnPage(from, to, () => {
       if (!same || url.hash !== location.hash) history.pushState(null, '', `${url.pathname}${url.search}${url.hash}`);
       emit();
