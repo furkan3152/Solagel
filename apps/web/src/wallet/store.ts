@@ -138,6 +138,25 @@ export function resetWallets(): void {
 
 /* ── connect / disconnect ───────────────────────────────────────────── */
 
+/** How long a silent reconnect (`eth_accounts`) may take before the page stops waiting for it. */
+export const SILENT_CONNECT_MS = 4_000;
+
+function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => resolve(fallback), ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e: unknown) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
+  });
+}
+
 let userInitiated = false;
 /** True once after the user picked a wallet themselves (the game may then ask for the sign-in signature). */
 export function takeUserConnect(): boolean {
@@ -160,7 +179,10 @@ export async function connectWallet(detail: ProviderDetail | string, opts: { sil
   if (!opts.silent) userInitiated = true;
   useWallet.setState({ current: d, status: 'connecting', error: null });
   try {
-    const accounts = await d.provider.request({ method: opts.silent ? 'eth_accounts' : 'eth_requestAccounts' });
+    const ask = d.provider.request({ method: opts.silent ? 'eth_accounts' : 'eth_requestAccounts' });
+    // a locked wallet may never answer the silent `eth_accounts`: give up quietly instead of
+    // leaving every connect button disabled ("Connecting…") for the rest of the visit
+    const accounts = opts.silent ? await withTimeout(ask, SILENT_CONNECT_MS, []) : await ask;
     const address = firstAccount(accounts);
     if (useWallet.getState().current !== d) return null;
     if (!address) {

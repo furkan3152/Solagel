@@ -1,8 +1,8 @@
 import { addEthereumChainParams, chainInfo } from '@elymum/shared';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { announceProvider, discoverProviders, mergeProviders, type ProviderDetail } from '../src/wallet/eip6963';
 import { ensureChain, publicClientFor, serverChainInfo, WrongChainError } from '../src/wallet/network';
-import { LAST_WALLET_KEY, connectWallet, disconnectWallet, firstAccount, initWallets, parseChainId, resetWallets, takeUserConnect, useWallet } from '../src/wallet/store';
+import { LAST_WALLET_KEY, SILENT_CONNECT_MS, connectWallet, disconnectWallet, firstAccount, initWallets, parseChainId, resetWallets, takeUserConnect, useWallet } from '../src/wallet/store';
 import { ALICE, BOB, chainStatus, detail, fakeProvider } from './evm-helpers';
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -107,6 +107,25 @@ describe('the wallet store', () => {
     expect(useWallet.getState().address).toBe(ALICE);
     expect(takeUserConnect()).toBe(false);
     stop();
+  });
+
+  it('a silent reconnect the wallet never answers (locked) gives up quietly instead of "Connecting…" for good', async () => {
+    vi.useFakeTimers();
+    try {
+      const p = fakeProvider({ chainId: 99801 });
+      p.handlers.eth_accounts = () => new Promise(() => {});
+      const pending = connectWallet(detail(p, 'MetaMask', 'io.metamask'), { silent: true });
+      expect(useWallet.getState().status).toBe('connecting');
+      await vi.advanceTimersByTimeAsync(SILENT_CONNECT_MS + 10);
+      expect(await pending).toBeNull();
+      expect(useWallet.getState()).toMatchObject({ status: 'disconnected', current: null, error: null });
+      // a click afterwards still asks the wallet (the buttons are not stuck)
+      delete p.handlers.eth_accounts;
+      vi.useRealTimers();
+      expect(await connectWallet(detail(p, 'MetaMask', 'io.metamask'))).toBe(ALICE);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('disconnect forgets the wallet and asks it to revoke the permission', async () => {

@@ -61,7 +61,7 @@ export function WalletSignIn({ label = 'Sign in with your wallet', onSession }: 
   }, [picked, address]);
 
   if (session && (!address || same(session.address, address))) {
-    return (
+    const signed = (
       <div className="sw-signed">
         <StatusPill tone="ok" size="sm">
           Signed in
@@ -79,6 +79,15 @@ export function WalletSignIn({ label = 'Sign in with your wallet', onSession }: 
         >
           Switch wallet
         </button>
+      </div>
+    );
+    if (address) return signed;
+    // signed in on an earlier visit (the session outlives the wallet connection), but the wallet
+    // is not connected on this page: offer to reconnect it (same wallet: no new signature)
+    return (
+      <div className="sw">
+        {signed}
+        <WalletConnect note="Reconnect your wallet to send transactions. The same wallet needs no new signature." onPick={() => setPicked(true)} />
       </div>
     );
   }
@@ -152,6 +161,66 @@ export function WalletSignIn({ label = 'Sign in with your wallet', onSession }: 
       {(error || walletError) && (
         <p className="sw-note is-error" role="alert">
           {error ?? walletError}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Connect only (no sign-in): for pages that need the wallet's address and its transactions but
+ * not a session (the mint). Lists the wallets found in this browser.
+ */
+export function WalletConnect({ note = 'Connecting sends nothing and costs nothing.', onPick }: { note?: string; onPick?: () => void }) {
+  const providers = useWallet((s) => s.providers);
+  const status = useWallet((s) => s.status);
+  const current = useWallet((s) => s.current);
+  const walletError = useWallet((s) => s.error);
+  const connecting = status === 'connecting';
+
+  useEffect(() => initWallets(), []);
+
+  if (providers.length === 0)
+    return (
+      <p className="sw-none">
+        <span className="sw-none__icon" aria-hidden="true">
+          <Icon name="wallet" size={22} />
+        </span>
+        <span>
+          <strong>No browser wallet found.</strong> Install MetaMask, Rabby or any browser wallet, or open this page in your wallet app&apos;s browser.
+        </span>
+      </p>
+    );
+  return (
+    <div className="sw" data-testid="sw-connect">
+      <div className="sw-wallets" role="group" aria-label="Wallets">
+        {providers.map((d) => {
+          const busy = connecting && current?.info.uuid === d.info.uuid;
+          return (
+            <button
+              key={d.info.uuid}
+              type="button"
+              className={`sw-opt${busy ? ' is-busy' : ''}`}
+              disabled={connecting}
+              aria-busy={busy}
+              onClick={() => {
+                onPick?.();
+                void connectWallet(d);
+              }}
+            >
+              <span className="sw-opt__icon" aria-hidden="true">
+                {d.info.icon ? <img src={d.info.icon} alt="" /> : <Icon name="wallet" size={20} />}
+              </span>
+              <span className="sw-opt__name">Connect {d.info.name}</span>
+              <Icon name="arrow" size={18} className="sw-opt__go" />
+            </button>
+          );
+        })}
+      </div>
+      <p className="sw-note">{connecting ? 'Connecting… check your wallet.' : note}</p>
+      {walletError && (
+        <p className="sw-note is-error" role="alert">
+          {walletError}
         </p>
       )}
     </div>

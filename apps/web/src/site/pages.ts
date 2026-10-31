@@ -18,6 +18,11 @@ const LOADERS: Record<string, Loader> = {
 
 const loaded = new Map<string, ComponentType>();
 const pending = new Map<string, Promise<ComponentType | null>>();
+/** The last download failure per path (a stale tab after a deploy, or the network). */
+const failed = new Map<string, unknown>();
+
+/** True when the last try to load the page at `path` failed. */
+export const pageFailed = (path: string): boolean => failed.has(path);
 
 /** A page component that is already loaded (render it directly: no Suspense, no loader flash). */
 export function loadedPage(path: string): ComponentType | null {
@@ -49,10 +54,12 @@ export function warmPage(path: string): Promise<ComponentType | null> {
   const p = load().then(
     (c) => {
       loaded.set(path, c);
+      failed.delete(path);
       pending.delete(path);
       return c;
     },
-    () => {
+    (err: unknown) => {
+      failed.set(path, err);
       pending.delete(path);
       return null;
     },
@@ -61,8 +68,30 @@ export function warmPage(path: string): Promise<ComponentType | null> {
   return p;
 }
 
+/**
+ * `warmPage` for rendering: resolves with the component, rejects with the download error (so
+ * the page can recover: reload once, or offer a retry; never a 404 for a page that exists).
+ */
+export async function loadPage(path: string): Promise<ComponentType> {
+  const c = await warmPage(path);
+  if (c) return c;
+  throw new ChunkLoadError(path, failed.get(path));
+}
+
+/** A page's code could not be downloaded (browsers word this differently; the name is what counts). */
+export class ChunkLoadError extends Error {
+  override name = 'ChunkLoadError';
+  constructor(
+    readonly path: string,
+    override readonly cause?: unknown,
+  ) {
+    super(`The code for ${path} could not be loaded${cause instanceof Error ? `: ${cause.message}` : '.'}`);
+  }
+}
+
 /** For tests. */
 export function resetPages(): void {
   loaded.clear();
   pending.clear();
+  failed.clear();
 }

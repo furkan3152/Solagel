@@ -1,4 +1,4 @@
-import { getMintState, getMintedBy, mintAllowlistCall, mintPublicCall, type MintState as ChainMintState } from '@elymum/sdk';
+import { describeError, encodeCall, getMintState, getMintedBy, mintAllowlistCall, mintPublicCall, mintValue, type MintState as ChainMintState } from '@elymum/sdk';
 import type { ChainStatus, MintContractState, MintProofResponse, MintState, WlEntryPublic } from '@elymum/shared';
 import { motion } from 'motion/react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -11,14 +11,30 @@ import { useWallet } from '../../wallet/store';
 import { sendWalletCall, txErrorText, type TxPhase } from '../../wallet/tx';
 import { site } from '../api';
 import { dropExpired } from '../session';
+import { HYPE_FAUCET_URL } from '../faucet/logic';
 import { X_URL } from '../settings';
 import { isTestnetChain } from '../serverChain';
 import { SitePage } from '../Shell';
-import { SiteWalletProvider, WalletSignIn, useSiteSession } from '../wallet/SiteWallet';
+import { SiteWalletProvider, WalletConnect, WalletSignIn, useSiteSession } from '../wallet/SiteWallet';
 import { EmblemPanel, FoodConfetti, LinkButton, Starburst, MintSky, MintTrack, type TrackStage } from './MintArt';
 import { EmblemHand, Flap, FlipCard, SealBreak } from './MintRitual';
 import { EmblemPerks } from './Perks';
-import { emblemPerks, mintBlocker, mintKind, mintView, mintedTokenIds, playOpenForHolders, remaining, usdText, type MintView } from './logic';
+import {
+  emblemPerks,
+  fundsBlocker,
+  hypeText,
+  mintBlocker,
+  mintErrorText,
+  mintKind,
+  mintView,
+  mintedTokenIds,
+  playOpenForHolders,
+  priceStory,
+  remaining,
+  usdText,
+  type MintView,
+  type PriceStory,
+} from './logic';
 import './mint.css';
 
 /** The NFT emblem image the server draws for a token id. */
@@ -68,6 +84,33 @@ export function toContractState(s: ChainMintState): MintContractState {
     treasury: s.treasury,
     frozen: s.frozen,
   };
+}
+
+type ReadClient = NonNullable<ReturnType<typeof publicClientFor>>;
+
+/** The wallet's HYPE, or null when the read fails. */
+async function readBalance(client: ReadClient, address: Address): Promise<bigint | null> {
+  try {
+    const b = await client.getBalance({ address });
+    return typeof b === 'bigint' ? b : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Estimates the mint from the wallet (`eth_estimateGas`, nothing is sent). Returns the text to
+ * show when the chain clearly refuses it (a contract error, too little HYPE), else null.
+ */
+async function dryRun(client: ReadClient, from: Address, call: ReturnType<typeof mintPublicCall>): Promise<string | null> {
+  try {
+    await client.estimateGas({ account: from, ...encodeCall(call) });
+    return null;
+  } catch (err) {
+    const e = describeError(err);
+    if (e.kind === 'contract' || e.kind === 'insufficient-funds') return mintErrorText(e, e.message);
+    return null;
+  }
 }
 
 /** `/mint`: Plate II, "The mint, after dark" (Closed / Allowlist / Public / Sold out, and the minted moment). */
@@ -123,6 +166,8 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
   const session = useSiteSession();
   const [proof, setProof] = useState<MintProofResponse | null>(null);
   const [minted, setMinted] = useState<{ wl: number; pub: number }>({ wl: 0, pub: 0 });
+  /** The wallet's HYPE (wei); null while unknown (the wallet then decides). */
+  const [balance, setBalance] = useState<bigint | null>(null);
   const [wl, setWl] = useState<WlEntryPublic | null | undefined>(undefined);
   const [qty, setQty] = useState(1);
   const [phase, setPhase] = useState<Phase>('idle');
@@ -154,12 +199,22 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
         },
         (e: Error) => live && setLoadErr(e.message),
       );
+    // the server's chain: asked again on every refresh until it answers (a slow or failed first
+    // answer must not leave the mint button disabled for the rest of the visit)
+    let retry: number | undefined;
+    const loadChain = (n = 0): void =>
+      void fetchServerChain().then((c) => {
+        if (!live) return;
+        if (c) setChain(c);
+        else if (n < 6) retry = window.setTimeout(() => loadChain(n + 1), 1500 * (n + 1));
+      });
     void load();
-    void fetchServerChain().then((c) => live && setChain(c));
+    loadChain();
     const id = pollMs > 0 ? window.setInterval(() => void load(), pollMs) : null;
     return () => {
       live = false;
       if (id) clearInterval(id);
+      clearTimeout(retry);
     };
   }, [pollMs, tick]);
 
@@ -169,6 +224,7 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
   useEffect(() => {
     setProof(null);
     setMinted({ wl: 0, pub: 0 });
+    setBalance(null);
     if (!address || !nft) return;
     let live = true;
     site.mintProof(address).then(
@@ -176,7 +232,13 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
       () => live && setProof({ eligible: false, proof: [], root: null, onchainRoot: null }),
     );
     const client = publicClientFor(chain, provider);
-    if (client) void getMintedBy(client, nft, address).then((m) => live && setMinted(m), () => {});
+    if (client) {
+      void getMintedBy(client, nft, address).then((m) => live && setMinted(m), () => {});
+      void Promise.resolve()
+        .then(() => client.getBalance({ address }))
+        .then((b) => live && typeof b === 'bigint' && setBalance(b))
+        .catch(() => {});
+    }
     return () => {
       live = false;
     };
@@ -242,11 +304,16 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
   const q = Math.max(1, Math.min(qty, Math.max(1, left)));
   const priceWei = c ? BigInt(c.priceWei) : 0n;
   const busy = phase === 'preparing' || phase === 'switching' || phase === 'signing' || phase === 'confirming';
-  const blocker = c && kind && address ? mintBlocker(c, minted, { kind, qty: q, proof }) : null;
+  // what the wallet sends: the price times the quantity, plus the buffer the contract refunds
+  const value = priceWei > 0n ? mintValue(priceWei, q) : 0n;
+  const refusal = c && kind && address ? mintBlocker(c, minted, { kind, qty: q, proof }) : null;
+  const poor = !!(c && kind && address && !refusal && fundsBlocker(balance, value));
+  const blocker = refusal ?? (poor ? fundsBlocker(balance, value) : null);
   const playOpen = playOpenForHolders(state.gameAccess);
+  const story = priceStory(state, isTestnetChain(chain));
 
   const mint = async () => {
-    if (inFlight.current || !c || !kind || !address || !nft || !chain) return;
+    if (inFlight.current || !c || !kind || !address || !nft) return;
     inFlight.current = true;
     setError(null);
     setHash(null);
@@ -256,12 +323,17 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
       setError(msg);
       setPhase('error');
     };
-    const client = publicClientFor(chain, provider);
+    // the server's chain (asked again here in case the first answer never came)
+    const target = chain ?? (await fetchServerChain({ fresh: true }));
+    if (!target) return fail('The game server is not answering, so the network to mint on is unknown. Try again in a moment.');
+    if (!chain) setChain(target);
+    const client = publicClientFor(target, provider);
     if (!client) return fail('Cannot read the chain right now.');
     let price: bigint;
     try {
       // the latest price and limits, right before the wallet opens (a keeper may have re-priced)
       const [fresh, mine] = await Promise.all([getMintState(client, nft), getMintedBy(client, nft, address)]);
+      setMinted(mine);
       const why = mintBlocker(toContractState(fresh), mine, { kind, qty: q, proof });
       if (why) return fail(`Not minted: ${why}.`);
       price = fresh.price;
@@ -270,14 +342,23 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
     }
     const call =
       kind === 'allowlist' ? mintAllowlistCall(nft, { qty: q, proof: (proof?.proof ?? []) as Hex[], price }) : mintPublicCall(nft, { qty: q, price });
+    // the wallet's HYPE and a dry run, so a mint that cannot work says why here instead of in a
+    // wallet warning. Only a clear answer stops it (too little HYPE, a contract refusal); a read
+    // that fails for any other reason leaves the decision to the wallet.
+    const bal = await readBalance(client, address);
+    if (bal !== null) setBalance(bal);
+    const short = fundsBlocker(bal, call.value ?? 0n);
+    if (short) return fail(`Not enough HYPE: ${short}.`);
+    const dry = await dryRun(client, address, call);
+    if (dry) return fail(dry);
     const res = await sendWalletCall(call, {
-      chain,
+      chain: target,
       onPhase: (p, h) => {
         setPhase(p);
         if (h) setHash(h);
       },
     });
-    if (!res.ok) return fail(txErrorText(res.error));
+    if (!res.ok) return fail(mintErrorText(res.error, txErrorText(res.error)));
     setIds(mintedTokenIds(res.receipt.logs, nft, address));
     setHash(res.hash);
     setPhase('done');
@@ -399,6 +480,7 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
         </Flap>
       </span>
       <p className="mt-price__tick num">
+        {story === 'testnet' && 'Fixed testnet price · '}
         {state.hypeUsd !== null ? <>HYPE/USD {state.hypeUsd.toFixed(2)} · updated {loadedAt ? <Age since={loadedAt} /> : 'just now'}</> : 'HYPE/USD feed is napping; the contract price stands'}
         {' · gas on Elysium, also in HYPE'}
       </p>
@@ -489,10 +571,20 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
         {gauge}
         {priceRow}
         {!address ? (
-          <div className="mt-signin">
+          <div className="mt-signin" data-testid="mt-connect">
             <span className="kicker mt-card__kick">{kind === 'allowlist' ? 'Allowlist mint' : 'Public mint'}</span>
-            <p className="mt-card__teaser">Connect the wallet you mint with.</p>
-            <WalletSignIn label="Sign in" />
+            {/* minting needs the wallet, not a sign-in: a session left from another page (the
+                arena signs in with the same key) must not hide the way to connect */}
+            <p className="mt-card__teaser">
+              {session ? (
+                <>
+                  Signed in as <AddressChip address={session.address} size="sm" copy={false} />. Connect that wallet to mint; no new signature.
+                </>
+              ) : (
+                'Connect the wallet you mint with. No sign-in needed.'
+              )}
+            </p>
+            <WalletConnect note="Connecting sends nothing. Minting is one transaction from your wallet." />
           </div>
         ) : (
           <>
@@ -510,13 +602,21 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
                 </span>
               </div>
             </div>
-            <Button variant="primary" size="lg" block loading={busy} disabled={!busy && (!!blocker || !chain)} onClick={() => void mint()} className="mt-mintbtn">
+            <Button variant="primary" size="lg" block loading={busy} disabled={!busy && !!blocker} onClick={() => void mint()} className="mt-mintbtn">
               {busy ? BUSY_LABEL[phase as keyof typeof BUSY_LABEL] : `Mint ${q} ${plural(q, 'emblem')}`}
             </Button>
             {steps}
             {blocker && !busy && (
               <p className="mt-why" role="alert" data-testid="mt-blocker">
-                <span className="kicker">Not yet</span> {cap(blocker)}.
+                <span className="kicker">{poor ? 'Not enough HYPE' : left === 0 ? 'Limit reached' : 'Not yet'}</span> {cap(blocker)}.
+                {poor && story === 'testnet' && (
+                  <>
+                    {' '}
+                    <a href={HYPE_FAUCET_URL} target="_blank" rel="noreferrer">
+                      Get test HYPE
+                    </a>
+                  </>
+                )}
               </p>
             )}
             {error && (
@@ -545,17 +645,7 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
       <div className="mt-wrap mt-page" data-view={view}>
         <div className="mt-copy">
           <span className="kicker mt-kicker">{kicker}</span>
-          <h1 className="mt-h display">
-            One emblem.
-            <br />
-            One <em>dollar.</em>
-            <br />
-            Many snacks.
-          </h1>
-          <p className="mt-lede">
-            Your emblem is your ticket to the ring. The price is pinned to a dollar and paid in HYPE, so the number on the button wiggles with the market. We do the arithmetic; you do the
-            eating.
-          </p>
+          <MintHeadline story={story} price={c ? hypeText(priceWei) : null} />
           <MintTrack at={stage} />
           {c && (
             <p className="mt-limits num">
@@ -571,6 +661,77 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
         <EmblemPerks perks={emblemPerks(isTestnetChain(chain), { feeBps: chain?.feeBps ?? null })} />
       </div>
     </NightPlate>
+  );
+}
+
+/**
+ * The headline and lede, honest about the price: on a testnet the fixed test price (and that
+ * mainnet is much cheaper); the "one dollar" story only while the price really tracks a dollar;
+ * otherwise the HYPE price as it stands.
+ */
+export function MintHeadline({ story, price }: { story: PriceStory; price: string | null }) {
+  if (story === 'testnet')
+    return (
+      <>
+        <h1 className="mt-h display" data-story="testnet">
+          One emblem.
+          <br />
+          {price ? (
+            <>
+              <em>{price} HYPE</em> on testnet.
+            </>
+          ) : (
+            <>
+              A <em>testnet</em> mint.
+            </>
+          )}
+          <br />
+          Many snacks.
+        </h1>
+        <p className="mt-lede">
+          Your emblem is your ticket to the ring. {price ? <>Testnet mint: {price} HYPE, a fixed test price paid in test HYPE.</> : 'The testnet mint is paid in test HYPE.'} We do the arithmetic;
+          you do the eating.
+        </p>
+        <p className="mt-note" data-testid="mt-mainnet-note">
+          The mainnet mint will be much cheaper.
+        </p>
+      </>
+    );
+  if (story === 'dollar')
+    return (
+      <>
+        <h1 className="mt-h display" data-story="dollar">
+          One emblem.
+          <br />
+          One <em>dollar.</em>
+          <br />
+          Many snacks.
+        </h1>
+        <p className="mt-lede">
+          Your emblem is your ticket to the ring. The price is pinned to a dollar and paid in HYPE, so the number on the button wiggles with the market. We do the arithmetic; you do the
+          eating.
+        </p>
+      </>
+    );
+  return (
+    <>
+      <h1 className="mt-h display" data-story="plain">
+        One emblem.
+        <br />
+        {price ? (
+          <>
+            <em>{price} HYPE.</em>
+          </>
+        ) : (
+          <>
+            Paid in <em>HYPE.</em>
+          </>
+        )}
+        <br />
+        Many snacks.
+      </h1>
+      <p className="mt-lede">Your emblem is your ticket to the ring. The price is set on the contract and paid in HYPE. We do the arithmetic; you do the eating.</p>
+    </>
   );
 }
 

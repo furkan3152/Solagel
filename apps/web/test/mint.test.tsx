@@ -1,11 +1,13 @@
 import { elymumNFTAbi } from '@elymum/sdk';
+import type { ChainStatus } from '@elymum/shared';
 import type { MintContractState, MintState } from '@elymum/shared';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { encodeEventTopics, padHex, type Log } from 'viem';
+import { encodeErrorResult, encodeEventTopics, padHex, type Log } from 'viem';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isSitePath } from '../src/site/router';
 import { useSession } from '../src/site/session';
-import { mintBlocker, mintView, mintedTokenIds, playOpenForHolders, remaining, usdText } from '../src/site/mint/logic';
+import { fundsBlocker, hypeText, mintBlocker, mintErrorText, mintView, mintedTokenIds, playOpenForHolders, priceStory, remaining, usdText } from '../src/site/mint/logic';
+import { announceProvider } from '../src/wallet/eip6963';
 import { resetWallets, useWallet } from '../src/wallet/store';
 import { ALICE, BOB, chainStatus, detail, fakeProvider } from './evm-helpers';
 import { installDomStubs, mockFetch } from './site-helpers';
@@ -13,13 +15,19 @@ import { installDomStubs, mockFetch } from './site-helpers';
 const NFT = '0x0000000000000000000000000000000000000f7e';
 const ROOT = `0x${'ab'.repeat(32)}`;
 
-const spies = vi.hoisted(() => ({ getMintState: vi.fn(), getMintedBy: vi.fn(), sendWalletCall: vi.fn() }));
+const spies = vi.hoisted(() => ({
+  getMintState: vi.fn(),
+  getMintedBy: vi.fn(),
+  sendWalletCall: vi.fn(),
+  fetchServerChain: vi.fn(),
+  client: { getBalance: vi.fn(), estimateGas: vi.fn() },
+}));
 vi.mock('@elymum/sdk', async (orig) => ({ ...(await orig<typeof import('@elymum/sdk')>()), getMintState: spies.getMintState, getMintedBy: spies.getMintedBy }));
 vi.mock('../src/wallet/tx', async (orig) => ({ ...(await orig<typeof import('../src/wallet/tx')>()), sendWalletCall: spies.sendWalletCall }));
 vi.mock('../src/wallet/network', async (orig) => ({
   ...(await orig<typeof import('../src/wallet/network')>()),
-  fetchServerChain: async () => chainStatus({ nftAddress: NFT }),
-  publicClientFor: () => ({}),
+  fetchServerChain: spies.fetchServerChain,
+  publicClientFor: () => spies.client,
 }));
 const { Mint } = await import('../src/site/mint/MintPage');
 
@@ -118,6 +126,13 @@ beforeEach(() => {
   spies.getMintedBy.mockResolvedValue({ wl: 0, pub: 0 });
   spies.getMintState.mockReset();
   spies.sendWalletCall.mockReset();
+  spies.fetchServerChain.mockReset();
+  spies.fetchServerChain.mockResolvedValue(chainStatus({ nftAddress: NFT }));
+  // unknown balance and a failing estimate by default: the wallet decides (nothing blocks)
+  spies.client.getBalance.mockReset();
+  spies.client.getBalance.mockRejectedValue(new Error('no rpc in tests'));
+  spies.client.estimateGas.mockReset();
+  spies.client.estimateGas.mockRejectedValue(new Error('no rpc in tests'));
 });
 afterEach(() => {
   restore();
@@ -199,5 +214,241 @@ describe('/mint page', { timeout: 30_000 }, () => {
     ({ restore } = mockFetch({ 'GET /api/site/mint': mintState(null) }));
     render(<Mint pollMs={0} />);
     expect(await screen.findByRole('heading', { name: 'The mint is not live yet.' })).toBeTruthy();
+  });
+});
+
+/* ── the live testnet regression: 1 HYPE, public, limit 3 ─────────────── */
+
+const HYPE = 10n ** 18n;
+const pubContract = (o: Partial<MintContractState> = {}) => contract({ phase: 'public', priceWei: HYPE.toString(), merkleRoot: `0x${'00'.repeat(32)}`, maxSupply: 3333, totalSupply: 0, wlLimit: 3, publicLimit: 3, ...o });
+const freshPub = (o: Record<string, unknown> = {}) => ({ phase: 2, phaseName: 'public', price: HYPE, minPrice: 0n, maxPrice: 0n, keeper: null, root: `0x${'00'.repeat(32)}`, maxSupply: 3333, totalSupply: 0, wlLimit: 3, publicLimit: 3, treasury: ALICE, frozen: false, soldOut: false, ...o });
+const testnetState = (c = pubContract(), o: Partial<MintState> = {}) => mintState(c, { priceUsd: 87.52, hypeUsd: 87.52, gameAccess: 'public', ...o });
+const minted = (ids: bigint[]) => async (_call: unknown, opts: { onPhase?: (p: string) => void }) => {
+  opts.onPhase?.('switching');
+  opts.onPhase?.('signing');
+  return { ok: true, hash: `0x${'cd'.repeat(32)}`, receipt: { status: 'success', logs: ids.map((id) => transferLog(ALICE, id)) } };
+};
+const revert = (errorName: 'SoldOut' | 'PublicLimitExceeded') =>
+  Object.assign(new Error('execution reverted'), { code: 3, data: encodeErrorResult({ abi: elymumNFTAbi, errorName }) });
+
+describe('mint logic: price copy, funds, errors', () => {
+  it('tells the testnet price plainly, keeps the dollar story only within ±10 % of the target', () => {
+    const s = (priceUsd: number | null, chainId: number | null = 999) => ({ priceUsd, targetUsdCents: 100, chainId });
+    expect(priceStory(s(87.52, 99801), true)).toBe('testnet');
+    // the chain from the mint state when the server chain is not loaded yet
+    expect(priceStory(s(87.52, 99801), null)).toBe('testnet');
+    expect(priceStory(s(1.04), false)).toBe('dollar');
+    expect(priceStory(s(0.91), false)).toBe('dollar');
+    expect(priceStory(s(1.12), false)).toBe('plain');
+    expect(priceStory(s(0.85), false)).toBe('plain');
+    expect(priceStory(s(null), false)).toBe('plain');
+  });
+
+  it('formats HYPE for prose', () => {
+    expect(hypeText(HYPE)).toBe('1');
+    expect(hypeText(3_030_000_000_000_000_000n)).toBe('3.03');
+    expect(hypeText(31_250_000_000_000_000n)).toBe('0.0313');
+    expect(hypeText(0n)).toBe('0');
+    expect(hypeText(1n)).toBe('<0.0001');
+  });
+
+  it('blocks only a balance that is known and too small', () => {
+    expect(fundsBlocker(null, HYPE)).toBeNull();
+    expect(fundsBlocker(2n * HYPE, HYPE)).toBeNull();
+    expect(fundsBlocker(HYPE / 2n, 1_010_000_000_000_000_000n)).toMatch(/^this mint sends 1\.01 HYPE plus gas, and this wallet holds 0\.5 HYPE/);
+  });
+
+  it('words the mint failures that matter', () => {
+    const fb = 'fallback';
+    expect(mintErrorText({ kind: 'rejected', name: 'UserRejectedRequestError', message: '' }, fb)).toMatch(/cancelled in your wallet/);
+    expect(mintErrorText({ kind: 'insufficient-funds', name: 'InsufficientFundsError', message: '' }, fb)).toMatch(/Not enough HYPE/);
+    expect(mintErrorText({ kind: 'contract', name: 'SoldOut', message: '' }, fb)).toMatch(/Sold out/);
+    expect(mintErrorText({ kind: 'contract', name: 'PublicLimitExceeded', message: '' }, fb)).toMatch(/public mint limit/);
+    expect(mintErrorText({ kind: 'network', name: 'NetworkError', message: '' }, fb)).toBe(fb);
+  });
+});
+
+describe('/mint on the testnet (1 HYPE, public, 3 per wallet)', { timeout: 30_000 }, () => {
+  it('says the testnet price, not "one dollar"', async () => {
+    ({ restore } = mockFetch({ 'GET /api/site/mint': testnetState() }));
+    render(<Mint pollMs={0} />);
+    const h = await screen.findByRole('heading', { level: 1 });
+    await waitFor(() => expect(h.textContent).toMatch(/1 HYPE on testnet/));
+    expect(h.textContent).not.toMatch(/dollar/i);
+    expect(document.querySelector('.mt-lede')!.textContent).toMatch(/Testnet mint: 1 HYPE/);
+    expect(document.querySelector('.mt-lede')!.textContent).not.toMatch(/pinned to a dollar/);
+    expect(screen.getByTestId('mt-mainnet-note').textContent).toMatch(/mainnet mint will be much cheaper/);
+  });
+
+  it('mainnet: the dollar story only while the price tracks a dollar', async () => {
+    spies.fetchServerChain.mockResolvedValue(chainStatus({ chainId: 999, nftAddress: NFT }));
+    ({ restore } = mockFetch({ 'GET /api/site/mint': mintState(pubContract(), { chainId: 999, priceUsd: 1.02 }) }));
+    const { unmount } = render(<Mint pollMs={0} />);
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1 }).textContent).toMatch(/One dollar/));
+    unmount();
+    restore();
+    ({ restore } = mockFetch({ 'GET /api/site/mint': mintState(pubContract(), { chainId: 999, priceUsd: 87.5 }) }));
+    render(<Mint pollMs={0} />);
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1 }).textContent).toMatch(/1 HYPE\./));
+    expect(screen.getByRole('heading', { level: 1 }).textContent).not.toMatch(/dollar/i);
+  });
+
+  it('a session from another page without a connected wallet still offers Connect, then mints (no new signature)', async () => {
+    // the owner's case: signed in by the arena flow, the wallet not reconnected on /mint
+    useSession.setState({ session: { address: ALICE, token: 't', admin: true }, signing: false, error: null });
+    const wallet = fakeProvider({ chainId: 99801, known: [99801] });
+    const stopAnnounce = announceProvider(detail(wallet, 'MetaMask', 'io.metamask'));
+    const prev = restore;
+    restore = () => {
+      stopAnnounce();
+      prev();
+    };
+    const fetched = mockFetch({ 'GET /api/site/mint': testnetState(), [`GET /api/site/mint/proof?wallet=${ALICE}`]: proof(false) });
+    const announced = restore;
+    restore = () => {
+      announced();
+      fetched.restore();
+    };
+    spies.getMintState.mockResolvedValue(freshPub());
+    spies.sendWalletCall.mockImplementation(minted([1n]));
+    render(<Mint pollMs={0} />);
+    const connectBtn = await screen.findByRole('button', { name: /Connect MetaMask/ });
+    expect(screen.getByTestId('mt-connect').textContent).toMatch(/Signed in as/);
+    fireEvent.click(connectBtn);
+    const mintBtn = await screen.findByRole('button', { name: 'Mint 1 emblem' });
+    await waitFor(() => expect((mintBtn as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(mintBtn);
+    await screen.findByTestId('mt-done');
+    expect(wallet.calls.map((c) => c.method)).not.toContain('personal_sign');
+    expect(spies.sendWalletCall.mock.calls[0][0]).toMatchObject({ functionName: 'mintPublic', args: [1n], value: 1_010_000_000_000_000_000n });
+  });
+
+  it('connected, not signed in: mints 3 with the 1 % buffer, and the emblems and Play show', async () => {
+    connect();
+    ({ restore } = mockFetch({ 'GET /api/site/mint': testnetState(), [`GET /api/site/mint/proof?wallet=${ALICE}`]: proof(false) }));
+    spies.getMintState.mockResolvedValue(freshPub());
+    spies.client.getBalance.mockResolvedValue(4n * HYPE);
+    spies.client.estimateGas.mockResolvedValue(120_000n);
+    spies.sendWalletCall.mockImplementation(minted([1n, 2n, 3n]));
+    render(<Mint pollMs={0} />);
+    const more = await screen.findByRole('button', { name: 'One more' });
+    fireEvent.click(more);
+    fireEvent.click(more);
+    const btn = screen.getByRole('button', { name: 'Mint 3 emblems' });
+    await waitFor(() => expect((btn as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(btn);
+    await screen.findByTestId('mt-done');
+    expect(spies.sendWalletCall.mock.calls[0][0]).toMatchObject({ functionName: 'mintPublic', args: [3n], value: 3_030_000_000_000_000_000n });
+    expect(spies.client.estimateGas).toHaveBeenCalledWith(expect.objectContaining({ account: ALICE, to: NFT, value: 3_030_000_000_000_000_000n }));
+    expect(screen.getAllByRole('img').map((i) => i.getAttribute('src')?.replace(/^.*\/api/, '/api'))).toEqual(['/api/nft/1.svg', '/api/nft/2.svg', '/api/nft/3.svg']);
+    expect(screen.getByRole('link', { name: 'Play' }).getAttribute('href')).toBe('/play');
+  });
+
+  it('a signed-in, connected wallet mints too', async () => {
+    connect();
+    useSession.setState({ session: { address: ALICE, token: 't', admin: false }, signing: false, error: null });
+    ({ restore } = mockFetch({ 'GET /api/site/mint': testnetState(), [`GET /api/site/mint/proof?wallet=${ALICE}`]: proof(false), 'GET /api/site/wl/me': null }));
+    spies.getMintState.mockResolvedValue(freshPub());
+    spies.sendWalletCall.mockImplementation(minted([7n]));
+    render(<Mint pollMs={0} />);
+    const btn = await screen.findByRole('button', { name: 'Mint 1 emblem' });
+    await waitFor(() => expect((btn as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(btn);
+    await screen.findByTestId('mt-done');
+  });
+
+  it('too little HYPE: says so and never opens the wallet', async () => {
+    connect();
+    ({ restore } = mockFetch({ 'GET /api/site/mint': testnetState(), [`GET /api/site/mint/proof?wallet=${ALICE}`]: proof(false) }));
+    spies.client.getBalance.mockResolvedValue(HYPE / 2n);
+    render(<Mint pollMs={0} />);
+    await waitFor(() => expect(screen.getByTestId('mt-blocker').textContent).toMatch(/Not enough HYPE.*1\.01 HYPE.*0\.5 HYPE/));
+    expect(screen.getByRole('link', { name: 'Get test HYPE' })).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Mint 1 emblem' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(spies.sendWalletCall).not.toHaveBeenCalled();
+  });
+
+  it('limit reached: says so, the button stays off', async () => {
+    connect();
+    spies.getMintedBy.mockResolvedValue({ wl: 0, pub: 3 });
+    ({ restore } = mockFetch({ 'GET /api/site/mint': testnetState(), [`GET /api/site/mint/proof?wallet=${ALICE}`]: proof(false) }));
+    render(<Mint pollMs={0} />);
+    await waitFor(() => expect(screen.getByTestId('mt-blocker').textContent).toMatch(/Limit reached.*Public limit is 3 per wallet \(minted 3\)/));
+    expect((screen.getByRole('button', { name: 'Mint 1 emblem' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('the dry run catches a contract refusal (sold out a moment ago) before the wallet', async () => {
+    connect();
+    ({ restore } = mockFetch({ 'GET /api/site/mint': testnetState(), [`GET /api/site/mint/proof?wallet=${ALICE}`]: proof(false) }));
+    spies.getMintState.mockResolvedValue(freshPub());
+    spies.client.estimateGas.mockRejectedValue(revert('SoldOut'));
+    render(<Mint pollMs={0} />);
+    const btn = await screen.findByRole('button', { name: 'Mint 1 emblem' });
+    await waitFor(() => expect((btn as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(btn);
+    expect((await screen.findByTestId('mt-error')).textContent).toMatch(/Sold out: the last emblems went/);
+    expect(spies.sendWalletCall).not.toHaveBeenCalled();
+  });
+
+  it('a dry run that fails for another reason (RPC hiccup) does not block: the wallet decides', async () => {
+    connect();
+    ({ restore } = mockFetch({ 'GET /api/site/mint': testnetState(), [`GET /api/site/mint/proof?wallet=${ALICE}`]: proof(false) }));
+    spies.getMintState.mockResolvedValue(freshPub());
+    spies.client.estimateGas.mockRejectedValue(new Error('fetch failed'));
+    spies.sendWalletCall.mockImplementation(minted([1n]));
+    render(<Mint pollMs={0} />);
+    const btn = await screen.findByRole('button', { name: 'Mint 1 emblem' });
+    await waitFor(() => expect((btn as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(btn);
+    await screen.findByTestId('mt-done');
+  });
+
+  it('user rejected in the wallet: a clear message, and the button works again', async () => {
+    connect();
+    ({ restore } = mockFetch({ 'GET /api/site/mint': testnetState(), [`GET /api/site/mint/proof?wallet=${ALICE}`]: proof(false) }));
+    spies.getMintState.mockResolvedValue(freshPub());
+    spies.sendWalletCall.mockResolvedValue({ ok: false, hash: null, error: { kind: 'rejected', name: 'UserRejectedRequestError', args: [], code: 4001, message: 'declined' } });
+    render(<Mint pollMs={0} />);
+    const btn = await screen.findByRole('button', { name: 'Mint 1 emblem' });
+    await waitFor(() => expect((btn as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(btn);
+    expect((await screen.findByTestId('mt-error')).textContent).toMatch(/cancelled in your wallet\. Nothing was minted/);
+    expect((screen.getByRole('button', { name: 'Mint 1 emblem' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('the server chain did not answer at first: the button still works and asks again', async () => {
+    connect();
+    let n = 0;
+    spies.fetchServerChain.mockImplementation(async (): Promise<ChainStatus | null> => (n++ === 0 ? null : chainStatus({ nftAddress: NFT })));
+    ({ restore } = mockFetch({ 'GET /api/site/mint': testnetState(), [`GET /api/site/mint/proof?wallet=${ALICE}`]: proof(false) }));
+    spies.getMintState.mockResolvedValue(freshPub());
+    spies.sendWalletCall.mockImplementation(minted([1n]));
+    render(<Mint pollMs={0} />);
+    const btn = await screen.findByRole('button', { name: 'Mint 1 emblem' });
+    expect((btn as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(btn);
+    await screen.findByTestId('mt-done');
+    expect(spies.sendWalletCall.mock.calls[0][1].chain).toMatchObject({ chainId: 99801 });
+  });
+});
+
+describe('WalletSignIn with a session but no connected wallet (header, WL)', () => {
+  it('offers to reconnect the wallet instead of only "Switch wallet", and needs no new signature', async () => {
+    const { WalletSignIn } = await import('../src/site/wallet/SiteWallet');
+    useSession.setState({ session: { address: ALICE, token: 't', admin: false }, signing: false, error: null });
+    const wallet = fakeProvider({ chainId: 99801, known: [99801] });
+    const stop = announceProvider(detail(wallet, 'Rabby', 'io.rabby'));
+    try {
+      render(<WalletSignIn label="Sign in" />);
+      expect(screen.getByText('Signed in')).toBeTruthy();
+      fireEvent.click(await screen.findByRole('button', { name: /Connect Rabby/ }));
+      await waitFor(() => expect(useWallet.getState().address).toBe(ALICE));
+      await waitFor(() => expect(screen.queryByRole('button', { name: /Connect Rabby/ })).toBeNull());
+      expect(screen.getByText('Signed in')).toBeTruthy();
+      expect(wallet.calls.map((c) => c.method)).not.toContain('personal_sign');
+      expect(useSession.getState().session?.address).toBe(ALICE);
+    } finally {
+      stop();
+    }
   });
 });
