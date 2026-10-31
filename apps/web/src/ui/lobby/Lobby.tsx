@@ -151,6 +151,10 @@ export function Lobby() {
       case 'buy':
         setFlow({ mode: 'buy', key: ticket.key, open: true });
         return;
+      case 'holders':
+        // holders-only arena and no emblem: the mint is one page away
+        location.assign('/mint');
+        return;
       default:
         return;
     }

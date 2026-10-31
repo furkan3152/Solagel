@@ -1,3 +1,4 @@
+import { lookForSkin } from './looks';
 import { CARD_PAPER, ELYSIUM, INK, SHADE, drawCoinInterior, heartPath, lookForBasicSkin, shadeOf, starPath, type CoinInterior, type CoinLook } from '@elymum/art';
 import { PowerUpType } from '@elymum/shared';
 
@@ -499,7 +500,7 @@ function powerUpSprite(type: PowerUpType, size = 160): Sprite {
 function ejectSprite(skinId: number, size = 72): Sprite {
   const [canvas, ctx] = makeCanvas(size);
   const r = (size / 2) * SPRITE_FILL;
-  const look = lookForBasicSkin(skinId);
+  const look = lookForSkin(skinId);
   ctx.save();
   ctx.beginPath();
   ctx.arc(0, 0, r, 0, TAU);

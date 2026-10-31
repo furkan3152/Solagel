@@ -197,21 +197,22 @@ describe('bots', () => {
 
   it('bot count drops as humans join', () => {
     const cfg = loadConfig({});
-    expect(cfg.bots.arena).toEqual({ target: 24, min: 2, max: 16, mix: 'standard' });
-    expect(cfg.bots.practiceRookie).toEqual({ target: 20, min: 4, max: 20, mix: 'rookie' });
-    expect(cfg.bots.practicePro).toEqual({ target: 20, min: 4, max: 20, mix: 'standard' });
+    // default cap 12 per room
+    expect(cfg.bots.arena).toEqual({ target: 12, min: 2, max: 12, mix: 'standard' });
+    expect(cfg.bots.practiceRookie).toEqual({ target: 12, min: 4, max: 12, mix: 'rookie' });
+    expect(cfg.bots.practicePro).toEqual({ target: 12, min: 4, max: 12, mix: 'standard' });
     expect(cfg.bots.private).toEqual({ target: 8, min: 2, max: 8, mix: 'standard' });
 
     const world = new World({ ...WORLD_PRESETS.arena, powerUps: false, coinRain: false, seed: 8 });
     const manager = new BotManager(world, cfg.bots.arena, mulberry32(8));
-    expect([0, 8, 10, 20, 22, 30, 50].map((h) => manager.desired(h))).toEqual([16, 16, 14, 4, 2, 2, 2]);
+    expect([0, 1, 4, 10, 11, 30].map((h) => manager.desired(h))).toEqual([12, 11, 8, 2, 2, 2]);
     manager.update(0, 0);
-    expect(manager.bots.size).toBe(16);
+    expect(manager.bots.size).toBe(12);
     for (let t = 0; t < 120_000; t += 1000) {
       world.tick(TICK_MS);
-      manager.update(world.now + t, 20);
+      manager.update(world.now + t, 9);
     }
-    expect(manager.bots.size).toBeLessThanOrEqual(5);
+    expect(manager.bots.size).toBeLessThanOrEqual(3);
   });
 
   it('bots wear basic skins only', () => {

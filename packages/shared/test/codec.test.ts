@@ -44,7 +44,7 @@ describe('snapshot codec', () => {
     expect(decoded.view.x).toBeCloseTo(sample.view.x, 3);
     expect(decoded.view.y).toBeCloseTo(sample.view.y, 3);
     expect(decoded.view.h).toBeCloseTo(sample.view.h, 3);
-    expect(decoded.players).toEqual(sample.players);
+    expect(decoded.players).toEqual(sample.players.map((p) => ({ ...p, isBot: (p.flags & PlayerFlag.Bot) !== 0 })));
     expect(decoded.removals).toEqual(sample.removals);
     expect(decoded.upserts).toHaveLength(sample.upserts.length);
     decoded.upserts.forEach((e, i) => {
@@ -58,6 +58,24 @@ describe('snapshot codec', () => {
       expect(e.flags).toBe(s.flags);
       expect(e.variant).toBe(s.variant);
     });
+  });
+
+  it('carries the bot flag: decoded players always say isBot, and isBot sets the flag bit', () => {
+    const snap: SnapshotData = {
+      tick: 1,
+      view: { x: 0, y: 0, h: 1 },
+      players: [
+        { id: 1, skin: 2, flags: PlayerFlag.Bot, name: 'marco88' },
+        { id: 2, skin: 3, flags: PlayerFlag.Verified, name: 'human' },
+        { id: 3, skin: 4, flags: 0, name: 'deniz_k', isBot: true },
+      ],
+      upserts: [],
+      removals: [],
+    };
+    const players = decodeSnapshot(encodeSnapshot(snap)).players;
+    expect(players.map((p) => p.isBot)).toEqual([true, false, true]);
+    expect(players[2].flags & PlayerFlag.Bot).toBe(PlayerFlag.Bot);
+    expect(players[1].flags).toBe(PlayerFlag.Verified);
   });
 
   it('handles empty snapshots', () => {
@@ -94,7 +112,7 @@ describe('snapshot codec', () => {
       { id: 65535, skin: 255, flags: 255, name: 'Renée🚀' },
     ];
     const decoded = decodeSnapshot(encodeSnapshot({ tick: 9, view: { x: 1, y: 2, h: 3 }, players, upserts: [], removals: [] }));
-    expect(decoded.players).toEqual(players);
+    expect(decoded.players).toEqual(players.map((p) => ({ ...p, isBot: (p.flags & PlayerFlag.Bot) !== 0, ...((p.flags & PlayerFlag.Holder) !== 0 ? { holder: true } : {}) })));
     expect(decoded.players.map((p) => (p.flags & PlayerFlag.Staker) !== 0)).toEqual([false, false, true, true]);
   });
 

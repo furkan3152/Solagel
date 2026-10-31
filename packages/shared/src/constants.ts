@@ -1,5 +1,5 @@
-/** Bumped whenever the wire format changes in an incompatible way. */
-export const PROTOCOL_VERSION = 5;
+/** Bumped whenever the wire format changes in an incompatible way (v6: bot flags on every player-facing message, `feed` left lines). */
+export const PROTOCOL_VERSION = 6;
 
 /** Simulation + snapshot rate. */
 export const TICK_RATE = 30;

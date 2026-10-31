@@ -29,8 +29,10 @@ import {
   planJoin,
   sendCall,
   setTokenCall,
+  testTokenSetMinterCall,
   type ContractCall,
 } from '@elymum/sdk';
+import { PlayerFlag, TICK_MS, roundAt } from '@elymum/shared';
 import type { Address, PublicClient, WalletClient } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -38,6 +40,11 @@ import { EvmChain, type ContractsView } from '../src/chain/evm';
 import { sessionKey, type SettledEvent } from '../src/chain/types';
 import { loadConfig } from '../src/config';
 import { Journal, sweepKey, type SettlementItem } from '../src/stake/journal';
+import { BotSettingsStore, defaultBotSettings } from '../src/bots/settings';
+import { TestnetBotSource } from '../src/bots/testnet-source';
+import type { Player } from '../src/game/entities';
+import { Room } from '../src/rooms/room';
+import { fakeConn, roomDeps } from './helpers';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const KEYS = [
@@ -259,4 +266,112 @@ describe('EvmChain on a hardhat node', () => {
     expect(await chain.sweepStale()).toBe(0);
     await chain.stop();
   }, 60_000);
+});
+
+/** Puts `eater` on top of `victim` until the victim dies. */
+function eat(room: Room, eater: Player, victim: Player): void {
+  eater.shieldUntil = 0;
+  victim.shieldUntil = 0;
+  eater.cells[0].setMass(400);
+  for (const c of eater.cells.slice(1)) c.setMass(1);
+  victim.cells[0].setMass(20);
+  for (const c of victim.cells.slice(1)) c.setMass(1);
+  eater.cells[0].x = victim.cells[0].x;
+  eater.cells[0].y = victim.cells[0].y;
+  room.world.setTarget(eater.id, victim.cells[0].x, victim.cells[0].y);
+  room.world.setTarget(victim.id, victim.cells[0].x, victim.cells[0].y);
+  for (let i = 0; i < 40 && victim.alive; i++) room.tick(TICK_MS);
+  expect(victim.alive).toBe(false);
+}
+
+describe('testnet staked bots on a hardhat node', () => {
+  it('bots are funded (minter + gas from the server key), buy real tickets, their value moves when eaten, and they settle at the bell', async (ctx) => {
+    if (!up) return ctx.skip();
+    const token = await deployedAddress(client, await deployTestToken(wallets.get(admin.address)!, { owner: admin.address }));
+    const arena = await deployedAddress(
+      client,
+      await deployArena(wallets.get(admin.address)!, { admin: admin.address, serverAuthority: server.address, feeWallet: feeWallet.address }),
+    );
+    await send(admin.address, setTokenCall(arena, token));
+    for (const call of createDefaultArenaCalls(arena, 18)) await send(admin.address, call);
+    const journal = new Journal(null);
+    const logs: string[] = [];
+    const cfg = loadConfig({ EVM_RPC_URL: url, SERVER_PRIVATE_KEY: KEYS[1], DATA_DIR: mkdtempSync(join(tmpdir(), 'elymum-bots-evm-')) } as unknown as NodeJS.ProcessEnv);
+    const chain = new EvmChain(cfg, journal, (m) => logs.push(m), { contracts: () => ({ arena, nft: null }), loops: false, receiptTimeoutMs: 20_000, stateChainId: 31337 });
+    await chain.start();
+    expect(chain.stakeEnabled).toBe(true);
+
+    // the one admin step: the server key becomes a TestToken minter (it funds the bot wallets)
+    await send(admin.address, testTokenSetMinterCall(token, server.address, true));
+    const settings = new BotSettingsStore(null, defaultBotSettings(cfg.bots));
+    settings.update({ testnet: { stakedPerArena: 2, bankroll: '5000', gasHype: '0.05' } });
+    const source = new TestnetBotSource({
+      chain: () => {
+        const st = chain.status();
+        return { chainId: st.chainId, stakeEnabled: chain.stakeEnabled, arena: st.arenaAddress, token: st.token };
+      },
+      client: () => chain.evm(),
+      serverKey: KEYS[1],
+      settings,
+      journal,
+      stateDir: mkdtempSync(join(tmpdir(), 'elymum-bots-state-')),
+      log: (m) => logs.push(m),
+      receiptTimeoutMs: 20_000,
+    });
+    const clock = { now: roundAt(1_791_000_000_000).startsAt + 60_000 };
+    const room = new Room(
+      { id: 'arena-1-1', mode: 'arena', name: 'Arena', instance: 1, maxPlayers: 50, bots: { target: 4, min: 0, max: 4 }, stake: { arenaId: 1, buyIn: K }, seed: 11 },
+      { ...roomDeps(chain, journal, () => clock.now), stakedBots: source },
+    );
+
+    // the room buys two tickets through the source (it asks at most every 3 s)
+    const deadline = Date.now() + 40_000;
+    while (room.bots!.stakedCount < 2 && Date.now() < deadline) {
+      room.tick(TICK_MS);
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    expect(room.bots!.stakedCount).toBe(2);
+    const staked = [...room.bots!.bots.values()].filter((b) => b.staked);
+    const [bot1, bot2] = staked.map((b) => b.staked!.stake.player as Address);
+    for (const b of [bot1, bot2]) {
+      expect((await getSession(client, arena, 1, b)).id).toBeGreaterThan(0n);
+      // bankroll 5,000 minted, one 1,000 ticket paid
+      expect(await getTokenBalance(client, token, b)).toBe(4_000n * T);
+      expect(await client.getBalance({ address: b })).toBeGreaterThan(0n);
+    }
+    expect(staked[0].player.flags).toBe(PlayerFlag.Bot | PlayerFlag.Staker);
+
+    // a human with a real ticket eats bot 1: its value moves to the human
+    await send(p1.address, faucetCall(token)).catch(() => undefined);
+    for (const call of (await planJoin(client, { arena, arenaId: 1, player: p1.address, token })).calls) await send(p1.address, call);
+    const s = (await chain.getSession(1, p1.address))!;
+    const human = room.join(fakeConn(p1.address), {
+      name: 'human',
+      skin: 1,
+      flags: PlayerFlag.Staker,
+      stake: { player: p1.address, session: s.key, sessionId: s.id, arenaId: 1, entryFee: s.entryFee, value: s.entryFee, openedAt: s.openedAt },
+    });
+    eat(room, human, staked[0].player);
+    expect(room.ledger!.value(human.id)).toBe(2 * K);
+    expect(journal.settlements().find((i) => i.player === bot1)).toMatchObject({ reason: 'death', payout: 0 });
+
+    // the bell settles the human and bot 2 with everyone; the chain worker pays out in one pass
+    const before1 = await getTokenBalance(client, token, p1.address);
+    clock.now += 5 * 60_000;
+    room.tick(TICK_MS);
+    expect(journal.settlements().filter((i) => i.reason === 'round').map((i) => [i.player, i.payout]).sort()).toEqual(
+      [
+        [p1.address, 2 * K],
+        [bot2, K],
+      ].sort(),
+    );
+    await chain.processPending();
+    expect(journal.pending).toHaveLength(0);
+    expect(await getTokenBalance(client, token, p1.address)).toBe(before1 + 1_950n * T);
+    expect(await getTokenBalance(client, token, bot1)).toBe(4_000n * T);
+    expect(await getTokenBalance(client, token, bot2)).toBe(5_000n * T);
+    for (const b of [bot1, bot2, p1.address]) expect((await getSession(client, arena, 1, b)).id).toBe(0n);
+    expect((await getArena(client, arena, 1)).vault).toBe(0n);
+    await chain.stop();
+  }, 120_000);
 });

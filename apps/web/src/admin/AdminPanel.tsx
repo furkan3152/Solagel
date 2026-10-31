@@ -6,10 +6,16 @@ import { Button } from '../design';
 import type { AdminApi } from '../site/api';
 import { publicClientFor } from '../wallet/network';
 import { useWallet } from '../wallet/store';
-import { ArenaTab } from './ArenaTab';
+import type { ContractsRegistry, GameAccess, SiteSettings } from '@elymum/shared';
+import { site } from '../site/api';
 import { DeployTab } from './DeployTab';
+import { GameTab } from './GameTab';
+import { groupSummary, type AdminGroup } from './groups';
 import { LaunchTab, type ChecklistTab } from './LaunchTab';
 import { MintTab } from './MintTab';
+import { NetworkTab } from './NetworkTab';
+import { HolderPerksCard, HoldersOnlyCard, TestTokenAdminCard } from './SetupExtras';
+import { SummaryBar } from './SummaryBar';
 import { chainBlockers, walletChainNote, type AdminNetwork } from './net';
 import { readOwner, type Plan } from './plan';
 import { TxPreview, type SignedEntry } from './TxPreview';
@@ -17,7 +23,7 @@ import { Addr, type ChainCtx } from './ui';
 import { useAdminStatus } from './useAdminStatus';
 import './admin.css';
 
-export type ChainTab = 'launch' | 'deploy' | 'mint' | 'arena';
+export type ChainTab = Extract<AdminGroup, 'network' | 'setup' | 'mint' | 'game'>;
 
 /** The runtime code hash check as a tiny verdict tag. */
 function CodeTag({ code }: { code: string | null }) {
@@ -55,7 +61,34 @@ export function AdminPanel({
   const provider = useWallet((s) => s.current?.provider ?? null);
   const walletChainId = useWallet((s) => s.chainId);
   const client = useMemo<PublicClient | null>(() => (net.chain ? publicClientFor(net.chain, provider) : null), [net.chain, provider]);
-  const { status, error, loading, refresh } = useAdminStatus(client, net, me);
+  // the registered contracts (the TestToken is kind `token`: its faucet and minters are read too)
+  const [registry, setRegistry] = useState<ContractsRegistry | null>(null);
+  useEffect(() => {
+    let live = true;
+    site.contracts().then(
+      (r) => live && setRegistry(r),
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [net]);
+  const testToken = !net.mainnet ? ((registry?.token?.address as Address | undefined) ?? null) : null;
+  const { status, error, loading, refresh } = useAdminStatus(client, net, me, testToken);
+  // the server's game switches, for the drawer's opening lines
+  const [access, setAccess] = useState<{ settings: SiteSettings; env: GameAccess | null } | null>(null);
+  useEffect(() => {
+    if (!api) return;
+    let live = true;
+    api.settings().then(
+      (r) => live && setAccess({ settings: r.settings, env: r.gameAccessEnv ?? null }),
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [api, tab]);
+  const summary = groupSummary(tab, { net, status, settings: access?.settings ?? null, gameAccessEnv: access?.env ?? null });
   const [plan, setPlan] = useState<Plan | null>(null);
   const [log, setLog] = useState<SignedEntry[]>([]);
   const [codes, setCodes] = useState<{ arena: string | null; nft: string | null }>({ arena: null, nft: null });
@@ -86,6 +119,7 @@ export function AdminPanel({
 
   return (
     <div className="ad-chain" aria-busy={loading}>
+      <SummaryBar summary={summary} />
       {net.mainnet && (
         <div className="ad-mainnet" role="alert" data-testid="mainnet-banner">
           <strong>MAINNET.</strong> Every transaction signed here is final and moves real funds.
@@ -100,7 +134,7 @@ export function AdminPanel({
         </div>
       )}
       {note && <p className="ad-warn">{note}</p>}
-      {error && (
+      {error && !net.fake && (
         <p className="ad-err" role="alert">
           {error}
         </p>
@@ -135,10 +169,25 @@ export function AdminPanel({
         </Button>
       </section>
 
-      {tab === 'launch' && <LaunchTab ctx={ctx} go={go} />}
-      {tab === 'deploy' && <DeployTab ctx={ctx} />}
+      {tab === 'network' && (
+        <>
+          <NetworkTab ctx={ctx} registry={registry} />
+          <LaunchTab ctx={ctx} go={go} />
+        </>
+      )}
+      {tab === 'setup' && (
+        <>
+          <DeployTab ctx={ctx} />
+          <h2 className="ad-h3 ad-section-h">Emblem perks</h2>
+          <div className="ad-mint__forms">
+            <HolderPerksCard ctx={ctx} />
+            <TestTokenAdminCard ctx={ctx} />
+          </div>
+          <HoldersOnlyCard ctx={ctx} />
+        </>
+      )}
       {tab === 'mint' && <MintTab ctx={ctx} />}
-      {tab === 'arena' && <ArenaTab ctx={ctx} />}
+      {tab === 'game' && <GameTab ctx={ctx} />}
 
       {log.length > 0 && (
         <section className="ad-card ad-logcard" aria-labelledby="ad-log-h">

@@ -413,6 +413,9 @@ function Nft() {
               An emblem is a sealed coin portrait and your way into the game when it opens for holders. The price is pinned to $1 and paid in HYPE, so the number on the
               button moves with the market. We do the arithmetic; you do the eating.
             </p>
+            <p className="ld-nft__perks" data-testid="ld-perks">
+              Holders pay a 3% fee instead of 5%, enter the Isles of the Blessed and wear their coin in the game.
+            </p>
             <ol className="ld-flow" aria-label="The order of things">
               <li className="is-on">
                 <span>WL</span>

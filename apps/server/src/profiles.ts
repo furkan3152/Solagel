@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import {
+  EMBLEM_SKIN_ID,
   MAX_NAME_LENGTH,
   isBasicSkin,
   levelFromXp,
@@ -76,7 +77,7 @@ export class ProfileStore {
         this.byWallet.set(wallet.toLowerCase(), {
           wallet,
           name: typeof p.name === 'string' && p.name ? p.name : null,
-          skin: isBasicSkin(p.skin) ? p.skin : 0,
+          skin: isBasicSkin(p.skin) || p.skin === EMBLEM_SKIN_ID ? p.skin : 0,
           games: nat(p.games),
           kills: nat(p.kills),
           best: nat(p.best),
@@ -125,14 +126,19 @@ export class ProfileStore {
     return levelFromXp(this.byWallet.get(wallet.toLowerCase())?.xp ?? 0);
   }
 
-  /** `PUT /api/profile`: validates and stores the name and skin. */
-  update(wallet: string, body: { name?: unknown; skin?: unknown }): ProfileView {
+  /**
+   * `PUT /api/profile`: validates and stores the name and skin. `emblem`: the wallet holds an Elymum
+   * emblem (the caller checked on chain), so `EMBLEM_SKIN_ID` may be picked too.
+   */
+  update(wallet: string, body: { name?: unknown; skin?: unknown }, opts: { emblem?: boolean } = {}): ProfileView {
     if (typeof body.name !== 'string') throw new ProfileError('name', 'name is required');
     if ([...body.name.replace(/\s+/g, ' ').trim()].length > MAX_NAME_LENGTH) throw new ProfileError('name', `name is longer than ${MAX_NAME_LENGTH} characters`);
     const name = sanitizeName(body.name, '');
     if (name.length === 0) throw new ProfileError('name', 'name is required');
     if ([...name].length > MAX_NAME_LENGTH || utf8Length(name) > PROFILE_NAME_MAX_BYTES) throw new ProfileError('name', `name is longer than ${MAX_NAME_LENGTH} characters`);
-    if (typeof body.skin !== 'number' || !isBasicSkin(body.skin)) throw new ProfileError('skin', 'that skin cannot be picked');
+    if (body.skin === EMBLEM_SKIN_ID) {
+      if (!opts.emblem) throw new ProfileError('skin', 'the emblem skin is for Elymum emblem holders');
+    } else if (typeof body.skin !== 'number' || !isBasicSkin(body.skin)) throw new ProfileError('skin', 'that skin cannot be picked');
     const p = this.record(wallet);
     p.name = name;
     p.skin = body.skin;

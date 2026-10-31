@@ -18,6 +18,9 @@ import type {
   ContractKind,
   ContractRegisterRequest,
   ContractsRegistry,
+  FaucetConfig,
+  HolderWlView,
+  NetworkInfo,
   GameAccess,
   MintPriceQuote,
   MintProofResponse,
@@ -173,6 +176,8 @@ export const site = {
   mint: (signal?: AbortSignal) => request<MintState>('/api/site/mint', { signal }),
   /** `GET /api/site/mint/proof?wallet=0x…`. */
   mintProof: (wallet: string, signal?: AbortSignal) => request<MintProofResponse>(`/api/site/mint/proof${q({ wallet })}`, { signal }),
+  /** `GET /api/site/faucet`: the TestToken faucet (testnet only; amounts in base units). */
+  faucet: () => request<FaucetConfig>('/api/site/faucet'),
   /** `GET /api/site/contracts`: the registered contracts. */
   contracts: () => request<ContractsRegistry>('/api/site/contracts'),
 };
@@ -227,8 +232,31 @@ export function adminApi(token: string) {
     collabCsv: (cid: string) => downloadCsv(`/api/admin/collabs/${id(cid)}/wallets.csv`, token, `elymum-collab-${cid}.csv`),
     allCollabsCsv: () => downloadCsv('/api/admin/collabs/wallets.csv', token, 'elymum-collab-wallets.csv'),
     integrity: integrityApi(token),
+    /** `GET /api/admin/bots`: the bot settings, their env defaults and the live counts (shape: `BotAdminView`). */
+    bots: () => request<BotAdminView>('/api/admin/bots', { token }),
+    /** `PUT /api/admin/bots`: a partial settings update; answers like the GET. */
+    saveBots: (patch: BotSettingsPatch) => request<BotAdminView>('/api/admin/bots', { method: 'PUT', token, body: patch }),
+    /**
+     * `POST /api/admin/mint/import-holders` (`{ fromChainId? }`, default the testnet): adds every
+     * testnet emblem holder to the mainnet allowlist, recorded per wallet with the source.
+     * 409: no NFT on that chain; 502 / 503: the chain did not answer.
+     */
+    importHolders: (fromChainId?: number) =>
+      request<HolderWlView>('/api/admin/mint/import-holders', { method: 'POST', token, body: fromChainId === undefined ? {} : { fromChainId } }),
+    /** `GET /api/admin/mint/import-holders`: the last import; null when the server has no such route (404). */
+    holderImport: async (): Promise<HolderWlView | null> => {
+      try {
+        return await request<HolderWlView>('/api/admin/mint/import-holders', { token });
+      } catch (err) {
+        if (err instanceof SiteApiError && (err.status === 404 || err.status === 405)) return err.status === 405 ? emptyImport() : null;
+        throw err;
+      }
+    },
+    /** `GET /api/admin/network`: the server's chain, RPC health, server key and the contracts' code checks. */
+    network: () => request<NetworkInfo>('/api/admin/network', { token }),
   };
 }
+
 export type AdminApi = ReturnType<typeof adminApi>;
 
 export interface AdminSettingsResponse {
@@ -275,3 +303,66 @@ function integrityApi(token: string) {
   };
 }
 export type IntegrityApi = ReturnType<typeof integrityApi>;
+
+/* ── bots (`/api/admin/bots`) ─────────────────────────────────────── */
+
+/** One kind of room's bot settings (`practiceRookie`, `practicePro`, `arena`, `private`). */
+export interface BotKindSettings {
+  enabled: boolean;
+  /** Most bots in one room (0..64). */
+  cap: number;
+  /** Bots kept even when the room is busy (<= cap). */
+  min: number;
+  /** Wanted population, people + bots (0..200). */
+  target: number;
+  /** Difficulty mix, as weights. */
+  mix: Record<string, number>;
+}
+
+export interface BotSettings {
+  kinds: Record<string, BotKindSettings>;
+  testnet: {
+    stakedPerArena: number;
+    /** Whole tokens, decimal string. */
+    bankroll: string;
+    /** HYPE per bot wallet for gas, decimal string. */
+    gasHype: string;
+    arenas: Record<string, { stakedBots?: number; bankroll?: string }>;
+  };
+}
+
+export interface BotRoomCount {
+  id: string;
+  kind: string;
+  name: string;
+  arenaId?: number;
+  humans: number;
+  bots: number;
+  stakedBots: number;
+}
+
+export interface BotTotals {
+  rooms: number;
+  humans: number;
+  bots: number;
+  stakedBots: number;
+}
+
+export interface BotAdminView {
+  settings: BotSettings;
+  defaults?: BotSettings;
+  /** The chain is Elysium Testnet: arenas may field staked bots. */
+  testnet: boolean;
+  /** Staked bots really run. */
+  stakedActive?: boolean;
+  /** The staked-bot wallets and what is in their way (`problem`: shown with its fix). */
+  staked?: { active: boolean; chainId: number | null; wallets: number; playing: number; problem: string | null };
+  live: { rooms: BotRoomCount[]; byKind?: Record<string, BotTotals>; totals?: BotTotals };
+}
+
+export type BotSettingsPatch = {
+  kinds?: Record<string, Partial<Omit<BotKindSettings, 'mix'>> & { mix?: Record<string, number> }>;
+  testnet?: Partial<Omit<BotSettings['testnet'], 'arenas'>> & { arenas?: Record<string, { stakedBots?: number; bankroll?: string } | null> };
+};
+
+const emptyImport = (): HolderWlView => ({ entries: [], counts: { wallets: 0, tokens: 0, alsoWl: 0 }, importedAt: null, importedFrom: null });

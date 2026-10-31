@@ -4,6 +4,7 @@ import {
   PROTOCOL_VERSION,
   PlayerFlag,
   SKIN_COUNT,
+  EMBLEM_SKIN_ID,
   clamp,
   decodeClientInput,
   isBasicSkin,
@@ -88,6 +89,8 @@ export class Gateway {
   private profiles: ProfileStore | null = null;
   /** Wallets the admin banned from arenas (integrity); null: nobody (bare unit tests). */
   private banGate: ((wallet: string) => boolean) | null = null;
+  /** Whether a wallet holds an Elymum emblem (laurel flag, emblem skin); null: nobody does. */
+  private holderCheck: ((wallet: string) => Promise<boolean>) | null = null;
 
   constructor(
     private readonly cfg: ServerConfig,
@@ -115,6 +118,11 @@ export class Gateway {
   /** Sets the profile store the sign-in and joins read names from. */
   setProfiles(profiles: ProfileStore | null): void {
     this.profiles = profiles;
+  }
+
+  /** Sets the emblem holder check (cached by the mint service): holders wear a laurel and may pick the emblem skin. */
+  setHolderCheck(check: ((wallet: string) => Promise<boolean>) | null): void {
+    this.holderCheck = check;
   }
 
   /** Sets who is banned from arena joins (the integrity ban list). Practice is never gated by it. */
@@ -344,15 +352,17 @@ export class Gateway {
     // integrity evidence only: kept when well-formed, never trusted as an identity
     conn.fp = isFingerprint(msg.fp) ? msg.fp : null;
     try {
-      const skin = Number.isInteger(msg.skin) && (msg.skin as number) >= 0 && (msg.skin as number) < SKIN_COUNT ? (msg.skin as number) : 0;
+      const wantsEmblem = msg.skin === EMBLEM_SKIN_ID;
+      const skin = wantsEmblem ? EMBLEM_SKIN_ID : Number.isInteger(msg.skin) && (msg.skin as number) >= 0 && (msg.skin as number) < SKIN_COUNT ? (msg.skin as number) : 0;
       if (conn.wallet) conn.profile = this.profiles?.summary(conn.wallet) ?? null;
-      // only the basic skins can be picked
-      if (!isBasicSkin(skin)) {
-        this.error(conn, 'skin_locked', 'That skin is locked.');
+      const holder = conn.wallet && this.holderCheck ? await this.holderCheck(conn.wallet).catch(() => false) : false;
+      // only the basic skins can be picked, and the emblem skin by emblem holders
+      if (wantsEmblem ? !holder : !isBasicSkin(skin)) {
+        this.error(conn, 'skin_locked', wantsEmblem ? 'The emblem skin is for Elymum emblem holders.' : 'That skin is locked.');
         return;
       }
       let name = sanitizeName(msg.name);
-      let flags = 0;
+      let flags = holder ? PlayerFlag.Holder : 0;
       if (conn.profile) {
         name = sanitizeName(conn.profile.name, name);
         flags |= PlayerFlag.Verified;

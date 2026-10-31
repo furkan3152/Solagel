@@ -18,10 +18,10 @@ import {
   type MintPhaseName,
 } from '@elymum/sdk';
 import { parseAddressInput, parseHypeInput, parseIntInput } from '@elymum/sdk/ops';
-import type { AllowlistStatus, MintPriceQuote } from '@elymum/shared';
+import type { AllowlistStatus, HolderWlView, MintPriceQuote } from '@elymum/shared';
 import { useCallback, useEffect, useState } from 'react';
 import type { Address, Hex } from 'viem';
-import { ArcGauge, CoinCharacter, HypeAmount, Icon, type CoinMood } from '../design';
+import { ArcGauge, HypeAmount, Icon, type CoinMood } from '../design';
 import { Addr, Btn, Card, FormError, Input, NeedsSession, Row, useFormError, type ChainCtx } from './ui';
 import { readOwner, type Plan } from './plan';
 
@@ -121,6 +121,7 @@ export function MintTab({ ctx }: { ctx: ChainCtx }) {
         </dl>
       </section>
       <PhaseCard ctx={ctx} current={s.phaseName} open={open} />
+      <ImportHoldersCard ctx={ctx} />
       <div className="ad-mint__pair">
         <AllowlistCard ctx={ctx} root={s.root} open={open} />
         <PriceCard ctx={ctx} price={s.price} open={open} keeper={s.keeper} minPrice={s.minPrice} maxPrice={s.maxPrice} onHypeUsd={setHypeUsd} />
@@ -157,19 +158,19 @@ function PhaseCard({ ctx, current, open }: { ctx: ChainCtx; current: MintPhaseNa
   const nft = ctx.net.nftAddress!;
   const opening = phase !== 'closed' && current === 'closed';
   return (
-    <Card title="Phase" id="mint-phase" kicker={`Now: ${current}`} lede="Closed → Allowlist → Public. Pick one, then preview the switch. Opening the mint can open the game to holders in the same go.">
-      <div className="ad-phases" role="radiogroup" aria-label="Mint phase">
-        {MINT_PHASE_NAMES.map((p) => (
-          <label key={p} className={`ad-phase${phase === p ? ' is-picked' : ''}${current === p ? ' is-live' : ''}`}>
-            <input type="radio" name="ad-mint-phase" className="kb-sr" checked={phase === p} onChange={() => setPhase(p)} />
-            <CoinCharacter paint={p === 'closed' ? 'cream' : p === 'allowlist' ? 'spray' : 'sun'} mood={PHASE_COPY[p].mood} size={52} />
-            <span className="ad-phase__text">
-              <span className="ad-phase__title">{PHASE_COPY[p].title}</span>
-              <span className="ad-phase__line">{PHASE_COPY[p].line}</span>
-            </span>
-            {current === p && <span className="ad-phase__live mono">Live</span>}
-          </label>
-        ))}
+    <Card title="Start / stop the mint" id="mint-phase" kicker={`Now: ${current}`} lede="Closed → Allowlist → Public. Pick one, then preview the switch. Opening the mint can open the game to holders in the same go.">
+      <div className="ad-switchrow" role="radiogroup" aria-label="Mint phase">
+        <span className="ad-switchrow__label mono">Mint phase</span>
+        <div className="ad-switchrow__segs">
+          {MINT_PHASE_NAMES.map((p) => (
+            <label key={p} className={`ad-seg${phase === p ? ' is-picked' : ''}${current === p ? ' is-on' : ''}`} title={PHASE_COPY[p].line}>
+              <input type="radio" name="ad-mint-phase" className="kb-sr" checked={phase === p} onChange={() => setPhase(p)} />
+              {current === p && <span className="ad-seg__dot" aria-hidden="true" />}
+              {PHASE_COPY[p].title}
+              {current === p && <span className="ad-seg__live mono">live</span>}
+            </label>
+          ))}
+        </div>
       </div>
       {phase !== 'closed' && (
         <label className="ad-check" data-testid="mint-activate">
@@ -500,6 +501,83 @@ function OwnerMintCard({ me, open, nft }: { me: Address | null; open: OpenFn; nf
         <Input label="Quantity" value={qty} onChange={setQty} />
       </div>
       <Btn onClick={() => guard(() => open('Owner mint', ownerMintCall(nft, parseAddressInput('To', to), parseIntInput('Quantity', qty, 1, 65_535))))}>Preview owner mint</Btn>
+      <FormError error={err} />
+    </Card>
+  );
+}
+
+/** "12 wallets (15 emblems) · 3 also on the WL · imported 20:15 from chain 99801". */
+export function importLine(v: HolderWlView): string {
+  const c = v.counts;
+  const parts = [`${c.wallets} ${c.wallets === 1 ? 'wallet' : 'wallets'} (${c.tokens} ${c.tokens === 1 ? 'emblem' : 'emblems'})`, `${c.alsoWl} also on the WL`];
+  if (v.importedAt) parts.push(`imported ${new Date(v.importedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}${v.importedFrom ? ` from chain ${v.importedFrom}` : ''}`);
+  return parts.join(' · ');
+}
+
+/**
+ * Mint → "Import testnet holders into the WL": the server adds every testnet emblem holder to
+ * the mainnet allowlist, recorded per wallet with the source. A server without the route shows
+ * the button disabled with a note.
+ */
+export function ImportHoldersCard({ ctx }: { ctx: ChainCtx }) {
+  const [view, setView] = useState<HolderWlView | null | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    if (!ctx.api) return;
+    let live = true;
+    (ctx.api.holderImport?.() ?? Promise.resolve(null)).then(
+      (v) => live && setView(v),
+      (e: Error) => {
+        if (!live) return;
+        setView({ entries: [], counts: { wallets: 0, tokens: 0, alsoWl: 0 }, importedAt: null, importedFrom: null });
+        setErr(e.message);
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [ctx.api]);
+  const run = async () => {
+    if (!ctx.api) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      setView(await ctx.api.importHolders());
+    } catch (e) {
+      const status = (e as { status?: number }).status;
+      if (status === 404) setView(null);
+      else if (status === 409) setErr('There is no emblem contract on the testnet to read holders from.');
+      else if (status === 502 || status === 503) setErr(`The testnet did not answer: ${(e as Error).message} Try again in a minute.`);
+      else setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const missing = view === null;
+  return (
+    <Card
+      title="Import testnet holders into the WL"
+      id="mint-import"
+      kicker="Testnet emblem → mainnet WL"
+      lede="Adds every wallet holding a testnet emblem to the mainnet allowlist, marked with its source. Safe to run again: it re-reads the holders and replaces the last import. Build the allowlist after it."
+    >
+      <div className="ad-actions">
+        <Btn primary disabled={!ctx.api || missing || view === undefined || busy} onClick={() => void run()} testId="mint-import">
+          {busy ? 'Importing…' : view?.importedAt ? 'Import again' : 'Import testnet holders'}
+        </Btn>
+        {view && view.importedAt !== null && (
+          <span className="ad-note" role="status" data-testid="mint-import-result">
+            {importLine(view)}
+          </span>
+        )}
+      </div>
+      {missing && (
+        <p className="ad-warn ad-warn--quiet" data-testid="mint-import-missing">
+          This server does not have the import yet (/api/admin/mint/import-holders answered 404). Update the game server.
+        </p>
+      )}
+      <NeedsSession api={ctx.api} />
       <FormError error={err} />
     </Card>
   );

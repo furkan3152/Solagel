@@ -1,15 +1,23 @@
-import { lazy, StrictMode, Suspense, useEffect } from 'react';
+import { lazy, StrictMode, Suspense, useEffect, type ComponentType } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Landing } from './landing/Landing';
 import { NotFound } from './NotFound';
+import { isLazyPage, loadedPage, warmPage } from './pages';
 import { isSitePath, usePath } from './router';
 import { SiteLoader } from './SiteLoader';
 
-// the form pages carry the wallet adapter; the landing does not
-const WlPage = lazy(() => import('./wl/WlPage').then((m) => ({ default: m.WlPage })));
-const CollabPage = lazy(() => import('./collab/CollabPage').then((m) => ({ default: m.CollabPage })));
-const DocsRoute = lazy(() => import('./DocsRoute').then((m) => ({ default: m.DocsRoute })));
-const MintPage = lazy(() => import('./mint/MintPage').then((m) => ({ default: m.MintPage })));
+// the form pages carry the wallet adapter; the landing does not. A page that was warmed (link
+// hover / touch, see pages.ts) renders directly, without Suspense, so it never flashes the loader.
+const lazies = new Map<string, ComponentType>();
+function lazyPage(path: string): ComponentType {
+  let c = lazies.get(path);
+  if (!c) {
+    // warm already: the page itself; else a lazy wrapper (once resolved it never suspends again)
+    c = loadedPage(path) ?? lazy(() => warmPage(path).then((p) => ({ default: p ?? (() => <NotFound path={path} />) })));
+    lazies.set(path, c);
+  }
+  return c;
+}
 
 const TITLES: Record<string, string> = {
   '/': 'Elymum · Eat. Grow. Last the round.',
@@ -17,6 +25,7 @@ const TITLES: Record<string, string> = {
   '/collab': 'Collab · Elymum',
   '/docs': 'Player guide · Elymum',
   '/mint': 'Mint · Elymum NFT',
+  '/faucet': 'Faucet · Elymum testnet',
 };
 
 export function SiteApp() {
@@ -24,17 +33,17 @@ export function SiteApp() {
   useEffect(() => {
     document.title = TITLES[path] ?? (isSitePath(path) ? TITLES['/'] : 'Off the map · Elymum');
   }, [path]);
-  let page;
-  if (path === '/wl') page = <WlPage />;
-  else if (path === '/collab') page = <CollabPage />;
-  else if (path === '/docs') page = <DocsRoute />;
-  else if (path === '/mint') page = <MintPage />;
-  else if (path === '/') page = <Landing />;
-  else page = <NotFound path={path} />;
-  return <Suspense fallback={<SiteLoader />}>{page}</Suspense>;
+  if (path === '/') return <Landing />;
+  if (!isLazyPage(path)) return <NotFound path={path} />;
+  const Page = lazyPage(path);
+  return (
+    <Suspense fallback={<SiteLoader />}>
+      <Page />
+    </Suspense>
+  );
 }
 
-/** The public site: `/`, `/wl`, `/collab`, `/docs`, `/mint`. */
+/** The public site: `/`, `/mint`, `/faucet`, `/wl`, `/collab`, `/docs`. */
 export function mount(root: HTMLElement): void {
   document.documentElement.dataset.theme = 'light';
   createRoot(root).render(

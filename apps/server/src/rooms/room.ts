@@ -23,6 +23,7 @@ import {
 } from '@elymum/shared';
 import type { BotManagerOptions } from '../bots/manager';
 import { BotManager } from '../bots/manager';
+import type { StakedBotSource, StakedBotTicket } from '../bots/staked';
 import type { ChainGateway } from '../chain/types';
 import { looksLikeScam, maskProfanity } from '../chat-filter';
 import type { Player } from '../game/entities';
@@ -43,6 +44,8 @@ const INTEGRITY_SAMPLE_TICKS = 2;
 const JOURNAL_SNAPSHOT_MS = 1000;
 const SLEEP_AFTER_MS = 60_000;
 const CHAT_HISTORY = 20;
+/** Arena rooms ask the staked-bot source for another ticket at most this often. */
+const STAKED_BOT_ASK_MS = 3000;
 
 export interface RoomDeps {
   chain: ChainGateway;
@@ -67,6 +70,8 @@ export interface RoomDeps {
   onBellSettled?: (e: BellSettled) => void;
   /** Cheat and collusion telemetry of the arena tickets (and the optional auto-hold of payouts). */
   integrity?: IntegrityService;
+  /** Testnet staked bots (wallet + real ticket); absent: arenas field zero-value bots only. */
+  stakedBots?: StakedBotSource;
 }
 
 /** An AFK staker's ticket settled at a round's bell (see `RoomDeps.onBellSettled`). */
@@ -139,6 +144,9 @@ export class Room {
   /** Arena rooms only: the integrity telemetry (null elsewhere and when not configured). */
   private readonly integrity: IntegrityService | null;
   private tickN = 0;
+  /** Staked-bot tickets being bought for this room right now (0 or 1). */
+  private stakedPending = 0;
+  private lastStakedAskAt = 0;
   lastActivity = Date.now();
 
   constructor(
@@ -262,6 +270,11 @@ export class Room {
     this.attach(conn);
     const player = this.world.addPlayer({ name: opts.name, skin: opts.skin, flags: opts.flags, mass: RULES.startMass });
     this.humans.set(player.id, conn);
+    // the human always gets in: a bot over the target goes home at once ("<name> went home")
+    if (this.bots) {
+      this.bots.makeRoom(this.humans.size);
+      this.flushBotDepartures();
+    }
     conn.player = player;
     conn.spectating = false;
     conn.spectatePid = null;
@@ -554,22 +567,7 @@ export class Room {
       }
       // arena humans never `leave` (they go AFK); an operator exit settles at value like a kick
       const reason: SettleReason = cause === 'left' ? 'kicked' : cause;
-      const item: SettlementItem = {
-        kind: 'settle',
-        key: entry.session,
-        player: entry.player,
-        arenaId: entry.arenaId,
-        session: entry.session,
-        sessionId: entry.sessionId,
-        payout: entry.value,
-        score,
-        kills: stats.playersEaten,
-        xp: stats.xp ?? 0,
-        reason,
-        attempts: 0,
-        nextAttemptAt: now,
-        createdAt: now,
-      };
+      const item = settlementOf(entry, { score, kills: stats.playersEaten, xp: stats.xp ?? 0, reason, now });
       // integrity: finish the ticket's telemetry; with auto-hold on, a high-risk payout is held (same journal write)
       this.integrity?.settle(this, p.id, item, { reason, payout: entry.value, killer, killerIsBot: !!killer && this.bots?.isBot(killer.id) === true });
       enqueue.push(item);
@@ -596,7 +594,9 @@ export class Room {
       if (c.player === p) c.player = null;
       c.lastCenter = p.center();
       if (batch) return stats;
-      if (cause === 'death') c.send({ t: 'death', stats, killer: killer?.name ?? null, killerSkin: killer?.skin ?? null });
+      if (cause === 'death') {
+        c.send({ t: 'death', stats, killer: killer?.name ?? null, killerSkin: killer?.skin ?? null, ...(killer?.isBot ? { killerIsBot: true } : {}) });
+      }
       else if (cause === 'maxage' || cause === 'kicked') c.send({ t: 'cashout', state: 'done', value: stats.payout, stats });
     }
     return stats;
@@ -635,6 +635,9 @@ export class Room {
       else if (entry) away.push({ arenaId: entry.arenaId, wallet: entry.player, session: entry.session, sessionId: entry.sessionId, round });
     }
 
+    // staked bots are settled at the bell like everyone (same journal write)
+    const botsSettled = this.settleStakedBots('round', batch);
+
     const amount = this.world.takeLoot();
     const now = Date.now();
     if (amount > 0 && this.opts.stake) {
@@ -660,6 +663,7 @@ export class Room {
     this.commitJournal(batch);
     if (batch.length > 0) this.deps.chain.kick();
     for (const a of away) this.deps.onBellSettled?.(a);
+    for (const b of botsSettled) this.deps.stakedBots?.released(b.ticket, 'round', b.item);
     const settled = batch.filter((i) => i.kind === 'settle').length;
     if (settled > 0 || amount > 0) this.deps.log(`room ${this.id}: round ${round} over · ${settled} settled · loot ${amount} queued to burn`);
 
@@ -667,6 +671,7 @@ export class Room {
       const standings: RoundStanding[] = top.map(({ e, p }) => ({
         name: p?.name ?? '???',
         value: e.value,
+        ...(p?.isBot ? { isBot: true } : {}),
         ...(e.pid === r.pid ? { you: true } : {}),
       }));
       r.conn.send({ t: 'roundOver', round, payout: r.payout, stats: r.stats, standings });
@@ -712,8 +717,12 @@ export class Room {
         victim: k.victim.name,
         victimSkin: k.victim.skin,
         cause: k.cause === 'virus' ? 'virus' : 'eat',
+        ...(k.killer?.isBot ? { killerIsBot: true } : {}),
+        ...(k.victim.isBot ? { victimIsBot: true } : {}),
       });
       if (this.bots?.isBot(k.victim.id)) {
+        // a staked bot's ticket ends like a player's: settled at its (now zero) value
+        if (this.ledger?.has(k.victim.id)) this.settleStakedBot(k.victim, 'death');
         this.bots.onDeath(k.victim.id, world.now);
         world.removePlayer(k.victim.id);
         for (const c of this.conns) c.view.forgetPlayer(k.victim.id);
@@ -738,7 +747,8 @@ export class Room {
     if (this.bots) {
       const { emotes } = this.bots.update(world.now, this.humans.size);
       for (const e of emotes) this.broadcast({ t: 'emote', pid: e.pid, id: e.id });
-      for (const pid of this.bots.retired) for (const c of this.conns) c.view.forgetPlayer(pid);
+      this.flushBotDepartures();
+      this.askStakedBot();
     }
 
     if (this.ledger) this.stakeHousekeeping();
@@ -761,7 +771,8 @@ export class Room {
       for (const e of this.ledger!.all()) {
         if (now / 1000 - e.openedAt < MAX_STAKE_SESSION_AGE_S) continue;
         const p = world.players.get(e.pid);
-        if (p?.alive) this.finishHuman(p, this.humans.get(e.pid) ?? null, 'maxage');
+        if (p?.alive && p.isBot) this.settleStakedBot(p, 'maxage');
+        else if (p?.alive) this.finishHuman(p, this.humans.get(e.pid) ?? null, 'maxage');
       }
     }
     if (this.journalDirty && now - this.lastJournalAt >= JOURNAL_SNAPSHOT_MS) this.commitJournal();
@@ -838,6 +849,7 @@ export class Room {
       score: Math.floor(p.totalMass()),
       value: this.ledger ? this.ledger.value(p.id) : undefined,
       bot: p.isBot || undefined,
+      isBot: p.isBot || undefined,
       verified: (p.flags & PlayerFlag.Verified) !== 0 || undefined,
     }));
     const leaders = ranking.slice(0, 3).map((p) => {
@@ -865,5 +877,134 @@ export class Room {
       const p = this.world.players.get(pid);
       if (p?.alive) this.finishHuman(p, c, this.ledger ? 'kicked' : 'left');
     }
+    if (this.ledger) {
+      const batch: JournalItem[] = [];
+      const settled = this.settleStakedBots('kicked', batch);
+      if (batch.length > 0) {
+        this.commitJournal(batch);
+        this.deps.chain.kick();
+      }
+      for (const b of settled) this.deps.stakedBots?.released(b.ticket, 'kicked', b.item);
+    }
   }
+
+  /* ---------------------------------------------------------------- */
+  /* Bots                                                             */
+  /* ---------------------------------------------------------------- */
+
+  /** Live bot settings from the admin: applied at once (bots over the new cap go home). */
+  setBotOptions(opts: BotManagerOptions): void {
+    if (!this.bots) return;
+    this.bots.setOptions(opts, this.humans.size);
+    this.flushBotDepartures();
+  }
+
+  /** Broadcasts "<name> went home" for every bot that left and drops it from every view. */
+  private flushBotDepartures(): void {
+    if (!this.bots) return;
+    for (const d of this.bots.takeDepartures()) {
+      for (const c of this.conns) c.view.forgetPlayer(d.pid);
+      this.broadcast({ t: 'feed', kind: 'left', pid: d.pid, name: d.name, skin: d.skin, isBot: true, reason: d.reason });
+    }
+  }
+
+  /** Bot counts for the admin (`GET /api/admin/bots`). */
+  botCounts(): { humans: number; bots: number; stakedBots: number } {
+    return { humans: this.humans.size, bots: this.bots?.bots.size ?? 0, stakedBots: this.bots?.stakedCount ?? 0 };
+  }
+
+  /**
+   * Testnet: seats a staked bot with a bought ticket (`StakedBotSource.acquire`). The bot joins the
+   * ledger like a player (value moves to and from it), counts towards the bot cap (a zero-value bot
+   * goes home to keep the room at its target) and is settled at its death or the bell.
+   * Null when this room cannot seat it (not an arena, no bots); the caller then refunds the ticket.
+   */
+  seatStakedBot(ticket: StakedBotTicket): Player | null {
+    if (!this.ledger || !this.bots || !this.opts.stake || ticket.stake.arenaId !== this.opts.stake.arenaId) return null;
+    this.syncRound();
+    const bot = this.bots.spawnBot(RULES.startMass, ticket);
+    this.ledger.join({ ...ticket.stake, pid: bot.player.id });
+    this.walletOf.set(bot.player.id, ticket.stake.player);
+    this.commitJournal();
+    this.bots.trimTo(this.bots.desired(this.humans.size), 'retired');
+    this.flushBotDepartures();
+    return bot.player;
+  }
+
+  /** Arena rooms with a staked-bot source: buys one more ticket when the room fields fewer than wanted. */
+  private askStakedBot(): void {
+    const src = this.deps.stakedBots;
+    const bots = this.bots;
+    if (!src || !bots || !this.ledger || !this.opts.stake || this.stakedPending > 0 || !bots.enabled) return;
+    const now = Date.now();
+    if (now - this.lastStakedAskAt < STAKED_BOT_ASK_MS) return;
+    this.lastStakedAskAt = now;
+    const arenaId = this.opts.stake.arenaId;
+    const want = Math.min(src.wanted(arenaId), bots.cap);
+    if (bots.stakedCount >= want) return;
+    this.stakedPending++;
+    void src
+      .acquire(arenaId, this.id)
+      .then((t) => {
+        if (t && !this.seatStakedBot(t)) this.deps.log(`room ${this.id}: could not seat staked bot ${t.stake.player} (session ${t.stake.session})`);
+      })
+      .catch((err) => this.deps.log(`room ${this.id}: staked bot ticket failed: ${(err as Error).message}`))
+      .finally(() => {
+        this.stakedPending--;
+      });
+  }
+
+  /** Ends a staked bot's ticket: queues its settlement (in `batch`, or written at once). */
+  private settleStakedBot(p: Player, reason: SettleReason, batch?: JournalItem[]): { ticket: StakedBotTicket; item: SettlementItem } | null {
+    const ledger = this.ledger;
+    const bot = this.bots?.bots.get(p.id);
+    if (!ledger?.has(p.id) || !bot?.staked) return null;
+    const entry = ledger.leave(p.id)!;
+    this.walletOf.delete(p.id);
+    const item = settlementOf(entry, { score: Math.floor(p.stats.maxMass), kills: p.stats.playersEaten, xp: 0, reason, now: Date.now() });
+    const out = { ticket: bot.staked, item };
+    if (batch) {
+      batch.push(item);
+      return out;
+    }
+    this.commitJournal([item]);
+    this.deps.chain.kick();
+    this.deps.stakedBots?.released(bot.staked, reason, item);
+    return out;
+  }
+
+  /** Settles every live staked bot into `batch` (the caller writes it and then calls `released`). */
+  private settleStakedBots(reason: SettleReason, batch: JournalItem[]): { ticket: StakedBotTicket; item: SettlementItem }[] {
+    const out: { ticket: StakedBotTicket; item: SettlementItem }[] = [];
+    if (!this.bots || !this.ledger) return out;
+    for (const b of [...this.bots.bots.values()]) {
+      if (!b.staked || !this.ledger.has(b.player.id)) continue;
+      const r = this.settleStakedBot(b.player, reason, batch);
+      if (r) out.push(r);
+    }
+    return out;
+  }
+}
+
+/** The journal item that settles an arena ticket at its value (players and staked bots alike). */
+function settlementOf(
+  entry: ArenaEntry,
+  o: { score: number; kills: number; xp: number; reason: SettleReason; now: number },
+): SettlementItem {
+  return {
+    kind: 'settle',
+    key: entry.session,
+    player: entry.player,
+    arenaId: entry.arenaId,
+    session: entry.session,
+    sessionId: entry.sessionId,
+    payout: entry.value,
+    score: o.score,
+    kills: o.kills,
+    xp: o.xp,
+    reason: o.reason,
+    attempts: 0,
+    nextAttemptAt: o.now,
+    createdAt: o.now,
+  };
 }

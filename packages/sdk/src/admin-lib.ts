@@ -9,7 +9,7 @@ import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { arenaMeta } from '@elymum/shared';
 import type { Address, Hex } from 'viem';
-import { DEFAULT_FEE_BPS, MAX_ARENA_SESSIONS, MAX_FEE_BPS, MIN_ARENA_SESSIONS, MINT_PHASE_NAMES } from './constants';
+import { DEFAULT_FEE_BPS, DEFAULT_HOLDER_FEE_BPS, MAX_ARENA_SESSIONS, MAX_FEE_BPS, MIN_ARENA_SESSIONS, MINT_PHASE_NAMES } from './constants';
 import { formatBps, formatHypeAmount, formatTokenAmount } from './format';
 import { AdminInputError, parseAddressInput, parseBigIntInput, parseBoolInput, parseIntInput, parseTokenInput, type StatusSnapshot } from './ops';
 
@@ -23,6 +23,7 @@ Environment
                          (or --key <hex|path>; ADMIN_KEY_FILE=<path> also works)
   ARENA_ADDRESS          the ElymumArena (or --arena <address>)
   NFT_ADDRESS            the ElymumNFT (or --nft <address>)
+  TEST_TOKEN_ADDRESS     the TestToken (or --token <address>; default: the arena's game token)
 
 Setup (in this order)
   status                                 chain, signer, arena config, token, arenas, NFT
@@ -42,6 +43,15 @@ Arena
   pause | unpause                        block / allow arena joins (settlements and refunds keep working)
   server-key --address <addr>            set the server authority (settle / sweepLoot)
   sweep-arena --id N --force             move a disabled, idle arena's vault to the fee wallet
+  holder-perks --nft <addr|none> [--bps ${DEFAULT_HOLDER_FEE_BPS}]
+                                         emblem holders pay --bps on profit and may enter holders-only arenas
+  holders-only --id N --on true|false    admit only emblem holders to an arena
+
+TestToken (localnet / testnet)
+  token:minter --address <addr> [--allowed true|false]
+                                         let an address mint (e.g. the server key that funds the bots)
+  token:holder-nft --nft <addr|none>     holders of this NFT get the holder faucet amount
+  token:faucet --amount <tokens> --holder-amount <tokens> --cooldown <secs>
 
 NFT
   nft:phase closed|allowlist|public
@@ -224,6 +234,7 @@ export function formatStatus(s: StatusSnapshot, rpcUrl: string): string[] {
       out.push(row('fee wallet', `${c.feeWallet}${a.token ? `  (${formatTokenAmount(a.token.feeWalletBalance, d)}${sym})` : ''}`));
       out.push(row('token', c.token ? `${c.token}  (${a.token?.name ?? '?'}${sym ? `,${sym}` : ''}, ${d} decimals)` : 'not set (run `pnpm admin set-token --token <addr> --confirm <addr>`)'));
       out.push(row('fee', `${formatBps(c.feeBps)} of profit, 100 % to the fee wallet`));
+      out.push(row('holder perks', c.holderNft ? `${c.holderNft}  (holders pay ${formatBps(Math.min(c.holderFeeBps, c.feeBps))})` : 'off'));
       out.push(row('paused', c.paused ? 'YES (arena joins blocked)' : 'no'));
       const t = c.totals;
       out.push(
@@ -239,7 +250,7 @@ export function formatStatus(s: StatusSnapshot, rpcUrl: string): string[] {
         for (const x of a.arenas) {
           out.push(
             `  #${x.id} ${arenaMeta(x.id).name.padEnd(20)} entry ${formatTokenAmount(x.entryFee, d).padEnd(10)} ` +
-              `open ${x.openSessions}/${x.maxSessions} · vault ${formatTokenAmount(x.vault, d)} · owed ${formatTokenAmount(x.owed, d)} · ${x.enabled ? 'enabled' : 'DISABLED'}`,
+              `open ${x.openSessions}/${x.maxSessions} · vault ${formatTokenAmount(x.vault, d)} · owed ${formatTokenAmount(x.owed, d)} · ${x.enabled ? 'enabled' : 'DISABLED'}${x.holdersOnly ? ' · HOLDERS ONLY' : ''}`,
           );
         }
       }
@@ -260,6 +271,16 @@ export function formatStatus(s: StatusSnapshot, rpcUrl: string): string[] {
       out.push(row('root', /^0x0{64}$/.test(m.root) ? 'not set' : m.root));
       out.push(row('treasury', `${m.treasury}  (contract holds ${formatHypeAmount(n.balance)})`));
       out.push(row('metadata', m.frozen ? 'frozen' : 'not frozen'));
+    }
+  }
+  const t = s.testToken;
+  if (t) {
+    out.push(`testtoken ${t.address}  ${codeText(t.code)}`);
+    const f = t.faucet;
+    if (f) {
+      out.push(row('faucet', `${formatTokenAmount(f.amount, 18)} (holders ${formatTokenAmount(f.holderAmount, 18)}) every ${f.cooldownSecs} s`));
+      out.push(row('holder NFT', f.holderNft ?? 'none (no holder bonus)'));
+      if (t.serverIsMinter !== null) out.push(row('server minter', t.serverIsMinter ? 'yes' : 'NO (run `pnpm admin token:minter --address <server> --allowed true`)'));
     }
   }
   return out;

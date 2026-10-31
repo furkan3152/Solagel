@@ -305,12 +305,12 @@ describe('Mint tab', () => {
 
 describe('the chain panel', () => {
   it('shows the red MAINNET banner on mainnet and blocks signing without a server chain', () => {
-    const view = ui(<AdminPanel net={resolveNetwork(chainStatus({ chainId: 4242, chainName: 'Elysium', rpcUrl: null, arenaAddress: null }))} api={null} tab="launch" go={() => {}} reloadNet={async () => {}} />);
+    const view = ui(<AdminPanel net={resolveNetwork(chainStatus({ chainId: 4242, chainName: 'Elysium', rpcUrl: null, arenaAddress: null }))} api={null} tab="network" go={() => {}} reloadNet={async () => {}} />);
     expect(screen.getByTestId('mainnet-banner')).toBeTruthy();
     // the launch checklist opens with its construction scene (decorative, described by its label)
     expect(screen.getByTestId('launch-scene').querySelector('svg[role="img"]')?.getAttribute('aria-label')).toMatch(/terraces built/);
     view.unmount();
-    ui(<AdminPanel net={resolveNetwork(null)} api={null} tab="launch" go={() => {}} reloadNet={async () => {}} />);
+    ui(<AdminPanel net={resolveNetwork(null)} api={null} tab="network" go={() => {}} reloadNet={async () => {}} />);
     expect(screen.getByText('SIGNING BLOCKED.')).toBeTruthy();
     expect(screen.queryByTestId('mainnet-banner')).toBeNull();
   });

@@ -1,68 +1,42 @@
+import type { SiteCounts, SiteSettings } from '@elymum/shared';
 import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { CoinCharacter, CoinMark, StatusPill, Tabs, TabPanel, tabId, type TabItem } from '../../design';
 import { adminApi } from '../../site/api';
 import { AdminPanel, type ChainTab } from '../AdminPanel';
+import { ADMIN_GROUPS, CHAIN_GROUPS, GROUP_LABEL, adminHash, groupSummary, parseAdminHash, type AdminGroup, type CommunityTab } from '../groups';
 import type { AdminNetwork } from '../net';
+import { SummaryBar } from '../SummaryBar';
 import { AdminSessionBar, useAdminSession, type OwnerRole } from './AdminSession';
 import { CollabsTab } from './CollabsTab';
 import { IntegrityTab } from './IntegrityTab';
-import { PlayTab } from './PlayTab';
 import { SettingsTab } from './SettingsTab';
 import { TasksTab } from './TasksTab';
 import { WlTab } from './WlTab';
 import './admin-site.css';
 
-export type AdminTab = ChainTab | 'play' | 'wl' | 'tasks' | 'collabs' | 'integrity' | 'settings';
-const TABS: TabItem<AdminTab>[] = [
-  { id: 'launch', label: 'Launch' },
-  { id: 'deploy', label: 'Deploy' },
-  { id: 'mint', label: 'Mint' },
-  { id: 'arena', label: 'Arena' },
-  { id: 'play', label: 'Play' },
+export type AdminTab = AdminGroup;
+const TABS: TabItem<AdminGroup>[] = ADMIN_GROUPS.map((id) => ({ id, label: GROUP_LABEL[id] }));
+const IDS = TABS.map((t) => t.id);
+const COMMUNITY_ITEMS: TabItem<CommunityTab>[] = [
   { id: 'wl', label: 'WL' },
   { id: 'tasks', label: 'Tasks' },
   { id: 'collabs', label: 'Collabs' },
-  { id: 'integrity', label: 'Integrity' },
-  { id: 'settings', label: 'Settings' },
 ];
-const IDS = TABS.map((t) => t.id);
-const CHAIN_TABS: readonly AdminTab[] = ['launch', 'deploy', 'mint', 'arena'];
-const fromHash = (): AdminTab => {
-  const h = location.hash.replace(/^#/, '') as AdminTab;
-  return IDS.includes(h) ? h : 'launch';
-};
 
 /** Each drawer's heading: a title and one honest line under it. */
-const BENCH: Record<AdminTab, { title: string; lede: string }> = {
-  launch: { title: 'Launch', lede: 'WL, then mint, then lunch. What is done, what is left, and which drawer fixes it.' },
-  deploy: { title: 'Deploy', lede: 'Every contract leaves from your wallet, and your wallet becomes its owner. Read each preview like a contract, because it is one.' },
-  mint: { title: 'Mint', lede: 'The phase, the allowlist, the $1 price and the small print of the Elymum NFT.' },
-  arena: { title: 'Arena', lede: 'The token, the four tiers, the fee and the big red switches of ElymumArena.' },
-  play: { title: 'Play', lede: 'Walk the floor as the admin wallet before anyone else does.' },
-  wl: { title: 'Whitelist', lede: 'Who asked to come in, and what they did for it.' },
-  tasks: { title: 'Tasks', lede: 'The chores applicants do before the feast.' },
-  collabs: { title: 'Collabs', lede: 'Communities asking for spots, and the wallets they bring.' },
-  integrity: { title: 'Integrity', lede: 'Farming, feeding and bots. Evidence for a person to weigh, never a verdict.' },
-  settings: { title: 'Settings', lede: 'Who may play, which doors are open, and the X handle.' },
+const BENCH: Record<AdminGroup, { title: string; lede: string }> = {
+  network: { title: 'Network', lede: 'The chain the server follows, its RPC, the server key, the contracts, and the way to mainnet.' },
+  setup: { title: 'Setup', lede: 'Every contract leaves from your wallet, and your wallet becomes its owner. Then the emblem perks and the TestToken.' },
+  mint: { title: 'Mint', lede: 'Start and stop the mint, the allowlist, the $1 price and the small print of the Elymum NFT.' },
+  game: { title: 'Game', lede: 'Who may play, the arena switches, the bots and the rooms right now.' },
+  community: { title: 'Community', lede: 'The WL, the chores applicants do, and the communities asking for spots.' },
+  safety: { title: 'Safety', lede: 'Farming, feeding and collusion. Evidence for a person to weigh, never a verdict.' },
+  settings: { title: 'Settings', lede: 'Who may play (the same switch as in Game), which doors are open, and the X handle.' },
 };
 
-/** The network as a pill: MAINNET red, TESTNET sun, LOCALNET and no chain idle. */
-export function NetPill({ net }: { net: AdminNetwork }) {
-  if (!net.info)
-    return (
-      <StatusPill tone="danger" data-testid="net-pill">
-        No chain
-      </StatusPill>
-    );
-  const local = net.info.id === 31337 || /local/i.test(net.info.name);
-  const tone = net.mainnet ? 'mainnet' : local ? 'idle' : 'testnet';
-  const word = net.mainnet ? 'Mainnet' : local ? 'Localnet' : 'Testnet';
-  return (
-    <StatusPill tone={tone} data-testid="net-pill" title={`${net.info.name} (${net.info.id})`}>
-      {word} · {net.info.id}
-    </StatusPill>
-  );
-}
+import { NetPill } from '../NetPill';
+
+export { NetPill };
 
 /**
  * `/admin`: the operator's workshop. A top bar (network, wallet, owner and admin badges), a rail
@@ -73,20 +47,38 @@ export function NetPill({ net }: { net: AdminNetwork }) {
  * call sends it as a Bearer token.
  */
 export function AdminHome({ net, reloadNet }: { net: AdminNetwork; reloadNet: () => Promise<void> }) {
-  const [tab, setTab] = useState<AdminTab>(fromHash);
+  const [tab, setTab] = useState<AdminGroup>(() => parseAdminHash(location.hash).group);
+  const [sub, setSub] = useState<CommunityTab>(() => parseAdminHash(location.hash).sub);
   const [role, setRole] = useState<OwnerRole>({ arena: null, nft: null });
   const state = useAdminSession();
   const api = useMemo(() => (state.kind === 'admin' ? adminApi(state.session.token) : null), [state]);
 
   useEffect(() => {
-    const on = () => setTab(fromHash());
+    const on = () => {
+      const h = parseAdminHash(location.hash);
+      setTab(h.group);
+      setSub(h.sub);
+    };
     window.addEventListener('hashchange', on);
     return () => window.removeEventListener('hashchange', on);
   }, []);
-  const go = (t: AdminTab) => {
-    setTab(t);
-    history.replaceState(null, '', t === 'launch' ? location.pathname : `#${t}`);
+  /** Opens a drawer; old drawer ids (the launch checklist's links: deploy, arena, wl…) land in their group. */
+  const go = (t: string, s?: CommunityTab) => {
+    const h = (ADMIN_GROUPS as readonly string[]).includes(t) ? { group: t as AdminGroup, sub: s ?? sub } : parseAdminHash(`#${t}`);
+    setTab(h.group);
+    setSub(h.sub);
+    history.replaceState(null, '', adminHash(h.group, h.sub) || location.pathname);
   };
+  // the site drawers' opening lines read the server's counts and settings
+  const [siteInfo, setSiteInfo] = useState<{ counts: SiteCounts | null; settings: SiteSettings | null }>({ counts: null, settings: null });
+  useEffect(() => {
+    if (!api || CHAIN_GROUPS.includes(tab)) return;
+    let live = true;
+    void Promise.all([api.counts().catch(() => null), api.settings().then((r) => r.settings).catch(() => null)]).then(([counts, settings]) => live && setSiteInfo({ counts, settings }));
+    return () => {
+      live = false;
+    };
+  }, [api, tab]);
   // the rail is vertical on wide screens: Up / Down move too
   const onRailKey = (e: KeyboardEvent<HTMLElement>) => {
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
@@ -98,7 +90,7 @@ export function AdminHome({ net, reloadNet }: { net: AdminNetwork; reloadNet: ()
   };
 
   let panel: ReactNode;
-  if (CHAIN_TABS.includes(tab)) panel = <AdminPanel net={net} api={api} tab={tab as ChainTab} go={go} reloadNet={reloadNet} onRole={setRole} />;
+  if (CHAIN_GROUPS.includes(tab)) panel = <AdminPanel net={net} api={api} tab={tab as ChainTab} go={(t) => go(t)} reloadNet={reloadNet} onRole={setRole} />;
   else if (!api)
     panel = (
       <section className="ad-gate" role="status">
@@ -109,12 +101,30 @@ export function AdminHome({ net, reloadNet }: { net: AdminNetwork; reloadNet: ()
         </div>
       </section>
     );
-  else if (tab === 'play') panel = <PlayTab api={api} />;
-  else if (tab === 'wl') panel = <WlTab api={api} />;
-  else if (tab === 'tasks') panel = <TasksTab api={api} />;
-  else if (tab === 'collabs') panel = <CollabsTab api={api} />;
-  else if (tab === 'integrity') panel = <IntegrityTab api={api} />;
-  else panel = <SettingsTab api={api} />;
+  else if (tab === 'community')
+    panel = (
+      <>
+        <SummaryBar summary={groupSummary('community', { net, status: null, counts: siteInfo.counts })} />
+        <Tabs items={COMMUNITY_ITEMS} value={sub} onChange={(s) => go('community', s)} label="Community" idBase="ad-com" className="ad-subtabs" />
+        <TabPanel idBase="ad-com" id={sub} className="ad-subpanel">
+          {sub === 'wl' ? <WlTab api={api} /> : sub === 'tasks' ? <TasksTab api={api} /> : <CollabsTab api={api} />}
+        </TabPanel>
+      </>
+    );
+  else if (tab === 'safety')
+    panel = (
+      <>
+        <SummaryBar summary={groupSummary('safety', { net, status: null })} />
+        <IntegrityTab api={api} />
+      </>
+    );
+  else
+    panel = (
+      <>
+        <SummaryBar summary={groupSummary('settings', { net, status: null, settings: siteInfo.settings })} />
+        <SettingsTab api={api} />
+      </>
+    );
 
   const bench = BENCH[tab];
   const no = String(IDS.indexOf(tab) + 1).padStart(2, '0');
@@ -142,9 +152,6 @@ export function AdminHome({ net, reloadNet }: { net: AdminNetwork; reloadNet: ()
       </header>
       <div className="ad-body">
         <nav className="ad-rail" aria-label="Admin drawers">
-          <span className="ad-rail__group mono" aria-hidden="true">
-            On chain
-          </span>
           <Tabs items={TABS} value={tab} onChange={go} label="Admin sections" idBase="ad" className="ad-tabs" onKeyDown={onRailKey} />
           <a className="ad-rail__site" href="/">
             Back to the site
@@ -153,7 +160,7 @@ export function AdminHome({ net, reloadNet }: { net: AdminNetwork; reloadNet: ()
         <main className="ad-main">
           <header className="ad-bench">
             <span className="kicker ad-bench__no">
-              Drawer {no} · {CHAIN_TABS.includes(tab) ? 'on chain' : 'the site'}
+              Drawer {no} · {CHAIN_GROUPS.includes(tab) ? 'on chain' : 'the site'}
             </span>
             <h1 className="ad-bench__title">{bench.title}</h1>
             <p className="ad-bench__lede">{bench.lede}</p>

@@ -1,4 +1,4 @@
-import { BASIC_SKINS, MAX_NAME_LENGTH, isBasicSkin, sanitizeName, shortAddress, utf8Length } from '@elymum/shared';
+import { BASIC_SKINS, EMBLEM_SKIN_ID, MAX_NAME_LENGTH, isBasicSkin, sanitizeName, shortAddress, utf8Length } from '@elymum/shared';
 import { useEffect, useId, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { Button, Field, Icon, Seigaiha, staggerIn, useReducedMotion } from '../../design';
@@ -153,7 +153,10 @@ function NameAndCoin() {
   const clean = sanitizeName(name, '');
   const bytes = utf8Length(clean);
   const valid = clean.length > 0 && bytes <= MAX_NAME_BYTES;
-  const skin = isBasicSkin(settings.skin) ? settings.skin : 0;
+  // emblem holders may wear the emblem skin (the server checks the NFT on save and at every join)
+  const holder = useChainData((s) => s.holder) === true;
+  const skin = isBasicSkin(settings.skin) || (holder && settings.skin === EMBLEM_SKIN_ID) ? settings.skin : 0;
+  const skins = holder ? [...BASIC_SKINS, { id: EMBLEM_SKIN_ID, name: 'Emblem' }] : BASIC_SKINS;
   const serverDiff = !!token && (!profile || clean !== profile.name || skin !== profile.skin);
   const localDiff = clean !== settings.name;
   const dirty = valid && (serverDiff || localDiff);
@@ -208,7 +211,7 @@ function NameAndCoin() {
       <fieldset className="pf-looks" disabled={busy}>
         <legend className="mono pf-cap">{t('pf.coin')}</legend>
         <div className="pf-grid">
-          {BASIC_SKINS.map((s) => {
+          {skins.map((s) => {
             const on = skin === s.id;
             return (
               <label key={s.id} className={`pf-look${on ? ' is-on' : ''}`}>

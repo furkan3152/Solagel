@@ -1,6 +1,7 @@
-import { elymumArenaAbi, elymumNFTAbi, type ArenaConfig, type ArenaInfo, type ContractCall, type MintState, type SessionInfo } from '@elymum/sdk';
+import { elymumArenaAbi, elymumNFTAbi, testTokenAbi, type ArenaConfig, type ArenaInfo, type ContractCall, type MintState, type SessionInfo, type TestTokenFaucetConfig } from '@elymum/sdk';
 import { encodeErrorResult, getAddress, keccak256, toHex, type Address, type Hash, type Hex } from 'viem';
-import type { ArenaEvent, CodeCheck, ContractKindCode, EvmClient, JoinedLog, TransferLog, TxReceipt } from '../src/chain/evm-client';
+import { privateKeyToAccount } from 'viem/accounts';
+import type { ArenaEvent, CodeCheck, ContractKindCode, EvmClient, EvmSigner, JoinedLog, TransferLog, TxReceipt } from '../src/chain/evm-client';
 
 export const SERVER = getAddress('0x70997970c51812dc3a010c7d01b50e0d17dc79c8');
 export const ADMIN = getAddress('0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266');
@@ -54,6 +55,21 @@ export class FakeEvm implements EvmClient {
   owners = new Map<string, Address>();
   mint: MintState;
   balances = new Map<string, bigint>();
+  /** Game token balances (base units), by lower-case owner. */
+  tokens = new Map<string, bigint>();
+  /** ERC-20 allowances: `owner:spender` (lower case). */
+  allowances = new Map<string, bigint>();
+  /** HYPE of every address but the server key (that one is `balanceWei`). */
+  hype = new Map<string, bigint>();
+  /** TestToken minters (lower case); the token owner (`owners`, default ADMIN) may always mint. */
+  minters = new Set<string>();
+  /** Arena holder checks (`isHolder`): wallets holding the holder NFT (lower case). */
+  arenaHolders = new Set<string>();
+  faucet: TestTokenFaucetConfig = { address: TOKEN, owner: ADMIN, amount: 1_000_000n * E18, holderAmount: 2_000_000n * E18, cooldownSecs: 3600, holderNft: null };
+  /** Every call sent by another key (`signer`), with its sender. */
+  sentBy: { from: Address; call: ContractCall }[] = [];
+  /** HYPE sends of the server key. */
+  valueSent: { to: Address; wei: bigint }[] = [];
   verified: { address: string; message: string; signature: string }[] = [];
 
   constructor(opts: { address?: Address; token?: Address | null; decimals?: number } = {}) {
@@ -69,6 +85,8 @@ export class FakeEvm implements EvmClient {
       feeBps: 500,
       paused: false,
       totals: { sessions: 0n, games: 0n, staked: 0n, paidOut: 0n, fees: 0n, burned: 0n },
+      holderNft: null,
+      holderFeeBps: 500,
     };
     this.owners.set(NFT.toLowerCase(), ADMIN);
     this.mint = {
@@ -102,6 +120,7 @@ export class FakeEvm implements EvmClient {
       entryFee: entryTokens * unit,
       vault: 0n,
       owed: 0n,
+      holdersOnly: false,
       maxSessions: 300,
       openSessions: 0,
       enabled: true,
@@ -180,7 +199,7 @@ export class FakeEvm implements EvmClient {
     return a ? { ...a } : { ...this.addArenaShape(id) };
   }
   private addArenaShape(id: number): ArenaInfo {
-    return { id, entryFee: 0n, vault: 0n, owed: 0n, maxSessions: 0, openSessions: 0, enabled: false, exists: false, totalDeposited: 0n, totalPaidOut: 0n, totalBurned: 0n, lastSweepId: 0n };
+    return { id, entryFee: 0n, vault: 0n, owed: 0n, maxSessions: 0, openSessions: 0, enabled: false, exists: false, totalDeposited: 0n, totalPaidOut: 0n, totalBurned: 0n, lastSweepId: 0n, holdersOnly: false };
   }
   sessionReads = 0;
   async session(_arena: Address, arenaId: number, player: Address) {
@@ -189,9 +208,90 @@ export class FakeEvm implements EvmClient {
     const s = this.sessions.get(`${arenaId}:${player.toLowerCase()}`);
     return s ? { ...s } : { arenaId, player: getAddress(player), id: 0n, entryFee: 0n, openedAt: 0, feeBps: 0, finalized: false, owed: 0n };
   }
-  async balance(_address: Address) {
+  async balance(address: Address) {
     this.check();
-    return this.balanceWei;
+    return address.toLowerCase() === this.address.toLowerCase() ? this.balanceWei : (this.hype.get(address.toLowerCase()) ?? 0n);
+  }
+  tokenOf(owner: string): bigint {
+    return this.tokens.get(owner.toLowerCase()) ?? 0n;
+  }
+  private addTokens(owner: string, amount: bigint): void {
+    this.tokens.set(owner.toLowerCase(), this.tokenOf(owner) + amount);
+  }
+  async tokenBalance(_token: Address, owner: Address) {
+    this.check();
+    return this.tokenOf(owner);
+  }
+  async allowance(_token: Address, owner: Address, spender: Address) {
+    this.check();
+    return this.allowances.get(`${owner.toLowerCase()}:${spender.toLowerCase()}`) ?? 0n;
+  }
+  async isMinter(_token: Address, who: Address) {
+    this.check();
+    return this.minters.has(who.toLowerCase());
+  }
+  async testTokenFaucet(_token: Address) {
+    this.check();
+    return { ...this.faucet };
+  }
+  async isArenaHolder(_arena: Address, who: Address) {
+    this.check();
+    return this.arenaHolders.has(who.toLowerCase());
+  }
+  async sendValue(to: Address, wei: bigint): Promise<Hash> {
+    this.check();
+    if (this.balanceWei < wei) throw new Error('insufficient funds for gas * price + value');
+    this.balanceWei -= wei;
+    this.hype.set(to.toLowerCase(), (this.hype.get(to.toLowerCase()) ?? 0n) + wei);
+    this.valueSent.push({ to: getAddress(to), wei });
+    return this.mined([]);
+  }
+  /** Gas a bot transaction burns (the model charges every bot send this much HYPE). */
+  botGasWei = 10n ** 14n;
+  signer(privateKey: Hex): EvmSigner {
+    const address = privateKeyToAccount(privateKey).address;
+    return { address, send: (call) => this.sendFrom(address, call) };
+  }
+  private mined(events: ArenaEvent[]): Hash {
+    const hash = nextHash();
+    this.block += 1n;
+    this.receipts.set(hash, { status: 'success', blockNumber: this.block, events });
+    return hash;
+  }
+  /** A player-side call (`approve`, `join`, `refund`) sent by `from`. */
+  async sendFrom(from: Address, call: ContractCall): Promise<Hash> {
+    this.check();
+    const key = from.toLowerCase();
+    const gas = this.hype.get(key) ?? 0n;
+    if (gas < this.botGasWei) throw new Error('insufficient funds for gas * price + value');
+    if (call.functionName === 'approve') {
+      const [spender, amount] = call.args as [Address, bigint];
+      this.allowances.set(`${key}:${spender.toLowerCase()}`, amount);
+    } else if (call.functionName === 'join') {
+      const [arenaId] = call.args as [number];
+      const a = this.arenaMap.get(arenaId);
+      if (!a || !a.exists) throw revert('UnknownArena');
+      if (!a.enabled) throw revert('ArenaDisabled');
+      if (a.holdersOnly && !this.arenaHolders.has(key)) throw revert('HoldersOnly');
+      if (this.sessions.has(`${arenaId}:${key}`)) throw revert('SessionExists');
+      const allowance = this.allowances.get(`${key}:${ARENA.toLowerCase()}`) ?? 0n;
+      if (allowance < a.entryFee || this.tokenOf(from) < a.entryFee) throw new Error('execution reverted: ERC20InsufficientAllowance/Balance');
+      this.allowances.set(`${key}:${ARENA.toLowerCase()}`, allowance === (1n << 256n) - 1n ? allowance : allowance - a.entryFee);
+      this.addTokens(from, -a.entryFee);
+      this.join(arenaId, from);
+    } else if (call.functionName === 'refund') {
+      const [arenaId] = call.args as [number];
+      const s = this.sessions.get(`${arenaId}:${key}`);
+      if (!s?.finalized) throw revert('NothingToRefund');
+      this.addTokens(from, s.owed);
+      this.arenaMap.get(arenaId)!.owed -= s.owed;
+      this.sessions.delete(`${arenaId}:${key}`);
+    } else {
+      throw new Error(`FakeEvm: ${call.functionName} from a player key is not modelled`);
+    }
+    this.hype.set(key, gas - this.botGasWei);
+    this.sentBy.push({ from: getAddress(from), call });
+    return this.mined([]);
   }
   logRequests: [bigint, bigint][] = [];
   async joinedLogs(_arena: Address, from: bigint, to: bigint) {
@@ -235,6 +335,11 @@ export class FakeEvm implements EvmClient {
       a.vault -= amount;
       a.totalBurned += amount;
       events = [{ name: 'LootBurned', arenaId, sweepId, amount }];
+    } else if (call.functionName === 'mint' && call.abi === testTokenAbi) {
+      const [to, amount] = call.args as [Address, bigint];
+      const owner = this.owners.get(TOKEN.toLowerCase()) ?? ADMIN;
+      if (owner.toLowerCase() !== this.address.toLowerCase() && !this.minters.has(this.address.toLowerCase())) throw revert('OwnableUnauthorizedAccount', [this.address], testTokenAbi);
+      this.addTokens(to, amount);
     } else if (call.functionName === 'setPrice') {
       const [wei] = call.args as [bigint];
       if (this.mint.keeper?.toLowerCase() !== this.address.toLowerCase()) throw revert('NotPriceSetter', [], elymumNFTAbi);
@@ -273,6 +378,8 @@ export class FakeEvm implements EvmClient {
       collected = false;
       this.sessions.set(key, { ...s, finalized: true, owed: toPlayer });
       a.owed += toPlayer;
+    } else if (toPlayer > 0n) {
+      this.addTokens(it.player, toPlayer);
     }
     return { name: 'Settled', arenaId: it.arenaId, player: getAddress(it.player), sessionId: it.sessionId, payout: it.payout, fee, collected };
   }

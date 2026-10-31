@@ -12,7 +12,9 @@ import {
     FeeOnTransferToken,
     BlockingToken,
     NoDecimalsToken,
-    ReentrantToken
+    ReentrantToken,
+    MockNFT,
+    BrokenNFT
 } from "../contracts/test/MockTokens.sol";
 import {RejectEther} from "../contracts/test/Actors.sol";
 
@@ -49,6 +51,8 @@ contract ElymumArenaTest is Test {
     event LootBurned(uint16 indexed arenaId, uint64 indexed sweepId, uint128 amount);
     event ArenaSwept(uint16 indexed arenaId, address indexed feeWallet, uint128 amount);
     event Rescued(address indexed token, address indexed to, uint256 amount);
+    event HolderPerksSet(address indexed nft, uint16 holderFeeBps);
+    event ArenaHoldersOnlySet(uint16 indexed arenaId, bool holdersOnly);
 
     function setUp() public {
         vm.warp(1_800_000_000);
@@ -1088,6 +1092,173 @@ contract ElymumArenaTest is Test {
         uint256 used = g - gasleft();
         emit log_named_uint("gas settle(40)", used);
         assertLt(used, 3_000_000);
+    }
+
+    // ---------------------------------------------------------------- holder perks
+
+    function _perks(address nft, uint16 bps) internal {
+        vm.prank(admin);
+        arena.setHolderPerks(nft, bps);
+    }
+
+    function test_holderPerks_defaultsOff() public view {
+        ElymumArena.ConfigView memory c = arena.config();
+        assertEq(c.holderNft, address(0));
+        assertEq(c.holderFeeBps, 0);
+        assertFalse(arena.isHolder(alice));
+        assertEq(arena.feeBpsFor(alice), 500);
+        assertFalse(arena.getArena(ID).holdersOnly);
+    }
+
+    function test_setHolderPerks_ownerAndBounds() public {
+        MockNFT nft = new MockNFT();
+        vm.expectEmit(address(arena));
+        emit HolderPerksSet(address(nft), 300);
+        _perks(address(nft), 300);
+        assertEq(arena.config().holderNft, address(nft));
+        assertEq(arena.config().holderFeeBps, 300);
+
+        vm.prank(stranger);
+        vm.expectRevert(_unauthorized(stranger));
+        arena.setHolderPerks(address(nft), 300);
+
+        vm.startPrank(admin);
+        vm.expectRevert(ElymumArena.InvalidFee.selector);
+        arena.setHolderPerks(address(nft), 1_001);
+        vm.expectRevert(ElymumArena.NotAContract.selector);
+        arena.setHolderPerks(stranger, 300);
+        arena.setHolderPerks(address(nft), 1_000); // the cap itself is fine
+        arena.setHolderPerks(address(0), 0); // disable
+        vm.stopPrank();
+        assertEq(arena.config().holderNft, address(0));
+    }
+
+    function test_join_holderGetsLowerFee() public {
+        MockNFT nft = new MockNFT();
+        nft.setBalance(alice, 1);
+        _perks(address(nft), 300);
+        assertTrue(arena.isHolder(alice));
+        assertFalse(arena.isHolder(bob));
+        assertEq(arena.feeBpsFor(alice), 300);
+        assertEq(arena.feeBpsFor(bob), 500);
+
+        vm.expectEmit(address(arena));
+        emit Joined(ID, alice, 1, FEE, 300);
+        uint64 sa = _join(alice);
+        vm.expectEmit(address(arena));
+        emit Joined(ID, bob, 2, FEE, 500);
+        uint64 sb = _join(bob);
+        assertEq(arena.getSession(ID, alice).feeBps, 300);
+        assertEq(arena.getSession(ID, bob).feeBps, 500);
+
+        // The rate is fixed at join: selling the NFT or changing the perks later does not change open tickets.
+        nft.setBalance(alice, 0);
+        _perks(address(0), 0);
+        ElymumArena.Settlement[] memory items = new ElymumArena.Settlement[](2);
+        items[0] = ElymumArena.Settlement(ID, alice, sa, 1_500 ether);
+        items[1] = ElymumArena.Settlement(ID, bob, sb, 500 ether);
+        uint256 f0 = token.balanceOf(feeWallet);
+        vm.expectEmit(address(arena));
+        emit Settled(ID, alice, sa, 1_500 ether, 15 ether, true); // 3 % of 500 profit
+        _settle(items);
+        assertEq(token.balanceOf(feeWallet) - f0, 15 ether);
+    }
+
+    function test_join_holderFeeNeverAboveNormalFee() public {
+        MockNFT nft = new MockNFT();
+        nft.setBalance(alice, 3);
+        _perks(address(nft), 800);
+        vm.prank(admin);
+        arena.setFeeBps(400);
+        assertEq(arena.feeBpsFor(alice), 400);
+        _join(alice);
+        assertEq(arena.getSession(ID, alice).feeBps, 400);
+    }
+
+    function test_join_brokenNftNeverBlocks() public {
+        BrokenNFT nft = new BrokenNFT();
+        _perks(address(nft), 300);
+        address[6] memory ps =
+            [makeAddr("b1"), makeAddr("b2"), makeAddr("b3"), makeAddr("b4"), makeAddr("b5"), makeAddr("b6")];
+        for (uint8 m = 1; m <= 6; ++m) {
+            nft.setMode(m);
+            assertFalse(arena.isHolder(ps[m - 1]));
+            _fund(ps[m - 1]);
+            vm.prank(ps[m - 1]);
+            arena.join(ID);
+            assertEq(arena.getSession(ID, ps[m - 1]).feeBps, 500);
+        }
+    }
+
+    function test_join_nftSelfDestructedOrCodeless() public {
+        // Perks pointing at an address that has no code (any more): treated as "not a holder".
+        MockNFT nft = new MockNFT();
+        nft.setBalance(alice, 1);
+        _perks(address(nft), 300);
+        vm.etch(address(nft), "");
+        assertFalse(arena.isHolder(alice));
+        _join(alice);
+        assertEq(arena.getSession(ID, alice).feeBps, 500);
+    }
+
+    function test_holdersOnly() public {
+        MockNFT nft = new MockNFT();
+        nft.setBalance(alice, 1);
+        _perks(address(nft), 300);
+
+        vm.expectEmit(address(arena));
+        emit ArenaHoldersOnlySet(ID, true);
+        vm.prank(admin);
+        arena.setArenaHoldersOnly(ID, true);
+        assertTrue(arena.getArena(ID).holdersOnly);
+
+        vm.prank(bob);
+        vm.expectRevert(ElymumArena.HoldersOnly.selector);
+        arena.join(ID);
+        _join(alice);
+        assertEq(arena.getSession(ID, alice).feeBps, 300);
+
+        // updateArena keeps the flag.
+        vm.prank(admin);
+        arena.updateArena(ID, FEE, 300, true);
+        assertTrue(arena.getArena(ID).holdersOnly);
+
+        // Perks off: nobody is a holder, the arena is closed to everyone.
+        _perks(address(0), 0);
+        vm.prank(carol);
+        vm.expectRevert(ElymumArena.HoldersOnly.selector);
+        arena.join(ID);
+
+        // A broken NFT: same, cleanly reverts HoldersOnly instead of bubbling the NFT's failure.
+        BrokenNFT broken = new BrokenNFT();
+        _perks(address(broken), 300);
+        vm.prank(carol);
+        vm.expectRevert(ElymumArena.HoldersOnly.selector);
+        arena.join(ID);
+
+        vm.prank(admin);
+        arena.setArenaHoldersOnly(ID, false);
+        _join(carol);
+    }
+
+    function test_setArenaHoldersOnly_reverts() public {
+        vm.prank(stranger);
+        vm.expectRevert(_unauthorized(stranger));
+        arena.setArenaHoldersOnly(ID, true);
+        vm.prank(admin);
+        vm.expectRevert(ElymumArena.UnknownArena.selector);
+        arena.setArenaHoldersOnly(77, true);
+    }
+
+    function test_gas_join_withHolderCheck() public {
+        MockNFT nft = new MockNFT();
+        nft.setBalance(alice, 1);
+        _perks(address(nft), 300);
+        _join(bob);
+        vm.prank(alice);
+        uint256 g = gasleft();
+        arena.join(ID);
+        emit log_named_uint("gas join (holder check)", g - gasleft());
     }
 
     // ---------------------------------------------------------------- fixtures

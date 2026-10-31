@@ -1,7 +1,7 @@
 import { addEthereumChainParams, chainInfo, isMainnet, toHexChainId, type ChainInfo, type ChainStatus } from '@elymum/shared';
 import { createElymumPublicClient, createElymumWalletClient, describeError, toViemChain } from '@elymum/sdk';
 import type { Address, Chain, PublicClient, WalletClient } from 'viem';
-import { CHAIN_OVERRIDES, SERVER } from '../config';
+import { CHAIN_OVERRIDES } from '../config';
 import type { Eip1193Provider } from './eip6963';
 import { parseChainId, useWallet } from './store';
 
@@ -105,33 +105,5 @@ export function walletClientFor(provider: Eip1193Provider, address: Address, cha
 
 /* ── the server's chain status for pages without the game store ────── */
 
-let serverChainCache: Promise<ChainStatus | null> | null = null;
-
-/** `GET /api/config` → `chain` (null when the server cannot be reached). Cached per page unless `fresh`. */
-export function fetchServerChain(opts: { fresh?: boolean; timeoutMs?: number } = {}): Promise<ChainStatus | null> {
-  if (serverChainCache && !opts.fresh) return serverChainCache;
-  const run = async (): Promise<ChainStatus | null> => {
-    const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-    const timer = ctrl ? setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 6000) : null;
-    try {
-      const res = await fetch(`${SERVER.http}/api/config`, ctrl ? { signal: ctrl.signal } : undefined);
-      if (!res.ok) return null;
-      return ((await res.json()) as { chain?: ChainStatus }).chain ?? null;
-    } catch {
-      return null;
-    } finally {
-      if (timer) clearTimeout(timer);
-    }
-  };
-  const p = run();
-  serverChainCache = p;
-  void p.then((c) => {
-    if (c === null && serverChainCache === p) serverChainCache = null;
-  });
-  return p;
-}
-
-/** For tests. */
-export function resetServerChain(): void {
-  serverChainCache = null;
-}
+// one cache for the whole page (the site header reads it before viem loads)
+export { fetchServerChain, resetServerChain } from '../site/serverChain';

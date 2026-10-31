@@ -45,7 +45,11 @@ export interface KillItem {
   killerSkin: number;
   victim: string;
   victimSkin: number;
-  cause: 'eat' | 'virus';
+  /** `left`: the victim went home (a bot making room for a person, or retiring); there is no killer. */
+  cause: 'eat' | 'virus' | 'left';
+  /** BOT tags. */
+  killerIsBot?: boolean;
+  victimIsBot?: boolean;
   at: number;
 }
 

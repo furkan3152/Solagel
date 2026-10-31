@@ -130,6 +130,78 @@
   color: var(--foam);
 }
 
+/* "What the emblem does" (Perks.tsx): small, under the lede (left column), under the card on phones */
+.mt-perks {
+  max-width: 460px;
+}
+@media (min-width: 961px) {
+  .mt-page {
+    align-items: start;
+  }
+  .mt-page > .mt-card {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: center;
+  }
+  .mt-page > .mt-copy {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: end;
+  }
+  .mt-page > .mt-perks {
+    grid-column: 1;
+    grid-row: 2;
+    margin-top: calc(-1 * clamp(32px, 4vw, 56px) + 22px);
+  }
+}
+.mt-perks__h {
+  margin: 0 0 8px;
+  color: var(--sun);
+}
+.mt-perks__list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mt-perk {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 1.4;
+  color: #bfd8dd;
+}
+.mt-perk b {
+  color: var(--cream);
+  font-weight: 700;
+}
+.mt-perk__dot {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-top: 0;
+  border-radius: 50%;
+  border: 2px solid var(--outline);
+  background: var(--sun);
+  color: var(--ink-fixed);
+}
+.mt-perk[data-perk='skin'] .mt-perk__dot,
+.mt-perk[data-perk='isles'] .mt-perk__dot {
+  background: var(--meadow);
+}
+@media (max-width: 479px) {
+  .mt-perk {
+    font-size: 13px;
+  }
+  .mt-perk__t span {
+    display: block;
+  }
+}
+
 /* WL → MINT → PLAY */
 .mt-track {
   display: flex;

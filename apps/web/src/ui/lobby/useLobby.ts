@@ -85,7 +85,7 @@ export function useLobbyModel(): LobbyModel {
       tokenReady: chain?.tokenReady === true,
       decimals: data.config?.token ? data.config.decimals : (chain?.token?.decimals ?? 18),
     };
-    const tickets = buildTickets(rooms, data.arenas, blocked, token);
+    const tickets = buildTickets(rooms, data.arenas, blocked, token, data.holdersOnly);
     const sessions: Record<number, OpenSession | null> = {};
     for (const [id, s] of Object.entries(data.sessions)) sessions[Number(id)] = openSessionOf(s);
     const arenasEnabled = !!chain?.arenasEnabled && data.deployed !== false;
@@ -100,6 +100,7 @@ export function useLobbyModel(): LobbyModel {
         session: t.arenaId !== null ? (sessions[t.arenaId] ?? null) : null,
         pending: data.pending,
         nowS,
+        holder: data.holder,
       });
     }
     const openSessions = Object.entries(sessions)
@@ -111,6 +112,7 @@ export function useLobbyModel(): LobbyModel {
       tickets: tickets.filter((t) => t.arenaId === null || (gates[t.key].kind !== 'offline' && gates[t.key].kind !== 'maintenance' && gates[t.key].kind !== 'soon')),
       lastArena,
       openSessions,
+      holder: data.holder,
     });
     return { tickets, gates, sessions, quick, walletConnected: connected, verified, owner };
   }, [rooms, blocked, data, chain, connected, verified, nowS, lastArena, owner]);

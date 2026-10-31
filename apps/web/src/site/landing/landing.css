@@ -875,6 +875,15 @@
   color: var(--ink-2);
   font-size: 17px;
 }
+.ld-nft__perks {
+  margin: 10px 0 0;
+  max-width: 44ch;
+  padding-left: 12px;
+  border-left: 3px solid var(--sun);
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
+}
 .ld-flow {
   display: flex;
   align-items: center;

@@ -39,6 +39,8 @@ export const PlayerFlag = {
   Verified: 2,
   /** Plays an arena ticket (tokens at stake). */
   Staker: 4,
+  /** The wallet holds an Elymum emblem (the name tag wears a laurel). Old clients ignore the bit. */
+  Holder: 8,
 } as const;
 
 /** Binary client → server opcodes (first byte). */
@@ -60,8 +62,19 @@ export const ServerOp = {
 export interface PlayerInfo {
   id: number;
   skin: number;
+  /** `PlayerFlag` bits (the wire carries only these). */
   flags: number;
   name: string;
+  /**
+   * The player is a server bot (show the BOT tag). On the wire this is `PlayerFlag.Bot` in `flags`:
+   * `decodeSnapshot` always sets it, `writeSnapshot` sets the flag bit when it is true.
+   */
+  isBot?: boolean;
+  /**
+   * The player's wallet holds an Elymum emblem (show the laurel). On the wire this is
+   * `PlayerFlag.Holder` in `flags`; `decodeSnapshot` sets it only when true.
+   */
+  holder?: boolean;
 }
 
 export interface EntityRecord {
@@ -135,6 +148,8 @@ export interface RoundInfo {
 /** A row of the round-end standings (`roundOver`): stakers by value at the bell. */
 export interface RoundStanding {
   name: string;
+  /** The row is a server bot (a testnet staked bot; zero-value bots hold no ticket and never stand). */
+  isBot?: boolean;
   /** Value at the bell, raw token units. */
   value: number;
   /** This row is the receiving player. */
@@ -221,9 +236,19 @@ export interface LbEntry {
   score: number;
   /** Arena rooms: in-game value, raw token units. */
   value?: number;
+  /** @deprecated same as `isBot` (kept for older clients). */
   bot?: boolean;
+  /** The row is a server bot: show the BOT tag. */
+  isBot?: boolean;
   verified?: boolean;
 }
+
+/**
+ * Why a player left the room without dying (`feed` kind `left`). Bots: `make_room` (a human took
+ * the seat), `retired` (it played a while and went home), `settings` (the admin lowered the cap or
+ * turned bots off).
+ */
+export type LeftReason = 'make_room' | 'retired' | 'settings';
 
 export interface DeathStats {
   aliveMs: number;
@@ -283,10 +308,24 @@ export type ServerMessage =
       leaders: { x: number; y: number }[];
       players: number;
     }
-  | { t: 'kf'; killer: string; killerSkin: number; victim: string; victimSkin: number; cause: 'eat' | 'virus' }
+  | {
+      t: 'kf';
+      killer: string;
+      killerSkin: number;
+      victim: string;
+      victimSkin: number;
+      cause: 'eat' | 'virus';
+      /** The killer is a server bot (BOT tag). */
+      killerIsBot?: boolean;
+      /** The victim is a server bot (BOT tag). */
+      victimIsBot?: boolean;
+    }
+  // A player left the room without dying: render "<name> went home" in the kill feed and let the
+  // cell (`pid`) fade out with a short "going home" animation (its removal follows in the snapshot).
+  | { t: 'feed'; kind: 'left'; pid: number; name: string; skin: number; isBot: boolean; reason: LeftReason }
   | { t: 'chat'; pid: number; from: string; skin: number; text: string; system?: boolean }
   | { t: 'emote'; pid: number; id: number }
-  | { t: 'death'; stats: DeathStats; killer: string | null; killerSkin: number | null }
+  | { t: 'death'; stats: DeathStats; killer: string | null; killerSkin: number | null; killerIsBot?: boolean }
   | { t: 'cashout'; state: 'started' | 'canceled' | 'done'; ms?: number; value?: number; stats?: DeathStats }
   // Arena rooms: the round ended with this player alive; `payout` (= value at the bell, raw token units,
   // before the fee) is being settled (a `settled` message follows). `standings`: top 10 stakers by value.

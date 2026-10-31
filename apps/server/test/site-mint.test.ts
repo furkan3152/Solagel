@@ -151,7 +151,7 @@ describe('contracts registry', () => {
     const pub = (await h.call('GET', '/api/site/contracts')).body;
     expect(pub).toMatchObject({ arena: { address: ARENA }, nft: { address: NFT }, token: { address: TOKEN } });
     // persisted
-    const file = JSON.parse(readFileSync(join(h.dir, CONTRACTS_FILE), 'utf8'));
+    const file = JSON.parse(readFileSync(join(h.dir, 'chains', '31337', CONTRACTS_FILE), 'utf8'));
     expect(file.arena.address).toBe(ARENA);
     expect((await h.call('GET', '/api/config')).body.chain).toMatchObject({ chainId: 31337 });
   });
@@ -223,7 +223,7 @@ describe('mint: allowlist, proofs, state, price', () => {
     expect(status.snapshot.wallets).toEqual([...approved, extra].sort((a, b) => (a.toLowerCase() < b.toLowerCase() ? -1 : 1)));
     expect(status).toMatchObject({ diff: { added: [], removed: [] }, onchainRoot: null, published: false });
     // on disk
-    expect(JSON.parse(readFileSync(join(h.dir, ALLOWLIST_FILE), 'utf8')).root).toBe(built.body.root);
+    expect(JSON.parse(readFileSync(join(h.dir, 'chains', '31337', ALLOWLIST_FILE), 'utf8')).root).toBe(built.body.root);
 
     for (const w of [...approved, extra]) {
       const p = (await h.call('GET', `/api/site/mint/proof?wallet=${w.toLowerCase()}`)).body;

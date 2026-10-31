@@ -26,7 +26,8 @@ import { emblemTraits } from './emblem';
 import type { SiteStore } from './store';
 import { SiteFail, userWallet } from './validate';
 
-export const ALLOWLIST_FILE = 'site/allowlist.json';
+/** The allowlist snapshot, inside the chain's state directory (`DATA_DIR/chains/<id>/allowlist.json`). */
+export const ALLOWLIST_FILE = 'allowlist.json';
 const PRICE_TTL_MS = 60_000;
 const PRICE_RETRY_MS = 15_000;
 /** A HYPE/USD reading older than this is not shown (the feed is down). */
@@ -54,7 +55,10 @@ export interface MintServiceDeps {
   /** The registered NFT (null while none). */
   nft: () => { address: string; txHash: string | null } | null;
   chainId: () => number | null;
-  dataDir: string | null;
+  /** The chain's state directory (`DATA_DIR/chains/<id>`): the allowlist snapshot; null: memory only. */
+  stateDir: string | null;
+  /** Imported testnet emblem holders (`site/holder-wl.json`): part of the allowlist. */
+  holderWl?: () => string[];
   usdCents: number;
   /** HYPE/USD feed (default: Hyperliquid's info API at `HYPE_PRICE_URL`). */
   fetchPrice: PriceFetcher;
@@ -102,7 +106,7 @@ export class MintService {
   /* ---------------------------------------------------------------- */
 
   private get snapshotPath(): string | null {
-    return this.deps.dataDir ? join(this.deps.dataDir, ALLOWLIST_FILE) : null;
+    return this.deps.stateDir ? join(this.deps.stateDir, ALLOWLIST_FILE) : null;
   }
 
   private loadSnapshot(): void {
@@ -130,16 +134,22 @@ export class MintService {
     return this.snapshotV ? structuredClone(this.snapshotV) : null;
   }
 
-  /** The current approvals: approved WL wallets + submitted collab wallets (checksummed, unique, sorted). */
-  currentAllowlist(): { wallets: string[]; wl: number; collab: number } {
+  /** The current approvals: approved WL wallets + submitted collab wallets + imported emblem holders (checksummed, unique, sorted). */
+  currentAllowlist(): { wallets: string[]; wl: number; collab: number; holders: number } {
     const src = this.deps.store.allowlistSources();
-    return { wallets: normalizeAllowlist([...src.wl, ...src.collab]), wl: normalizeAllowlist(src.wl).length, collab: normalizeAllowlist(src.collab).length };
+    const holders = this.deps.holderWl?.() ?? [];
+    return {
+      wallets: normalizeAllowlist([...src.wl, ...src.collab, ...holders]),
+      wl: normalizeAllowlist(src.wl).length,
+      collab: normalizeAllowlist(src.collab).length,
+      holders: normalizeAllowlist(holders).length,
+    };
   }
 
   /** `POST /api/admin/mint/allowlist`: builds and stores a snapshot of the current approvals. */
   buildAllowlist(admin: string): AllowlistBuildResponse {
     const cur = this.currentAllowlist();
-    if (cur.wallets.length === 0) throw new SiteFail(400, 'bad_request', 'The allowlist is empty: approve WL entries or collab lists first.');
+    if (cur.wallets.length === 0) throw new SiteFail(400, 'bad_request', 'The allowlist is empty: approve WL entries or collab lists (or import testnet holders) first.');
     const tree = buildMerkleTree(cur.wallets);
     const snap: AllowlistSnapshot = {
       root: tree.root,
@@ -147,7 +157,7 @@ export class MintService {
       wallets: tree.addresses,
       builtAt: this.now(),
       builtBy: admin,
-      sources: { wl: cur.wl, collab: cur.collab },
+      sources: { wl: cur.wl, collab: cur.collab, ...(cur.holders > 0 ? { holders: cur.holders } : {}) },
     };
     const p = this.snapshotPath;
     if (p) {

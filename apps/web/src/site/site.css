@@ -170,6 +170,9 @@ body {
   border: 2px solid var(--outline);
   flex: none;
 }
+.st-connect__dot.is-hollow {
+  background: var(--white);
+}
 .st-connect__lede {
   margin: 0 0 16px;
   color: var(--ink-2);
@@ -222,6 +225,54 @@ body {
     display: inline-grid;
   }
 }
+/* phones: the menu is a sheet on the bottom edge (every link and Play under the thumb) */
+.st-menu__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  border: 0;
+  padding: 0;
+  background: rgb(4 24 28 / 0.28);
+  animation: st-fade 0.16s linear both;
+}
+.st-menu {
+  position: fixed;
+  z-index: 61;
+  left: 10px;
+  right: 10px;
+  top: auto;
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  min-width: 0;
+  padding: 12px !important;
+  gap: 4px;
+  transform: none;
+  transform-origin: bottom center;
+  animation: st-rise 0.18s var(--ease-out) both;
+}
+.st-menu .st-nav__link {
+  justify-content: center;
+  min-height: 52px;
+}
+.st-menu .st-nav__link.is-on {
+  transform: none;
+}
+.st-menu__play {
+  margin-top: 6px;
+  width: 100%;
+  justify-content: center;
+  min-height: 56px;
+}
+@keyframes st-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+}
+@keyframes st-fade {
+  from {
+    opacity: 0;
+  }
+}
 @media (max-width: 479px) {
   .st-head__inner {
     height: 64px;
@@ -242,7 +293,8 @@ body {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .st-menu {
+  .st-menu,
+  .st-menu__scrim {
     animation: none;
   }
   .st-head__home:hover .st-head__coin {
@@ -747,8 +799,8 @@ select.st-input {
 }
 
 /* ── page turns between site pages (router.tsx turnPage, View Transitions) ──
-   The header keeps its place; the old page swings away on its spine like a book page, with a
-   shadow sweeping over the page underneath, which settles up from the paper. */
+   The header keeps its place; the old page tips away on its spine like a book page while the
+   next one settles up from the paper. Kept under 280 ms so moving around feels instant. */
 .st-head {
   view-transition-name: st-head;
 }
@@ -761,11 +813,11 @@ select.st-input {
 ::view-transition-old(root) {
   z-index: 2;
   transform-origin: 0 50%;
-  animation: st-turn-away 0.62s cubic-bezier(0.55, 0.05, 0.6, 0.9) both;
+  animation: st-turn-away 0.26s cubic-bezier(0.5, 0, 0.75, 0.6) both;
 }
 ::view-transition-new(root) {
   z-index: 1;
-  animation: st-turn-under 0.62s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+  animation: st-turn-under 0.26s cubic-bezier(0.2, 0.7, 0.3, 1) both;
 }
 html[data-turn='back']::view-transition-old(root) {
   transform-origin: 100% 50%;
@@ -773,16 +825,16 @@ html[data-turn='back']::view-transition-old(root) {
 }
 @keyframes st-turn-away {
   0% { transform: perspective(2200px) rotateY(0); filter: brightness(1); opacity: 1; }
-  70% { opacity: 1; }
-  100% { transform: perspective(2200px) rotateY(-96deg); filter: brightness(0.7); opacity: 0; }
+  55% { opacity: 1; }
+  100% { transform: perspective(2200px) rotateY(-34deg); filter: brightness(0.8); opacity: 0; }
 }
 @keyframes st-turn-away-back {
   0% { transform: perspective(2200px) rotateY(0); filter: brightness(1); opacity: 1; }
-  70% { opacity: 1; }
-  100% { transform: perspective(2200px) rotateY(96deg); filter: brightness(0.7); opacity: 0; }
+  55% { opacity: 1; }
+  100% { transform: perspective(2200px) rotateY(34deg); filter: brightness(0.8); opacity: 0; }
 }
 @keyframes st-turn-under {
-  0% { transform: scale(0.965) translateY(10px); filter: brightness(0.82); }
+  0% { transform: scale(0.985) translateY(6px); filter: brightness(0.9); }
   100% { transform: none; filter: brightness(1); }
 }
 @media (prefers-reduced-motion: reduce) {

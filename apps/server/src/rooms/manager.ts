@@ -1,4 +1,5 @@
 import { TICK_MS, arenaMeta, type BlockedArena, type League, type RoomInfo, type RoundWindow } from '@elymum/shared';
+import { BotSettingsStore, botKindOf, defaultBotSettings, type BotRoomKind } from '../bots/settings';
 import type { ChainGateway } from '../chain/types';
 import type { ServerConfig } from '../config';
 import type { Conn } from '../net/conn';
@@ -44,12 +45,17 @@ export class RoomManager {
   private readonly lastEnabled = new Map<number, boolean>();
   /** `arenaId:wallet` → the AFK ticket the last bell settled while its player was away. */
   private readonly bellMemo = new Map<string, BellSettled & { at: number }>();
+  /** The admin's bot settings (`/api/admin/bots`), applied live to every room. */
+  readonly botSettings: BotSettingsStore;
 
   constructor(
     private readonly cfg: ServerConfig,
     deps: RoomDeps,
     private readonly chain: ChainGateway,
+    botSettings?: BotSettingsStore,
   ) {
+    this.botSettings = botSettings ?? new BotSettingsStore(null, defaultBotSettings(cfg.bots));
+    this.botSettings.onChange(() => this.applyBotSettings());
     this.deps = {
       ...deps,
       round: deps.round ?? cfg.round,
@@ -108,7 +114,7 @@ export class RoomManager {
         league,
         name: `${league === 'rookie' ? 'Rookie' : 'Pro'} Pond #${n}`,
         maxPlayers: this.cfg.practiceCapacity,
-        bots: league === 'rookie' ? this.cfg.bots.practiceRookie : this.cfg.bots.practicePro,
+        bots: this.botSettings.options(league === 'rookie' ? 'practiceRookie' : 'practicePro'),
       },
       this.deps,
     );
@@ -167,7 +173,7 @@ export class RoomManager {
         name: `Private · ${c}`,
         code: c,
         maxPlayers: this.cfg.privateRoomCapacity,
-        bots: this.cfg.bots.private,
+        bots: this.botSettings.options('private'),
       },
       this.deps,
     );
@@ -242,7 +248,7 @@ export class RoomManager {
         name: n === 1 ? meta.name : `${meta.name} #${n}`,
         instance: n,
         maxPlayers: this.cfg.arenaInstanceCap,
-        bots: this.cfg.bots.arena,
+        bots: this.botSettings.options('arena'),
         stake: { arenaId, buyIn: arena.buyIn },
       },
       this.deps,
@@ -359,6 +365,26 @@ export class RoomManager {
     } catch (err) {
       this.deps.log(`arena discovery failed: ${(err as Error).message}`);
     }
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* Bots                                                             */
+  /* ---------------------------------------------------------------- */
+
+  /** Re-applies the bot settings to every room (an admin change, no restart). */
+  applyBotSettings(): void {
+    for (const room of this.rooms.values()) room.setBotOptions(this.botSettings.options(botKindOf(room.opts.mode, room.opts.league)));
+  }
+
+  /** Live bot counts per room (for `GET /api/admin/bots`). */
+  botCounts(): { id: string; kind: BotRoomKind; name: string; arenaId?: number; humans: number; bots: number; stakedBots: number }[] {
+    return [...this.rooms.values()].map((r) => ({
+      id: r.id,
+      kind: botKindOf(r.opts.mode, r.opts.league),
+      name: r.opts.name,
+      ...(r.opts.stake ? { arenaId: r.opts.stake.arenaId } : {}),
+      ...r.botCounts(),
+    }));
   }
 
   list(): RoomInfo[] {

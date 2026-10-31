@@ -671,6 +671,8 @@ export class Renderer {
       name: showName ? player.name : null,
       value: showMass ? String(Math.floor((e.nr * e.nr) / 100)) : null,
       verified: (player.flags & PlayerFlag.Verified) !== 0,
+      bot: (player.flags & PlayerFlag.Bot) !== 0,
+      holder: (player.flags & PlayerFlag.Holder) !== 0,
       mine,
       x: e.x,
       y,

@@ -42,18 +42,24 @@ import {
   getArena,
   getArenaConfig,
   getArenaIds,
+  getTestTokenFaucet,
   getTokenInfo,
+  setArenaHoldersOnlyCall,
   setFeeBpsCall,
+  setHolderPerksCall,
   setPausedCall,
   setServerAuthorityCall,
   setTokenCall,
   sweepArenaCall,
+  testTokenSetFaucetCall,
+  testTokenSetHolderNftCall,
+  testTokenSetMinterCall,
   updateArenaFrom,
   type ArenaConfig,
 } from './arena';
 import { describeCall, sendCall, simulateCall, type ContractCall } from './call';
 import { createElymumPublicClient, createElymumWalletClient, elysiumChain, isMainnetChain } from './chain';
-import { MAX_FEE_BPS } from './constants';
+import { DEFAULT_HOLDER_FEE_BPS, MAX_FEE_BPS } from './constants';
 import { describeError } from './errors';
 import { formatBps, formatHypeAmount, formatTokenAmount } from './format';
 import { buildMerkleTree } from './merkle';
@@ -64,8 +70,12 @@ import {
   confirmTypedAddress,
   createArenaRefusal,
   fetchStatus,
+  holderPerksRefusal,
+  holderPerksWarnings,
+  holdersOnlyRefusal,
   ownerRefusal,
   planDefaultArenas,
+  setFaucetRefusal,
   setTokenRefusal,
   sweepArenaRefusal,
   SWEEP_WARNING,
@@ -200,7 +210,13 @@ async function cmdStatus(ctx: Ctx): Promise<void> {
   }
   const arena = str(ctx.opts, 'arena') ?? process.env.ARENA_ADDRESS;
   const nft = str(ctx.opts, 'nft') ?? process.env.NFT_ADDRESS;
-  const s = await fetchStatus(ctx.client, { arena: arena ? ctx.arena() : null, nft: nft ? ctx.nft() : null, account });
+  const testToken = str(ctx.opts, 'token') ?? process.env.TEST_TOKEN_ADDRESS;
+  const s = await fetchStatus(ctx.client, {
+    arena: arena ? ctx.arena() : null,
+    nft: nft ? ctx.nft() : null,
+    testToken: testToken ? addressOpt(new Map([['token', testToken]]), 'token')! : null,
+    account,
+  });
   for (const line of formatStatus(s, ctx.url)) console.log(line);
 }
 
@@ -336,6 +352,82 @@ async function cmdSweepArena(ctx: Ctx): Promise<void> {
   console.log(`! sweep moves arena #${id}'s whole vault (${formatTokenAmount(arena.vault, decimals)}) to the fee wallet ${config.feeWallet}.\n  ${SWEEP_WARNING}`);
   if (!flag(ctx.opts, 'force')) throw new UsageError(`sweep-arena refuses without --force (re-run: pnpm admin sweep-arena --id ${id} --force)`);
   await send(ctx, `swept arena #${id}`, sweepArenaCall(ctx.arena(), id));
+}
+
+/** `--name <addr|none>`: null for none / 0. */
+function optionalAddress(ctx: Ctx, name: string, cmd: string): Address | null {
+  const raw = required(ctx.opts, name, cmd);
+  return /^(none|0)$/i.test(raw.trim()) ? null : addressOpt(ctx.opts, name)!;
+}
+
+async function cmdHolderPerks(ctx: Ctx): Promise<void> {
+  const nft = optionalAddress(ctx, 'nft', 'holder-perks');
+  const bps = int(ctx.opts, 'bps', 0, MAX_FEE_BPS) ?? (nft ? DEFAULT_HOLDER_FEE_BPS : 0);
+  const config = await requireArenaOwner(ctx);
+  const code = nft ? await ctx.client.getCode({ address: nft }) : undefined;
+  const refusal = holderPerksRefusal(nft, !!code && code !== '0x', bps);
+  if (refusal) throw new UsageError(refusal);
+  const arenas = await Promise.all((await getArenaIds(ctx.client, ctx.arena())).map((id) => getArena(ctx.client, ctx.arena(), id)));
+  for (const w of holderPerksWarnings({ nft, holderFeeBps: bps, feeBps: config.feeBps, holdersOnlyIds: arenas.filter((a) => a.holdersOnly).map((a) => a.id) })) console.log(`! ${w}`);
+  await send(ctx, nft ? `holder perks: holders of ${nft} pay ${formatBps(Math.min(bps, config.feeBps))}` : 'holder perks off', setHolderPerksCall(ctx.arena(), nft, bps));
+}
+
+async function cmdHoldersOnly(ctx: Ctx): Promise<void> {
+  const id = int(ctx.opts, 'id', 1, 65_535);
+  const on = bool(ctx.opts, 'on');
+  if (id === undefined || on === undefined) throw new UsageError('holders-only needs --id N --on true|false');
+  const config = await requireArenaOwner(ctx);
+  const refusal = holdersOnlyRefusal(await getArena(ctx.client, ctx.arena(), id), on, config);
+  if (refusal) throw new UsageError(refusal);
+  await send(ctx, `arena #${id} (${arenaName(id)}) is ${on ? 'for holders only' : 'open to everyone'}`, setArenaHoldersOnlyCall(ctx.arena(), id, on));
+}
+
+async function requireTestTokenOwner(ctx: Ctx): Promise<Address> {
+  const refusal = testTokenRefusal(ctx.chainId);
+  if (refusal) throw new UsageError(refusal);
+  let token = addressOpt(ctx.opts, 'token') ?? (process.env.TEST_TOKEN_ADDRESS ? addressOpt(new Map([['token', process.env.TEST_TOKEN_ADDRESS]]), 'token')! : undefined);
+  if (!token) {
+    const config = await getArenaConfig(ctx.client, ctx.arena());
+    if (!config.token) throw new UsageError('set TEST_TOKEN_ADDRESS or pass --token <address>');
+    token = config.token;
+  }
+  const code = await checkDeployedCode(ctx.client, token, 'token');
+  if (code === 'missing') throw new UsageError(`no contract at ${token} on chain ${ctx.chainId}`);
+  if (code === 'mismatch') throw new UsageError(`${token} is not the bundled TestToken`);
+  const owner = (await getTestTokenFaucet(ctx.client, token)).owner;
+  const ownerErr = ownerRefusal(owner, ctx.account().address, 'TestToken');
+  if (ownerErr) throw new UsageError(ownerErr);
+  return token;
+}
+
+async function cmdTokenMinter(ctx: Ctx): Promise<void> {
+  const minter = addressOpt(ctx.opts, 'address');
+  if (!minter) throw new UsageError('token:minter needs --address <addr>');
+  const allowed = bool(ctx.opts, 'allowed') ?? true;
+  const token = await requireTestTokenOwner(ctx);
+  await send(ctx, `${minter} ${allowed ? 'may now mint' : 'may no longer mint'}`, testTokenSetMinterCall(token, minter, allowed));
+}
+
+async function cmdTokenHolderNft(ctx: Ctx): Promise<void> {
+  const nft = optionalAddress(ctx, 'nft', 'token:holder-nft');
+  const token = await requireTestTokenOwner(ctx);
+  if (nft) {
+    const code = await ctx.client.getCode({ address: nft });
+    if (!code || code === '0x') throw new UsageError(`${nft} is not a contract on this chain`);
+  }
+  await send(ctx, nft ? `faucet holder NFT set to ${nft}` : 'faucet holder bonus off', testTokenSetHolderNftCall(token, nft));
+}
+
+async function cmdTokenFaucet(ctx: Ctx): Promise<void> {
+  const amount = tokens(ctx.opts, 'amount', 18);
+  const holderAmount = tokens(ctx.opts, 'holder-amount', 18);
+  const cooldownSecs = int(ctx.opts, 'cooldown', 0, Number.MAX_SAFE_INTEGER);
+  if (amount === undefined || holderAmount === undefined || cooldownSecs === undefined) throw new UsageError('token:faucet needs --amount <tokens> --holder-amount <tokens> --cooldown <secs>');
+  const p = { amount, holderAmount, cooldownSecs };
+  const refusal = setFaucetRefusal(p);
+  if (refusal) throw new UsageError(refusal);
+  const token = await requireTestTokenOwner(ctx);
+  await send(ctx, `faucet: ${formatTokenAmount(amount, 18)} (holders ${formatTokenAmount(holderAmount, 18)}) every ${cooldownSecs} s`, testTokenSetFaucetCall(token, p));
 }
 
 async function cmdNftPhase(ctx: Ctx, positional: string[]): Promise<void> {
@@ -483,6 +575,11 @@ async function main(argv: string[]): Promise<number> {
       unpause: () => cmdPause(ctx, false),
       'server-key': () => cmdServerKey(ctx),
       'sweep-arena': () => cmdSweepArena(ctx),
+      'holder-perks': () => cmdHolderPerks(ctx),
+      'holders-only': () => cmdHoldersOnly(ctx),
+      'token:minter': () => cmdTokenMinter(ctx),
+      'token:holder-nft': () => cmdTokenHolderNft(ctx),
+      'token:faucet': () => cmdTokenFaucet(ctx),
       'nft:phase': () => cmdNftPhase(ctx, positional),
       'nft:root': () => cmdNftRoot(ctx),
       'nft:price': () => cmdNftPrice(ctx),

@@ -172,6 +172,11 @@ const iso = (ms: number | null) => (ms === null ? '' : new Date(ms).toISOString(
 export interface SiteStoreOptions {
   /** Wall clock (Unix ms); tests inject one. */
   now?: () => number;
+  /**
+   * Defaults of settings the file does not hold yet (a fresh settings file). On Elysium Testnet the
+   * app passes `gameAccess: 'public'`; a stored value always wins.
+   */
+  defaults?: Partial<SiteSettings>;
   log?: (m: string) => void;
 }
 
@@ -181,7 +186,8 @@ export interface SiteStoreOptions {
  * so each file on disk is always a complete snapshot. `dataDir` null: memory only (tests).
  */
 export class SiteStore {
-  private settingsV: SiteSettings = { ...SITE_SETTINGS_DEFAULT };
+  private settingsV: SiteSettings;
+  private readonly defaults: SiteSettings;
   private tasksV: WlTask[] = defaultTasks();
   private wl: WlRecord[] = [];
   private collabs: CollabRecord[] = [];
@@ -196,6 +202,8 @@ export class SiteStore {
   ) {
     this.now = opts.now ?? Date.now;
     this.log = opts.log ?? (() => {});
+    this.defaults = { ...SITE_SETTINGS_DEFAULT, ...opts.defaults };
+    this.settingsV = { ...this.defaults };
     this.load();
   }
 
@@ -226,7 +234,7 @@ export class SiteStore {
   private load(): void {
     const settings = this.read('settings', (x) => (x && typeof x === 'object' ? (x as Partial<SiteSettings>) : null));
     if (settings) {
-      const d = SITE_SETTINGS_DEFAULT;
+      const d = this.defaults;
       const handle = normalizeXHandle(settings.xHandle);
       const previous = handle !== null && handle !== SITE_X_HANDLE_DEFAULT && PREVIOUS_X_HANDLES.includes(handle);
       this.settingsV = {

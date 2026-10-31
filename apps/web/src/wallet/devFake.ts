@@ -33,6 +33,9 @@ export interface FakeWallet {
 
 const ONE = 10n ** 18n;
 
+/** The fake chain's emblem contract (holder perks are on). */
+export const FAKE_HOLDER_NFT = '0x000000000000000000000000000000000000E1B1' as Address;
+
 export const fakeWallet: FakeWallet = {
   tokenBalance: 12_450n * ONE,
   wei: 42n * 10n ** 16n,
@@ -58,6 +61,8 @@ export function fakeConfig(chain: ChainStatus): ArenaConfig {
     feeBps: chain.feeBps ?? DEFAULT_FEE_BPS,
     paused: false,
     totals: { sessions: 0n, games: 0n, staked: 0n, paidOut: 0n, fees: 0n, burned: 0n },
+    holderNft: FAKE_HOLDER_NFT,
+    holderFeeBps: fakePerks.holderFeeBps,
   };
 }
 
@@ -114,4 +119,30 @@ export async function fakeSimpleTx(onPhase: (p: TxPhase) => void, apply: () => v
   await sleep(fakeWallet.delayMs);
   apply();
   return true;
+}
+
+/** The fake TestToken faucet (the `/faucet` page on a DEV_FAKE_CHAIN server). */
+export const fakeFaucet = {
+  amount: 1_000_000n * ONE,
+  holderAmount: 2_000_000n * ONE,
+  cooldownSecs: 3600,
+  /** Unix seconds of the next claim (0: never claimed). */
+  nextAt: 0,
+  /** The fake wallet holds an emblem (2x faucet, the holder fee, holders-only arenas). */
+  holder: false,
+};
+
+/** The fake chain's holder perks: arena ids reserved for emblem holders, and the holder fee. */
+export const fakePerks = { holdersOnly: [4] as number[], holderFeeBps: 300 };
+
+/** "Claims" from the fake faucet. */
+export async function fakeFaucetClaim(onPhase: (p: TxPhase, hash?: Hash) => void): Promise<Hash> {
+  onPhase('signing');
+  await sleep(fakeWallet.delayMs);
+  const h = fakeHash();
+  onPhase('confirming', h);
+  await sleep(fakeWallet.delayMs);
+  fakeWallet.tokenBalance += fakeFaucet.holder ? fakeFaucet.holderAmount : fakeFaucet.amount;
+  fakeFaucet.nextAt = Math.floor(Date.now() / 1000) + fakeFaucet.cooldownSecs;
+  return h;
 }

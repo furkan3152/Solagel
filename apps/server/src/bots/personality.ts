@@ -43,16 +43,43 @@ const SKILL_BASE: Record<BotSkill, Pick<Personality, 'thinkMs' | 'aimNoise' | 'p
   2: { thinkMs: 110, aimNoise: 0.05, perception: 1.05, distraction: 0, virusAware: true, leadsTargets: true, virusShooter: true },
 };
 
-/** Bot difficulty mix: `rookie` (practice rookie league) or `standard` (everywhere else). */
-export type BotMix = 'rookie' | 'standard';
+/** Difficulty weights (any non-negative numbers; they are used as proportions). */
+export interface BotMixWeights {
+  easy: number;
+  medium: number;
+  hard: number;
+}
 
 /**
- * Difficulty mix. `standard`: 45 % easy, 40 % medium, 15 % hard;
- * `rookie`: 70 % easy, 30 % medium (no hard bots).
+ * Bot difficulty mix: a preset (`rookie` for the practice rookie league, `standard` everywhere
+ * else) or admin-set weights (`/api/admin/bots`).
  */
+export type BotMix = 'rookie' | 'standard' | BotMixWeights;
+
+/** The presets as weights: `standard` 45 % easy, 40 % medium, 15 % hard; `rookie` 70 % easy, 30 % medium. */
+export const BOT_MIX_PRESETS: Record<'rookie' | 'standard', BotMixWeights> = {
+  rookie: { easy: 70, medium: 30, hard: 0 },
+  standard: { easy: 45, medium: 40, hard: 15 },
+};
+
+export function mixWeights(mix: BotMix = 'standard'): BotMixWeights {
+  return typeof mix === 'string' ? BOT_MIX_PRESETS[mix] : mix;
+}
+
+function rollSkill(r: number, mix: BotMix): BotSkill {
+  const w = mixWeights(mix);
+  const easy = Math.max(0, w.easy);
+  const medium = Math.max(0, w.medium);
+  const hard = Math.max(0, w.hard);
+  const sum = easy + medium + hard;
+  if (!(sum > 0)) return 1;
+  const x = r * sum;
+  return x < easy ? 0 : x < easy + medium ? 1 : 2;
+}
+
+/** Rolls a personality; the skill follows the difficulty mix (`BOT_MIX_PRESETS` or admin weights). */
 export function rollPersonality(rng: Rng, mix: BotMix = 'standard'): Personality {
-  const r = rng();
-  const skill: BotSkill = mix === 'rookie' ? (r < 0.7 ? 0 : 1) : r < 0.45 ? 0 : r < 0.85 ? 1 : 2;
+  const skill = rollSkill(rng(), mix);
   const styles: BotStyle[] = ['farmer', 'hunter', 'coward', 'balanced', 'balanced'];
   const style = styles[Math.floor(rng() * styles.length)];
   const jitter = () => 0.85 + rng() * 0.3;

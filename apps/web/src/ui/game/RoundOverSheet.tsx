@@ -8,6 +8,7 @@ import { useChainData } from '../../wallet/chain';
 import { isFakeHash } from '../../wallet/devFake';
 import { feeBps } from '../../wallet/ticket';
 import { sound } from '../../audio';
+import { BotTag } from './BotTag';
 import { useT } from '../../i18n';
 import { explorerTx } from '../../wallet/links';
 import { requestTicket, useUi } from '../../store';
@@ -220,6 +221,7 @@ export function RoundOverSheet() {
                   <span className="g-board__rank num">{String(i + 1).padStart(2, '0')}</span>
                   <span className="g-board__name">
                     <span className="g-board__nm">{s.name}</span>
+                    {s.isBot && <BotTag />}
                     {s.you && <span className="g-you mono">{t('gr.you')}</span>}
                   </span>
                   <span className="g-board__value num">{tf.fmt(s.value, { compact: true, maxFrac: 1 })}</span>
