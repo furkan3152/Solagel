@@ -38,4 +38,7 @@ out/videos/
 # media renders: caches, venvs, models, raw takes
 media/gameplay/cache/
 media/how-to-play/cache/
+# the gameplay film's human voice recordings (large audio; the mixer reads them in place)
+media/gameplay-film/audio/vo-human.wav
+media/gameplay-film/audio/vo-human/
 media/**/__pycache__/

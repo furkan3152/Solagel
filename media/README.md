@@ -9,6 +9,7 @@ rendered in the repository; the outputs go to `out/videos/` (gitignored).
 | `promo/` | The 45 s launch film and its 32 s vertical cut (scenes in `promo/scenes`, the shared canvas kit in `promo/scenes/lib.js`) |
 | `gameplay/` | Video A: a real paid round, captured from the app (`gameplay/capture`), cut by `gameplay/edit.mjs` |
 | `how-to-play/` | Video B: the narrated guide, built on the gameplay kit |
+| `gameplay-film/` | The narrated gameplay film (about 120 s, home page into a live round): script, voice-actor page, cue timeline, Kokoro or human voice with a humanising post chain, synthesised storybook score and sfx, mixer |
 | `mint-film/` | The mint announcement: $1 in HYPE, WL → Mint → Play (it also holds the NFT kit `scenes/nft.js` and the short-film mixer) |
 | `roadmap-chomp/` | 14 s music-only loop: the coin eats WL OPEN, $1 MINT, GAME LIVE |
 
