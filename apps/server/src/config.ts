@@ -76,6 +76,8 @@ export interface ServerConfig {
     arenaAddress: string | null;
     /** `NFT_ADDRESS`: overrides the registry's NFT. */
     nftAddress: string | null;
+    /** `TOKEN_ADDRESS`: overrides the registry's game token entry (the TestToken on testnet: its faucet). */
+    tokenAddress: string | null;
     /** `SERVER_PRIVATE_KEY`: `auto` (generated once into `DATA_DIR/server-key.json`), a 0x hex key, or a path to a file holding one. */
     serverKey: string | null;
     stakeEnabled: boolean;
@@ -277,6 +279,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       explorerUrl: blank(env.EXPLORER_URL)?.replace(/\/+$/, '') ?? null,
       arenaAddress: blank(env.ARENA_ADDRESS),
       nftAddress: blank(env.NFT_ADDRESS),
+      tokenAddress: blank(env.TOKEN_ADDRESS),
       serverKey: blank(env.SERVER_PRIVATE_KEY),
       stakeEnabled: bool(env.STAKE_ENABLED, true),
       arenaIds: (env.STAKE_ARENA_IDS ?? '')
