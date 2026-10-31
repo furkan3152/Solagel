@@ -2,11 +2,11 @@ import { formatHypeAmount } from '@elymum/sdk';
 import { checkDeployedCode, type CodeCheck, type StatusSnapshot } from '@elymum/sdk/ops';
 import { CONTRACT_KINDS, type ContractKind, type ContractsRegistry, type NetworkInfo } from '@elymum/shared';
 import { useEffect, useState } from 'react';
-import type { Address } from 'viem';
+import { parseEther, type Address } from 'viem';
 import { HYPE_FAUCET_URL } from '../site/faucet/logic';
 import { NetPill } from './NetPill';
 import type { AdminNetwork } from './net';
-import { Addr, Card, Mark, Row, type ChainCtx } from './ui';
+import { Addr, Btn, Card, Input, Mark, Row, type ChainCtx } from './ui';
 
 /** Below this the server key gets a "fund it" hint (a settlement costs a little gas). */
 export const LOW_SERVER_HYPE = 10n ** 16n; // 0.01 HYPE
@@ -60,6 +60,8 @@ export function NetworkTab({ ctx, registry }: { ctx: ChainCtx; registry: Contrac
   const [codes, setCodes] = useState<Partial<Record<ContractKind, CodeCheck | null>>>({});
   // the server's own view (`GET /api/admin/network`): its RPC, its key, its code checks
   const [info, setInfo] = useState<NetworkInfo | null>(null);
+  const [fundText, setFundText] = useState('1');
+  const [reload, setReload] = useState(0);
   useEffect(() => {
     if (!ctx.api?.network) return;
     let live = true;
@@ -67,10 +69,11 @@ export function NetworkTab({ ctx, registry }: { ctx: ChainCtx; registry: Contrac
       (n) => live && setInfo(n),
       () => {},
     );
+    void reload;
     return () => {
       live = false;
     };
-  }, [ctx.api, status]);
+  }, [ctx.api, status, reload]);
 
   // RPC health: one timed block read
   useEffect(() => {
@@ -148,6 +151,15 @@ export function NetworkTab({ ctx, registry }: { ctx: ChainCtx; registry: Contrac
             {serverWei === null ? <span className="ad-none">…</span> : <span className={`num${low ? ' ad-bad' : ''}`}>{formatHypeAmount(serverWei, 4)}</span>}
           </Row>
         </dl>
+        <FundServerKey
+          ctx={ctx}
+          text={fundText}
+          setText={setFundText}
+          onFunded={() => {
+            setReload((n) => n + 1);
+            void ctx.refresh();
+          }}
+        />
         {low && (
           <p className="ad-warn" data-testid="fund-hint">
             <strong>Fund it.</strong> Send HYPE to the address above (about 0.5 HYPE lasts a long time); without gas, settlements cannot be sent.
@@ -225,6 +237,42 @@ export function NetworkTab({ ctx, registry }: { ctx: ChainCtx; registry: Contrac
           })}
         </ol>
       </Card>
+    </div>
+  );
+}
+
+/**
+ * "Send HYPE to the server key": a plain transfer from the connected wallet, shown in the transaction
+ * preview first like every other write. 1 HYPE by default (it pays settlement gas and, on testnet,
+ * the staked bots' gas).
+ */
+function FundServerKey({ ctx, text, setText, onFunded }: { ctx: ChainCtx; text: string; setText: (v: string) => void; onFunded: () => void }) {
+  const to = ctx.net.serverKey as Address | null;
+  let value: bigint | null = null;
+  try {
+    value = /^\d+(\.\d{1,18})?$/.test(text.trim()) ? parseEther(text.trim()) : null;
+  } catch {
+    value = null;
+  }
+  const bad = value === null || value <= 0n;
+  const send = () => {
+    if (!to || bad || value === null) return;
+    ctx.open({
+      title: 'Fund the server key',
+      contract: 'Server key',
+      transfer: { to, value },
+      note: `Sends ${text.trim()} HYPE from your wallet to the game server's key. It pays settlement gas${ctx.net.mainnet ? '' : ' and the testnet bots\' gas'}.`,
+      onDone: onFunded,
+    });
+  };
+  return (
+    <div className="ad-fund" data-testid="fund-server-key">
+      <Input label="Send HYPE from your wallet" value={text} onChange={setText} suffix="HYPE" hint={bad ? 'Type an amount, e.g. 1 or 0.5.' : undefined} />
+      <Btn sun icon="wallet" testId="fund-send" disabled={!to || bad || !ctx.me} onClick={send}>
+        Send to server key
+      </Btn>
+      {!ctx.me && <span className="ad-note">Connect your wallet first.</span>}
+      {!to && <span className="ad-note">The server has not published its key yet.</span>}
     </div>
   );
 }
