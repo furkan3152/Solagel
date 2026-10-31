@@ -109,3 +109,50 @@ contract ReentrantToken is ERC20 {
         return super.transfer(to, value);
     }
 }
+
+/// @notice Test-only: a minimal NFT that only answers `balanceOf` (enough for the holder checks).
+contract MockNFT {
+    mapping(address => uint256) public balanceOf;
+
+    function setBalance(address who, uint256 n) external {
+        balanceOf[who] = n;
+    }
+}
+
+/// @notice Test-only: an NFT whose `balanceOf` misbehaves. Mode 1 reverts, 2 burns all the gas, 3 returns nothing,
+///         4 returns a short (1-byte) answer, 5 returns a huge answer (return-data bomb), 6 tries to write storage.
+contract BrokenNFT {
+    uint8 public mode = 1;
+    uint256 public sink;
+
+    function setMode(uint8 m) external {
+        mode = m;
+    }
+
+    fallback() external {
+        uint8 m = mode;
+        if (m == 1) revert("broken");
+        if (m == 2) {
+            while (true) {
+                sink += 1;
+            }
+        }
+        if (m == 3) return;
+        if (m == 4) {
+            assembly {
+                mstore(0, 1)
+                return(31, 1)
+            }
+        }
+        if (m == 5) {
+            assembly {
+                return(0, 100000)
+            }
+        }
+        sink = 1;
+        assembly {
+            mstore(0, 1)
+            return(0, 32)
+        }
+    }
+}

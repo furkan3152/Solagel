@@ -58,6 +58,8 @@ export function fakeConfig(chain: ChainStatus): ArenaConfig {
     feeBps: chain.feeBps ?? DEFAULT_FEE_BPS,
     paused: false,
     totals: { sessions: 0n, games: 0n, staked: 0n, paidOut: 0n, fees: 0n, burned: 0n },
+    holderNft: null,
+    holderFeeBps: chain.feeBps ?? DEFAULT_FEE_BPS,
   };
 }
 

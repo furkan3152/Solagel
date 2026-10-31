@@ -26,6 +26,7 @@ export function planErrorName(message: string): string {
   if (/is closed/.test(message)) return 'ArenaDisabled';
   if (/balance too low/.test(message)) return 'InsufficientBalance';
   if (/no game token/.test(message)) return 'TokenNotSet';
+  if (/holders only/.test(message)) return 'HoldersOnly';
   if (/does not exist/.test(message)) return 'PriceChanged';
   return 'NetworkError';
 }

@@ -1,4 +1,4 @@
-import { elymumArenaAbi, elymumNFTAbi } from '@elymum/contracts';
+import { elymumArenaAbi, elymumNFTAbi, testTokenAbi } from '@elymum/contracts';
 import { decodeFunctionData, erc20Abi, type Address } from 'viem';
 import { describe, expect, it } from 'vitest';
 import {
@@ -8,16 +8,25 @@ import {
   createDefaultArenaCalls,
   defaultArenaParams,
   deployArenaParams,
+  effectiveFeeBps,
+  getFaucetInfo,
+  getTestTokenFaucet,
   joinCall,
   planJoin,
   refundCall,
   rescueCall,
   sessionRefundState,
+  setArenaHoldersOnlyCall,
   setFeeBpsCall,
+  setHolderPerksCall,
   setTokenCall,
   settleCall,
   settleCalls,
   sweepLootCall,
+  testTokenMintCall,
+  testTokenSetFaucetCall,
+  testTokenSetHolderNftCall,
+  testTokenSetMinterCall,
   updateArenaFrom,
 } from '../src/arena';
 import { describeCall, describeCallLine, encodeCall } from '../src/call';
@@ -137,6 +146,98 @@ describe('arena calls', () => {
     const enough = await planJoin(reads(1000n) as never, { arena: ARENA, arenaId: 1, player: P1, token: TOKEN });
     expect(enough.calls.map((c) => c.functionName)).toEqual(['join']);
     await expect(planJoin(reads(0n, 5n) as never, { arena: ARENA, arenaId: 1, player: P1, token: TOKEN })).rejects.toThrow(/balance/);
+  });
+});
+
+describe('holder perks', () => {
+  const ZERO = '0x0000000000000000000000000000000000000000';
+
+  it('builds the owner calls', () => {
+    const c = setHolderPerksCall(ARENA, NFT.toLowerCase() as Address, 300);
+    expect(c).toMatchObject({ functionName: 'setHolderPerks', args: [NFT, 300] });
+    expect(decodeFunctionData({ abi: elymumArenaAbi, data: encodeCall(c).data }).args).toEqual([NFT, 300]);
+    expect(setHolderPerksCall(ARENA, null, 0).args).toEqual([ZERO, 0]);
+    expect(() => setHolderPerksCall(ARENA, NFT, 1001)).toThrow(RangeError);
+    expect(() => setHolderPerksCall(ARENA, '0x12' as Address, 300)).toThrow(TypeError);
+    expect(setArenaHoldersOnlyCall(ARENA, 4, true)).toMatchObject({ functionName: 'setArenaHoldersOnly', args: [4, true] });
+    expect(() => setArenaHoldersOnlyCall(ARENA, 0, true)).toThrow(RangeError);
+    expect(describeCall(setHolderPerksCall(ARENA, NFT, 300)).signature).toBe('setHolderPerks(address,uint16)');
+  });
+
+  it('effective fee: min(fee, holder fee) for holders while the perks are on', () => {
+    const on = { feeBps: 500, holderNft: NFT, holderFeeBps: 300 };
+    expect(effectiveFeeBps(on, true)).toBe(300);
+    expect(effectiveFeeBps(on, false)).toBe(500);
+    expect(effectiveFeeBps({ ...on, holderFeeBps: 800 }, true)).toBe(500);
+    expect(effectiveFeeBps({ ...on, holderNft: null }, true)).toBe(500);
+  });
+
+  /** A full read client: the arena (holders-only or not), its config with the perks, the holder check. */
+  const chain = (o: { holder: boolean; holdersOnly?: boolean; balance?: bigint }) => ({
+    readContract: async ({ functionName }: { functionName: string }) => {
+      switch (functionName) {
+        case 'getArena':
+          return { id: 4, entryFee: 1000n, vault: 0n, owed: 0n, maxSessions: 10, openSessions: 0, enabled: true, exists: true, totalDeposited: 0n, totalPaidOut: 0n, totalBurned: 0n, lastSweepId: 0n, holdersOnly: o.holdersOnly ?? false };
+        case 'config':
+          return { admin: P1, pendingAdmin: ZERO, serverAuthority: P1, feeWallet: P1, token: TOKEN, decimals: 18, feeBps: 500, paused: false, totalSessions: 0n, totalGames: 0n, totalStaked: 0n, totalPaidOut: 0n, totalFees: 0n, totalBurned: 0n, holderNft: NFT, holderFeeBps: 300 };
+        case 'isHolder':
+          return o.holder;
+        case 'allowance':
+          return 0n;
+        case 'balanceOf':
+          return o.balance ?? 10n ** 30n;
+        default:
+          throw new Error(functionName);
+      }
+    },
+  });
+
+  it('planJoin reports the holder discount', async () => {
+    const h = await planJoin(chain({ holder: true }) as never, { arena: ARENA, arenaId: 4, player: P1 });
+    expect(h).toMatchObject({ feeBps: 300, standardFeeBps: 500, holder: true, holderDiscount: true, holdersOnly: false });
+    const n = await planJoin(chain({ holder: false }) as never, { arena: ARENA, arenaId: 4, player: P1 });
+    expect(n).toMatchObject({ feeBps: 500, standardFeeBps: 500, holder: false, holderDiscount: false });
+    expect(n.approve!.address).toBe(TOKEN);
+  });
+
+  it('planJoin refuses a holders-only arena early for a wallet without an emblem', async () => {
+    await expect(planJoin(chain({ holder: false, holdersOnly: true, balance: 0n }) as never, { arena: ARENA, arenaId: 4, player: P1 })).rejects.toThrow(/holders only/);
+    const ok = await planJoin(chain({ holder: true, holdersOnly: true }) as never, { arena: ARENA, arenaId: 4, player: P1 });
+    expect(ok).toMatchObject({ holdersOnly: true, feeBps: 300 });
+  });
+});
+
+describe('TestToken calls', () => {
+  it('builds owner and minter calls', () => {
+    const m = testTokenSetMinterCall(TOKEN, P1.toLowerCase() as Address, true);
+    expect(m).toMatchObject({ abi: testTokenAbi, functionName: 'setMinter', args: [P1, true] });
+    expect(() => testTokenSetMinterCall(TOKEN, '0x0000000000000000000000000000000000000000', true)).toThrow(RangeError);
+    expect(testTokenSetHolderNftCall(TOKEN, NFT).args).toEqual([NFT]);
+    expect(testTokenSetHolderNftCall(TOKEN, null).args).toEqual(['0x0000000000000000000000000000000000000000']);
+    const f = testTokenSetFaucetCall(TOKEN, { amount: 1n, holderAmount: 2n, cooldownSecs: 3600 });
+    expect(decodeFunctionData({ abi: testTokenAbi, data: encodeCall(f).data }).args).toEqual([1n, 2n, 3600n]);
+    expect(() => testTokenSetFaucetCall(TOKEN, { amount: 0n, holderAmount: 2n, cooldownSecs: 1 })).toThrow(RangeError);
+    expect(() => testTokenSetFaucetCall(TOKEN, { amount: 3n, holderAmount: 2n, cooldownSecs: 1 })).toThrow(RangeError);
+    expect(() => testTokenSetFaucetCall(TOKEN, { amount: 1n, holderAmount: 2n, cooldownSecs: 1.5 })).toThrow(RangeError);
+    expect(testTokenMintCall(TOKEN, P1, 5n).args).toEqual([P1, 5n]);
+    expect(() => testTokenMintCall(TOKEN, P1, -1n)).toThrow(RangeError);
+  });
+
+  it('reads the faucet settings and a wallet\'s faucet state', async () => {
+    const reads = {
+      readContract: async ({ functionName }: { functionName: string }) =>
+        ({
+          faucetAmount: 1n,
+          holderFaucetAmount: 2n,
+          faucetCooldown: 3600n,
+          holderNft: '0x0000000000000000000000000000000000000000',
+          owner: P1,
+          faucetInfo: [2n, 5000n],
+        })[functionName],
+    } as never;
+    expect(await getTestTokenFaucet(reads, TOKEN)).toEqual({ address: TOKEN, owner: P1, amount: 1n, holderAmount: 2n, cooldownSecs: 3600, holderNft: null });
+    expect(await getFaucetInfo(reads, TOKEN, P1, 4000)).toEqual({ amount: 2n, nextClaimAt: 5000, canClaim: false, waitSecs: 1000 });
+    expect(await getFaucetInfo(reads, TOKEN, P1, 5000)).toMatchObject({ canClaim: true, waitSecs: 0 });
   });
 });
 

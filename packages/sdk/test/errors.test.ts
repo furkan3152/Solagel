@@ -1,4 +1,4 @@
-import { elymumArenaAbi, elymumNFTAbi } from '@elymum/contracts';
+import { elymumArenaAbi, elymumNFTAbi, testTokenAbi } from '@elymum/contracts';
 import {
   BaseError,
   ChainMismatchError,
@@ -29,6 +29,7 @@ describe('errors', () => {
     const d = describeError(reverted(elymumArenaAbi, 'ArenaFull'));
     expect(d).toMatchObject({ kind: 'contract', name: 'ArenaFull', message: ERROR_MESSAGES.ArenaFull });
     expect(describeError(reverted(elymumNFTAbi, 'NotAllowlisted')).name).toBe('NotAllowlisted');
+    expect(describeError(reverted(elymumArenaAbi, 'HoldersOnly'))).toMatchObject({ kind: 'contract', name: 'HoldersOnly', message: ERROR_MESSAGES.HoldersOnly });
     const own = describeError(reverted(elymumArenaAbi, 'OwnableUnauthorizedAccount', ['0x70997970C51812dc3A010C7d01b50e0d17dc79C8']));
     expect(own.name).toBe('OwnableUnauthorizedAccount');
     expect(own.args).toEqual(['0x70997970C51812dc3A010C7d01b50e0d17dc79C8']);
@@ -40,6 +41,10 @@ describe('errors', () => {
     expect(describeError({ code: 3, message: 'execution reverted', data }).name).toBe('SoldOut');
     expect(describeError({ code: -32603, message: 'Internal', data: { code: 3, data } }).name).toBe('SoldOut');
     expect(decodeRevertData('0xdeadbeef')).toBeNull();
+    // TestToken errors
+    expect(decodeRevertData(encodeErrorResult({ abi: testTokenAbi, errorName: 'InvalidFaucet' }))).toEqual({ name: 'InvalidFaucet', args: [] });
+    expect(decodeRevertData(encodeErrorResult({ abi: testTokenAbi, errorName: 'FaucetCooldown', args: [1234n] }))).toEqual({ name: 'FaucetCooldown', args: [1234n] });
+    expect(ERROR_MESSAGES.InvalidFaucet).toBeTruthy();
   });
 
   it('classifies wallet errors', () => {

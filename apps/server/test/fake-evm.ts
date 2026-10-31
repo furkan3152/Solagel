@@ -69,6 +69,8 @@ export class FakeEvm implements EvmClient {
       feeBps: 500,
       paused: false,
       totals: { sessions: 0n, games: 0n, staked: 0n, paidOut: 0n, fees: 0n, burned: 0n },
+      holderNft: null,
+      holderFeeBps: 500,
     };
     this.owners.set(NFT.toLowerCase(), ADMIN);
     this.mint = {
@@ -102,6 +104,7 @@ export class FakeEvm implements EvmClient {
       entryFee: entryTokens * unit,
       vault: 0n,
       owed: 0n,
+      holdersOnly: false,
       maxSessions: 300,
       openSessions: 0,
       enabled: true,
@@ -180,7 +183,7 @@ export class FakeEvm implements EvmClient {
     return a ? { ...a } : { ...this.addArenaShape(id) };
   }
   private addArenaShape(id: number): ArenaInfo {
-    return { id, entryFee: 0n, vault: 0n, owed: 0n, maxSessions: 0, openSessions: 0, enabled: false, exists: false, totalDeposited: 0n, totalPaidOut: 0n, totalBurned: 0n, lastSweepId: 0n };
+    return { id, entryFee: 0n, vault: 0n, owed: 0n, maxSessions: 0, openSessions: 0, enabled: false, exists: false, totalDeposited: 0n, totalPaidOut: 0n, totalBurned: 0n, lastSweepId: 0n, holdersOnly: false };
   }
   sessionReads = 0;
   async session(_arena: Address, arenaId: number, player: Address) {

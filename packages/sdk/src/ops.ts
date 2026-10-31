@@ -12,16 +12,19 @@ import { getAddress, isAddress, type Address, type PublicClient } from 'viem';
 import {
   defaultArenaParams,
   getArenaConfig,
+  getTestTokenFaucet,
   getTokenBalance,
   getTokenInfo,
+  isTestTokenMinter,
   listArenas,
   type ArenaConfig,
   type ArenaInfo,
   type ArenaParams,
+  type TestTokenFaucetConfig,
   type TokenInfo,
 } from './arena';
 import { getCodeHash } from './chain';
-import { MAX_ARENA_SESSIONS, MIN_ARENA_SESSIONS } from './constants';
+import { MAX_ARENA_SESSIONS, MAX_FEE_BPS, MIN_ARENA_SESSIONS } from './constants';
 import { formatBps, formatTokenAmount, isZeroAddress, parseHypeAmount, parseTokenAmount, sameAddress } from './format';
 import { getMintState, type MintState } from './nft';
 import { elymumArenaArtifact, elymumNFTArtifact, testTokenArtifact } from '@elymum/contracts';
@@ -145,6 +148,40 @@ export function ownerRefusal(owner: Address, signer: Address | null | undefined,
   return sameAddress(owner, signer) ? null : `the connected wallet ${signer} is not the ${what} owner ${owner}`;
 }
 
+/**
+ * `setHolderPerks`: `nft` null turns the perks off; otherwise it must be a contract (`hasCode`).
+ * The holder fee is at most 10 % (a ticket gets `min(feeBps, holderFeeBps)`, so a higher one has no effect).
+ */
+export function holderPerksRefusal(nft: Address | null, hasCode: boolean, holderFeeBps: number): string | null {
+  if (!Number.isInteger(holderFeeBps) || holderFeeBps < 0 || holderFeeBps > MAX_FEE_BPS) return `the holder fee must be between 0 and ${MAX_FEE_BPS} bps`;
+  if (nft && !isZeroAddress(nft) && !hasCode) return `${nft} is not a contract on this chain`;
+  return null;
+}
+
+/** Warnings (not refusals) for a holder-perks change: higher than the normal fee, or holders-only arenas left without holders. */
+export function holderPerksWarnings(p: { nft: Address | null; holderFeeBps: number; feeBps: number; holdersOnlyIds: readonly number[] }): string[] {
+  const out: string[] = [];
+  const off = !p.nft || isZeroAddress(p.nft);
+  if (!off && p.holderFeeBps >= p.feeBps) out.push(`the holder fee ${formatBps(p.holderFeeBps)} is not below the normal fee ${formatBps(p.feeBps)}: holders get no discount`);
+  if (off && p.holdersOnlyIds.length > 0) out.push(`perks off: holders-only arenas (${p.holdersOnlyIds.map((i) => `#${i}`).join(', ')}) admit nobody until a holder NFT is set`);
+  return out;
+}
+
+/** `setArenaHoldersOnly`: the arena must exist; marking it holders-only without a holder NFT closes it to everyone. */
+export function holdersOnlyRefusal(arena: Pick<ArenaInfo, 'id' | 'exists'>, holdersOnly: boolean, config: Pick<ArenaConfig, 'holderNft'>): string | null {
+  if (!arena.exists) return `arena #${arena.id} does not exist`;
+  if (holdersOnly && !config.holderNft) return `set the holder NFT first (setHolderPerks): without it nobody could join arena #${arena.id}`;
+  return null;
+}
+
+/** `TestToken.setFaucet`: base units and seconds. */
+export function setFaucetRefusal(p: { amount: bigint; holderAmount: bigint; cooldownSecs: number }): string | null {
+  if (p.amount <= 0n) return 'the faucet amount must be greater than zero';
+  if (p.holderAmount < p.amount) return 'the holder amount must be at least the normal amount';
+  if (!Number.isSafeInteger(p.cooldownSecs) || p.cooldownSecs < 0) return 'the cooldown must be a whole number of seconds';
+  return null;
+}
+
 /** TestToken only off mainnet. */
 export function testTokenRefusal(chainId: number): string | null {
   return isMainnet(chainId) ? 'the TestToken is for the localnet and the testnet only' : null;
@@ -180,6 +217,19 @@ export interface StatusSnapshot {
     serverBalance: bigint | null;
   } | null;
   nft: { address: Address; code: CodeCheck; state: MintState | null; balance: bigint } | null;
+  /**
+   * The TestToken (localnet / testnet): `where.testToken`, or the arena's game token when its code
+   * is the bundled TestToken. null otherwise.
+   */
+  testToken?: {
+    address: Address;
+    code: CodeCheck;
+    faucet: TestTokenFaucetConfig | null;
+    /** The arena's server authority may `mint` (funds the testnet bots); null without an arena. */
+    serverIsMinter: boolean | null;
+    /** The signer (`where.account`) may `mint`; null without an account. */
+    accountIsMinter: boolean | null;
+  } | null;
 }
 
 async function codeCheck(client: PublicClient, address: Address, expected: `0x${string}`): Promise<CodeCheck> {
@@ -196,7 +246,7 @@ export function checkDeployedCode(client: PublicClient, address: Address, kind: 
 /** Everything `status` shows: chain, the signer, the arena (config, token, arenas) and the NFT. */
 export async function fetchStatus(
   client: PublicClient,
-  where: { arena?: Address | null; nft?: Address | null; account?: Address | null; chainOverrides?: Parameters<typeof chainInfo>[1] },
+  where: { arena?: Address | null; nft?: Address | null; testToken?: Address | null; account?: Address | null; chainOverrides?: Parameters<typeof chainInfo>[1] },
 ): Promise<StatusSnapshot> {
   const chainId = await client.getChainId();
   const chain = chainInfo(chainId, where.chainOverrides);
@@ -227,5 +277,25 @@ export async function fetchStatus(
     const state = code === 'missing' ? null : await getMintState(client, where.nft);
     nft = { address: getAddress(where.nft), code, state, balance: await client.getBalance({ address: where.nft }) };
   }
-  return { chain, mainnet: isMainnet(chainId), block, account, arena, nft };
+  let testToken: StatusSnapshot['testToken'] = null;
+  let ttAddress: Address | null = where.testToken ? getAddress(where.testToken) : null;
+  let ttCode: CodeCheck | null = null;
+  if (!ttAddress && arena?.config?.token) {
+    ttCode = await codeCheck(client, arena.config.token, testTokenArtifact.runtimeCodeHash);
+    if (ttCode === 'ok') ttAddress = arena.config.token;
+  }
+  if (ttAddress) {
+    const code = ttCode ?? (await codeCheck(client, ttAddress, testTokenArtifact.runtimeCodeHash));
+    const usable = code === 'ok';
+    const server = arena?.config?.serverAuthority ?? null;
+    const [faucet, serverIsMinter, accountIsMinter] = usable
+      ? await Promise.all([
+          getTestTokenFaucet(client, ttAddress),
+          server ? isTestTokenMinter(client, ttAddress, server) : Promise.resolve(null),
+          account ? isTestTokenMinter(client, ttAddress, account.address) : Promise.resolve(null),
+        ])
+      : [null, null, null];
+    testToken = { address: ttAddress, code, faucet, serverIsMinter, accountIsMinter };
+  }
+  return { chain, mainnet: isMainnet(chainId), block, account, arena, nft, testToken };
 }

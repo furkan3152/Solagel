@@ -10,7 +10,7 @@ type AbiError = Extract<Abi[number], { type: 'error' }>;
  * mismatch, insufficient funds) get their own kinds.
  */
 
-/** Every custom error the SDK can decode (both contracts, the TestToken and OZ ERC-20 errors), de-duplicated by name. */
+/** Every custom error the SDK can decode (both contracts, the TestToken and OZ ERC-20 errors), de-duplicated by name (same-named errors have the same selector). */
 export const ELYMUM_ERRORS_ABI: readonly AbiError[] = (() => {
   const seen = new Map<string, AbiError>();
   for (const item of [...elymumArenaAbi, ...elymumNFTAbi, ...testTokenAbi] as readonly Abi[number][]) {
@@ -48,6 +48,7 @@ export const ERROR_MESSAGES: Readonly<Record<string, string>> = {
   CannotRescueGameToken: 'The game token can never be rescued.',
   NativeTransferFailed: 'The HYPE transfer failed.',
   RenounceDisabled: 'Ownership cannot be renounced.',
+  HoldersOnly: 'This arena is for Elymum emblem holders only. Mint or hold an emblem to enter.',
   SafeERC20FailedOperation: 'The token transfer failed.',
   ReentrancyGuardReentrantCall: 'Re-entrant call refused.',
   OwnableUnauthorizedAccount: 'Only the contract owner can do that. Connect the owner wallet.',
@@ -77,7 +78,8 @@ export const ERROR_MESSAGES: Readonly<Record<string, string>> = {
   ERC20InsufficientAllowance: 'The token approval is too low. Approve the amount and try again.',
   ERC20InvalidReceiver: 'That receiver is not valid.',
   ERC20InvalidSpender: 'That spender is not valid.',
-  FaucetCooldown: 'The faucet gives once per hour. Try again later.',
+  FaucetCooldown: 'This wallet already claimed from the faucet recently. Try again when the countdown ends.',
+  InvalidFaucet: 'The faucet amount must be greater than zero and the holder amount at least the normal amount.',
 };
 
 export type ErrorKind =

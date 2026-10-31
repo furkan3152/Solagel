@@ -72,6 +72,13 @@ export const DEFAULT_MINT_USD_CENTS = 100;
 /** Hyperliquid's public info API (POST `{"type":"allMids"}`). */
 export const HYPE_PRICE_URL_DEFAULT = 'https://api.hyperliquid.xyz/info';
 
-/** TestToken faucet: 1,000,000 tokens (18 decimals) per call, once per hour. */
+/** TestToken faucet defaults (owner-settable with `setFaucet`): 1,000,000 tokens (18 decimals) per call, once per hour. */
 export const TEST_TOKEN_FAUCET_AMOUNT = 1_000_000n * 10n ** 18n;
+/** TestToken faucet default for holders of the holder NFT: 2,000,000 tokens. */
+export const TEST_TOKEN_HOLDER_FAUCET_AMOUNT = 2_000_000n * 10n ** 18n;
 export const TEST_TOKEN_FAUCET_COOLDOWN_SECS = 3_600;
+
+/** Holder fee the admin panel suggests for `setHolderPerks` (3 %; the contract starts with the perks off). */
+export const DEFAULT_HOLDER_FEE_BPS = 300;
+/** Arenas the admin panel suggests marking holders-only (#4, the Isles of the Blessed). */
+export const DEFAULT_HOLDERS_ONLY_ARENA_IDS: readonly number[] = [4];

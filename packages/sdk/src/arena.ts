@@ -15,6 +15,9 @@ import {
 } from './constants';
 import { isZeroAddress } from './format';
 
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as const;
+const MAX_UINT256 = (1n << 256n) - 1n;
+
 /**
  * `ElymumArena`: typed reads and call builders. Every builder validates its input like the
  * contract does (throws `RangeError` / `TypeError` before anything is signed) and returns a
@@ -45,6 +48,10 @@ export interface ArenaConfig {
   decimals: number;
   feeBps: number;
   paused: boolean;
+  /** ERC-721 whose holders get the holder perks (lower fee, holders-only arenas); null when the perks are off. */
+  holderNft: Address | null;
+  /** Fee on profit for holders, in bps (a ticket gets `min(feeBps, holderFeeBps)`); only used while `holderNft` is set. */
+  holderFeeBps: number;
   totals: {
     sessions: bigint;
     games: bigint;
@@ -70,6 +77,8 @@ export interface ArenaInfo {
   totalPaidOut: bigint;
   totalBurned: bigint;
   lastSweepId: bigint;
+  /** Only holders of the holder NFT may join (`HoldersOnly`). */
+  holdersOnly: boolean;
 }
 
 export interface SessionInfo {
@@ -100,6 +109,8 @@ export async function getArenaConfig(client: ReadClient, arena: Address): Promis
     decimals: c.token && !isZeroAddress(c.token) ? Number(c.decimals) : 18,
     feeBps: Number(c.feeBps),
     paused: c.paused,
+    holderNft: nullIfZero(c.holderNft),
+    holderFeeBps: Number(c.holderFeeBps),
     totals: {
       sessions: c.totalSessions,
       games: c.totalGames,
@@ -133,6 +144,7 @@ export async function getArena(client: ReadClient, arena: Address, id: number): 
     totalPaidOut: a.totalPaidOut,
     totalBurned: a.totalBurned,
     lastSweepId: a.lastSweepId,
+    holdersOnly: a.holdersOnly === true,
   };
 }
 
@@ -156,6 +168,21 @@ export async function getSession(client: ReadClient, arena: Address, arenaId: nu
 export async function listArenas(client: ReadClient, arena: Address): Promise<ArenaInfo[]> {
   const ids = await getArenaIds(client, arena);
   return Promise.all(ids.map((id) => getArena(client, arena, id)));
+}
+
+/** True when `player` holds the arena's holder NFT (false while the perks are off or when the NFT misbehaves). */
+export function isArenaHolder(client: ReadClient, arena: Address, player: Address): Promise<boolean> {
+  return client.readContract({ address: arena, abi: elymumArenaAbi, functionName: 'isHolder', args: [player] });
+}
+
+/** The fee rate (bps) a ticket bought by `player` now would get: the holder rate for holders. */
+export async function getFeeBpsFor(client: ReadClient, arena: Address, player: Address): Promise<number> {
+  return Number(await client.readContract({ address: arena, abi: elymumArenaAbi, functionName: 'feeBpsFor', args: [player] }));
+}
+
+/** The fee rate a ticket gets, off-chain: `min(feeBps, holderFeeBps)` for holders while the perks are on, else `feeBps`. */
+export function effectiveFeeBps(config: Pick<ArenaConfig, 'feeBps' | 'holderNft' | 'holderFeeBps'>, holder: boolean): number {
+  return holder && config.holderNft && config.holderFeeBps < config.feeBps ? config.holderFeeBps : config.feeBps;
 }
 
 /** `ElymumArena.computeFee` on chain (the off-chain twin is `computeFee` in math.ts). */
@@ -226,6 +253,19 @@ export function refundCall(arena: Address, arenaId: number): ArenaCall {
 
 export interface JoinPlan {
   entryFee: bigint;
+  /**
+   * Fee on profit (bps) this ticket will be fixed at: the holder rate when the player holds the emblem.
+   * null only when the arena contract could not be read for it.
+   */
+  feeBps: number | null;
+  /** The normal rate (`config.feeBps`); null when unknown. */
+  standardFeeBps: number | null;
+  /** The player holds the holder NFT; null when unknown. */
+  holder: boolean | null;
+  /** The player pays the lower holder fee. */
+  holderDiscount: boolean;
+  /** The arena admits holders only. */
+  holdersOnly: boolean;
   allowance: bigint;
   balance: bigint;
   /** Exact-amount `approve` when the allowance is short, else null. */
@@ -236,27 +276,38 @@ export interface JoinPlan {
 }
 
 /**
- * The ticket flow: reads the arena's entry fee, the player's allowance and balance, and returns
- * `approve` (only when the allowance is short; exact amount) + `join`. Throws a `RangeError`
- * when the arena is missing, disabled or full, the token is not set, or the balance is short.
+ * The ticket flow: reads the arena's entry fee, the fee rate the player will get (holder discount),
+ * the player's allowance and balance, and returns `approve` (only when the allowance is short;
+ * exact amount) + `join`. Throws a `RangeError` when the arena is missing, disabled or full, the
+ * token is not set, the arena is holders-only and the player holds no emblem (message contains
+ * "holders only"), or the balance is short.
  */
 export async function planJoin(
   client: ReadClient,
   p: { arena: Address; arenaId: number; player: Address; token?: Address },
 ): Promise<JoinPlan> {
-  const [info, token] = await Promise.all([
+  const [info, config, holder] = await Promise.all([
     getArena(client, p.arena, p.arenaId),
-    p.token ? Promise.resolve(p.token) : getArenaConfig(client, p.arena).then((c) => c.token),
+    // with a known token the config only feeds the fee report: a failed read is not fatal
+    p.token ? getArenaConfig(client, p.arena).catch(() => null) : getArenaConfig(client, p.arena),
+    isArenaHolder(client, p.arena, p.player).catch(() => null),
   ]);
+  const token = p.token ?? config?.token ?? null;
   if (!token) throw new RangeError('the arena contract has no game token yet');
   if (!info.exists) throw new RangeError(`arena #${p.arenaId} does not exist`);
   if (!info.enabled) throw new RangeError(`arena #${p.arenaId} is closed`);
   if (info.openSessions >= info.maxSessions) throw new RangeError(`arena #${p.arenaId} is full`);
+  if (info.holdersOnly && holder === false) {
+    throw new RangeError(`arena #${p.arenaId} is for Elymum emblem holders only: ${getAddress(p.player)} holds no emblem`);
+  }
+  const standardFeeBps = config ? config.feeBps : null;
+  const feeBps = config ? effectiveFeeBps(config, holder === true) : null;
+  const fee = { feeBps, standardFeeBps, holder, holderDiscount: feeBps !== null && standardFeeBps !== null && feeBps < standardFeeBps, holdersOnly: info.holdersOnly };
   const [allowance, balance] = await Promise.all([getAllowance(client, token, p.player, p.arena), getTokenBalance(client, token, p.player)]);
   if (balance < info.entryFee) throw new RangeError(`balance too low for the ticket (need ${info.entryFee}, have ${balance} base units)`);
   const approve = allowance < info.entryFee ? approveCall(token, p.arena, info.entryFee) : null;
   const join = joinCall(p.arena, p.arenaId);
-  return { entryFee: info.entryFee, allowance, balance, approve, join, calls: approve ? [approve, join] : [join] };
+  return { entryFee: info.entryFee, ...fee, allowance, balance, approve, join, calls: approve ? [approve, join] : [join] };
 }
 
 /* -------------------------------------------------------------------- */
@@ -369,6 +420,23 @@ export function updateArenaFrom(arena: Address, current: Pick<ArenaInfo, 'id' | 
   });
 }
 
+/**
+ * Holder perks: holders of `nft` (an ERC-721) join with `min(feeBps, holderFeeBps)` and may enter
+ * holders-only arenas. `nft` null (or zero) turns the perks off.
+ */
+export function setHolderPerksCall(arena: Address, nft: Address | null, holderFeeBps: number): ArenaCall {
+  if (nft !== null) checkAddress('holder NFT', nft);
+  checkFeeBps(holderFeeBps);
+  const a = nft === null ? ZERO_ADDRESS : getAddress(nft);
+  return { address: arena, abi: elymumArenaAbi, functionName: 'setHolderPerks', args: [a, holderFeeBps] };
+}
+
+/** Marks an arena holders-only (or opens it to everyone again). Open tickets are not affected. */
+export function setArenaHoldersOnlyCall(arena: Address, id: number, holdersOnly: boolean): ArenaCall {
+  checkArenaId(id);
+  return { address: arena, abi: elymumArenaAbi, functionName: 'setArenaHoldersOnly', args: [id, holdersOnly] };
+}
+
 export function sweepArenaCall(arena: Address, id: number): ArenaCall {
   checkArenaId(id);
   return { address: arena, abi: elymumArenaAbi, functionName: 'sweepArena', args: [id] };
@@ -377,7 +445,7 @@ export function sweepArenaCall(arena: Address, id: number): ArenaCall {
 /** Recovers HYPE (`token` null/zero) or a foreign ERC-20; never the game token. */
 export function rescueCall(arena: Address, p: { token: Address | null; to: Address; amount: bigint }): ArenaCall {
   checkAddress('to', p.to, { nonZero: true });
-  const token = p.token ?? '0x0000000000000000000000000000000000000000';
+  const token = p.token ?? ZERO_ADDRESS;
   return { address: arena, abi: elymumArenaAbi, functionName: 'rescue', args: [token, getAddress(p.to), p.amount] };
 }
 
@@ -453,15 +521,101 @@ export function deployTestToken(wallet: WalletClient, args: { owner: Address }, 
   return deploy(wallet, deployTestTokenParams(args), opts);
 }
 
-/** `TestToken.faucet()`: 1,000,000 tokens to the caller, once per hour. */
-export function faucetCall(token: Address): ContractCall<typeof testTokenAbi> {
+export type TestTokenCall = ContractCall<typeof testTokenAbi>;
+
+/** `TestToken.faucet()`: the caller's faucet amount (1,000,000 by default, 2,000,000 for holders), once per cooldown (1 h by default). */
+export function faucetCall(token: Address): TestTokenCall {
   return { address: token, abi: testTokenAbi, functionName: 'faucet', args: [] };
 }
 
-/** `TestToken.mint(to, amount)` (owner). */
-export function testTokenMintCall(token: Address, to: Address, amount: bigint): ContractCall<typeof testTokenAbi> {
+/** `TestToken.mint(to, amount)` (the owner or a minter). */
+export function testTokenMintCall(token: Address, to: Address, amount: bigint): TestTokenCall {
   checkAddress('to', to, { nonZero: true });
+  if (typeof amount !== 'bigint' || amount < 0n || amount > MAX_UINT256) throw new RangeError(`mint amount must be a uint256, got ${amount}`);
   return { address: token, abi: testTokenAbi, functionName: 'mint', args: [getAddress(to), amount] };
+}
+
+/** Alias of `testTokenMintCall`. */
+export const mintCall = testTokenMintCall;
+
+/** `TestToken.setMinter(minter, allowed)` (owner): who may `mint` besides the owner (e.g. the server key that funds bots). */
+export function testTokenSetMinterCall(token: Address, minter: Address, allowed: boolean): TestTokenCall {
+  checkAddress('minter', minter, { nonZero: true });
+  return { address: token, abi: testTokenAbi, functionName: 'setMinter', args: [getAddress(minter), allowed] };
+}
+
+/** `TestToken.setHolderNft(nft)` (owner): holders of `nft` get the holder faucet amount; null turns the bonus off. */
+export function testTokenSetHolderNftCall(token: Address, nft: Address | null): TestTokenCall {
+  if (nft !== null) checkAddress('holder NFT', nft);
+  return { address: token, abi: testTokenAbi, functionName: 'setHolderNft', args: [nft === null ? ZERO_ADDRESS : getAddress(nft)] };
+}
+
+/** `TestToken.setFaucet(amount, holderAmount, cooldown)` (owner), base units and seconds. Needs `0 < amount <= holderAmount`. */
+export function testTokenSetFaucetCall(token: Address, p: { amount: bigint; holderAmount: bigint; cooldownSecs: number }): TestTokenCall {
+  if (typeof p.amount !== 'bigint' || p.amount <= 0n || p.amount > MAX_UINT256) throw new RangeError(`faucet amount must be a uint256 > 0, got ${p.amount}`);
+  if (typeof p.holderAmount !== 'bigint' || p.holderAmount < p.amount || p.holderAmount > MAX_UINT256) {
+    throw new RangeError(`holder faucet amount must be at least the faucet amount, got ${p.holderAmount}`);
+  }
+  if (!Number.isSafeInteger(p.cooldownSecs) || p.cooldownSecs < 0) throw new RangeError(`faucet cooldown must be a whole number of seconds >= 0, got ${p.cooldownSecs}`);
+  return { address: token, abi: testTokenAbi, functionName: 'setFaucet', args: [p.amount, p.holderAmount, BigInt(p.cooldownSecs)] };
+}
+
+/** Short names of the TestToken owner calls. */
+export const setMinterCall = testTokenSetMinterCall;
+export const setHolderNftCall = testTokenSetHolderNftCall;
+export const setFaucetCall = testTokenSetFaucetCall;
+
+export interface TestTokenFaucetConfig {
+  address: Address;
+  owner: Address;
+  /** Base units per claim for a wallet without the holder NFT. */
+  amount: bigint;
+  /** Base units per claim for a holder. */
+  holderAmount: bigint;
+  cooldownSecs: number;
+  /** null: no holder bonus. */
+  holderNft: Address | null;
+}
+
+/** The TestToken's faucet settings. */
+export async function getTestTokenFaucet(client: ReadClient, token: Address): Promise<TestTokenFaucetConfig> {
+  const read = <T>(functionName: 'faucetAmount' | 'holderFaucetAmount' | 'faucetCooldown' | 'holderNft' | 'owner') =>
+    client.readContract({ address: token, abi: testTokenAbi, functionName }) as Promise<T>;
+  const [amount, holderAmount, cooldown, holderNft, owner] = await Promise.all([
+    read<bigint>('faucetAmount'),
+    read<bigint>('holderFaucetAmount'),
+    read<bigint>('faucetCooldown'),
+    read<Address>('holderNft'),
+    read<Address>('owner'),
+  ]);
+  return { address: getAddress(token), owner: getAddress(owner), amount, holderAmount, cooldownSecs: Number(cooldown), holderNft: nullIfZero(holderNft) };
+}
+
+export interface FaucetInfo {
+  /** Base units `who` gets per claim (the holder amount for holders). */
+  amount: bigint;
+  /** Unix seconds of the next claim; 0 when `who` never claimed. */
+  nextClaimAt: number;
+  /** `nowSecs >= nextClaimAt`. */
+  canClaim: boolean;
+  /** Seconds left (0 when `canClaim`), for a countdown. */
+  waitSecs: number;
+}
+
+/** `TestToken.faucetInfo(who)`: what the faucet gives `who` and when. `nowSecs` defaults to the local clock. */
+export async function getFaucetInfo(client: ReadClient, token: Address, who: Address, nowSecs: number = Math.floor(Date.now() / 1000)): Promise<FaucetInfo> {
+  const [amount, next] = await client.readContract({ address: token, abi: testTokenAbi, functionName: 'faucetInfo', args: [who] });
+  const nextClaimAt = Number(next);
+  const waitSecs = Math.max(0, nextClaimAt - nowSecs);
+  return { amount, nextClaimAt, canClaim: waitSecs === 0, waitSecs };
+}
+
+/** Short name of `getFaucetInfo`. */
+export const faucetInfo = getFaucetInfo;
+
+/** True when `who` may `mint` on the TestToken (a minter; the owner can always mint). */
+export function isTestTokenMinter(client: ReadClient, token: Address, who: Address): Promise<boolean> {
+  return client.readContract({ address: token, abi: testTokenAbi, functionName: 'isMinter', args: [who] });
 }
 
 /** Waits for a deploy transaction and returns the new contract's address. */

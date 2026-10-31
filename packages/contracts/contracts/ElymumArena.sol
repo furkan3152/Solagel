@@ -7,11 +7,13 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {HolderCheck} from "./HolderCheck.sol";
 
 /// @title ElymumArena
 /// @notice Ticket escrow for the Elymum arenas on Elysium. Players pay an entry fee into an arena vault with
 ///         `join`; at the bell the game server pays every ticket its value with `settle` (fee on profit only) and
 ///         burns floor loot with `sweepLoot`. A ticket the server never settles can be refunded after 24 h.
+///         Holders of the Elymum emblem (`setHolderPerks`) pay a lower fee and may enter holders-only arenas.
 /// @dev    Accounting is internal: `Arena.vault` is what settlements and refunds may spend and `Arena.owed` is held
 ///         for players whose transfer failed (two-phase settle). The contract's token balance is always
 ///         `sum(vault) + sum(owed)` plus anything sent to it directly (which stays locked: `rescue` never touches the
@@ -60,6 +62,7 @@ contract ElymumArena is Ownable2Step, ReentrancyGuard {
         uint16 openSessions; //slot 1: joined and not yet settled or refunded (finalized ones do not count)
         bool enabled; //     slot 1
         bool exists; //      slot 1
+        bool holdersOnly; // slot 1: `join` needs the holder NFT
         uint128 totalDeposited; // slot 2
         uint128 totalPaidOut; //   slot 2: settled payouts (fee included) + refunds of unsettled tickets
         uint128 totalBurned; //    slot 3
@@ -98,6 +101,8 @@ contract ElymumArena is Ownable2Step, ReentrancyGuard {
         uint128 totalPaidOut;
         uint128 totalFees;
         uint128 totalBurned;
+        address holderNft;
+        uint16 holderFeeBps;
     }
 
     struct ArenaView {
@@ -113,6 +118,7 @@ contract ElymumArena is Ownable2Step, ReentrancyGuard {
         uint128 totalPaidOut;
         uint128 totalBurned;
         uint64 lastSweepId;
+        bool holdersOnly;
     }
 
     struct SessionView {
@@ -142,6 +148,10 @@ contract ElymumArena is Ownable2Step, ReentrancyGuard {
     // slot: token (20)
     IERC20 private _token;
 
+    // slot: holderNft (20) + holderFeeBps (2)
+    address private _holderNft;
+    uint16 private _holderFeeBps;
+
     uint128 private _totalStaked;
     uint128 private _totalPaidOut;
     uint128 private _totalFees;
@@ -162,6 +172,8 @@ contract ElymumArena is Ownable2Step, ReentrancyGuard {
     event PausedSet(bool paused);
     event ArenaCreated(uint16 indexed arenaId, uint128 entryFee, uint16 maxSessions);
     event ArenaUpdated(uint16 indexed arenaId, uint128 entryFee, uint16 maxSessions, bool enabled);
+    event HolderPerksSet(address indexed nft, uint16 holderFeeBps);
+    event ArenaHoldersOnlySet(uint16 indexed arenaId, bool holdersOnly);
     event Joined(uint16 indexed arenaId, address indexed player, uint64 indexed sessionId, uint128 entryFee, uint16 feeBps);
     /// @param collected true when the player's share was transferred now; false when it is held as `owed`.
     event Settled(
@@ -209,6 +221,7 @@ contract ElymumArena is Ownable2Step, ReentrancyGuard {
     error CannotRescueGameToken();
     error NativeTransferFailed();
     error RenounceDisabled();
+    error HoldersOnly();
 
     // ------------------------------------------------------------------------------------------------------------
     // Constructor & modifiers
@@ -304,6 +317,27 @@ contract ElymumArena is Ownable2Step, ReentrancyGuard {
         emit ArenaUpdated(id, entryFee, maxSessions, enabled);
     }
 
+    /// @notice Holder perks: wallets holding at least one token of `nft` (an ERC-721) join with
+    ///         `min(feeBps, holderFeeBps)` and may enter holders-only arenas. `nft == address(0)` disables the perks
+    ///         (and then nobody can enter a holders-only arena). `holderFeeBps <= MAX_FEE_BPS`.
+    /// @dev    A broken or hostile `nft` can never block a join: the balance check never reverts (see HolderCheck).
+    function setHolderPerks(address nft, uint16 holderFeeBps) external onlyOwner {
+        if (holderFeeBps > MAX_FEE_BPS) revert InvalidFee();
+        if (nft != address(0) && nft.code.length == 0) revert NotAContract();
+        _holderNft = nft;
+        _holderFeeBps = holderFeeBps;
+        emit HolderPerksSet(nft, holderFeeBps);
+    }
+
+    /// @notice Marks an arena as holders-only (`join` reverts `HoldersOnly` for wallets without the holder NFT).
+    ///         Open tickets are not affected.
+    function setArenaHoldersOnly(uint16 id, bool holdersOnly) external onlyOwner {
+        Arena storage a = _arenas[id];
+        if (!a.exists) revert UnknownArena();
+        a.holdersOnly = holdersOnly;
+        emit ArenaHoldersOnlySet(id, holdersOnly);
+    }
+
     /// @notice Sends the whole vault of a disabled arena with no open ticket to the fee wallet.
     ///         Owed payouts of finalized sessions stay reserved for their players.
     function sweepArena(uint16 id) external onlyOwner nonReentrant {
@@ -341,7 +375,8 @@ contract ElymumArena is Ownable2Step, ReentrancyGuard {
     // ------------------------------------------------------------------------------------------------------------
 
     /// @notice Buys a ticket: pulls the arena's entry fee (exact amount must arrive, so fee-on-transfer tokens are
-    ///         refused) and opens a session with the current fee rate.
+    ///         refused) and opens a session with the current fee rate (the holder rate for holders of the holder NFT).
+    ///         Holders-only arenas refuse other wallets (`HoldersOnly`).
     function join(uint16 arenaId) external nonReentrant {
         if (_paused) revert Paused();
         IERC20 token = _token;
@@ -352,6 +387,11 @@ contract ElymumArena is Ownable2Step, ReentrancyGuard {
         if (a.openSessions >= a.maxSessions) revert ArenaFull();
         Session storage s = _sessions[arenaId][msg.sender];
         if (s.id != 0) revert SessionExists();
+        uint16 feeBps = _feeBps;
+        address nft = _holderNft;
+        bool holder = nft != address(0) && HolderCheck.isHolder(nft, msg.sender);
+        if (a.holdersOnly && !holder) revert HoldersOnly();
+        if (holder && _holderFeeBps < feeBps) feeBps = _holderFeeBps;
 
         uint128 entryFee = a.entryFee;
         uint256 before = token.balanceOf(address(this));
@@ -359,7 +399,6 @@ contract ElymumArena is Ownable2Step, ReentrancyGuard {
         if (token.balanceOf(address(this)) - before != entryFee) revert FeeOnTransferToken();
 
         uint64 sessionId = ++_lastSessionId;
-        uint16 feeBps = _feeBps;
         s.id = sessionId;
         s.openedAt = uint40(block.timestamp);
         s.feeBps = feeBps;
@@ -453,6 +492,8 @@ contract ElymumArena is Ownable2Step, ReentrancyGuard {
         v.totalPaidOut = _totalPaidOut;
         v.totalFees = _totalFees;
         v.totalBurned = _totalBurned;
+        v.holderNft = _holderNft;
+        v.holderFeeBps = _holderFeeBps;
     }
 
     function arenaIds() external view returns (uint16[] memory) {
@@ -473,6 +514,19 @@ contract ElymumArena is Ownable2Step, ReentrancyGuard {
         v.totalPaidOut = a.totalPaidOut;
         v.totalBurned = a.totalBurned;
         v.lastSweepId = a.lastSweepId;
+        v.holdersOnly = a.holdersOnly;
+    }
+
+    /// @notice True when `player` holds the holder NFT (false when the perks are off or the NFT misbehaves).
+    function isHolder(address player) public view returns (bool) {
+        return HolderCheck.isHolder(_holderNft, player);
+    }
+
+    /// @notice The fee rate a ticket bought by `player` now would get.
+    function feeBpsFor(address player) external view returns (uint16) {
+        uint16 feeBps = _feeBps;
+        if (_holderFeeBps < feeBps && isHolder(player)) return _holderFeeBps;
+        return feeBps;
     }
 
     function getSession(uint16 arenaId, address player) external view returns (SessionView memory v) {

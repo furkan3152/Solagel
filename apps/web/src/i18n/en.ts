@@ -573,6 +573,7 @@ export const en = {
   'tf.err.ArenaDisabled': 'This room is closed right now.',
   'tf.err.Paused': 'Tickets are paused for maintenance.',
   'tf.err.TokenNotSet': 'Arenas are opening soon: the game token is not set yet. Nothing was signed.',
+  'tf.err.HoldersOnly': 'This arena is for Elymum emblem holders. Mint one to sit at this table. Nothing was signed.',
   'tf.err.InsufficientFunds': 'Not enough HYPE for the network fee.',
   'tf.err.ConfirmationTimeout': 'The network is slow; the transaction may still land. Check your wallet before trying again.',
   'tf.err.NetworkError': 'Could not reach the Elysium network. Check your connection and try again.',

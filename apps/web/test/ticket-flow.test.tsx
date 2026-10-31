@@ -48,6 +48,7 @@ const arena = (id: number, entryFee: bigint): ArenaInfo => ({
   totalPaidOut: 0n,
   totalBurned: 0n,
   lastSweepId: 0n,
+  holdersOnly: false,
 });
 const session = (o: Partial<SessionInfo> = {}): SessionInfo => ({ arenaId: 1, player: ALICE, id: 9n, entryFee: 1000n * ONE, openedAt: 1, feeBps: 500, finalized: false, owed: 0n, ...o });
 const ui0 = useUi.getState();
