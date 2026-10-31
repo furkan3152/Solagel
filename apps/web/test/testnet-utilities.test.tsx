@@ -242,6 +242,20 @@ describe('admin groups', () => {
     expect(groupSummary('network', { net, status })).toMatchObject({ next: expect.stringMatching(/Fund the server key/) });
     expect(groupSummary('network', { net, status }).now).toMatch(/Testnet · Elysium Testnet \(99801\) · block 12/);
     expect(groupSummary('setup', { net, status }).next).toMatch(/Deploy ElymumNFT/);
+    // registered: the next step is Finish setup, never "register" or "paste an address"
+    const both = resolveNetwork(chainStatus({ nftAddress: '0x0000000000000000000000000000000000000f7e' }));
+    const registered = {
+      ...status,
+      arena: { ...status.arena, address: ARENA, config: { admin: ALICE, serverAuthority: '0x000000000000000000000000000000000000bEEF', token: null, feeBps: 500, holderNft: null }, token: null, arenas: [] },
+      nft: { address: '0x0000000000000000000000000000000000000f7e', code: 'ok', state: { phaseName: 'closed' } },
+      testToken: { address: '0x0000000000000000000000000000000000007e57', serverIsMinter: false, faucet: { holderNft: null } },
+    } as unknown as StatusSnapshot;
+    expect(groupSummary('setup', { net: both, status: registered }).next).toMatch(/^Finish setup: 10 steps left/);
+    const mainnet = resolveNetwork(chainStatus({ chainId: 4242, chainName: 'Elysium', nftAddress: '0x0000000000000000000000000000000000000f7e' }));
+    const noTt = { ...registered, testToken: null } as unknown as StatusSnapshot;
+    expect(groupSummary('setup', { net: mainnet, status: noTt, registry: { token: { address: '0x0000000000000000000000000000000000007e57' } } as never }).next).toMatch(/Confirm the game token/);
+    expect(groupSummary('setup', { net: mainnet, status: noTt }).next).toMatch(/TOKEN_ADDRESS/);
+    for (const g of ['setup', 'mint', 'game', 'network'] as const) expect(groupSummary(g, { net: both, status: registered }).next ?? '').not.toMatch(/regist|paste/i);
     expect(groupSummary('network', { net: resolveNetwork(chainStatus({ enabled: false, chainId: null })), status: null }).next).toMatch(/EVM_RPC_URL/);
     expect(groupSummary('game', { net, status, settings: { gameAccess: 'admins' } as never }).next).toMatch(/Testnet: open the game to everyone/);
   });
@@ -326,7 +340,7 @@ describe('admin groups', () => {
     expect(await screen.findByTestId('bots-table')).toBeTruthy();
     expect(screen.getByText('9 bots · 2 people · 1 rooms')).toBeTruthy();
     expect(screen.getByTestId('bots-staked')).toBeTruthy();
-    expect(screen.getByTestId('bots-problem').textContent).toMatch(/Grant minter to the server key in Setup → TestToken/);
+    expect(screen.getByTestId('bots-problem').textContent).toMatch(/Grant minter to the server key: Setup → Finish setup/);
     fireEvent.change(screen.getByLabelText('arena cap'), { target: { value: '5' } });
     fireEvent.click(screen.getByTestId('bots-save'));
     await waitFor(() => expect(put).toEqual({ kinds: { arena: { cap: 5 } } }));

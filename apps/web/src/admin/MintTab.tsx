@@ -20,9 +20,9 @@ import {
 import { parseAddressInput, parseHypeInput, parseIntInput } from '@elymum/sdk/ops';
 import type { AllowlistStatus, HolderWlView, MintPriceQuote } from '@elymum/shared';
 import { useCallback, useEffect, useState } from 'react';
-import type { Address, Hex } from 'viem';
+import { formatEther, type Address, type Hex } from 'viem';
 import { ArcGauge, HypeAmount, Icon, type CoinMood } from '../design';
-import { Addr, Btn, Card, FormError, Input, NeedsSession, Row, useFormError, type ChainCtx } from './ui';
+import { Addr, Advanced, Btn, Card, FormError, Input, NeedsSession, Row, useFormError, type ChainCtx } from './ui';
 import { readOwner, type Plan } from './plan';
 
 /** Is the allowlist snapshot the root published on the contract, and is it up to date with the approvals? */
@@ -40,7 +40,11 @@ export function allowlistWarnings(a: AllowlistStatus | null, onchainRoot: string
   return out;
 }
 
-/** `/admin → Mint`: the ElymumNFT owner's controls, each through the transaction preview. */
+/**
+ * `/admin → Mint`: the ElymumNFT owner's decisions (the phase switch, the price, the supply and
+ * limits, withdraw), each through the transaction preview. Address fields (treasury, royalty
+ * receiver, owner mint, keeper) sit under Advanced, prefilled.
+ */
 export function MintTab({ ctx }: { ctx: ChainCtx }) {
   const nft = ctx.net.nftAddress;
   const s = ctx.status?.nft?.state ?? null;
@@ -58,7 +62,7 @@ export function MintTab({ ctx }: { ctx: ChainCtx }) {
     };
   }, [nft, ctx.client, ctx.status]);
 
-  if (!nft) return <Card title="No NFT yet" id="mint" tone="quiet" lede="Deploy and register ElymumNFT first (Deploy drawer). The mint has nothing to run until then." />;
+  if (!nft) return <Card title="No NFT yet" id="mint" tone="quiet" lede="Deploy ElymumNFT first (Setup). The mint has nothing to run until then." />;
   if (!s)
     return (
       <Card
@@ -128,18 +132,28 @@ export function MintTab({ ctx }: { ctx: ChainCtx }) {
       </div>
       <div className="ad-mint__forms">
         <LimitsCard wl={s.wlLimit} pub={s.publicLimit} max={s.maxSupply} total={s.totalSupply} open={open} nft={nft} />
-        <RoyaltyCard me={ctx.me} open={open} nft={nft} treasury={s.treasury} />
-        <OwnerMintCard me={ctx.me} open={open} nft={nft} />
         <Card title="Withdraw" id="mint-withdraw" lede="Sends the whole HYPE balance of the NFT contract to the treasury.">
           <p className="ad-bigfig">
             <HypeAmount wei={balance} decimals={6} usd={usdOf(balance)} size="lg" />
           </p>
+          <dl className="ad-kv">
+            <Row label="To the treasury">
+              <Addr value={s.treasury} net={ctx.net} />
+              {ctx.me && s.treasury.toLowerCase() === ctx.me.toLowerCase() && <span className="ad-role">you</span>}
+            </Row>
+          </dl>
           <Btn primary onClick={() => open('Withdraw the mint proceeds to the treasury', withdrawCall(nft))} disabled={balance === 0n} testId="mint-withdraw">
             Withdraw {formatHypeAmount(balance, 6)}
           </Btn>
         </Card>
       </div>
-      <MetadataCard frozen={s.frozen} open={open} nft={nft} />
+      <Advanced title="Advanced: treasury, royalty, owner mint, metadata" testId="mint-advanced" section>
+        <div className="ad-mint__forms">
+          <RoyaltyCard me={ctx.me} open={open} nft={nft} treasury={s.treasury} />
+          <OwnerMintCard me={ctx.me} open={open} nft={nft} />
+        </div>
+        <MetadataCard frozen={s.frozen} open={open} nft={nft} />
+      </Advanced>
     </div>
   );
 }
@@ -326,8 +340,8 @@ function PriceCard({
   onHypeUsd?: (v: number | null) => void;
 }) {
   const [quote, setQuote] = useState<MintPriceQuote | null>(null);
-  const [min, setMin] = useState('');
-  const [max, setMax] = useState('');
+  const [min, setMin] = useState(minPrice > 0n ? formatEther(minPrice) : '');
+  const [max, setMax] = useState(maxPrice > 0n ? formatEther(maxPrice) : '');
   const [manual, setManual] = useState('');
   const [err, guard, setErr] = useFormError();
   useEffect(() => {
@@ -347,13 +361,27 @@ function PriceCard({
   const targetUsd = ((quote?.targetUsdCents ?? 100) / 100).toFixed(2);
   const off = dev !== null && Math.abs(dev) > 200;
   const usd = quote?.hypeUsd ? (Number(price) / 1e18) * quote.hypeUsd : null;
+  const mainnet = ctx.net.mainnet;
+  const sync = (
+    <div className="ad-actions">
+      <Btn primary={mainnet} disabled={!target} testId="mint-sync-price" icon="check" onClick={() => target && open(`Sync the mint price to $${targetUsd}`, setPriceCall(nft, target))}>
+        Sync to ${targetUsd}
+      </Btn>
+    </div>
+  );
   return (
-    <Card title="Price" id="mint-price" kicker={`Pinned to $${targetUsd}`} lede={`Held in wei, kept at $${targetUsd} in HYPE. The number wiggles with the market; the dollar does not.`}>
+    <Card
+      title="Price"
+      id="mint-price"
+      kicker={mainnet ? `Pinned to $${targetUsd}` : 'Testnet · fixed'}
+      lede={mainnet ? `Held in wei, kept at $${targetUsd} in HYPE. The number wiggles with the market; the dollar does not.` : 'Testnet HYPE is free, so the price stays what it is. Nothing to keep in sync here.'}
+    >
       <div className="ad-pricebox">
         <div className="ad-pricebox__now">
           <span className="mono">On the contract</span>
-          <HypeAmount wei={price} decimals={6} usd={usd} size="md" stack />
+          <HypeAmount wei={price} decimals={6} usd={mainnet ? usd : null} size="md" stack />
         </div>
+        {mainnet && (
         <div className="ad-pricebox__target">
           <span className="mono">Target</span>
           {target ? (
@@ -366,24 +394,22 @@ function PriceCard({
           )}
           {dev !== null && <span className={`ad-code mono${off ? ' is-bad' : ' is-ok'}`}>off by {(dev / 100).toFixed(2)} %</span>}
         </div>
+        )}
       </div>
-      <div className="ad-actions">
-        <Btn primary disabled={!target} testId="mint-sync-price" icon="check" onClick={() => target && open('Sync the mint price to $1', setPriceCall(nft, target))}>
-          Sync to ${targetUsd}
-        </Btn>
-      </div>
-      <details className="ad-more">
-        <summary>Set a price by hand</summary>
+      {mainnet && sync}
+      <Advanced title="Advanced: set a price by hand, the keeper">
+        {!mainnet && sync}
         <div className="ad-inlineform">
           <Input label="Price" suffix="HYPE" value={manual} onChange={setManual} />
           <Btn onClick={() => guard(() => open('Set the mint price', setPriceCall(nft, parseHypeInput('Price', manual))))}>Preview setPrice</Btn>
         </div>
-      </details>
-      <div className="ad-sub">
         <h3 className="ad-h3">Keeper</h3>
         <p className="ad-note">With the server key as keeper, the server re-prices every 5 minutes when off by more than 2 %, always inside the bounds.</p>
         <dl className="ad-kv">
           <Row label="Keeper">{keeper ? <Addr value={keeper} net={ctx.net} /> : <span className="ad-none">none</span>}</Row>
+          <Row label="Server key">
+            <Addr value={serverKey} net={ctx.net} /> <span className="ad-role">{keeper && serverKey && keeper.toLowerCase() === serverKey.toLowerCase() ? 'is the keeper' : 'from the game server'}</span>
+          </Row>
           <Row label="Bounds">
             <span className="num">
               {formatHypeAmount(minPrice, 6)} – {formatHypeAmount(maxPrice, 6)}
@@ -403,7 +429,7 @@ function PriceCard({
             Remove keeper
           </Btn>
         </div>
-      </div>
+      </Advanced>
       <FormError error={err} />
     </Card>
   );
@@ -472,7 +498,7 @@ function MetadataCard({ frozen, open, nft }: { frozen: boolean; open: OpenFn; nf
 function RoyaltyCard({ me, open, nft, treasury }: { me: Address | null; open: OpenFn; nft: Address; treasury: Address }) {
   const [to, setTo] = useState<string>(treasury);
   const [bps, setBps] = useState('500');
-  const [t, setT] = useState<string>(me ?? '');
+  const [t, setT] = useState<string>(treasury ?? me ?? '');
   const [err, guard] = useFormError();
   return (
     <Card title="Royalty and treasury" id="mint-royalty" lede="ERC-2981 royalty (at most 10 %), and where withdraw() sends the proceeds.">

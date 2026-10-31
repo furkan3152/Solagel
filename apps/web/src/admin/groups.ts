@@ -1,7 +1,8 @@
 import { formatHypeAmount } from '@elymum/sdk';
-import type { StatusSnapshot } from '@elymum/sdk/ops';
-import type { GameAccess, SiteCounts, SiteSettings } from '@elymum/shared';
+import { testTokenRefusal, type StatusSnapshot } from '@elymum/sdk/ops';
+import type { ContractsRegistry, GameAccess, SiteCounts, SiteSettings } from '@elymum/shared';
 import type { AdminNetwork } from './net';
+import { setupSteps } from './setup';
 
 /**
  * The admin panel's drawers, few and grouped (the owner runs everything from here): Network,
@@ -62,6 +63,8 @@ export interface GroupSummary {
 export interface SummaryInput {
   net: AdminNetwork;
   status: StatusSnapshot | null;
+  /** The server's registered contracts (the game token among them). */
+  registry?: ContractsRegistry | null;
   settings?: SiteSettings | null;
   gameAccessEnv?: GameAccess | null;
   counts?: SiteCounts | null;
@@ -70,7 +73,11 @@ export interface SummaryInput {
 
 const ACCESS: Record<GameAccess, string> = { admins: 'admins only', holders: 'emblem holders', public: 'everyone' };
 
-/** "Status now / next step" for each drawer (pure, tested). */
+/**
+ * "Status now / next step" for each drawer (pure, tested). The next step is always something only
+ * the owner can do (deploy, Finish setup, open the mint, fund the server key): never "register" or
+ * "paste an address", which the panel does by itself.
+ */
 export function groupSummary(group: AdminGroup, i: SummaryInput): GroupSummary {
   const { net, status } = i;
   const a = status?.arena ?? null;
@@ -91,12 +98,17 @@ export function groupSummary(group: AdminGroup, i: SummaryInput): GroupSummary {
       const parts = [`Arena ${net.arenaAddress ? (a?.code === 'ok' ? 'ok' : (a?.code ?? '…')) : 'missing'}`, `NFT ${net.nftAddress ? (status?.nft?.code === 'ok' ? 'ok' : (status?.nft?.code ?? '…')) : 'missing'}`];
       if (cfg) parts.push(`token ${cfg.token ? 'set' : 'not set'}`, `holder perks ${cfg.holderNft ? `on (${cfg.holderFeeBps} bps)` : 'off'}`);
       const now = parts.join(' · ');
-      if (!net.arenaAddress) return { now, next: 'Deploy ElymumArena from the owner wallet.' };
-      if (!net.nftAddress) return { now, next: 'Deploy ElymumNFT from the owner wallet.' };
-      if (cfg && !cfg.token) return { now, next: 'Set the game token on the arena.' };
-      if (cfg && (a?.arenas.length ?? 0) < 4) return { now, next: 'Create the four default arenas.' };
-      if (cfg && !cfg.holderNft) return { now, next: 'Turn on the holder perks (the NFT and the 3% holder fee).' };
-      if (cfg && !a?.arenas.some((x) => x.holdersOnly)) return { now, next: 'Mark the Isles of the Blessed (#4) holders-only.' };
+      if (!net.arenaAddress) return { now, next: 'Deploy ElymumArena from the owner wallet (below).' };
+      if (!net.nftAddress) return { now, next: 'Deploy ElymumNFT from the owner wallet (below).' };
+      if (!cfg) return { now, next: null };
+      const steps = setupSteps({ net, status }, { openMint: !net.mainnet });
+      if (!cfg.token && !steps.some((s) => s.id === 'token')) {
+        const known = i.registry?.token?.address ?? status?.testToken?.address ?? null;
+        if (known) return { now, next: 'Confirm the game token (one click, then your wallet).' };
+        if (net.info && !testTokenRefusal(net.info.id)) return { now, next: 'Deploy a TestToken (below), then Finish setup.' };
+        return { now, next: 'Set TOKEN_ADDRESS on the game server (Render) to $ELYMUM, then confirm it here.' };
+      }
+      if (steps.length > 0) return { now, next: `Finish setup: ${steps.length} step${steps.length === 1 ? '' : 's'} left, one button.` };
       return { now, next: null };
     }
     case 'mint': {

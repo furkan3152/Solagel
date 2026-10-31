@@ -1,4 +1,4 @@
-import { explorerAddressUrl } from '@elymum/shared';
+import { explorerAddressUrl, type ContractsRegistry } from '@elymum/shared';
 import type { StatusSnapshot } from '@elymum/sdk/ops';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import type { Address, PublicClient } from 'viem';
@@ -21,6 +21,21 @@ export interface ChainCtx {
   api: AdminApi | null;
   /** Opens the transaction preview for a plan. */
   open: (plan: Plan) => void;
+  /** The server's registered contracts (`GET /api/site/contracts`; null while loading, absent in tests). */
+  registry?: ContractsRegistry | null;
+}
+
+/**
+ * A collapsed "Advanced: …" section (closed by default): manual controls and address overrides.
+ * Everything the panel can know by itself is used automatically; only overrides live in here.
+ */
+export function Advanced({ title, children, testId, section }: { title: string; children: ReactNode; testId?: string; section?: boolean }) {
+  return (
+    <details className={`ad-more ad-advanced${section ? ' ad-advanced--section' : ''}`} data-testid={testId} data-advanced="">
+      <summary>{title.startsWith('Advanced') ? title : `Advanced: ${title}`}</summary>
+      <div className="ad-advanced__body">{children}</div>
+    </details>
+  );
 }
 
 /** A small copy button (the 44 px hit area is padded out around the glyph). */

@@ -105,6 +105,7 @@ function StartStopCard({ ctx }: { ctx: ChainCtx }) {
               call: setPausedCall(arena, v === 'paused'),
               ownerOf: arena,
               owner: cfg.admin,
+              note: v === 'paused' ? 'Pause blocks joins only; settlements and refunds keep working.' : undefined,
               onDone: () => ctx.refresh(),
             })
           }
@@ -197,7 +198,7 @@ function NumCell({ value, onChange, label, max }: { value: number; onChange: (n:
 
 /** The fix for a staked-bot problem the server reports (null: no known fix, the text says it). */
 export function stakedFix(problem: string): { text: string; hash: string } | null {
-  if (/minter|mint/i.test(problem)) return { text: 'Grant minter to the server key in Setup → TestToken.', hash: '#setup' };
+  if (/minter|mint/i.test(problem)) return { text: 'Grant minter to the server key: Setup → Finish setup.', hash: '#setup' };
   if (/hype|gas|fund|balance/i.test(problem)) return { text: 'Fund the server key with HYPE (Network shows its balance).', hash: '' };
   if (/token|arena/i.test(problem)) return { text: 'Check the arenas and the game token in Setup.', hash: '#setup' };
   return null;
@@ -414,7 +415,10 @@ export function BotsCard({ ctx, arenaIds }: { ctx: ChainCtx; arenaIds: number[] 
   );
 }
 
-/** `/admin → Game`: start / stop, bots, then the arena contract's controls. */
+/**
+ * `/admin → Game`: the owner's decisions first (who may play, the pause, each arena open or
+ * closed, the bots), then the arena contract's status; its manual controls sit under Advanced.
+ */
 export function GameTab({ ctx }: { ctx: ChainCtx }) {
   const arenaIds = (ctx.status?.arena?.arenas ?? []).map((a) => a.id);
   return (

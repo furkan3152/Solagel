@@ -4,7 +4,9 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import type { ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AdminPanel } from '../src/admin/AdminPanel';
-import { DeployTab } from '../src/admin/DeployTab';
+import { DeployTab, SetTokenForm } from '../src/admin/DeployTab';
+import { SetupTab } from '../src/admin/SetupTab';
+import { GameTab } from '../src/admin/GameTab';
 import { MintTab } from '../src/admin/MintTab';
 import { resolveNetwork } from '../src/admin/net';
 import type { Plan } from '../src/admin/plan';
@@ -18,6 +20,7 @@ import { ALICE, BOB, chainStatus, detail, fakeProvider, type FakeProvider } from
 const ARENA = '0x00000000000000000000000000000000000a4e4a';
 const NFT = '0x0000000000000000000000000000000000000f7e';
 const NEW = '0x00000000000000000000000000000000000ae1e0';
+const TOKEN = '0x0000000000000000000000000000000000007e57';
 const HASH = `0x${'cd'.repeat(32)}`;
 
 let provider: FakeProvider;
@@ -210,28 +213,80 @@ describe('Deploy wizard', () => {
     expect(registerContract).toHaveBeenCalledWith({ kind: 'nft', address: NFT, txHash: HASH });
   });
 
-  it('sets the token only when typed twice the same, then creates the default arenas one by one', async () => {
+  it('sets the registered token with one confirmation; a different address is typed twice under Advanced', async () => {
     const net = resolveNetwork(chainStatus({ arenaAddress: ARENA, nftAddress: NFT }));
     const cfg = { admin: ALICE, token: null, decimals: 18 };
     const getCode = vi.fn(async () => '0x6080');
-    const ctx = ctxOf({ net, client: { getCode } as never, status: { arena: { code: 'ok', config: cfg, arenas: [] }, nft: { code: 'ok' } } as unknown as StatusSnapshot });
-    const view = ui(<DeployTab ctx={ctx} />);
+    const status = { arena: { code: 'ok', config: cfg, arenas: [] }, nft: { code: 'ok' } } as unknown as StatusSnapshot;
+    const registry = { arena: null, nft: null, token: { address: TOKEN } } as never;
+    const ctx = ctxOf({ net, client: { getCode } as never, status, registry });
+    const view = ui(<SetTokenForm ctx={ctx} />);
+    // the registered token is shown, never typed: no address input outside Advanced
+    for (const input of document.querySelectorAll('input')) expect(input.closest('details[data-advanced]')).not.toBeNull();
+    act(() => screen.getByTestId('set-token').click());
+    await settle();
+    expect(ctx.plans[0].call).toMatchObject({ functionName: 'setToken', args: [TOKEN] });
+    expect(ctx.plans[0].ownerOf?.toLowerCase()).toBe(ARENA.toLowerCase());
+    // the override: typed twice, refused while the two differ
     fireEvent.change(screen.getByLabelText('Token address'), { target: { value: BOB } });
     fireEvent.change(screen.getByLabelText('Token address (again)'), { target: { value: ALICE } });
-    act(() => screen.getByTestId('set-token').click());
+    act(() => screen.getByTestId('set-token-typed').click());
     await settle();
-    expect(ctx.plans).toHaveLength(0);
+    expect(ctx.plans).toHaveLength(1);
     expect(screen.getByRole('alert').textContent).toMatch(/the two addresses differ/);
     fireEvent.change(screen.getByLabelText('Token address (again)'), { target: { value: BOB.toLowerCase() } });
-    act(() => screen.getByTestId('set-token').click());
+    act(() => screen.getByTestId('set-token-typed').click());
     await settle();
-    expect(ctx.plans[0].call).toMatchObject({ functionName: 'setToken', args: [BOB] });
-    expect(ctx.plans[0].ownerOf?.toLowerCase()).toBe(ARENA.toLowerCase());
+    expect(ctx.plans[1].call).toMatchObject({ functionName: 'setToken', args: [BOB] });
     view.unmount();
-    const withToken = ctxOf({ net, status: { arena: { code: 'ok', config: { ...cfg, token: BOB }, arenas: [{ id: 1, exists: true }] }, nft: { code: 'ok' } } as unknown as StatusSnapshot });
+    // nothing registered: no one-click button, the server env is the owner's step
+    ui(<SetTokenForm ctx={ctxOf({ net, status })} />);
+    expect(screen.queryByTestId('set-token')).toBeNull();
+    expect(screen.getByText(/TOKEN_ADDRESS/)).toBeTruthy();
+  });
+
+  it('creates the default arenas one by one', () => {
+    const net = resolveNetwork(chainStatus({ arenaAddress: ARENA, nftAddress: NFT }));
+    const withToken = ctxOf({ net, status: { arena: { code: 'ok', config: { admin: ALICE, token: BOB, decimals: 18 }, arenas: [{ id: 1, exists: true }] }, nft: { code: 'ok' } } as unknown as StatusSnapshot });
     ui(<DeployTab ctx={withToken} />);
     act(() => screen.getByTestId('create-arena').click());
     expect(withToken.plans[0].call).toMatchObject({ functionName: 'createArena', args: [2, 10_000n * 10n ** 18n, 300] });
+  });
+
+  it('asks for no address: the NFT treasury and base URI are shown, their overrides sit under Advanced', () => {
+    const ctx = ctxOf({ net: resolveNetwork(chainStatus({ arenaAddress: ARENA })), status: { arena: { code: 'ok', config: { token: null }, arenas: [] }, nft: null } as unknown as StatusSnapshot });
+    ui(<SetupTab ctx={ctx} />);
+    expect(screen.getByTestId('deploy-nft')).toBeTruthy();
+    const outside = [...document.querySelectorAll('input')].filter((i) => !i.closest('details[data-advanced]')).map((i) => i.labels?.[0]?.textContent);
+    expect(outside).toEqual(['Max supply', 'Mint price (HYPE)', 'Allowlist limit per wallet', 'Public limit per wallet']);
+    expect(screen.getByTestId('nft-advanced').hasAttribute('open')).toBe(false);
+  });
+
+  it('registers a contract deployed while signed out as soon as the admin signs in', async () => {
+    localStorage.setItem('elymum.admin.deploy.v1', JSON.stringify({ '99801': { arena: { address: NEW, txHash: HASH } } }));
+    const registerContract = vi.fn(async () => ({ arena: null, nft: null, token: null }));
+    const api = { registerContract, mintPrice: vi.fn(async () => ({ priceWei: null })) } as unknown as AdminApi;
+    const ctx = ctxOf({ net: resolveNetwork(chainStatus({ arenaAddress: null })) });
+    const view = ui(<DeployTab ctx={ctx} />);
+    await settle();
+    expect(registerContract).not.toHaveBeenCalled();
+    view.rerender(
+      <Kb>
+        <DeployTab ctx={{ ...ctx, api }} />
+      </Kb>,
+    );
+    await settle();
+    expect(registerContract).toHaveBeenCalledTimes(1);
+    expect(registerContract).toHaveBeenCalledWith({ kind: 'arena', address: NEW, txHash: HASH });
+    expect(ctx.reloadNet).toHaveBeenCalled();
+    // once per session: a re-render does not register again
+    view.rerender(
+      <Kb>
+        <DeployTab ctx={{ ...ctx, api }} />
+      </Kb>,
+    );
+    await settle();
+    expect(registerContract).toHaveBeenCalledTimes(1);
   });
 
   it('offers the TestToken and its faucet off mainnet only', () => {
@@ -240,6 +295,60 @@ describe('Deploy wizard', () => {
     view.unmount();
     ui(<DeployTab ctx={ctxOf({ net: resolveNetwork(chainStatus({ chainId: 4242, chainName: 'Elysium', arenaAddress: null })) })} />);
     expect(screen.queryByTestId('deploy-test-token')).toBeNull();
+  });
+});
+
+describe('Setup with the contracts registered', () => {
+  const KEY = '0x000000000000000000000000000000000000bEEF';
+  const registeredStatus = (over: Record<string, unknown> = {}) =>
+    ({
+      arena: { address: ARENA, code: 'ok', config: { admin: ALICE, serverAuthority: KEY, token: null, feeBps: 500, holderNft: null, holderFeeBps: 0, decimals: 18 }, token: null, arenas: [] },
+      nft: { address: NFT, code: 'ok', state: { phaseName: 'closed' } },
+      testToken: { address: TOKEN, code: 'ok', serverIsMinter: false, faucet: null },
+      ...over,
+    }) as unknown as StatusSnapshot;
+  const noInputOutsideAdvanced = () => {
+    const inputs = [...document.querySelectorAll('input')];
+    expect(inputs.length).toBeGreaterThan(0);
+    for (const input of inputs) expect(input.closest('details[data-advanced]'), input.outerHTML).not.toBeNull();
+  };
+
+  it('opens with Finish setup; every address input is in the one Advanced section, closed', () => {
+    const net = resolveNetwork(chainStatus({ arenaAddress: ARENA, nftAddress: NFT }));
+    const registry = { arena: { address: ARENA }, nft: { address: NFT }, token: { address: TOKEN } } as never;
+    ui(<SetupTab ctx={ctxOf({ net, status: registeredStatus(), registry })} />);
+    expect(screen.getByTestId('quick-setup-go')).toBeTruthy();
+    expect(screen.getByTestId('quick-setup-steps').textContent).toMatch(/Set tELYMUM as the game token/);
+    const advanced = screen.getByTestId('setup-advanced') as HTMLDetailsElement;
+    expect(advanced.open).toBe(false);
+    expect(advanced.querySelector('summary')?.textContent).toBe('Advanced: manual controls');
+    // the manual controls are all inside it: the wizard, register-existing, the perks and the TestToken forms
+    for (const id of ['deploy-steps', 'register-existing', 'holder-perks', 'tt-minter', 'tt-faucet', 'deploy-test-token']) expect(advanced.contains(screen.getByTestId(id)), id).toBe(true);
+    // the addresses Finish setup uses are shown read-only
+    expect(within(screen.getByTestId('quick-setup-uses')).getByText('Game token')).toBeTruthy();
+    noInputOutsideAdvanced();
+  });
+
+  it('mainnet: the registered token takes one confirmation, outside Advanced; still no address to type', async () => {
+    const net = resolveNetwork(chainStatus({ chainId: 4242, chainName: 'Elysium', arenaAddress: ARENA, nftAddress: NFT }));
+    const registry = { arena: { address: ARENA }, nft: { address: NFT }, token: { address: TOKEN } } as never;
+    const ctx = ctxOf({ net, status: registeredStatus({ testToken: null }), registry });
+    ui(<SetupTab ctx={ctx} />);
+    const btn = screen.getByTestId('set-token');
+    expect(btn.closest('details')).toBeNull();
+    act(() => btn.click());
+    await settle();
+    expect(ctx.plans[0].call).toMatchObject({ functionName: 'setToken', args: [TOKEN] });
+    expect(screen.queryByTestId('deploy-test-token')).toBeNull();
+    noInputOutsideAdvanced();
+  });
+
+  it('testnet without a token: offers the TestToken deploy up front', () => {
+    const net = resolveNetwork(chainStatus({ arenaAddress: ARENA, nftAddress: NFT }));
+    const registry = { arena: { address: ARENA }, nft: { address: NFT }, token: null } as never;
+    ui(<SetupTab ctx={ctxOf({ net, status: registeredStatus({ testToken: null }), registry })} />);
+    expect(screen.getByTestId('deploy-test-token').closest('details')).toBeNull();
+    noInputOutsideAdvanced();
   });
 });
 
@@ -300,6 +409,34 @@ describe('Mint tab', () => {
     expect(ctx.plans[1].call).toMatchObject({ functionName: 'setPriceKeeper', args: ['0x000000000000000000000000000000000000bEEF'] });
     act(() => screen.getByTestId('mint-freeze').click());
     expect(ctx.plans[2]).toMatchObject({ confirmText: 'FREEZE' });
+  });
+});
+
+describe('Mint and Game: only the owner decisions up front', () => {
+  const outsideAdvanced = () => [...document.querySelectorAll('input')].filter((i) => !i.closest('details[data-advanced]') && i.type !== 'radio' && i.type !== 'checkbox').map((i) => i.labels?.[0]?.textContent ?? i.getAttribute('aria-label'));
+
+  it('Mint: limits and supply up front; treasury, royalty, owner mint, keeper and base URI under Advanced (prefilled)', () => {
+    const state = { phase: 0, phaseName: 'closed', price: 30_000_000_000_000_000n, minPrice: 0n, maxPrice: 0n, keeper: null, root: `0x${'0'.repeat(64)}`, maxSupply: 5000, totalSupply: 0, wlLimit: 1, publicLimit: 2, treasury: ALICE, frozen: false, soldOut: false };
+    ui(<MintTab ctx={ctxOf({ net: resolveNetwork(chainStatus({ arenaAddress: ARENA, nftAddress: NFT })), status: { nft: { address: NFT, code: 'ok', balance: 0n, state } } as unknown as StatusSnapshot })} />);
+    expect(outsideAdvanced()).toEqual(['Allowlist per wallet', 'Public per wallet', 'Max supply (minted: 0)']);
+    expect((screen.getByTestId('mint-advanced') as HTMLDetailsElement).open).toBe(false);
+    expect((screen.getByLabelText('Treasury') as HTMLInputElement).value).toBe(ALICE);
+    // testnet: the price is fixed; the $1 sync is an Advanced control
+    expect(screen.getByTestId('mint-sync-price').closest('details[data-advanced]')).not.toBeNull();
+  });
+
+  it('Game: no address field outside Advanced; the fee wallet and the rescue form are prefilled in there', () => {
+    const totals = { sessions: 0n, staked: 0n, paidOut: 0n, fees: 0n, burned: 0n };
+    const cfg = { admin: ALICE, pendingAdmin: null, serverAuthority: '0x000000000000000000000000000000000000bEEF', feeWallet: ALICE, feeBps: 500, paused: false, token: TOKEN, decimals: 18, totals, holderNft: null, holderFeeBps: 0 };
+    const arenas = [{ id: 1, exists: true, enabled: true, entryFee: 1000n * 10n ** 18n, maxSessions: 300, openSessions: 0, vault: 0n, owed: 0n, holdersOnly: false }];
+    const status = { arena: { address: ARENA, code: 'ok', config: cfg, arenas, serverBalance: 10n ** 18n, token: { symbol: 'tELYMUM', decimals: 18, feeWalletBalance: 0n } } } as unknown as StatusSnapshot;
+    ui(<GameTab ctx={ctxOf({ net: resolveNetwork(chainStatus({ arenaAddress: ARENA, nftAddress: NFT })), status })} />);
+    expect(outsideAdvanced()).toEqual([]);
+    expect(screen.getByTestId('arena-pause')).toBeTruthy();
+    expect(screen.getByTestId('arena-enable-1')).toBeTruthy();
+    expect((screen.getByTestId('arena-advanced') as HTMLDetailsElement).open).toBe(false);
+    expect((screen.getByLabelText('Fee wallet') as HTMLInputElement).value).toBe(ALICE);
+    expect((screen.getByLabelText('To') as HTMLInputElement).value).toBe(ALICE);
   });
 });
 
