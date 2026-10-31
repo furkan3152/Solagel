@@ -57,6 +57,7 @@ export function DeployTab({ ctx }: { ctx: ChainCtx }) {
         {active === null && <DoneCard ctx={ctx} />}
         <NeedsSession api={api} />
         {!net.mainnet && net.info && <TestTokenCard ctx={ctx} onLocal={setLocal} local={local} />}
+        <RegisterExisting ctx={ctx} />
       </div>
     </div>
   );
@@ -323,6 +324,65 @@ function RegisterStep({ ctx, local, onLocal, kicker }: { ctx: ChainCtx; local: L
         <Btn onClick={() => (['arena', 'nft'] as const).forEach((k) => onLocal(saveLocalDeploy(ctx.net.info!.id, k, null)))}>Forget local deploys</Btn>
       )}
       </div>
+      <FormError error={err} />
+    </Card>
+  );
+}
+
+/**
+ * Registers a contract that is already on chain (deployed from another browser, or when the
+ * admin session expired between the deploy and its registration): paste the address, the
+ * server runs the same checks (code hash, owner = you, server authority for the arena).
+ */
+function RegisterExisting({ ctx }: { ctx: ChainCtx }) {
+  const [kind, setKind] = useState<ContractKind>('arena');
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const address = /^0x[0-9a-fA-F]{40}$/.test(text.trim()) ? (text.trim() as Address) : null;
+  const NAMES: Record<ContractKind, string> = { arena: 'ElymumArena', nft: 'ElymumNFT', token: 'Game token / TestToken' };
+  return (
+    <Card title="Register a contract that is already deployed" id="deploy-register-existing" lede="Deployed it but it does not show as registered? Paste its address. The server checks the code hash, that you own it, and for the arena that the server key settles it.">
+      <div className="ad-choice" role="radiogroup" aria-label="Contract">
+        {(['arena', 'nft', 'token'] as const).map((k) => (
+          <label key={k} className={`ad-choice__opt${kind === k ? ' is-on' : ''}`}>
+            <input type="radio" name="reg-kind" checked={kind === k} onChange={() => setKind(k)} /> {NAMES[k]}
+          </label>
+        ))}
+      </div>
+      <Input label="Contract address" value={text} onChange={setText} placeholder="0x…" hint={text && !address ? 'Paste a 0x address (42 characters).' : undefined} />
+      <div className="ad-actions">
+        <Btn
+          sun
+          testId="register-existing"
+          disabled={busy || !address || !ctx.api}
+          onClick={async () => {
+            if (!address) return;
+            setBusy(true);
+            setErr(null);
+            setDone(null);
+            try {
+              if (ctx.client) {
+                const code = await checkDeployedCode(ctx.client, address, kind);
+                if (code !== 'ok') throw new Error(`The code at ${address} is ${code === 'missing' ? 'missing (wrong network or address?)' : 'not the bundled ' + NAMES[kind]}.`);
+              }
+              await register(ctx, kind, address, null);
+              await ctx.refresh();
+              setDone(`${NAMES[kind]} registered.`);
+              setText('');
+            } catch (e) {
+              setErr((e as Error).message);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Register
+        </Btn>
+      </div>
+      {!ctx.api && <NeedsSession api={ctx.api} />}
+      {done && <p className="ad-note ad-ok">{done}</p>}
       <FormError error={err} />
     </Card>
   );

@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
-import { resolve } from 'node:path';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { CAPACITY, HYPE_FAUCET_URL_DEFAULT, RULES, TOKEN_SYMBOL_DEFAULT, MINT_USD_CENTS_DEFAULT, chainByKey, isGameAccess, type GameAccess } from '@elymum/shared';
 import { HYPE_PRICE_URL_DEFAULT } from '@elymum/sdk';
 import { getAddress, isAddress } from 'viem';
@@ -191,9 +192,38 @@ export function parseRoundConfig(env: NodeJS.ProcessEnv): { roundMs: number; clo
 
 const bool = (v: string | undefined, d: boolean): boolean => (v === undefined ? d : ['1', 'true', 'yes', 'on'].includes(v.toLowerCase()));
 
+/**
+ * Without `AUTH_SECRET`, sign-ins would reset on every restart (and a deploy restarts the server):
+ * keep a generated secret in `DATA_DIR/auth-secret` (mode 0600) so sessions survive restarts.
+ * Falls back to a one-run secret when the data dir is not writable.
+ */
+export function persistedAuthSecret(dataDir: string): Buffer {
+  const file = join(dataDir, 'auth-secret');
+  try {
+    const hex = readFileSync(file, 'utf8').trim();
+    if (/^[0-9a-f]{64}$/.test(hex)) return Buffer.from(hex, 'utf8');
+  } catch {
+    /* not there yet */
+  }
+  const hex = randomBytes(32).toString('hex');
+  try {
+    mkdirSync(dataDir, { recursive: true });
+    writeFileSync(file, hex + '\n', { mode: 0o600, flag: 'wx' });
+    return Buffer.from(hex, 'utf8');
+  } catch {
+    try {
+      const again = readFileSync(file, 'utf8').trim();
+      if (/^[0-9a-f]{64}$/.test(again)) return Buffer.from(again, 'utf8');
+    } catch {
+      /* unwritable data dir */
+    }
+    return Buffer.from(hex, 'utf8');
+  }
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   const rpcUrl = blank(env.EVM_RPC_URL)?.replace(/\/+$/, '') ?? null;
-  const secret = env.AUTH_SECRET ? Buffer.from(env.AUTH_SECRET, 'utf8') : randomBytes(32);
+  const secret = env.AUTH_SECRET ? Buffer.from(env.AUTH_SECRET, 'utf8') : persistedAuthSecret(resolve(env.DATA_DIR ?? 'data'));
   return {
     port: int(env.PORT, 8787),
     host: env.HOST ?? '0.0.0.0',

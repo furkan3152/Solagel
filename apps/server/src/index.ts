@@ -6,7 +6,7 @@ const log = (m: string) => console.log(`[${new Date().toISOString()}] ${m}`);
 async function main(): Promise<void> {
   const cfg = loadConfig();
   assertPublicUrl(cfg);
-  if (!process.env.AUTH_SECRET) log('auth: AUTH_SECRET not set — login tokens reset on every restart');
+  if (!process.env.AUTH_SECRET) log('auth: AUTH_SECRET not set — using the generated secret kept in DATA_DIR/auth-secret');
   const badAdmins = invalidAdminWallets(process.env.ADMIN_WALLETS);
   if (badAdmins.length > 0) log(`!!! ADMIN_WALLETS: ignoring ${badAdmins.length} entr${badAdmins.length === 1 ? 'y' : 'ies'} that are not 0x addresses (${badAdmins.join(', ')})`);
   const app = await createApp(cfg, { log });
