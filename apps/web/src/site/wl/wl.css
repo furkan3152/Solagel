@@ -442,6 +442,10 @@
     width: 50px;
     height: 50px;
   }
+  /* the handle chore's coin draws at a fixed 72 px: scale it into the 50 px cell, not over the title */
+  .wl-step__art > .kb-coin {
+    scale: 0.62;
+  }
   .wl-step__title {
     font-size: 20px;
   }
