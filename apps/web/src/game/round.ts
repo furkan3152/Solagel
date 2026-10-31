@@ -1,11 +1,11 @@
-import { RULES, roundAt, type RoomInfo, type RoundInfo } from '@slana/shared';
+import { RULES, roundAt, type RoomInfo, type RoundInfo } from '@elymum/shared';
 import { useEffect, useState } from 'react';
 import { useUi } from '../store';
 import { serverClock } from './clock';
 
 /**
  * Arena rounds on the client. Every arena plays the same wall-clock round (`roundAt` in
- * `@slana/shared`): the server sends the round in play (`RoundInfo`) with room listings and
+ * `@elymum/shared`): the server sends the round in play (`RoundInfo`) with room listings and
  * `joined`; from it and the server clock offset (`serverClock`) anyone, players who were
  * eaten and lobby viewers included, can tell the round's phase and roll it forward past
  * `endsAt` without waiting for a new listing.

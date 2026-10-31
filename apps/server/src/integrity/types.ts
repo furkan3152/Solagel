@@ -1,4 +1,4 @@
-import type { IntegrityTransfer } from '@slana/shared';
+import type { IntegrityTransfer } from '@elymum/shared';
 
 /** Turn magnitude bin edges (degrees) of the direction-change histogram; bin 0 is an exact repeat (no change at all). */
 export const TURN_EDGES_DEG = [0.02, 0.1, 0.3, 1, 2, 4, 8, 16, 32, 64, 128, 180] as const;
@@ -33,7 +33,7 @@ export interface InputSummary {
 
 /** Summary of one arena ticket, kept in memory and persisted under `DATA_DIR/integrity/log/`. */
 export interface SessionSummary {
-  /** `<session PDA>#<session id>` (PDAs are reused by later tickets, ids are not). */
+  /** `<session key>#<session id>` (the session key already holds the id; the suffix keeps old records unique). */
   key: string;
   wallet: string;
   arenaId: number;

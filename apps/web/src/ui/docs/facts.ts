@@ -1,11 +1,11 @@
-import { CAPACITY, DEFAULT_ARENAS, RULES, arenaMeta } from '@slana/shared';
-import { DEFAULT_FEE_BPS, DEFAULT_SETTLE_FEE_LAMPORTS, MAX_FEE_BPS, SESSION_REFUND_TIMEOUT_SECS, splitPayout, type PayoutSplit } from '@slana/sdk';
+import { CAPACITY, DEFAULT_ARENAS, RULES, arenaMeta } from '@elymum/shared';
+import { DEFAULT_FEE_BPS, MAX_FEE_BPS, REFUND_DELAY_SECS, splitPayout, type PayoutSplit } from '@elymum/sdk';
 
 /**
  * Every number the player guide quotes, taken from the code that enforces it, so the
- * page cannot drift from the game. Program and admin defaults come from `@slana/sdk`
- * (mirrors of `programs/slana-ref/src/constants.rs` and `pnpm admin init`), gameplay from
- * `@slana/shared` `RULES` / `CAPACITY` (server defaults; operators may change them with
+ * page cannot drift from the game. Contract defaults come from `@elymum/sdk` (mirrors of
+ * `packages/contracts/contracts/ElymumArena.sol`, checked against the ABI by an SDK test), gameplay from
+ * `@elymum/shared` `RULES` / `CAPACITY` (server defaults; operators may change them with
  * env vars). The few server-only timings are mirrored in `SERVER` below and checked
  * against the server source by `test/docs.test.ts`.
  */
@@ -21,7 +21,7 @@ export const SERVER = {
   promotionHours: 24,
   /** `MAX_STAKE_SESSION_AGE_S` (rooms/room.ts): a safety cap; rounds end every 5 minutes, so tickets close far sooner. */
   maxTicketHours: 6,
-  /** `STALE_SESSION_AFTER_S` (chain/solana.ts): a ticket nobody plays is settled at its entry fee after 15 min. */
+  /** `STALE_SESSION_AFTER_S` (chain/evm.ts): a ticket nobody plays is settled at its entry fee after 15 min. */
   staleTicketMinutes: 15,
   /** `PRIVATE_ROOM_CAPACITY` default (shared CAPACITY.private) and the 5-character room code (rooms/manager.ts). */
   privateCodeLength: 5,
@@ -30,14 +30,13 @@ export const SERVER = {
 /** The worked fee example of the guide: a 1,000-token ticket with 2,000 tokens in the till at the bell. */
 export const EXAMPLE = { entry: 1000, cashout: 2000 } as const;
 
-/** The worked example at `bps` (the server's `feeBps`; 5 % → fee 50, player 1,950), exactly as `settle_session` splits it. */
+/** The worked example at `bps` (the server's `feeBps`; 5 % → fee 50, player 1,950), exactly as `settle` splits it. */
 export function feeExample(bps: number): PayoutSplit {
   return splitPayout(EXAMPLE.cashout, EXAMPLE.entry, bps);
 }
 
 export interface DocsFacts {
   fee: { bps: number; maxBps: number };
-  settleFeeLamports: number;
   example: { entry: number; cashout: number };
   arenas: { id: number; name: string; entry: number; maxSessions: number }[];
   capacity: { practice: number; private: number; arena: number };
@@ -57,7 +56,6 @@ export interface DocsFacts {
 
 export const FACTS: DocsFacts = {
   fee: { bps: DEFAULT_FEE_BPS, maxBps: MAX_FEE_BPS },
-  settleFeeLamports: DEFAULT_SETTLE_FEE_LAMPORTS,
   example: EXAMPLE,
   arenas: DEFAULT_ARENAS.map((a) => ({ id: a.id, name: arenaMeta(a.id).name, entry: a.entryTokens, maxSessions: a.maxSessions })),
   capacity: { practice: CAPACITY.practice, private: CAPACITY.private, arena: CAPACITY.arena },
@@ -71,7 +69,7 @@ export const FACTS: DocsFacts = {
     lootMax: RULES.lootPiecesMax,
     lootEntryDiv: Math.round(1 / RULES.lootPieceEntryFraction),
   },
-  refundHours: SESSION_REFUND_TIMEOUT_SECS / 3600,
+  refundHours: REFUND_DELAY_SECS / 3600,
   server: SERVER,
 };
 
@@ -88,7 +86,7 @@ export type DocBlock =
   /** Newspaper table. */
   | { kind: 'table'; caption: string; head: string[]; rows: string[][]; numeric?: number[] }
   /** Boxes joined by arrows: how value moves. */
-  | { kind: 'flow'; label: string; steps: { title: string; text: string }[] }
+  | { kind: 'flow'; label: string; steps: { title: string; text: string }[]; diagram?: { ticket: string; vault: string; wallet: string; fee: string } }
   /** The worked fee example as a receipt (at the server's fee rate). */
   | { kind: 'fee-example' }
   /** Two columns compared side by side. */
@@ -104,7 +102,15 @@ export interface DocSection {
   title: string;
   /** One-line summary under the title. */
   lede: string;
+  /** The three-panel comic that opens the section (captions; the drawings live in Comics.tsx). */
+  strip?: DocStrip;
   blocks: DocBlock[];
+}
+
+/** A section's comic strip: a label and one caption per panel. */
+export interface DocStrip {
+  label: string;
+  panels: [string, string, string];
 }
 
 export interface DocsContent {
@@ -127,7 +133,7 @@ export interface DocsContent {
     footer: string;
     caption: string;
   };
-  /** The fee rate the guide quotes (basis points): the server's `feeBps`, else the program default. */
+  /** The fee rate the guide quotes (basis points): the server's `feeBps`, else the contract default. */
   feeBps: number;
   colophon: string;
   backToTop: string;

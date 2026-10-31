@@ -14,7 +14,7 @@ let rec;
 const forage = { mode: 'free', humans: 0, loot: 3, margin: 300 };
 const alive = async () => (await hero.screen()) === 'playing' && (await hero.brain({ mode: 'still' })).mass > 0;
 const calm = () => hero.ui(() => {
-  const w = window.__slana.engine.world, mine = w.myCells();
+  const w = window.__elymum.engine.world, mine = w.myCells();
   if (!mine.length) return false;
   let big = 0, mx = 0, my = 0;
   for (const c of mine) { big = Math.max(big, c.r); mx += c.x / mine.length; my += c.y / mine.length; }
@@ -26,7 +26,7 @@ async function revive() {
   rec.mark('died');
   await hero.wait(2500);
   await hero.click('.g-death .kb-btn--pink').catch(() => {});
-  await hero.page.waitForFunction(() => window.__slana.useUi.getState().screen === 'playing', null, { timeout: 15000 }).catch(() => {});
+  await hero.page.waitForFunction(() => window.__elymum.useUi.getState().screen === 'playing', null, { timeout: 15000 }).catch(() => {});
   await hero.wheel(-360, 60, 60);
   rec.mark('respawn');
   return true;
@@ -56,7 +56,7 @@ try {
   await hero.click('[role="radio"][data-kb-value="practice"]', { fx: 0.4 });
   await hero.wait(500);
   await hero.click('.kl-cta');
-  await hero.page.waitForFunction(() => window.__slana.useUi.getState().screen === 'playing', null, { timeout: 20000 });
+  await hero.page.waitForFunction(() => window.__elymum.useUi.getState().screen === 'playing', null, { timeout: 20000 });
   rec.mark('enter');
   await hero.wait(1500);
   await hero.wheel(-360, 60, 60);

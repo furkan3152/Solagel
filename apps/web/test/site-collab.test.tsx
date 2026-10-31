@@ -1,22 +1,16 @@
-import { vi } from 'vitest';
-
-// jsdom swaps in its own Uint8Array; web3.js' curve check (noble) wants Node's. Same fix as admin-panel.test.
-vi.hoisted(() => {
-  globalThis.Uint8Array = Object.getPrototypeOf((globalThis as unknown as { Buffer: { prototype: object } }).Buffer.prototype).constructor as Uint8ArrayConstructor;
-});
-
-import type { CollabPublic } from '@slana/shared';
-import { Keypair } from '@solana/web3.js';
+import type { CollabPublic } from '@elymum/shared';
 import { act, createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { privateKeyToAccount, generatePrivateKey } from 'viem/accounts';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CollabPage } from '../src/site/collab/CollabPage';
-import { countdown, fillRows, parsePastedList, rafflePost, rowErrors } from '../src/site/collab/logic';
+import { countdown, fillRows, filledRows, isUserWallet, parsePastedList, rafflePost, rowErrors } from '../src/site/collab/logic';
 import { useSession } from '../src/site/session';
 import { resetSiteSettings } from '../src/site/settings';
 import { SETTINGS, installDomStubs, json, mockFetch, type Call } from './site-helpers';
 
-const ME = Keypair.generate().publicKey.toBase58();
-const w = () => Keypair.generate().publicKey.toBase58();
+/** A random checksummed EVM wallet. */
+const w = () => privateKeyToAccount(generatePrivateKey()).address;
+const ME = w();
 const RAFFLE = 'https://x.com/risoguild/status/1849000000000000003';
 
 const collab = (over: Partial<CollabPublic> = {}): CollabPublic => ({
@@ -70,17 +64,42 @@ describe('collab logic', () => {
     const [a, b] = [w(), w()];
     const rows = fillRows([{ name: '', wallet: '' }], 1, [{ name: 'x', wallet: a }, { name: 'y', wallet: b }, { name: 'z', wallet: a }], 3);
     expect(rows.map((r) => r.wallet)).toEqual(['', a, b]);
-    expect(rowErrors([{ name: 'a', wallet: a }, { name: 'b', wallet: 'nope' }, { name: 'c', wallet: a }, { name: '', wallet: '' }])).toEqual([null, 'Not a Solana wallet address.', 'Listed twice (row 1).', null]);
+    expect(rowErrors([{ name: 'a', wallet: a }, { name: 'b', wallet: 'nope' }, { name: 'c', wallet: a.toLowerCase() }, { name: '', wallet: '' }])).toEqual([
+      null,
+      'Not an EVM wallet address (0x followed by 40 hex characters).',
+      'Listed twice (row 1).',
+      null,
+    ]);
+    // a Solana-era wallet is not an EVM address
+    expect(rowErrors([{ name: 'old', wallet: '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin' }])[0]).toMatch(/Not an EVM wallet/);
   });
 
-  it('counts down and writes a raffle post that names @slanaio and slana.io', () => {
+  it('validates EVM wallets: any single case, a valid EIP-55 checksum when mixed, never the zero address', () => {
+    const a = w();
+    expect(isUserWallet(a)).toBe(true);
+    expect(isUserWallet(a.toLowerCase())).toBe(true);
+    expect(isUserWallet(`0x${a.slice(2).toUpperCase()}`)).toBe(true);
+    // flip the case of one letter: a checksum typo
+    const i = a.slice(2).search(/[a-fA-F]/) + 2;
+    const typo = a.slice(0, i) + (a[i] === a[i].toUpperCase() ? a[i].toLowerCase() : a[i].toUpperCase()) + a.slice(i + 1);
+    expect(isUserWallet(typo)).toBe(false);
+    expect(rowErrors([{ name: 't', wallet: typo }])[0]).toMatch(/Checksum mismatch/);
+    expect(isUserWallet('0x0000000000000000000000000000000000000000')).toBe(false);
+    expect(isUserWallet('0x123')).toBe(false);
+    // rows are sent checksummed
+    expect(filledRows([{ name: ' x ', wallet: a.toLowerCase() }])).toEqual([{ name: 'x', wallet: a }]);
+  });
+
+  it('counts down and writes a raffle post that names @elymum and this site', () => {
     expect(countdown(1000 + 3_723_000, 1000)).toBe('01:02:03');
     expect(countdown(2 * 86_400_000 + 5000, 0)).toBe('2d 00:00:05');
     expect(countdown(0, 5000)).toBe('00:00:00');
-    const post = rafflePost('Riso Guild', 20, Date.UTC(2026, 9, 20));
-    expect(post).toMatch(/@slanaio/);
-    expect(post).toMatch(/slana\.io/);
-    expect(post).toMatch(/20 Slana WL spots/);
+    const post = rafflePost('Riso Guild', 20, Date.UTC(2026, 9, 20), 'elymum.test');
+    expect(post).toMatch(/@elymum/);
+    expect(post).toMatch(/elymum\.test/);
+    expect(post).toMatch(/20 Elymum WL spots/);
+    expect(post).toMatch(/EVM wallet/);
+    expect(post).not.toMatch(/Solana/);
   });
 });
 
@@ -95,19 +114,19 @@ describe('/collab', { timeout: 30_000 }, () => {
         return json(201, { collab: collab() });
       },
     }));
-    useSession.setState({ session: { pubkey: ME, token: 'tok', admin: false } });
+    useSession.setState({ session: { address: ME, token: 'tok', admin: false } });
     render(<CollabPage />);
     const apply = await screen.findByRole('button', { name: 'Apply' });
     fireEvent.click(apply);
     expect(await screen.findByText('Pick a type.')).toBeTruthy();
-    expect(screen.getByText(/Post about Slana on your community's X first/)).toBeTruthy();
+    expect(screen.getByText(/Post about Elymum on your community's X first/)).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Community name'), { target: { value: 'Riso Guild' } });
     fireEvent.change(screen.getByLabelText('Type'), { target: { value: 'guild' } });
     fireEvent.change(screen.getByLabelText('Members'), { target: { value: '2,500' } });
     fireEvent.change(screen.getByLabelText('Community X'), { target: { value: '@RisoGuild' } });
     fireEvent.change(screen.getByLabelText('Your X'), { target: { value: 'riso_rita' } });
     fireEvent.change(screen.getByLabelText('Your role'), { target: { value: 'founder' } });
-    fireEvent.change(screen.getByLabelText('Your post about Slana on X'), { target: { value: 'https://x.com/risoguild/status/1849000000000000002' } });
+    fireEvent.change(screen.getByLabelText('Your post about Elymum on X'), { target: { value: 'https://x.com/risoguild/status/1849000000000000002' } });
     fireEvent.change(screen.getByLabelText('About your community'), { target: { value: 'Printers.' } });
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
     expect(await screen.findByText('Thanks for applying.')).toBeTruthy();
@@ -127,7 +146,7 @@ describe('/collab', { timeout: 30_000 }, () => {
         return { collab: collab({ status: 'submitted', phase: 'submitted', spots: 3, deadline, wallets: submitted!.wallets as CollabPublic['wallets'], raffleUrl: RAFFLE, submittedAt: Date.now() }) };
       },
     }));
-    useSession.setState({ session: { pubkey: ME, token: 'tok', admin: false } });
+    useSession.setState({ session: { address: ME, token: 'tok', admin: false } });
     render(<CollabPage />);
     expect(await screen.findByText('You have spots. Run your raffle.')).toBeTruthy();
     const timer = screen.getByTestId('cb-countdown');
@@ -169,11 +188,11 @@ describe('/collab', { timeout: 30_000 }, () => {
     }));
     render(<CollabPage />);
     expect(await screen.findByRole('heading', { name: 'Applications are closed.' })).toBeTruthy();
-    act(() => useSession.setState({ session: { pubkey: ME, token: 'tok', admin: false } }));
+    act(() => useSession.setState({ session: { address: ME, token: 'tok', admin: false } }));
     await waitFor(() => expect(screen.getAllByText('Not this time.').length).toBeGreaterThan(0));
     fireEvent.click(screen.getByRole('button', { name: /Collab guide/ }));
     const post = (await screen.findByLabelText('Raffle post')) as HTMLTextAreaElement;
-    expect(post.value).toMatch(/@slanaio/);
+    expect(post.value).toMatch(/@elymum/);
     expect(screen.getByRole('button', { name: 'Copy the post' })).toBeTruthy();
   });
 });

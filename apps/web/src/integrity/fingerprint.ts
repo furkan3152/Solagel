@@ -7,7 +7,7 @@
  * nothing readable leaves the browser: only the hash, which the server hashes again with its own
  * secret and treats as untrusted evidence. Clearing site data or a private window gives a new one.
  */
-const KEY = 'slana.device.v1';
+const KEY = 'elymum.device.v1';
 
 let value: string | null = null;
 let started = false;
@@ -42,7 +42,7 @@ async function compute(): Promise<string | null> {
     typeof screen === 'undefined' ? '' : `${screen.width}x${screen.height}@${Math.round((window.devicePixelRatio || 1) * 100)}`,
     String(navigator.hardwareConcurrency ?? ''),
   ];
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`slana-fp|${parts.join('|')}`));
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`elymum-fp|${parts.join('|')}`));
   return [...new Uint8Array(digest)]
     .slice(0, 16)
     .map((x) => x.toString(16).padStart(2, '0'))

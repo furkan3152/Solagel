@@ -1,88 +1,115 @@
-import { PowerUpType, RULES } from '@slana/shared';
+import { lookForBasicSkin } from '@elymum/art';
+import { PowerUpType, RULES } from '@elymum/shared';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
-import { Counter, DUR, Icon, Stamp, Tape, springs, useReducedMotion } from '../../design';
+import { Counter, DUR, Icon, Stamp, springs, useReducedMotion } from '../../design';
 import { engine } from '../../game/instance';
 import { useT } from '../../i18n';
 import { openModal, useUi } from '../../store';
 import { useTicker } from '../ticker';
 import { EmoteBar } from './EmoteBar';
 import { Feed } from './Feed';
-import { counterFrac, sectorOf, useTokenFormat } from './format';
+import { counterFrac, roomName, sectorOf, useTokenFormat } from './format';
 import { MobileControls, useIsTouch } from './MobileControls';
+import { RoundIntro, SunsetSky, ValueFlyers } from './Moments';
 import { RoundChip, RoundCountdown } from './RoundChip';
 import { SpectateBar } from './SpectateBar';
 
-/* ───────────────────────── Till receipt (top left) ───────────────────────── */
+/* ───────────────────────── "You're worth" (top centre) ───────────────────────── */
 
-/** The till: a taped receipt slip with a mechanical counter (tokens in arenas, mass in practice). */
-function TillSlip() {
+/**
+ * The sun sticker: what my coin is worth right now (tokens in arenas, mass in practice), the
+ * last bite under it, and a "+X" tag that pops off its corner on every change. `.g-till` is
+ * where the round-over report flies out from.
+ */
+function WorthSticker() {
   const t = useT();
   const tf = useTokenFormat();
   const hud = useUi((s) => s.hud);
   const room = useUi((s) => s.room);
-  const ticket = useUi((s) => s.ticket);
   const delta = useUi((s) => s.valueDelta);
   const reduced = useReducedMotion();
   const arena = room?.mode === 'arena' && hud.value !== null;
   const [shown, setShown] = useState<typeof delta>(null);
+  /** The last bite stays printed under the value until the next one. */
+  const [bite, setBite] = useState<typeof delta>(null);
 
-  // the "+X" stamp next to the counter lives ~1.6 s per value message
   useEffect(() => {
-    // a change that rounds to "0" gets no stamp
+    // a change that rounds to "0" gets no tag
     if (!delta || tf.signed(delta.delta, { compact: true, maxFrac: 1 }) === '0') return;
     setShown(delta);
+    setBite(delta);
     const id = setTimeout(() => setShown((d) => (d?.id === delta.id ? null : d)), 1700);
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [delta]);
 
   const frac = arena ? counterFrac(hud.value!, tf.decimals) : 0;
+  const rank = hud.rank > 0 ? t('g.rankOf', { rank: hud.rank, n: hud.players }) : null;
+  const sub = arena && bite ? t(bite.delta > 0 ? 'g.lastBite' : 'g.lastLoss', { d: tf.signed(bite.delta, { compact: true, maxFrac: 2 }) }) : rank;
   return (
-    <section className="g-slip g-till" aria-label={arena ? t('g.till') : t('g.mass')}>
-      <Tape rotate={-5} width={78} style={{ left: 22, top: -11 }} />
+    <section className="g-till" aria-label={arena ? t('g.till') : t('g.mass')}>
       <AnimatePresence>
         {arena && shown && (
           <motion.span
             key={shown.id}
-            className={`g-till__delta mono ${shown.delta > 0 ? 'is-gain' : 'is-loss'}`}
-            initial={reduced ? { opacity: 0 } : { opacity: 0, scale: 1.5, rotate: -14, y: 4 }}
-            animate={reduced ? { opacity: 1 } : { opacity: 1, scale: 1, rotate: -6, y: 0 }}
-            exit={reduced ? { opacity: 0 } : { opacity: 0, y: -10, transition: { duration: 0.25 } }}
-            transition={reduced ? { duration: 0.12 } : springs.stamp}
+            className={`g-till__delta num ${shown.delta > 0 ? 'is-gain' : 'is-loss'}`}
+            initial={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.4, rotate: -14, y: 10 }}
+            animate={reduced ? { opacity: 1 } : { opacity: 1, scale: 1, rotate: 7, y: 0 }}
+            exit={reduced ? { opacity: 0 } : { opacity: 0, y: -14, transition: { duration: 0.25 } }}
+            transition={reduced ? { duration: 0.12 } : springs.pop}
           >
             {tf.signed(shown.delta, { compact: true, maxFrac: 1 })}
           </motion.span>
         )}
       </AnimatePresence>
-      <div className="g-slip__paper">
-        <div className="g-till__row mono">
-          <span>{arena ? t('g.till') : t('g.mass')}</span>
-          <span className="g-till__rank">{hud.rank > 0 ? t('g.rankOf', { rank: hud.rank, n: hud.players }) : '—'}</span>
-        </div>
-        <div className="g-till__value" aria-live="off">
-          {arena ? (
-            <Counter value={hud.value!} format={(n) => tf.fmt(n, { maxFrac: frac })} unit={tf.symbol} />
-          ) : (
-            <Counter value={hud.mass} format={(n) => Math.floor(n).toLocaleString('en-US')} />
-          )}
-        </div>
-        {arena && ticket && (
-          <div className="g-till__foot mono">
-            <span>{t('g.ticket', { fee: tf.fmt(ticket.entryFee, { compact: true }) })}</span>
-          </div>
+      <span className="g-till__label mono">{arena ? t('g.till') : t('g.mass')}</span>
+      <span className="g-till__value num" aria-live="off">
+        {arena ? (
+          <Counter value={hud.value!} format={(n) => tf.fmt(n, { maxFrac: frac })} unit={tf.symbol} />
+        ) : (
+          <Counter value={hud.mass} format={(n) => Math.floor(n).toLocaleString('en-US')} />
         )}
-        {room?.mode === 'private' && room.code && (
-          <button type="button" className="g-till__code mono" onClick={() => void navigator.clipboard?.writeText(room.code!)} aria-label={t('g.copyCode', { code: room.code })}>
-            <Icon name="key" size={14} /> {room.code}
-          </button>
-        )}
-      </div>
+        {arena && <span className="g-till__sym mono">{tf.symbol}</span>}
+      </span>
+      {sub && <span className={`g-till__bite mono${arena && bite ? (bite.delta > 0 ? ' is-gain' : ' is-loss') : ''}`}>{sub}</span>}
     </section>
   );
 }
 
-/* ───────────────────────── standings column (top right) ───────────────────────── */
+/* ───────────────────────── practice / private room tag (top left) ───────────────────────── */
+
+/** Outside arenas there is no bell: the timer's place says which pond this is. */
+function PondTag() {
+  const t = useT();
+  const room = useUi((s) => s.room);
+  if (!room || room.mode === 'arena') return null;
+  return (
+    <div className="g-pond">
+      <svg className="g-pond__coin" viewBox="0 0 46 46" width={40} height={40} aria-hidden="true">
+        <circle cx="23" cy="23" r="17" className="g-pond__body" />
+        <path d="M14 26c3 4 15 4 18 0" className="g-pond__wave" />
+        <path d="M12 20c3 3 6 3 9 0s6-3 9 0 6 3 9 0" className="g-pond__wave" />
+      </svg>
+      <span className="g-pond__text">
+        <b className="g-pond__name">{roomName(room)}</b>
+        <span className="g-pond__label mono">{t('g.practiceTag')}</span>
+      </span>
+      {room.mode === 'private' && room.code && (
+        <button
+          type="button"
+          className="g-pond__code mono"
+          onClick={() => void navigator.clipboard?.writeText(room.code!)}
+          aria-label={t('g.copyCode', { code: room.code })}
+        >
+          <Icon name="key" size={14} /> {room.code}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ───────────────────────── top of the food chain (top right) ───────────────────────── */
 
 function Standings({ compact }: { compact: boolean }) {
   const t = useT();
@@ -94,54 +121,67 @@ function Standings({ compact }: { compact: boolean }) {
   const room = useUi((s) => s.room);
   const reduced = useReducedMotion();
   const arena = room?.mode === 'arena';
-  const rows = compact ? lb.slice(0, 3) : lb.slice(0, 10);
+  const rows = lb.slice(0, compact ? 3 : 5);
   const playing = screen === 'playing';
   const inTop = rows.some((e) => e.pid === me?.pid);
+  // climbing a place: my row flashes sun once (a new key restarts the flash)
+  const prevRank = useRef(0);
+  const [climb, setClimb] = useState(0);
+  useEffect(() => {
+    const r = hud.rank;
+    if (playing && r > 0 && prevRank.current > 0 && r < prevRank.current) setClimb((n) => n + 1);
+    prevRank.current = playing ? r : 0;
+  }, [hud.rank, playing]);
   const score = (value: number | undefined, mass: number) =>
     arena && value !== undefined ? tf.fmt(value, { compact: true, maxFrac: 1 }) : Math.floor(mass).toLocaleString('en-US');
   return (
-    <section className={`g-slip g-standings${compact ? ' is-compact' : ''}`} aria-label={t('g.standings')}>
-      <Tape rotate={6} width={66} tone="pink" style={{ right: 18, top: -10 }} />
-      <div className="g-slip__paper">
-        <header className="g-standings__head">
-          <h2 className="g-standings__title">{t('g.standings')}</h2>
-          <span className="mono g-standings__count">{t('g.inRoom', { n: hud.players })}</span>
-        </header>
-        <ol className="g-standings__list">
-          {rows.map((e, i) => (
-            <motion.li
-              key={e.pid}
-              layout={reduced ? false : 'position'}
-              transition={springs.press}
-              className={`g-standings__row${playing && e.pid === me?.pid ? ' is-me' : ''}`}
-            >
-              <span className="g-standings__rank mono">{String(i + 1).padStart(2, '0')}</span>
-              <span className="g-standings__name">
-                <span className="g-standings__nm">{e.name}</span>
-                {e.bot && !compact && <span className="g-bot mono">{t('g.bot')}</span>}
-                {e.bot && compact && <Icon name="bot" size={13} className="g-standings__boticon" title={t('g.bot')} />}
-                {e.verified && <Icon name="check" size={13} className="g-standings__ver" />}
-              </span>
-              <span className="g-standings__score mono">{score(e.value, e.score)}</span>
-            </motion.li>
-          ))}
-          {playing && !inTop && hud.rank > 0 && (
-            <li className="g-standings__row is-me is-detached">
-              <span className="g-standings__rank mono">{String(hud.rank).padStart(2, '0')}</span>
-              <span className="g-standings__name">
-                <span className="g-standings__nm">{me?.name}</span>
-                <span className="g-you mono">{t('g.you')}</span>
-              </span>
-              <span className="g-standings__score mono">{score(hud.value ?? undefined, hud.mass)}</span>
-            </li>
-          )}
-        </ol>
-      </div>
+    <section className={`g-standings${compact ? ' is-compact' : ''}`} aria-label={t('g.standings')}>
+      <header className="g-standings__head">
+        <h2 className="g-standings__title">{t('g.standings')}</h2>
+        <span className="mono g-standings__count">{t('g.inRoom', { n: hud.players })}</span>
+      </header>
+      <ol className="g-standings__list">
+        {rows.map((e, i) => (
+          <motion.li
+            key={e.pid}
+            layout={reduced ? false : 'position'}
+            transition={springs.press}
+            className={`g-standings__row${playing && e.pid === me?.pid ? ' is-me' : ''}`}
+          >
+            {playing && e.pid === me?.pid && climb > 0 && !reduced && <span key={climb} className="g-standings__flash" aria-hidden="true" />}
+            <span className="g-standings__rank mono">
+              {i === 0 && (
+                <svg className="g-standings__crown" viewBox="0 0 24 16" aria-hidden="true">
+                  <path d="M2 14 L1 4 L7 8 L12 1 L17 8 L23 4 L22 14Z" />
+                </svg>
+              )}
+              {i + 1}
+            </span>
+            <span className="g-standings__sw" aria-hidden="true" style={{ background: lookForBasicSkin(e.skin).body }} />
+            <span className="g-standings__name">
+              <span className="g-standings__nm">{playing && e.pid === me?.pid ? t('g.youName') : e.name}</span>
+              {e.bot && <span className="kb-sr">{t('g.bot')}</span>}
+              {e.verified && <Icon name="check" size={12} className="g-standings__ver" />}
+            </span>
+            <span className="g-standings__score num">{score(e.value, e.score)}</span>
+          </motion.li>
+        ))}
+        {playing && !inTop && hud.rank > 0 && (
+          <li className="g-standings__row is-me is-detached">
+            <span className="g-standings__rank mono">{hud.rank}</span>
+            <span className="g-standings__sw" aria-hidden="true" style={{ background: lookForBasicSkin(me?.skin ?? 0).body }} />
+            <span className="g-standings__name">
+              <span className="g-standings__nm">{t('g.youName')}</span>
+            </span>
+            <span className="g-standings__score num">{score(hud.value ?? undefined, hud.mass)}</span>
+          </li>
+        )}
+      </ol>
     </section>
   );
 }
 
-/* ───────────────────────── map sheet (bottom right) ───────────────────────── */
+/* ───────────────────────── the round minimap (bottom right) ───────────────────────── */
 
 function MapSheet({ size }: { size: number }) {
   const t = useT();
@@ -152,7 +192,7 @@ function MapSheet({ size }: { size: number }) {
     engine()?.setMinimap(show ? ref.current : null);
     return () => engine()?.setMinimap(null);
   }, [show]);
-  // the sheet label follows my sector (cheap poll; the canvas itself is drawn by the engine)
+  // the tag follows my sector (cheap poll; the map itself is drawn by the engine)
   useEffect(() => {
     if (!show) return;
     const id = setInterval(() => {
@@ -165,20 +205,16 @@ function MapSheet({ size }: { size: number }) {
   }, [show]);
   if (!show) return null;
   return (
-    <section className="g-slip g-map" aria-label={t('g.mapLabel')}>
-      <Tape rotate={-38} width={54} tone="teal" style={{ left: -16, top: 2 }} />
-      <div className="g-slip__paper g-map__paper">
-        <div className="g-map__head mono">
-          <span>{t('g.sheet', { sector })}</span>
-          <span aria-hidden="true">N↑</span>
-        </div>
+    <section className="g-map" aria-label={t('g.mapLabel')}>
+      <div className="g-map__disc" style={{ width: size, height: size }}>
         <canvas ref={ref} className="g-map__canvas" style={{ width: size, height: size }} />
       </div>
+      <span className="g-map__tag mono">{t('g.sheet', { sector })}</span>
     </section>
   );
 }
 
-/* ───────────────────────── power-ups, banner, top bar ───────────────────────── */
+/* ───────────────────────── power-ups, banner, buttons, keys ───────────────────────── */
 
 /** Power-up glyphs in the icon set's hand (24 grid, 2.2 px round strokes). */
 const PU_PATH: Record<PowerUpType, string> = {
@@ -210,9 +246,9 @@ function PowerUps() {
         return (
           <li key={p.type} className={`g-pu__chip g-pu--${p.type}`}>
             <svg className="g-pu__ring" viewBox="0 0 40 40" aria-hidden="true">
-              <circle cx="20" cy="20" r="17" pathLength="100" strokeDasharray={`${(frac * 100).toFixed(1)} 100`} />
+              <circle cx="20" cy="20" r="16" pathLength="100" strokeDasharray={`${(frac * 100).toFixed(1)} 100`} />
             </svg>
-            <svg className="g-pu__icon" viewBox="0 0 24 24" width={18} height={18} aria-hidden="true">
+            <svg className="g-pu__icon" viewBox="0 0 24 24" width={16} height={16} aria-hidden="true">
               <path d={PU_PATH[p.type]} />
             </svg>
             <span className="mono">
@@ -242,7 +278,7 @@ function Banner() {
             <Stamp
               animateIn
               size="md"
-              tone={banner.kind === 'coinrain' ? 'mustard' : 'pink'}
+              tone={banner.kind === 'coinrain' ? 'mustard' : 'teal'}
               rotate={-4}
               text={banner.kind === 'coinrain' ? t('event.coinrain') : t('event.airdrop')}
             />
@@ -253,19 +289,47 @@ function Banner() {
   );
 }
 
-function TopBar() {
+function TopButtons() {
   const t = useT();
   const screen = useUi((s) => s.screen);
   return (
     <div className="g-topbar">
       {screen === 'playing' && (
         <button type="button" className="kb-iconbtn g-topbar__btn" onClick={() => engine()?.backToLobby()} aria-label={t('g.menu')} title={t('g.menu')}>
-          <Icon name="menu" size={22} />
+          <Icon name="menu" size={20} />
         </button>
       )}
       <button type="button" className="kb-iconbtn g-topbar__btn" onClick={() => openModal('settings')} aria-label={t('g.settings')} title={t('g.settings')}>
-        <Icon name="settings" size={22} />
+        <Icon name="settings" size={20} />
       </button>
+    </div>
+  );
+}
+
+/** Keyboard help as key stickers (desktop). The chat key opens the chat line. */
+function KeyHints() {
+  const t = useT();
+  const showChat = useUi((s) => s.settings.showChat);
+  const chatOpen = useUi((s) => s.chatOpen);
+  return (
+    <div className="g-keys mono" aria-label={t('g.keysLabel')}>
+      <span className="g-keys__item">
+        <kbd className="kb-key">{t('g.key.mouse')}</kbd> {t('g.key.steer')}
+      </span>
+      <span className="g-keys__item">
+        <kbd className="kb-key">{t('g.key.space')}</kbd> {t('hud.split').toLowerCase()}
+      </span>
+      <span className="g-keys__item">
+        <kbd className="kb-key">W</kbd> {t('hud.eject').toLowerCase()}
+      </span>
+      <span className="g-keys__item">
+        <kbd className="kb-key">1–8</kbd> {t('g.emotes').toLowerCase()}
+      </span>
+      {showChat && !chatOpen && (
+        <button type="button" className="g-keys__item g-keys__chat" onClick={() => useUi.setState({ chatOpen: true })}>
+          <kbd className="kb-key">{t('g.key.enter')}</kbd> {t('g.chat').toLowerCase()}
+        </button>
+      )}
     </div>
   );
 }
@@ -281,48 +345,84 @@ function NetStats() {
 
 /* ───────────────────────── layout ───────────────────────── */
 
-/** The in-game HUD: paper scraps taped over the riso world. */
+/** The in-game HUD: cream instrument stickers pressed onto the night floor of the ring. */
 export function GameHud() {
   const screen = useUi((s) => s.screen);
   const touch = useIsTouch();
   const narrow = useNarrow();
   const playing = screen === 'playing';
-  // the round's receipt prints out of the till: it stays on the frozen world under the sheet
+  // the round's report flies out of the worth sticker: it stays on the frozen world under the sheet
   const roundOver = screen === 'roundover';
   const reduced = useReducedMotion();
+  const drop = (tilt: number, delay: number) =>
+    reduced
+      ? { initial: { opacity: 0 }, animate: { opacity: 1, transition: { duration: DUR.fade } } }
+      : {
+          initial: { opacity: 0, y: -22, rotate: tilt - 4 },
+          animate: { opacity: 1, y: 0, rotate: tilt, transition: { ...springs.drop, delay: HUD_IN_DELAY + delay } },
+        };
   return (
-    // the scraps are taped on once the paper has opened onto the world, and lifted off before it closes
+    // the stickers drop on once the page has opened onto the world, and lift off before it closes
     <motion.div
       className={`g-hud${touch ? ' is-touch' : ''}${narrow ? ' is-narrow' : ''}`}
       initial={{ opacity: 0 }}
-      animate={{ opacity: 1, transition: reduced ? { duration: DUR.fade } : { delay: HUD_IN_DELAY, duration: 0.2 } }}
+      animate={{ opacity: 1, transition: reduced ? { duration: DUR.fade } : { delay: HUD_IN_DELAY, duration: 0.12 } }}
       exit={{ opacity: 0, transition: { duration: reduced ? DUR.fade : 0.14 } }}
     >
-      {(playing || roundOver) && <TillSlip />}
-      <Standings compact={narrow} />
+      {/* behind the stickers: the final minute's sunset at the edges of the sky */}
+      <SunsetSky />
+      <motion.div className="g-corner g-corner--tl" {...drop(0, 0)}>
+        <div className="g-corner__row">
+          {!roundOver && <RoundChip />}
+          <PondTag />
+          {!narrow && <TopButtons />}
+        </div>
+        {narrow && <Standings compact />}
+        <Feed narrow={narrow} />
+      </motion.div>
+
       <div className="g-center">
-        {!roundOver && <RoundChip />}
-        <TopBar />
-        {/* in the column's flow, so it never covers the buttons, a banner or my coin */}
+        {(playing || roundOver) && (
+          <motion.div className="g-center__worth" {...drop(-1.5, 0.05)}>
+            <WorthSticker />
+          </motion.div>
+        )}
+        {/* in the column's flow, so it never covers a banner or my coin */}
         {!roundOver && <RoundCountdown />}
         <Banner />
         <PowerUps />
         <NetStats />
       </div>
-      {!narrow && <MapSheet size={150} />}
-      <Feed narrow={narrow} />
-      {playing && !touch && (
-        <div className="g-dock">
-          <EmoteBar />
+
+      {!narrow && (
+        <motion.div className="g-corner g-corner--tr" {...drop(0.8, 0.1)}>
+          <Standings compact={false} />
+        </motion.div>
+      )}
+      {narrow && (
+        <div className="g-corner g-corner--tr">
+          <TopButtons />
         </div>
+      )}
+
+      {!narrow && <MapSheet size={140} />}
+      {playing && !touch && (
+        <>
+          <div className="g-dock">
+            <EmoteBar />
+          </div>
+          {!narrow && <KeyHints />}
+        </>
       )}
       {playing && touch && <MobileControls />}
       {screen === 'spectating' && <SpectateBar />}
+      <RoundIntro />
+      <ValueFlyers />
     </motion.div>
   );
 }
 
-/** The HUD waits for the paper wipe to open (s). */
+/** The HUD waits for the page to open onto the world (s). */
 const HUD_IN_DELAY = 0.34;
 
 function useNarrow(): boolean {

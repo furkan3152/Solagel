@@ -1,407 +1,600 @@
-import { lookForBasicSkin } from '@slana/art';
-import { BASIC_SKINS } from '@slana/shared';
-import { motion, type Variants } from 'motion/react';
-import { useCallback, useRef, useState, type ReactNode } from 'react';
-import { Icon, Stamp, useReducedMotion } from '../../design';
+import { DEFAULT_ARENAS, arenaMeta, type GameAccess } from '@elymum/shared';
+import { motion, useInView } from 'motion/react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import {
+  CoinCharacter,
+  FoodBit,
+  Icon,
+  Kb,
+  OrbitDots,
+  PlateLabel,
+  RingScene,
+  Seigaiha,
+  Stamp,
+  StatusPill,
+  Sticker,
+  Wordmark,
+  useMoves,
+  useReducedMotion,
+  type CoinMood,
+  type CoinPaint,
+} from '../../design';
+import { FACTS } from '../../ui/docs/facts';
+import { usePeelLetters } from '../peel';
 import { Link } from '../router';
-import { SiteFooter, SiteHeader, Wordmark, XIcon } from '../Shell';
-import { X_URL, useSiteSettings } from '../settings';
-import { Kb } from '../../design';
-import { CoinArt } from './CoinArt';
+import { SiteFooter, SiteHeader, SiteLinkButton } from '../Shell';
+import { useSiteSettings, xProfile } from '../settings';
+import { ArenaTram } from './ArenaTram';
 import { CoinPond } from './CoinPond';
+import { DuskSeam } from './DuskSeam';
+import { GazeCoin } from './GazeCoin';
+import { SeedRail } from './SeedRail';
 import { useLandingSound } from './sound';
 import './landing.css';
 
-const rise: Variants = {
-  hidden: { opacity: 0, y: 28 },
-  show: (i: number = 0) => ({ opacity: 1, y: 0, transition: { type: 'spring', stiffness: 260, damping: 26, delay: i * 0.08 } }),
-};
+/** The game token's display symbol (server `TOKEN_SYMBOL`; the landing has no chain status). */
+const SYMBOL = '$ELYMUM';
+const view = { once: true, amount: 0.3 } as const;
+const nf = new Intl.NumberFormat('en-US');
+const pct = (bps: number) => `${bps / 100}%`;
 
-const view = { once: true, amount: 0.25 } as const;
+/* ── Plate I · the plain at dawn ──────────────────────────────────────── */
 
-function SectionHead({ no, kicker, title, id }: { no: string; kicker: string; title: ReactNode; id: string }) {
-  return (
-    <motion.header className="ld-sechead" variants={rise} initial="hidden" whileInView="show" viewport={view}>
-      <span className="ld-sechead__no mono" aria-hidden="true">
-        {no}
-      </span>
-      <span className="ld-sechead__kicker mono">{kicker}</span>
-      <h2 className="ld-sechead__title" id={id}>
-        {title}
-      </h2>
-    </motion.header>
-  );
-}
-
-/** Printer's registration mark, in the hero's corners. */
-function RegMark({ className }: { className: string }) {
-  return (
-    <svg className={`ld-reg ${className}`} viewBox="0 0 40 40" aria-hidden="true">
-      <circle cx="20" cy="20" r="9" fill="none" stroke="currentColor" strokeWidth="1.4" />
-      <path d="M20 2v36M2 20h36" stroke="currentColor" strokeWidth="1.4" />
-    </svg>
-  );
-}
-
-function Hero({ collabOpen, gamePublic, wlOpen, sound }: { collabOpen: boolean; gamePublic: boolean; wlOpen: boolean; sound: ReturnType<typeof useLandingSound> }) {
+function Hero({ collabOpen, gameAccess, wlOpen, sound }: { collabOpen: boolean; gameAccess: GameAccess; wlOpen: boolean; sound: ReturnType<typeof useLandingSound> }) {
   const reduced = useReducedMotion();
-  const copy = useRef<HTMLDivElement>(null);
-  const avoid = useCallback(() => copy.current?.getBoundingClientRect() ?? null, []);
+  const m = useMoves();
+  const peel = usePeelLetters<HTMLHeadingElement>();
   return (
     <section className="ld-hero" aria-labelledby="ld-hero-title">
-      <CoinPond still={reduced} avoid={avoid} events={{ onEat: sound.chomp }} />
-      <RegMark className="ld-reg--tl" />
-      <RegMark className="ld-reg--tr" />
-      <RegMark className="ld-reg--bl" />
-      <RegMark className="ld-reg--br" />
-      <div className="ld-hero__copy" ref={copy}>
-        <p className="ld-hero__kicker mono">On-chain coin arenas · Solana · 5-minute rounds</p>
-        <h1 id="ld-hero-title" className="ld-hero__title">
-          <Wordmark size="xl" live={!reduced} />
-        </h1>
-        <p className="ld-hero__tag">
-          <span>Eat.</span> <span>Grow.</span> <span className="ld-hero__tag-hi">Last the round.</span>
-        </p>
-        <div className="ld-hero__ctas">
-          <Link href="/wl" className="ld-btn ld-btn--pink" onClick={sound.click}>
-            <span>Join the WL</span>
-            <Icon name="arrow" size={22} />
-          </Link>
-          {collabOpen ? (
-            <Link href="/collab" className="ld-btn ld-btn--paper" onClick={sound.click}>
-              <span>Collab</span>
-              <Icon name="users" size={20} />
-            </Link>
-          ) : (
-            <Link href="/collab" className="ld-btn ld-btn--paper is-soon" onClick={sound.click} aria-label="Collab, soon">
-              <span>Collab</span>
-              <span className="ld-soon mono">Soon</span>
-            </Link>
-          )}
-          {gamePublic && (
-            <a href="/play" className="ld-btn ld-btn--ink" onClick={sound.click}>
-              <Icon name="play" size={20} />
-              <span>Play</span>
-            </a>
-          )}
+      <RingScene time="dawn" variant="full" animate={!reduced} className="ld-hero__ring">
+        <div className="ld-hero__inner">
+          <motion.div className="ld-hero__drop" variants={m.stickerDrop} custom={-1.6} initial="hidden" animate="shown">
+            <Sticker pad="lg" lift="lg" tape className="ld-hero__card">
+              <p className="kicker ld-hero__kicker">A five-minute feast · on Elysium</p>
+              <h1 id="ld-hero-title" ref={peel.ref} className={`ld-hero__title ${peel.className}`}>
+                <Wordmark height={104} playful={!reduced} className="ld-hero__mark" />
+              </h1>
+              <p className="ld-hero__tag">You are small change with a big appetite.</p>
+              <p className="ld-hero__lede">
+                Eat the food. Eat coins smaller than you. Run from the ones that are bigger. Five minutes later the bell rings and whatever you&rsquo;ve swallowed is
+                yours.
+              </p>
+              <p className="ld-hero__homer">
+                <i className="quote">&ldquo;No snow is there, nor heavy storm, nor ever rain.&rdquo;</i>
+                <br />
+                Homer, on the Elysian plain. He didn&rsquo;t mention lunch.
+              </p>
+              <div className="ld-hero__ctas">
+                <SiteLinkButton href="/wl" variant="primary" icon="arrow" onClick={sound.click}>
+                  Join the WL
+                </SiteLinkButton>
+                {collabOpen ? (
+                  <SiteLinkButton href="/collab" onClick={sound.click}>
+                    Collab
+                  </SiteLinkButton>
+                ) : (
+                  <Link href="/collab" className="kb-btn kb-btn--secondary kb-btn--md st-btn ld-soon" onClick={sound.click} aria-label="Collab, soon">
+                    <span className="kb-btn__label">
+                      <span className="kb-btn__text">Collab</span>
+                    </span>
+                    <span className="ld-soon__tag mono">Soon</span>
+                  </Link>
+                )}
+                {gameAccess !== 'admins' && (
+                  <a href="/play" className="kb-btn kb-btn--teal kb-btn--md st-btn" onClick={sound.click}>
+                    <Icon name="play" size={20} className="kb-btn__lead" />
+                    <span className="kb-btn__label">
+                      <span className="kb-btn__text">{gameAccess === 'holders' ? 'Play (holders)' : 'Play'}</span>
+                    </span>
+                  </a>
+                )}
+              </div>
+              <p className="ld-hero__note mono">
+                <span className="ld-flowline">WL → Mint → Play</span>
+                <span>{wlOpen ? 'WL is open · signing is free' : 'WL is closed for now'}</span>
+              </p>
+            </Sticker>
+          </motion.div>
+          <motion.div className="ld-hero__badge-wrap" variants={m.popIn} initial="hidden" animate="shown" transition={{ delay: 0.5 }}>
+            <Sticker tone="sun" pad="sm" tilt={4} className="ld-hero__badge">
+              <span className="num ld-hero__badge-n">05:00</span>
+              <span className="mono ld-hero__badge-l">per round. Then lunch.</span>
+            </Sticker>
+          </motion.div>
         </div>
-        <p className="ld-hero__note mono">{wlOpen ? 'WL is open · signing in is free, no transaction' : 'WL is closed for now · follow @slanaio'}</p>
-        <Stamp className="ld-hero__stamp" text={wlOpen ? 'WL open' : 'WL soon'} sub="slana.io" tone={wlOpen ? 'pink' : 'teal'} round size="md" rotate={-12} animateIn={!reduced} delay={0.9} />
-      </div>
-      <div className="ld-hero__foot">
-        <span className="ld-hero__edition mono">No. 001 · Autumn 2026 · Tap the paper to feed them</span>
+        <CoinPond still={reduced} events={{ onEat: sound.chomp }} />
+        {!reduced && (
+          <p className="ld-pond__hint mono" aria-hidden="true">
+            Psst: tap a coin to feed it
+          </p>
+        )}
         <button type="button" className="ld-sound mono" aria-pressed={sound.on} onClick={sound.toggle}>
-          <Icon name={sound.on ? 'sound' : 'mute'} size={18} />
+          <Icon name={sound.on ? 'sound' : 'mute'} size={16} />
           <span>Sound {sound.on ? 'on' : 'off'}</span>
         </button>
+      </RingScene>
+    </section>
+  );
+}
+
+/* ── Plate II · the feast ─────────────────────────────────────────────── */
+
+function MenuLine({ art, dish, note, price }: { art: ReactNode; dish: string; note: string; price: string }) {
+  return (
+    <li className="ld-menu__line">
+      <span className="ld-menu__art" aria-hidden="true">
+        {art}
+      </span>
+      <span className="ld-menu__dish">
+        <strong>{dish}</strong>
+        <span className="ld-menu__note">{note}</span>
+      </span>
+      <span className="ld-menu__dots" aria-hidden="true" />
+      <span className="ld-menu__price mono">{price}</span>
+    </li>
+  );
+}
+
+function Feast() {
+  const m = useMoves();
+  return (
+    <section className="ld-plate ld-feast" id="feast" aria-labelledby="ld-feast-h">
+      <PlateLabel numeral={2} title="The feast on Elysium" aside="What it is" />
+      <div className="ld-wrap ld-feast__grid">
+        <motion.div className="ld-feast__copy" variants={m.popIn} initial="hidden" whileInView="shown" viewport={view}>
+          <p className="kicker">What Elymum is</p>
+          <h2 className="ld-h2" id="ld-feast-h">
+            On Elysium, everything is a <span className="wonk ld-ul">feast.</span> Including you.
+          </h2>
+          <p className="lede">
+            Elymum is a coin-eats-coin arena on Elysium, Kinetiq&rsquo;s ring in orbit. You are a coin. Rounds run five minutes on the wall clock, every arena on the same
+            bell. Eat food and smaller coins to grow; whatever you are worth at the bell is paid to your wallet in {SYMBOL}.
+          </p>
+          <ul className="ld-facts" aria-label="In numbers">
+            <li>
+              <b className="num">{FACTS.rules.roundMin}:00</b>
+              <span className="mono">a round</span>
+            </li>
+            <li>
+              <b className="num">{FACTS.capacity.arena}</b>
+              <span className="mono">coins a room</span>
+            </li>
+            <li>
+              <b className="num">{pct(FACTS.fee.bps)}</b>
+              <span className="mono">of profit, no more</span>
+            </li>
+          </ul>
+        </motion.div>
+        <motion.div className="ld-feast__menu-wrap" variants={m.stickerDrop} custom={1.2} initial="hidden" whileInView="shown" viewport={view}>
+          <Sticker tone="white" pad="lg" lift="lg" className="ld-menu">
+            <header className="ld-menu__head">
+              <span className="kicker">Menu · served every five minutes</span>
+              <h3 className="ld-menu__title">Today on the plain</h3>
+            </header>
+            <ul className="ld-menu__list">
+              <MenuLine art={<FoodBit kind="pear" size={44} />} dish="Pears" note="Ripe, slow, everywhere." price="a bite" />
+              <MenuLine art={<FoodBit kind="grapes" size={44} />} dish="Grapes" note="They glow a little after dark." price="a mouthful" />
+              <MenuLine art={<FoodBit kind="seed" size={34} paint="up" />} dish="Seeds" note="Crunchy. Count as food, not as friends." price="a crumb" />
+              <MenuLine art={<CoinCharacter paint="foam" mood="scared" size={46} />} dish="Coins smaller than you" note="Their whole till comes with them." price="market price" />
+              <MenuLine art={<CoinCharacter paint="sun" mood="smug" size={46} />} dish="Coins bigger than you" note="Not on the menu. You are." price="sold out" />
+            </ul>
+            <footer className="ld-menu__foot">
+              <span className="mono">Service ends at the bell. Leftovers are burned.</span>
+              <Stamp text="Chef's pick" tone="teal" size="sm" rotate={-9} className="ld-menu__stamp" />
+            </footer>
+          </Sticker>
+        </motion.div>
       </div>
     </section>
   );
 }
 
-const FACTS: { big: string; label: string; body: string; tone: string }[] = [
-  { big: '5:00', label: 'Minutes a round', body: 'Short rounds on a wall clock. Every arena rings its bell on time.', tone: 'pink' },
-  { big: 'SOL', label: 'Arenas on Solana', body: 'Tickets and payouts settle on-chain, in the open.', tone: 'teal' },
-  { big: 'Bell', label: 'Alive is paid', body: 'Everyone still on the paper at the bell is paid their till.', tone: 'mustard' },
-];
+/* ── Plate III · a round, in orbit ────────────────────────────────────── */
 
-function What() {
-  return (
-    <section className="ld-sec ld-what" aria-labelledby="ld-what-h" id="what">
-      <SectionHead no="01" kicker="What it is" title="Coins that eat coins." id="ld-what-h" />
-      <div className="ld-what__grid">
-        <motion.p className="ld-lede" variants={rise} initial="hidden" whileInView="show" viewport={view} custom={1}>
-          Slana is a cute arena game with an on-chain heart. You are a jelly coin on a sheet of riso paper. Eat confetti and smaller coins to grow, slip
-          away from the bigger ones, and still be on the paper when the bell rings.
-        </motion.p>
-        <ul className="ld-facts">
-          {FACTS.map((f, i) => (
-            <motion.li key={f.label} className={`ld-fact ld-fact--${f.tone}`} variants={rise} initial="hidden" whileInView="show" viewport={view} custom={i + 1}>
-              <span className="ld-fact__big" aria-hidden="true">
-                {f.big}
-              </span>
-              <strong className="ld-fact__label">{f.label}</strong>
-              <span className="ld-fact__body">{f.body}</span>
-            </motion.li>
-          ))}
-        </ul>
-      </div>
-    </section>
-  );
-}
-
-/* ── the round, as a strip of tickets ─────────────────────────────── */
-
-function ArtTicket() {
-  return (
-    <svg viewBox="0 0 120 80" aria-hidden="true">
-      <rect x="14" y="16" width="92" height="48" rx="6" fill="var(--teal)" transform="translate(4 4)" />
-      <rect x="14" y="16" width="92" height="48" rx="6" fill="var(--card)" stroke="var(--ink)" strokeWidth="2.5" />
-      <path d="M78 16v48" stroke="var(--ink)" strokeWidth="2" strokeDasharray="3 4" />
-      <circle className="ld-art-punch" cx="92" cy="40" r="7" fill="var(--paper)" stroke="var(--ink)" strokeWidth="2.5" />
-      <path d="M26 32h38M26 42h28M26 52h20" stroke="var(--ink)" strokeWidth="3" strokeLinecap="round" />
-    </svg>
-  );
-}
-function ArtEat() {
-  return (
-    <svg viewBox="0 0 120 80" aria-hidden="true">
-      <circle cx="94" cy="40" r="9" fill="var(--mustard)" stroke="var(--ink)" strokeWidth="2.5" className="ld-art-snack" />
-      <g className="ld-art-chomp">
-        <circle cx="50" cy="44" r="26" fill="var(--teal)" transform="translate(3 3)" />
-        <path d="M50 18a26 26 0 1 0 22.5 13L50 44l22.5 13A26 26 0 0 0 50 18z" fill="var(--pink)" stroke="var(--ink)" strokeWidth="2.5" className="ld-art-mouth" />
-        <circle cx="48" cy="32" r="3.4" fill="var(--ink)" />
-      </g>
-    </svg>
-  );
-}
-function ArtBell() {
-  return (
-    <svg viewBox="0 0 120 80" aria-hidden="true">
-      <g className="ld-art-bell">
-        <path d="M60 12c-14 0-22 11-22 26v12l-7 9h58l-7-9V38c0-15-8-26-22-26z" fill="var(--mustard)" transform="translate(3 3)" />
-        <path d="M60 12c-14 0-22 11-22 26v12l-7 9h58l-7-9V38c0-15-8-26-22-26z" fill="var(--card)" stroke="var(--ink)" strokeWidth="2.5" strokeLinejoin="round" />
-        <circle cx="60" cy="66" r="6" fill="var(--ink)" />
-      </g>
-      <path d="M22 26l-8-4M22 40H12M98 26l8-4M98 40h10" stroke="var(--pink)" strokeWidth="3" strokeLinecap="round" className="ld-art-ring" />
-    </svg>
-  );
-}
-function ArtPaid() {
-  return (
-    <svg viewBox="0 0 120 80" aria-hidden="true">
-      <path d="M34 8h52v62l-6.5-5-6.5 5-6.5-5-6.5 5-6.5-5-6.5 5-6.5-5L34 70z" fill="var(--pink)" transform="translate(4 3)" />
-      <path d="M34 8h52v62l-6.5-5-6.5 5-6.5-5-6.5 5-6.5-5-6.5 5-6.5-5L34 70z" fill="var(--card)" stroke="var(--ink)" strokeWidth="2.5" strokeLinejoin="round" />
-      <path d="M44 22h32M44 32h22M44 46h32" stroke="var(--ink)" strokeWidth="3" strokeLinecap="round" />
-      <circle cx="74" cy="56" r="8" fill="var(--mustard)" stroke="var(--ink)" strokeWidth="2.5" className="ld-art-coin" />
-    </svg>
-  );
-}
-
-const STEPS: { no: string; title: string; body: string; stamp: string; tone: 'pink' | 'teal' | 'mustard' | 'ink'; art: ReactNode }[] = [
-  { no: '01', title: 'Buy a ticket', body: 'Pick an arena and punch a ticket. The entry is the value your coin carries in.', stamp: 'Punched', tone: 'teal', art: <ArtTicket /> },
-  { no: '02', title: 'Eat', body: 'Swallow confetti and smaller coins. Whatever they carried is now in your till.', stamp: 'Nom', tone: 'pink', art: <ArtEat /> },
-  { no: '03', title: 'The bell', body: 'Five minutes on the clock. Dodge the big ones until it rings.', stamp: 'Ding', tone: 'mustard', art: <ArtBell /> },
-  { no: '04', title: 'Paid', body: 'Every coin still alive at the bell is paid its till, settled on Solana.', stamp: 'Paid', tone: 'ink', art: <ArtPaid /> },
+const STATIONS: { no: string; title: string; body: string }[] = [
+  { no: '01', title: 'Ticket', body: `Pick an arena and buy a ticket in ${SYMBOL}. Two signatures at most: an exact approval, then the ticket.` },
+  { no: '02', title: 'Eat', body: 'Food makes you bigger. Smaller coins make you richer: their whole till moves into yours.' },
+  { no: '03', title: 'Bell', body: `Every five minutes, in every arena at once. Joins close ${FACTS.rules.joinCloseS} seconds before it rings.` },
+  { no: '04', title: 'Paid', body: `Alive at the bell? Your till goes to your wallet, minus ${pct(FACTS.fee.bps)} of the profit. Eaten? Someone else says thanks.` },
 ];
 
 function Round() {
-  const reduced = useReducedMotion();
+  const m = useMoves();
   return (
-    <section className="ld-sec ld-round" aria-labelledby="ld-round-h" id="round">
-      <SectionHead no="02" kicker="How a round works" title={<>Four tickets, one round.</>} id="ld-round-h" />
-      <motion.ol className="ld-strip" initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.2 }}>
-        {STEPS.map((s, i) => (
-          <motion.li
-            key={s.no}
-            className="ld-tix"
-            variants={{
-              hidden: { opacity: 0, x: 60, rotate: 2 },
-              show: { opacity: 1, x: 0, rotate: i % 2 ? 0.8 : -0.8, transition: { type: 'spring', stiffness: 220, damping: 22, delay: i * 0.18 } },
-            }}
-          >
-            <div className="ld-tix__art">{s.art}</div>
-            <div className="ld-tix__body">
-              <span className="ld-tix__no mono">Step {s.no}</span>
-              <h3 className="ld-tix__title">{s.title}</h3>
-              <p className="ld-tix__text">{s.body}</p>
-            </div>
-            <span className="ld-tix__stub mono" aria-hidden="true">
-              Admit one · {s.no}
+    <section className="ld-plate ld-round" id="round" aria-labelledby="ld-round-h">
+      <PlateLabel numeral={3} title="A round, in orbit" aside="05:00 a lap" />
+      <div className="ld-wrap ld-round__grid">
+        <motion.div className="ld-round__orbit-wrap" variants={m.stickerDrop} custom={-0.8} initial="hidden" whileInView="shown" viewport={view}>
+          <Sticker tone="night" pad="none" lift="lg" round="lg" className="ld-orbit">
+            <span className="ld-orbit__tag kb-tag">Round 418 · in progress</span>
+            <OrbitDots
+              width={640}
+              height={330}
+              coins={4}
+              duration={20}
+              tone="night"
+              className="ld-orbit__svg"
+              title="A round as an orbit: ticket, eat, bell, paid"
+              stations={[
+                { at: 0, label: 'Ticket', done: true },
+                { at: 0.25, label: 'Eat', done: true },
+                { at: 0.5, label: 'Bell' },
+                { at: 0.75, label: 'Paid' },
+              ]}
+            />
+            <span className="ld-orbit__core" aria-hidden="true">
+              <GazeCoin paint="sun" mood="chomp" size={112} look={[2, 1]} reach={0.7} />
             </span>
-            <motion.span
-              className="ld-tix__stamp"
-              variants={{
-                hidden: { opacity: 0, scale: reduced ? 1 : 1.6 },
-                show: { opacity: 1, scale: 1, transition: { delay: 0.35 + i * 0.18, type: 'spring', stiffness: 600, damping: 16 } },
-              }}
-            >
-              <Stamp text={s.stamp} tone={s.tone} size="md" rotate={i % 2 ? 7 : -9} />
-            </motion.span>
-          </motion.li>
-        ))}
-      </motion.ol>
-      <p className="ld-round__foot mono">The arena opens soon · follow @slanaio for the first bell</p>
+            <Seigaiha tone="night" rows={2} r={30} className="ld-orbit__waves" />
+          </Sticker>
+        </motion.div>
+        <div className="ld-round__copy">
+          <p className="kicker">How a round goes</p>
+          <h2 className="ld-h2" id="ld-round-h">
+            One lap, four stops, then lunch.
+          </h2>
+          <ol className="ld-stops">
+            {STATIONS.map((s, i) => (
+              <motion.li key={s.no} className="ld-stop" variants={m.popIn} initial="hidden" whileInView="shown" viewport={view} transition={{ delay: i * 0.08 }}>
+                <span className="ld-stop__no num" aria-hidden="true">
+                  {s.no}
+                </span>
+                <span className="ld-stop__text">
+                  <strong className="ld-stop__title">{s.title}</strong>
+                  <span>{s.body}</span>
+                </span>
+              </motion.li>
+            ))}
+          </ol>
+        </div>
+      </div>
     </section>
   );
 }
 
-/* ── the coins ────────────────────────────────────────────────────── */
+/* ── Plate IV · the cast ──────────────────────────────────────────────── */
 
-const LOOKS = BASIC_SKINS.map((s) => ({ id: s.id, name: s.name, desc: s.desc, look: lookForBasicSkin(s.id) }));
+const CAST: { handle: string; paint: CoinPaint; mood: CoinMood; size: number; worth: string; bio: string; look: [number, number]; sweat?: boolean }[] = [
+  { handle: 'nibbler', paint: 'foam', mood: 'scared', size: 64, worth: '$0.71', bio: 'Small, fast, mostly worried.', look: [3, -1], sweat: true },
+  { handle: 'gm_crumbs', paint: 'cream', mood: 'happy', size: 92, worth: '$2.41', bio: 'Says gm to everyone. Eats some of them.', look: [0, 0] },
+  { handle: 'big_aurelius', paint: 'sun', mood: 'smug', size: 176, worth: '$9.80', bio: 'Has eaten forty-one coins. Mentions it.', look: [2, 0] },
+  { handle: 'obol', paint: 'spray', mood: 'sleepy', size: 82, worth: '$1.30', bio: 'Plays the long game. Very long.', look: [0, 0] },
+  { handle: 'lethe.hl', paint: 'teal', mood: 'open', size: 132, worth: '$6.12', bio: 'Forgot what it was doing. Still hungry.', look: [-2, 1] },
+  { handle: 'chompers', paint: 'coral', mood: 'chomp', size: 112, worth: '$4.37', bio: 'Knows one move. It works.', look: [-3, 1] },
+  { handle: 'penny_pincher', paint: 'up', mood: 'smile', size: 100, worth: '$3.05', bio: 'Counts every seed. Out loud.', look: [-3, 0] },
+];
 
-function Coins() {
-  const reduced = useReducedMotion();
-  const [hover, setHover] = useState<number | null>(null);
+function Cast() {
+  const m = useMoves();
   return (
-    <section className="ld-sec ld-coins" aria-labelledby="ld-coins-h" id="coins">
-      <SectionHead no="03" kicker="The coins" title="Meet the pond." id="ld-coins-h" />
-      <ul className="ld-gallery">
-        {LOOKS.map((c, i) => (
-          <motion.li
-            key={c.id}
-            className="ld-coin"
-            style={{ ['--coin-ink' as string]: c.look.body, ['--coin-over' as string]: c.look.overprint }}
-            variants={rise}
-            initial="hidden"
-            whileInView="show"
-            viewport={view}
-            custom={i % 4}
-            onPointerEnter={() => setHover(c.id)}
-            onPointerLeave={() => setHover(null)}
-          >
-            <div className="ld-coin__plate">
-              <CoinArt look={c.look} size={176} still={reduced} seed={i * 3 + 1} expression={hover === c.id ? 'love' : i === 5 ? 'sleep' : 'happy'} className="ld-coin__art" />
-            </div>
-            <span className="ld-coin__no mono">No. {String(c.id + 1).padStart(2, '0')}</span>
-            <strong className="ld-coin__name">{c.name}</strong>
-            <span className="ld-coin__desc">{c.desc}</span>
-          </motion.li>
-        ))}
-      </ul>
+    <section className="ld-plate ld-cast" id="cast" aria-labelledby="ld-cast-h">
+      <PlateLabel numeral={4} title="The cast" aside="Sizes are worth, not age" />
+      <div className="ld-wrap">
+        <div className="ld-cast__head">
+          <div>
+            <p className="kicker">The line-up</p>
+            <h2 className="ld-h2" id="ld-cast-h">
+              Usual suspects of the plain.
+            </h2>
+          </div>
+          <p className="ld-cast__aside">
+            Every coin wears a face and a mood. A coin&rsquo;s size is what it carries: the bigger it stands, the more it is worth, and the more everyone else looks at it
+            like lunch.
+          </p>
+        </div>
+        <div className="ld-lineup">
+          <div className="ld-lineup__chart" aria-hidden="true">
+            {['$10', '$5', '$1'].map((v) => (
+              <span key={v} className="ld-lineup__mark mono">
+                {v}
+              </span>
+            ))}
+          </div>
+          <motion.ul className="ld-lineup__list" variants={m.stagger} initial="hidden" whileInView="shown" viewport={view}>
+            {CAST.map((c, i) => (
+              <motion.li key={c.handle} className="ld-suspect" variants={m.popIn} style={{ ['--i' as string]: i } as CSSProperties}>
+                <span className="ld-suspect__stand">
+                  <span className="ld-suspect__tag kb-tag">
+                    {c.handle} <b className="num">{c.worth}</b>
+                  </span>
+                  <span className="ld-suspect__coin">
+                    <GazeCoin paint={c.paint} mood={c.mood} size={c.size} look={c.look} sweat={c.sweat} wary={c.mood === 'scared'} feet ground bob phase={i * 0.37} title={`${c.handle}, ${c.mood}`} />
+                  </span>
+                </span>
+                <span className="ld-suspect__bio">{c.bio}</span>
+              </motion.li>
+            ))}
+          </motion.ul>
+        </div>
+      </div>
     </section>
   );
 }
 
-/* ── the NFT teaser ───────────────────────────────────────────────── */
+/* ── Plate V · the mint, after dark ───────────────────────────────────── */
 
-function SealedCard({ i }: { i: number }) {
+/** The three sealed emblems of the fan: which paint each wears and the slot it starts in. */
+const EMBLEMS: { paint: CoinPaint; tilt: number }[] = [
+  { paint: 'cyan', tilt: -8 },
+  { paint: 'sun', tilt: -1.5 },
+  { paint: 'up', tilt: 7 },
+];
+const SLOTS = ['left', 'front', 'right'] as const;
+
+function Emblem({ paint, front, waking }: { paint: CoinPaint; front: boolean; waking: boolean }) {
+  return (
+    <div className={`ld-emblem${front ? ' is-front' : ''}`}>
+      <div className="ld-emblem__panel">
+        <Seigaiha tone="ink" rows={5} r={26} span={360} filled={false} className="ld-emblem__waves" />
+        <span className="ld-emblem__no kb-tag num">No. ????</span>
+        <span className="ld-emblem__coin">
+          <CoinCharacter paint={paint} mood={!front ? 'sleepy' : waking ? 'open' : 'smug'} size={150} look={waking ? [3, -3] : [2, 0]} bob={front} />
+        </span>
+        <Stamp text="Sealed" tone="ink" size="sm" rotate={-12} className="ld-emblem__stamp" />
+      </div>
+      <span className="ld-emblem__rib">Sealed. For now.</span>
+    </div>
+  );
+}
+
+/**
+ * The fan of sealed emblems shuffles itself like a hand of cards while it is on screen (every
+ * 4.6 s, not while the visitor hovers it): the front card slides off to a side and tucks behind,
+ * a side card comes forward and its sleepy coin wakes up and peeks out. The sticker button deals
+ * the next card at once. Reduced motion: no automatic shuffle; the button still deals (no tween).
+ */
+function EmblemFan() {
+  const m = useMoves();
+  const reduced = useReducedMotion();
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref, { amount: 0.4 });
+  const [turn, setTurn] = useState(0);
+  const [hold, setHold] = useState(false);
+  const [waking, setWaking] = useState(false);
+  const deal = () => {
+    setTurn((t) => t + 1);
+    setWaking(true);
+  };
+  useEffect(() => {
+    if (!waking) return;
+    const t = setTimeout(() => setWaking(false), 1300);
+    return () => clearTimeout(t);
+  }, [waking, turn]);
+  useEffect(() => {
+    if (reduced || !inView || hold) return;
+    const t = setInterval(deal, 4600);
+    return () => clearInterval(t);
+  }, [reduced, inView, hold]);
   return (
     <motion.div
-      className={`ld-sealed ld-sealed--${i}`}
-      variants={{
-        hidden: { opacity: 0, y: 60, rotate: 0 },
-        show: { opacity: 1, y: 0, rotate: [-7, 2, 8][i], transition: { type: 'spring', stiffness: 160, damping: 18, delay: 0.15 + i * 0.12 } },
-      }}
+      ref={ref}
+      className="ld-nft__fan"
+      initial="hidden"
+      whileInView="shown"
+      viewport={view}
+      variants={m.stagger}
+      onPointerEnter={() => setHold(true)}
+      onPointerLeave={() => setHold(false)}
     >
-      <div className="ld-sealed__inner">
-        <div className="ld-sealed__face">
-          <span className="ld-sealed__q" aria-hidden="true">
-            ?
-          </span>
-          <span className="ld-sealed__no mono">Card {String(i + 1).padStart(3, '0')} / ???</span>
-        </div>
-        <span className="ld-sealed__band mono" aria-hidden="true">
-          Sealed · do not open
-        </span>
-        <span className="ld-sealed__seal" aria-hidden="true">
-          <Stamp text="Sealed" tone={i === 1 ? 'mustard' : 'pink'} round size="sm" rotate={-14 + i * 9} />
-        </span>
-      </div>
+      {EMBLEMS.map((e, i) => {
+        const slot = SLOTS[(i + turn) % 3];
+        return (
+          <div key={e.paint} className="ld-fan__card" data-slot={slot}>
+            <motion.div variants={m.stickerDrop} custom={0}>
+              <Emblem paint={e.paint} front={slot === 'front'} waking={slot === 'front' && waking} />
+            </motion.div>
+          </div>
+        );
+      })}
+      <motion.div className="ld-price" variants={m.popIn}>
+        <span className="num ld-price__n">$1.00</span>
+        <span className="mono ld-price__l">in HYPE · each</span>
+      </motion.div>
+      <motion.button type="button" className="ld-fan__deal mono" onClick={deal} variants={m.popIn}>
+        Shuffle the deck
+      </motion.button>
     </motion.div>
   );
 }
 
 function Nft() {
+  const m = useMoves();
   return (
-    <section className="ld-nft" aria-labelledby="ld-nft-h" id="nft">
-      <div className="ld-nft__inner">
-        <motion.div className="ld-nft__copy" variants={rise} initial="hidden" whileInView="show" viewport={view}>
-          <span className="ld-nft__kicker mono">04 · On the press</span>
-          <h2 className="ld-nft__title" id="ld-nft-h">
-            Slana NFT
-            <span className="ld-nft__soon mono">Coming soon</span>
-          </h2>
-          <p className="ld-nft__text">
-            The first Slana collection is still on the press. WL holders and collab communities get first access to the mint. The date lands on @slanaio
-            first.
-          </p>
-          <div className="ld-nft__ctas">
-            <Link href="/wl" className="ld-btn ld-btn--pink">
-              <span>Join the WL</span>
-              <Icon name="arrow" size={22} />
-            </Link>
-            <a href={X_URL} target="_blank" rel="noreferrer" className="ld-btn ld-btn--ghost">
-              <XIcon size={18} />
-              <span>Follow @slanaio</span>
-            </a>
+    <section className="ld-plate ld-nft" id="nft" aria-labelledby="ld-nft-h">
+      <PlateLabel numeral={5} title="The mint, after dark" aside="/mint" />
+      <div className="ld-nft__body">
+        <div className="ld-wrap ld-nft__grid">
+          <motion.div className="ld-nft__copy" variants={m.popIn} initial="hidden" whileInView="shown" viewport={view}>
+            <p className="kicker">Elymum NFT · sealed emblems</p>
+            <h2 className="ld-h2 ld-nft__title" id="ld-nft-h">
+              Your seat at the feast costs <em>one dollar.</em>
+            </h2>
+            <p className="ld-nft__text">
+              An emblem is a sealed coin portrait and your way into the game when it opens for holders. The price is pinned to $1 and paid in HYPE, so the number on the
+              button moves with the market. We do the arithmetic; you do the eating.
+            </p>
+            <ol className="ld-flow" aria-label="The order of things">
+              <li className="is-on">
+                <span>WL</span>
+              </li>
+              <li>
+                <span>Mint</span>
+              </li>
+              <li>
+                <span>Play</span>
+              </li>
+            </ol>
+            <div className="ld-nft__ctas">
+              <SiteLinkButton href="/wl" variant="primary" icon="arrow">
+                Join the WL
+              </SiteLinkButton>
+              <SiteLinkButton href="/mint" variant="teal">
+                See the mint
+              </SiteLinkButton>
+            </div>
+          </motion.div>
+          <EmblemFan />
+        </div>
+        <Seigaiha tone="night" rows={3} r={36} className="ld-nft__waves" />
+      </div>
+    </section>
+  );
+}
+
+/* ── Plate VI · the four arenas ───────────────────────────────────────── */
+
+const PLACES: Record<number, { line: string; x: number; y: number }> = {
+  1: { line: 'Where everyone starts. Mostly flowers, some teeth.', x: 12, y: 152 },
+  2: { line: 'Drink from the river and forget your last round. Handy.', x: 37, y: 57 },
+  3: { line: 'Bring a golden bough. Or fifty thousand.', x: 63, y: 57 },
+  4: { line: 'Heroes only. Heroes with a quarter of a million.', x: 88, y: 152 },
+};
+
+// where the tram pulls in, beside each place's pin and clear of the tickets
+const STOPS_X = [17, 31, 57, 82];
+
+function Arenas({ gameAccess }: { gameAccess: GameAccess }) {
+  const m = useMoves();
+  const reduced = useReducedMotion();
+  const mapRef = useRef<HTMLDivElement>(null);
+  const open = gameAccess === 'public' ? { tone: 'live' as const, text: 'Open now' } : gameAccess === 'holders' ? { tone: 'ok' as const, text: 'Open to emblem holders' } : { tone: 'idle' as const, text: 'Opens after the mint' };
+  return (
+    <section className="ld-plate ld-arenas" id="arenas" aria-labelledby="ld-arenas-h">
+      <PlateLabel numeral={6} title="Four places on the ring" aside="Arenas" />
+      <div className="ld-wrap">
+        <div className="ld-arenas__head">
+          <div>
+            <p className="kicker">The arenas</p>
+            <h2 className="ld-h2" id="ld-arenas-h">
+              Pick a table. Same rules, bigger plates.
+            </h2>
           </div>
-        </motion.div>
-        <motion.div className="ld-nft__cards" initial="hidden" whileInView="show" viewport={view}>
-          {[0, 1, 2].map((i) => (
-            <SealedCard key={i} i={i} />
+          <div className="ld-arenas__aside">
+            <StatusPill tone={open.tone}>{open.text}</StatusPill>
+            <p>Entry fees are in {SYMBOL}. Practice is free and needs no wallet at all.</p>
+          </div>
+        </div>
+        <div className="ld-map" ref={mapRef}>
+          <svg className="ld-map__ring" viewBox="0 0 1000 300" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+            <path d="M-20 290 C 180 -40, 820 -40, 1020 290" fill="none" className="ld-map__band" strokeWidth="34" />
+            <path d="M-20 290 C 180 -40, 820 -40, 1020 290" fill="none" className="ld-map__edge" strokeWidth="3" />
+            <path d="M-20 290 C 180 -40, 820 -40, 1020 290" fill="none" className="ld-map__lights" strokeWidth="5" strokeDasharray="2 20" strokeLinecap="round" />
+          </svg>
+          <ArenaTram stopsX={STOPS_X} places={mapRef} still={reduced} />
+          <motion.ol className="ld-map__list" variants={m.stagger} initial="hidden" whileInView="shown" viewport={view}>
+            {DEFAULT_ARENAS.map((a, i) => {
+              const meta = arenaMeta(a.id);
+              const p = PLACES[a.id];
+              return (
+                <motion.li
+                  key={a.id}
+                  className="ld-place"
+                  variants={m.stickerDrop}
+                  custom={i % 2 ? 1.2 : -1.2}
+                  style={{ ['--x' as string]: `${p?.x ?? 50}%`, ['--y' as string]: `${p?.y ?? 50}px`, ['--ink-a' as string]: meta.ink, ['--ink-b' as string]: meta.inkTo ?? meta.ink } as CSSProperties}
+                >
+                  <span className="ld-place__pin" aria-hidden="true" />
+                  <div className="ld-ticket">
+                    <div className="ld-ticket__body">
+                      <span className="ld-ticket__no mono">Arena {a.id}</span>
+                      <h3 className="ld-ticket__name">{meta.name}</h3>
+                      <p className="ld-ticket__line">{p?.line}</p>
+                    </div>
+                    <div className="ld-ticket__stub">
+                      <b className="num ld-ticket__fee">{nf.format(a.entryTokens)}</b>
+                      <span className="mono ld-ticket__unit">{SYMBOL}</span>
+                      <span className="mono ld-ticket__unit">entry</span>
+                    </div>
+                  </div>
+                </motion.li>
+              );
+            })}
+          </motion.ol>
+          <div className="ld-map__here" aria-hidden="true">
+            <span className="kb-tag">You, at 05:00</span>
+            <CoinCharacter paint="cyan" mood="happy" size={84} feet ground bob />
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ── Plate VII · small print ──────────────────────────────────────────── */
+
+function Faq({ handle }: { handle: string }) {
+  const m = useMoves();
+  const items: { q: string; a: ReactNode }[] = [
+    {
+      q: 'Which wallet do I need?',
+      a: 'Any EVM wallet: MetaMask, Rabby, or whatever your browser speaks. When a transaction needs Elysium, the site asks your wallet to add or switch to it.',
+    },
+    {
+      q: 'What is Elysium?',
+      a: "Kinetiq's chain: an Arbitrum Orbit L2 that settles to HyperEVM. In our pictures it is a ring in orbit with fields on the inside. In practice it is where the arenas, their vaults and the emblems live.",
+    },
+    { q: 'Why do I need HYPE?', a: 'HYPE is the gas token on Elysium. Every transaction you send costs a little of it, and the mint is paid in it too.' },
+    {
+      q: 'How is the mint $1?',
+      a: 'The price is pinned to one US dollar and paid in HYPE at the current rate, so the HYPE figure moves a little with the market. The mint page shows both numbers before you sign.',
+    },
+    {
+      q: 'When does the game open?',
+      a: (
+        <>
+          After the mint: holders first. The date lands on{' '}
+          <a href={xProfile(handle)} target="_blank" rel="noreferrer">
+            @{handle}
+          </a>{' '}
+          before anywhere else. Until then, <Link href="/docs">the docs</Link> explain every rule.
+        </>
+      ),
+    },
+    { q: 'What does signing in cost?', a: 'Nothing. One message signature, no transaction. We never DM first and never ask for a seed phrase. Nobody should.' },
+    {
+      q: 'Can my community get WL spots?',
+      a: (
+        <>
+          DAOs, guilds and NFT projects can apply for spots to hand out to their members. <Link href="/collab">The collab page</Link> has the details.
+        </>
+      ),
+    },
+  ];
+  return (
+    <section className="ld-plate ld-faq" id="faq" aria-labelledby="ld-faq-h">
+      <PlateLabel numeral={7} title="Small print" aside="FAQ" />
+      <div className="ld-wrap ld-faq__grid">
+        <div className="ld-faq__side">
+          <div>
+            <p className="kicker">Questions</p>
+            <h2 className="ld-h2" id="ld-faq-h">
+              Small print, large font.
+            </h2>
+          </div>
+          <span className="ld-faq__coin" aria-hidden="true">
+            <GazeCoin paint="cream" mood="open" size={120} look={[3, -2]} feet ground bob />
+          </span>
+        </div>
+        <div className="ld-faq__list">
+          {items.map((f, i) => (
+            <motion.details key={f.q} className="ld-qa" variants={m.popIn} initial="hidden" whileInView="shown" viewport={view}>
+              <summary className="ld-qa__q">
+                <span className="ld-qa__no num" aria-hidden="true">
+                  Q{i + 1}
+                </span>
+                <span className="ld-qa__text">{f.q}</span>
+                <span className="ld-qa__plus" aria-hidden="true" />
+              </summary>
+              <div className="ld-qa__a">{f.a}</div>
+            </motion.details>
           ))}
-        </motion.div>
+        </div>
       </div>
     </section>
   );
 }
 
-/* ── FAQ ──────────────────────────────────────────────────────────── */
-
-const FAQ: { q: string; a: ReactNode }[] = [
-  { q: 'What is Slana?', a: 'A cute arena game where coins eat coins, with arenas, tickets and payouts on Solana. Rounds last five minutes.' },
-  {
-    q: 'Can I play now?',
-    a: (
-      <>
-        Not yet. The arena opens soon, and the launch lands on <a href={X_URL} target="_blank" rel="noreferrer">@slanaio</a> first. The player guide is
-        already up at <Link href="/docs">slana.io/docs</Link>.
-      </>
-    ),
-  },
-  { q: 'What is the WL?', a: 'The allowlist for the Slana NFT mint. A few short tasks on X, your handle and your Solana wallet. Every entry is checked by hand.' },
-  { q: 'Does signing in cost anything?', a: 'No. You sign one message with your wallet to prove it is yours. It is free and sends no transaction.' },
-  {
-    q: 'How do collabs work?',
-    a: (
-      <>
-        DAOs, guilds, alpha groups and NFT projects can apply for WL spots to raffle to their members. Approved communities get spots, a deadline and a
-        page to add their winners. <Link href="/collab">Read more on the collab page</Link>.
-      </>
-    ),
-  },
-  { q: 'When is the mint?', a: 'Soon. The date, the price and the supply are posted on @slanaio first. We never DM first and never ask for a seed phrase.' },
-];
-
-function Faq() {
-  return (
-    <section className="ld-sec ld-faq" aria-labelledby="ld-faq-h" id="faq">
-      <SectionHead no="05" kicker="Questions" title="Small print." id="ld-faq-h" />
-      <div className="ld-faq__list">
-        {FAQ.map((f, i) => (
-          <motion.details key={f.q} className="ld-qa" variants={rise} initial="hidden" whileInView="show" viewport={view} custom={i % 3}>
-            <summary className="ld-qa__q">
-              <span className="ld-qa__no mono" aria-hidden="true">
-                Q{i + 1}
-              </span>
-              <span>{f.q}</span>
-              <span className="ld-qa__plus" aria-hidden="true" />
-            </summary>
-            <div className="ld-qa__a">{f.a}</div>
-          </motion.details>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function Closing({ collabOpen }: { collabOpen: boolean }) {
-  return (
-    <section className="ld-close" aria-labelledby="ld-close-h">
-      <motion.div className="ld-close__ticket" variants={rise} initial="hidden" whileInView="show" viewport={view}>
-        <div className="ld-close__main">
-          <span className="mono ld-close__kicker">Admit one · the first round</span>
-          <h2 className="ld-close__title" id="ld-close-h">
-            Get on the list.
-          </h2>
-          <p className="ld-close__text">Five short steps, one free signature. Your own riso ticket card comes with it.</p>
-        </div>
-        <div className="ld-close__stub">
-          <Link href="/wl" className="ld-btn ld-btn--pink">
-            <span>Join the WL</span>
-            <Icon name="arrow" size={22} />
-          </Link>
-          <Link href="/collab" className="ld-close__collab mono">
-            {collabOpen ? 'Bring your community' : 'Collabs open soon'}
-          </Link>
-        </div>
-      </motion.div>
-    </section>
-  );
-}
-
-/** `/`: the slana.io landing. No way into the game unless the game is public. */
+/** `/`: the landing, a picture book from dawn into night. No way into the game unless the game is public. */
 export function Landing() {
   const { settings } = useSiteSettings();
   const sound = useLandingSound();
@@ -410,15 +603,21 @@ export function Landing() {
       <a className="st-skip" href="#main">
         Skip to content
       </a>
-      <SiteHeader />
+      <SiteHeader>
+        <SeedRail />
+      </SiteHeader>
       <main id="main" className="ld-main" tabIndex={-1}>
-        <Hero collabOpen={settings.collabOpen} gamePublic={settings.gamePublic} wlOpen={settings.wlOpen} sound={sound} />
-        <What />
+        <PlateLabel numeral={1} title="The plain at dawn" aside="05:00 AM" className="ld-plate1" />
+        <Hero collabOpen={settings.collabOpen} gameAccess={settings.gameAccess} wlOpen={settings.wlOpen} sound={sound} />
+        <Feast />
         <Round />
-        <Coins />
-        <Nft />
-        <Faq />
-        <Closing collabOpen={settings.collabOpen} />
+        <Cast />
+        <DuskSeam />
+        <Kb theme="night" className="ld-night">
+          <Nft />
+          <Arenas gameAccess={settings.gameAccess} />
+          <Faq handle={settings.xHandle.replace(/^@/, '')} />
+        </Kb>
       </main>
       <SiteFooter />
     </Kb>

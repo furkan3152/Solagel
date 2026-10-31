@@ -1,4 +1,4 @@
-import { EntityKind, RULES, canEat, clamp, massToRadius, speedForRadius, viewSize } from '@slana/shared';
+import { EntityKind, RULES, canEat, clamp, massToRadius, speedForRadius, viewSize } from '@elymum/shared';
 import type { Cell, Eject, Food, Player, PowerUp, Virus } from '../game/entities';
 import type { Rng } from '../game/rng';
 import type { World } from '../game/world';

@@ -1,6 +1,8 @@
 import { randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
-import { CAPACITY, RULES, TOKEN_SYMBOL_DEFAULT } from '@slana/shared';
+import { CAPACITY, RULES, TOKEN_SYMBOL_DEFAULT, MINT_USD_CENTS_DEFAULT, chainByKey, isGameAccess, type GameAccess } from '@elymum/shared';
+import { HYPE_PRICE_URL_DEFAULT } from '@elymum/sdk';
+import { getAddress, isAddress } from 'viem';
 import type { BotManagerOptions } from './bots/manager';
 
 export interface ServerConfig {
@@ -11,7 +13,8 @@ export interface ServerConfig {
   dataDir: string;
   /**
    * Public base URL of this server (`PUBLIC_URL`, no trailing slash), the origin wallet logins
-   * (SIWS) are bound to. Null: derived from the request's Host header, else `http://localhost:<PORT>`.
+   * (SIWE) are bound to and the base of the NFT metadata links. Required unless `NODE_ENV=development`
+   * (`assertPublicUrl`); null (development only): the request's Host header, else `http://localhost:<PORT>`.
    */
   publicUrl: string | null;
   /** Optional path to the built web app (apps/web/dist) to serve statically. */
@@ -33,15 +36,15 @@ export interface ServerConfig {
   round: { roundMs: number; closeMs: number };
   authSecret: Buffer;
   /**
-   * Admin wallets (`ADMIN_WALLETS`, comma-separated base58 keys): a SIWS session of one of them may use
-   * `/api/admin/*` and play while the game is not public. Defaults to `DEFAULT_ADMIN_WALLET`.
+   * Admin wallets (`ADMIN_WALLETS`, comma-separated 0x addresses, EIP-55 checksummed here): a SIWE session of
+   * one of them may use `/api/admin/*` and always play. No default: unset means nobody is admin (logged loudly).
    */
   adminWallets: string[];
   /**
-   * `GAME_PUBLIC=1`: the game is open to everyone whatever the admin's `gamePublic` setting says.
-   * Unset: the site setting decides (default off: only admin wallets can join rooms).
+   * `GAME_ACCESS` (`admins`, `holders` or `public`): overrides the admin's `gameAccess` setting.
+   * Null: the site setting decides (default `admins`).
    */
-  gamePublic: boolean;
+  gameAccess: GameAccess | null;
   /** `NODE_ENV` as given (null when unset). */
   nodeEnv: string | null;
   /**
@@ -57,50 +60,108 @@ export interface ServerConfig {
    */
   devFakeToken: boolean;
   chain: {
-    cluster: string;
-    /** RPC used by the server (may contain a private API key). */
+    /** Server RPC (`EVM_RPC_URL`, may hold an API key). Null: chain off, practice only. */
     rpcUrl: string | null;
-    /** RPC advertised to browsers (no secrets). Defaults to the public endpoint of the cluster. */
+    /**
+     * RPC handed to browsers (`PUBLIC_RPC_URL`, no secrets). Default: `EVM_RPC_URL` when it is the public
+     * testnet RPC, else null (the wallet's own RPC is used).
+     */
     publicRpcUrl: string | null;
-    wsUrl: string | null;
-    programId: string | null;
-    /** Path to a keypair JSON file, or the JSON array itself. */
-    serverKeypair: string | null;
+    /** Display name for a chain id the table does not know (`CHAIN_NAME`, default "Elysium"). */
+    chainName: string | null;
+    /** Blockscout-style explorer for a chain id the table does not know (`EXPLORER_URL`). */
+    explorerUrl: string | null;
+    /** `ARENA_ADDRESS`: overrides the registry's arena (normally written by the admin panel after a deploy). */
+    arenaAddress: string | null;
+    /** `NFT_ADDRESS`: overrides the registry's NFT. */
+    nftAddress: string | null;
+    /** `SERVER_PRIVATE_KEY`: `auto` (generated once into `DATA_DIR/server-key.json`), a 0x hex key, or a path to a file holding one. */
+    serverKey: string | null;
     stakeEnabled: boolean;
     /** Arena ids to open as stake rooms (empty = discover on-chain). */
     arenaIds: number[];
-    priorityFeeMicroLamports: number;
-    /** Display symbol of the game token (`TOKEN_SYMBOL`, default `$SLANA`). */
+    /** Display symbol of the game token (`TOKEN_SYMBOL`, default `$ELYMUM`). */
     tokenSymbol: string;
     /**
-     * Seconds after which an open session nobody plays is refunded by the sweeper
+     * Seconds after which an open session nobody plays is settled at its entry fee by the sweeper
      * (`STALE_SESSION_AFTER_S`, default 900). The sweeper runs every 5 minutes, or this often
      * when it is shorter (the localnet e2e uses 5 s to reach the refund path quickly).
      */
     staleSessionAfterS: number;
     /**
      * `STALE_SWEEP_ACK=1`: the operator reviewed a quarantined journal (`journal.json.corrupt-*`)
-     * and allows the stale-session sweeper to run again (M9). Without it the sweeper stays off
+     * and allows the stale-session sweeper to run again. Without it the sweeper stays off
      * after a quarantine, so it cannot refund sessions whose real result was in the lost journal.
      */
     staleSweepAck: boolean;
+    /** `LOG_CHUNK_BLOCKS`: blocks per `eth_getLogs` request of the session and holder indexes (default 10,000). */
+    logChunkBlocks: number;
   };
+  /** NFT mint: the USD target (`MINT_USD_CENTS`, default 100) and the HYPE/USD feed (`HYPE_PRICE_URL`). */
+  mint: { usdCents: number; hypePriceUrl: string };
 }
 
 /**
- * The admin wallet: `SLANA_ADMIN` in scripts/admin-wallet.conf (a public key; a test checks the
- * two stay equal). Used when `ADMIN_WALLETS` is unset or empty.
+ * `ADMIN_WALLETS`: comma-separated 0x addresses (any case), returned EIP-55 checksummed and de-duplicated;
+ * malformed entries are dropped. There is no default: an empty list means nobody is admin.
  */
-export const DEFAULT_ADMIN_WALLET = 'D2Ts7yCiVjedo6uwqpkM44QA8J45NdVU1J3k5m6iWtvm';
-
-/** `ADMIN_WALLETS`: comma-separated base58 public keys; malformed entries are dropped. */
 export function parseAdminWallets(v: string | undefined): string[] {
-  const list = (v ?? '')
+  const out = new Set<string>();
+  for (const raw of (v ?? '').split(',')) {
+    const s = raw.trim();
+    if (isAddress(s, { strict: false })) out.add(getAddress(s));
+  }
+  return [...out];
+}
+
+/** Malformed entries of `ADMIN_WALLETS` (for the startup warning). */
+/**
+ * Refuses to start without a usable `PUBLIC_URL` unless `NODE_ENV=development`: it is the origin SIWE
+ * logins are bound to and the base of the NFT metadata links, and a request-derived one (Host /
+ * X-Forwarded-Host) would let any site that proxies to this server obtain real sessions. Throws a clear message.
+ */
+export function assertPublicUrl(cfg: Pick<ServerConfig, 'publicUrl' | 'nodeEnv'>): void {
+  if (cfg.publicUrl) {
+    let ok = false;
+    try {
+      const u = new URL(cfg.publicUrl);
+      ok = (u.protocol === 'https:' || u.protocol === 'http:') && u.host !== '' && (u.pathname === '/' || u.pathname === '') && !u.search && !u.hash && !u.username;
+    } catch {
+      ok = false;
+    }
+    if (!ok) throw new Error(`PUBLIC_URL must be the site's origin, e.g. https://elymum.io (got ${JSON.stringify(cfg.publicUrl)}); refusing to start`);
+    return;
+  }
+  if (cfg.nodeEnv === 'development') return;
+  throw new Error(
+    `PUBLIC_URL is required (NODE_ENV is ${cfg.nodeEnv ?? 'unset'}): set it to the site's public origin, e.g. https://elymum.io. ` +
+      'It is the domain wallet sign-ins (SIWE) are bound to and the base of the NFT metadata links; only NODE_ENV=development may derive it from the request. Refusing to start',
+  );
+}
+
+export function invalidAdminWallets(v: string | undefined): string[] {
+  return (v ?? '')
     .split(',')
     .map((s) => s.trim())
-    .filter((s) => /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s));
-  return list.length > 0 ? [...new Set(list)] : [DEFAULT_ADMIN_WALLET];
+    .filter((s) => s.length > 0 && !isAddress(s, { strict: false }));
 }
+
+/** `GAME_ACCESS`: `admins`, `holders` or `public`; anything else (or unset) is null (the site setting decides). */
+export function parseGameAccess(v: string | undefined): GameAccess | null {
+  const s = v?.trim().toLowerCase();
+  return isGameAccess(s) ? s : null;
+}
+
+/** `PUBLIC_RPC_URL`, else `EVM_RPC_URL` when it is the public testnet RPC (no secrets in it), else null. */
+export function defaultPublicRpc(rpcUrl: string | null, publicRpcUrl: string | undefined): string | null {
+  const explicit = publicRpcUrl?.trim();
+  if (explicit) return explicit.replace(/\/+$/, '');
+  const testnet = chainByKey('elysium-testnet').rpcUrl;
+  if (rpcUrl && testnet && rpcUrl.replace(/\/+$/, '') === testnet) return testnet;
+  return null;
+}
+
+const blank = (v: string | undefined): string | null => (v?.trim() ? v.trim() : null);
 
 const int = (v: string | undefined, d: number): number => {
   const n = Number(v);
@@ -124,6 +185,7 @@ export function parseRoundConfig(env: NodeJS.ProcessEnv): { roundMs: number; clo
 const bool = (v: string | undefined, d: boolean): boolean => (v === undefined ? d : ['1', 'true', 'yes', 'on'].includes(v.toLowerCase()));
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
+  const rpcUrl = blank(env.EVM_RPC_URL)?.replace(/\/+$/, '') ?? null;
   const secret = env.AUTH_SECRET ? Buffer.from(env.AUTH_SECRET, 'utf8') : randomBytes(32);
   return {
     port: int(env.PORT, 8787),
@@ -166,28 +228,33 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     round: parseRoundConfig(env),
     authSecret: secret,
     adminWallets: parseAdminWallets(env.ADMIN_WALLETS),
-    gamePublic: bool(env.GAME_PUBLIC, false),
+    gameAccess: parseGameAccess(env.GAME_ACCESS),
     nodeEnv: env.NODE_ENV?.trim() || null,
     devFakeChain: bool(env.DEV_FAKE_CHAIN, false),
     devFakeToken: bool(env.DEV_FAKE_TOKEN, false),
     chain: {
-      cluster: env.SOLANA_CLUSTER ?? 'localnet',
-      rpcUrl: env.SOLANA_RPC_URL ?? null,
-      publicRpcUrl: env.PUBLIC_RPC_URL ?? null,
-      wsUrl: env.SOLANA_WS_URL ?? null,
-      programId: env.PROGRAM_ID ?? null,
-      serverKeypair: env.SERVER_KEYPAIR ?? null,
+      rpcUrl,
+      publicRpcUrl: defaultPublicRpc(rpcUrl, env.PUBLIC_RPC_URL),
+      chainName: blank(env.CHAIN_NAME),
+      explorerUrl: blank(env.EXPLORER_URL)?.replace(/\/+$/, '') ?? null,
+      arenaAddress: blank(env.ARENA_ADDRESS),
+      nftAddress: blank(env.NFT_ADDRESS),
+      serverKey: blank(env.SERVER_PRIVATE_KEY),
       stakeEnabled: bool(env.STAKE_ENABLED, true),
       arenaIds: (env.STAKE_ARENA_IDS ?? '')
         .split(',')
         .map((s) => s.trim())
         .filter((s) => s.length > 0)
         .map(Number)
-        .filter((n) => Number.isInteger(n) && n >= 0 && n <= 65535),
-      priorityFeeMicroLamports: int(env.PRIORITY_FEE_MICROLAMPORTS, 5000),
+        .filter((n) => Number.isInteger(n) && n >= 1 && n <= 65535),
       tokenSymbol: env.TOKEN_SYMBOL?.trim() || TOKEN_SYMBOL_DEFAULT,
       staleSessionAfterS: Math.max(1, int(env.STALE_SESSION_AFTER_S, 15 * 60)),
       staleSweepAck: bool(env.STALE_SWEEP_ACK, false),
+      logChunkBlocks: Math.max(100, int(env.LOG_CHUNK_BLOCKS, 10_000)),
+    },
+    mint: {
+      usdCents: Math.max(1, int(env.MINT_USD_CENTS, MINT_USD_CENTS_DEFAULT)),
+      hypePriceUrl: blank(env.HYPE_PRICE_URL) ?? HYPE_PRICE_URL_DEFAULT,
     },
   };
 }

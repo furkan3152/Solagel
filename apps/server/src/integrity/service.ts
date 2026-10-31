@@ -1,4 +1,5 @@
 import { createHmac } from 'node:crypto';
+import { getAddress } from 'viem';
 import {
   INTEGRITY_SETTINGS_DEFAULT,
   isFingerprint,
@@ -11,7 +12,7 @@ import {
   type IntegritySettings,
   type IntegrityTransfer,
   type IntegrityWalletView,
-} from '@slana/shared';
+} from '@elymum/shared';
 import type { Player } from '../game/entities';
 import { csv } from '../site/store';
 import type { Journal, SettlementItem } from '../stake/journal';
@@ -60,7 +61,7 @@ export class IntegrityError extends Error {
   }
 }
 
-const isWallet = (w: unknown): w is string => typeof w === 'string' && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(w);
+const isWallet = (w: unknown): w is string => typeof w === 'string' && /^0x[0-9a-fA-F]{40}$/.test(w);
 
 /**
  * Cheat and collusion detection: owns the telemetry window, the detectors' flags, the bans and the
@@ -344,8 +345,9 @@ export class IntegrityService {
     return f;
   }
 
-  ban(wallet: unknown, reason: unknown, by: string): IntegrityBan {
-    if (!isWallet(wallet)) throw new IntegrityError(400, 'bad_request', 'Not a Solana wallet address.', 'wallet');
+  ban(raw: unknown, reason: unknown, by: string): IntegrityBan {
+    if (!isWallet(raw)) throw new IntegrityError(400, 'bad_request', 'Not an EVM wallet address.', 'wallet');
+    const wallet = getAddress(raw);
     if (typeof reason !== 'string' || reason.trim().length === 0 || reason.length > 500) throw new IntegrityError(400, 'bad_request', 'Give a reason (at most 500 characters).', 'reason');
     const b: IntegrityBan = { wallet, at: this.now(), by, reason: reason.trim() };
     this.bans.set(wallet, b);
@@ -354,7 +356,8 @@ export class IntegrityService {
     return b;
   }
 
-  unban(wallet: string, by: string): void {
+  unban(raw: string, by: string): void {
+    const wallet = isWallet(raw) ? getAddress(raw) : raw;
     if (!this.bans.delete(wallet)) throw new IntegrityError(404, 'not_found', 'This wallet is not banned.');
     this.saveState();
     this.log(`integrity: wallet ${wallet} unbanned by ${by}`);
@@ -416,9 +419,11 @@ export class IntegrityService {
   }
 
   /** Tickets, flags and value transfers of one wallet (optionally only those with `other`). */
-  walletView(wallet: string, other?: string | null): IntegrityWalletView {
-    if (!isWallet(wallet)) throw new IntegrityError(400, 'bad_request', 'Not a Solana wallet address.', 'wallet');
-    if (other && !isWallet(other)) throw new IntegrityError(400, 'bad_request', 'Not a Solana wallet address.', 'other');
+  walletView(rawWallet: string, rawOther?: string | null): IntegrityWalletView {
+    if (!isWallet(rawWallet)) throw new IntegrityError(400, 'bad_request', 'Not an EVM wallet address.', 'wallet');
+    if (rawOther && !isWallet(rawOther)) throw new IntegrityError(400, 'bad_request', 'Not an EVM wallet address.', 'other');
+    const wallet = getAddress(rawWallet);
+    const other = rawOther ? getAddress(rawOther) : null;
     const snap = this.snapshot();
     const sessions = snap.sessions
       .filter((s) => s.wallet === wallet)

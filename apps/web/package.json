@@ -1,9 +1,9 @@
 {
-  "name": "@slana/web",
+  "name": "@elymum/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Slana web client: cute coin renderer, lobby, HUD and Solana wallet integration",
+  "description": "Elymum web client: site, mint, game and admin panel for Elysium",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
@@ -13,19 +13,16 @@
     "shot": "node scripts/shot.mjs"
   },
   "dependencies": {
-    "@fontsource-variable/bricolage-grotesque": "^5.3.0",
-    "@fontsource/dm-mono": "^5.3.0",
-    "@slana/art": "workspace:*",
-    "@slana/sdk": "workspace:*",
-    "@slana/shared": "workspace:*",
-    "@solana/wallet-adapter-base": "^0.9.28",
-    "@solana/wallet-adapter-react": "^0.15.40",
-    "@solana/web3.js": "^1.98.4",
-    "bs58": "^6.0.0",
-    "buffer": "^6.0.3",
+    "@elymum/art": "workspace:*",
+    "@elymum/sdk": "workspace:*",
+    "@elymum/shared": "workspace:*",
+    "@fontsource-variable/dm-sans": "^5.3.0",
+    "@fontsource-variable/fraunces": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
     "motion": "^14.2.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "viem": "^2.57.13",
     "zustand": "^5.0.15"
   },
   "devDependencies": {

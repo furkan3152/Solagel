@@ -47,9 +47,9 @@ interface GroupCtx {
 const TicketGroupContext = createContext<GroupCtx | null>(null);
 
 /**
- * A paper ticket: real notches cut at the perforation (CSS mask, so it works
- * on any background), outline + pink misregistered offset when selected, and
- * a 3 px press. The shadow lives on a wrapper as drop-shadow so it follows the
+ * A boarding-pass sticker: real notches cut at the perforation (CSS mask, so
+ * it works on any background), cream body, a tinted stub, ink edge and hard
+ * shadow; selected = sun stub and a lifted shadow; a 3 px press. The shadow lives on a wrapper as drop-shadow so it follows the
  * cut shape. Alone it is a toggle button (aria-pressed); inside a
  * `TicketGroup` it is a radio with roving focus.
  */
@@ -112,7 +112,7 @@ export function Ticket({
       </div>
       {stamp && (
         <span className="kb-ticket__stamp" aria-hidden="true">
-          <Stamp text={stamp} tone="pink" size="sm" rotate={-11} />
+          <Stamp text={stamp} tone="teal" size="sm" rotate={-11} />
         </span>
       )}
       {punched && <TicketPunch reduced={reduced} />}

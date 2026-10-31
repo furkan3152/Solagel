@@ -1,5 +1,5 @@
-import { CARD_PAPER, INK, INK_2, NIGHT, PAPER, RISO, type CoinInterior, type CoinLook } from '@slana/art';
-import { EntityKind, PlayerFlag } from '@slana/shared';
+import { ELYSIUM, INK, SHADE, type CoinInterior, type CoinLook, type Expression } from '@elymum/art';
+import { EntityKind, PlayerFlag } from '@elymum/shared';
 import { DROP_LAND, dropScale } from '../design/curves';
 import type { Camera } from '../game/camera';
 import type { Particles } from '../game/particles';
@@ -14,55 +14,78 @@ import { LookCache } from './looks';
 import { SpriteCache, drawGlint, drawSprite } from './sprites';
 
 const TAU = Math.PI * 2;
-const MONO_FONT = '"DM Mono", ui-monospace, monospace';
 
-/** World print stock per theme (Paper Ticket tokens; "Night print" for night). */
+/**
+ * The arena floor per theme ("Ring Storybook", spec §6.9: the floor of the ring
+ * at feeding time). Both settings are night: `light` is the reference plate
+ * (trench floor), `dark` the deeper abyss floor.
+ */
 export interface WorldTheme {
-  paper: string;
-  /** Outside the map: a darker sheet with hatching. */
+  /** The habitat floor inside the map. */
+  floor: string;
+  /** Beyond the map edge: the ring's wall. */
   outside: string;
-  hatch: string;
-  gridMinor: string;
-  gridMajor: string;
-  /** Sector grid of the minimap sheet. */
-  minimapGrid: string;
-  /** Map edge cut line. */
+  /** Solid contour arcs (every third) and the dotted ones between. */
+  contour: string;
+  contourDot: string;
+  /** Grass tufts and pebbles. */
+  tuft: string;
+  pebble: string;
+  /** Map edge line and the dotted lights just outside it. */
   edge: string;
-  edgeOver: string;
-  label: string;
-  labelHalo: string;
-  labelSub: string;
+  lights: string;
+  /** Coin shadows on the floor: ink and its alpha. */
+  shadow: string;
+  shadowAlpha: number;
+  /** Minimap disc and its rings. */
+  mapDisc: string;
+  mapRing: string;
 }
 
 export const WORLD_THEMES: Record<'light' | 'dark', WorldTheme> = {
   light: {
-    paper: PAPER,
-    outside: '#EBE1CC',
-    hatch: 'rgba(27,23,50,0.11)',
-    // light-blue millimetre paper (tokens.css --grid)
-    gridMinor: 'rgba(40,130,235,0.15)',
-    gridMajor: 'rgba(40,130,235,0.32)',
-    minimapGrid: 'rgba(40,130,235,0.38)',
-    edge: INK,
-    edgeOver: RISO.fluoPink,
-    label: INK,
-    labelHalo: CARD_PAPER,
-    labelSub: INK_2,
+    floor: ELYSIUM.trench,
+    outside: ELYSIUM.deep,
+    contour: ELYSIUM.current,
+    contourDot: ELYSIUM.current,
+    tuft: ELYSIUM.current,
+    pebble: ELYSIUM.reef,
+    edge: ELYSIUM.current,
+    lights: ELYSIUM.teal,
+    shadow: INK,
+    shadowAlpha: 0.45,
+    mapDisc: INK,
+    mapRing: ELYSIUM.current,
   },
   dark: {
-    paper: NIGHT.paper,
-    outside: '#0E0A1F',
-    hatch: 'rgba(245,238,220,0.07)',
-    gridMinor: 'rgba(120,160,255,0.09)',
-    gridMajor: 'rgba(120,160,255,0.21)',
-    minimapGrid: 'rgba(120,160,255,0.24)',
-    edge: NIGHT.ink,
-    edgeOver: RISO.fluoPink,
-    label: NIGHT.ink,
-    labelHalo: NIGHT.paper,
-    labelSub: NIGHT.ink2,
+    floor: ELYSIUM.abyss,
+    outside: SHADE.abyss,
+    contour: ELYSIUM.reef,
+    contourDot: ELYSIUM.reef,
+    tuft: SHADE.current,
+    pebble: SHADE.reef,
+    edge: ELYSIUM.reef,
+    lights: SHADE.teal,
+    shadow: '#000507',
+    shadowAlpha: 0.8,
+    mapDisc: SHADE.abyss,
+    mapRing: ELYSIUM.reef,
   },
 };
+
+/** Contour arcs: concentric circles around a point below the map (the floor curving up like the ring). */
+const CONTOUR_STEP = 250;
+/** Grass tuft / pebble grid cell (world units); about a third of the cells get one. */
+const TUFT_CELL = 210;
+/** Map edge corner radius (world units): the floor curves up into the wall. */
+const EDGE_RADIUS = 220;
+
+/** Cheap integer hash of a grid cell (stable decorations, no storage). */
+function cellHash(i: number, j: number): number {
+  let h = (Math.imul(i, 374761393) + Math.imul(j, 668265263)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return (h ^ (h >>> 16)) >>> 0;
+}
 
 /**
  * Canvas pixel ratio: capped at 2, and at 1.5 on coarse pointers (phones),
@@ -79,6 +102,9 @@ const byRadius = (a: CEntity, b: CEntity): number => a.r - b.r;
 
 /** Loot is drawn bigger by size tier (0 crumb … 3 jackpot). */
 const LOOT_SCALE = [0.8, 1, 1.3, 1.75];
+
+/** Coins at least this big (world radius, mass 256) wear the smug face at rest. */
+const SMUG_R = 160;
 
 export interface FrameInput {
   now: number;
@@ -118,8 +144,6 @@ export class Renderer {
   levels: QualityLevel[] = qualityLevels(1);
   private level = 0;
   private rain: RainCoin[] = [];
-  private hatch: CanvasPattern | null = null;
-  private hatchNight: boolean | null = null;
   private readonly looks = new LookCache();
   private readonly labels = new LabelCache();
   // per-frame scratch (reused, so drawing allocates nothing in the steady state)
@@ -133,19 +157,12 @@ export class Renderer {
   private readonly emoteBest = new Map<number, CEntity>();
   /** Device px per world unit of the frame being drawn. */
   private ppu = 1;
-  private readonly halftone = (r: number, sp: number) => this.sprites.halftone(r, sp, this.ppu);
+  /** When each coin last grew (its laugh is held for a moment). */
+  private readonly grewAt = new WeakMap<CEntity, number>();
   private readonly interior = (look: CoinLook, r: number) => this.sprites.coinInterior(look, r, this.ppu);
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext('2d', { alpha: false })!;
-    // a minimap sheet drawn before the mono web font arrived keeps the fallback face: redraw it
-    if (typeof document !== 'undefined' && document.fonts) {
-      const reset = () => {
-        if (this.sheet) this.sheet.key = '';
-      };
-      void document.fonts.ready.then(reset);
-      document.fonts.addEventListener?.('loadingdone', reset);
-    }
   }
 
   resize(w: number, h: number, quality: Quality = this.quality): void {
@@ -188,19 +205,18 @@ export class Renderer {
   draw(f: FrameInput): void {
     const { ctx } = this;
     const cam = f.camera;
-    const theme = WORLD_THEMES[f.settings.theme];
-    const night = f.settings.theme === 'dark';
+    const theme = WORLD_THEMES[f.settings.theme] ?? WORLD_THEMES.light;
     const z = cam.zoom;
     const low = f.settings.quality === 'low' || this.autoLow;
     const still = low || f.reduced;
 
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    ctx.fillStyle = theme.paper;
+    ctx.fillStyle = theme.floor;
     ctx.fillRect(0, 0, cam.w, cam.h);
 
     ctx.setTransform(this.dpr * z, 0, 0, this.dpr * z, this.dpr * (cam.w / 2 - cam.x * z), this.dpr * (cam.h / 2 - cam.y * z));
     const view = cam.visibleRect(60);
-    this.drawPaper(view, f, theme, night);
+    this.drawFloor(view, f, theme);
 
     // collect visible entities (into arrays reused across frames: no per-frame garbage)
     const { food, ejects, loot, powerUps, bodies, cells } = this;
@@ -226,21 +242,11 @@ export class Renderer {
       }
     }
 
-    // food: riso confetti (pops in, golden coins get a dashed mustard halo)
+    // food: seeds, grapes and pears over their own glow (pops in); the golden drachma breathes
     for (const e of food) {
       const pop = Math.min(1, (f.now - e.born) / 220);
-      const sz = e.r * (0.4 + 0.6 * (1 - (1 - pop) ** 3));
-      if (e.variant === 7) {
-        ctx.save();
-        ctx.strokeStyle = RISO.mustard;
-        ctx.lineWidth = Math.max(e.r * 0.14, 1.5 / z);
-        ctx.setLineDash([e.r * 0.3, e.r * 0.24]);
-        ctx.lineDashOffset = still ? 0 : -f.now / 120;
-        ctx.beginPath();
-        ctx.arc(e.x, e.y, e.r * 1.55, 0, TAU);
-        ctx.stroke();
-        ctx.restore();
-      }
+      let sz = e.r * (0.4 + 0.6 * (1 - (1 - pop) ** 3));
+      if (e.variant === 7 && !still) sz *= 1 + Math.sin(f.now / 420 + e.seed * 20) * 0.05;
       drawSprite(ctx, this.sprites.foodSprite(e.variant, e.seed), e.x, e.y, sz);
     }
 
@@ -250,18 +256,38 @@ export class Renderer {
 
     for (const e of powerUps) this.drawPowerUp(e, f, still);
 
-    // cells and cacti: small first so bigger ones cover them
+    // cells and thorn bushes: small first so bigger ones cover them
     bodies.sort(byRadius);
     for (const b of bodies) if (b.kind === EntityKind.Cell) cells.push(b);
+
+    // shadows on the floor, all before any body (one path, one fill)
+    ctx.beginPath();
+    let shadows = 0;
+    for (const e of bodies) {
+      if (e.r * z < 6) continue;
+      const r = e.kind === EntityKind.Virus ? e.r * 0.95 : e.r;
+      ctx.moveTo(e.x + r * 0.76, e.y + r * 1.06);
+      ctx.ellipse(e.x, e.y + r * 1.06, r * 0.76, r * 0.12, 0, 0, TAU);
+      shadows++;
+    }
+    if (shadows) {
+      ctx.globalAlpha = theme.shadowAlpha;
+      ctx.fillStyle = theme.shadow;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
     this.ppu = z * this.dpr;
-    const { halftone, interior } = this;
+    const { interior } = this;
     for (const e of bodies) {
       if (e.kind === EntityKind.Virus) {
         const wob = still ? 0 : Math.sin(f.now / 700 + e.seed * 10) * 0.04;
         drawSprite(ctx, this.sprites.cactusSprite(), e.x, e.y, e.r, wob);
         continue;
       }
-      this.drawCell(e, f, cells, halftone, interior);
+      this.drawCell(e, f, cells, interior, still);
+      // its name sticker (bigger coins drawn later cover the stickers of smaller ones)
+      this.drawLabel(e, f, view);
     }
 
     // emote stickers on top of everything
@@ -274,109 +300,145 @@ export class Renderer {
     this.drawCoinRain(f);
   }
 
-  /** Paper stock: millimetre grid inside the map, hatched margin outside, grain, cut-line edge. */
-  private drawPaper(view: { x0: number; y0: number; x1: number; y1: number }, f: FrameInput, theme: WorldTheme, night: boolean): void {
+  /**
+   * The floor: flat night paint, contour arcs (solid every third, dotted between),
+   * sparse grass tufts and pebbles, and beyond the edge the ring's wall with a
+   * row of dotted lights. Line widths are constant on screen; decorations are
+   * anchored to the world (hashed grid, nothing stored).
+   */
+  private drawFloor(view: { x0: number; y0: number; x1: number; y1: number }, f: FrameInput, theme: WorldTheme): void {
     const { ctx } = this;
     const w = f.world;
     const z = f.camera.zoom;
+    const W = w.width;
+    const H = w.height;
+    const er = Math.min(EDGE_RADIUS, W / 4, H / 4);
 
-    // outside the map: a darker sheet with diagonal hatching
-    if (view.x0 < 0 || view.y0 < 0 || view.x1 > w.width || view.y1 > w.height) {
-      ctx.save();
+    // beyond the edge: the wall (only when the view reaches it)
+    const nearEdge = view.x0 < er || view.y0 < er || view.x1 > W - er || view.y1 > H - er;
+    if (nearEdge) {
       ctx.beginPath();
       ctx.rect(view.x0 - 10, view.y0 - 10, view.x1 - view.x0 + 20, view.y1 - view.y0 + 20);
-      ctx.rect(0, 0, w.width, w.height);
-      ctx.clip('evenodd');
+      ctx.roundRect(0, 0, W, H, er);
       ctx.fillStyle = theme.outside;
-      ctx.fillRect(view.x0 - 10, view.y0 - 10, view.x1 - view.x0 + 20, view.y1 - view.y0 + 20);
-      const hatch = this.hatchPattern(theme, night);
-      if (hatch) {
-        // anchored to the world, constant on-screen spacing
-        hatch.setTransform(new DOMMatrix().scaleSelf(1 / z, 1 / z));
-        ctx.fillStyle = hatch;
-        ctx.fillRect(view.x0 - 10, view.y0 - 10, view.x1 - view.x0 + 20, view.y1 - view.y0 + 20);
+      ctx.fill('evenodd');
+    }
+
+    ctx.save();
+    if (nearEdge) {
+      ctx.beginPath();
+      ctx.roundRect(0, 0, W, H, er);
+      ctx.clip();
+    }
+    // contour arcs, centred below the map; only the visible stretch of each is stroked
+    const cx = W / 2;
+    const cy = H * 1.3;
+    let dMax = 0;
+    let aMin = Infinity;
+    let aMax = -Infinity;
+    for (let c = 0; c < 4; c++) {
+      const x = c & 1 ? view.x1 : view.x0;
+      const y = c & 2 ? view.y1 : view.y0;
+      dMax = Math.max(dMax, Math.hypot(x - cx, y - cy));
+      const a = Math.atan2(y - cy, x - cx);
+      aMin = Math.min(aMin, a);
+      aMax = Math.max(aMax, a);
+    }
+    const inside = cx >= view.x0 && cx <= view.x1 && cy >= view.y0 && cy <= view.y1;
+    const dMin = inside ? 0 : Math.hypot(Math.max(view.x0 - cx, 0, cx - view.x1), Math.max(view.y0 - cy, 0, cy - view.y1));
+    if (inside || aMax - aMin > Math.PI) {
+      aMin = 0;
+      aMax = Math.PI * 2;
+    }
+    const k0 = Math.max(1, Math.ceil(dMin / CONTOUR_STEP));
+    const k1 = Math.floor(dMax / CONTOUR_STEP);
+    ctx.lineCap = 'round';
+    for (let pass = 0; pass < 2; pass++) {
+      const solid = pass === 0;
+      ctx.strokeStyle = solid ? theme.contour : theme.contourDot;
+      ctx.lineWidth = (solid ? 3 : 2.4) / z;
+      ctx.setLineDash(solid ? [] : [0.01, 12 / z]);
+      ctx.beginPath();
+      for (let k = k0; k <= k1; k++) {
+        if ((k % 3 === 0) !== solid) continue;
+        const R = k * CONTOUR_STEP;
+        ctx.moveTo(cx + Math.cos(aMin) * R, cy + Math.sin(aMin) * R);
+        ctx.arc(cx, cy, R, aMin, aMax);
       }
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+
+    // grass tufts and pebbles: one path each (skipped when they would be specks)
+    if (TUFT_CELL * z > 26) {
+      const i0 = Math.max(0, Math.floor(view.x0 / TUFT_CELL));
+      const i1 = Math.min(Math.ceil(W / TUFT_CELL), Math.ceil(view.x1 / TUFT_CELL));
+      const j0 = Math.max(0, Math.floor(view.y0 / TUFT_CELL));
+      const j1 = Math.min(Math.ceil(H / TUFT_CELL), Math.ceil(view.y1 / TUFT_CELL));
+      ctx.beginPath();
+      let pebbles = 0;
+      for (let pass = 0; pass < 2; pass++) {
+        if (pass === 1) {
+          if (pebbles) {
+            ctx.fillStyle = theme.pebble;
+            ctx.fill();
+          }
+          ctx.beginPath();
+        }
+        for (let i = i0; i < i1; i++) {
+          for (let j = j0; j < j1; j++) {
+            const h = cellHash(i, j);
+            const kind = h % 9;
+            if (kind > 2 || (kind === 2) !== (pass === 0)) continue;
+            const x = (i + 0.15 + ((h >>> 4) % 70) / 100) * TUFT_CELL;
+            const y = (j + 0.15 + ((h >>> 11) % 70) / 100) * TUFT_CELL;
+            if (pass === 0) {
+              const rx = 7 + ((h >>> 18) % 8);
+              ctx.moveTo(x + rx, y);
+              ctx.ellipse(x, y, rx, rx * 0.45, 0, 0, Math.PI * 2);
+              pebbles++;
+            } else {
+              const u = 1.7 + ((h >>> 18) % 5) * 0.12;
+              ctx.moveTo(x - 4 * u, y - 9 * u);
+              ctx.lineTo(x, y);
+              ctx.lineTo(x, y - 11 * u);
+              ctx.moveTo(x, y);
+              ctx.lineTo(x + 4 * u, y - 9 * u);
+            }
+          }
+        }
+      }
+      ctx.strokeStyle = theme.tuft;
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = Math.min(2.5 / z, 5);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // the edge: a line where the floor meets the wall, and the wall's dotted lights
+    if (nearEdge) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.roundRect(0, 0, W, H, er);
+      ctx.strokeStyle = INK;
+      ctx.lineWidth = 8 / z;
+      ctx.stroke();
+      ctx.strokeStyle = theme.edge;
+      ctx.lineWidth = 3 / z;
+      ctx.stroke();
+      const off = 18 / z;
+      ctx.beginPath();
+      ctx.roundRect(-off, -off, W + off * 2, H + off * 2, er + off);
+      ctx.strokeStyle = theme.lights;
+      ctx.lineWidth = 3.4 / z;
+      ctx.lineCap = 'round';
+      ctx.setLineDash([0.01, 16 / z]);
+      ctx.stroke();
       ctx.restore();
     }
-
-    // millimetre grid: minor 20 u, major every 5th; minor fades out when zoomed out.
-    // Axis-aligned hairlines are filled as thin rects (cheaper than stroking a path).
-    const gx0 = Math.max(0, view.x0);
-    const gx1 = Math.min(w.width, view.x1);
-    const gy0 = Math.max(0, view.y0);
-    const gy1 = Math.min(w.height, view.y1);
-    let minor = 20;
-    while (minor * z < 6) minor *= 5;
-    const major = minor * 5;
-    const minorPx = minor * z;
-    if (minorPx < 40) {
-      const t = 1 / z;
-      ctx.globalAlpha = Math.min(1, (minorPx - 6) / 6 + 0.25);
-      ctx.fillStyle = theme.gridMinor;
-      for (let x = Math.ceil(gx0 / minor) * minor; x <= gx1; x += minor) if (x % major !== 0) ctx.fillRect(x - t / 2, gy0, t, gy1 - gy0);
-      for (let y = Math.ceil(gy0 / minor) * minor; y <= gy1; y += minor) if (y % major !== 0) ctx.fillRect(gx0, y - t / 2, gx1 - gx0, t);
-      ctx.globalAlpha = 1;
-    }
-    const tm = 1.25 / z;
-    ctx.fillStyle = theme.gridMajor;
-    for (let x = Math.ceil(gx0 / major) * major; x <= gx1; x += major) ctx.fillRect(x - tm / 2, gy0, tm, gy1 - gy0);
-    for (let y = Math.ceil(gy0 / major) * major; y <= gy1; y += major) ctx.fillRect(gx0, y - tm / 2, gx1 - gx0, tm);
-
-    // the map edge: a dashed cut line printed twice (pink pass misregistered).
-    // Only the stretches on screen are stroked; the dash phase is anchored to the map.
-    const lw = 2.6 / z;
-    const dash = [15 / z, 9 / z];
-    const off = 2.2 / z;
-    ctx.save();
-    ctx.lineWidth = lw;
-    ctx.setLineDash(dash);
-    const edge = (dx: number, color: string) => {
-      ctx.strokeStyle = color;
-      const side = (horizontal: boolean, at: number, from: number, to: number) => {
-        const a = Math.max(from, horizontal ? view.x0 : view.y0);
-        const b = Math.min(to, horizontal ? view.x1 : view.y1);
-        if (b <= a || at < (horizontal ? view.y0 : view.x0) - lw || at > (horizontal ? view.y1 : view.x1) + lw) return;
-        ctx.lineDashOffset = a - from;
-        ctx.beginPath();
-        if (horizontal) {
-          ctx.moveTo(a, at);
-          ctx.lineTo(b, at);
-        } else {
-          ctx.moveTo(at, a);
-          ctx.lineTo(at, b);
-        }
-        ctx.stroke();
-      };
-      side(true, dx, dx, w.width + dx);
-      side(true, w.height + dx, dx, w.width + dx);
-      side(false, dx, dx, w.height + dx);
-      side(false, w.width + dx, dx, w.height + dx);
-    };
-    edge(off, theme.edgeOver);
-    edge(0, theme.edge);
-    ctx.restore();
   }
 
-  private hatchPattern(theme: WorldTheme, night: boolean): CanvasPattern | null {
-    if (this.hatchNight !== night || !this.hatch) {
-      const c = document.createElement('canvas');
-      c.width = c.height = 14;
-      const h = c.getContext('2d')!;
-      h.strokeStyle = theme.hatch;
-      h.lineWidth = 1.4;
-      h.beginPath();
-      for (let k = -14; k <= 28; k += 7) {
-        h.moveTo(k, 14);
-        h.lineTo(k + 14, 0);
-      }
-      h.stroke();
-      this.hatch = this.ctx.createPattern(c, 'repeat');
-      this.hatchNight = night;
-    }
-    return this.hatch;
-  }
-
-  /** Loot: a mustard "$" coin sized by tier, flipping while it slides, with a periodic glint. */
+  /** Loot: a gold "$" coin sized by tier over a breathing sun glow, flipping while it slides, with a periodic glint. */
   private drawLoot(e: CEntity, f: FrameInput, still: boolean): void {
     const { ctx } = this;
     const tier = Math.max(0, Math.min(3, e.variant));
@@ -384,11 +446,16 @@ export class Renderer {
     const popE = 1 + 0.25 * Math.sin(Math.min(1, pop) * Math.PI) * (1 - pop * 0.4);
     const r = e.r * LOOT_SCALE[tier] * (e.dying ? 1 : Math.min(1, pop * 1.6)) * (still ? 1 : popE);
     const sp = still ? 0 : Math.hypot(e.nx - e.ox, e.ny - e.oy);
-    // drop shadow: a halftone-ish ink offset under the coin
-    ctx.globalAlpha = 0.16;
-    ctx.fillStyle = INK;
+    // sun glow: two flat discs (no blur), breathing
+    const breathe = still ? 1 : 1 + Math.sin(f.now / 500 + e.seed * 30) * 0.08;
+    ctx.fillStyle = ELYSIUM.sun;
+    ctx.globalAlpha = 0.13;
     ctx.beginPath();
-    ctx.ellipse(e.x + r * 0.16, e.y + r * 0.22, r * 0.98, r * 0.9, 0, 0, TAU);
+    ctx.arc(e.x, e.y, r * 1.75 * breathe, 0, TAU);
+    ctx.fill();
+    ctx.globalAlpha = 0.16;
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, r * 1.3 * breathe, 0, TAU);
     ctx.fill();
     ctx.globalAlpha = 1;
     const sprite = this.sprites.lootSprite();
@@ -410,6 +477,7 @@ export class Renderer {
     }
   }
 
+  /** Power-up: a sticker disc bobbing over a cream glow; it parachutes in when it lands. */
   private drawPowerUp(e: CEntity, f: FrameInput, still: boolean): void {
     const { ctx } = this;
     const age = f.now - e.born;
@@ -417,15 +485,21 @@ export class Renderer {
     const landing = still ? 1 : Math.min(1, age / 900);
     const drop = (1 - landing) * (1 - landing) * 260;
     const bob = still ? 0 : Math.sin(f.now / 300 + e.seed * 8) * e.r * 0.08;
-    // dashed ink halo
+    // glow and a dotted cream ring turning slowly
     ctx.save();
-    ctx.strokeStyle = INK;
-    ctx.globalAlpha = 0.5;
-    ctx.lineWidth = Math.max(e.r * 0.06, 1.2 / f.camera.zoom);
-    ctx.setLineDash([e.r * 0.2, e.r * 0.16]);
+    ctx.fillStyle = ELYSIUM.cream;
+    ctx.globalAlpha = 0.1;
+    ctx.beginPath();
+    ctx.arc(e.x, e.y + bob, e.r * 1.6, 0, TAU);
+    ctx.fill();
+    ctx.globalAlpha = 0.75;
+    ctx.strokeStyle = ELYSIUM.cream;
+    ctx.lineCap = 'round';
+    ctx.lineWidth = Math.max(e.r * 0.07, 2.4 / f.camera.zoom);
+    ctx.setLineDash([0.01, Math.max(e.r * 0.24, 9 / f.camera.zoom)]);
     ctx.lineDashOffset = still ? 0 : -f.now / 60;
     ctx.beginPath();
-    ctx.arc(e.x, e.y + bob, e.r * 1.32, 0, TAU);
+    ctx.arc(e.x, e.y + bob, e.r * 1.36, 0, TAU);
     ctx.stroke();
     ctx.restore();
     // parachute while landing
@@ -434,18 +508,23 @@ export class Renderer {
       ctx.globalAlpha = 1 - landing * 0.6;
       ctx.translate(e.x, e.y - drop - e.r * 1.6);
       ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
       ctx.lineWidth = e.r * 0.07;
       ctx.strokeStyle = INK;
-      ctx.fillStyle = RISO.mustard;
-      ctx.beginPath();
-      ctx.arc(e.r * 0.1, e.r * 0.08, e.r * 1.1, Math.PI, 0);
-      ctx.closePath();
-      ctx.fill();
-      ctx.fillStyle = RISO.fluoPink;
+      ctx.fillStyle = ELYSIUM.cream;
       ctx.beginPath();
       ctx.arc(0, 0, e.r * 1.1, Math.PI, 0);
       ctx.closePath();
       ctx.fill();
+      ctx.fillStyle = ELYSIUM.coral;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.arc(0, 0, e.r * 1.1, Math.PI * 1.36, Math.PI * 1.64);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(0, 0, e.r * 1.1, Math.PI, 0);
+      ctx.closePath();
       ctx.stroke();
       ctx.beginPath();
       for (const sx of [-1, -0.35, 0.35, 1]) {
@@ -458,13 +537,22 @@ export class Renderer {
     drawSprite(ctx, sprite, e.x, e.y - drop + bob, e.r);
   }
 
-  private drawCell(
-    e: CEntity,
-    f: FrameInput,
-    cells: CEntity[],
-    halftone: (r: number, sp: number) => CanvasImageSource | null,
-    interior: (look: CoinLook, r: number) => CoinInterior | null,
-  ): void {
+  /**
+   * The coin's mood from its state: scared near a bigger coin, chomping at prey,
+   * laughing while it grows (held 650 ms), smug when big (or in its proud moment).
+   */
+  private mood(e: CEntity, now: number): Expression {
+    const x = e.expression;
+    if (x === 'scared' || x === 'love' || x === 'sleep' || x === 'dead') return x;
+    if (x === 'hungry') return 'chomp';
+    if (e.or > 0 && e.nr > e.or * 1.001) this.grewAt.set(e, now);
+    const g = this.grewAt.get(e);
+    if (g !== undefined && now - g < 650 && now >= g) return 'proud';
+    if (x === 'proud' || e.r >= SMUG_R) return 'smug';
+    return x;
+  }
+
+  private drawCell(e: CEntity, f: FrameInput, cells: CEntity[], interior: (look: CoinLook, r: number) => CoinInterior | null, still: boolean): void {
     const { ctx } = this;
     const z = f.camera.zoom;
     const player = f.world.players.get(e.playerId);
@@ -518,14 +606,27 @@ export class Renderer {
     const dropping = mine && f.drop != null;
     const r = e.r * (dropping ? dropScale(f.drop!) : 0.6 + 0.4 * spawnPop);
     if (dropping && f.drop! < DROP_LAND) {
-      // its shadow on the paper: small and soft while high, gathering under it as it lands
+      // its shadow on the floor: small and soft while high, gathering under it as it lands
       const h = 1 - f.drop! / DROP_LAND;
       ctx.save();
-      ctx.globalAlpha = 0.22 * (1 - h * 0.6);
+      ctx.globalAlpha = 0.3 * (1 - h * 0.6);
       ctx.fillStyle = INK;
       ctx.beginPath();
       ctx.ellipse(e.x + e.r * 0.5 * h, e.y + e.r * 0.7 * h, e.r * (1 - 0.15 * h), e.r * (0.92 - 0.2 * h), 0, 0, TAU);
       ctx.fill();
+      ctx.restore();
+    }
+    // "you": a dotted sun ring turning slowly around my coins
+    if (mine && screenR > 8) {
+      ctx.save();
+      ctx.strokeStyle = ELYSIUM.sun;
+      ctx.lineCap = 'round';
+      ctx.lineWidth = 3 / z;
+      ctx.setLineDash([0.01, 10 / z]);
+      ctx.lineDashOffset = still ? 0 : -f.now / 90 / z;
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, r + Math.min(16, Math.max(8, screenR * 0.2)) / z, 0, TAU);
+      ctx.stroke();
       ctx.restore();
     }
     const look = this.lookFor(player?.skin ?? 0);
@@ -533,32 +634,51 @@ export class Renderer {
       time: f.reduced ? 0 : f.now,
       lookX: lx,
       lookY: ly,
-      expression: e.expression,
+      expression: this.mood(e, f.now),
       pxPerUnit: z,
       jelly: jellyOn ? e.jelly : null,
       flags: e.flags,
       seed: e.seed * 10 + e.playerId,
-      halftone,
       interior,
-      // live renderer speed-ups: one flat body fill,
-      // and no multiply overprint / halftone on coins under ~25 px radius
-      fastBody: true,
-      minPrintPx: 25,
+      // small coins skip the fine interior details (groove, highlight)
+      minPrintPx: 14,
     });
+  }
 
-    // labels: ink on a card halo (name in the display face, mass in mono), cached as sprites
-    if (!player || screenR < 20) return;
+  /**
+   * Name tag: a small mono sticker above the coin (name in ink, mass in teal;
+   * sun stock for me). Above a coin taller than the view it stays at the top
+   * of the screen, never lower than the coin's forehead.
+   */
+  private drawLabel(e: CEntity, f: FrameInput, view: { y0: number }): void {
     const showName = f.settings.showNames;
-    const showMass = f.settings.showMass && (mine || screenR > 34);
+    if (!showName && !f.settings.showMass) return;
+    const z = f.camera.zoom;
+    const screenR = e.r * z;
+    if (screenR < 14) return;
+    const player = f.world.players.get(e.playerId);
+    if (!player) return;
+    const mine = e.playerId === f.world.myPid;
+    const showMass = f.settings.showMass && (mine || screenR > 24);
     if (!showName && !showMass) return;
-    const fs = Math.max(r * 0.22, 12 / z);
-    const devicePx = z * this.dpr;
-    let y = e.y + r * 0.58;
-    if (showName) {
-      this.labels.draw(ctx, 'name', player.name, (player.flags & PlayerFlag.Verified) !== 0, e.x, y, fs, devicePx);
-      y += fs * 0.98;
-    }
-    if (showMass) this.labels.draw(ctx, 'mass', String(Math.floor((e.nr * e.nr) / 100)), false, e.x, y, fs * 0.7, devicePx);
+    const fs = Math.min(15, Math.max(11, screenR * 0.11)) / z;
+    const h = fs * 1.78;
+    const ring = mine ? Math.min(16, Math.max(8, screenR * 0.2)) / z : 0;
+    let y = e.y - e.r - ring - h / 2 - 7 / z;
+    const top = view.y0 + 60 + h / 2 + 8 / z;
+    if (y < top) y = Math.min(top, e.y - e.r * 0.5);
+    this.labels.drawSticker(this.ctx, {
+      name: showName ? player.name : null,
+      value: showMass ? String(Math.floor((e.nr * e.nr) / 100)) : null,
+      verified: (player.flags & PlayerFlag.Verified) !== 0,
+      mine,
+      x: e.x,
+      y,
+      fs,
+      devicePx: z * this.dpr,
+      zoom: z,
+      alpha: e.dying ? 0.6 : 1,
+    });
   }
 
   /** Emote stickers: pop in with an overshoot, tilt, bob, then peel away. */
@@ -595,7 +715,7 @@ export class Renderer {
     }
   }
 
-  /** Coin rain (screen space): flat mustard riso coins tumbling down. */
+  /** Coin rain (screen space): gold coins (ink edge, one shade tone) tumbling down. */
   private drawCoinRain(f: FrameInput): void {
     const { ctx } = this;
     const cam = f.camera;
@@ -608,7 +728,7 @@ export class Renderer {
           r: 6 + f.rand() * 9,
           rot: f.rand() * 6,
           vr: (f.rand() - 0.5) * 8,
-          ink: f.rand() < 0.75 ? RISO.mustard : RISO.fluoPink,
+          ink: f.rand() < 0.8 ? ELYSIUM.sun : ELYSIUM.cream,
         });
       }
     }
@@ -622,17 +742,18 @@ export class Renderer {
       ctx.save();
       ctx.translate(c.x, c.y);
       ctx.scale(Math.abs(Math.cos(c.rot)) * 0.85 + 0.15, 1);
-      ctx.globalAlpha = 0.92;
-      ctx.fillStyle = RISO.orange;
-      ctx.beginPath();
-      ctx.arc(c.r * 0.15, c.r * 0.15, c.r, 0, TAU);
-      ctx.fill();
-      ctx.fillStyle = c.ink;
+      ctx.fillStyle = c.ink === ELYSIUM.sun ? SHADE.sun : SHADE.cream;
       ctx.beginPath();
       ctx.arc(0, 0, c.r, 0, TAU);
       ctx.fill();
+      ctx.fillStyle = c.ink;
+      ctx.beginPath();
+      ctx.arc(-c.r * 0.12, -c.r * 0.16, c.r * 0.86, 0, TAU);
+      ctx.fill();
       ctx.strokeStyle = INK;
-      ctx.lineWidth = c.r * 0.2;
+      ctx.lineWidth = Math.min(2.5, c.r * 0.22);
+      ctx.beginPath();
+      ctx.arc(0, 0, c.r, 0, TAU);
       ctx.stroke();
       ctx.restore();
     }
@@ -641,40 +762,49 @@ export class Renderer {
 
   private sheet: { canvas: HTMLCanvasElement; key: string } | null = null;
 
-  /** The minimap's static layer: blue sector grid with mono sector labels. */
+  /**
+   * The minimap's static layer: a night porthole (the arena seen from above)
+   * with an ink edge, the floor's contour rings and the dotted wall lights.
+   */
   private minimapSheet(px: number, size: number, dpr: number, wt: WorldTheme): HTMLCanvasElement {
-    const key = `${px}|${size}|${dpr}|${wt.minimapGrid}|${wt.labelSub}`;
+    const key = `${px}|${size}|${dpr}|${wt.mapDisc}|${wt.mapRing}`;
     if (this.sheet?.key === key) return this.sheet.canvas;
     const canvas = this.sheet?.canvas ?? document.createElement('canvas');
     canvas.width = canvas.height = px;
     const ctx = canvas.getContext('2d')!;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, size, size);
-    ctx.strokeStyle = wt.minimapGrid;
-    ctx.lineWidth = 1;
+    const c = size / 2;
+    const R = size / 2 - 2;
     ctx.beginPath();
-    for (let i = 1; i < 5; i++) {
-      const p = Math.round((size * i) / 5) + 0.5;
-      ctx.moveTo(p, 0);
-      ctx.lineTo(p, size);
-      ctx.moveTo(0, p);
-      ctx.lineTo(size, p);
-    }
+    ctx.arc(c, c, R, 0, TAU);
+    ctx.fillStyle = wt.mapDisc;
+    ctx.fill();
+    ctx.strokeStyle = wt.mapRing;
+    ctx.lineCap = 'round';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(c, c, R * 0.8, 0, TAU);
     ctx.stroke();
-    ctx.fillStyle = wt.labelSub;
-    ctx.globalAlpha = 0.7;
-    ctx.font = `500 8.5px ${MONO_FONT}`;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    for (let cx = 0; cx < 5; cx++) for (let cy = 0; cy < 5; cy++) ctx.fillText(`${'ABCDE'[cy]}${cx + 1}`, cx * (size / 5) + 3, cy * (size / 5) + 3);
+    ctx.setLineDash([0.01, 5]);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(c, c, R * 0.53, 0, TAU);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(c, c, R, 0, TAU);
+    ctx.stroke();
     this.sheet = { canvas, key };
     return canvas;
   }
 
   /**
-   * Minimap as a map sheet ("pafta"): card stock, blue sector grid with mono
-   * sector labels, dashed view frame, mustard crowns for the leaders and a
-   * pink pin for me.
+   * Minimap as the round porthole of the reference plate: the night disc with
+   * its contour rings, the arena square inside it, a cream frame for the view,
+   * sun dots for the leaders and a cyan dot (with a pulsing ring) for me.
    */
   drawMinimap(
     mm: HTMLCanvasElement,
@@ -689,53 +819,56 @@ export class Renderer {
       mm.height = Math.round(size * dpr);
     }
     const wt = WORLD_THEMES[f.dark ? 'dark' : 'light'];
-    const ink = wt.label;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, mm.width, mm.height);
-    // the sheet (sector grid and labels) never changes: drawn once per size and theme, then copied
+    // the disc never changes: drawn once per size and theme, then copied
     ctx.drawImage(this.minimapSheet(mm.width, size, dpr, wt), 0, 0);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const s = size / Math.max(f.world.width, f.world.height);
+    // the arena square inscribed in the disc
+    const inner = (size / 2 - 2) * Math.SQRT2 * 0.9;
+    const o = (size - inner) / 2;
+    const s = inner / Math.max(f.world.width, f.world.height);
+    const px = (x: number) => o + x * s;
+    const py = (y: number) => o + y * s;
 
-    // camera view: dashed frame
+    // the arena's edge
+    ctx.strokeStyle = wt.mapRing;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.roundRect(o, o, inner, inner, inner * 0.04);
+    ctx.stroke();
+
+    // camera view: a cream frame (clamped to the arena)
     const v = f.camera.visibleRect();
-    ctx.save();
-    ctx.strokeStyle = ink;
-    ctx.globalAlpha = 0.6;
-    ctx.lineWidth = 1.2;
-    ctx.setLineDash([3, 2.5]);
-    ctx.strokeRect(Math.max(0, v.x0 * s), Math.max(0, v.y0 * s), Math.min(size, (v.x1 - v.x0) * s), Math.min(size, (v.y1 - v.y0) * s));
-    ctx.restore();
+    const x0 = px(Math.max(0, v.x0));
+    const y0 = py(Math.max(0, v.y0));
+    const x1 = px(Math.min(f.world.width, v.x1));
+    const y1 = py(Math.min(f.world.height, v.y1));
+    ctx.strokeStyle = ELYSIUM.cream;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.roundRect(x0, y0, Math.max(2, x1 - x0), Math.max(2, y1 - y0), 3);
+    ctx.stroke();
 
-    // leaders: little mustard crowns
-    f.leaders.forEach((l) => {
-      const x = l.x * s;
-      const y = l.y * s;
-      ctx.fillStyle = RISO.mustard;
-      ctx.strokeStyle = INK;
-      ctx.lineWidth = 1.1;
-      ctx.lineJoin = 'round';
+    // leaders: sun dots with ink edges
+    ctx.fillStyle = ELYSIUM.sun;
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 1.4;
+    for (const l of f.leaders) {
       ctx.beginPath();
-      ctx.moveTo(x - 5, y + 3);
-      ctx.lineTo(x - 5, y - 3);
-      ctx.lineTo(x - 2.5, y);
-      ctx.lineTo(x, y - 4.5);
-      ctx.lineTo(x + 2.5, y);
-      ctx.lineTo(x + 5, y - 3);
-      ctx.lineTo(x + 5, y + 3);
-      ctx.closePath();
+      ctx.arc(px(l.x), py(l.y), 3.6, 0, TAU);
       ctx.fill();
       ctx.stroke();
-    });
+    }
 
-    // me: a pink pin with a ring that pulses outward
+    // me: a cyan dot with a ring that pulses outward
     const me = f.world.myStats();
     if (me) {
-      const x = me.x * s;
-      const y = me.y * s;
+      const x = px(me.x);
+      const y = py(me.y);
       if (!f.reduced) {
         const p = (f.now / 1400) % 1;
-        ctx.strokeStyle = RISO.fluoPink;
+        ctx.strokeStyle = ELYSIUM.cyan;
         ctx.globalAlpha = 1 - p;
         ctx.lineWidth = 1.5;
         ctx.beginPath();
@@ -743,7 +876,7 @@ export class Renderer {
         ctx.stroke();
         ctx.globalAlpha = 1;
       }
-      ctx.fillStyle = RISO.fluoPink;
+      ctx.fillStyle = ELYSIUM.cyan;
       ctx.strokeStyle = INK;
       ctx.lineWidth = 1.6;
       ctx.beginPath();

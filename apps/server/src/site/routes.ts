@@ -1,12 +1,29 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { SITE_LIMITS, type SiteError, type SiteSettings } from '@slana/shared';
+import { SITE_LIMITS, type GameAccess, type SiteError, type SiteSettings } from '@elymum/shared';
 import type { Auth } from '../auth';
+import type { ChainGateway } from '../chain/types';
 import { integrityRoutes } from '../integrity/routes';
 import type { IntegrityService } from '../integrity/service';
 import type { ServerConfig } from '../config';
 import { Limiter } from '../net/limiter';
+import { ProfileError, type ProfileStore } from '../profiles';
+import type { Journal } from '../stake/journal';
+import { clearContract, registerContract, type ContractsStore } from './contracts';
+import { emblemSvg } from './emblem';
+import { parseNftPath, type MintService } from './mint';
 import type { SiteStore } from './store';
 import { SiteFail, obj } from './validate';
+
+/** What the site needs besides its own store; every part is optional (bare unit tests). */
+export interface SiteExtras {
+  chain?: ChainGateway;
+  contracts?: ContractsStore;
+  mint?: MintService;
+  profiles?: ProfileStore;
+  journal?: Journal;
+  /** Public base URL (`PUBLIC_URL`; the request host only in development): NFT metadata links. */
+  baseUrl?: (req: IncomingMessage) => string;
+}
 
 export interface SiteLimits {
   /** Writes to `/api/site/*` per IP. */
@@ -70,10 +87,12 @@ export function bearerWallet(auth: Auth, req: IncomingMessage): string | null {
 }
 
 /**
- * The slana.io site API: wallet login over HTTP, `/api/site/*` (public + the signed-in applicant)
- * and `/api/admin/*` (a session of an `ADMIN_WALLETS` wallet).
+ * The Elymum site API: wallet sign-in over HTTP (SIWE), `/api/site/*` (public + the signed-in
+ * applicant), `/api/profile`, the NFT metadata (`/api/nft/*`) and `/api/admin/*` (a session of an
+ * `ADMIN_WALLETS` wallet).
  */
 export class SiteApi {
+  /** Admin wallets, lower-case. */
   private readonly admins: Set<string>;
   /** Cheat and collusion detection (`/api/admin/integrity/*`); absent in bare unit tests. */
   private integrity: IntegrityService | null = null;
@@ -83,35 +102,64 @@ export class SiteApi {
     private readonly auth: Auth,
     readonly store: SiteStore,
     private readonly limits: SiteLimits = defaultSiteLimits(),
+    private readonly ext: SiteExtras = {},
   ) {
-    this.admins = new Set(cfg.adminWallets);
+    this.admins = new Set(cfg.adminWallets.map((w) => w.toLowerCase()));
   }
 
   setIntegrity(svc: IntegrityService | null): void {
     this.integrity = svc;
   }
 
+  /** Admin wallets compare case-insensitively (stored checksummed). */
   isAdmin(wallet: string | null | undefined): boolean {
-    return !!wallet && this.admins.has(wallet);
+    return !!wallet && this.admins.has(wallet.toLowerCase());
   }
 
-  /** Whether `wallet` may enter game rooms: the game is public (env or setting), or an admin. */
-  gameOpenFor(wallet: string | null | undefined): boolean {
-    return this.cfg.gamePublic || this.store.settings.gamePublic || this.isAdmin(wallet);
+  /** Who may play: `GAME_ACCESS` when set, else the admin's setting. */
+  gameAccess(): GameAccess {
+    return this.cfg.gameAccess ?? this.store.settings.gameAccess;
   }
 
-  /** The settings everyone can read; `gamePublic` is the effective value. */
+  /** Whether `wallet` holds an Elymum NFT (cached 15 s, `fresh` re-reads; false without an NFT or a chain). */
+  async isHolder(wallet: string | null | undefined, fresh = false): Promise<boolean> {
+    return !!wallet && !!this.ext.mint && (await this.ext.mint.isHolder(wallet, fresh));
+  }
+
+  /**
+   * Whether `wallet` may enter game rooms: admins always; NFT holders in `holders` mode; everyone in `public`.
+   * `fresh`: the holder check skips its 15 s cache (the gateway asks so right before seating an arena ticket).
+   */
+  async gameOpenFor(wallet: string | null | undefined, fresh = false): Promise<boolean> {
+    const mode = this.gameAccess();
+    if (mode === 'public' || this.isAdmin(wallet)) return true;
+    if (mode === 'holders') return this.isHolder(wallet, fresh);
+    return false;
+  }
+
+  /** The settings everyone can read; `gameAccess` is the effective value. */
   publicSettings(): SiteSettings {
-    const s = this.store.settings;
-    return { ...s, gamePublic: s.gamePublic || this.cfg.gamePublic };
+    return { ...this.store.settings, gameAccess: this.gameAccess() };
+  }
+
+  private baseUrl(req: IncomingMessage): string {
+    return this.ext.baseUrl?.(req) ?? this.cfg.publicUrl ?? `http://localhost:${this.cfg.port}`;
+  }
+
+  private chainId(): number | null {
+    return this.ext.chain?.status().chainId ?? null;
   }
 
   /** Handles the request when the path is the site's; false otherwise. */
   async handle(req: IncomingMessage, res: ServerResponse, url: URL, ip: string): Promise<boolean> {
     const path = url.pathname;
-    if (!(path.startsWith('/api/site/') || path.startsWith('/api/admin/') || path === '/api/auth/login' || path === '/api/auth/me')) return false;
+    const mine =
+      path.startsWith('/api/site/') || path.startsWith('/api/admin/') || path.startsWith('/api/nft/') || path === '/api/auth/login' || path === '/api/auth/me' || path === '/api/profile';
+    if (!mine) return false;
     try {
       if (path === '/api/auth/login' || path === '/api/auth/me') await this.authRoutes(req, res, path, ip);
+      else if (path === '/api/profile') await this.profileRoutes(req, res, ip);
+      else if (path.startsWith('/api/nft/')) await this.nftRoutes(req, res, url);
       else if (path.startsWith('/api/site/')) await this.siteRoutes(req, res, url, ip);
       else await this.adminRoutes(req, res, url);
     } catch (err) {
@@ -138,16 +186,50 @@ export class SiteApi {
     if (path === '/api/auth/me') {
       this.method(req, 'GET');
       const wallet = this.session(req);
-      return send(res, 200, { pubkey: wallet, admin: this.isAdmin(wallet) });
+      const [holder, canPlay] = await Promise.all([this.isHolder(wallet), this.gameOpenFor(wallet)]);
+      return send(res, 200, { address: wallet, admin: this.isAdmin(wallet), holder, canPlay });
     }
     this.method(req, 'POST');
     if (!this.limits.login.allow(ip)) throw new SiteFail(429, 'rate_limited', 'Too many sign-ins. Wait a moment.');
     const body = await readJson(req);
-    const { pubkey, message, signature } = body;
-    if (typeof pubkey !== 'string' || typeof message !== 'string' || typeof signature !== 'string' || !this.auth.verifySignature(pubkey, message, signature)) {
-      throw new SiteFail(401, 'auth_failed', 'Wallet sign-in failed. Please sign again.');
+    const { address, message, signature } = body;
+    const wallet =
+      typeof address === 'string' && typeof message === 'string' && typeof signature === 'string' ? await this.auth.verifySignature(address, message, signature) : null;
+    if (!wallet) throw new SiteFail(401, 'auth_failed', 'Wallet sign-in failed. Please sign again.');
+    send(res, 200, { address: wallet, token: this.auth.issueToken(wallet), admin: this.isAdmin(wallet) });
+  }
+
+  /** `GET /api/profile` and `PUT /api/profile {name, skin}` (signed-in). */
+  private async profileRoutes(req: IncomingMessage, res: ServerResponse, ip: string): Promise<void> {
+    const profiles = this.ext.profiles;
+    if (!profiles) throw new SiteFail(404, 'not_found', 'Not found');
+    if (this.method(req, 'GET', 'PUT') === 'GET') return send(res, 200, { profile: profiles.view(this.session(req)) });
+    const wallet = this.writer(req, ip);
+    try {
+      return send(res, 200, { profile: profiles.update(wallet, await readJson(req)) });
+    } catch (err) {
+      if (err instanceof ProfileError) throw new SiteFail(400, 'bad_request', err.message, err.field);
+      throw err;
     }
-    send(res, 200, { pubkey, token: this.auth.issueToken(pubkey), admin: this.isAdmin(pubkey) });
+  }
+
+  /** `GET /api/nft/contract`, `/api/nft/<id>` (JSON) and `/api/nft/<id>.svg`: minted ids only. */
+  private async nftRoutes(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+    this.method(req, 'GET');
+    const mint = this.ext.mint;
+    const rest = url.pathname.slice('/api/nft/'.length);
+    if (!mint) throw new SiteFail(404, 'not_found', 'Not found');
+    const base = this.baseUrl(req);
+    if (rest === 'contract') return send(res, 200, await mint.contractMetadata(base));
+    const parsed = parseNftPath(rest);
+    if (!parsed || !(await mint.minted(parsed.id))) throw new SiteFail(404, 'not_found', 'No such token');
+    if (parsed.svg) {
+      res.writeHead(200, { 'Content-Type': 'image/svg+xml; charset=utf-8', 'Cache-Control': 'public, max-age=86400' });
+      res.end(emblemSvg(parsed.id));
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'public, max-age=300' });
+    res.end(JSON.stringify(mint.metadata(parsed.id, base)));
   }
 
   /** Rate limits a write: per IP before the session is known, then per wallet. */
@@ -170,6 +252,24 @@ export class SiteApi {
         if (seg.length !== 1) break;
         this.method(req, 'GET');
         return send(res, 200, { tasks: s.publicTasks() });
+      case 'contracts':
+        if (seg.length !== 1) break;
+        this.method(req, 'GET');
+        return send(res, 200, this.ext.contracts?.effective(this.chainId()) ?? { arena: null, nft: null, token: null });
+      case 'mint': {
+        const mint = this.ext.mint;
+        if (seg.length === 1) {
+          this.method(req, 'GET');
+          if (!mint) throw new SiteFail(503, 'chain_off', 'The mint is not available on this server.');
+          return send(res, 200, await mint.publicState(this.gameAccess()));
+        }
+        if (seg.length === 2 && seg[1] === 'proof') {
+          this.method(req, 'GET');
+          if (!mint) throw new SiteFail(503, 'chain_off', 'The mint is not available on this server.');
+          return send(res, 200, await mint.proof(url.searchParams.get('wallet')));
+        }
+        break;
+      }
       case 'wl': {
         if (seg.length !== 1) break;
         if (this.method(req, 'GET', 'POST') === 'GET') return send(res, 200, { entry: s.myWl(this.session(req)) });
@@ -208,7 +308,47 @@ export class SiteApi {
     switch (seg[0]) {
       case 'me':
         this.method(req, 'GET');
-        return send(res, 200, { pubkey: wallet, admin: true });
+        return send(res, 200, { address: wallet, admin: true });
+      case 'contracts': {
+        if (seg.length !== 1) break;
+        const contracts = this.ext.contracts;
+        if (!contracts) throw new SiteFail(503, 'chain_off', 'The contracts registry is not available on this server.');
+        const m = this.method(req, 'GET', 'POST', 'DELETE');
+        if (m === 'GET') return send(res, 200, { registry: contracts.effective(this.chainId()), stored: contracts.stored() });
+        if (m === 'DELETE') {
+          const cleared = clearContract({ journal: this.ext.journal ?? null, store: contracts }, q.get('kind'));
+          return send(res, 200, { cleared, registry: contracts.effective(this.chainId()) });
+        }
+        const chain = this.ext.chain;
+        const record = await registerContract(
+          {
+            client: chain?.evm?.() ?? null,
+            chainId: this.chainId(),
+            serverKey: chain?.serverInfo().address ?? null,
+            journal: this.ext.journal ?? null,
+            store: contracts,
+            now: Date.now(),
+          },
+          await readJson(req),
+          wallet,
+        );
+        return send(res, 201, { record, registry: contracts.effective(this.chainId()) });
+      }
+      case 'mint': {
+        const mint = this.ext.mint;
+        if (!mint) throw new SiteFail(503, 'chain_off', 'The mint is not available on this server.');
+        if (seg.length === 2 && seg[1] === 'allowlist') {
+          if (this.method(req, 'GET', 'POST') === 'GET') return send(res, 200, await mint.allowlistStatus());
+          return send(res, 201, mint.buildAllowlist(wallet));
+        }
+        if (seg.length === 2 && seg[1] === 'price') {
+          this.method(req, 'GET');
+          const quote = await mint.priceQuote();
+          if (quote.hypeUsd === null) throw new SiteFail(502, 'price_unavailable', 'The HYPE/USD price feed is unavailable right now.');
+          return send(res, 200, quote);
+        }
+        break;
+      }
       case 'counts':
         this.method(req, 'GET');
         return send(res, 200, s.counts());
@@ -226,7 +366,7 @@ export class SiteApi {
       case 'settings':
         if (seg.length !== 1) break;
         if (this.method(req, 'GET', 'PUT') === 'PUT') s.updateSettings(await readJson(req));
-        return send(res, 200, { settings: s.settings, gamePublicEnv: this.cfg.gamePublic });
+        return send(res, 200, { settings: s.settings, gameAccessEnv: this.cfg.gameAccess });
       case 'tasks': {
         if (seg.length === 1) {
           if (this.method(req, 'GET', 'POST') === 'GET') return send(res, 200, { tasks: s.tasks });
@@ -244,7 +384,7 @@ export class SiteApi {
       case 'wl.csv': {
         this.method(req, 'GET');
         const scope = q.get('scope') === 'all' ? 'all' : 'approved';
-        return sendCsv(res, `slana-wl-${scope}-${day}.csv`, s.wlCsv(scope));
+        return sendCsv(res, `elymum-wl-${scope}-${day}.csv`, s.wlCsv(scope));
       }
       case 'wl': {
         if (seg.length === 1) {
@@ -281,7 +421,7 @@ export class SiteApi {
         }
         if (seg.length === 2 && seg[1] === 'wallets.csv') {
           this.method(req, 'GET');
-          return sendCsv(res, `slana-collab-wallets-${day}.csv`, s.allCollabsCsv());
+          return sendCsv(res, `elymum-collab-wallets-${day}.csv`, s.allCollabsCsv());
         }
         const id = seg[1];
         if (seg.length === 2) {
@@ -292,7 +432,7 @@ export class SiteApi {
         switch (seg[2]) {
           case 'wallets.csv':
             this.method(req, 'GET');
-            return sendCsv(res, `slana-collab-${id}-${day}.csv`, s.collabCsv(id));
+            return sendCsv(res, `elymum-collab-${id}-${day}.csv`, s.collabCsv(id));
           case 'approve':
             this.method(req, 'POST');
             return send(res, 200, { collab: s.approveCollab(id, await readJson(req)) });

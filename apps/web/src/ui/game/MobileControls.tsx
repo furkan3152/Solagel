@@ -21,8 +21,8 @@ export function useIsTouch(): boolean {
 }
 
 /**
- * Phone controls: a printed joystick (coin knob on a ruled disc) on the left,
- * round ink buttons on the right. Every target is at least 44 px (most 56+). Paid rooms have
+ * Phone controls: a joystick (a coin knob with a face on a dotted orbit disc) on the left,
+ * chunky sticker buttons on the right. Every target is at least 44 px (most 56+). Paid rooms have
  * no cash-out (everyone alive is paid at the round's bell), so every room gets the chat button.
  */
 export function MobileControls() {
@@ -60,7 +60,15 @@ export function MobileControls() {
         onPointerUp={end}
         onPointerCancel={end}
       >
-        <div ref={knob} className="g-stick__knob" />
+        <div ref={knob} className="g-stick__knob">
+          <svg viewBox="0 0 40 40" aria-hidden="true">
+            <circle cx="15" cy="17" r="4" className="g-stick__eye" />
+            <circle cx="25" cy="17" r="4" className="g-stick__eye" />
+            <circle cx="16" cy="18" r="1.8" className="g-stick__pupil" />
+            <circle cx="26" cy="18" r="1.8" className="g-stick__pupil" />
+            <path d="M15 25c3 3 7 3 10 0" className="g-stick__mouth" />
+          </svg>
+        </div>
       </div>
       <div className="g-touch">
         <button type="button" className="g-touch__btn is-split" onPointerDown={() => engine()?.split()} aria-label={t('hud.split')}>
@@ -79,7 +87,13 @@ export function MobileControls() {
           <Icon name="eject" size={24} />
           <span className="mono">{t('hud.eject')}</span>
         </button>
-        <button type="button" className={`g-touch__btn is-small${emotes ? ' is-on' : ''}`} onClick={() => setEmotes((v) => !v)} aria-label={t('g.emotes')} aria-expanded={emotes}>
+        <button
+          type="button"
+          className={`g-touch__btn is-small${emotes ? ' is-on' : ''}`}
+          onClick={() => setEmotes((v) => !v)}
+          aria-label={t('g.emotes')}
+          aria-expanded={emotes}
+        >
           <Icon name="emote" size={22} />
         </button>
         <button type="button" className="g-touch__btn is-alt" onClick={() => useUi.setState({ chatOpen: true })} aria-label={t('g.chat')}>
@@ -89,15 +103,13 @@ export function MobileControls() {
       <AnimatePresence>
         {emotes && (
           <motion.div
-            className="g-touch__emotes g-slip"
+            className="g-touch__emotes"
             initial={{ opacity: 0, y: 12, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 12, scale: 0.96 }}
             transition={pop}
           >
-            <div className="g-slip__paper">
-              <EmoteBar keys={false} onPick={() => setEmotes(false)} />
-            </div>
+            <EmoteBar keys={false} onPick={() => setEmotes(false)} />
           </motion.div>
         )}
       </AnimatePresence>

@@ -1,9 +1,9 @@
 {
-  "name": "@slana/sdk",
+  "name": "@elymum/sdk",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "TypeScript client + admin CLI for the Slana Anchor program",
+  "description": "TypeScript client (viem) + admin CLI for the Elymum contracts on Elysium",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -13,19 +13,14 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "admin": "tsx src/admin.ts",
-    "sync-idl": "node ../../scripts/sync-idl.mjs"
+    "admin": "tsx src/admin.ts"
   },
   "dependencies": {
-    "@anchor-lang/core": "1.2.1",
-    "@slana/shared": "workspace:*",
-    "@solana/spl-token": "^0.4.15",
-    "@solana/web3.js": "^1.98.4",
-    "bn.js": "^5.2.1",
-    "buffer": "^6.0.3"
+    "@elymum/contracts": "workspace:*",
+    "@elymum/shared": "workspace:*",
+    "viem": "^2.57.13"
   },
   "devDependencies": {
-    "@types/bn.js": "^5.2.0",
     "@types/node": "^22.19.0",
     "tsx": "^4.23.15",
     "typescript": "~5.9.3",

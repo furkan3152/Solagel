@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Take "held": the lobby across a round's final minute. The Penny Pond row counts down ("Round ends
+// Take "held": the lobby across a round's final minute. The Asphodel Meadow row counts down ("Round ends
 // in 1:0x"), turns to "Joins closed · next round in 0:5x" when joins close 60 s before the bell,
 // Daphne buys a ticket anyway: the lobby holds it ("Ticket held") and, at the bell, the game joins
 // the new round by itself. A few seconds of the new round close the take.
@@ -10,7 +10,7 @@ import { CACHE, Player, Recorder, launch, log } from './lib.mjs';
 const argv = process.argv.slice(2);
 const NAME = argv.includes('--name') ? argv[argv.indexOf('--name') + 1] : 'held';
 const browser = await launch();
-const hero = new Player(browser, { name: 'Daphne', skin: 4, audio: 'sfx', keyPath: resolve(CACHE, 'keys/held.json'), journal: resolve(CACHE, `journal-${NAME}.jsonl`) });
+const hero = new Player(browser, { name: 'Daphne', skin: 4, audio: 'sfx', keyPath: resolve(CACHE, 'keys/held.key'), journal: resolve(CACHE, `journal-${NAME}.jsonl`) });
 let rec;
 try {
   await hero.open();
@@ -32,7 +32,7 @@ try {
   await hero.wait(2500);
   // the held banner and the row flag; the cursor rests on the banner
   await hero.hover('.kl-held, [class*="held"]', { pause: 800 }).catch(() => {});
-  await hero.page.waitForFunction(() => window.__slana.useUi.getState().screen === 'playing', null, { timeout: 75_000 });
+  await hero.page.waitForFunction(() => window.__elymum.useUi.getState().screen === 'playing', null, { timeout: 75_000 });
   rec.mark('joined', { left: (await hero.round(1))?.left });
   await hero.wait(1200);
   await hero.wheel(-460, 60, 60);

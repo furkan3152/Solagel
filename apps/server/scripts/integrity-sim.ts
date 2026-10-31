@@ -3,13 +3,13 @@
  * web client: frame-budgeted target messages, mouse smoothing and jitter, human reaction delay,
  * network latency), optionally plus scripted cheaters, over several short rounds.
  *
- *   pnpm -F @slana/server integrity-sim [minutes=6] [seed=1]
+ *   pnpm -F @elymum/server integrity-sim [minutes=6] [seed=1]
  *
  * Prints the flags the detectors raise at the default thresholds and the room tick time with and
  * without the integrity telemetry (same seed, same game). The test suite runs the same harness.
  */
 import { pathToFileURL } from 'node:url';
-import { ClientOp, PlayerFlag, TICK_MS, roundAt, type ClientInput, type IntegrityFlag } from '@slana/shared';
+import { ClientOp, PlayerFlag, TICK_MS, roundAt, type ClientInput, type IntegrityFlag } from '@elymum/shared';
 import { BotBrain } from '../src/bots/brain';
 import { rollPersonality } from '../src/bots/personality';
 import { NullChain } from '../src/chain/types';

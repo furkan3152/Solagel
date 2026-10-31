@@ -1,11 +1,11 @@
-# How to play Slana (Video B)
+# How to play Elymum (Video B)
 
 A narrated tutorial, about 2:45, 1920x1080, 30 fps (every frame an exact replayed game frame), H.264 +
 AAC, -14 LUFS with the true peak at or below -1.5 dBTP after encoding, in seven chapters with the
 brand's ticket chapter cards:
 
-1. What Slana is
-2. Start free in Practice
+1. What Elymum is
+2. Warm up in Practice
 3. Controls (steer, split, tip mass, stickers, chat; keycap and mouse callouts)
 4. Eat and avoid (the 1.25x rule as a diagram, running from bigger coins,
    rug cacti, loot when a bot eats you)
@@ -19,9 +19,9 @@ brand's ticket chapter cards:
    paid to the operator), net 1,950; no profit, no fee; floor loot left at the
    bell is burned)
 7. Tips (warm up, split only when sure, play safe in the final minute), then
-   the NFT card (one line: the Slana NFT is a free mint, WL open at slana.io/wl; the sealed cards
-   of `media/free-mint/scenes/nft.js` through the gameplay kit's `nft` component) and the end card
-   (slana.io, @slanaio)
+   the NFT card (one line: the Elymum NFT mints for $1 in HYPE, the WL comes first; the sealed cards
+   of `media/mint-film/scenes/nft.js` through the gameplay kit's `nft` component) and the end card
+   (the site's host from `SITE_HOST`, @elymum)
 
 Every rule and number on screen and in the voiceover comes from the in-app
 guide (`apps/web/src/ui/docs/content.en.ts` and `facts.ts`), `docs/PROJECT.md` and the controls
@@ -32,7 +32,7 @@ from `apps/web/src/game/input.ts`. Arenas have no cash-out key.
 | Path | What it is |
 | --- | --- |
 | `audio/vo-lines.json` | The voiceover script, one line per cue. |
-| `audio/tts.py` | Kokoro TTS (local ONNX), voice `af_heart`, the promo's voice; "Slana" is forced to /slˈɑːnə/ like in the promo. |
+| `audio/tts.py` | Kokoro TTS (local ONNX), voice `af_heart`, the promo's voice; "Elymum" is forced to /ˈɛlɪməm/ like in the promo. |
 | `edit.mjs` | The edit: lays the picture out along the VO durations, chapter cards between, captions that echo the VO, callouts. |
 
 Footage, motion graphics, the compositor and the mixer are shared with the
@@ -54,8 +54,8 @@ media/gameplay/cache/venv/bin/python media/how-to-play/audio/tts.py \
 # 2. the edit, the replayed frames it uses (media/gameplay/README.md, step 2), the render
 node media/how-to-play/edit.mjs
 media/gameplay/render/render.sh media/how-to-play/cache/edit/howto.json \
-  media/how-to-play/cache/edit/howto-music.json slana-how-to-play media/how-to-play/cache/vo-raw
-# -> out/videos/slana-how-to-play.mp4 (web, < 30 MB) and slana-how-to-play-master.mp4
+  media/how-to-play/cache/edit/howto-music.json elymum-how-to-play media/how-to-play/cache/vo-raw
+# -> out/videos/elymum-how-to-play.mp4 (web, < 30 MB) and elymum-how-to-play-master.mp4
 ```
 
 The VO is processed in the mixer with the promo's chain (high-pass 80 Hz, mud

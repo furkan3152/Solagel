@@ -19,6 +19,7 @@ describe('chat filter', () => {
 
   it('flags scam bait', () => {
     expect(looksLikeScam('send me sol please')).toBe(true);
+    expect(looksLikeScam('send me hype please')).toBe(true);
     expect(looksLikeScam('visit https://example.xyz')).toBe(true);
     expect(looksLikeScam('good game')).toBe(false);
   });

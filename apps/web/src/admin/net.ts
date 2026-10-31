@@ -1,145 +1,66 @@
-import { PROGRAM_ID, clusterDefaultRpc, normalizeCluster, type Cluster } from '@slana/sdk';
-import { inferCluster } from '@slana/sdk/ops';
-import type { ChainStatus } from '@slana/shared';
-import { CHAIN_OVERRIDES, SERVER } from '../config';
-import { DEV_FAKE_PROGRAM_ID } from '../solana/devFakeLoader';
-import { PRIORITY_MICRO_LAMPORTS } from '../solana/ticket';
+import { isMainnet, type ChainInfo, type ChainStatus } from '@elymum/shared';
+import { getAddress, isAddress, type Address } from 'viem';
+import { isDevFake } from '../wallet/devFakeLoader';
+import { fetchServerChain, serverChainInfo } from '../wallet/network';
 
 /**
- * Where the admin panel talks to.
- *
- * - **Program id: pinned.** Always the SDK's `PROGRAM_ID`, compiled into the bundle from the IDL
- *   (`pnpm -F @slana/sdk sync-idl` after `anchor keys sync`). The game server's claim is only
- *   compared with it: a different id blocks signing.
- * - **RPC:** `VITE_RPC_URL`, else the game server's public RPC, else the cluster default.
- * - **Cluster:** read from the RPC's genesis hash (`verifyNetwork`). `VITE_SOLANA_CLUSTER`, else the
- *   server's `SOLANA_CLUSTER`, is only the claim it is checked against.
- * - `VITE_PRIORITY_MICROLAMPORTS`: compute-unit price of admin transactions (default 20000, like
- *   tickets; capped at `MAX_PRIORITY_MICRO_LAMPORTS`).
+ * Where the admin panel talks to: exactly the chain the game server is on (its RPC is the
+ * source of truth, published in `/api/config`). There is no pinned program id any more: the
+ * contracts are pinned by their runtime code hash, which the server checks when an address is
+ * registered and the panel shows (`checkDeployedCode`).
  */
 export interface AdminNetwork {
-  rpcUrl: string;
-  /** Verified from the genesis hash once `verifyNetwork` ran; before that, the claim (display only). */
-  cluster: Cluster;
-  /** The pinned program id (SDK `PROGRAM_ID`). */
-  programId: string;
-  /** The program id the game server reports (null when it reports none). */
-  serverProgramId: string | null;
-  /** The cluster the build or the game server claims (null when neither says). */
-  claimedCluster: Cluster | null;
+  /** The server's chain status (null when the server cannot be reached). */
+  chain: ChainStatus | null;
+  /** `chainInfo` of the server's chain (null while it is off or unknown). */
+  info: ChainInfo | null;
+  /** Elysium mainnet (every chain id that is not the testnet or the localnet). */
+  mainnet: boolean;
   /** The game server's signing key (`ChainStatus.serverKey`), null when unknown. */
-  serverKey: string | null;
+  serverKey: Address | null;
+  /** The registered contracts (null until registered). */
+  arenaAddress: Address | null;
+  nftAddress: Address | null;
   /** The game server runs the DEV_FAKE_CHAIN stand-in: nothing real to administer. */
   fake: boolean;
-  /** Where the RPC came from, for the status card. */
-  source: 'env' | 'server' | 'default';
-  priorityMicroLamports: number;
 }
 
-/** Upper bound of the admin compute-unit price (micro-lamports): 0.04 SOL per 200k-CU instruction at most. */
-export const MAX_PRIORITY_MICRO_LAMPORTS = 200_000;
+const addr = (v: string | null | undefined): Address | null => (v && isAddress(v, { strict: false }) ? getAddress(v) : null);
 
-/** Genesis hashes of the public clusters. */
-export const GENESIS: Record<string, Cluster> = {
-  '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d': 'mainnet-beta',
-  EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG: 'devnet',
-  '4uhcVJyU9pJkvQyS88uRDiswHXSCkY3zQawwpjk2NsNY': 'testnet',
-};
-
-const env = (name: string): string | null => ((import.meta.env as Record<string, string | undefined>)[name] || '').trim() || null;
-
-export function priorityFromEnv(raw: string | null): number {
-  const n = raw === null ? NaN : Number(raw);
-  return Number.isInteger(n) && n >= 0 ? Math.min(n, MAX_PRIORITY_MICRO_LAMPORTS) : PRIORITY_MICRO_LAMPORTS;
-}
-
-export function resolveNetwork(chain: ChainStatus | null, vars: { rpcUrl?: string | null; cluster?: string | null; priority?: string | null } = {}): AdminNetwork {
-  const envRpc = vars.rpcUrl !== undefined ? vars.rpcUrl : CHAIN_OVERRIDES.rpcUrl;
-  const envCluster = vars.cluster !== undefined ? vars.cluster : env('VITE_SOLANA_CLUSTER');
-  const serverCluster = chain?.enabled ? chain.cluster : null;
-  const claim = envCluster ?? serverCluster;
-  const claimedCluster = claim ? normalizeCluster(claim) : null;
-  const display = claimedCluster ?? (envRpc ? normalizeCluster(inferCluster(envRpc)) : 'devnet');
-  const rpcUrl = envRpc ?? (chain?.enabled ? chain.rpcUrl : null) ?? clusterDefaultRpc(display);
-  const serverProgramId = chain?.enabled ? chain.programId : null;
+export function resolveNetwork(chain: ChainStatus | null): AdminNetwork {
+  const info = chain?.enabled ? serverChainInfo(chain) : null;
   return {
-    rpcUrl,
-    cluster: display,
-    programId: PROGRAM_ID.toBase58(),
-    serverProgramId,
-    claimedCluster,
-    serverKey: chain?.serverKey ?? null,
-    fake: serverProgramId === DEV_FAKE_PROGRAM_ID,
-    source: envRpc ? 'env' : chain?.enabled && chain.rpcUrl ? 'server' : 'default',
-    priorityMicroLamports: priorityFromEnv(vars.priority !== undefined ? vars.priority : env('VITE_PRIORITY_MICROLAMPORTS')),
+    chain,
+    info,
+    mainnet: info ? isMainnet(info.id) : false,
+    serverKey: addr(chain?.serverKey),
+    arenaAddress: addr(chain?.arenaAddress),
+    nftAddress: addr(chain?.nftAddress),
+    fake: isDevFake(chain),
   };
 }
 
-const isLocalRpc = (url: string): boolean => {
-  try {
-    return ['127.0.0.1', 'localhost', '[::1]', '0.0.0.0'].includes(new URL(url).hostname);
-  } catch {
-    return false;
-  }
-};
-
-export interface NetworkCheck {
-  /** The network with `cluster` set from the genesis hash (or localnet for a local validator). */
-  net: AdminNetwork;
-  /** The cluster was read from the genesis hash (labels and the mainnet banner may be trusted). */
-  verified: boolean;
-  /** Why signing is blocked; empty = signing allowed. */
-  blockers: string[];
-}
+export { fetchServerChain };
 
 /**
- * Checks the network before anything is signed:
- * - the game server's program id must equal the pinned one;
- * - the RPC's genesis hash must be a known cluster (a validator on this machine counts as localnet
- *   when localnet is claimed) and match the claimed cluster.
- * `genesisHash`: undefined while it is being read, null when it could not be read.
+ * Why signing is blocked before the wallet is even asked (empty = allowed): the server must
+ * publish a chain, the RPC the panel reads must be on that same chain, and a fake chain has
+ * nothing to sign. The wallet's own chain is not a blocker: it is switched (or the chain added)
+ * right before each prompt, and a wallet that ends elsewhere is refused there.
  */
-export function verifyNetwork(net: AdminNetwork, genesisHash: string | null | undefined): NetworkCheck {
-  const blockers: string[] = [];
-  if (net.serverProgramId && net.serverProgramId !== net.programId) {
-    blockers.push(`The game server reports program ${net.serverProgramId}, but this build is pinned to ${net.programId}. Signing is blocked.`);
+export function chainBlockers(net: AdminNetwork, rpcChainId: number | null | undefined): string[] {
+  const out: string[] = [];
+  if (net.fake) out.push('The game server runs the DEV_FAKE_CHAIN stand-in: there is no real chain to administer.');
+  if (!net.chain) out.push('The game server cannot be reached, so its chain is unknown. Signing is blocked.');
+  else if (!net.info) out.push('The game server reports no chain (EVM_RPC_URL is unset). Signing is blocked.');
+  if (net.info && rpcChainId !== undefined && rpcChainId !== null && rpcChainId !== net.info.id) {
+    out.push(`The RPC this panel reads is on chain ${rpcChainId}, but the game server is on ${net.info.name} (${net.info.id}). Signing is blocked.`);
   }
-  let cluster: Cluster | null = null;
-  if (genesisHash === undefined) {
-    blockers.push('Checking the cluster (genesis hash)…');
-  } else if (genesisHash === null) {
-    blockers.push(`Cannot read the genesis hash from ${net.rpcUrl}. Signing is blocked.`);
-  } else if (GENESIS[genesisHash]) {
-    cluster = GENESIS[genesisHash];
-  } else if (net.claimedCluster === 'localnet' && isLocalRpc(net.rpcUrl)) {
-    cluster = 'localnet';
-  } else {
-    blockers.push(`Unknown genesis hash ${genesisHash} at ${net.rpcUrl}: not mainnet-beta, devnet or testnet. Signing is blocked.`);
-  }
-  if (cluster && net.claimedCluster && cluster !== net.claimedCluster) {
-    blockers.push(`The RPC is ${cluster} (genesis hash), but the configuration claims ${net.claimedCluster}. Fix SOLANA_CLUSTER on the server or VITE_SOLANA_CLUSTER. Signing is blocked.`);
-  }
-  return { net: { ...net, cluster: cluster ?? net.cluster }, verified: cluster !== null, blockers };
+  return out;
 }
 
-/** The game server's chain status (null when the server cannot be reached). */
-export async function fetchServerChain(timeoutMs = 4000): Promise<ChainStatus | null> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-  try {
-    const res = await fetch(`${SERVER.http}/api/config`, { signal: ctrl.signal });
-    if (!res.ok) return null;
-    return ((await res.json()) as { chain?: ChainStatus }).chain ?? null;
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-export const isMainnet = (net: Pick<AdminNetwork, 'cluster'>): boolean => net.cluster === 'mainnet-beta';
-
-/** Upper bound of the fee of a transaction with `instructions` (besides compute budget): base fee + priority at the default 200k CU limit each. */
-export function maxFeeLamports(instructions: number, priorityMicroLamports: number): number {
-  return 5_000 + Math.ceil((priorityMicroLamports * 200_000 * instructions) / 1_000_000);
+/** "Your wallet is on chain X": a note (it is switched before signing), or null when it is on the server's chain. */
+export function walletChainNote(net: AdminNetwork, walletChainId: number | null): string | null {
+  if (!net.info || walletChainId === null || walletChainId === net.info.id) return null;
+  return `Your wallet is on chain ${walletChainId}. It will be asked to switch to ${net.info.name} (${net.info.id}) before it signs.`;
 }

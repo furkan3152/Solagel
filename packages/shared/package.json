@@ -1,9 +1,9 @@
 {
-  "name": "@slana/shared",
+  "name": "@elymum/shared",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Shared game rules, binary protocol and skin catalog for Slana",
+  "description": "Shared game rules, binary protocol, chain table and skin catalog for Elymum",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {

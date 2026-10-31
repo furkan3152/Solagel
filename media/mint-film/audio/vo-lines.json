@@ -1,0 +1,10 @@
+[
+ {"id": "free", "text": "A *one dollar* mint.", "speed": 1.0},
+ {"id": "coming", "text": "The Elymum NFT is coming.", "speed": 1.1},
+ {"id": "sealed", "text": "Sealed cards. | One dollar, | in HYPE.", "speed": 1.1},
+ {"id": "road", "text": "The roadmap:", "speed": 1.1},
+ {"id": "beta", "text": "The whitelist.", "speed": 1.12},
+ {"id": "token", "text": "The mint.", "speed": 1.12},
+ {"id": "nft", "text": "Then the game.", "speed": 1.12},
+ {"id": "wl", "text": "The WL is open. | @elymum, | on X.", "speed": 1.08}
+]

@@ -1,33 +1,55 @@
-# Slana brand kit
+# Elymum brand kit
 
-Everything here is drawn in code in the "Paper Ticket" riso style (ink misregistration, halftone, tickets, stamps,
-tape, perforations and the coin characters from `packages/art`), with the inks from `packages/shared/src/palette.ts`
-(see `docs/design/palette.md`) and the web app's Bricolage Grotesque and DM Mono. Every generator is deterministic:
-re-running it only changes a file when the art, the palette or the script changes.
+The social and web art of Elymum, drawn in the **Ring Storybook** language: confident ink outlines
+(`#04181C`), flat cel fills with one shade tone, hard offset shadows (never blurred), cream die-cut
+stickers, Fraunces for display, DM Sans for reading and Geist Mono for every number and kicker. The
+source of truth is the spec (`docs/specs/2026-10-29-elymum-on-elysium.md`, section 6) and the
+reference page `docs/design/storybook-reference.html`; the drawings here are copied from it.
 
-Rebuild all of it from the repo root, after `pnpm install` (brand/x is separate):
+Everything is generated from code. Change a template, run the generator, look at the PNGs.
 
+```bash
+node brand/generate.mjs            # everything (a few seconds)
+node brand/generate.mjs og post-mint   # only some jobs
+node brand/generate.mjs --list     # the jobs and their files
 ```
-node brand/generate-all.mjs
-```
 
-| Folder | What | Re-run |
-| --- | --- | --- |
-| [`brand-sheet.png`](brand-sheet.png) | the brand sheet: logo lockups (paper and night stock), palette with hex, type, mascot and cast, paper goods, do's and don'ts | `node brand/sheet/generate.mjs` |
-| [`x/`](x/README.md) | X profile picture, banner, OG card, safe-area previews | `node brand/x/generate.mjs` |
-| [`posts/`](posts/README.md) | X post templates, 1600×900 and 1080×1080 | `node brand/posts/generate.mjs` |
-| [`stories/`](stories/README.md) | story / vertical templates, 1080×1920 | `node brand/stories/generate.mjs` |
-| [`stickers/`](stickers/README.md) | 13 die-cut coin stickers (512, transparent) and 128 px emoji | `node brand/stickers/generate.mjs` |
-| [`posters/`](posters/README.md) | one 2000×2800 riso print per arena | `node brand/posters/generate.mjs` |
-| [`community/`](community/README.md) | Discord server icon and banner, Telegram header and group photo | `node brand/community/generate.mjs` |
-| `lib/` | shared drawing code: `riso.mjs` (paper, grain, halftone, worn passes, hero coin, extra faces, limbs, wordmark, tickets, tape, stamps, icons, die-cut, indexed PNG), `scenes.mjs` (the four arena illustrations), `cards.mjs` (post and story layouts) | |
+It needs only what the repository already installs: Playwright and the `@fontsource-variable`
+fonts of `apps/web` (fonts are inlined as data URIs; when they are missing the templates fall back
+to Google Fonts). Chromium comes from `CHROME_PATH` or Playwright's own browser
+(`pnpm -F @elymum/web exec playwright install chromium` if you have none).
 
-## Notes
+## Outputs (`brand/out/`)
 
-- Copy on the art follows the site (`apps/web/src/site`): "Eat. Grow. Last the round.", the four steps "Buy a ticket /
-  Eat / The bell / Paid", the fee receipt example (entry 1,000, till 2,000, fee 50, paid 1,950) and the arena entries
-  from `packages/shared/src/arenas.ts`.
-- X images are kept under 2 MB: a design whose truecolor PNG would be over about 1.9 MB is written as a 256-colour
-  indexed PNG (median cut plus k-means, `indexedPng` in `lib/riso.mjs`). Riso art is a handful of inks and their
-  overprints, so the difference is not visible at feed size. Posters and the sheet use a 4 MB threshold.
-- No emoji or icon fonts: every icon (bell, stopwatch, flame, mug, hearts, ticks and crosses) is drawn.
+| File | Size | Use |
+|---|---|---|
+| `x/x-avatar-400.png`, `x/x-avatar-1000.png` | 400, 1000 square | X profile picture (circle-safe): the sun coin on the ring at dusk |
+| `x/x-banner-1500x500.png`, `x/x-banner-3000x1000.png` | 1500x500, @2x | X header: the ring scene, the hunter chasing a snack, the wordmark sticker on the right (the avatar covers the lower left) |
+| `web/og-elymum.png` | 1200x630 | Open Graph / Twitter card. **Also written to `apps/web/public/og-elymum.png`** (index.html points at it) |
+| `web/favicon-32.png` | 32 | The CoinMark (cyan coin, fat cream E). **Also `apps/web/public/favicon-32.png`** |
+| `web/apple-touch-icon.png` | 180 | CoinMark on the night trench with seigaiha. **Also `apps/web/public/apple-touch-icon.png`** |
+| `web/coin-mark-512.png` | 512 | The mark alone, transparent, for anything else |
+| `posts/post-wl-open.png` | 1600x900 | "The WL is open." with the three chores as terrace stickers |
+| `posts/post-mint.png` | 1600x900 | Night plate: "One emblem. One dollar. Many snacks." and the mint card ($1.00, paid in HYPE) |
+| `posts/post-game-live.png` | 1600x900 | The floor of the ring at feeding time: HUD stickers, leaderboard, coins with name tags |
+| `stickers/sticker-sheet.png` | 1800x1200 | The cast of coins, the mark and the die-cut wordmark |
+| `stickers/sticker-<name>.png` | 500 square, transparent | One die-cut sticker per character: hunter, snack, smug, happy, smile, open, sleepy |
+
+The PNGs are committed (about 3 MB in all) so people can grab them without running anything.
+
+## Rules the templates follow
+
+- Copy is short and a little wry; the product is "Elymum", the chain "Elysium", the gas token HYPE, the
+  mint "$1 in HYPE", the handle `@elymum`. No domain is written into the art: the site lives at whatever
+  `PUBLIC_URL` says, and moving it (for example to elymum.io) needs no new images.
+- The mint art never shows a HYPE amount: the price is held at $1 and its HYPE value moves.
+- No gradients except the sky, no soft shadows, no purple, no emoji; one sun (primary) button per image.
+- Shadows always go down and right.
+
+## Files
+
+- `generate.mjs`: the job list and the Playwright renderer (copies the web files into `apps/web/public`).
+- `lib/art.mjs`: palette, fonts, base CSS, the coin character (`coin(paint, { mood, look, size, diecut })`),
+  `wordmark()`, `coinMark()`, `seigaiha()`, `cloud()`, `terraces()`, stars, food bits, scene props.
+- `lib/scene.mjs`: the ring habitat at dawn, copied from the reference's hero plate.
+- `lib/templates.mjs`: one function per image.

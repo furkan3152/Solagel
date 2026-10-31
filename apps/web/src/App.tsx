@@ -1,18 +1,17 @@
-import { NIGHT, PAPER } from '@slana/shared';
+import { NIGHT, PAPER } from '@elymum/shared';
 import { useEffect, useRef } from 'react';
 import { startAudio } from './audio';
 import { GameEngine } from './game/engine';
 import { setEngine } from './game/instance';
-import { useChainSync } from './solana/chain';
-import { SolanaProvider } from './solana/provider';
-import { useWalletAuth } from './solana/useWalletAuth';
+import { useChainSync } from './wallet/chain';
+import { useWalletAuth } from './wallet/useWalletAuth';
 import { useUi } from './store';
 import { AnimatePresence } from 'motion/react';
 import { Kb, ScreenTransition, themeFromSettings, type Box } from './design';
 import { Lobby } from './ui/lobby/Lobby';
 import { Toasts } from './ui/Toasts';
-import { WalletModal } from './solana/WalletModal';
-import { DeathSheet, GameHud, HowToSheet, RoundOverSheet, SettingsSheet } from './ui/game';
+import { WalletModal } from './wallet/WalletModal';
+import { BellMoment, DeathMoment, DeathSheet, GameHud, HowToSheet, RoundOverSheet, SettingsSheet } from './ui/game';
 import { GameClosedSheet } from './ui/gate/GameClosedSheet';
 
 function GameCanvas() {
@@ -25,15 +24,8 @@ function GameCanvas() {
       engine.destroy();
     };
   }, []);
-  const theme = useUi((s) => s.settings.theme);
-  const quality = useUi((s) => s.settings.quality);
-  return (
-    <>
-      <canvas ref={ref} className="game-canvas" />
-      {/* paper grain over the world: a static composited layer (a per-frame canvas fill cost ~10 fps) */}
-      {quality === 'high' && <div className="kb g-grain" data-theme={themeFromSettings(theme)} aria-hidden="true" />}
-    </>
-  );
+  // the floor is drawn flat, like the picture book: no grain over it
+  return <canvas ref={ref} className="game-canvas" />;
 }
 
 function ChainSync() {
@@ -55,13 +47,16 @@ function Screens() {
   const theme = useUi((s) => s.settings.theme);
   return (
     <>
-      {/* lobby ↔ game: the paper wipes open onto the world and closes around it on the way back */}
+      {/* lobby <-> game: the page opens onto the world and closes around it on the way back */}
       <ScreenTransition show={screen === 'lobby'} home={lobbyWindow}>
         <Lobby />
       </ScreenTransition>
-      {/* Paper Ticket game view, sheets and toasts (portalled; themed from this root) */}
+      {/* the HUD stickers, sheets and toasts (portalled; themed from this root) */}
       <Kb theme={themeFromSettings(theme)} paper={false} className="g-root">
         <AnimatePresence>{screen !== 'lobby' && <GameHud key="hud" />}</AnimatePresence>
+        {/* the eater's mouth and the bell: beats over the world before their sheets */}
+        <DeathMoment />
+        <BellMoment />
         <DeathSheet />
         <RoundOverSheet />
         <SettingsSheet />
@@ -83,12 +78,10 @@ export function App() {
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? NIGHT.paper : PAPER);
   }, [theme]);
   return (
-    <SolanaProvider>
-      <div className="app" data-theme={theme}>
-        <GameCanvas />
-        <ChainSync />
-        <Screens />
-      </div>
-    </SolanaProvider>
+    <div className="app" data-theme={theme}>
+      <GameCanvas />
+      <ChainSync />
+      <Screens />
+    </div>
   );
 }

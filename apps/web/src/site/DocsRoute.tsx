@@ -1,7 +1,7 @@
-import '../polyfills';
-import type { ChainStatus } from '@slana/shared';
+import type { ChainStatus } from '@elymum/shared';
 import { useEffect } from 'react';
 import { SERVER } from '../config';
+import { PlateLabel } from '../design';
 import { useUi } from '../store';
 import { DocsPage } from '../ui/docs/DocsPage';
 import { SitePage } from './Shell';
@@ -23,6 +23,7 @@ export function DocsRoute() {
   }, []);
   return (
     <SitePage className="st-docs">
+      <PlateLabel numeral={8} title="The handbook" aside="/docs" className="st-docs__plate" />
       <div className="st-page">
         <DocsPage />
       </div>

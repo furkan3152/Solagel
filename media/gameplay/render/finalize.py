@@ -1,4 +1,4 @@
-"""Final loudness for every Slana video: -14 LUFS integrated, true peak at or below -1.5 dBTP
+"""Final loudness for every Elymum video: -14 LUFS integrated, true peak at or below -1.5 dBTP
 *after* AAC encoding (the encoder adds overshoot on transients, so the ceiling is set by
 measuring the encoded file, not the WAV).
 

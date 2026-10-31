@@ -1,10 +1,10 @@
-import type { SiteCounts, WlEntryAdmin, WlStatus } from '@slana/shared';
+import type { SiteCounts, WlEntryAdmin, WlStatus } from '@elymum/shared';
 import { useCallback, useEffect, useState } from 'react';
 import { Chip, InkButton, Sheet, StampSpinner } from '../../design';
 import type { WlPage } from '../../site/api';
-import { Ext, errText, fmtDate, useFlash, type TabProps } from './common';
+import { Empty, Ext, errText, fmtDate, useFlash, type TabProps } from './common';
 
-const TONE: Record<WlStatus, 'mustard' | 'teal' | 'pink'> = { pending: 'mustard', approved: 'teal', rejected: 'pink' };
+const TONE: Record<WlStatus, 'sun' | 'up' | 'down'> = { pending: 'sun', approved: 'up', rejected: 'down' };
 const PAGE_SIZE = 50;
 
 export function Counts({ counts }: { counts: SiteCounts | null }) {
@@ -13,19 +13,19 @@ export function Counts({ counts }: { counts: SiteCounts | null }) {
     <dl className="ad-counts" aria-label="Counts">
       <div>
         <dt className="mono">WL total</dt>
-        <dd>{counts.wl.total}</dd>
+        <dd className="num">{counts.wl.total}</dd>
       </div>
-      <div>
+      <div className="is-sun">
         <dt className="mono">Pending</dt>
-        <dd>{counts.wl.pending}</dd>
+        <dd className="num">{counts.wl.pending}</dd>
       </div>
-      <div>
+      <div className="is-up">
         <dt className="mono">Approved</dt>
-        <dd>{counts.wl.approved}</dd>
+        <dd className="num">{counts.wl.approved}</dd>
       </div>
       <div>
         <dt className="mono">Rejected</dt>
-        <dd>{counts.wl.rejected}</dd>
+        <dd className="num">{counts.wl.rejected}</dd>
       </div>
     </dl>
   );
@@ -70,6 +70,7 @@ function Detail({ entry, onClose, onChanged, api }: { entry: WlEntryAdmin; onClo
             <dt className="mono">Wallet</dt>
             <dd>
               <code>{entry.wallet}</code>
+              {entry.legacy && <span className="ad-bad ad-legacy"> legacy (not an EVM wallet: never in the allowlist)</span>}
             </dd>
           </div>
           <div>
@@ -110,7 +111,7 @@ function Detail({ entry, onClose, onChanged, api }: { entry: WlEntryAdmin; onClo
           <InkButton variant="paper" size="sm" onClick={() => void act('Note saved.', () => api.wlNote(entry.id, note))} disabled={note === entry.note}>
             Save note
           </InkButton>
-          <InkButton variant="pink" size="sm" onClick={() => void act('Approved.', () => api.wlStatus(entry.id, 'approved'))} disabled={entry.status === 'approved'}>
+          <InkButton variant="teal" size="sm" onClick={() => void act('Approved.', () => api.wlStatus(entry.id, 'approved'))} disabled={entry.status === 'approved'}>
             Approve
           </InkButton>
           <InkButton variant="paper" size="sm" onClick={() => void act('Rejected.', () => api.wlStatus(entry.id, 'rejected'))} disabled={entry.status === 'rejected'}>
@@ -190,10 +191,10 @@ export function WlTab({ api }: TabProps) {
           WL applications
         </h2>
         <div className="ad-actions">
-          <InkButton variant="paper" size="sm" onClick={() => void csv('approved')}>
+          <InkButton variant="ghost" size="sm" onClick={() => void csv('approved')}>
             CSV: approved
           </InkButton>
-          <InkButton variant="paper" size="sm" onClick={() => void csv('all')}>
+          <InkButton variant="ghost" size="sm" onClick={() => void csv('all')}>
             CSV: all
           </InkButton>
         </div>
@@ -204,7 +205,7 @@ export function WlTab({ api }: TabProps) {
           {(['', 'pending', 'approved', 'rejected'] as const).map((s) => (
             <Chip
               key={s || 'all'}
-              tone={s ? TONE[s] : 'ink'}
+              tone="ink"
               selected={status === s}
               onClick={() => {
                 setStatus(s);
@@ -220,9 +221,11 @@ export function WlTab({ api }: TabProps) {
           <input className="st-input" type="search" placeholder="Search wallet, handle, note or id" value={q} onChange={(e) => setQ(e.target.value)} />
         </label>
       </div>
-      <div className="ad-actions ad-bulk" aria-label="Bulk actions">
-        <span className="ad-note">{picked.size} selected</span>
-        <InkButton variant="pink" size="sm" disabled={busy || picked.size === 0} onClick={() => void bulk('approved')}>
+      <div className={`ad-actions ad-bulk${picked.size > 0 ? ' is-live' : ''}`} aria-label="Bulk actions">
+        <span className="ad-bulk__n">
+          <span className="num">{picked.size}</span> selected
+        </span>
+        <InkButton variant="teal" size="sm" disabled={busy || picked.size === 0} onClick={() => void bulk('approved')}>
           Approve selected
         </InkButton>
         <InkButton variant="paper" size="sm" disabled={busy || picked.size === 0} onClick={() => void bulk('rejected')}>
@@ -236,7 +239,10 @@ export function WlTab({ api }: TabProps) {
       {!data ? (
         <StampSpinner label="Loading" />
       ) : items.length === 0 ? (
-        <p className="ad-note">No entries{status ? ` with status ${status}` : ''}{query ? ` matching “${query}”` : ''}.</p>
+        <Empty scene="queue">
+          No entries{status ? ` with status ${status}` : ''}
+          {query ? ` matching “${query}”` : ''}. {status === 'pending' && !query ? 'Inbox zero. Have a snack.' : ''}
+        </Empty>
       ) : (
         <div className="ad-tablewrap">
           <table className="ad-table ad-wltable">
@@ -284,16 +290,20 @@ export function WlTab({ api }: TabProps) {
                     <Ext href={`https://x.com/${e.xHandle}`}>@{e.xHandle}</Ext>
                   </td>
                   <td>
-                    <code title={e.wallet}>
+                    <code title={e.wallet} className="ad-wallet">
                       {e.wallet.slice(0, 6)}…{e.wallet.slice(-4)}
                     </code>
+                    {e.legacy && <span className="ad-bad ad-legacy"> legacy</span>}
                   </td>
                   <td>
                     <Chip tone={TONE[e.status]}>{e.status}</Chip>
                   </td>
-                  <td>{fmtDate(e.createdAt)}</td>
+                  <td className="num ad-date">{fmtDate(e.createdAt)}</td>
                   <td>
-                    {e.dupCollabs.length > 0 && <span className="ad-bad">dup</span>} {e.note && <span className="ad-note">note</span>}
+                    <span className="ad-flags">
+                      {e.dupCollabs.length > 0 && <span className="ad-code mono is-bad">dup</span>}
+                      {e.note && <span className="ad-code mono">note</span>}
+                    </span>
                   </td>
                   <td>
                     <InkButton variant="paper" size="sm" onClick={() => setOpen(e)}>
@@ -311,7 +321,7 @@ export function WlTab({ api }: TabProps) {
           <InkButton variant="paper" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
             Previous
           </InkButton>
-          <span className="ad-note">
+          <span className="ad-note num">
             Page {page} of {pages} · {data.total} entries
           </span>
           <InkButton variant="paper" size="sm" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>

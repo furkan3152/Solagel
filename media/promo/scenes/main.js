@@ -1,4 +1,4 @@
-/* Slana promo: stage bootstrap. Exposes window.renderAt(t) (async) for the
+/* Elymum promo: stage bootstrap. Exposes window.renderAt(t) (async) for the
  * frame renderer and a ?t= preview mode for quick looks in a browser. */
 'use strict';
 
@@ -33,9 +33,10 @@ window.getImg = (url) => {
 
 async function boot() {
   const faces = [
-    new FontFace('Brico', 'url(/fonts/brico.woff2)', { weight: '200 800', stretch: '75% 100%' }),
-    new FontFace('DMMono', 'url(/fonts/dmmono-400.woff2)', { weight: '400' }),
-    new FontFace('DMMono', 'url(/fonts/dmmono-500.woff2)', { weight: '500' }),
+    // the Storybook faces: Fraunces (display, SOFT 100 is its default optical look here), DM Sans, Geist Mono
+    new FontFace('Fraunces', 'url(/fonts/fraunces.woff2)', { weight: '100 900' }),
+    new FontFace('DM Sans', 'url(/fonts/dm-sans.woff2)', { weight: '100 1000' }),
+    new FontFace('Geist Mono', 'url(/fonts/geist-mono.woff2)', { weight: '100 900' }),
   ];
   for (const f of faces) { await f.load(); document.fonts.add(f); }
   window.TL = await (await fetch('/timeline.json')).json();

@@ -1,4 +1,4 @@
-import { LAMPORTS_PER_SOL, RULES, VIEW } from './constants';
+import { RULES, VIEW } from './constants';
 
 export const clamp = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > hi ? hi : v);
 
@@ -42,7 +42,7 @@ export function viewSize(totalMass: number, aspect: number, spectator = false): 
   return a >= 1 ? { w: short * a, h: short } : { w: short, h: short / a };
 }
 
-/** Level from on-chain XP (mirrors the program: 1 + floor(sqrt(xp / 50))). */
+/** Level from XP: 1 + floor(sqrt(xp / 50)). */
 export function levelFromXp(xp: number): number {
   const units = Math.floor(Math.max(0, xp) / 50);
   let s = Math.floor(Math.sqrt(units));
@@ -55,21 +55,10 @@ export function levelFromXp(xp: number): number {
 /** Minimum XP needed to reach `level`. */
 export const xpForLevel = (level: number): number => 50 * Math.max(0, level - 1) ** 2;
 
-/** XP a finished game is worth (server computes; program clamps to 2000). */
+/** XP a finished game is worth (computed by the server, clamped to 1..2000). */
 export function xpForGame(score: number, kills: number, aliveMs: number): number {
   const xp = Math.floor(score / 10) + kills * 8 + Math.floor(aliveMs / 30_000);
   return clamp(xp, 1, 2000);
-}
-
-export const lamportsToSol = (lamports: number | bigint): number => Number(lamports) / LAMPORTS_PER_SOL;
-
-/** Compact SOL formatting for HUD/leaderboards: ◎0.153, ◎1.2, ◎12. */
-export function formatSol(lamports: number | bigint, maxDecimals = 3): string {
-  const sol = lamportsToSol(lamports);
-  const decimals = sol >= 100 ? 0 : sol >= 10 ? 1 : sol >= 1 ? 2 : maxDecimals;
-  let s = sol.toFixed(decimals);
-  if (s.includes('.')) s = s.replace(/0+$/, '').replace(/\.$/, '');
-  return `◎${s}`;
 }
 
 /**

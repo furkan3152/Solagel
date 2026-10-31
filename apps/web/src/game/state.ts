@@ -1,5 +1,5 @@
-import { EMOTE_DURATION_MS, EntityKind, PlayerFlag, type PlayerInfo, type ServerMessage, type SnapshotData } from '@slana/shared';
-import type { Expression } from '@slana/art';
+import { EMOTE_DURATION_MS, EntityKind, PlayerFlag, type PlayerInfo, type ServerMessage, type SnapshotData } from '@elymum/shared';
+import type { Expression } from '@elymum/art';
 import { JellyBody } from '../render/jelly';
 
 /** Movement between two snapshots is eased over this window (classic agar feel). */

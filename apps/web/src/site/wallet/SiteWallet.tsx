@@ -1,25 +1,18 @@
-import '../../polyfills';
-import { WalletReadyState } from '@solana/wallet-adapter-base';
-import { ConnectionProvider, WalletProvider, useWallet } from '@solana/wallet-adapter-react';
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { InkButton } from '../../design';
-import { shortWallet } from '../settings';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { AddressChip, Button, Icon, StatusPill } from '../../design';
+import { providerSigner } from '../../wallet/siwe';
+import { connectWallet, connected, disconnectWallet, initWallets, useWallet } from '../../wallet/store';
 import { signIn, signOut, useSession, type SiteSession } from '../session';
+import './wallet.css';
 
 /**
- * Wallets for the site pages (WL, collab): Wallet Standard discovery (Phantom, Solflare,
- * Backpack and others), no per-wallet adapters. The site only asks wallets to sign the free
- * sign-in message; nothing here sends a transaction, so the RPC endpoint is never used.
+ * Wallets for the site pages (WL, collab, mint): EIP-6963 discovery (MetaMask, Rabby or any
+ * browser wallet), with `window.ethereum` as the fallback. Kept as a provider component so the
+ * pages keep their structure; it only starts the discovery (the wallet lives in one store).
  */
 export function SiteWalletProvider({ children }: { children: ReactNode }) {
-  const wallets = useMemo(() => [], []);
-  return (
-    <ConnectionProvider endpoint="https://api.mainnet-beta.solana.com">
-      <WalletProvider wallets={wallets} autoConnect onError={(e) => console.warn('wallet error', e)}>
-        {children}
-      </WalletProvider>
-    </ConnectionProvider>
-  );
+  useEffect(() => initWallets(), []);
+  return <>{children}</>;
 }
 
 /** The signed-in session, if any (the wallet need not be connected to use it). */
@@ -27,27 +20,32 @@ export function useSiteSession(): SiteSession | null {
   return useSession((s) => s.session);
 }
 
+const same = (a: string | null | undefined, b: string | null | undefined) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
+
 /**
- * Connect a wallet and sign in (one free message, no transaction). Shows the wallets found in
+ * Connect a wallet and sign in (one free SIWE message, no transaction). Shows the wallets found in
  * this browser; after the visitor picks one, it asks for the signature once by itself.
  */
 export function WalletSignIn({ label = 'Sign in with your wallet', onSession }: { label?: string; onSession?: (s: SiteSession) => void }) {
-  const wallet = useWallet();
-  const { wallets, select, connected, connecting, publicKey, disconnect } = wallet;
+  const providers = useWallet((s) => s.providers);
+  const status = useWallet((s) => s.status);
+  const current = useWallet((s) => s.current);
+  const walletError = useWallet((s) => s.error);
+  const address = useWallet((s) => (s.status === 'connected' ? s.address : null));
   const session = useSession((s) => s.session);
   const signing = useSession((s) => s.signing);
   const error = useSession((s) => s.error);
   const [picked, setPicked] = useState(false);
   const asked = useRef<string | null>(null);
-  const pubkey = publicKey?.toBase58() ?? null;
+  const connecting = status === 'connecting';
 
-  const listed = [...wallets]
-    .filter((w) => w.readyState === WalletReadyState.Installed || w.readyState === WalletReadyState.Loadable)
-    .sort((a, b) => Number(b.readyState === WalletReadyState.Installed) - Number(a.readyState === WalletReadyState.Installed));
+  useEffect(() => initWallets(), []);
 
   const doSign = async () => {
+    const w = connected();
+    if (!w) return;
     try {
-      const s = await signIn(wallet);
+      const s = await signIn(providerSigner(w.provider, w.address));
       onSession?.(s);
     } catch {
       /* the error is in the session store */
@@ -56,25 +54,27 @@ export function WalletSignIn({ label = 'Sign in with your wallet', onSession }: 
 
   // after the visitor picks a wallet: ask for the signature once it connects
   useEffect(() => {
-    if (!picked || !connected || !pubkey || asked.current === pubkey) return;
-    asked.current = pubkey;
+    if (!picked || !address || asked.current === address) return;
+    asked.current = address;
     void doSign();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [picked, connected, pubkey]);
+  }, [picked, address]);
 
-  if (session && (!pubkey || session.pubkey === pubkey)) {
+  if (session && (!address || same(session.address, address))) {
     return (
-      <div className="st-signed">
-        <span className="kb-chip mono kb-tone-teal">Signed in</span>
-        <code title={session.pubkey}>{shortWallet(session.pubkey)}</code>
+      <div className="sw-signed">
+        <StatusPill tone="ok" size="sm">
+          Signed in
+        </StatusPill>
+        <AddressChip address={session.address} size="sm" />
         <button
           type="button"
-          className="st-textlink"
+          className="sw-link"
           onClick={() => {
             signOut();
             asked.current = null;
             setPicked(false);
-            void disconnect().catch(() => {});
+            disconnectWallet();
           }}
         >
           Switch wallet
@@ -83,24 +83,26 @@ export function WalletSignIn({ label = 'Sign in with your wallet', onSession }: 
     );
   }
 
-  if (connected && pubkey) {
+  if (address) {
     return (
-      <div className="st-signin">
-        <div className="st-signed">
-          <span className="kb-chip mono kb-tone-ink">Connected</span>
-          <code title={pubkey}>{shortWallet(pubkey)}</code>
-          <button type="button" className="st-textlink" onClick={() => void disconnect().catch(() => {})}>
+      <div className="sw">
+        <div className="sw-signed">
+          <StatusPill tone="live" size="sm">
+            Connected
+          </StatusPill>
+          <AddressChip address={address} size="sm" copy={false} />
+          <button type="button" className="sw-link" onClick={() => disconnectWallet()}>
             Use another wallet
           </button>
         </div>
-        <div className="st-row" style={{ marginTop: 12 }}>
-          <InkButton variant="pink" onClick={() => void doSign()} disabled={signing}>
+        <div className="sw-row">
+          <Button variant="teal" lead="wallet" onClick={() => void doSign()} disabled={signing} loading={signing}>
             {signing ? 'Check your wallet…' : label}
-          </InkButton>
+          </Button>
         </div>
-        <p className="st-note">Signing is free and sends no transaction.</p>
+        <p className="sw-note">Signing is free and sends no transaction.</p>
         {error && (
-          <p className="st-note is-error" role="alert">
+          <p className="sw-note is-error" role="alert">
             {error}
           </p>
         )}
@@ -109,36 +111,47 @@ export function WalletSignIn({ label = 'Sign in with your wallet', onSession }: 
   }
 
   return (
-    <div className="st-signin">
-      {listed.length === 0 ? (
-        <p className="st-note">
-          No Solana wallet in this browser. Install Phantom, Solflare or Backpack, or open this page in your wallet app&apos;s browser.
+    <div className="sw">
+      {providers.length === 0 ? (
+        <p className="sw-none">
+          <span className="sw-none__icon" aria-hidden="true">
+            <Icon name="wallet" size={22} />
+          </span>
+          <span>
+            <strong>No browser wallet found.</strong> Install MetaMask, Rabby or any browser wallet, or open this page in your wallet app&apos;s browser.
+          </span>
         </p>
       ) : (
-        <div className="st-wallets" role="group" aria-label="Wallets">
-          {listed.map((w) => (
-            <button
-              key={w.adapter.name}
-              type="button"
-              className="st-wallet-opt"
-              disabled={connecting}
-              onClick={() => {
-                setPicked(true);
-                asked.current = null;
-                if (wallet.wallet?.adapter.name === w.adapter.name && !connected) void wallet.connect().catch(() => {});
-                else select(w.adapter.name);
-              }}
-            >
-              {w.adapter.icon && <img src={w.adapter.icon} alt="" />}
-              <span>{w.adapter.name}</span>
-            </button>
-          ))}
+        <div className="sw-wallets" role="group" aria-label="Wallets">
+          {providers.map((d) => {
+            const busy = connecting && current?.info.uuid === d.info.uuid;
+            return (
+              <button
+                key={d.info.uuid}
+                type="button"
+                className={`sw-opt${busy ? ' is-busy' : ''}`}
+                disabled={connecting}
+                aria-busy={busy}
+                onClick={() => {
+                  setPicked(true);
+                  asked.current = null;
+                  void connectWallet(d);
+                }}
+              >
+                <span className="sw-opt__icon" aria-hidden="true">
+                  {d.info.icon ? <img src={d.info.icon} alt="" /> : <Icon name="wallet" size={20} />}
+                </span>
+                <span className="sw-opt__name">{d.info.name}</span>
+                <Icon name="arrow" size={18} className="sw-opt__go" />
+              </button>
+            );
+          })}
         </div>
       )}
-      <p className="st-note">{connecting ? 'Connecting…' : 'Signing in is free and sends no transaction.'}</p>
-      {error && (
-        <p className="st-note is-error" role="alert">
-          {error}
+      <p className="sw-note">{connecting ? 'Connecting… check your wallet.' : 'Signing in is free and sends no transaction.'}</p>
+      {(error || walletError) && (
+        <p className="sw-note is-error" role="alert">
+          {error ?? walletError}
         </p>
       )}
     </div>

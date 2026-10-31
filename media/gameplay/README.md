@@ -1,13 +1,13 @@
-# Slana gameplay video (Video A)
+# Elymum gameplay video (Video A)
 
-A cut of a real paid round in Penny Pond, about 57 s, 1920x1080, **60 fps**, H.264 + AAC, -14 LUFS
+A cut of a real paid round in Asphodel Meadow, about 57 s, 1920x1080, **60 fps**, H.264 + AAC, -14 LUFS
 (true peak at or below -1.5 dBTP after encoding): a mid-round join (the round chip), she eats a
 player (slow motion through the gulp, a punch-in and the value floating off the coin), loot swept
 up, a bot eats her and she buys back in, the final minute (joins closed), the last ten seconds with
 a last gulp four seconds before the bell, the bell and the "Round over" receipt with the PAID stamp.
-Cuts sit on the bar lines of the game's own score (82 BPM). It is in the same Paper Ticket language
-as the promo (`media/promo`): riso wordmark with a teal ghost and pink misregistration, mono
-kickers with a pink dot, ticket lower-thirds, stamps, value floats, tape and a perforated paper wipe.
+Cuts sit on the bar lines of the game's own score (82 BPM). It is in the same language as the promo
+(`media/promo`), now in the Ring Storybook palette and type: Fraunces wordmark with a ghost pass, Geist
+Mono kickers with a cyan dot, ticket lower-thirds, stamps, value floats, tape and a perforated paper wipe.
 
 ## Deterministic capture
 
@@ -29,13 +29,13 @@ This folder also holds the capture and render kit that the how-to-play video
 
 | Path | What it is |
 | --- | --- |
-| `capture/lib.mjs` | Playwright kit. `Player` drives the real app (dev wallet, lobby, tickets, "Buy back in", held tickets, an in-page steering brain that eats, flees, seeks open water and keeps away from the world edge) and reads the arena round clock (`round()`, `untilRound()`). `Recorder` records a take: the journal (a player opened with `journal`), the game audio from the dev tap (`window.__slanaAudioTap`), and a 10 Hz telemetry log (HUD, the round's time left and phase, where Daphne, prey, threats and loot are on screen) plus store events (value floats, kills, rank, banners, the bell's round result, held tickets). |
+| `capture/lib.mjs` | Playwright kit. `Player` drives the real app (dev wallet, lobby, tickets, "Buy back in", held tickets, an in-page steering brain that eats, flees, seeks open water and keeps away from the world edge) and reads the arena round clock (`round()`, `untilRound()`). `Recorder` records a take: the journal (a player opened with `journal`), the game audio from the dev tap (`window.__elymumAudioTap`), and a 10 Hz telemetry log (HUD, the round's time left and phase, where Daphne, prey, threats and loot are on screen) plus store events (value floats, kills, rank, banners, the bell's round result, held tickets). |
 | `capture/journal.mjs` | The journal recorder (WebSockets, fetch, input, clock) and the replay shim (virtual clock, journal-fed WebSocket and fetch, animations on the virtual clock). |
 | `capture/replay.mjs` | Renders a journal take: `--edit a.json,b.json` captures every source span the edits use (padded), at 60 fps, 240 fps where a shot runs slower than 0.75x, and each output frame's exact source time. Writes `video.mkv`, `frames.json`, `pts.json` and `fsamples.json` (per-frame telemetry: the coin on screen, the camera, the world size). |
 | `capture/take-*.mjs` | One script per take: `arena` (a whole round: five staged rival wallets with real tickets, Daphne joins mid-round, eats, buys back in if eaten, plays safe through the final minute, a rival comes at her in the last seconds, the bell, the receipt; recorded twice as `arena` and `arena2`), `spill` (a bot eats Daphne, "Buy back in", the same round again), `held` (the lobby in a final minute: joins closed, a held ticket that joins the next round by itself), `practice` (growth, controls, cacti, coin rain; the coin is steered back to open water before each beat), `lobby` (tickets, wallet, ticket sheet, the four arenas, ranks, guide), `music` (the score only, no video). The round takes wait for the right moment of the wall-clock round. |
 | `capture/take-all.sh` | Records every take in turn. |
 | `capture/pack.mjs`, `capture/trim.py` | For the older screencast takes (unused by journal takes). |
-| `motion/motion.html`, `motion/motion.js` | The motion graphics: deterministic components (cards, wipes, lower-thirds, kickers, stamps, keycaps, mouse, hand-drawn rings, arrows and boxes, captions, receipts, fee-split bar, rank counter, the eating-rule diagram, value floats, the riso kinetic headline, the NFT beat via `media/free-mint/scenes/nft.js` and the promo's canvas kit) drawn as a pure function of time, at any frame size (`?w=&h=`). Coin characters come from `packages/art` (`motion/build-art.mjs`). |
+| `motion/motion.html`, `motion/motion.js` | The motion graphics: deterministic components (cards, wipes, lower-thirds, kickers, stamps, keycaps, mouse, hand-drawn rings, arrows and boxes, captions, receipts, fee-split bar, rank counter, the eating-rule diagram, value floats, the riso kinetic headline, the NFT beat via `media/mint-film/scenes/nft.js` and the promo's canvas kit) drawn as a pure function of time, at any frame size (`?w=&h=`). Coin characters come from `packages/art` (`motion/build-art.mjs`). |
 | `render/timeline.mjs` | Edit toolkit: shots with speed ramps (integrated time maps), smart reframing from the telemetry (follows Daphne, leans toward nearby prey, threats and loot, critically damped), camera keyframes, punch-ins, shake, tracking helpers. On replayed takes the reframing never shows the world edge: it zooms in and slides so the crop stays inside the world (per-frame camera telemetry). The output frame may differ from the source (the promo's vertical cut). |
 | `render/overlays.mjs` | Renders the graphics layer frame by frame in headless Chromium (any frame size). |
 | `render/compose.py` | Picture: reframed footage (an antialiased resample of the crop box from the high-resolution replay, exact frames, sharpened on punch-ins) + graphics, piped to x264. |
@@ -74,8 +74,8 @@ node media/gameplay/edit.mjs                  # again: the framing now uses the 
 
 # 3. the render
 media/gameplay/render/render.sh media/gameplay/cache/edit/gameplay.json \
-  media/gameplay/cache/edit/gameplay-music.json slana-gameplay
-# -> out/videos/slana-gameplay.mp4 (web, < 30 MB) and slana-gameplay-master.mp4
+  media/gameplay/cache/edit/gameplay-music.json elymum-gameplay
+# -> out/videos/elymum-gameplay.mp4 (web, < 30 MB) and elymum-gameplay-master.mp4
 ```
 
 Takes are live play, so a new recording tells a slightly different story. The edits find their
@@ -91,8 +91,8 @@ the final minute, the last gulp, the bell and the receipt) and `spill` (eaten by
   the frames the edits use (CRF 14 H.264).
 - Rounds are wall-clock aligned (`ROUND_SECONDS`, default 300). The takes use the default so the
   round chip shows real five-minute times.
-- The rivals (`mochi_moon`, `bonk_bae`, `lil_lamport`, `rug_ruth`, `pixel_penny`) are real wallets
+- The rivals (`mochi_moon`, `bonk_bae`, `lil_wei`, `rug_ruth`, `pixel_penny`) are real wallets
   with real (fake-chain) tickets, played by the capture script. Bots are the game's own.
-- The end card reads slana.io and @slanaio (X).
-- Colours follow the vivid palette (`docs/design/palette.md`, `packages/shared/src/palette.ts`);
-  `motion/` repeats the hex values, so update both when the palette moves.
+- The end card reads the site's host (`SITE_HOST`, the `PUBLIC_URL` host; default elymum.io) and @elymum (X).
+- Colours follow the Ring Storybook palette (spec section 6.3, `packages/shared/src/palette.ts`);
+  `motion/` repeats the hex values under the old names, so update both when the palette moves.

@@ -1,0 +1,287 @@
+/* The Launch construction scene (LaunchScene.tsx). Transform/opacity loops only. */
+.ls {
+  margin: 0 0 22px;
+  border: var(--stroke-sm, 3px) solid var(--outline);
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 5px 6px 0 var(--shadow-ink);
+  background: var(--mist);
+}
+.ls__svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.ls__svg text {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  fill: var(--ink-fixed);
+}
+.ls-sign {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+}
+.ls-plate__t {
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+}
+.ls-bubble__t {
+  font-size: 12px;
+}
+
+/* blueprints: dashed teal ink, no paint */
+.ls-ghost {
+  opacity: 0.62;
+}
+.ls-ghost * {
+  fill: none !important;
+  stroke: var(--teal) !important;
+  stroke-dasharray: 5 5;
+}
+.ls-ghost text {
+  fill: var(--teal) !important;
+  stroke: none !important;
+}
+.ls-site.is-unknown .ls-ghost {
+  opacity: 0.35;
+}
+.ls-site.is-now .ls-ghost {
+  opacity: 0.85;
+  animation: ls-blueprint 2.4s ease-in-out infinite;
+}
+@keyframes ls-blueprint {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 0.5; }
+}
+
+/* a built piece drops onto its site, squashes and settles; dust puffs out */
+.ls-piece {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: ls-drop 0.62s cubic-bezier(0.3, 1.4, 0.5, 1) both;
+}
+@keyframes ls-drop {
+  0% { transform: translateY(-120px) scale(1, 1); opacity: 0; }
+  55% { transform: translateY(0) scale(1.08, 0.9); opacity: 1; }
+  78% { transform: translateY(-4px) scale(0.97, 1.04); }
+  100% { transform: translateY(0) scale(1, 1); opacity: 1; }
+}
+.ls-dust circle {
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+  animation: ls-dust 0.7s ease-out both;
+  animation-delay: inherit;
+}
+.ls-dust {
+  animation: none;
+}
+@keyframes ls-dust {
+  0% { opacity: 0; transform: scale(0.3) translateY(0); }
+  30% { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.5) translateY(-10px); }
+}
+
+/* the camp */
+.ls-flag {
+  transform-box: fill-box;
+  transform-origin: 0 50%;
+  animation: ls-flag 1.8s ease-in-out infinite;
+}
+@keyframes ls-flag {
+  0%, 100% { transform: scaleX(1) skewY(0); }
+  50% { transform: scaleX(0.8) skewY(6deg); }
+}
+.ls-queue {
+  animation: ls-hop 2.4s ease-in-out infinite;
+}
+@keyframes ls-hop {
+  0%, 70%, 100% { transform: translateY(0); }
+  80% { transform: translateY(-5px); }
+}
+.ls-queue {
+  transform-box: fill-box;
+}
+
+/* the gate swings open once it is built */
+.ls-piece .ls-gate__l,
+.ls-piece .ls-gate__r {
+  transform-box: fill-box;
+  animation: ls-gate 1s 1.2s cubic-bezier(0.3, 1.3, 0.5, 1) both;
+}
+.ls-piece .ls-gate__l { transform-origin: 0 50%; }
+.ls-piece .ls-gate__r { transform-origin: 100% 50%; --dir: -1; }
+@keyframes ls-gate {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0.38); }
+}
+
+/* the press stamps an emblem every few seconds */
+.ls-press__ram {
+  animation: ls-ram 3.6s ease-in-out infinite;
+}
+@keyframes ls-ram {
+  0%, 30%, 100% { transform: translateY(0); }
+  42% { transform: translateY(26px); }
+  50% { transform: translateY(26px); }
+  64% { transform: translateY(0); }
+}
+.ls-press__wheel {
+  animation: ls-wheel 3.6s ease-in-out infinite;
+}
+@keyframes ls-wheel {
+  0%, 30%, 100% { transform: scaleX(1); }
+  36% { transform: scaleX(-1); }
+  42% { transform: scaleX(1); }
+}
+.ls-press__coin {
+  animation: ls-blank 3.6s linear infinite;
+}
+@keyframes ls-blank {
+  0%, 46% { opacity: 1; }
+  48%, 96% { opacity: 0; }
+  100% { opacity: 1; }
+}
+.ls-press__out {
+  opacity: 0;
+  animation: ls-out 3.6s ease-out infinite;
+}
+@keyframes ls-out {
+  0%, 46% { opacity: 0; transform: translate(0, 0); }
+  50% { opacity: 1; transform: translate(0, 0); }
+  66% { opacity: 1; transform: translate(34px, -30px); }
+  80% { opacity: 1; transform: translate(62px, 10px); }
+  92% { opacity: 0; transform: translate(70px, 10px); }
+  100% { opacity: 0; }
+}
+
+/* the lanterns: lit ones flicker warm, the plaza dances */
+.is-lit .ls-lamp__glow {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ls-glow 2.2s ease-in-out infinite;
+  animation-delay: inherit;
+}
+@keyframes ls-glow {
+  0%, 100% { opacity: 0.25; transform: scale(0.9); }
+  50% { opacity: 0.55; transform: scale(1.15); }
+}
+.ls-dancer {
+  animation: ls-dance 1.1s ease-in-out infinite alternate;
+}
+.ls-dancer--b {
+  animation-delay: -0.55s;
+}
+@keyframes ls-dance {
+  from { transform: translateY(0); }
+  to { transform: translateY(-6px); }
+}
+
+/* the crane: the trolley runs along the jib, the load swings and is lowered */
+.ls-crane__trolley {
+  animation: ls-trolley 6s ease-in-out infinite;
+}
+@keyframes ls-trolley {
+  0%, 100% { transform: translateX(30px); }
+  40%, 70% { transform: translateX(0); }
+}
+.ls-crane__load {
+  animation: ls-swing 2s ease-in-out infinite alternate;
+}
+@keyframes ls-swing {
+  from { transform: rotate(-5deg); }
+  to { transform: rotate(5deg); }
+}
+.ls-crane__block {
+  animation: ls-lower 6s ease-in-out infinite;
+}
+@keyframes ls-lower {
+  0%, 40%, 100% { transform: translateY(0); }
+  58%, 66% { transform: translateY(46px); }
+}
+.ls-crane__cable {
+  transform-box: fill-box;
+  transform-origin: 50% 0;
+  animation: ls-cable 6s ease-in-out infinite;
+}
+@keyframes ls-cable {
+  0%, 40%, 100% { transform: scaleY(1); }
+  58%, 66% { transform: scaleY(1.82); }
+}
+
+/* the foreman */
+.ls-foreman__body {
+  animation: ls-breathe 3s ease-in-out infinite;
+}
+@keyframes ls-breathe {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+.ls-foreman.is-thumbs .ls-foreman__body {
+  animation: ls-cheer 0.9s ease-in-out infinite alternate;
+}
+@keyframes ls-cheer {
+  from { transform: translateY(0); }
+  to { transform: translateY(-6px); }
+}
+.ls-foreman.is-worried .ls-foreman__body {
+  animation: ls-fret 0.5s ease-in-out infinite alternate;
+}
+@keyframes ls-fret {
+  from { transform: translateX(-1px); }
+  to { transform: translateX(1px); }
+}
+.ls-foreman.is-sleep .ls-foreman__body {
+  animation: ls-snooze 3.6s ease-in-out infinite;
+}
+@keyframes ls-snooze {
+  0%, 100% { transform: scale(1, 1); }
+  50% { transform: scale(1.03, 0.97); }
+}
+.ls-bubble {
+  animation: ls-pop 0.4s cubic-bezier(0.3, 1.5, 0.5, 1) both;
+  transform-box: fill-box;
+  transform-origin: 30% 100%;
+}
+@keyframes ls-pop {
+  from { transform: scale(0.4); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+/* clouds drift */
+.ls-cloud {
+  animation: ls-drift 26s ease-in-out infinite alternate;
+}
+.ls-cloud--b {
+  animation-duration: 34s;
+  animation-direction: alternate-reverse;
+}
+@keyframes ls-drift {
+  from { transform: translateX(-30px); }
+  to { transform: translateX(40px); }
+}
+
+/* small screens: the plates' words get too small, the numbers stay */
+@media (max-width: 560px) {
+  .ls {
+    box-shadow: 3px 4px 0 var(--shadow-ink);
+    border-radius: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ls__svg *,
+  .ls__svg {
+    animation: none !important;
+  }
+  .ls-press__out {
+    opacity: 0;
+  }
+  .ls-piece .ls-gate__l,
+  .ls-piece .ls-gate__r {
+    transform: scaleX(0.38);
+  }
+}
+.ls__svg.is-reduced * {
+  animation: none !important;
+}

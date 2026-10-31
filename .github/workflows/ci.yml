@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   typescript:
-    name: TypeScript (shared · art · sdk · server · web)
+    name: TypeScript + contracts (contracts · shared · art · sdk · server · web)
     runs-on: ubuntu-latest
     env:
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
@@ -37,84 +37,30 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      # forge-std (a contracts test dependency) is a git dependency; fetch it over HTTPS, not SSH.
+      - name: Git dependencies over HTTPS
+        run: |
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
+          git config --global --add url."https://github.com/".insteadOf "ssh://git@github.com/"
       - run: pnpm install --frozen-lockfile
+      # Solidity is compiled here and nowhere else. The exported artifacts (ABIs, bytecode, the pinned
+      # runtime code hash) are committed: a contract change without a fresh export fails the diff.
+      - name: Contracts (build, artifacts in sync, unit + fuzz tests)
+        run: |
+          pnpm -F @elymum/contracts build
+          git diff --exit-code packages/contracts/src/artifacts.ts
+          pnpm -F @elymum/contracts typecheck
+          pnpm -F @elymum/contracts test
       - name: Shared
-        run: pnpm -F @slana/shared typecheck && pnpm -F @slana/shared test
+        run: pnpm -F @elymum/shared typecheck && pnpm -F @elymum/shared test
       - name: Art
-        run: pnpm -F @slana/art typecheck && pnpm -F @slana/art test
+        run: pnpm -F @elymum/art typecheck && pnpm -F @elymum/art test
       - name: SDK
-        run: pnpm -F @slana/sdk typecheck && pnpm -F @slana/sdk test
+        run: pnpm -F @elymum/sdk typecheck && pnpm -F @elymum/sdk test
       - name: Server
-        run: pnpm -F @slana/server typecheck && pnpm -F @slana/server test && pnpm -F @slana/server build
+        run: pnpm -F @elymum/server typecheck && pnpm -F @elymum/server test && pnpm -F @elymum/server build
       - name: Web
-        run: pnpm -F @slana/web typecheck && pnpm -F @slana/web test && pnpm -F @slana/web build
-
-  program:
-    name: Program (Anchor reference + lean build, size gate, LiteSVM suite on both)
-    runs-on: ubuntu-latest
-    env:
-      # Agave CLI version: platform-tools and cargo-build-sbf come with it, so it is part of the cache key.
-      AGAVE_VERSION: v4.3.0
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          persist-credentials: false
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            ~/.cache/solana
-            target
-          key: program-${{ runner.os }}-agave-${{ env.AGAVE_VERSION }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
-      - name: Install Rust toolchain from rust-toolchain.toml
-        run: rustup toolchain install
-      - name: Install Solana (Agave) CLI
-        run: |
-          sh -c "$(curl -sSfL https://release.anza.xyz/${AGAVE_VERSION}/install)"
-          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: 22
-      - name: Install Anchor CLI
-        run: npm i -g @anchor-lang/cli@1.2.1
-      # The Anchor reference (programs/slana-ref) is never deployed: it is the IDL source and the
-      # conformance oracle (target/deploy/slana.so). The deployed program is slana_lean.so.
-      - name: Build Anchor reference (IDL + oracle)
-        run: anchor build --ignore-keys
-      - name: Build lean program (deployed artifact)
-        run: scripts/build-lean.sh
-      - name: SDK IDL is in sync with the program
-        run: node scripts/sync-idl.mjs && git diff --exit-code packages/sdk/src/idl
-      # R27: no unchecked arithmetic in the deployed program.
-      - name: Clippy on the lean program (warnings and arithmetic side effects are errors)
-        run: cargo clippy -p slana-lean --lib -- -D warnings -D clippy::arithmetic_side_effects
-      - name: Lean crate host tests (discriminators, errors, layouts vs reference and IDL)
-        run: cargo test -p slana-lean
-      - name: LiteSVM suite against the reference + size gate (SLANA_IMPL=ref)
-        run: cargo test -p slana-ref --no-fail-fast
-        env:
-          SLANA_IMPL: ref
-      - name: LiteSVM suite against the lean program (SLANA_IMPL=lean, hard gate)
-        run: cargo test -p slana-ref --no-fail-fast
-        env:
-          SLANA_IMPL: lean
-      - name: Lean vs reference size and compute units
-        run: |
-          set -o pipefail
-          for so in target/deploy/slana_lean.so target/deploy/slana.so; do
-            len=$(wc -c <"$so" | tr -d ' ')
-            printf '%-28s %8s bytes, rent %s lamports\n' "$so" "$len" $(((len + 45 + 128) * 6960))
-          done
-          for impl in ref lean; do
-            SLANA_IMPL=$impl cargo test -q -p slana-ref --test cu -- --nocapture \
-              | sed -n 's/^CU //p' >"$RUNNER_TEMP/cu-$impl.txt"
-          done
-          printf '\n%-36s %8s %8s\n' instruction ref lean
-          paste -d'|' "$RUNNER_TEMP/cu-ref.txt" "$RUNNER_TEMP/cu-lean.txt" \
-            | awk -F'|' '{ n = split($1, r, " "); split($2, l, " "); name = r[1];
-                for (i = 2; i < n; i++) name = name " " r[i];
-                printf "%-36s %8s %8s\n", name, r[n], l[n] }'
+        run: pnpm -F @elymum/web typecheck && pnpm -F @elymum/web test && pnpm -F @elymum/web build
 
   docker:
     name: Docker image (build only, no push)
@@ -124,4 +70,4 @@ jobs:
         with:
           persist-credentials: false
       - name: Build
-        run: docker build -t slana:ci .
+        run: docker build -t elymum:ci .

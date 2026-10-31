@@ -1,62 +1,53 @@
 import { describe, expect, it } from 'vitest';
 import {
-  clusterDefaultRpc,
-  explorerAddressUrl,
-  explorerTxUrl,
-  lamportsToSol,
-  normalizeCluster,
+  checksumAddress,
+  formatBps,
+  formatHypeAmount,
+  formatTokenAmount,
+  formatTokenWithSymbol,
+  formatUsdCents,
+  isZeroAddress,
+  parseHypeAmount,
+  parseTokenAmount,
+  sameAddress,
   shortAddress,
-  solToLamports,
-} from '../src';
+  shortHash,
+} from '../src/format';
 
 describe('format', () => {
-  it('solToLamports is integer-safe', () => {
-    expect(solToLamports(0.1)).toBe(100_000_000);
-    expect(solToLamports(0.29)).toBe(290_000_000); // 0.29 * 1e9 = 289999999.99999994
-    expect(solToLamports(1.1)).toBe(1_100_000_000); // 1.1 * 1e9 = 1100000000.0000002
-    expect(solToLamports(0.01)).toBe(10_000_000);
-    expect(solToLamports(0.05)).toBe(50_000_000);
-    expect(solToLamports(0.000000001)).toBe(1);
-    expect(solToLamports(1e-9)).toBe(1);
-    expect(solToLamports(0)).toBe(0);
-    expect(solToLamports(123.456789123)).toBe(123_456_789_123);
-    expect(solToLamports('0.29')).toBe(290_000_000);
-    expect(solToLamports(' 2 ')).toBe(2_000_000_000);
-    expect(solToLamports(-0.5)).toBe(-500_000_000);
-    for (let i = 0; i <= 1000; i++) {
-      const sol = i / 100;
-      expect(Number.isInteger(solToLamports(sol))).toBe(true);
-      expect(solToLamports(sol)).toBe(i * 10_000_000);
-    }
-    expect(() => solToLamports(Number.NaN)).toThrow(RangeError);
-    expect(() => solToLamports('abc')).toThrow(RangeError);
-    expect(() => solToLamports(1e10)).toThrow(RangeError); // beyond 2^53 lamports
+  it('formats 18-decimal token amounts exactly', () => {
+    expect(formatTokenAmount(1_234_500_000_000_000_000_000n, 18)).toBe('1,234.5');
+    expect(formatTokenAmount(1n, 18)).toBe('0');
+    expect(formatTokenAmount(1_000_000_000_000n, 18)).toBe('0.000001');
+    expect(formatTokenAmount(12_400n * 10n ** 18n, 18, { compact: true })).toBe('12.4K');
+    expect(formatTokenWithSymbol(10n ** 18n, 18, '$ELYMUM')).toBe('1 $ELYMUM');
   });
 
-  it('lamportsToSol', () => {
-    expect(lamportsToSol(1_500_000_000)).toBe(1.5);
-    expect(lamportsToSol(10_000_000n)).toBe(0.01);
+  it('parses token and HYPE amounts', () => {
+    expect(parseTokenAmount('1_000', 18)).toBe(1000n * 10n ** 18n);
+    expect(parseTokenAmount('0.5', 6)).toBe(500_000n);
+    expect(() => parseTokenAmount('1,5', 18)).toThrow();
+    expect(parseHypeAmount('0.03')).toBe(3n * 10n ** 16n);
+    expect(parseHypeAmount('0.03 HYPE')).toBe(3n * 10n ** 16n);
   });
 
-  it('explorer links', () => {
-    expect(explorerTxUrl('SIG', 'mainnet-beta')).toBe('https://solscan.io/tx/SIG');
-    expect(explorerTxUrl('SIG', 'mainnet')).toBe('https://solscan.io/tx/SIG');
-    expect(explorerTxUrl('SIG', 'devnet')).toBe('https://solscan.io/tx/SIG?cluster=devnet');
-    expect(explorerAddressUrl('ADDR', 'devnet')).toBe('https://solscan.io/account/ADDR?cluster=devnet');
-    expect(explorerAddressUrl('ADDR', 'mainnet-beta')).toBe('https://solscan.io/account/ADDR');
-    expect(explorerTxUrl('SIG', 'localnet')).toBe('https://explorer.solana.com/tx/SIG?cluster=custom&customUrl=http%3A%2F%2Flocalhost%3A8899');
-    expect(explorerAddressUrl('ADDR', 'localnet')).toBe(
-      'https://explorer.solana.com/address/ADDR?cluster=custom&customUrl=http%3A%2F%2Flocalhost%3A8899',
-    );
-    expect(explorerTxUrl('SIG', 'localnet', 'http://127.0.0.1:8899')).toContain('customUrl=http%3A%2F%2F127.0.0.1%3A8899');
+  it('formats HYPE, bps and cents', () => {
+    expect(formatHypeAmount(31_234_567_000_000_000n)).toBe('0.031235 HYPE');
+    expect(formatHypeAmount(31_234_567_000_000_000n, 4)).toBe('0.0312 HYPE');
+    expect(formatBps(500)).toBe('5.00 %');
+    expect(formatUsdCents(100)).toBe('$1.00');
+    expect(formatUsdCents(123456)).toBe('$1,234.56');
   });
 
-  it('clusters', () => {
-    expect(clusterDefaultRpc('localnet')).toBe('http://127.0.0.1:8899');
-    expect(clusterDefaultRpc('devnet')).toBe('https://api.devnet.solana.com');
-    expect(clusterDefaultRpc('mainnet-beta')).toBe('https://api.mainnet-beta.solana.com');
-    expect(normalizeCluster('Mainnet')).toBe('mainnet-beta');
-    expect(normalizeCluster(undefined)).toBe('localnet');
-    expect(shortAddress('5skf5Twyqr8M84dJ8RLGfz1NU6fR3zPDRLUvGd5y7472')).toBe('5skf…7472');
+  it('handles addresses', () => {
+    const a = '0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266';
+    expect(checksumAddress(a)).toBe('0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266');
+    expect(checksumAddress('nope')).toBeNull();
+    expect(sameAddress(a, a.toUpperCase().replace('0X', '0x'))).toBe(true);
+    expect(sameAddress(a, null)).toBe(false);
+    expect(shortAddress('0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266')).toBe('0xf39F…2266');
+    expect(shortHash(`0x${'ab'.repeat(32)}`)).toBe('0xababab…ababab');
+    expect(isZeroAddress('0x0000000000000000000000000000000000000000')).toBe(true);
+    expect(isZeroAddress(a)).toBe(false);
   });
 });

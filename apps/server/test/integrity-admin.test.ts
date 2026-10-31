@@ -1,9 +1,7 @@
 import { existsSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { PROTOCOL_VERSION, type ServerMessage } from '@slana/shared';
-import bs58 from 'bs58';
-import nacl from 'tweetnacl';
+import { PROTOCOL_VERSION, type ServerMessage } from '@elymum/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { createApp, type App } from '../src/app';
@@ -11,8 +9,9 @@ import { loadConfig } from '../src/config';
 import { Limiter } from '../src/net/limiter';
 import type { SettlementItem } from '../src/stake/journal';
 import { ArenaChain, arena } from './helpers';
+import { testSigner } from './signers';
 
-const wallet = () => bs58.encode(nacl.sign.keyPair().publicKey);
+const wallet = () => testSigner().address;
 
 interface Harness {
   app: App;
@@ -24,9 +23,9 @@ interface Harness {
 }
 
 async function harness(): Promise<Harness> {
-  const dir = mkdtempSync(join(tmpdir(), 'slana-integrity-'));
+  const dir = mkdtempSync(join(tmpdir(), 'elymum-integrity-'));
   const admin = wallet();
-  const cfg = loadConfig({ PORT: '0', HOST: '127.0.0.1', DATA_DIR: dir, BOT_TARGET: '2', BOT_MIN: '0', BOT_MAX: '2', ADMIN_WALLETS: admin, TRUST_PROXY: '0', GAME_PUBLIC: '1' } as NodeJS.ProcessEnv);
+  const cfg = loadConfig({ PORT: '0', HOST: '127.0.0.1', DATA_DIR: dir, BOT_TARGET: '2', BOT_MIN: '0', BOT_MAX: '2', ADMIN_WALLETS: admin, TRUST_PROXY: '0', GAME_ACCESS: 'public', ROUND_JOIN_CLOSE_SECONDS: '0' } as NodeJS.ProcessEnv);
   const app = await createApp(cfg, {
     chain: new ArenaChain([arena(1, 1000)]),
     log: () => {},
@@ -136,7 +135,7 @@ describe('integrity admin API', () => {
     await h.app.close();
   });
 
-  const someKey = 'Sess1111111111111111111111111111111111111';
+  const someKey = '0x00000000000000000000000000000000000000a1';
   const routes: [string, string, unknown?][] = [
     ['GET', '/api/admin/integrity'],
     ['GET', '/api/admin/integrity/settings'],
@@ -228,8 +227,8 @@ describe('integrity admin API', () => {
     const j = h.app.journal;
     const p1 = wallet();
     const p2 = wallet();
-    const k1 = 'HeldA111111111111111111111111111111111111';
-    const k2 = 'HeldB111111111111111111111111111111111111';
+    const k1 = `1:${p1.toLowerCase()}:3`;
+    const k2 = `1:${p2.toLowerCase()}:3`;
     j.commit({ enqueue: [held(k1, p1, 5000), held(k2, p2, 7000)] });
     const books = () => j.pending.reduce((s, p) => s + (p.kind === 'settle' ? (p.payout ?? 0) : p.amount), 0) + j.forfeitedByArena(1);
     const before = books();

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Take "arena": one whole paid round in Penny Pond, from a mid-round join to the bell. Daphne
+// Take "arena": one whole paid round in Asphodel Meadow, from a mid-round join to the bell. Daphne
 // (recorded, 1920x1080, effects-only audio) plays with staged rivals: other wallets holding real
 // (fake-chain) tickets, played from tiny browsers. Rounds are wall-clock aligned (5 minutes by
 // default), so the script waits for a round to open and times every beat by the round clock:
@@ -35,17 +35,17 @@ const browser = await launch();
 const rivals = [
   { name: 'mochi_moon', skin: 2 },
   { name: 'bonk_bae', skin: 7 },
-  { name: 'lil_lamport', skin: 9 },
+  { name: 'lil_wei', skin: 9 },
   { name: 'rug_ruth', skin: 5, spiller: true },
   { name: 'pixel_penny', skin: 3 },
 ].map((r) => new Player(browser, { ...r, w: 480, h: 270, audio: 'off', quality: 'low', minimap: false, tick: 90 }));
 // Daphne is recorded as a journal (capture/journal.mjs): the frames are rendered afterwards by capture/replay.mjs
-const hero = new Player(browser, { name: 'Daphne', skin: 4, keyPath: resolve(CACHE, 'keys/daphne.json'), audio: 'sfx', journal: resolve(CACHE, `journal-${NAME}.jsonl`) });
+const hero = new Player(browser, { name: 'Daphne', skin: 4, keyPath: resolve(CACHE, 'keys/daphne.key'), audio: 'sfx', journal: resolve(CACHE, `journal-${NAME}.jsonl`) });
 
 let stopAll = false;
 const heroPos = { wx: 3200, wy: 3200, big: 30, mass: 0 };
 const plan = new Map();
-const pidOf = (p) => p.ui(() => window.__slana.useUi.getState().me?.pid);
+const pidOf = (p) => p.ui(() => window.__elymum.useUi.getState().me?.pid);
 const distTo = (r) => (r.pos && !r.dead ? Math.hypot(r.pos.wx - heroPos.wx, r.pos.wy - heroPos.wy) : Infinity);
 const leftS = async () => ((await hero.round(ARENA))?.left ?? 0) / 1000;
 let rec;
@@ -67,7 +67,7 @@ async function buyBack(p, o = {}) {
   await p.page.waitForSelector('.g-death .kb-btn--pink', { timeout: 8000 });
   await p.wait(o.pause ?? 400);
   await p.click('.g-death .kb-btn--pink', { before: o.before ?? 200 });
-  await p.page.waitForFunction(() => window.__slana.useUi.getState().screen === 'lobby', null, { timeout: 10000 }).catch(() => {});
+  await p.page.waitForFunction(() => window.__elymum.useUi.getState().screen === 'lobby', null, { timeout: 10000 }).catch(() => {});
   await p.page.waitForFunction(() => !!document.querySelector('.tf-sheet') || !document.querySelector('.kl-cta')?.disabled, null, { timeout: 25000 }).catch(() => {});
 }
 async function rivalLoop(r) {
@@ -145,7 +145,7 @@ async function beat(name, fn, tries = 3) {
   }
   throw new Error(`beat ${name} failed`);
 }
-const screenOf = (pos) => hero.ui((q) => window.__slana.engine.camera.toScreen(q.wx, q.wy), pos);
+const screenOf = (pos) => hero.ui((q) => window.__elymum.engine.camera.toScreen(q.wx, q.wy), pos);
 
 try {
   // every browser signs in first; then a fresh round (the next bell if this one is under way)
@@ -254,9 +254,9 @@ try {
   }, { late: false });
   stopAll = true;
   // 6. the bell, the frozen world, the receipt
-  await hero.page.waitForFunction(() => !!window.__slana.useUi.getState().roundResult, null, { timeout: 15000 }).catch(() => log('no round result'));
+  await hero.page.waitForFunction(() => !!window.__elymum.useUi.getState().roundResult, null, { timeout: 15000 }).catch(() => log('no round result'));
   rec.mark('bell');
-  await hero.page.waitForFunction(() => window.__slana.useUi.getState().screen === 'roundover', null, { timeout: 15000 }).catch(() => log('no roundover screen'));
+  await hero.page.waitForFunction(() => window.__elymum.useUi.getState().screen === 'roundover', null, { timeout: 15000 }).catch(() => log('no roundover screen'));
   rec.mark('receipt');
   await hero.page.waitForSelector('.g-roundover__stamp', { timeout: 25000 }).catch(() => log('no PAID stamp'));
   rec.mark('paid');

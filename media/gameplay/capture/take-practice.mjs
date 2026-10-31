@@ -21,7 +21,7 @@ async function safe(fn) {
 }
 /** Drives toward the middle of the map while the coin is near an edge (keeps the world edge out of frame). */
 async function recenter(ms = 9000) {
-  const room = await hero.ui(() => { const w = window.__slana.engine.world; return { w: w.width, h: w.height }; });
+  const room = await hero.ui(() => { const w = window.__elymum.engine.world; return { w: w.width, h: w.height }; });
   const far = (p) => Math.min(p.wx, p.wy, room.w - p.wx, room.h - p.wy) > 1700;
   const p = await hero.brain({ mode: 'still' });
   if (p.wait || far(p)) return;
@@ -32,7 +32,7 @@ async function revive() {
   rec.mark('died');
   await hero.wait(3500);
   await hero.click('.g-death .kb-btn--pink').catch(() => {}); // Practice again
-  await hero.page.waitForFunction(() => window.__slana.useUi.getState().screen === 'playing', null, { timeout: 15000 }).catch(() => {});
+  await hero.page.waitForFunction(() => window.__elymum.useUi.getState().screen === 'playing', null, { timeout: 15000 }).catch(() => {});
   await hero.wheel(-Number(opt('--zoom', '460')), 60, 60);
   rec.mark('respawn');
 }
@@ -49,7 +49,7 @@ try {
   await hero.hover('.kl-cta', { pause: 900 });
   rec.mark('quickplay');
   await hero.click('.kl-cta');
-  await hero.page.waitForFunction(() => window.__slana.useUi.getState().screen === 'playing', null, { timeout: 20000 });
+  await hero.page.waitForFunction(() => window.__elymum.useUi.getState().screen === 'playing', null, { timeout: 20000 });
   rec.mark('enter');
   await hero.wait(1600);
   // zoom the camera in a notch: the coins read bigger on screen
@@ -112,8 +112,8 @@ try {
   await revive();
   await recenter();
   rec.mark('cactus');
-  const cells0 = await hero.ui(() => window.__slana.useUi.getState().hud.cells);
-  await safe(() => hero.drive(15_000, { mode: 'virus', hitVirus: true, margin: 200 }, async () => (await hero.ui(() => window.__slana.useUi.getState().hud.cells)) > cells0 + 2));
+  const cells0 = await hero.ui(() => window.__elymum.useUi.getState().hud.cells);
+  await safe(() => hero.drive(15_000, { mode: 'virus', hitVirus: true, margin: 200 }, async () => (await hero.ui(() => window.__elymum.useUi.getState().hud.cells)) > cells0 + 2));
   rec.mark('popped');
   await safe(() => hero.drive(6000, { ...forage, margin: 400 }));
   await revive();
@@ -124,7 +124,7 @@ try {
   while (Date.now() - t0 < (RAIN ? 200_000 : 30_000)) {
     await safe(() => hero.drive(3000, forage));
     await revive();
-    const b = await hero.ui(() => window.__slana.useUi.getState().banner?.kind);
+    const b = await hero.ui(() => window.__elymum.useUi.getState().banner?.kind);
     if (b === 'coinrain' && !rain) { rain = true; rec.mark('coinrain'); }
     if (rain && Date.now() - t0 > 5000) { await safe(() => hero.drive(14_000, { ...forage, loot: 3 })); break; }
   }

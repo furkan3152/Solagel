@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Take "lobby": the paper lobby as a new player meets it. Ticket list (Practice, the four arenas),
-// connect the wallet, a Penny Pond ticket sheet (entry fee, fee on profit, deposit), the four
+// connect the wallet, a Asphodel Meadow ticket sheet (entry fee, fee on profit, deposit), the four
 // arenas and their entry fees, Ranks (Today / All-time standings) and the Guide (controls table,
 // rooms table, value flow, the fee example receipt). Each beat is marked for the edit.
 //   node media/gameplay/capture/take-lobby.mjs [--name lobby] [--fresh]
@@ -11,7 +11,7 @@ import { CACHE, Player, Recorder, launch, log } from './lib.mjs';
 const argv = process.argv.slice(2);
 const opt = (n, d) => (argv.includes(n) ? argv[argv.indexOf(n) + 1] : d);
 const NAME = opt('--name', 'lobby');
-const keyPath = resolve(CACHE, 'keys/lobby.json');
+const keyPath = resolve(CACHE, 'keys/lobby.key');
 if (argv.includes('--fresh')) rmSync(keyPath, { force: true });
 
 const browser = await launch();
@@ -51,8 +51,8 @@ try {
     await hero.page.waitForSelector('.wl-sheet', { timeout: 5000 });
     await hero.wait(1400);
     await hero.click('.wl-item');
-    await hero.page.waitForFunction(() => !!window.__slana.useUi.getState().auth, null, { timeout: 15000 });
-    await hero.page.waitForFunction(() => window.__slanaChain?.useChainData.getState().tokenBalance != null, null, { timeout: 15000 });
+    await hero.page.waitForFunction(() => !!window.__elymum.useUi.getState().auth, null, { timeout: 15000 });
+    await hero.page.waitForFunction(() => window.__elymumChain?.useChainData.getState().tokenBalance != null, null, { timeout: 15000 });
     await hero.wait(1800);
     await hero.hover('.kl-wallet', { pause: 1200 });
   });

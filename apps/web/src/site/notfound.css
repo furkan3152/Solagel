@@ -1,0 +1,152 @@
+/* 404: the unbuilt terrace (NotFound.tsx) */
+.nf {
+  display: grid;
+  grid-template-columns: 5fr 7fr;
+  gap: clamp(24px, 4vw, 56px);
+  align-items: center;
+  width: 100%;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: clamp(28px, 6vw, 72px) var(--gutter) clamp(40px, 7vw, 96px);
+  box-sizing: border-box;
+}
+.nf__title {
+  margin: 6px 0 14px;
+  font-family: var(--font-display);
+  font-variation-settings: var(--fv-display);
+  font-weight: 800;
+  font-size: clamp(36px, 5vw, 60px);
+  line-height: 1.02;
+  letter-spacing: -0.02em;
+}
+.nf__lede {
+  margin: 0;
+  max-width: 34em;
+  font-size: 17px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+.nf__path {
+  padding: 1px 6px;
+  font-size: 0.88em;
+  background: var(--cream);
+  color: var(--ink-fixed);
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: 6px;
+  word-break: break-all;
+}
+.nf__ctas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 26px;
+}
+.nf__scene {
+  position: relative;
+}
+.nf-art {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.nf-art__signtext {
+  font-family: var(--font-display);
+  font-variation-settings: var(--fv-display);
+  font-weight: 800;
+  font-size: 20px;
+}
+.nf-art__swing {
+  transform-origin: 470px 86px;
+  animation: nf-swing 3.4s ease-in-out infinite;
+}
+@keyframes nf-swing {
+  0%, 100% { transform: rotate(-5deg); }
+  50% { transform: rotate(5deg); }
+}
+.nf-art__cloud {
+  animation: nf-cloud 9s ease-in-out infinite alternate;
+}
+@keyframes nf-cloud {
+  to { transform: translateX(60px); }
+}
+.nf-art__plan {
+  animation: nf-plan 1.6s linear infinite;
+}
+@keyframes nf-plan {
+  to { stroke-dashoffset: -34; }
+}
+/* the lost coin stands on the terrace, by the sign, holding its map upside down */
+.nf__lost {
+  position: absolute;
+  left: 43.4%;
+  bottom: 29.5%;
+  translate: -50% 0;
+  line-height: 0;
+}
+.nf__map {
+  position: absolute;
+  left: -22px;
+  bottom: 14px;
+  transform: rotate(168deg);
+  animation: nf-map 2.8s ease-in-out infinite;
+}
+@keyframes nf-map {
+  0%, 100% { transform: rotate(168deg); }
+  50% { transform: rotate(176deg) translateY(2px); }
+}
+.nf__huh {
+  position: absolute;
+  right: -14px;
+  top: -18px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--ink-fixed);
+  background: var(--cream);
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: 50%;
+  box-shadow: var(--sh-1);
+  animation: nf-huh 2.4s ease-in-out infinite;
+}
+@keyframes nf-huh {
+  0%, 100% { transform: translateY(0) rotate(8deg); }
+  50% { transform: translateY(-6px) rotate(-6deg); }
+}
+.nf__lost.is-still .nf__map,
+.nf__lost.is-still .nf__huh {
+  animation: none;
+}
+@media (max-width: 899px) {
+  .nf {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 479px) {
+  .nf__lost .kb-coin {
+    width: 72px !important;
+  }
+  .nf__lost .kb-coin svg {
+    width: 72px;
+    height: 72px;
+  }
+  .nf__map {
+    width: 48px;
+    height: 34px;
+    left: -16px;
+    bottom: 8px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nf-art__swing,
+  .nf-art__cloud,
+  .nf-art__plan,
+  .nf__map,
+  .nf__huh {
+    animation: none;
+  }
+}

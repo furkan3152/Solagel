@@ -7,7 +7,10 @@ function resolveServer(): { http: string; ws: string } {
   }
   const { protocol, host } = window.location;
   const http = `${protocol}//${host}`;
-  return { http, ws: `${protocol === 'https:' ? 'wss' : 'ws'}://${host}/ws` };
+  // A static host (Vercel) proxies /api to the game server but cannot carry the WebSocket:
+  // VITE_WS_URL points the socket straight at the game server.
+  const ws = (import.meta.env.VITE_WS_URL as string | undefined)?.replace(/\/$/, '');
+  return { http, ws: ws ? `${ws.replace(/^http/, 'ws')}/ws` : `${protocol === 'https:' ? 'wss' : 'ws'}://${host}/ws` };
 }
 
 export const SERVER = resolveServer();

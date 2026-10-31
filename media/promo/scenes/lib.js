@@ -1,4 +1,4 @@
-/* Slana promo: shared drawing library (Paper Ticket / riso print).
+/* Elymum promo: shared drawing library (Paper Ticket / riso print).
  * Everything here is deterministic: no Date, no Math.random. All motion is a
  * pure function of the timeline time t (seconds). */
 'use strict';
@@ -7,14 +7,17 @@
 const QS = new URLSearchParams(typeof location !== 'undefined' ? location.search : '');
 const W = Number(QS.get('w')) || 1920, H = Number(QS.get('h')) || 1080, TAU = Math.PI * 2;
 const C = {
-  paper: '#FCF4DF', card: '#FFFDF6', ink: '#1B1732', ink2: '#5B5577',
-  pink: '#FB2F85', pinkInk: '#D1166B', pinkText: '#C71466',
-  teal: '#01ACA4', tealInk: '#0F736E', mustard: '#FFB413', mustardInk: '#90650E',
-  blue: '#3055FC', green: '#17AD65', red: '#F72E1C', orange: '#FF7024', purple: '#7F39F4',
-  night: '#19142E', nightCard: '#251F3D', nightInk: '#F5EEDC', nightInk2: '#B1ACCC', nightPink: '#FC739F',
-  cover: '#0F736E', line: 'rgba(27,23,50,0.35)', tape: 'rgba(255,180,19,0.5)',
+  paper: '#F8F7F4', card: '#F6EEDA', ink: '#04181C', ink2: '#6B655A',
+  pink: '#34B7DD', pinkInk: '#2490B0', pinkText: '#1E6F8C',
+  teal: '#2D7388', tealInk: '#1F5566', mustard: '#F2C14E', mustardInk: '#8A5F0E',
+  blue: '#93D9EE', green: '#3C9A87', red: '#FF5252', orange: '#D9714F', purple: '#1E4D5A',
+  night: '#0F2A30', nightCard: '#163B44', nightInk: '#F6EEDA', nightInk2: '#BFD8DD', nightPink: '#6FCDE8',
+  cover: '#1F5566', line: 'rgba(4,24,28,0.35)', tape: 'rgba(219,242,249,0.85)',
 };
-const FONT = { display: '"Brico", sans-serif', mono: '"DMMono", monospace' };
+// Ring Storybook type (docs/specs/2026-10-29-elymum-on-elysium.md, 6.4): Fraunces for display, Geist Mono for
+// numbers and kickers. The palette above is the Storybook paint table under the old Paper Ticket names
+// (pink -> cyan, mustard -> sun, night -> trench, ...), so every scene picks it up unchanged.
+const FONT = { display: '"Fraunces", Georgia, serif', mono: '"Geist Mono", ui-monospace, monospace' };
 
 /* ───────────── math & easing ───────────── */
 const clamp = (x, a = 0, b = 1) => (x < a ? a : x > b ? b : x);
@@ -143,19 +146,19 @@ function dashed(ctx, x1, y1, x2, y2, color = C.line, w = 2.5, dash = [7, 7]) {
 /** Paper drop shadow: a soft ambient one plus the brand's hard 1.5px ink lip. */
 function paperShadow(ctx, pathFn, lift = 1, hard = 0.28) {
   ctx.save();
-  ctx.shadowColor = `rgba(27,23,50,${0.16 * lift})`;
+  ctx.shadowColor = `rgba(4,24,28,${0.16 * lift})`;
   ctx.shadowBlur = 30 * lift;
   ctx.shadowOffsetY = 14 * lift;
   ctx.shadowOffsetX = 4 * lift;
   pathFn();
-  ctx.fillStyle = 'rgba(27,23,50,1)';
+  ctx.fillStyle = 'rgba(4,24,28,1)';
   ctx.fill();
   ctx.restore();
   if (hard > 0) {
     ctx.save();
     ctx.translate(0, 2);
     pathFn();
-    ctx.fillStyle = `rgba(27,23,50,${hard})`;
+    ctx.fillStyle = `rgba(4,24,28,${hard})`;
     ctx.fill();
     ctx.restore();
   }
@@ -173,28 +176,28 @@ function buildTextures() {
     const x = r() * n, y = r() * n, rad = 40 + r() * 160;
     const grd = g.createRadialGradient(x, y, 0, x, y, rad);
     const a = 0.006 + r() * 0.008;
-    grd.addColorStop(0, r() < 0.5 ? `rgba(27,23,50,${a})` : `rgba(255,253,246,${a * 2.0})`);
+    grd.addColorStop(0, r() < 0.5 ? `rgba(4,24,28,${a})` : `rgba(246,238,218,${a * 2.0})`);
     grd.addColorStop(1, 'rgba(0,0,0,0)');
     g.fillStyle = grd;
     for (const ox of [-n, 0, n]) for (const oy of [-n, 0, n]) { g.save(); g.translate(ox, oy); g.fillRect(x - rad, y - rad, rad * 2, rad * 2); g.restore(); }
   }
   for (let i = 0; i < 2600; i++) {
     const x = r() * n, y = r() * n, l = 3 + r() * 12, a = r() * TAU;
-    g.strokeStyle = `rgba(27,23,50,${0.02 + r() * 0.035})`;
+    g.strokeStyle = `rgba(4,24,28,${0.02 + r() * 0.035})`;
     g.lineWidth = 0.6 + r() * 0.7;
     g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); g.stroke();
   }
   for (let i = 0; i < 9000; i++) {
-    g.fillStyle = `rgba(27,23,50,${0.04 + r() * 0.08})`;
+    g.fillStyle = `rgba(4,24,28,${0.04 + r() * 0.08})`;
     g.fillRect(r() * n, r() * n, 1 + r(), 1 + r());
   }
   TEX.fibre = p;
 
   // dot screen (7px and 11px grids)
   const d = mkCanvas(77, 77), dg = d.getContext('2d');
-  dg.fillStyle = 'rgba(27,23,50,0.07)';
+  dg.fillStyle = 'rgba(4,24,28,0.07)';
   for (let x = 0; x < 77; x += 7) for (let y = 0; y < 77; y += 7) { dg.beginPath(); dg.arc(x + 1, y + 1, 1.1, 0, TAU); dg.fill(); }
-  dg.fillStyle = 'rgba(27,23,50,0.045)';
+  dg.fillStyle = 'rgba(4,24,28,0.045)';
   for (let x = 0; x < 77; x += 11) for (let y = 0; y < 77; y += 11) { dg.beginPath(); dg.arc(x + 4, y + 6, 1.1, 0, TAU); dg.fill(); }
   TEX.dots = d;
 
@@ -264,8 +267,8 @@ function drawGrainAndVignette(ctx, t, dark = false) {
   ctx.globalCompositeOperation = 'source-over';
   ctx.globalAlpha = 1;
   const v = ctx.createRadialGradient(W / 2, H / 2, H * 0.45, W / 2, H / 2, H * 1.05);
-  v.addColorStop(0, 'rgba(27,23,50,0)');
-  v.addColorStop(1, dark ? 'rgba(5,4,10,0.55)' : 'rgba(60,42,20,0.16)');
+  v.addColorStop(0, 'rgba(4,24,28,0)');
+  v.addColorStop(1, dark ? 'rgba(0,5,7,0.55)' : 'rgba(4,24,28,0.16)');
   ctx.fillStyle = v;
   ctx.fillRect(0, 0, W, H);
   ctx.restore();
@@ -496,7 +499,7 @@ function halftoneShadow(ctx, cx, cy, rx, ry, alpha = 0.18, sp = 7) {
 
 /** Coin character via the art package. o: {look, r, expr, lookX, lookY, time, sx, sy, rot, alpha} */
 function coin(ctx, x, y, o) {
-  const A = window.SlanaArt;
+  const A = window.ElymumArt;
   ctx.save();
   ctx.translate(x, y);
   if (o.rot) ctx.rotate(o.rot);
@@ -524,24 +527,24 @@ function brandMark(ctx, x, y, r, misreg = 1, alpha = 1) {
   // overprint: pink x teal where the two inks overlap
   ctx.save();
   ctx.beginPath(); ctx.arc(tx, ty, r, 0, TAU); ctx.clip();
-  ctx.fillStyle = '#0E3052';
+  ctx.fillStyle = '#071317';
   ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
   ctx.restore();
-  ctx.strokeStyle = 'rgba(27,23,50,0.5)';
+  ctx.strokeStyle = 'rgba(4,24,28,0.5)';
   ctx.lineWidth = r * 0.107;
   ctx.beginPath(); ctx.arc(x, y, r * 0.667, 0, TAU); ctx.stroke();
   ctx.restore();
 }
 
 /**
- * The slana wordmark (800 weight, 85% stretch, -2px @46px) with
+ * The elymum wordmark (artboard: 800 weight, 85% stretch, -2px @46px) with
  * the mark at its top right. reg: 0 = in register, 1 = full misregistration.
  * Returns the mark centre in local coords for match cuts.
  */
 function wordmarkMetrics(ctx, size) {
   font(ctx, size, 800, 'display', 'semi-condensed');
   ctx.letterSpacing = (-size * 0.045) + 'px';
-  const w = ctx.measureText('slana').width;
+  const w = ctx.measureText('elymum').width;
   const mr = size * 0.29;
   return { w, mr, total: w + mr * 2.1, markX: w + mr * 0.95, markY: -size * 0.74 };
 }
@@ -559,15 +562,15 @@ function wordmark(ctx, x, y, size, opts = {}) {
     ctx.globalCompositeOperation = opts.dark ? 'source-over' : 'multiply';
     ctx.fillStyle = C.teal;
     ctx.globalAlpha = (opts.alpha ?? 1) * 0.9 * clamp(layers * 3);
-    ctx.fillText('slana', ox + gx, y + gy);
+    ctx.fillText('elymum', ox + gx, y + gy);
     ctx.fillStyle = C.pink;
     ctx.globalAlpha = (opts.alpha ?? 1) * clamp(layers * 3 - 1) * (0.25 + reg * 0.75);
-    ctx.fillText('slana', ox - reg * size * 0.09, y - reg * size * 0.05);
+    ctx.fillText('elymum', ox - reg * size * 0.09, y - reg * size * 0.05);
     ctx.globalCompositeOperation = 'source-over';
   }
   ctx.globalAlpha = (opts.alpha ?? 1) * clamp(layers * 3 - 2);
   ctx.fillStyle = opts.color || C.ink;
-  ctx.fillText('slana', ox, y);
+  ctx.fillText('elymum', ox, y);
   ctx.restore();
   if (opts.mark !== false) brandMark(ctx, ox + m.markX, y + m.markY, m.mr, 1, opts.markAlpha ?? opts.alpha ?? 1);
   return { x: ox + m.markX, y: y + m.markY, r: m.mr, w: m.total };

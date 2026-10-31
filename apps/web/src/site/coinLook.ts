@@ -1,4 +1,4 @@
-import { RISO, type AccessoryKind, type CoinLook, type EyesKind, type MouthKind, type SymbolKind } from '@slana/art';
+import { RISO, type AccessoryKind, type CoinLook, type EyesKind, type MouthKind, type SymbolKind } from '@elymum/art';
 
 /** FNV-1a, 32 bit: a stable hash of a string (the same handle always gives the same coin). */
 export function hash32(s: string): number {
@@ -45,7 +45,7 @@ const pick = <T,>(list: readonly T[], r: () => number): T => list[Math.floor(r()
 
 /** The coin of an X handle: ink, symbol, face and hat all come from the handle. */
 export function lookForHandle(handle: string): CoinLook {
-  const r = seeded(hash32(`slana:${handle.toLowerCase()}`));
+  const r = seeded(hash32(`elymum:${handle.toLowerCase()}`));
   const [body, overprint] = pick(INKS, r);
   const dx = r() < 0.5 ? -3 : 3;
   return { body, overprint, offset: { dx, dy: 3 }, symbol: pick(SYMBOLS, r), eyes: pick(EYES, r), mouth: pick(MOUTHS, r), accessory: pick(HATS, r) };

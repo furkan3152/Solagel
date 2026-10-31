@@ -1,18 +1,20 @@
 import { AnimatePresence, motion, type TargetAndTransition } from 'motion/react';
 import { useEffect, useMemo, useState } from 'react';
-import { Icon, InkButton, Receipt, Sheet, Stamp, useReducedMotion, type ReceiptLine } from '../../design';
+import { Button, Icon, Receipt, Sheet, Stamp, useReducedMotion, type ReceiptLine } from '../../design';
+import { CoinPortrait } from './CoinPortrait';
 import { engine } from '../../game/instance';
 import { roundStartLabel } from '../../game/round';
-import { useChainData } from '../../solana/chain';
-import { feeBps } from '../../solana/ticket';
+import { useChainData } from '../../wallet/chain';
+import { isFakeHash } from '../../wallet/devFake';
+import { feeBps } from '../../wallet/ticket';
 import { sound } from '../../audio';
 import { useT } from '../../i18n';
-import { explorerTx } from '../../solana/links';
+import { explorerTx } from '../../wallet/links';
 import { requestTicket, useUi } from '../../store';
 import { formatClock, ordinal, roomName, useTokenFormat } from './format';
 
-/** The receipt waits for the bell to ring over the frozen world (ms). */
-export const ROUND_SHEET_DELAY_MS = 900;
+/** The receipt waits for the bell to swing in and ring over the frozen world (ms). */
+export const ROUND_SHEET_DELAY_MS = 1500;
 
 /** Rows of the room's standings shown on the receipt sheet. */
 const TOP = 5;
@@ -32,14 +34,14 @@ export function receiptNumbers(payout: number, entryFee: number, bps: number, se
   return { gain, fee, net, pct, final };
 }
 
-/** The settlement for this ticket: matched by on-chain session address only (R16). */
+/** The settlement for this ticket: matched by its session key only. */
 export function settlementFor<T extends { session: string | null }>(settled: T | null, ticketSession: string | null | undefined): T | null {
   return settled && ticketSession && settled.session === ticketSession ? settled : null;
 }
 
 /**
- * "Round over": the bell rang while my coin was alive, so the till is paid. After a beat (the
- * bell over the frozen world) a receipt slips out of the till and grows into this sheet: the
+ * "Round over", the landing report: the bell rang while my coin was alive, so the till is paid.
+ * After a beat (the bell wave over the frozen world) the report flies out of the worth sticker: the
  * till, the fee on profit and what was paid (an estimate until `settled` arrives, then a PAID
  * stamp and the transaction link), my place and the room's top 5 at the bell. "Next round"
  * goes back to the lobby with this arena's ticket ready to buy.
@@ -62,6 +64,7 @@ export function RoundOverSheet() {
   const over = useUi((s) => s.screen === 'roundover' && s.roundResult !== null);
   const reduced = useReducedMotion();
   const exit = res?.kind === 'exit';
+  const mySkin = useUi((s) => s.me?.skin ?? s.settings.skin);
 
   // the bell first, then the receipt (at once with reduced motion or after an operator exit)
   const [open, setOpen] = useState(false);
@@ -111,11 +114,7 @@ export function RoundOverSheet() {
   const lines: ReceiptLine[] = [
     { label: t('gr.till'), value: tf.fmt(payout) },
     {
-      label: (
-        <>
-          {t('gr.fee', { pct: n.pct.toLocaleString('en-US', { maximumFractionDigits: 1 }) })}
-        </>
-      ),
+      label: <>{t('gr.fee', { pct: n.pct.toLocaleString('en-US', { maximumFractionDigits: 1 }) })}</>,
       value: n.fee > 0 ? `${approx}−${tf.fmt(n.fee)}` : tf.fmt(0),
       muted: true,
     },
@@ -132,11 +131,18 @@ export function RoundOverSheet() {
     },
   ];
   const date = new Date(since).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const txHref = settled && !isFakeHash(settled.txHash) ? explorerTx(settled.txHash, chain?.explorerUrl) : null;
   const footer = settled ? (
-    <a className="g-receipt__tx" href={explorerTx(settled.signature, chain?.cluster ?? 'devnet')} target="_blank" rel="noreferrer">
-      {t('gr.viewTx')} · {settled.signature.slice(0, 4)}…{settled.signature.slice(-4)}
-      <Icon name="arrow" size={14} />
-    </a>
+    txHref ? (
+      <a className="g-receipt__tx" href={txHref} target="_blank" rel="noreferrer">
+        {t('gr.viewTx')} · {settled.txHash.slice(0, 6)}…{settled.txHash.slice(-4)}
+        <Icon name="arrow" size={14} />
+      </a>
+    ) : (
+      <span className="g-receipt__tx mono">
+        {settled.txHash.slice(0, 6)}…{settled.txHash.slice(-4)}
+      </span>
+    )
   ) : (
     <span className="g-receipt__pending" role="status">
       {t('gr.settling')}
@@ -158,17 +164,17 @@ export function RoundOverSheet() {
       onClose={toLobby}
       closeLabel={t('gr.close')}
       kicker={exit ? t('gr.exitKicker', { room: roomName(room) }) : t('gr.kicker', { time: roundTime, room: roomName(room) })}
-      title={exit ? t('gr.exitTitle') : <Stamp text={t('gr.title')} size="lg" tone="teal" rotate={-5} animateIn delay={0.12} />}
+      title={<span className="g-roundover__title">{exit ? t('gr.exitTitle') : t('gr.title')}</span>}
       className={`g-sheet g-roundover${exit ? '' : ' has-board'}`}
       enterFrom={fromTill}
       footer={
         <>
-          <InkButton variant="pink" size="lg" icon="ticket" onClick={nextRound} data-autofocus>
+          <Button variant="primary" size="lg" icon="ticket" onClick={nextRound} data-autofocus>
             {exit ? t('gr.newTicket') : t('gr.next')}
-          </InkButton>
-          <InkButton variant="paper" size="lg" icon="menu" onClick={toLobby}>
+          </Button>
+          <Button variant="secondary" size="lg" icon="menu" onClick={toLobby}>
             {t('gr.lobby')}
-          </InkButton>
+          </Button>
         </>
       }
     >
@@ -180,13 +186,13 @@ export function RoundOverSheet() {
             title={exit ? t('gr.receiptExit') : t('gr.receipt', { time: roundTime })}
             meta={`${date}${res?.stats ? ` · ${formatClock(res.stats.aliveMs)}` : ''}`}
             lines={lines}
-            code={settled?.signature ?? `pending-${since}`}
+            code={settled?.txHash ?? `pending-${since}`}
             footer={footer}
           />
           <AnimatePresence>
             {settled && printed && (
               <motion.div className="g-roundover__stamp" initial={false} exit={{ opacity: 0 }}>
-                <Stamp text={t('gr.paid')} sub="SOLANA" round size="lg" tone="teal" rotate={-12} animateIn={!reduced} />
+                <Stamp text={t('gr.paid')} sub="ELYSIUM" round size="md" tone="up" rotate={-12} animateIn={!reduced} />
               </motion.div>
             )}
           </AnimatePresence>
@@ -200,20 +206,23 @@ export function RoundOverSheet() {
 
         {!exit && (
           <section className="g-board" aria-label={t('gr.top')}>
-            <dl className="g-board__place">
-              <dt className="mono">{t('gr.place')}</dt>
-              <dd>{place}</dd>
-            </dl>
+            <div className="g-board__landing">
+              <CoinPortrait skin={mySkin} size={76} expression="happy" seed={5} className="g-board__coin" />
+              <dl className="g-board__place">
+                <dt className="mono">{t('gr.place')}</dt>
+                <dd>{place}</dd>
+              </dl>
+            </div>
             <h3 className="g-board__title mono">{t('gr.top')}</h3>
             <ol className="g-board__list">
               {standings.slice(0, TOP).map((s, i) => (
                 <li key={`${i}-${s.name}`} className={`g-board__row${s.you ? ' is-me' : ''}`}>
-                  <span className="g-board__rank mono">{String(i + 1).padStart(2, '0')}</span>
+                  <span className="g-board__rank num">{String(i + 1).padStart(2, '0')}</span>
                   <span className="g-board__name">
                     <span className="g-board__nm">{s.name}</span>
                     {s.you && <span className="g-you mono">{t('gr.you')}</span>}
                   </span>
-                  <span className="g-board__value mono">{tf.fmt(s.value, { compact: true, maxFrac: 1 })}</span>
+                  <span className="g-board__value num">{tf.fmt(s.value, { compact: true, maxFrac: 1 })}</span>
                 </li>
               ))}
             </ol>
@@ -239,13 +248,5 @@ function receiptOrigin(): TargetAndTransition | null {
   const bottom = window.matchMedia?.('(max-width: 639px)').matches === true;
   const cx = r.left + r.width / 2;
   const cy = r.top + r.height / 2;
-  return {
-    x: cx - vw / 2,
-    y: bottom ? cy - vh * 0.62 : cy - vh / 2,
-    scaleX: 0.24,
-    scaleY: 0.08,
-    rotate: -4,
-    opacity: 1,
-    '--lift': 0,
-  };
+  return { x: cx - vw / 2, y: bottom ? cy - vh * 0.62 : cy - vh / 2, scaleX: 0.24, scaleY: 0.08, rotate: -4, opacity: 1, '--lift': 0 };
 }

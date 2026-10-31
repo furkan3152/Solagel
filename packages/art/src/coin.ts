@@ -1,8 +1,8 @@
-import { CellFlag } from '@slana/shared';
+import { CellFlag } from '@elymum/shared';
 import { drawAccessoryBack, drawAccessoryFront, symbolAnchor, type AccessoryColors } from './accessories';
 import { drawFace, type Expression } from './faces';
 import type { CoinLook } from './looks';
-import { CARD_PAPER, INK, RISO } from './palette';
+import { CARD_PAPER, ELYSIUM, INK, shadeOf } from './palette';
 import { drawSymbol } from './symbols';
 
 const TAU = Math.PI * 2;
@@ -31,15 +31,15 @@ export interface CoinInterior {
 }
 
 /**
- * Interior disc radius (fraction of r) of a cached interior. The rim (±3.5 % of
- * r, drawn after it) covers the disc edge while the jelly outline stays within
- * JELLY_SAFE of the circle, so the disc never shows past the outline or leaves a gap.
+ * Interior disc radius (fraction of r) of a cached interior. The ink outline
+ * (drawn after it) covers the disc edge while the jelly outline stays within
+ * half the outline width of the circle (`jellyCalm`), so the disc never shows
+ * past the outline or leaves a gap.
  */
 const INTERIOR_DISC = 0.995;
-const JELLY_SAFE = { min: -0.03, max: 0.02 };
 
 export interface CoinState {
-  /** Milliseconds; drives blinking, spinning props and flag effects. 0 = still frame. */
+  /** Milliseconds; drives blinking, the chomp, spinning props and flag effects. 0 = still frame. */
   time: number;
   /** Eye direction, each in -1..1. */
   lookX: number;
@@ -51,84 +51,120 @@ export interface CoinState {
   alpha?: number;
   /** Per-character phase (blink timing). */
   seed?: number;
-  /** Screen pixels per unit of r (camera zoom × dpr); sets the level of detail. Default 1. */
+  /** Screen pixels per unit of r (camera zoom × dpr); sets the level of detail and the ink line width. Default 1. */
   pxPerUnit?: number;
   /** Cash-out progress 0..1 for the dotted ring; animated from `time` when omitted. */
   cashout?: number;
-  /**
-   * Optional cache for the halftone shade (the costliest layer: hundreds of
-   * dots). Called with the radius and dot spacing; return an image of
-   * `drawHalftoneDots(ctx, r, spacing)` rendered into a 2r × 2r box (origin at
-   * its centre), or null to draw the dots directly.
-   */
+  /** @deprecated the riso halftone is gone; ignored. */
   halftone?: (r: number, spacing: number) => CanvasImageSource | null;
-  /**
-   * Fast opaque body (one flat fill instead of paper + multiply). Visually the
-   * same; opt-in for the live renderer only.
-   */
+  /** @deprecated every body is one flat fill now; ignored. */
   fastBody?: boolean;
   /**
-   * Below this many screen px of radius the overprint pass and the halftone are
-   * skipped (they are invisible that small). 0 / unset: always drawn.
+   * Below this many screen px of radius the coin skips its fine interior
+   * details (inner groove, highlight) and never uses the interior cache.
+   * 0 / unset: always drawn.
    */
   minPrintPx?: number;
   /**
-   * Optional cache for the coin's static interior: the body disc, dashed groove,
-   * halftone shade and symbol in one image (`drawCoinInterior` rendered at about
-   * r × pxPerUnit px). Return null to draw the layers directly. Used only for
-   * opaque, fully printed coins (`fastBody`, not `small`), when the jelly
-   * outline stays close to the circle; the result looks the same.
+   * Optional cache for the coin's static interior: the cel-shaded body, inner
+   * groove, highlight and embossed symbol in one image (`drawCoinInterior`
+   * rendered at about r × pxPerUnit px). Return null to draw the layers
+   * directly. Used only for opaque coins when the jelly outline stays close
+   * to the circle; the result looks the same.
    */
   interior?: (look: CoinLook, r: number) => CoinInterior | null;
 }
 
+/** Offset of the lit disc (units of r): the shade is the crescent it leaves on the lower right. */
+const LIT_DX = -6 / 46;
+const LIT_DY = -8 / 46;
+const LIT_L = Math.hypot(LIT_DX, LIT_DY);
+const LIT_A = Math.atan2(LIT_DY, LIT_DX);
+const LIT_HALF = Math.acos(LIT_L / 2);
+/** Highlight arc: upper left, from 195° to 241°, on 0.8 r. */
+const HL_A0 = (195.5 * Math.PI) / 180;
+const HL_A1 = (241 * Math.PI) / 180;
+
 /**
- * The static interior of a coin of radius r px at the origin, for caching
- * (`CoinState.interior`): body disc (ink on paper), dashed groove, halftone
- * shade (clipped to the disc) and the symbol when it sits on the face. Drawn
- * at one screen px per unit, like `drawRisoCoin` with pxPerUnit 1.
+ * Ink outline of a coin in screen px for its on-screen radius: about 3 px at
+ * normal sizes (spec: illustration strokes stay ~3 px), thinner on tiny
+ * coins, a touch heavier on huge ones.
  */
-export function drawCoinInterior(ctx: CanvasRenderingContext2D, look: CoinLook, r: number): void {
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(0, 0, r * INTERIOR_DISC, 0, TAU);
-  ctx.fillStyle = inkOnPaper(look.body);
-  ctx.fill();
-  drawGroove(ctx, r, 1);
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(0, 0, r * INTERIOR_DISC, 0, TAU);
-  ctx.clip();
-  ctx.globalAlpha *= 0.3;
-  drawHalftoneDots(ctx, r, Math.max(r * 0.075, 3));
-  ctx.restore();
-  const anchor = symbolAnchor(look.accessory, r);
-  if (!anchor.onTop) drawCoinSymbol(ctx, look, anchor, 1);
-  ctx.restore();
+export function coinOutlinePx(detail: number): number {
+  return detail < 22 ? Math.max(1, detail * 0.135) : Math.min(4.5, 3 + Math.max(0, (detail - 160) / 200));
 }
 
-function drawGroove(ctx: CanvasRenderingContext2D, r: number, minPx: number): void {
-  ctx.save();
-  ctx.globalAlpha *= 0.4;
-  ctx.strokeStyle = INK;
-  ctx.lineWidth = Math.max(r * 0.03, minPx);
-  ctx.setLineDash([r * 0.09, r * 0.06]);
+/** The shade crescent (disc of radius r minus the lit disc), as a new path. */
+function crescentPath(ctx: CanvasRenderingContext2D, r: number): void {
   ctx.beginPath();
-  ctx.arc(0, 0, r * 0.8, 0, TAU);
+  ctx.arc(0, 0, r, LIT_A + LIT_HALF, LIT_A + TAU - LIT_HALF, false);
+  ctx.arc(LIT_DX * r, LIT_DY * r, r, LIT_A + Math.PI + LIT_HALF, LIT_A + Math.PI - LIT_HALF, true);
+  ctx.closePath();
+}
+
+function shadeFor(look: CoinLook): string {
+  return look.shade ?? shadeOf(look.body);
+}
+
+/** Inner groove and the white highlight arc (static, proportional to r). */
+function drawRimDetails(ctx: CanvasRenderingContext2D, look: CoinLook, r: number): void {
+  ctx.save();
+  ctx.globalAlpha *= 0.9;
+  ctx.strokeStyle = shadeFor(look);
+  ctx.lineWidth = r * 0.054;
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.815, 0, TAU);
+  ctx.stroke();
+  ctx.globalAlpha /= 0.9;
+  ctx.globalAlpha *= 0.85;
+  ctx.strokeStyle = ELYSIUM.white;
+  ctx.lineCap = 'round';
+  ctx.lineWidth = r * 0.105;
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.8, HL_A0, HL_A1);
   ctx.stroke();
   ctx.restore();
 }
 
-function drawCoinSymbol(ctx: CanvasRenderingContext2D, look: CoinLook, anchor: { x: number; y: number; s: number }, minPx: number): void {
+function drawEmbossedSymbol(ctx: CanvasRenderingContext2D, look: CoinLook, anchor: { x: number; y: number; s: number }): void {
+  ctx.save();
+  ctx.translate(anchor.x, anchor.y);
+  drawSymbol(ctx, look.symbol, anchor.s, { fill: shadeFor(look), ink: INK, overprint: INK, lineW: 0, emboss: true });
+  ctx.restore();
+}
+
+/**
+ * The static interior of a coin of radius r px at the origin, for caching
+ * (`CoinState.interior`): flat body, the one shade tone on the lower right,
+ * inner groove, highlight and the embossed symbol (when it sits on the face).
+ * Drawn at one screen px per unit, like `drawRisoCoin` with pxPerUnit 1.
+ */
+export function drawCoinInterior(ctx: CanvasRenderingContext2D, look: CoinLook, r: number): void {
+  const rd = r * INTERIOR_DISC;
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(0, 0, rd, 0, TAU);
+  ctx.fillStyle = look.body;
+  ctx.fill();
+  crescentPath(ctx, rd);
+  ctx.fillStyle = shadeFor(look);
+  ctx.fill();
+  drawRimDetails(ctx, look, r);
+  const anchor = symbolAnchor(look.accessory, r);
+  if (!anchor.onTop) drawEmbossedSymbol(ctx, look, anchor);
+  ctx.restore();
+}
+
+function drawCoinSymbol(ctx: CanvasRenderingContext2D, look: CoinLook, anchor: { x: number; y: number; s: number }, lineW: number): void {
   ctx.save();
   ctx.translate(anchor.x, anchor.y);
   drawSymbol(ctx, look.symbol, anchor.s, {
     fill: CARD_PAPER,
     ink: INK,
-    overprint: look.overprint,
-    lineW: Math.max(anchor.s * 0.2, minPx),
-    offX: (look.offset.dx * anchor.s) / 22,
-    offY: (look.offset.dy * anchor.s) / 22,
+    overprint: INK,
+    lineW: Math.min(lineW * 0.5, anchor.s * 0.2),
+    offX: anchor.s * 0.14,
+    offY: anchor.s * 0.14,
   });
   ctx.restore();
 }
@@ -139,150 +175,110 @@ function bodyPath(ctx: CanvasRenderingContext2D, r: number, jelly: JellyLike | n
   else ctx.arc(0, 0, r, 0, TAU);
 }
 
-/** Pick a cheek colour that reads on the body ink. */
+/** Cheek colour that reads on the body paint. */
 function blushFor(body: string): string {
   const b = body.toUpperCase();
-  return b === RISO.fluoPink || b === RISO.red || b === RISO.purple ? RISO.mustard : RISO.fluoPink;
+  return b === ELYSIUM.blush || b === ELYSIUM.down ? ELYSIUM.coral : ELYSIUM.blush;
 }
 
 /**
- * Draws a risograph coin character at the origin with radius r.
- * Layers: back accessories → overprint (misregistered second ink, multiply)
- * → body ink (multiply) → ink rim → halftone shade → symbol →
- * face → front accessories → flag effects. No filters and no text, so it
- * renders the same in browsers and in @napi-rs/canvas.
+ * The coin's shadow on the floor: a flat ink ellipse under it (no blur). Draw
+ * every coin's shadow before the coins, at the caller's alpha (about 0.45 on night).
+ */
+export function drawCoinShadow(ctx: CanvasRenderingContext2D, r: number): void {
+  ctx.beginPath();
+  ctx.ellipse(0, r * 1.06, r * 0.76, r * 0.12, 0, 0, TAU);
+  ctx.fill();
+}
+
+/**
+ * Draws a Storybook coin character at the origin with radius r: confident ink
+ * outline (~3 screen px), a flat cel fill with one hard shade tone on the
+ * lower right, an inner groove and a white highlight, big eyes, a mood mouth
+ * and coral cheeks. Layers: back accessories → body (cached interior or drawn)
+ * → outline → face → front accessories → flag effects. No filters and no
+ * text, so it renders the same in browsers and in @napi-rs/canvas.
  */
 export function drawRisoCoin(ctx: CanvasRenderingContext2D, look: CoinLook, r: number, state: CoinState): void {
   const ppu = state.pxPerUnit ?? 1;
   const detail = r * ppu;
   const flags = state.flags ?? 0;
   const afk = (flags & CellFlag.Afk) !== 0;
-  const minPx = 1 / ppu;
-  const rimW = Math.max(r * 0.07, 1.5 * minPx);
-  const lineW = Math.max(r * 0.045, 1.2 * minPx);
+  const W = coinOutlinePx(detail) / ppu;
 
   ctx.save();
   if (state.alpha !== undefined) ctx.globalAlpha *= state.alpha;
   if (afk) ctx.globalAlpha *= 0.7;
 
-  // tiny: a flat ink dot with a rim
+  // tiny: a flat paint dot with an ink edge
   if (detail < 5) {
     ctx.beginPath();
     ctx.arc(0, 0, r, 0, TAU);
     ctx.fillStyle = look.body;
     ctx.fill();
+    if (detail >= 2.5) {
+      ctx.lineWidth = W;
+      ctx.strokeStyle = INK;
+      ctx.stroke();
+    }
     ctx.restore();
     return;
   }
 
   const time = state.time;
-  if (flags & CellFlag.Pump) drawSpeedLines(ctx, r, state, look.overprint, lineW);
-  const acc = { body: look.body, accent: look.overprint, lineW };
+  if (flags & CellFlag.Pump) drawSpeedLines(ctx, r, state, look.overprint, W);
+  const acc = { body: look.body, accent: look.overprint, lineW: W };
   if (detail > 14) drawAccessoryBack(ctx, look.accessory, r, acc, time);
 
-  // 1. overprint: the second ink, misregistered, peeking out from under the body
-  const ox = (look.offset.dx * r) / 40;
-  const oy = (look.offset.dy * r) / 40;
   const small = detail < (state.minPrintPx ?? 0);
   const anchor = symbolAnchor(look.accessory, r);
-  const cached = !small && detail > 22 && state.fastBody && ctx.globalAlpha >= 0.999 && jellyCalm(state.jelly) ? (state.interior?.(look, r) ?? null) : null;
+  const cached = !small && detail > 22 && ctx.globalAlpha >= 0.999 && jellyCalm(state.jelly, Math.max(0.003, W / (2 * r) - (1 - INTERIOR_DISC))) ? (state.interior?.(look, r) ?? null) : null;
   if (cached) {
-    // cached interior: overprint (multiply, under the disc), the interior image, then the
-    // rim over the disc edge. Opaque coins only, so no clip is needed under the body.
-    ctx.save();
-    ctx.translate(ox, oy);
-    ctx.globalCompositeOperation = 'multiply';
-    bodyPath(ctx, r, state.jelly, detail);
-    ctx.fillStyle = look.overprint;
-    ctx.fill();
-    ctx.restore();
     const k = r / cached.radius;
     const half = (cached.size / 2) * k;
     ctx.drawImage(cached.image, -half, -half, cached.size * k, cached.size * k);
-    bodyPath(ctx, r, state.jelly, detail);
-    ctx.lineWidth = rimW;
-    ctx.lineJoin = 'round';
-    ctx.strokeStyle = INK;
-    ctx.stroke();
-    drawFront(ctx, look, r, state, detail, anchor, acc, minPx, lineW);
-    ctx.restore();
-    return;
-  }
-  if (small) {
-    // tiny on screen: a plain offset fill under the body reads the same (no clip, no blend)
-    ctx.save();
-    ctx.translate(ox, oy);
-    bodyPath(ctx, r, state.jelly, detail);
-    ctx.fillStyle = look.overprint;
-    ctx.fill();
-    ctx.restore();
   } else {
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(-r * 3, -r * 3, r * 6, r * 6);
-    if (state.jelly && detail > 16) state.jelly.trace(ctx, r * 0.96);
-    else ctx.arc(0, 0, r * 0.96, 0, TAU);
-    ctx.clip('evenodd');
-    ctx.translate(ox, oy);
-    ctx.globalCompositeOperation = 'multiply';
+    // flat body + the shade crescent (clipped to the wobbly outline when it is drawn)
+    const wobbly = !!state.jelly && detail > 16;
     bodyPath(ctx, r, state.jelly, detail);
-    ctx.fillStyle = look.overprint;
-    ctx.fill();
-    ctx.restore();
-  }
-
-  // 2. body ink, over a paper base so it reads the same on any background.
-  // `fastBody` (web renderer only): an opaque body is one flat fill of ink × paper
-  // instead of a paper fill plus a multiply blend.
-  bodyPath(ctx, r, state.jelly, detail);
-  if (state.fastBody && ctx.globalAlpha >= 0.999) {
-    ctx.fillStyle = inkOnPaper(look.body);
-    ctx.fill();
-  } else {
-    ctx.fillStyle = CARD_PAPER;
-    ctx.fill();
-    ctx.save();
-    ctx.globalCompositeOperation = 'multiply';
     ctx.fillStyle = look.body;
     ctx.fill();
-    ctx.restore();
+    if (detail > 7) {
+      ctx.fillStyle = shadeFor(look);
+      if (wobbly) {
+        ctx.save();
+        ctx.clip();
+        crescentPath(ctx, r * 1.05);
+        ctx.fill();
+        ctx.restore();
+      } else {
+        crescentPath(ctx, r);
+        ctx.fill();
+      }
+    }
+    if (detail > 18 && !small) drawRimDetails(ctx, look, r);
+    if (!anchor.onTop && detail > 22) drawEmbossedSymbol(ctx, look, anchor);
   }
 
-  // 3. ink rim (+ the coin's inner groove)
-  if (detail > 10) drawGroove(ctx, r, minPx);
+  // ink outline
   bodyPath(ctx, r, state.jelly, detail);
-  ctx.lineWidth = rimW;
+  ctx.lineWidth = W;
   ctx.lineJoin = 'round';
   ctx.strokeStyle = INK;
   ctx.stroke();
 
-  // 4. halftone shade on the lower-right crescent
-  if (detail > 18 && !small) {
-    ctx.save();
-    bodyPath(ctx, r - rimW * 0.5, state.jelly, detail);
-    ctx.clip();
-    const spacing = Math.max(r * 0.075, 3 * minPx);
-    const cached = state.halftone?.(r, spacing) ?? null;
-    // Dark ink dots at 30 % read the same multiplied or laid over; a cached image
-    // is laid over (source-over), which GPUs blend without reading the target back.
-    ctx.globalCompositeOperation = cached ? 'source-over' : 'multiply';
-    ctx.globalAlpha *= 0.3;
-    if (cached) ctx.drawImage(cached, -r, -r, r * 2, r * 2);
-    else drawHalftoneDots(ctx, r, spacing);
-    ctx.restore();
-  }
-
-  // 5. symbol (6. face, 7. front accessory, 8. flag effects in drawFront)
-  if (!anchor.onTop && detail > 22) drawCoinSymbol(ctx, look, anchor, minPx);
-  drawFront(ctx, look, r, state, detail, anchor, acc, minPx, lineW);
+  drawFront(ctx, look, r, state, detail, anchor, acc, W);
   ctx.restore();
 }
 
+/** Alias with the Storybook name. */
+export const drawCoinCharacter = drawRisoCoin;
+
 /** True when there is no jelly, or its outline stays close enough to the circle for a cached interior. */
-function jellyCalm(jelly: JellyLike | null | undefined): boolean {
+function jellyCalm(jelly: JellyLike | null | undefined, tol: number): boolean {
   if (!jelly) return true;
   const e = jelly.extent?.();
-  return !!e && e.min >= JELLY_SAFE.min && e.max <= JELLY_SAFE.max;
+  return !!e && e.min >= -tol && e.max <= tol;
 }
 
 /** Face, front accessory, a symbol worn on the hat and the flag effects (on top of the body). */
@@ -294,13 +290,11 @@ function drawFront(
   detail: number,
   anchor: { x: number; y: number; s: number; onTop: boolean },
   acc: AccessoryColors,
-  minPx: number,
-  lineW: number,
+  W: number,
 ): void {
   const flags = state.flags ?? 0;
   const afk = (flags & CellFlag.Afk) !== 0;
   const time = state.time;
-  // 6. face
   if (detail > 8) {
     drawFace(ctx, r, {
       expression: afk ? 'sleep' : state.expression,
@@ -312,106 +306,71 @@ function drawFront(
       seed: state.seed ?? 0,
       detail,
       blush: blushFor(look.body),
+      body: look.body,
+      lineW: W * 0.95,
     });
   }
 
-  // 7. accessory
   if (detail > 14) drawAccessoryFront(ctx, look.accessory, r, acc, time);
-  if (anchor.onTop && detail > 22) drawCoinSymbol(ctx, look, anchor, minPx);
+  if (anchor.onTop && detail > 22) drawCoinSymbol(ctx, look, anchor, W);
 
-  // 8. flag effects
-  if (flags & CellFlag.Shield) drawShield(ctx, r, time, lineW);
-  if (flags & CellFlag.CashingOut) drawCashout(ctx, r, state.cashout ?? ((time / 2000) % 1), lineW);
-  if (flags & CellFlag.Magnet) drawMagnet(ctx, r, time, lineW);
-  if (afk) drawZzz(ctx, r, time, lineW);
+  if (flags & CellFlag.Shield) drawShield(ctx, r, time, W);
+  if (flags & CellFlag.CashingOut) drawCashout(ctx, r, state.cashout ?? ((time / 2000) % 1), W);
+  if (flags & CellFlag.Magnet) drawMagnet(ctx, r, time, W);
+  if (afk) drawZzz(ctx, r, time, W);
 }
 
-const paperInk = new Map<string, string>();
-
-/** `ink` multiplied onto card paper, as a hex colour (cached). */
-function inkOnPaper(ink: string): string {
-  let c = paperInk.get(ink);
-  if (!c) {
-    const a = parseHex(ink);
-    const p = parseHex(CARD_PAPER);
-    c = a && p ? `#${[0, 1, 2].map((i) => Math.round((a[i] * p[i]) / 255).toString(16).padStart(2, '0')).join('')}` : ink;
-    paperInk.set(ink, c);
-  }
-  return c;
-}
-
-function parseHex(hex: string): [number, number, number] | null {
-  const m = /^#([0-9a-f]{6})$/i.exec(hex);
-  if (!m) return null;
-  const n = parseInt(m[1], 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-/**
- * Rotated (45°) halftone grid whose dots grow towards the lower right, in
- * plain INK at the current alpha (the coin multiplies it in at 30 %). Exported
- * so renderers can cache it per size (see `CoinState.halftone`).
- */
-export function drawHalftoneDots(ctx: CanvasRenderingContext2D, r: number, sp: number): void {
-  const cx = -r * 0.24;
-  const cy = -r * 0.28;
-  const inner = r * 0.86;
-  const band = r * 0.42;
-  const c = Math.SQRT1_2;
-  const n = Math.ceil((r * 1.5) / sp);
-  ctx.fillStyle = INK;
-  // one path per dot: a single path with thousands of arcs is pathologically slow in Skia
-  for (let i = -n; i <= n; i++) {
-    for (let j = -n; j <= n; j++) {
-      const x = (i - j) * sp * c;
-      const y = (i + j) * sp * c;
-      if (x * x + y * y > r * r) continue;
-      const d = Math.hypot(x - cx, y - cy) - inner;
-      if (d <= 0) continue;
-      const t = Math.min(1, d / band);
-      const dr = sp * 0.5 * Math.sqrt(t) * 0.92;
-      if (dr < sp * 0.08) continue;
-      ctx.beginPath();
-      ctx.arc(x, y, dr, 0, TAU);
-      ctx.fill();
-    }
-  }
-}
-
-function drawShield(ctx: CanvasRenderingContext2D, r: number, time: number, lineW: number): void {
+/** Shield: a cyan bubble around the coin (ink edge, foam inner line, a highlight). */
+function drawShield(ctx: CanvasRenderingContext2D, r: number, time: number, W: number): void {
   const R = r * 1.2 * (1 + Math.sin(time / 180) * 0.015);
   ctx.save();
-  ctx.strokeStyle = INK;
-  ctx.lineWidth = lineW;
-  ctx.lineCap = 'round';
-  ctx.setLineDash([r * 0.16, r * 0.11]);
-  ctx.lineDashOffset = -time / 30;
+  ctx.globalAlpha *= 0.22;
+  ctx.fillStyle = ELYSIUM.spray;
   ctx.beginPath();
   ctx.arc(0, 0, R, 0, TAU);
+  ctx.arc(0, 0, r, 0, TAU, true);
+  ctx.fill();
+  ctx.globalAlpha /= 0.22;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = W;
+  ctx.beginPath();
+  ctx.arc(0, 0, R, 0, TAU);
+  ctx.stroke();
+  ctx.strokeStyle = ELYSIUM.spray;
+  ctx.lineWidth = W * 0.9;
+  ctx.beginPath();
+  ctx.arc(0, 0, R - W, 0, TAU);
+  ctx.stroke();
+  ctx.strokeStyle = ELYSIUM.white;
+  ctx.lineWidth = Math.max(W * 1.2, r * 0.05);
+  ctx.beginPath();
+  ctx.arc(0, 0, R - W * 1.6 - r * 0.03, HL_A0 + 0.1, HL_A1 - 0.05);
   ctx.stroke();
   ctx.restore();
 }
 
-function drawCashout(ctx: CanvasRenderingContext2D, r: number, progress: number, lineW: number): void {
+/** Cash-out: a ring of sun dots filling up clockwise (empty ones are faint ink). */
+function drawCashout(ctx: CanvasRenderingContext2D, r: number, progress: number, W: number): void {
   const n = 24;
   const R = r * 1.32;
   const filled = Math.round(Math.min(1, Math.max(0, progress)) * n);
   ctx.save();
   // multiply into the caller's alpha (a fading or AFK cell), never overwrite it
   const base = ctx.globalAlpha;
+  ctx.lineWidth = W * 0.7;
+  ctx.strokeStyle = INK;
   for (let i = 0; i < n; i++) {
     const a = -Math.PI / 2 + (i / n) * TAU;
     ctx.beginPath();
-    ctx.arc(Math.cos(a) * R, Math.sin(a) * R, i < filled ? r * 0.045 : r * 0.025, 0, TAU);
+    ctx.arc(Math.cos(a) * R, Math.sin(a) * R, i < filled ? r * 0.05 : r * 0.025, 0, TAU);
     if (i < filled) {
-      ctx.fillStyle = RISO.mustard;
+      ctx.fillStyle = ELYSIUM.sun;
       ctx.fill();
-      ctx.strokeStyle = INK;
-      ctx.lineWidth = lineW * 0.5;
       ctx.stroke();
     } else {
       ctx.fillStyle = INK;
-      ctx.globalAlpha = base * 0.45;
+      ctx.globalAlpha = base * 0.5;
       ctx.fill();
       ctx.globalAlpha = base;
     }
@@ -419,11 +378,13 @@ function drawCashout(ctx: CanvasRenderingContext2D, r: number, progress: number,
   ctx.restore();
 }
 
-function drawMagnet(ctx: CanvasRenderingContext2D, r: number, time: number, lineW: number): void {
+/** Magnet: two coral rings pulling inward. */
+function drawMagnet(ctx: CanvasRenderingContext2D, r: number, time: number, W: number): void {
   ctx.save();
-  ctx.strokeStyle = RISO.fluoPink;
-  ctx.lineWidth = lineW * 0.7;
-  ctx.setLineDash([r * 0.05, r * 0.07]);
+  ctx.strokeStyle = ELYSIUM.coral;
+  ctx.lineWidth = W;
+  ctx.lineCap = 'round';
+  ctx.setLineDash([W * 0.01, W * 3.2]);
   const base = ctx.globalAlpha;
   for (let i = 0; i < 2; i++) {
     const p = (((time / 900 + i / 2) % 1) + 1) % 1;
@@ -435,7 +396,8 @@ function drawMagnet(ctx: CanvasRenderingContext2D, r: number, time: number, line
   ctx.restore();
 }
 
-function drawSpeedLines(ctx: CanvasRenderingContext2D, r: number, s: CoinState, color: string, lineW: number): void {
+/** Pump: three ink speed lines with a sun core streaming behind the coin. */
+function drawSpeedLines(ctx: CanvasRenderingContext2D, r: number, s: CoinState, color: string, W: number): void {
   const len = Math.hypot(s.lookX, s.lookY);
   if (len < 0.1) return;
   const bx = -s.lookX / len;
@@ -450,10 +412,10 @@ function drawSpeedLines(ctx: CanvasRenderingContext2D, r: number, s: CoinState, 
     ctx.moveTo(px + bx * r * 1.1, py + by * r * 1.1);
     ctx.lineTo(px + bx * (r * 1.55 + wob), py + by * (r * 1.55 + wob));
     ctx.strokeStyle = INK;
-    ctx.lineWidth = lineW * 1.4;
+    ctx.lineWidth = Math.max(W * 2.4, r * 0.07);
     ctx.stroke();
     ctx.strokeStyle = color;
-    ctx.lineWidth = lineW * 0.6;
+    ctx.lineWidth = Math.max(W * 2.4, r * 0.07) - W * 1.6;
     ctx.stroke();
   }
   ctx.restore();
@@ -463,7 +425,7 @@ function drawSpeedLines(ctx: CanvasRenderingContext2D, r: number, s: CoinState, 
 export function drawZzz(ctx: CanvasRenderingContext2D, r: number, time: number, lineW: number): void {
   ctx.save();
   ctx.strokeStyle = INK;
-  ctx.lineWidth = lineW * 0.9;
+  ctx.lineWidth = lineW;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   const base = ctx.globalAlpha;

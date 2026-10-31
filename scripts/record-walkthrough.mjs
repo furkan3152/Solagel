@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// Records the Slana walkthrough video from a normal player's point of view (real mouse moves and
+// Records the Elymum walkthrough video from a normal player's point of view (real mouse moves and
 // clicks) against the fake-chain stack, and encodes it with ffmpeg. Run it with `pnpm demo:record`.
 //
 //   pnpm demo:record [-- --quick] [-- --url http://localhost:5173/] [-- --out out/videos]
 //
-//   --quick        a short clip (about a minute on a slow machine): lobby, wallet, one Penny Pond
+//   --quick        a short clip (about a minute on a slow machine): lobby, wallet, one Asphodel Meadow
 //                  ticket, a short arena run, end card (no bell)
 //   --url <url>    record this running stack (it must be `pnpm demo`'s fake chain); by default
 //                  the stack is started for the recording (scripts/demo.mjs) and stopped afterwards
@@ -14,12 +14,12 @@
 // Rounds: arenas have no cash-out. The full run plays until the round bell and shows the "Round over" receipt.
 //   ROUND_SECONDS=<n>  round length of the stack this script starts (default 90, so the bell comes soon)
 // Audio: the game's WebAudio output is captured through the dev-only master tap
-// (`window.__slanaAudioTap()`, a MediaStream after the limiter) with MediaRecorder (webm/opus),
+// (`window.__elymumAudioTap()`, a MediaStream after the limiter) with MediaRecorder (webm/opus),
 // pulled out of the page in one-second chunks, aligned to the first video frame and muxed as AAC.
 // The announcer is not in the capture: speechSynthesis plays through the OS, outside WebAudio
 // (headless Chromium usually has no speech voices at all, so it stays silent there anyway).
 // Needs: Chromium (Playwright's, or CHROME_PATH=<binary>) and ffmpeg on the PATH (FFMPEG=<binary> to override).
-// Writes <out>/slana-walkthrough.mp4 (or slana-quick.mp4), a highlights reel for full runs,
+// Writes <out>/elymum-walkthrough.mp4 (or elymum-quick.mp4), a highlights reel for full runs,
 // chapters.json and check-*.png screenshots.
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -114,10 +114,10 @@ const ctx = await browser.newContext({ viewport: { width: W, height: H }, locale
 // ── settings: paper theme, default sound levels (or none with --no-audio), name Daphne ──
 await ctx.addInitScript((audio) => {
   const sound = audio ? { sound: true } : { sound: false, volume: 0 };
-  localStorage.setItem('slana.settings.v1', JSON.stringify({ name: 'Daphne', skin: 4, theme: 'light', quality: 'high', ...sound, showNames: true, showMass: true, showFps: false, showMinimap: true, showChat: true }));
+  localStorage.setItem('elymum.settings.v1', JSON.stringify({ name: 'Daphne', skin: 4, theme: 'light', quality: 'high', ...sound, showNames: true, showMass: true, showFps: false, showMinimap: true, showChat: true }));
 }, AUDIO);
 
-// ── Dev Wallet: a Wallet Standard wallet whose key lives in this script (signs the free login message) ──
+// ── Dev Wallet: an EIP-6963 wallet whose key lives in this script (signs the free SIWE sign-in message) ──
 await installDevWallet(ctx);
 
 // ── visible cursor, click ripple and chapter captions (DOM overlays, pointer-events: none) ──
@@ -237,7 +237,7 @@ async function wheel(total, step = 80, gap = 45) {
   for (let i = 0; i < n; i++) { await page.mouse.wheel(0, Math.sign(total) * step); await wait(gap); }
 }
 const ui = (fn, arg) => page.evaluate(fn, arg);
-const screen = () => ui(() => window.__slana.useUi.getState().screen);
+const screen = () => ui(() => window.__elymum.useUi.getState().screen);
 const chapters = [];
 async function chapter(label, ms = 3200) {
   chapters.push({ label, at: Date.now() / 1000 });
@@ -252,8 +252,8 @@ async function autopilot(ms, { onDead = 'stop', splits = true } = {}) {
   let lastSplit = 0;
   while (Date.now() - t0 < ms) {
     const plan = await ui(() => {
-      const e = window.__slana.engine;
-      if (window.__slana.useUi.getState().screen !== 'playing') return { dead: true };
+      const e = window.__elymum.engine;
+      if (window.__elymum.useUi.getState().screen !== 'playing') return { dead: true };
       const w = e.world;
       const mine = [...w.myCells()];
       if (mine.length === 0) return { wait: true };
@@ -301,14 +301,14 @@ async function autopilot(ms, { onDead = 'stop', splits = true } = {}) {
 
 // ════════════════════════════════════ the walkthrough ════════════════════════════════════
 await page.goto(base, { waitUntil: 'networkidle' });
-if (!(await page.waitForFunction(() => !!window.__slanaChain, null, { timeout: 20000 }).then(() => true, () => false))) {
-  console.error('The page has no fake chain (window.__slanaChain). Record against `pnpm demo` (NODE_ENV=development DEV_FAKE_CHAIN=1), not a real chain.');
+if (!(await page.waitForFunction(() => !!window.__elymumChain, null, { timeout: 20000 }).then(() => true, () => false))) {
+  console.error('The page has no fake chain (window.__elymumChain). Record against `pnpm demo` (NODE_ENV=development DEV_FAKE_CHAIN=1), not a real chain.');
   await browser.close();
   await stopStack();
   process.exit(1);
 }
-await page.waitForFunction(() => !!window.__slana && window.__slana.useUi.getState().connected, null, { timeout: 20000 });
-await page.waitForFunction(() => !!window.__slanaChain, null, { timeout: 20000 }).catch(() => {});
+await page.waitForFunction(() => !!window.__elymum && window.__elymum.useUi.getState().connected, null, { timeout: 20000 });
+await page.waitForFunction(() => !!window.__elymumChain, null, { timeout: 20000 }).catch(() => {});
 await wait(1200);
 await page.mouse.move(cur.x, cur.y);
 // game audio: MediaRecorder on the dev master tap; `audioStart` (wall clock) aligns it to the video
@@ -317,7 +317,7 @@ if (AUDIO) {
   audioStart = await ui(
     () =>
       new Promise((res) => {
-        const stream = window.__slanaAudioTap?.();
+        const stream = window.__elymumAudioTap?.();
         if (!stream || typeof MediaRecorder === 'undefined') return res(null);
         const rec = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 160000 });
         rec.ondataavailable = async (e) => {
@@ -332,7 +332,7 @@ if (AUDIO) {
         rec.start(1000);
       }),
   );
-  if (audioStart === null) problems.push('audio: no dev audio tap (window.__slanaAudioTap); recording without sound');
+  if (audioStart === null) problems.push('audio: no dev audio tap (window.__elymumAudioTap); recording without sound');
 }
 await cdp.send('Page.startScreencast', { format: 'jpeg', quality: 82, maxWidth: W, maxHeight: H, everyNthFrame: 1 });
 const recStart = Date.now() / 1000;
@@ -364,8 +364,8 @@ await page.waitForSelector('.wl-sheet', { timeout: 5000 });
 await wait(1100);
 await snap('2-sheet');
 await click('.wl-item');
-await page.waitForFunction(() => !!window.__slana.useUi.getState().auth, null, { timeout: 15000 });
-await page.waitForFunction(() => window.__slanaChain?.useChainData.getState().tokenBalance != null, null, { timeout: 15000 });
+await page.waitForFunction(() => !!window.__elymum.useUi.getState().auth, null, { timeout: 15000 });
+await page.waitForFunction(() => window.__elymumChain?.useChainData.getState().tokenBalance != null, null, { timeout: 15000 });
 await wait(1600);
 if (!QUICK) {
   await hover('.kl-wallet', { pause: 600 });
@@ -386,7 +386,7 @@ if (!QUICK) {
   await click('[role="radio"][data-kb-value="practice"]', { fx: 0.4 });
   await wait(400);
   await click('.kl-cta');
-  await page.waitForFunction(() => window.__slana.useUi.getState().screen === 'playing', null, { timeout: 15000 });
+  await page.waitForFunction(() => window.__elymum.useUi.getState().screen === 'playing', null, { timeout: 15000 });
   await wait(800);
   r = await autopilot(40_000);
   await snap('3-practice');
@@ -407,14 +407,14 @@ if (!QUICK) {
       await page.keyboard.press('Escape');
     }
   }
-  await page.waitForFunction(() => window.__slana.useUi.getState().screen === 'lobby', null, { timeout: 10000 }).catch(async () => {
+  await page.waitForFunction(() => window.__elymum.useUi.getState().screen === 'lobby', null, { timeout: 10000 }).catch(async () => {
     problems.push('practice: did not get back to the lobby by the UI; screen=' + (await screen()));
-    await ui(() => window.__slana.engine.backToLobby());
+    await ui(() => window.__elymum.engine.backToLobby());
   });
   await wait(1500);
 }
 
-// 4 · Buy a ticket (Penny Pond)
+// 4 · Buy a ticket (Asphodel Meadow)
 async function buyTicket(first) {
   await click('[role="radio"][data-kb-value="arena:1"]', { fx: 0.45 });
   await wait(500);
@@ -432,21 +432,21 @@ async function buyTicket(first) {
     await wheel(400, 60, 50);
     await wait(1200);
   }
-  await ui(() => { if (window.__slanaChain?.fakeWallet) window.__slanaChain.fakeWallet.delayMs = 1300; });
+  await ui(() => { if (window.__elymumChain?.fakeWallet) window.__elymumChain.fakeWallet.delayMs = 1300; });
   await click('.tf-sheet .kb-btn--pink', { before: 600 });
   await wait(600);
   if (first) await snap('4-signing');
   await page.waitForSelector('.tf-ticket__stamp', { timeout: 10000 }).catch(() => problems.push('no ticket stamp'));
   await wait(400);
   if (first) await snap('4-stamp');
-  await page.waitForFunction(() => window.__slana.useUi.getState().screen === 'playing', null, { timeout: 70000 }); // a ticket bought while joins are closed is held until the next round
+  await page.waitForFunction(() => window.__elymum.useUi.getState().screen === 'playing', null, { timeout: 70000 }); // a ticket bought while joins are closed is held until the next round
 }
 await chapter('4 · Buy a ticket');
 await buyTicket(true);
 await wait(600);
 
 // 5 · Arena
-await chapter('5 · Penny Pond arena');
+await chapter('5 · Asphodel Meadow arena');
 let arenaMs = QUICK ? 7_000 : 52_000;
 const tA = Date.now();
 r = await autopilot(arenaMs);
@@ -457,7 +457,7 @@ if (r === 'dead') {
   await snap('5-eaten');
   // "New ticket" from the EATEN sheet, then a fresh ticket
   await click('.g-death .kb-btn--pink');
-  await page.waitForFunction(() => window.__slana.useUi.getState().screen === 'lobby', null, { timeout: 8000 });
+  await page.waitForFunction(() => window.__elymum.useUi.getState().screen === 'lobby', null, { timeout: 8000 });
   await wait(1200);
   // the fake chain settles the old ticket first
   await page.waitForFunction(() => !document.querySelector('.kl-cta')?.disabled, null, { timeout: 15000 }).catch(() => {});
@@ -483,7 +483,7 @@ if (QUICK) {
       const again = page.locator('.g-death .kb-btn--pink:not([disabled])');
       if ((await again.count()) > 0) {
         await click('.g-death .kb-btn--pink');
-        await page.waitForFunction(() => window.__slana.useUi.getState().screen === 'lobby', null, { timeout: 8000 }).catch(() => {});
+        await page.waitForFunction(() => window.__elymum.useUi.getState().screen === 'lobby', null, { timeout: 8000 }).catch(() => {});
         await page.waitForFunction(() => !document.querySelector('.kl-cta')?.disabled, null, { timeout: 15000 }).catch(() => {});
         await wait(800);
         await buyTicket(false).catch(() => problems.push('could not buy back in before the bell'));
@@ -498,14 +498,14 @@ if (QUICK) {
   if (sc === 'roundover') {
     await wait(1400);
     await snap('6-bell');
-    await page.waitForFunction(() => !!window.__slana.useUi.getState().lastSettlement, null, { timeout: 15000 }).catch(() => problems.push('no settlement'));
+    await page.waitForFunction(() => !!window.__elymum.useUi.getState().lastSettlement, null, { timeout: 15000 }).catch(() => problems.push('no settlement'));
     await wait(1200);
     const s = await page.locator('.g-roundover__slip').boundingBox().catch(() => null);
     if (s) await moveTo(s.x + s.width * 0.6, s.y + s.height * 0.7);
     await wait(2800);
     await snap('6-paid');
     await click('.g-roundover .kb-btn--paper');
-    await page.waitForFunction(() => window.__slana.useUi.getState().screen === 'lobby', null, { timeout: 8000 }).catch(async () => {
+    await page.waitForFunction(() => window.__elymum.useUi.getState().screen === 'lobby', null, { timeout: 8000 }).catch(async () => {
       problems.push('round-over sheet close did not return to the lobby; screen=' + (await screen()));
       await page.keyboard.press('Escape');
     });
@@ -516,7 +516,7 @@ if (QUICK) {
     await wait(1000);
     await page.keyboard.press('Escape');
     await wait(500);
-    if ((await screen()) !== 'lobby') await ui(() => window.__slana.engine.backToLobby());
+    if ((await screen()) !== 'lobby') await ui(() => window.__elymum.engine.backToLobby());
     await wait(1500);
   }
 }
@@ -582,8 +582,8 @@ if (!QUICK) {
 await wait(1400);
 await moveTo(820, 380);
 await wait(800);
-chapters.push({ label: 'End · Slana', at: Date.now() / 1000 });
-await ui(() => window.__caption?.('Slana', 0, true));
+chapters.push({ label: 'End · Elymum', at: Date.now() / 1000 });
+await ui(() => window.__caption?.('Elymum', 0, true));
 await wait(2800);
 await snap('10-end');
 
@@ -618,7 +618,7 @@ const chaptersOut = chapters.map((c) => ({ ...c, t: +(c.at - first).toFixed(2) }
 writeFileSync(`${out}/chapters.json`, JSON.stringify({ start: first, recStart, audioStart, end, chapters: chaptersOut }, null, 2));
 log('frames', frames.length, 'duration', (end - first).toFixed(1));
 
-const video = `${out}/${QUICK ? 'slana-quick' : 'slana-walkthrough'}.mp4`;
+const video = `${out}/${QUICK ? 'elymum-quick' : 'elymum-walkthrough'}.mp4`;
 // audio: shift the capture onto the video's clock (positive: it started after the first frame)
 const audioFile = `${out}/audio.webm`;
 const hasAudio = audioStart !== null && audioChunks.length > 0;
@@ -645,7 +645,7 @@ if (!QUICK) {
   const range = (a, b) => `start=${a.toFixed(2)}:end=${b.toFixed(2)}`;
   const f = segs.map(([a, b], i) => `[0:v]trim=${range(a, b)},setpts=PTS-STARTPTS[v${i}];` + (hasAudio ? `[0:a]atrim=${range(a, b)},asetpts=PTS-STARTPTS[a${i}];` : '')).join('');
   const l = segs.map((_, i) => `[v${i}]` + (hasAudio ? `[a${i}]` : '')).join('');
-  const hl = `${out}/slana-highlights.mp4`;
+  const hl = `${out}/elymum-highlights.mp4`;
   const graph = hasAudio ? `${f}${l}concat=n=${segs.length}:v=1:a=1[cv][out_a];[cv]fps=30,format=yuv420p[out]` : `${f}${l}concat=n=${segs.length}:v=1:a=0,fps=30,format=yuv420p[out]`;
   const maps = hasAudio ? ['-map', '[out]', '-map', '[out_a]', '-c:a', 'aac', '-b:a', '160k'] : ['-map', '[out]'];
   const r2 = spawnSync(FFMPEG, ['-y', '-loglevel', 'error', '-i', video, '-filter_complex', graph, ...maps, '-c:v', 'libx264', '-preset', 'medium', '-crf', '26', '-movflags', '+faststart', hl], { stdio: 'inherit' });

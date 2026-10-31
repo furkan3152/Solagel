@@ -1,19 +1,23 @@
-import { TOKEN_SYMBOL_DEFAULT, arenaMeta, formatToken, type RoomInfo } from '@slana/shared';
+import { ledgerDecimals } from '@elymum/sdk';
+import { TOKEN_SYMBOL_DEFAULT, arenaMeta, formatToken, type RoomInfo } from '@elymum/shared';
 import { useUi } from '../../store';
 
 export interface TokenFormat {
   symbol: string;
   decimals: number;
-  /** Raw base units → display text (`1,234.5`). */
+  /** Ledger units (the game server's wire amounts) → display text (`1,234.5`). */
   fmt: (raw: number, opts?: { maxFrac?: number; compact?: boolean }) => string;
   /** Signed, with a real minus sign: `+1.250` / `−1.250`. */
   signed: (raw: number, opts?: { maxFrac?: number; compact?: boolean }) => string;
 }
 
-/** Token formatting bound to the chain's mint. */
+/**
+ * Formatting of the game server's amounts (values, payouts, loot, standings): they are ledger
+ * units, so the decimals are `ledgerDecimals(token decimals)` (at most 6).
+ */
 export function useTokenFormat(): TokenFormat {
   const token = useUi((s) => s.chain?.token ?? null);
-  return tokenFormat(token?.decimals ?? 6, token?.symbol ?? TOKEN_SYMBOL_DEFAULT);
+  return tokenFormat(ledgerDecimals(token?.decimals ?? 18), token?.symbol ?? TOKEN_SYMBOL_DEFAULT);
 }
 
 export function tokenFormat(decimals: number, symbol: string): TokenFormat {

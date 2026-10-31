@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { INTEGRITY_FLAG_KINDS, type IntegrityFlagKind } from '@slana/shared';
+import { INTEGRITY_FLAG_KINDS, type IntegrityFlagKind } from '@elymum/shared';
 import { SiteFail } from '../site/validate';
 import { IntegrityError, type FlagFilter, type IntegrityService } from './service';
 import { SettingsError } from './settings';
@@ -86,7 +86,7 @@ export async function integrityRoutes(svc: IntegrityService, io: IntegrityRouteI
       case 'flags.csv':
         if (seg.length !== 1) break;
         method(req, 'GET');
-        return sendCsv(res, `slana-integrity-flags-${new Date().toISOString().slice(0, 10)}.csv`, svc.flagsCsv(filterOf(q)));
+        return sendCsv(res, `elymum-integrity-flags-${new Date().toISOString().slice(0, 10)}.csv`, svc.flagsCsv(filterOf(q)));
       case 'wallet':
         if (seg.length !== 2) break;
         method(req, 'GET');

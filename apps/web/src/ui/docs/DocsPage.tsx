@@ -1,11 +1,13 @@
 import { useMemo, useRef } from 'react';
-import { Dateline, Icon, Receipt, Rule, Stamp, useReducedMotion, type ReceiptLine } from '../../design';
-import { feeBps } from '../../solana/ticket';
+import { CoinCharacter, Dateline, Icon, Receipt, Rule, Stamp, useOffscreenPause, useReducedMotion, type ReceiptLine } from '../../design';
+import { feeBps } from '../../wallet/ticket';
 import { useUi } from '../../store';
 import { useTokenText } from '../lobby/useLobby';
 import { PageHead } from '../PageHead';
 import { docsEn } from './content.en';
 import { EXAMPLE, feeExample, type DocBlock, type DocsContent } from './facts';
+import { ComicStrip } from './Comics';
+import { ValueFlow } from './ValueFlow';
 import './docs.css';
 
 /**
@@ -31,11 +33,22 @@ export function DocsPage() {
 
   return (
     <div className="dc-page" ref={top}>
-      <PageHead kicker={c.kicker} title={c.title} deck={c.deck} id="dc-title" aside={<Stamp text="Guide" sub="Player copy" tone="teal" round size="md" rotate={-6} />} />
+      <PageHead
+        kicker={c.kicker}
+        title={c.title}
+        deck={c.deck}
+        id="dc-title"
+        aside={
+          <span className="dc-head__art">
+            <CoinCharacter paint="cream" mood="smug" size={124} look={[-3, 1]} feet ground bob />
+            <Stamp text="Guide" sub="Player copy" tone="teal" round size="md" rotate={-8} className="dc-head__stamp" />
+          </span>
+        }
+      />
       <Dateline items={c.dateline} label={c.tocLabel} className="dc-dateline" />
 
       <div className="dc-layout">
-        <nav className="dc-toc" aria-label={c.tocLabel}>
+        <nav className="dc-toc kb-island" aria-label={c.tocLabel}>
           <span className="dc-toc__label mono">{c.tocLabel}</span>
           <ol className="dc-toc__list">
             {c.sections.map((s, i) => (
@@ -66,6 +79,7 @@ export function DocsPage() {
                 </div>
               </header>
               <div className="dc-sec__body">
+                {s.strip && <ComicStrip id={s.id} strip={s.strip} />}
                 {s.blocks.map((b, j) => (
                   <Block key={j} block={b} c={c} />
                 ))}
@@ -113,28 +127,10 @@ function Block({ block: b, c }: { block: DocBlock; c: DocsContent }) {
         </ul>
       );
     case 'keys':
-      return (
-        <figure className="dc-keys-fig">
-          <figcaption className="dc-cap mono" id="dc-keys-cap">
-            {b.caption}
-          </figcaption>
-          <table className="dc-keys" aria-labelledby="dc-keys-cap">
-            <tbody>
-              {b.rows.map((r) => (
-                <tr key={r.key}>
-                  <th scope="row">
-                    <kbd className="dc-kbd mono">{r.key}</kbd>
-                  </th>
-                  <td>{r.action}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </figure>
-      );
+      return <KeysFig caption={b.caption} rows={b.rows} />;
     case 'table':
       return (
-        <div className="dc-table-wrap">
+        <div className="dc-table-wrap kb-island">
           <table className="dc-table">
             <caption className="mono">{b.caption}</caption>
             <thead>
@@ -162,15 +158,21 @@ function Block({ block: b, c }: { block: DocBlock; c: DocsContent }) {
       );
     case 'flow':
       return (
-        <ol className="dc-flow" aria-label={b.label}>
-          {b.steps.map((s, i) => (
-            <li key={i} className="dc-flow__step">
-              <span className="dc-flow__title mono">{s.title}</span>
-              <span className="dc-flow__text">{s.text}</span>
-              {i < b.steps.length - 1 && <Icon name="arrow" size={20} className="dc-flow__arrow" />}
-            </li>
-          ))}
-        </ol>
+        <>
+          {b.diagram && <ValueFlow labels={b.diagram} />}
+          <ol className="dc-flow" aria-label={b.label}>
+            {b.steps.map((s, i) => (
+              <li key={i} className="dc-flow__step kb-island">
+                <span className="dc-flow__no num" aria-hidden="true">
+                  {String(i + 1).padStart(2, '0')}
+                </span>
+                <span className="dc-flow__title mono">{s.title}</span>
+                <span className="dc-flow__text">{s.text}</span>
+                {i < b.steps.length - 1 && <Icon name="arrow" size={20} className="dc-flow__arrow" />}
+              </li>
+            ))}
+          </ol>
+        </>
       );
     case 'fee-example':
       return <FeeExample c={c} />;
@@ -178,7 +180,7 @@ function Block({ block: b, c }: { block: DocBlock; c: DocsContent }) {
       return (
         <div className="dc-compare">
           {[b.left, b.right].map((col, i) => (
-            <div key={i} className={`dc-compare__col${i === 0 ? ' is-chain' : ' is-server'}`}>
+            <div key={i} className={`dc-compare__col kb-island${i === 0 ? ' is-chain' : ' is-server'}`}>
               <h4 className="dc-compare__title">
                 <Icon name={i === 0 ? 'lock' : 'globe'} size={18} />
                 {col.title}
@@ -194,7 +196,7 @@ function Block({ block: b, c }: { block: DocBlock; c: DocsContent }) {
       );
     case 'note':
       return (
-        <aside className={`dc-note is-${b.tone}`} aria-label={b.title}>
+        <aside className={`dc-note kb-island is-${b.tone}`} aria-label={b.title}>
           <Stamp text={b.stamp} tone={b.tone === 'warn' ? 'red' : 'teal'} size="sm" rotate={-4} className="dc-note__stamp" />
           <h4 className="dc-note__title">{b.title}</h4>
           <p className="dc-note__text">{b.text}</p>
@@ -204,7 +206,7 @@ function Block({ block: b, c }: { block: DocBlock; c: DocsContent }) {
       return (
         <div className="dc-faq">
           {b.items.map((it, i) => (
-            <details key={i} className="dc-faq__item">
+            <details key={i} className="dc-faq__item kb-island">
               <summary className="dc-faq__q">
                 <span>{it.q}</span>
                 <Icon name="chevron" size={18} className="dc-faq__chev" />
@@ -217,6 +219,32 @@ function Block({ block: b, c }: { block: DocBlock; c: DocsContent }) {
     default:
       return null;
   }
+}
+
+/** The controls as key stickers that press themselves one after another (paused off screen). */
+function KeysFig({ caption, rows }: { caption: string; rows: { key: string; action: string }[] }) {
+  const [ref, visible] = useOffscreenPause<HTMLElement>();
+  return (
+    <figure ref={ref} className="dc-keys-fig kb-island" data-paused={!visible || undefined}>
+      <figcaption className="dc-cap mono" id="dc-keys-cap">
+        {caption}
+      </figcaption>
+      <table className="dc-keys" aria-labelledby="dc-keys-cap">
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={r.key}>
+              <th scope="row">
+                <kbd className="dc-kbd mono" style={{ ['--i' as string]: i }}>
+                  {r.key}
+                </kbd>
+              </th>
+              <td>{r.action}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </figure>
+  );
 }
 
 /** The worked example: a 1,000-token ticket with 2,000 in the till at the bell, at the server's fee rate. */

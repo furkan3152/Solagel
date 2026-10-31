@@ -1,4 +1,4 @@
-"""Roadmap Chomp's own sounds (the mixer, media/free-mint/audio/mix.py, asks this module first and
+"""Roadmap Chomp's own sounds (the mixer, media/mint-film/audio/mix.py, asks this module first and
 falls back to the promo's SFX): the waka, the chomp, the grow pop. Clean and synthetic, to match the
 minimal picture.
 

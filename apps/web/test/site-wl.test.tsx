@@ -1,4 +1,4 @@
-import type { PublicWlTask, WlEntryPublic } from '@slana/shared';
+import type { PublicWlTask, WlEntryPublic } from '@elymum/shared';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { useSession } from '../src/site/session';
@@ -7,17 +7,17 @@ import { buildSteps, stepError, submitBody } from '../src/site/wl/steps';
 import { WlPage } from '../src/site/wl/WlPage';
 import { SETTINGS, installDomStubs, json, mockFetch, type Call } from './site-helpers';
 
-const WALLET = '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin';
+const WALLET = '0xAbCdEf0123456789aBcDeF0123456789AbCdEf01';
 const POST = 'https://x.com/riso_rita/status/1849000000000000001';
 
 const TASKS: PublicWlTask[] = [
-  { id: 'follow_x', kind: 'follow_x', title: 'Follow @slanaio', body: 'Follow us.', target: 'https://x.com/slanaio', required: true, available: true },
-  { id: 'post_x', kind: 'post_x', title: 'Post about Slana on X', body: 'Post and paste the link.', target: null, required: true, available: true },
+  { id: 'follow_x', kind: 'follow_x', title: 'Follow @elymum', body: 'Follow us.', target: 'https://x.com/elymum', required: true, available: true },
+  { id: 'post_x', kind: 'post_x', title: 'Post about Elymum on X', body: 'Post and paste the link.', target: null, required: true, available: true },
   { id: 'engage_launch', kind: 'engage_x', title: 'Like, repost and reply', body: '', target: null, required: false, available: false },
-  { id: 't_join', kind: 'join_link', title: 'Join the Discord', body: '', target: 'https://discord.gg/slana', required: true, available: true },
-  { id: 't_text', kind: 'text', title: 'Why Slana?', body: '', target: null, required: false, available: true },
+  { id: 't_join', kind: 'join_link', title: 'Join the Discord', body: '', target: 'https://discord.gg/elymum', required: true, available: true },
+  { id: 't_text', kind: 'text', title: 'Why Elymum?', body: '', target: null, required: false, available: true },
   { id: 'x_handle', kind: 'text', title: 'Your X handle', body: 'The account you used.', target: null, required: true, available: true },
-  { id: 'wallet', kind: 'wallet', title: 'Your Solana wallet', body: 'Sign in.', target: null, required: true, available: true },
+  { id: 'wallet', kind: 'wallet', title: 'Your EVM wallet', body: 'Sign in.', target: null, required: true, available: true },
 ];
 
 const entry = (status: WlEntryPublic['status']): WlEntryPublic => ({ id: 'w1', wallet: WALLET, xHandle: 'riso_rita', status, tasks: [], createdAt: Date.UTC(2026, 9, 17), updatedAt: Date.UTC(2026, 9, 17) });
@@ -73,9 +73,9 @@ describe('/wl', { timeout: 30_000 }, () => {
       },
     }));
     render(<WlPage />);
-    await screen.findByRole('heading', { name: 'Join the WL.' });
+    await screen.findByRole('heading', { name: 'Seven small chores, then the feast.' });
     // every kind renders its step
-    for (const t of ['Your X handle', 'Follow @slanaio', 'Post about Slana on X', 'Like, repost and reply', 'Join the Discord', 'Why Slana?', 'Your Solana wallet']) expect(screen.getAllByText(t).length).toBeGreaterThan(0);
+    for (const t of ['Your X handle', 'Follow @elymum', 'Post about Elymum on X', 'Like, repost and reply', 'Join the Discord', 'Why Elymum?', 'Your EVM wallet']) expect(screen.getAllByText(t).length).toBeGreaterThan(0);
 
     const next = () => fireEvent.click(within(document.querySelector<HTMLElement>('.wl-step.is-active')!).getByRole('button', { name: /^(Next|Skip for now)$/ }));
     fireEvent.change(screen.getByLabelText('Your X handle'), { target: { value: 'bad handle!' } });
@@ -84,13 +84,13 @@ describe('/wl', { timeout: 30_000 }, () => {
     fireEvent.change(screen.getByLabelText('Your X handle'), { target: { value: '@Riso_Rita' } });
     next();
     // follow: the link points at the target, the tick is required
-    expect(screen.getByRole('link', { name: /Follow @slanaio/ }).getAttribute('href')).toBe('https://x.com/slanaio');
+    expect(screen.getByRole('link', { name: /Follow @elymum/ }).getAttribute('href')).toBe('https://x.com/elymum');
     next();
     expect(screen.getByText('Tick this once you follow.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'I follow' }));
     next();
     // post: an intent link with the text, and an X status link
-    expect(screen.getByRole('link', { name: /Post on X/ }).getAttribute('href')).toMatch(/^https:\/\/x\.com\/intent\/post\?text=.*slanaio/);
+    expect(screen.getByRole('link', { name: /Post on X/ }).getAttribute('href')).toMatch(/^https:\/\/x\.com\/intent\/post\?text=.*elymum/);
     fireEvent.change(screen.getByLabelText('Link to your post'), { target: { value: 'https://example.com/post' } });
     next();
     expect(screen.getByText(/not a link to an X post/)).toBeTruthy();
@@ -100,7 +100,7 @@ describe('/wl', { timeout: 30_000 }, () => {
     expect(screen.getByText('Opens when the post is live.')).toBeTruthy();
     next();
     // join link
-    expect(screen.getByRole('link', { name: /Open the invite/ }).getAttribute('href')).toBe('https://discord.gg/slana');
+    expect(screen.getByRole('link', { name: /Open the invite/ }).getAttribute('href')).toBe('https://discord.gg/elymum');
     fireEvent.click(screen.getByRole('button', { name: 'I joined' }));
     next();
     // optional text
@@ -109,7 +109,7 @@ describe('/wl', { timeout: 30_000 }, () => {
     // sign-in step: the send button waits for the session
     const send = screen.getByRole('button', { name: 'Join the WL' }) as HTMLButtonElement;
     expect(send.disabled).toBe(true);
-    act(() => useSession.setState({ session: { pubkey: WALLET, token: 'tok', admin: false } }));
+    act(() => useSession.setState({ session: { address: WALLET, token: 'tok', admin: false } }));
     await waitFor(() => expect((screen.getByRole('button', { name: 'Join the WL' }) as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(screen.getByRole('button', { name: 'Join the WL' }));
     await screen.findByRole('heading', { name: "You're in the queue." });
@@ -124,7 +124,7 @@ describe('/wl', { timeout: 30_000 }, () => {
       'GET /api/site/wl': { entry: null },
       'POST /api/site/wl': json(409, { error: 'handle_taken', message: 'This X handle has already applied.', field: 'xHandle' }),
     }));
-    useSession.setState({ session: { pubkey: WALLET, token: 'tok', admin: false } });
+    useSession.setState({ session: { address: WALLET, token: 'tok', admin: false } });
     render(<WlPage />);
     fireEvent.change(await screen.findByLabelText('Your X handle'), { target: { value: 'riso_rita' } });
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
@@ -142,16 +142,43 @@ describe('/wl', { timeout: 30_000 }, () => {
       'GET /api/site/tasks': { tasks: TASKS },
       'GET /api/site/wl': { entry: entry(status) },
     }));
-    useSession.setState({ session: { pubkey: WALLET, token: 'tok', admin: false } });
+    useSession.setState({ session: { address: WALLET, token: 'tok', admin: false } });
     render(<WlPage />);
     expect(await screen.findByRole('heading', { name: title })).toBeTruthy();
     expect(screen.getByTestId('wl-status').textContent).toBe(status);
   });
 
-  it('says applications are closed (follow @slanaio) when the WL is off', async () => {
+  it('says applications are closed (follow @elymum) when the WL is off', async () => {
     ({ restore } = mockFetch({ 'GET /api/site/settings': { settings: { ...SETTINGS, wlOpen: false } }, 'GET /api/site/tasks': { tasks: TASKS } }));
     render(<WlPage />);
     expect(await screen.findByRole('heading', { name: 'Applications are closed.' })).toBeTruthy();
-    expect(screen.getAllByRole('link', { name: /@slanaio/ })[0].getAttribute('href')).toBe('https://x.com/slanaio');
+    expect(screen.getAllByRole('link', { name: /@elymum/ })[0].getAttribute('href')).toBe('https://x.com/elymum');
+  });
+
+  it('the wallet step shows the full EVM address that goes on the list', async () => {
+    ({ restore } = mockFetch({
+      'GET /api/site/settings': { settings: SETTINGS },
+      'GET /api/site/tasks': { tasks: TASKS.filter((t) => t.kind === 'wallet' || t.id === 'x_handle') },
+      'GET /api/site/wl': { entry: null },
+    }));
+    useSession.setState({ session: { address: WALLET, token: 'tok', admin: false } });
+    render(<WlPage />);
+    fireEvent.change(await screen.findByLabelText('Your X handle'), { target: { value: 'riso_rita' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect((await screen.findByTestId('wl-wallet')).textContent).toContain(WALLET);
+  });
+
+  it('a legacy (pre-Elysium) entry says to re-apply with an EVM wallet, and the form opens again', async () => {
+    ({ restore } = mockFetch({
+      'GET /api/site/settings': { settings: SETTINGS },
+      'GET /api/site/tasks': { tasks: TASKS },
+      'GET /api/site/wl': { entry: { ...entry('approved'), wallet: '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin', legacy: true } },
+    }));
+    useSession.setState({ session: { address: WALLET, token: 'tok', admin: false } });
+    render(<WlPage />);
+    const note = await screen.findByTestId('wl-legacy');
+    expect(note.textContent).toMatch(/before the move to Elysium/);
+    fireEvent.click(within(note).getByRole('button', { name: 'Re-apply with an EVM wallet' }));
+    expect(await screen.findByLabelText('Your X handle')).toBeTruthy();
   });
 });

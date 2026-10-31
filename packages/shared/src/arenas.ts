@@ -1,22 +1,26 @@
-import { INK, RISO } from './palette';
-
 export interface ArenaMeta {
+  /** An Elysian place on the ring. */
   name: string;
-  /** Riso ink colour of the arena's ticket (stripe, stamp). */
+  /** The arena's ink (ticket stripe, stamp, place marker). Upper-case hex. */
   ink: string;
+  /** Second stop when the ink is a gradient (Lethe), else absent. */
+  inkTo?: string;
 }
 
-/** Display metadata for on-chain arena ids (the chain stores only numbers). */
+/** Ink of an arena id the catalog does not know (`--teal`). */
+export const ARENA_INK_FALLBACK = '#2D7388';
+
+/** Display metadata for the arena contract's ids (the chain stores only numbers). */
 export const ARENA_META: Record<number, ArenaMeta> = {
-  1: { name: 'Penny Pond', ink: RISO.red },
-  2: { name: 'Silver Creek', ink: RISO.teal },
-  3: { name: 'Gold Lake', ink: RISO.mustard },
-  4: { name: 'Whale Bay', ink: RISO.blue },
+  1: { name: 'Asphodel Meadow', ink: '#6FCDE8' },
+  2: { name: 'Lethe Shore', ink: '#93D9EE', inkTo: '#2D7388' },
+  3: { name: 'Golden Bough', ink: '#F2C14E' },
+  4: { name: 'Isles of the Blessed', ink: '#3C9A87' },
 };
 
 /**
- * Default tiers created by `admin create-arena --defaults`, all open to everyone (they
- * differ only by entry fee). `entryTokens` is in whole tokens (scale by the mint's
+ * Default tiers the admin creates on the arena contract (`createArena`), all open to everyone
+ * (they differ only by entry fee). `entryTokens` is in whole tokens (scale by the token's
  * decimals for base units); `maxSessions` is how many tickets can be open at once.
  */
 export const DEFAULT_ARENAS = [
@@ -27,5 +31,5 @@ export const DEFAULT_ARENAS = [
 ] as const;
 
 export function arenaMeta(id: number): ArenaMeta {
-  return ARENA_META[id] ?? { name: `Arena #${id}`, ink: INK };
+  return ARENA_META[id] ?? { name: `Arena #${id}`, ink: ARENA_INK_FALLBACK };
 }

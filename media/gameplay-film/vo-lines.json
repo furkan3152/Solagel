@@ -1,0 +1,87 @@
+[
+ {
+  "id": "hook_a",
+  "text": "You are small change. || With a *big* appetite.",
+  "speed": 0.94
+ },
+ {
+  "id": "hook_b",
+  "text": "Which, | around here, | is a perfectly good career.",
+  "speed": 0.98
+ },
+ {
+  "id": "what_a",
+  "text": "This is Elymum. || Coins eat coins, | on Elysium's ring.",
+  "speed": 0.96
+ },
+ {
+  "id": "what_b",
+  "text": "Rounds last *five* minutes. | One bell, | for every arena at once.",
+  "speed": 1.0
+ },
+ {
+  "id": "what_c",
+  "text": "When it rings, | whoever's still alive gets paid. || Whoever isn't {0.35} was lunch.",
+  "speed": 0.98
+ },
+ {
+  "id": "flow",
+  "text": "Getting in is short. || Join the WL. | Mint your Elymum NFT, | one dollar in HYPE. || Then play.",
+  "speed": 1.02
+ },
+ {
+  "id": "lobby",
+  "text": "Pick a room. | Buy a ticket. || In you go.",
+  "speed": 1.0
+ },
+ {
+  "id": "drop",
+  "text": "Right. | You're the little one. || Don't take it personally.",
+  "speed": 0.98
+ },
+ {
+  "id": "first_eat",
+  "text": "Smaller than you? || *Dinner.* || And whatever they were worth | is yours now.",
+  "speed": 1.0
+ },
+ {
+  "id": "run",
+  "text": "Bigger than you? || Leave. | Don't make eye contact. | Just leave.",
+  "speed": 1.04
+ },
+ {
+  "id": "split_a",
+  "text": "Press space, | and you split in two. || One half lunges.",
+  "speed": 1.04
+ },
+ {
+  "id": "split_b",
+  "text": "The other half | tries to look casual.",
+  "speed": 1.0
+ },
+ {
+  "id": "final_a",
+  "text": "Final minute. || Joins close. | Nobody new gets in, | and everyone gets a little *careful.*",
+  "speed": 0.96
+ },
+ {
+  "id": "final_b",
+  "text": "Big coins slow down. | Small coins get ideas.",
+  "speed": 1.0
+ },
+ {
+  "id": "ten",
+  "text": "Ten seconds. || Keep your head down. {0.5} Coins don't have heads. | Keep it down anyway.",
+  "speed": 1.0
+ },
+ {
+  "id": "paid",
+  "text": "Still here at the bell? || Then it's *yours.* | Paid out, | minus five percent of the profit.",
+  "speed": 0.98
+ },
+ {
+  "id": "close",
+  "text": "Elymum. || Join the WL. | Follow *@elymum.* || And bring an appetite.",
+  "speed": 0.94
+ }
+]

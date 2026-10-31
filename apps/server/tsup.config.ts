@@ -8,20 +8,19 @@ export default defineConfig({
   outDir: 'dist',
   clean: true,
   sourcemap: true,
-  // workspace packages ship TypeScript sources → bundle them; npm deps stay external
-  noExternal: [/^@slana\//],
+  // workspace packages ship TypeScript sources → bundle them; npm deps (viem, ws) stay external
+  noExternal: [/^@elymum\//],
   splitting: false,
-  // CommonJS deps bundled with the SDK (@solana/buffer-layout, bn.js, bigint-buffer's `bindings`, …) use
-  // `require`, `__filename` and `__dirname`, which an ESM bundle does not have: define them (otherwise the
-  // chain fails to load, or the process crashes, in production).
+  // a CommonJS dependency bundled through a workspace package would need `require`, `__filename` and
+  // `__dirname`, which an ESM bundle does not have: define them so such a dependency never crashes the process
   banner: {
     js: [
-      "import { createRequire as __slanaCreateRequire } from 'node:module';",
-      "import { fileURLToPath as __slanaFileURLToPath } from 'node:url';",
-      "import { dirname as __slanaDirname } from 'node:path';",
-      'const require = __slanaCreateRequire(import.meta.url);',
-      'const __filename = __slanaFileURLToPath(import.meta.url);',
-      'const __dirname = __slanaDirname(__filename);',
+      "import { createRequire as __elymumCreateRequire } from 'node:module';",
+      "import { fileURLToPath as __elymumFileURLToPath } from 'node:url';",
+      "import { dirname as __elymumDirname } from 'node:path';",
+      'const require = __elymumCreateRequire(import.meta.url);',
+      'const __filename = __elymumFileURLToPath(import.meta.url);',
+      'const __dirname = __elymumDirname(__filename);',
     ].join('\n'),
   },
 });

@@ -1,9 +1,9 @@
 {
-  "name": "@slana/art",
+  "name": "@elymum/art",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Risograph coin drawing shared by the web renderer (browser canvas; tests use @napi-rs/canvas)",
+  "description": "Storybook coin drawing shared by the web renderer (browser canvas; tests use @napi-rs/canvas)",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -14,7 +14,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@slana/shared": "workspace:*"
+    "@elymum/shared": "workspace:*"
   },
   "devDependencies": {
     "@napi-rs/canvas": "^1.0.0",

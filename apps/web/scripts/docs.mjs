@@ -14,7 +14,7 @@ async function shoot({ name, theme, mobile, path = '/docs', after }) {
       : { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 },
   );
   await ctx.addInitScript(
-    ({ theme }) => localStorage.setItem('slana.settings.v1', JSON.stringify({ theme, sound: false })),
+    ({ theme }) => localStorage.setItem('elymum.settings.v1', JSON.stringify({ theme, sound: false })),
     { theme },
   );
   const page = await ctx.newPage();

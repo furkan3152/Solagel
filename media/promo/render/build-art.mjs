@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Bundles packages/art (coin characters) into cache/art.js as the global `SlanaArt`.
+// Bundles packages/art (coin characters) into cache/art.js as the global `ElymumArt`.
 import { spawnSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -11,7 +11,7 @@ mkdirSync(resolve(PROMO, 'cache'), { recursive: true });
 const bin = resolve(ROOT, 'packages/art/node_modules/.bin/esbuild');
 const r = spawnSync(
   bin,
-  [resolve(PROMO, 'scenes/art-entry.ts'), '--bundle', '--format=iife', '--global-name=SlanaArt', '--target=chrome120', `--outfile=${resolve(PROMO, 'cache/art.js')}`],
+  [resolve(PROMO, 'scenes/art-entry.ts'), '--bundle', '--format=iife', '--global-name=ElymumArt', '--target=chrome120', `--outfile=${resolve(PROMO, 'cache/art.js')}`],
   { stdio: 'inherit', cwd: resolve(ROOT, 'packages/art') },
 );
 process.exit(r.status ?? 1);

@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { PlayerFlag, TICK_MS, roundAt } from '@slana/shared';
+import { PlayerFlag, TICK_MS, roundAt } from '@elymum/shared';
 import { describe, expect, it } from 'vitest';
 import { DevFakeChain } from '../src/chain/dev-fake';
 import { NullChain } from '../src/chain/types';
@@ -36,7 +36,7 @@ const settle = (key: string, payout: number, held = true): SettlementItem => ({
 
 describe('journal holds', () => {
   it('release and settle-at-0 move nothing out of the books, and survive a restart', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'slana-hold-'));
+    const dir = mkdtempSync(join(tmpdir(), 'elymum-hold-'));
     const path = join(dir, 'journal.json');
     const j = new Journal(path);
     j.commit({ enqueue: [settle('A', 500), settle('B', 700), settle('C', 900, false)] });
@@ -78,15 +78,15 @@ describe('journal holds', () => {
     const chain = new DevFakeChain(journal, () => {}, 5, { tokenSet: true });
     const settled: string[] = [];
     chain.onSettled((e) => settled.push(e.key));
-    const s = (await chain.getSession(1, 'Player1111111111111111111111111111111111'))!;
-    journal.commit({ enqueue: [{ ...settle(s.address, 1234), player: s.player }] });
+    const s = (await chain.getSession(1, '0x00000000000000000000000000000000000000a1'))!;
+    journal.commit({ enqueue: [{ ...settle(s.key, 1234), player: s.player }] });
     chain.kick();
     await new Promise((r) => setTimeout(r, 40));
     expect(settled).toEqual([]);
-    journal.release(s.address);
+    journal.release(s.key);
     chain.kick();
     await new Promise((r) => setTimeout(r, 40));
-    expect(settled).toEqual([s.address]);
+    expect(settled).toEqual([s.key]);
     await chain.stop();
   });
 });

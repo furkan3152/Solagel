@@ -1,0 +1,454 @@
+/* /play gate: the ring at night, closed (or members only), drawn as Plate III of the book. */
+
+.pg-platelabel {
+  padding: 18px var(--gutter);
+}
+
+.pg-night {
+  background: var(--trench);
+  color: var(--cream);
+}
+.pg-scene {
+  width: 100%;
+  aspect-ratio: auto;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: min(880px, calc(100svh - 120px));
+}
+.pg-scene > .kb-ring__over {
+  width: 100%;
+}
+.pg-wrap {
+  position: relative;
+  height: 100%;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: clamp(40px, 6vw, 88px) var(--gutter) clamp(160px, 16vw, 240px);
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: 32px;
+  align-items: start;
+}
+
+.pg-card {
+  max-width: 500px;
+  transform: rotate(-0.8deg);
+}
+.pg-kicker {
+  display: block;
+  color: var(--ink-3);
+}
+.pg-h {
+  margin: 10px 0 14px;
+  font-size: clamp(36px, 4.2vw, 54px);
+  line-height: 1;
+}
+.pg-h em {
+  font-style: normal;
+  color: var(--teal-ink);
+  font-variation-settings: var(--fv-wonk);
+}
+.pg-lede {
+  margin: 0 0 20px;
+  font-size: 17px;
+  color: var(--ink-2);
+}
+.pg-signin {
+  margin: 0 0 18px;
+  padding: 14px 0;
+  border-top: 2.5px dashed var(--sand-2);
+  border-bottom: 2.5px dashed var(--sand-2);
+}
+.pg-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.pg-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin: 18px 0 0;
+  font-size: 14px;
+  color: var(--ink-3);
+}
+.pg-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  color: var(--ink);
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
+.pg-links a:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* the gate on the terrace, with two sleepy onlookers */
+.pg-cast {
+  position: relative;
+  align-self: end;
+  justify-self: center;
+  width: 470px;
+  max-width: 100%;
+  height: 330px;
+  margin-bottom: -40px;
+}
+.pg-cast--holders {
+  align-self: center;
+  margin-bottom: 0;
+}
+.pg-cast .pg-gate {
+  position: absolute;
+  left: 30px;
+  bottom: 0;
+}
+.pg-coin {
+  position: absolute;
+}
+.pg-coin--b {
+  left: -34px;
+  bottom: 2px;
+}
+.pg-coin--c {
+  left: 210px;
+  bottom: 0;
+  z-index: 2;
+}
+
+/* the gate itself */
+.pg-gate {
+  position: relative;
+  width: 420px;
+  height: 315px;
+}
+.pg-gate__art {
+  position: absolute;
+  inset: 0;
+  width: 400px;
+  height: 300px;
+  overflow: visible;
+}
+.pg-gate__board {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  fill: var(--ink-fixed);
+}
+.pg-gate__arm {
+  transform-box: view-box;
+  transform-origin: 78px 198px;
+  transition: transform 760ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.pg-gate.is-open .pg-gate__arm {
+  transform: rotate(-74deg);
+}
+.pg-gate__glow {
+  transition: opacity 0.4s;
+}
+.pg-gate.is-closed .pg-gate__glow {
+  opacity: 0.06;
+}
+.pg-gate.is-closed .pg-gate__lamp {
+  fill: var(--sun-s);
+}
+.pg-gate.is-open .pg-gate__glow {
+  opacity: 0.32;
+}
+.pg-gate:not(.is-closed) .pg-gate__glow {
+  animation: pg-flicker 3.2s ease-in-out infinite;
+}
+@keyframes pg-flicker {
+  0%,
+  100% {
+    opacity: 0.16;
+  }
+  40% {
+    opacity: 0.26;
+  }
+  55% {
+    opacity: 0.12;
+  }
+}
+.pg-gate.is-checking .pg-gate__signal {
+  animation: pg-blink 0.7s steps(2, jump-none) infinite;
+}
+@keyframes pg-blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+.pg-gate__signal {
+  transition: fill 0.25s;
+}
+
+/* the guard, by the right post */
+.pg-gate__guard {
+  position: absolute;
+  left: 286px;
+  bottom: 14px;
+  width: 118px;
+}
+.pg-gate__lean {
+  position: relative;
+  display: block;
+  transform-origin: 50% 100%;
+  transition: transform 420ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.pg-gate.is-attending .pg-gate__lean {
+  transform: rotate(-9deg) translateX(-6px);
+}
+.pg-gate.is-asleep .pg-gate__lean {
+  animation: pg-doze 3.6s ease-in-out infinite;
+}
+@keyframes pg-doze {
+  0%,
+  100% {
+    transform: rotate(4deg);
+  }
+  50% {
+    transform: rotate(7deg) translateY(2px);
+  }
+}
+.pg-gate.is-holders.is-awake .pg-gate__lean {
+  animation: pg-start 520ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.pg-gate.is-holders.is-awake.is-attending .pg-gate__lean {
+  animation: none;
+}
+@keyframes pg-start {
+  0% {
+    transform: rotate(6deg);
+  }
+  35% {
+    transform: translateY(-16px) scale(0.96, 1.06);
+  }
+  70% {
+    transform: translateY(0) scale(1.04, 0.95);
+  }
+  100% {
+    transform: none;
+  }
+}
+.pg-gate.is-checking .pg-gate__lean {
+  animation: pg-peer 1.6s ease-in-out infinite;
+}
+@keyframes pg-peer {
+  50% {
+    transform: rotate(-5deg) translateX(-4px);
+  }
+}
+.pg-gate.is-open .pg-gate__lean {
+  animation: pg-cheer 700ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@keyframes pg-cheer {
+  40% {
+    transform: translateY(-22px) rotate(-8deg);
+  }
+  100% {
+    transform: none;
+  }
+}
+.pg-gate__cap {
+  position: absolute;
+  left: 50%;
+  top: -12px;
+  margin-left: -38px;
+  rotate: -10deg;
+}
+.pg-gate.is-asleep .pg-gate__cap {
+  rotate: 6deg;
+  translate: 4px 8px;
+}
+.pg-gate__ask {
+  position: absolute;
+  left: -64px;
+  top: 34px;
+  animation: pg-hold 560ms cubic-bezier(0.34, 1.56, 0.64, 1) 120ms both;
+  transform-origin: 100% 100%;
+}
+@keyframes pg-hold {
+  from {
+    opacity: 0;
+    transform: translateY(20px) rotate(20deg) scale(0.6);
+  }
+}
+.pg-gate__card {
+  display: block;
+  padding: 6px 10px;
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: var(--r-tag);
+  background: var(--cream);
+  color: var(--ink-fixed);
+  box-shadow: var(--sh-2);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  rotate: -7deg;
+}
+.pg-gate__glass {
+  position: absolute;
+  left: -30px;
+  top: 4px;
+  transform-origin: 80% 80%;
+  animation: pg-glass 1.6s ease-in-out infinite;
+}
+@keyframes pg-glass {
+  50% {
+    transform: translate(-8px, 6px) rotate(-10deg);
+  }
+}
+.pg-gate__zzz {
+  position: absolute;
+  left: 80px;
+  top: 8px;
+}
+.pg-gate__zzz i {
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-family: var(--font-display);
+  font-variation-settings: var(--fv-display);
+  font-weight: 900;
+  font-style: normal;
+  font-size: 20px;
+  color: var(--cream);
+  -webkit-text-stroke: 1.5px var(--outline);
+  paint-order: stroke fill;
+  opacity: 0;
+  animation: pg-z 3.6s ease-out infinite;
+}
+.pg-gate__zzz i:nth-child(2) {
+  font-size: 25px;
+  animation-delay: 1.2s;
+}
+.pg-gate__zzz i:nth-child(3) {
+  font-size: 31px;
+  animation-delay: 2.4s;
+}
+@keyframes pg-z {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) rotate(-10deg);
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(28px, -58px) rotate(14deg);
+  }
+}
+.pg-gate__start {
+  position: absolute;
+  left: 76px;
+  top: -16px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: 50%;
+  background: var(--sun);
+  color: var(--ink-fixed);
+  font-size: 18px;
+  font-weight: 800;
+  opacity: 0;
+  animation: pg-bang 900ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@keyframes pg-bang {
+  0% {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+  20%,
+  70% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1) translateY(-8px);
+  }
+}
+.pg-gate.is-paused *,
+.pg-gate.is-paused *::before {
+  animation-play-state: paused !important;
+}
+
+/* checking the gate */
+.pg-wait {
+  min-height: 100vh;
+  min-height: 100svh;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 14px;
+  background: var(--trench);
+  color: var(--foam);
+}
+.pg-wait__gate {
+  transform: scale(0.8);
+}
+.pg-wait__label {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 900px) {
+  .pg-wrap {
+    grid-template-columns: minmax(0, 1fr);
+    padding-bottom: 40px;
+  }
+  .pg-card {
+    max-width: none;
+    transform: none;
+  }
+  .pg-cast {
+    width: 470px;
+    height: 330px;
+    margin: -40px auto -20px;
+    transform: scale(0.7);
+    transform-origin: 50% 100%;
+  }
+}
+
+@media (max-width: 420px) {
+  .pg-cast {
+    transform: scale(0.62);
+    margin-left: -55px;
+    margin-right: -55px;
+  }
+  .pg-wait__gate {
+    transform: scale(0.72);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pg-gate *,
+  .pg-gate__lean {
+    animation: none !important;
+  }
+  .pg-gate__arm,
+  .pg-gate__lean {
+    transition: none;
+  }
+  .pg-gate__zzz i {
+    opacity: 1;
+  }
+  .pg-gate__zzz i:nth-child(2) {
+    transform: translate(14px, -24px);
+  }
+  .pg-gate__zzz i:nth-child(3) {
+    transform: translate(28px, -52px);
+  }
+}

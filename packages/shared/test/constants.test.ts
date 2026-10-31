@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { CAPACITY, RULES, WORLD_PRESETS, type League, type RoomMode } from '../src';
 
 describe('v2 economy constants', () => {
-  it('adds the loot rules (no Pass rules: Slana Simple)', () => {
+  it('adds the loot rules (no Pass rules)', () => {
     expect('passStartMassMul' in RULES).toBe(false);
     expect('passCashoutMs' in RULES).toBe(false);
     expect(RULES).toMatchObject({

@@ -1,36 +1,52 @@
-import { CARD_PAPER, INK, RISO } from '@slana/art';
+import { CARD_PAPER, ELYSIUM, INK, TEXT_INKS } from '@elymum/art';
 
-const DISPLAY_FONT = '"Bricolage Grotesque Variable", "Bricolage Grotesque", system-ui, sans-serif';
-const MONO_FONT = '"DM Mono", ui-monospace, monospace';
+const MONO_FONT = '"Geist Mono Variable", "Geist Mono", ui-monospace, monospace';
 
 /** Font sizes are rasterised in ~10 % steps of device pixels, then drawn scaled. */
 const STEP = 1.1;
 const MAX_ENTRIES = 600;
 const MAX_BYTES = 24 * 1024 * 1024;
 
-export type LabelKind = 'name' | 'mass';
-
-interface LabelSprite {
+interface TextSprite {
   canvas: HTMLCanvasElement;
-  /** Device px per sprite px is 1 at the bucket size; these are in bucket px. */
+  /** Text advance in sprite px (the sprite is a little wider). */
+  tw: number;
+  /** Sprite size, px. */
   w: number;
   h: number;
-  /** Anchor: the text's horizontal centre / vertical middle inside the sprite. */
-  ax: number;
-  ay: number;
   /** Bucket font size in device px. */
   px: number;
   bytes: number;
 }
 
+export interface StickerLabel {
+  name: string | null;
+  /** Value (mass) printed after the name in teal, or null. */
+  value: string | null;
+  verified: boolean;
+  /** My coin: a sun sticker instead of cream. */
+  mine: boolean;
+  /** Sticker centre, world units. */
+  x: number;
+  y: number;
+  /** Font size, world units. */
+  fs: number;
+  /** Device px per world unit (zoom × dpr): picks the raster size. */
+  devicePx: number;
+  /** CSS px per world unit (zoom): ink edges stay 2.5 px on screen. */
+  zoom: number;
+  alpha?: number;
+}
+
 /**
- * Cell name / mass labels rendered once per (text, kind, size bucket) into a
- * small canvas (ink with a card halo, the verified tick baked in) and drawn as
- * images afterwards: no per-frame strokeText / fillText. LRU by insertion
- * order with entry and byte caps.
+ * Name tags as small mono stickers (spec §6.5 tags): cream stock (sun for
+ * me), a 2.5 px ink edge, a 2 px hard ink shadow, the name in ink and the
+ * value in teal. The texts are rendered once per (text, colour, size bucket)
+ * into small canvases and drawn as images; the sticker itself is two rounded
+ * rects. LRU by insertion order with entry and byte caps.
  */
 export class LabelCache {
-  private readonly map = new Map<string, LabelSprite>();
+  private readonly map = new Map<string, TextSprite>();
   private bytes = 0;
 
   constructor() {
@@ -47,92 +63,115 @@ export class LabelCache {
     this.bytes = 0;
   }
 
-  /**
-   * Draws a label centred at (x, y) in the current (world) transform. `fs` is
-   * the font size in world units, `devicePx` the device pixels per world unit.
-   */
-  draw(ctx: CanvasRenderingContext2D, kind: LabelKind, text: string, verified: boolean, x: number, y: number, fs: number, devicePx: number, alpha = 1): void {
-    const want = fs * devicePx;
-    if (want < 3) return;
+  get size(): number {
+    return this.map.size;
+  }
+
+  private text(text: string, color: string, want: number): TextSprite {
     const bucket = Math.round(Math.log(want) / Math.log(STEP));
-    const key = `${kind}|${verified ? 1 : 0}|${bucket}|${text}`;
+    const key = `${color}|${bucket}|${text}`;
     let s = this.map.get(key);
     if (s) {
       // refresh LRU position
       this.map.delete(key);
       this.map.set(key, s);
-    } else {
-      s = render(kind, text, verified, STEP ** bucket);
-      this.map.set(key, s);
-      this.bytes += s.bytes;
-      this.evict();
+      return s;
     }
-    const k = fs / s.px; // world units per sprite px
-    const prev = ctx.globalAlpha;
-    if (alpha !== 1) ctx.globalAlpha = prev * alpha;
-    ctx.drawImage(s.canvas, x - s.ax * k, y - s.ay * k, s.w * k, s.h * k);
-    if (alpha !== 1) ctx.globalAlpha = prev;
-  }
-
-  private evict(): void {
-    for (const [key, s] of this.map) {
+    s = renderText(text, color, STEP ** bucket);
+    this.map.set(key, s);
+    this.bytes += s.bytes;
+    for (const [k, old] of this.map) {
       if (this.map.size <= MAX_ENTRIES && this.bytes <= MAX_BYTES) break;
-      this.map.delete(key);
-      this.bytes -= s.bytes;
+      this.map.delete(k);
+      this.bytes -= old.bytes;
     }
+    return s;
   }
 
-  get size(): number {
-    return this.map.size;
+  /** Draws a name/value sticker centred at (x, y) in the current (world) transform. */
+  drawSticker(ctx: CanvasRenderingContext2D, o: StickerLabel): void {
+    const want = o.fs * o.devicePx;
+    if (want < 4 || (!o.name && !o.value)) return;
+    const fs = o.fs;
+    const k = (sp: TextSprite) => fs / sp.px; // world units per sprite px
+    const name = o.name ? this.text(o.name, INK, want) : null;
+    const value = o.value ? this.text(o.value, o.mine ? INK : TEXT_INKS.day.teal, want) : null;
+    const tick = o.name && o.verified ? fs * 0.95 : 0;
+    const gap = name && value ? fs * 0.62 : 0;
+    const textW = (name ? name.tw * k(name) : 0) + tick + gap + (value ? value.tw * k(value) : 0);
+    const padX = fs * 0.62;
+    const w = textW + padX * 2;
+    const h = fs * 1.78;
+    const x0 = o.x - w / 2;
+    const y0 = o.y - h / 2;
+    const edge = 2.5 / o.zoom;
+    const sh = 2 / o.zoom;
+    const rr = Math.min(7 / o.zoom, h * 0.34);
+    const prev = ctx.globalAlpha;
+    if (o.alpha !== undefined) ctx.globalAlpha = prev * o.alpha;
+    ctx.fillStyle = INK;
+    ctx.beginPath();
+    ctx.roundRect(x0 + sh, y0 + sh, w, h, rr);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.roundRect(x0, y0, w, h, rr);
+    ctx.fillStyle = o.mine ? ELYSIUM.sun : CARD_PAPER;
+    ctx.fill();
+    ctx.lineWidth = edge;
+    ctx.strokeStyle = INK;
+    ctx.stroke();
+    let x = x0 + padX;
+    if (name) {
+      const s = k(name);
+      ctx.drawImage(name.canvas, x, o.y - (name.h / 2) * s, name.w * s, name.h * s);
+      x += name.tw * s;
+    }
+    if (tick) {
+      const cx = x + tick * 0.55;
+      const r = fs * 0.36;
+      ctx.beginPath();
+      ctx.arc(cx, o.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = ELYSIUM.teal;
+      ctx.fill();
+      ctx.lineWidth = edge * 0.7;
+      ctx.stroke();
+      ctx.strokeStyle = CARD_PAPER;
+      ctx.lineWidth = fs * 0.12;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(cx - r * 0.42, o.y);
+      ctx.lineTo(cx - r * 0.1, o.y + r * 0.32);
+      ctx.lineTo(cx + r * 0.45, o.y - r * 0.36);
+      ctx.stroke();
+      x += tick;
+    }
+    if (value) {
+      x += gap;
+      const s = k(value);
+      ctx.drawImage(value.canvas, x, o.y - (value.h / 2) * s, value.w * s, value.h * s);
+    }
+    ctx.globalAlpha = prev;
   }
 }
 
 let measureCtx: CanvasRenderingContext2D | null = null;
 
-function render(kind: LabelKind, text: string, verified: boolean, px: number): LabelSprite {
+function renderText(text: string, color: string, px: number): TextSprite {
   measureCtx ??= document.createElement('canvas').getContext('2d')!;
-  const font = kind === 'name' ? `800 ${px}px ${DISPLAY_FONT}` : `500 ${px}px ${MONO_FONT}`;
+  const font = `600 ${px}px ${MONO_FONT}`;
   measureCtx.font = font;
   const tw = measureCtx.measureText(text).width;
-  const halo = px * (kind === 'name' ? 0.26 : 0.28);
-  const badge = kind === 'name' && verified ? px * 0.5 + px * 0.33 * 2 : 0;
-  const pad = Math.ceil(halo / 2 + 2);
-  const w = Math.ceil(tw + badge * 2 + pad * 2);
-  const h = Math.ceil(px * 1.3 + pad * 2);
+  const w = Math.max(1, Math.ceil(tw + px * 0.2));
+  const h = Math.max(1, Math.ceil(px * 1.5));
   const canvas = document.createElement('canvas');
-  canvas.width = Math.max(1, w);
-  canvas.height = Math.max(1, h);
+  canvas.width = w;
+  canvas.height = h;
   const ctx = canvas.getContext('2d')!;
-  const cx = w / 2;
-  const cy = h / 2;
   ctx.font = font;
-  ctx.textAlign = 'center';
+  ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.lineJoin = 'round';
-  ctx.lineWidth = halo;
-  ctx.strokeStyle = CARD_PAPER;
-  ctx.strokeText(text, cx, cy);
-  ctx.fillStyle = INK;
-  if (kind === 'mass') ctx.globalAlpha = 0.85;
-  ctx.fillText(text, cx, cy);
-  ctx.globalAlpha = 1;
-  if (badge) {
-    const bx = cx + tw / 2 + px * 0.5;
-    ctx.fillStyle = RISO.teal;
-    ctx.strokeStyle = INK;
-    ctx.lineWidth = px * 0.08;
-    ctx.beginPath();
-    ctx.arc(bx, cy, px * 0.33, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    ctx.strokeStyle = CARD_PAPER;
-    ctx.lineWidth = px * 0.1;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(bx - px * 0.14, cy);
-    ctx.lineTo(bx - px * 0.03, cy + px * 0.11);
-    ctx.lineTo(bx + px * 0.16, cy - px * 0.12);
-    ctx.stroke();
-  }
-  return { canvas, w, h, ax: cx, ay: cy, px, bytes: canvas.width * canvas.height * 4 };
+  ctx.fillStyle = color;
+  ctx.fillText(text, 0, h / 2 + px * 0.04);
+  return { canvas, tw, w, h, px, bytes: w * h * 4 };
 }

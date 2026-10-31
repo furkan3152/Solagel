@@ -1,4 +1,4 @@
-/* Slana promo: the ten scenes and their transitions.
+/* Elymum promo: the ten scenes and their transitions.
  * Timeline (100 BPM, one beat = 0.6 s) lives in timeline.json; the cue times
  * below are the same beats the music and SFX are scored to. */
 'use strict';
@@ -39,7 +39,7 @@ function drawFoot(ctx, shot, lt, x, y, w, h, zoom = 1, fx = 0.5, fy = 0.5) {
     const sx = clamp(fx * im.width - iw / 2, 0, im.width - iw), sy = clamp(fy * im.height - ih / 2, 0, im.height - ih);
     ctx.drawImage(im, sx, sy, iw, ih, x, y, w, h);
   } else {
-    ctx.fillStyle = '#d9d1c0'; ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = '#ddd6c7'; ctx.fillRect(x, y, w, h);
   }
   ctx.restore();
 }
@@ -73,7 +73,7 @@ function hud(ctx, t, idx, dark = false, alpha = 1) {
   ctx.letterSpacing = '3px';
   ctx.fillStyle = col;
   ctx.textBaseline = 'middle';
-  ctx.fillText('SLANA  /  ON-CHAIN COIN ARENAS', 64, H - 46);
+  ctx.fillText('ELYMUM  /  ON-CHAIN COIN ARENAS', 64, H - 46);
   ctx.textAlign = 'right';
   ctx.fillText(String(idx).padStart(2, '0') + ' / 07', W - 64 - 96, H - 46);
   [C.pink, C.teal, C.mustard].forEach((c, i) => {
@@ -102,7 +102,7 @@ function lootCoin(ctx, x, y, r, a = 1, spin = 0) {
   ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fill();
   ctx.strokeStyle = C.ink; ctx.lineWidth = Math.max(1.2, r * 0.14);
   ctx.stroke();
-  ctx.strokeStyle = 'rgba(27,23,50,0.45)'; ctx.lineWidth = Math.max(1, r * 0.1);
+  ctx.strokeStyle = 'rgba(4,24,28,0.45)'; ctx.lineWidth = Math.max(1, r * 0.1);
   ctx.beginPath(); ctx.arc(0, 0, r * 0.6, 0, TAU); ctx.stroke();
   ctx.restore();
 }
@@ -113,7 +113,7 @@ function antenna(ctx, x, y, r, t, dark) {
   ctx.lineWidth = r * 0.06; ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(x, y - r * 0.96); ctx.quadraticCurveTo(x + r * 0.08, y - r * 1.2, x + r * 0.02, y - r * 1.36); ctx.stroke();
   const on = Math.sin(t * 9) > 0;
-  ctx.fillStyle = on ? C.red : '#7a2a22';
+  ctx.fillStyle = on ? C.red : '#c93a3a';
   ctx.beginPath(); ctx.arc(x + r * 0.02, y - r * 1.42, r * 0.09, 0, TAU); ctx.fill();
   if (on) { ctx.globalAlpha = 0.35; ctx.beginPath(); ctx.arc(x + r * 0.02, y - r * 1.42, r * 0.2, 0, TAU); ctx.fill(); }
   ctx.restore();
@@ -121,12 +121,12 @@ function antenna(ctx, x, y, r, t, dark) {
 
 /* ───────────── init ───────────── */
 window.SCENES_INIT = async () => {
-  const A = window.SlanaArt;
+  const A = window.ElymumArt;
   for (let i = 0; i < 8; i++) LOOK['b' + i] = A.lookForBasicSkin(i);
   LOOK.hunter = A.lookForBasicSkin(4); // Bubbles: fluo pink, teal overprint
   LOOK.prey = A.lookForBasicSkin(3); // Minty
   LOOK.player = A.lookForBasicSkin(2); // Penny
-  LOOK.bot = { body: '#9A95AE', overprint: '#3055FC', offset: { dx: 3, dy: 3 }, symbol: 'bolt', eyes: 'sleepy', mouth: 'flat', accessory: 'none', special: null };
+  LOOK.bot = { body: '#6B655A', overprint: '#93D9EE', offset: { dx: 3, dy: 3 }, symbol: 'bolt', eyes: 'sleepy', mouth: 'flat', accessory: 'none', special: null };
   S.shots = {};
   (TL.footage || []).forEach((s) => (S.shots[s.id] = s));
   // the cold open's coin track (output px per footage frame), written by render/footage-from-takes.mjs
@@ -228,7 +228,7 @@ function sceneHook(ctx, t) {
     coin(ctx, x, y, { look: LOOK.prey, r: pr * s, expr: t > 1.3 ? 'scared' : 'happy', lookX: 0.8, lookY: -0.6, time: t, seed: 3 });
     // carried tokens tag
     const ta = tw(t, 0.5, 0.8) * (1 - sw);
-    if (ta > 0.01) chip(ctx, '1,750 $SLANA', x, y - pr - 34, { align: 'center', fill: C.card, alpha: ta, size: 17 });
+    if (ta > 0.01) chip(ctx, '1,750 $ELYMUM', x, y - pr - 34, { align: 'center', fill: C.card, alpha: ta, size: 17 });
   }
   // gulp burst
   burst(ctx, lungeX - 30, lungeY + 30, t - T_GULP, { seed: 4, n: 30, speed: 800, size: 10 });
@@ -265,13 +265,13 @@ function sceneHook(ctx, t) {
     ctx.translate(bx, by); ctx.scale(pop, pop);
     font(ctx, 40, 800, 'display'); ctx.letterSpacing = '-1px'; ctx.fillStyle = C.card; ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic'; ctx.fillText(fmt(Math.round(v / 10) * 10), 40, 16); ctx.textAlign = 'left';
     font(ctx, 17, 500, 'mono'); ctx.letterSpacing = '2px'; ctx.fillStyle = C.pink; ctx.textBaseline = 'alphabetic';
-    ctx.fillText('$SLANA', 52, 12);
+    ctx.fillText('$ELYMUM', 52, 12);
     ctx.restore();
   }
   ctx.restore();
 
   // type (screen space, no push so it stays crisp)
-  kicker(ctx, 'ON-CHAIN COIN ARENAS  /  SOLANA', 150, 300, t, 0.2, { out: 3.55 });
+  kicker(ctx, 'ON-CHAIN COIN ARENAS  /  ELYSIUM', 150, 300, t, 0.2, { out: 3.55 });
   headline(ctx, [
     { text: 'Eat a player.', at: 0.45 },
     { text: 'Keep their tokens.', at: 2.5, color: C.pink },
@@ -330,7 +330,7 @@ function drawTicketPrint(ctx, t, a) {
   ctx.fillStyle = C.ink; ctx.fillRect(x0, y0 + 160, 1010, 3);
   ctx.fillRect(x0, y0 + 168, 1010, 1.2);
   font(ctx, 150, 800, 'display'); ctx.letterSpacing = '-5px'; ctx.fillStyle = C.ink;
-  ctx.fillText('Penny Pond', x0 - 6, y0 + 330);
+  ctx.fillText('Asphodel Meadow', x0 - 6, y0 + 330);
   font(ctx, 21, 500, 'mono'); ctx.letterSpacing = '3px'; ctx.fillStyle = C.ink2;
   ctx.fillText('23 PLAYERS  /  OPEN 24/7  /  EAT A PLAYER, KEEP THEIR TOKENS', x0, y0 + 392);
   font(ctx, 20, 500, 'mono'); ctx.fillStyle = C.ink;
@@ -345,7 +345,7 @@ function drawTicketPrint(ctx, t, a) {
   font(ctx, 104, 800, 'display'); ctx.letterSpacing = '-3px'; ctx.fillStyle = C.ink;
   ctx.fillText('1,000', sx, y0 + 300);
   font(ctx, 24, 500, 'mono'); ctx.letterSpacing = '3px'; ctx.fillStyle = C.pinkText;
-  ctx.fillText('$SLANA', sx, y0 + 345);
+  ctx.fillText('$ELYMUM', sx, y0 + 345);
   ctx.textAlign = 'left';
   barcode(ctx, sx - 110, y0 + 420, 220, 80, 9);
   ctx.restore();
@@ -388,9 +388,9 @@ function sceneTicket(ctx, t) {
     // hole rim + inner shadow
     ctx.save();
     ctx.beginPath(); ctx.arc(TK_HOLE.x, TK_HOLE.y, TK_HOLE.r, 0, TAU);
-    ctx.strokeStyle = 'rgba(27,23,50,0.55)'; ctx.lineWidth = 3; ctx.stroke();
+    ctx.strokeStyle = 'rgba(4,24,28,0.55)'; ctx.lineWidth = 3; ctx.stroke();
     const g = ctx.createRadialGradient(TK_HOLE.x, TK_HOLE.y - 6, TK_HOLE.r * 0.6, TK_HOLE.x, TK_HOLE.y, TK_HOLE.r);
-    g.addColorStop(0, 'rgba(27,23,50,0)'); g.addColorStop(1, 'rgba(27,23,50,0.35)');
+    g.addColorStop(0, 'rgba(4,24,28,0)'); g.addColorStop(1, 'rgba(4,24,28,0.35)');
     ctx.fillStyle = g; ctx.fill();
     ctx.restore();
     // the punched-out chad flies off
@@ -471,11 +471,11 @@ function sceneTicket(ctx, t) {
     kicker(ctx, 'EAT  /  GROW  /  GET PAID', W / 2, 760, t, 5.35, { align: 'center', dot: false, size: 26, ls: 10, speed: 0.022 });
     ctx.restore();
     ctx.save(); ctx.globalAlpha = ta * tw(t, 5.9, 6.2);
-    chip(ctx, 'LIVE ON SOLANA', W / 2, 840, { align: 'center', size: 17, color: C.tealInk, ls: 4 });
+    chip(ctx, 'LIVE ON ELYSIUM', W / 2, 840, { align: 'center', size: 17, color: C.tealInk, ls: 4 });
     ctx.restore();
   }
   // headline for the ticket beat
-  kicker(ctx, 'FIXED PRICE  /  PAID IN $SLANA', 150, 112, t, 8.7, { out: 12.15 });
+  kicker(ctx, 'FIXED PRICE  /  PAID IN $ELYMUM', 150, 112, t, 8.7, { out: 12.15 });
   headline(ctx, [
     { text: 'Buy a ticket.', at: 8.85 },
     { text: 'Enter a live room.', at: 9.65, color: C.pink },
@@ -625,7 +625,7 @@ function drawRoundClock(ctx, t) {
   ctx.fillStyle = C.card; ctx.fill();
   ctx.lineWidth = 3; ctx.strokeStyle = C.ink; ctx.stroke();
   // the stub: the room
-  dashed(ctx, x0 + CLK.w - 150, y0 + 30, x0 + CLK.w - 150, y0 + CLK.h - 30, 'rgba(27,23,50,0.45)', 2.5, [7, 7]);
+  dashed(ctx, x0 + CLK.w - 150, y0 + 30, x0 + CLK.w - 150, y0 + CLK.h - 30, 'rgba(4,24,28,0.45)', 2.5, [7, 7]);
   ctx.save(); ctx.translate(x0 + CLK.w - 75, CLK.cy); ctx.rotate(-Math.PI / 2);
   font(ctx, 18, 500, 'mono'); ctx.letterSpacing = '4px'; ctx.fillStyle = C.ink; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText('PENNY POND', 0, 0);
@@ -658,7 +658,7 @@ function drawRoundClock(ctx, t) {
   rrect(ctx, bx, by, bw, bh, 6); ctx.fillStyle = C.paper; ctx.fill();
   ctx.save(); rrect(ctx, bx, by, bw, bh, 6); ctx.clip();
   ctx.fillStyle = C.mustard; ctx.fillRect(bx + bw * 0.8, by, bw * 0.2, bh);
-  ctx.strokeStyle = 'rgba(27,23,50,0.35)'; ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(4,24,28,0.35)'; ctx.lineWidth = 2;
   for (let hx = bx + bw * 0.8 - 30; hx < bx + bw; hx += 9) { ctx.beginPath(); ctx.moveTo(hx, by + bh); ctx.lineTo(hx + 26, by); ctx.stroke(); }
   const k = 1 - v / 300;
   ctx.fillStyle = C.ink; ctx.globalAlpha = 0.85; ctx.fillRect(bx, by, bw * k, bh);
@@ -723,7 +723,7 @@ function sceneRounds(ctx, t) {
       ctx.textAlign = 'right'; ctx.fillText(b, R, ly(y));
       ctx.textAlign = 'left';
     };
-    const rule = (y) => dashed(ctx, L, ly(y), R, ly(y), 'rgba(27,23,50,0.5)', 2, [5, 6]);
+    const rule = (y) => dashed(ctx, L, ly(y), R, ly(y), 'rgba(4,24,28,0.5)', 2, [5, 6]);
     font(ctx, 34, 800, 'display'); ctx.letterSpacing = '0px'; ctx.fillStyle = C.ink; ctx.textAlign = 'center';
     ctx.fillText('ROUND  OVER', RC.cx, ly(92));
     font(ctx, 18, 500, 'mono'); ctx.letterSpacing = '2px'; ctx.fillStyle = C.ink2;
@@ -741,26 +741,26 @@ function sceneRounds(ctx, t) {
     font(ctx, 88, 800, 'display'); ctx.letterSpacing = '-2px'; ctx.textAlign = 'right';
     ctx.fillText('1,712.5', R, ly(552));
     font(ctx, 19, 500, 'mono'); ctx.letterSpacing = '2px'; ctx.fillStyle = C.pinkText;
-    ctx.fillText('$SLANA', R, ly(584));
+    ctx.fillText('$ELYMUM', R, ly(584));
     ctx.textAlign = 'left';
     rule(612);
     barcode(ctx, L, ly(646), R - L, 86, 21);
     font(ctx, 18, 500, 'mono'); ctx.letterSpacing = '3px'; ctx.fillStyle = C.ink2; ctx.textAlign = 'center';
     ctx.fillText('ALIVE AT THE BELL', RC.cx, ly(780));
-    ctx.fillText('SETTLED ON SOLANA', RC.cx, ly(812));
+    ctx.fillText('SETTLED ON ELYSIUM', RC.cx, ly(812));
     ctx.textAlign = 'left';
     // marker underline on the fee line
     const mk = tw(t, 24.25, 24.6, E.inOutCubic);
     if (mk > 0) {
       ctx.save();
       ctx.globalCompositeOperation = 'multiply';
-      ctx.strokeStyle = 'rgba(251,47,133,0.55)'; ctx.lineWidth = 20; ctx.lineCap = 'round';
+      ctx.strokeStyle = 'rgba(52,183,221,0.55)'; ctx.lineWidth = 20; ctx.lineCap = 'round';
       ctx.beginPath(); ctx.moveTo(L - 6, ly(420)); ctx.lineTo(L - 6 + (R - L + 12) * mk, ly(420) + Math.sin(mk * 3) * 2); ctx.stroke();
       ctx.restore();
     }
     // print head darkening line at the slot
     const g = ctx.createLinearGradient(0, RC.slot - 60, 0, RC.slot);
-    g.addColorStop(0, 'rgba(27,23,50,0)'); g.addColorStop(1, 'rgba(27,23,50,0.22)');
+    g.addColorStop(0, 'rgba(4,24,28,0)'); g.addColorStop(1, 'rgba(4,24,28,0.22)');
     ctx.fillStyle = g; ctx.fillRect(x0, RC.slot - 60, RC.w, 60);
     ctx.restore();
     RC_STAMP.y = ly(770);
@@ -775,7 +775,7 @@ function sceneRounds(ctx, t) {
       ctx.globalAlpha = clamp(st * 3);
       paperShadow(ctx, () => ticketPath(ctx, -200, -36, 250, 72, 10, 190, 9), 0.6, 0.25);
       ticketPath(ctx, -200, -36, 250, 72, 10, 190, 9); ctx.fillStyle = C.teal; ctx.fill();
-      dashed(ctx, -10, -26, -10, 26, 'rgba(255,253,246,0.6)', 2, [4, 4]);
+      dashed(ctx, -10, -26, -10, 26, 'rgba(246,238,218,0.6)', 2, [4, 4]);
       font(ctx, 30, 800, 'display'); ctx.fillStyle = C.card; ctx.textBaseline = 'middle';
       ctx.fillText('5%', -184, 2);
       font(ctx, 15, 500, 'mono'); ctx.letterSpacing = '2px';
@@ -792,11 +792,11 @@ function sceneRounds(ctx, t) {
   const px = RC.cx - 400;
   paperShadow(ctx, () => rrect(ctx, px, RC.slot - 14, 800, 140, 26), 1.3, 0);
   rrect(ctx, px, RC.slot - 14, 800, 140, 26); ctx.fillStyle = C.ink; ctx.fill();
-  ctx.fillStyle = '#0f0d18'; ctx.fillRect(RC.cx - RC.w / 2 - 20, RC.slot - 6, RC.w + 40, 12);
+  ctx.fillStyle = '#071317'; ctx.fillRect(RC.cx - RC.w / 2 - 20, RC.slot - 6, RC.w + 40, 12);
   font(ctx, 16, 500, 'mono'); ctx.letterSpacing = '4px'; ctx.fillStyle = C.nightInk2; ctx.textBaseline = 'middle';
-  ctx.fillText('SLANA  /  ROUND OVER', px + 40, RC.slot + 50);
+  ctx.fillText('ELYMUM  /  ROUND OVER', px + 40, RC.slot + 50);
   const busy = t > 22.45 && t < 23.95;
-  ctx.fillStyle = busy && Math.sin(t * 30) > 0 ? C.mustard : t > 23.95 ? C.green : '#3a3550';
+  ctx.fillStyle = busy && Math.sin(t * 30) > 0 ? C.mustard : t > 23.95 ? C.green : '#1e4d5a';
   ctx.beginPath(); ctx.arc(px + 760, RC.slot + 48, 8, 0, TAU); ctx.fill();
   ctx.restore();
   // the round clock rides on top until it swings away
@@ -847,7 +847,7 @@ function sceneBots(ctx, t) {
   ctx.translate(d.x + sh.x, d.y + sh.y);
   // map grid
   ctx.save();
-  ctx.strokeStyle = 'rgba(252,244,223,0.06)'; ctx.lineWidth = 1.5;
+  ctx.strokeStyle = 'rgba(248,247,244,0.06)'; ctx.lineWidth = 1.5;
   for (let x = 1000; x < W + 40; x += 64) { ctx.beginPath(); ctx.moveTo(x - (t * 6) % 64, 0); ctx.lineTo(x - (t * 6) % 64, H); ctx.stroke(); }
   for (let y = 0; y < H; y += 64) { ctx.beginPath(); ctx.moveTo(1000, y); ctx.lineTo(W, y); ctx.stroke(); }
   ctx.restore();
@@ -877,7 +877,7 @@ function sceneBots(ctx, t) {
   }
   if (pa) {
     coin(ctx, ppx, ppy, { look: LOOK.player, r: 100, expr: t > 27.4 ? 'scared' : 'happy', lookX: 0.8, lookY: -0.4, time: t, seed: 2 });
-    chip(ctx, 'DAPHNE  1,750 $SLANA', ppx, ppy - 150, { align: 'center', size: 16, color: C.nightInk, fill: 'rgba(37,31,61,0.9)' });
+    chip(ctx, 'DAPHNE  1,750 $ELYMUM', ppx, ppy - 150, { align: 'center', size: 16, color: C.nightInk, fill: 'rgba(22,59,68,0.9)' });
   }
   burst(ctx, ppx, ppy, t - BOT_EAT, { seed: 9, n: 24, speed: 900, colors: [C.mustard, C.pink, C.card] });
   // collectors (two small players) sweep through the loot
@@ -911,12 +911,12 @@ function sceneBots(ctx, t) {
   // bot
   coin(ctx, bx, by, { look: LOOK.bot, r: br, expr: t > BOT_EAT && t < BOT_EAT + 0.5 ? 'proud' : 'hungry', lookX: -0.9, lookY: 0.3, time: t, seed: 8, sx: 1 + bite * 0.08, sy: 1 - bite * 0.06 });
   antenna(ctx, bx, by, br, t, true);
-  chip(ctx, 'BOT  0 $SLANA', bx, by + br + 44, { align: 'center', size: 16, color: C.nightInk2, dash: [5, 4], fill: 'rgba(25,20,46,0.9)' });
+  chip(ctx, 'BOT  0 $ELYMUM', bx, by + br + 44, { align: 'center', size: 16, color: C.nightInk2, dash: [5, 4], fill: 'rgba(15,42,48,0.9)' });
   if (t > BOT_EAT + 0.1) {
     const k = tw(t, BOT_EAT + 0.1, BOT_EAT + 0.4, E.outBack);
     ctx.save(); ctx.globalAlpha = clamp(k) * (1 - tw(t, 30.2, 30.5));
     font(ctx, 22, 500, 'mono'); ctx.letterSpacing = '3px'; ctx.fillStyle = C.mustard; ctx.textAlign = 'center';
-    ctx.fillText('1,750 $SLANA ON THE FLOOR', 1330, 690 + 290 + (1 - k) * 20);
+    ctx.fillText('1,750 $ELYMUM ON THE FLOOR', 1330, 690 + 290 + (1 - k) * 20);
     ctx.restore();
   }
   ctx.restore();
@@ -932,10 +932,10 @@ function sceneBots(ctx, t) {
 // Four arena tickets are dealt onto the desk, one per beat, each in its own riso ink with its
 // entry fee; an OPEN stamp lands on each. Every arena is open to everyone; only the fee differs.
 const ARENAS = [
-  { name: 'Penny Pond', fee: '1,000', ink: () => C.red, at: 31.45, stampAt: 34.2 },
-  { name: 'Silver Creek', fee: '10,000', ink: () => C.teal, at: 32.05, stampAt: 34.8 },
-  { name: 'Gold Lake', fee: '50,000', ink: () => C.mustard, at: 32.65, stampAt: 35.4 },
-  { name: 'Whale Bay', fee: '250,000', ink: () => C.blue, at: 33.25, stampAt: 36.0 },
+  { name: 'Asphodel Meadow', fee: '1,000', ink: () => C.red, at: 31.45, stampAt: 34.2 },
+  { name: 'Lethe Shore', fee: '10,000', ink: () => C.teal, at: 32.05, stampAt: 34.8 },
+  { name: 'Golden Bough', fee: '50,000', ink: () => C.mustard, at: 32.65, stampAt: 35.4 },
+  { name: 'Isles of the Blessed', fee: '250,000', ink: () => C.blue, at: 33.25, stampAt: 36.0 },
 ];
 const AT = { x: 1010, y: 170, w: 760, h: 158, gap: 30 };
 function drawArenaTicket(ctx, a, i, t) {
@@ -948,7 +948,7 @@ function drawArenaTicket(ctx, a, i, t) {
   ctx.fillStyle = a.ink(); ctx.fillRect(x, y, 30, h);
   ctx.restore();
   ticketPath(ctx, x, y, w, h, 14, stubX, 14); ctx.lineWidth = 3; ctx.strokeStyle = C.ink; ctx.stroke();
-  dashed(ctx, x + stubX, y + 22, x + stubX, y + h - 22, 'rgba(27,23,50,0.45)', 2.5, [7, 7]);
+  dashed(ctx, x + stubX, y + 22, x + stubX, y + h - 22, 'rgba(4,24,28,0.45)', 2.5, [7, 7]);
   font(ctx, 17, 500, 'mono'); ctx.letterSpacing = '4px'; ctx.fillStyle = C.ink2; ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
   ctx.fillText(`ARENA ${i + 1}`, x + 64, y + 48);
   font(ctx, 62, 800, 'display'); ctx.letterSpacing = '-1.5px'; ctx.fillStyle = C.ink;
@@ -959,7 +959,7 @@ function drawArenaTicket(ctx, a, i, t) {
   font(ctx, a.fee.length > 6 ? 54 : 60, 800, 'display'); ctx.letterSpacing = '-1.5px'; ctx.fillStyle = C.ink;
   ctx.fillText(a.fee, x + stubX + 125, y + 102);
   font(ctx, 18, 500, 'mono'); ctx.letterSpacing = '3px'; ctx.fillStyle = C.pinkText;
-  ctx.fillText('$SLANA', x + stubX + 125, y + 134);
+  ctx.fillText('$ELYMUM', x + stubX + 125, y + 134);
   ctx.textAlign = 'left';
   stamp(ctx, 'OPEN', x + stubX - 82, y + 48, -0.1 + i * 0.04, t - a.stampAt, C.tealInk, { size: 30, mono: true });
 }
@@ -1049,7 +1049,7 @@ function sceneJoin(ctx, t) {
     font(ctx, 34, 800, 'display'); ctx.letterSpacing = '0px'; ctx.fillStyle = C.ink; ctx.textBaseline = 'middle';
     ctx.fillText('Buy back in', bx + 30, by + bh / 2 + 2);
     font(ctx, 20, 500, 'mono'); ctx.letterSpacing = '2px'; ctx.textAlign = 'right';
-    ctx.fillText('1,000 $SLANA', bx + bw - 30, by + bh / 2 + 2);
+    ctx.fillText('1,000 $ELYMUM', bx + bw - 30, by + bh / 2 + 2);
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     stamp(ctx, 'BACK IN', JD.x + JD.w - 180, JD.y + 170, 0.12, t - 40.2, C.tealInk, { size: 50, mono: true });
     ctx.restore();
@@ -1115,7 +1115,7 @@ function sceneFee(ctx, t, own = true) {
       ctx.fillText(pv + '%', x + 30, BAR.y + BAR.h - 34);
     }
     ctx.restore();
-    if (i > 0) dashed(ctx, x, BAR.y + 18, x, BAR.y + BAR.h - 18, 'rgba(27,23,50,0.6)', 3, [8, 8]);
+    if (i > 0) dashed(ctx, x, BAR.y + 18, x, BAR.y + BAR.h - 18, 'rgba(4,24,28,0.6)', 3, [8, 8]);
     const la = tw(t, s.at + 0.1, s.at + 0.4);
     ctx.save(); ctx.globalAlpha = la; ctx.textBaseline = 'alphabetic';
     ctx.textAlign = i === 0 ? 'left' : 'right';
@@ -1148,7 +1148,7 @@ function sceneFee(ctx, t, own = true) {
     paperShadow(ctx, () => ticketPath(ctx, LS.x, LS.y, LS.w, LS.h, 14, LS.w - 170, 14), 1.0, 0.28);
     ticketPath(ctx, LS.x, LS.y, LS.w, LS.h, 14, LS.w - 170, 14); ctx.fillStyle = C.mustard; ctx.fill();
     ctx.lineWidth = 3; ctx.strokeStyle = C.ink; ctx.stroke();
-    dashed(ctx, LS.x + LS.w - 170, LS.y + 20, LS.x + LS.w - 170, LS.y + LS.h - 20, 'rgba(27,23,50,0.5)', 2.5, [7, 7]);
+    dashed(ctx, LS.x + LS.w - 170, LS.y + 20, LS.x + LS.w - 170, LS.y + LS.h - 20, 'rgba(4,24,28,0.5)', 2.5, [7, 7]);
     font(ctx, 18, 500, 'mono'); ctx.letterSpacing = '4px'; ctx.fillStyle = C.ink; ctx.textBaseline = 'alphabetic';
     ctx.fillText('FLOOR LOOT AT THE BELL', LS.x + 36, LS.y + 50);
     for (let i = 0; i < 6; i++) lootCoin(ctx, LS.x + 70 + i * 62, LS.y + 108 + (i % 2) * 10, 22, 1, t * 2 + i);
@@ -1165,7 +1165,7 @@ function sceneFee(ctx, t, own = true) {
     ctx.save();
     rrect(ctx, LS.x - 20, LS.y - 30, LS.w + 40, LS.h + 60, 18); ctx.clip();
     burnFront(ctx, BURN_C.x, BURN_C.y, R + 14, 5, t);
-    ctx.fillStyle = 'rgba(27,23,50,0.85)'; ctx.fill();
+    ctx.fillStyle = 'rgba(4,24,28,0.85)'; ctx.fill();
     burnFront(ctx, BURN_C.x, BURN_C.y, R + 6, 5, t);
     ctx.fillStyle = C.orange; ctx.fill();
     burnFront(ctx, BURN_C.x, BURN_C.y, R + 2, 5, t);
@@ -1257,9 +1257,9 @@ function sceneEnd(ctx, t) {
     ticketPath(ctx, tx, ty, tw0, th, 12, tw0 - 190, 13); ctx.fillStyle = C.card; ctx.fill();
     dashed(ctx, tx + tw0 - 190, ty + 18, tx + tw0 - 190, ty + th - 18, C.line, 2.5, [6, 6]);
     font(ctx, 54, 800, 'display'); ctx.letterSpacing = '-1px'; ctx.fillStyle = C.ink; ctx.textBaseline = 'middle';
-    ctx.fillText('slana.io', tx + 44, ty + th / 2 + 2);
+    ctx.fillText(window.SITE_HOST, tx + 44, ty + th / 2 + 2);
     font(ctx, 26, 500, 'mono'); ctx.letterSpacing = '3px'; ctx.fillStyle = C.pinkText; ctx.textAlign = 'center';
-    ctx.fillText('$SLANA', tx + tw0 - 95, ty + th / 2 + 2);
+    ctx.fillText('$ELYMUM', tx + tw0 - 95, ty + th / 2 + 2);
     ctx.restore();
   }
   ctx.restore();
@@ -1272,7 +1272,7 @@ function sceneEnd(ctx, t) {
   });
   ctx.save(); ctx.globalAlpha = tw(t, 50.6, 51.0);
   font(ctx, 24, 500, 'mono'); ctx.letterSpacing = '5px'; ctx.fillStyle = C.nightInk; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('X  @SLANAIO  /  FREE PRACTICE ON SOLANA', W / 2, 920);
+  ctx.fillText('X  @ELYMUM  /  WL → MINT → PLAY ON ELYSIUM', W / 2, 920);
   ctx.restore();
   hud(ctx, t, 7, true, tw(t, 50.6, 51.0));
 }
@@ -1294,16 +1294,16 @@ function pageTurn(ctx, t, a, b, drawA, drawB) {
   ctx.restore();
   // shadow cast on the new page by the flap
   const sg = ctx.createLinearGradient(fx, 0, fx + 160, 0);
-  sg.addColorStop(0, 'rgba(27,23,50,0.32)'); sg.addColorStop(1, 'rgba(27,23,50,0)');
+  sg.addColorStop(0, 'rgba(4,24,28,0.32)'); sg.addColorStop(1, 'rgba(4,24,28,0)');
   ctx.fillStyle = sg; ctx.fillRect(fx, -600, 160, H + 1200);
   // crease highlight
-  ctx.fillStyle = 'rgba(255,253,246,0.55)'; ctx.fillRect(fx - 3, -600, 3, H + 1200);
+  ctx.fillStyle = 'rgba(246,238,218,0.55)'; ctx.fillRect(fx - 3, -600, 3, H + 1200);
   // flap (back of the turning page), mirrored to the left of the fold
   const fw = Math.min((W + 400 - fx) * 0.55, fx + 900);
   if (fw > 0) {
     ctx.beginPath(); ctx.rect(fx - fw, -600, fw, H + 1200);
     const fg = ctx.createLinearGradient(fx - fw, 0, fx, 0);
-    fg.addColorStop(0, '#E4D8BE'); fg.addColorStop(0.35, C.card); fg.addColorStop(0.8, '#EFE6D3'); fg.addColorStop(1, '#C9BEA5');
+    fg.addColorStop(0, '#EBE6DD'); fg.addColorStop(0.35, C.card); fg.addColorStop(0.8, '#F1EFE8'); fg.addColorStop(1, '#DCCDA8');
     ctx.fillStyle = fg; ctx.fill();
     // flap edge shadow on the old page
     const eg = ctx.createLinearGradient(fx - fw - 60, 0, fx - fw, 0);
@@ -1332,7 +1332,7 @@ function drawOld(ctx, t) {
     ctx.beginPath(); ctx.moveTo(0, y);
     for (let x = 0; x <= W; x += 24) ctx.lineTo(x, y - ((x / 24) % 2 ? 12 : 0));
     ctx.lineTo(W, y + 2); ctx.lineTo(0, y + 2); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = 'rgba(27,23,50,0.18)'; ctx.fillRect(0, y - 26, W, 14);
+    ctx.fillStyle = 'rgba(4,24,28,0.18)'; ctx.fillRect(0, y - 26, W, 14);
     ctx.restore();
     return;
   }
@@ -1386,7 +1386,7 @@ function burnThrough(ctx, t, inside) {
   const R = 160 + p * 2300;
   // charred rim then the next scene inside the hole
   ctx.save();
-  burnFront(ctx, bx, by, R + 34, 5, t); ctx.fillStyle = 'rgba(27,23,50,0.9)'; ctx.fill();
+  burnFront(ctx, bx, by, R + 34, 5, t); ctx.fillStyle = 'rgba(4,24,28,0.9)'; ctx.fill();
   burnFront(ctx, bx, by, R + 16, 5, t); ctx.fillStyle = C.orange; ctx.fill();
   burnFront(ctx, bx, by, R + 6, 5, t); ctx.fillStyle = C.mustard; ctx.fill();
   burnFront(ctx, bx, by, R, 5, t); ctx.clip();
@@ -1395,13 +1395,13 @@ function burnThrough(ctx, t, inside) {
 }
 
 /* ───────────── 11. NFT (cut only: film time, 3.0 s, t = 0 on the drop) ─────────────
- * The plain NFT mention of the NFT kit (media/free-mint/scenes/nft.js, drawBeat `plain`): on the
- * paper stock the three cards are dealt face up, a small "COMING SOON" kicker and "Slana NFTs.".
+ * The plain NFT mention of the NFT kit (media/mint-film/scenes/nft.js, drawBeat `plain`): on the
+ * paper stock the three cards are dealt face up, a small "$1 IN HYPE" kicker and "Elymum NFTs.".
  * It leaves on an ink flood that becomes the end card's night stock, so the wordmark slams onto
  * the same ink. */
 const NFT_OUT = 2.3, NFT_FLOOD = [2.4, 3.0];
 function sceneNft(ctx, t) {
-  NFT.drawBeat(ctx, t, { out: NFT_OUT, plain: { head: 'Slana NFTs.', layout: { ky: 400, hy1: 600 } }, kicker: 'COMING SOON' });
+  NFT.drawBeat(ctx, t, { out: NFT_OUT, plain: { head: 'Elymum NFTs.', layout: { ky: 400, hy1: 600 } }, kicker: '$1 IN HYPE' });
   const p = E.inCubic(prog(t, NFT_FLOOD[0], NFT_FLOOD[1]));
   if (p <= 0) return;
   const cx = 1470, cy = 540;
@@ -1447,7 +1447,7 @@ function assetsOld(t) {
  * cold open on real footage, and the transitions that join the pieces. Everything below maps the
  * film's time to the scenes. */
 
-/** The purse under the hero coin (ink chip with the $SLANA odometer). */
+/** The purse under the hero coin (ink chip with the $ELYMUM odometer). */
 function purse(ctx, x, y, v, pop = 1, alpha = 1) {
   ctx.save();
   ctx.globalAlpha = alpha;
@@ -1456,7 +1456,7 @@ function purse(ctx, x, y, v, pop = 1, alpha = 1) {
   ctx.fillStyle = C.ink; ctx.fill();
   font(ctx, 40, 800, 'display'); ctx.letterSpacing = '-1px'; ctx.fillStyle = C.card; ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic'; ctx.fillText(fmt(Math.round(v / 10) * 10), 40, 16); ctx.textAlign = 'left';
   font(ctx, 17, 500, 'mono'); ctx.letterSpacing = '2px'; ctx.fillStyle = C.pink;
-  ctx.fillText('$SLANA', 52, 12);
+  ctx.fillText('$ELYMUM', 52, 12);
   ctx.restore();
 }
 
@@ -1488,7 +1488,7 @@ function sceneHook2(ctx, t) {
   // a paper wash on the left keeps the type readable over the game
   ctx.save();
   const g = ctx.createLinearGradient(0, 0, 980, 0);
-  g.addColorStop(0, 'rgba(241,234,219,0.92)'); g.addColorStop(0.55, 'rgba(241,234,219,0.7)'); g.addColorStop(1, 'rgba(241,234,219,0)');
+  g.addColorStop(0, 'rgba(241,239,232,0.92)'); g.addColorStop(0.55, 'rgba(241,239,232,0.7)'); g.addColorStop(1, 'rgba(241,239,232,0)');
   ctx.fillStyle = g; ctx.globalAlpha = 1 - pa; ctx.fillRect(0, 0, 980, H);
   ctx.restore();
   // gulp flash and ink burst
@@ -1515,7 +1515,7 @@ function sceneHook2(ctx, t) {
     ctx.lineWidth = 12; ctx.strokeStyle = C.ink; ctx.lineJoin = 'round'; ctx.strokeText(txt, 0, 0);
     ctx.fillStyle = C.mustard; ctx.fillText(txt, 0, 0);
     font(ctx, 26, 500, 'mono'); ctx.letterSpacing = '3px'; ctx.fillStyle = C.ink;
-    ctx.fillText('$SLANA', 0, 84);
+    ctx.fillText('$ELYMUM', 0, 84);
     ctx.restore();
   }
   // purse under the coin
@@ -1526,7 +1526,7 @@ function sceneHook2(ctx, t) {
     purse(ctx, tx, ty + me.r * sc + 60, v, pop, ca);
   }
   // type: the same kicker and headline as the printed hook, so they carry across the cut
-  kicker(ctx, 'ON-CHAIN COIN ARENAS  /  SOLANA', 150, 300, t, 0.0, { out: END - 0.05 });
+  kicker(ctx, 'ON-CHAIN COIN ARENAS  /  ELYSIUM', 150, 300, t, 0.0, { out: END - 0.05 });
   headline(ctx, [
     { text: 'Eat a player.', at: 0.04 },
     { text: 'Keep their tokens.', at: G + 0.08, color: C.pink },
@@ -1535,8 +1535,8 @@ function sceneHook2(ctx, t) {
   hud(ctx, t, 1, false, 0.9 * (1 - tw(t, END - 0.6, END - 0.3)));
 }
 
-/* The four arena posters (brand/posters) dealt onto the board on the beat, in the cut. */
-const POSTERS = ['poster-1-penny-pond', 'poster-2-silver-creek', 'poster-3-gold-lake', 'poster-4-whale-bay'];
+/* The four arena posters (brand/out/posters, from brand/generate.mjs) dealt onto the board on the beat, in the cut. */
+const POSTERS = ['poster-1-asphodel-meadow', 'poster-2-lethe-shore', 'poster-3-golden-bough', 'poster-4-isles-of-the-blessed'];
 const POSTER_AT = [34.8, 35.1, 35.4, 35.7];
 function posterWall(ctx, t) {
   if (t < POSTER_AT[0] - 0.25) return;
@@ -1544,7 +1544,7 @@ function posterWall(ctx, t) {
   POSTERS.forEach((name, i) => {
     const at = POSTER_AT[i];
     if (t < at - 0.25) return;
-    const im = getImg(`/brand/posters/${name}.png`);
+    const im = getImg(`/brand/out/posters/${name}.png`);
     const fall = 1 - E.outCubic(clamp(prog(t, at - 0.25, at)));
     const k = spring(t - at, 1.7, 6.5);
     const x = 770 + i * 272 + w / 2, y = 330 + h / 2 + (i % 2) * 26;
@@ -1616,7 +1616,7 @@ window.SCENE_ASSETS = (t) => {
   const c = cutAt(t), lt = t - c.at;
   if (c.kind === 'hook') return [footUrl(TL.hook2.shot, lt)];
   if (c.kind === 'burn' || c.kind === 'nft') return [];
-  const posters = POSTERS.map((n) => `/brand/posters/${n}.png`);
+  const posters = POSTERS.map((n) => `/brand/out/posters/${n}.png`);
   if (c.kind) return [...assetsOld(c.a + lt), ...assetsOld(c.b + lt), ...(c.sa === 'arenas' || c.sb === 'arenas' ? posters : [])];
   return [...assetsOld(c.old + lt), ...(c.scene === 'arenas' ? posters : [])];
 };

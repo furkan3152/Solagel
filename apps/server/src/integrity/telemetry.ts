@@ -1,4 +1,4 @@
-import { ClientOp, type ClientInput, type IntegrityTransfer } from '@slana/shared';
+import { ClientOp, type ClientInput, type IntegrityTransfer } from '@elymum/shared';
 import type { Player } from '../game/entities';
 import { MAX_REACTION_SAMPLES, emptyInput, turnBin, type SessionSummary } from './types';
 

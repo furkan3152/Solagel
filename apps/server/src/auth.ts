@@ -1,58 +1,94 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import bs58 from 'bs58';
-import nacl from 'tweetnacl';
-import { parseSiwsMessage, siwsChainId, siwsMessage } from '@slana/shared';
+import { ELYSIUM_TESTNET_CHAIN_ID, parseSiweMessage, siweMessage } from '@elymum/shared';
+import { getAddress, type Address, type Hex } from 'viem';
+import { verifyEoa } from './chain/evm-client';
 
-const NONCE_TTL_MS = 5 * 60_000;
+/** A nonce is single use and valid this long. */
+export const NONCE_TTL_MS = 10 * 60_000;
 const TOKEN_TTL_MS = 24 * 60 * 60_000;
-/** Hard cap on outstanding nonces: the oldest are evicted beyond it (M2). */
+/** Hard cap on outstanding nonces: the oldest are evicted beyond it. */
 export const MAX_NONCES = 10_000;
 
-/** Where a login message says the player signs in (SIWS `domain`, `URI`, `Chain ID`). */
-export interface SiwsOrigin {
+/** Where a login message says the player signs in (SIWE `domain`, `URI`, `Chain ID`). */
+export interface SiweOrigin {
   domain: string;
   uri: string;
-  chainId: string;
+  /** The server's chain id (`eth_chainId` of its RPC). */
+  chainId: number;
 }
 
-const DEFAULT_ORIGIN: SiwsOrigin = { domain: 'localhost', uri: 'http://localhost', chainId: siwsChainId('localnet') };
+const DEFAULT_ORIGIN: SiweOrigin = { domain: 'localhost', uri: 'http://localhost', chainId: ELYSIUM_TESTNET_CHAIN_ID };
 
-/** Builds the exact text a wallet signs to log in (Sign-In-With-Solana). */
-export function loginMessage(pubkey: string, nonce: string, issuedAt: string, origin: SiwsOrigin = DEFAULT_ORIGIN): string {
-  return siwsMessage({ domain: origin.domain, address: pubkey, uri: origin.uri, chainId: origin.chainId, nonce, issuedAt });
+/** An EVM address: `0x` + 40 hex digits, any case. */
+export function isValidAddress(s: unknown): s is string {
+  return typeof s === 'string' && /^0x[0-9a-fA-F]{40}$/.test(s);
 }
 
-export function isValidPubkey(s: unknown): s is string {
-  if (typeof s !== 'string' || s.length < 32 || s.length > 44) return false;
+/**
+ * EIP-55 checksummed form of an address; null when it is not one, or when it is mixed-case with a
+ * wrong checksum (a typo).
+ */
+export function checksumAddress(s: unknown): Address | null {
+  if (!isValidAddress(s)) return null;
   try {
-    return bs58.decode(s).length === 32;
+    const c = getAddress(s);
+    const mixed = s.slice(2) !== s.slice(2).toLowerCase() && s.slice(2) !== s.slice(2).toUpperCase();
+    return mixed && c !== s ? null : c;
   } catch {
-    return false;
+    return null;
   }
 }
 
-/** Wallet login: one-time nonces signed by the wallet, then stateless HMAC tokens. */
-export class Auth {
-  private readonly nonces = new Map<string, { pubkey: string; message: string; expires: number; origin: SiwsOrigin }>();
+/** Builds the exact text a wallet signs to log in (Sign-In with Ethereum, EIP-4361). */
+export function loginMessage(address: string, nonce: string, issuedAt: string, origin: SiweOrigin = DEFAULT_ORIGIN): string {
+  return siweMessage({ domain: origin.domain, address, uri: origin.uri, chainId: origin.chainId, nonce, issuedAt });
+}
 
-  constructor(private readonly secret: Buffer) {}
+/** What `GET /api/auth/nonce` returns: the message and every field of it (the client rebuilds and compares). */
+export interface IssuedNonce {
+  nonce: string;
+  message: string;
+  /** EIP-55 checksummed. */
+  address: string;
+  domain: string;
+  uri: string;
+  chainId: number;
+  issuedAt: string;
+}
+
+/** On-chain check for smart-wallet signatures (ERC-1271 / ERC-6492); EOAs never need it. */
+export type OnChainVerifier = (address: string, message: string, signature: string) => Promise<boolean>;
+
+/** Wallet login: one-time SIWE nonces signed by the wallet, then stateless HMAC tokens. */
+export class Auth {
+  private readonly nonces = new Map<string, { address: string; message: string; expires: number; origin: SiweOrigin }>();
+  private onChain: OnChainVerifier | null;
+
+  constructor(
+    private readonly secret: Buffer,
+    opts: { onChain?: OnChainVerifier | null } = {},
+  ) {
+    this.onChain = opts.onChain ?? null;
+  }
+
+  /** Sets the smart-wallet fallback (the chain gateway's `verifyMessage`). */
+  setOnChainVerifier(fn: OnChainVerifier | null): void {
+    this.onChain = fn;
+  }
 
   /**
-   * A one-time nonce and the SIWS message for it. The fields are returned too, so the web
-   * client can rebuild the message itself and refuse to sign anything else.
+   * A one-time nonce and the SIWE message for it. The fields are returned too, so the web client
+   * can rebuild the message itself and refuse to sign anything else.
    */
-  issueNonce(
-    pubkey: string,
-    origin: SiwsOrigin = DEFAULT_ORIGIN,
-    now = Date.now(),
-  ): { nonce: string; message: string; domain: string; uri: string; chainId: string; issuedAt: string } {
-    if (!isValidPubkey(pubkey)) throw new Error('invalid pubkey');
+  issueNonce(address: string, origin: SiweOrigin = DEFAULT_ORIGIN, now = Date.now()): IssuedNonce {
+    const checksummed = checksumAddress(address);
+    if (!checksummed) throw new Error('invalid address');
     this.prune(now);
     const nonce = randomBytes(12).toString('hex');
     const issuedAt = new Date(now).toISOString();
-    const message = loginMessage(pubkey, nonce, issuedAt, origin);
-    this.nonces.set(nonce, { pubkey, message, expires: now + NONCE_TTL_MS, origin });
-    return { nonce, message, domain: origin.domain, uri: origin.uri, chainId: origin.chainId, issuedAt };
+    const message = loginMessage(checksummed, nonce, issuedAt, origin);
+    this.nonces.set(nonce, { address: checksummed, message, expires: now + NONCE_TTL_MS, origin });
+    return { nonce, message, address: checksummed, domain: origin.domain, uri: origin.uri, chainId: origin.chainId, issuedAt };
   }
 
   /** Outstanding nonces (tests). */
@@ -60,48 +96,52 @@ export class Auth {
     return this.nonces.size;
   }
 
-  /** Verifies a signed login message; the nonce is consumed on success. */
-  verifySignature(pubkey: string, message: string, signatureB58: string, now = Date.now()): boolean {
-    if (!isValidPubkey(pubkey) || typeof message !== 'string' || typeof signatureB58 !== 'string') return false;
-    const fields = parseSiwsMessage(message);
-    if (!fields) return false;
+  /**
+   * Verifies a signed login message: the exact message issued for this nonce (domain, URI, chain id
+   * and address of this server and wallet), signed by the wallet (`personal_sign`; an EOA is checked
+   * locally, a smart wallet through the chain). The nonce is consumed on success. Returns the
+   * checksummed address, or null.
+   */
+  async verifySignature(address: string, message: string, signature: string, now = Date.now()): Promise<string | null> {
+    const checksummed = checksumAddress(address);
+    if (!checksummed || typeof message !== 'string' || typeof signature !== 'string' || !/^0x[0-9a-fA-F]{2,4096}$/.test(signature)) return null;
+    const fields = parseSiweMessage(message);
+    if (!fields) return null;
     const entry = this.nonces.get(fields.nonce);
-    if (!entry || entry.expires < now || entry.pubkey !== pubkey || entry.message !== message) return false;
-    // the signed text names this server: its domain, URI and cluster, and the signing wallet
+    if (!entry || entry.expires < now || entry.address !== checksummed || entry.message !== message) return null;
+    // the signed text names this server: its domain, URI and chain, and the signing wallet
     const o = entry.origin;
-    if (fields.address !== pubkey || fields.domain !== o.domain || fields.uri !== o.uri || fields.chainId !== o.chainId) return false;
-    let sig: Uint8Array;
-    try {
-      sig = bs58.decode(signatureB58);
-    } catch {
-      return false;
-    }
-    if (sig.length !== 64) return false;
-    const ok = nacl.sign.detached.verify(new TextEncoder().encode(message), sig, bs58.decode(pubkey));
-    if (ok) this.nonces.delete(fields.nonce);
-    return ok;
+    if (fields.address !== checksummed || fields.domain !== o.domain || fields.uri !== o.uri || fields.chainId !== o.chainId) return null;
+    // single use: taken out before the (async) check so two concurrent replays cannot both pass
+    this.nonces.delete(fields.nonce);
+    let ok = await verifyEoa(checksummed, message, signature as Hex);
+    if (!ok && this.onChain) ok = await this.onChain(checksummed, message, signature).catch(() => false);
+    if (!ok && entry.expires >= now) this.nonces.set(fields.nonce, entry);
+    return ok ? checksummed : null;
   }
 
   private mac(payload: string): string {
     return createHmac('sha256', this.secret).update(payload).digest('base64url');
   }
 
-  issueToken(pubkey: string, now = Date.now()): string {
-    const payload = `${pubkey}.${now + TOKEN_TTL_MS}`;
+  issueToken(address: string, now = Date.now()): string {
+    const checksummed = checksumAddress(address);
+    if (!checksummed) throw new Error('invalid address');
+    const payload = `${checksummed}.${now + TOKEN_TTL_MS}`;
     return `${payload}.${this.mac(payload)}`;
   }
 
-  /** Returns the wallet for a valid, unexpired token. */
+  /** Returns the (checksummed) wallet of a valid, unexpired token. */
   verifyToken(token: unknown, now = Date.now()): string | null {
     if (typeof token !== 'string' || token.length > 200) return null;
     const parts = token.split('.');
     if (parts.length !== 3) return null;
-    const [pubkey, exp, mac] = parts;
-    if (!isValidPubkey(pubkey) || !(Number(exp) > now)) return null;
-    const expected = Buffer.from(this.mac(`${pubkey}.${exp}`));
+    const [address, exp, mac] = parts;
+    if (!isValidAddress(address) || !(Number(exp) > now)) return null;
+    const expected = Buffer.from(this.mac(`${address}.${exp}`));
     const given = Buffer.from(mac);
     if (expected.length !== given.length || !timingSafeEqual(expected, given)) return null;
-    return pubkey;
+    return address;
   }
 
   /** Drops expired nonces once there are many, then evicts the oldest beyond `MAX_NONCES`. */

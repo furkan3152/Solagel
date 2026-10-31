@@ -1,4 +1,4 @@
-import { SITE_LIMITS, WL_TASK_KINDS, isXStatusUrl, type WlTask, type WlTaskKind } from '@slana/shared';
+import { SITE_LIMITS, WL_TASK_KINDS, isXStatusUrl, type WlTask, type WlTaskKind } from '@elymum/shared';
 import { useCallback, useEffect, useState } from 'react';
 import { Chip, Field, InkButton, StampSpinner } from '../../design';
 import type { TaskInput } from '../../site/api';
@@ -10,7 +10,7 @@ export const KIND_LABEL: Record<WlTaskKind, string> = {
   engage_x: 'Like / repost / reply (link)',
   join_link: 'Join a link (self-attested)',
   text: 'Free answer',
-  wallet: 'Solana wallet (signed in)',
+  wallet: 'EVM wallet (signed in)',
 };
 
 const NEEDS_TARGET: WlTaskKind[] = ['follow_x', 'engage_x', 'join_link'];
@@ -93,7 +93,7 @@ function TaskForm({ initial, submitLabel, onSubmit, onCancel }: { initial: Draft
         </label>
       </div>
       <div className="ad-actions">
-        <InkButton variant="pink" size="sm" onClick={() => void go()} disabled={busy}>
+        <InkButton variant="teal" size="sm" onClick={() => void go()} disabled={busy}>
           {busy ? 'Saving…' : submitLabel}
         </InkButton>
         {onCancel && (
@@ -177,7 +177,7 @@ export function TasksTab({ api }: TabProps) {
             setLaunchErr(null);
           }}
           error={launchErr ?? undefined}
-          placeholder="https://x.com/slanaio/status/…"
+          placeholder="https://x.com/elymum/status/…"
         />
         <div className="ad-actions">
           <InkButton variant="pink" size="sm" onClick={() => void saveLaunch()} disabled={(launch.trim() || null) === launchSaved}>
@@ -193,7 +193,7 @@ export function TasksTab({ api }: TabProps) {
             WL tasks ({tasks.length})
           </h2>
           {!adding && (
-            <InkButton variant="ink" size="sm" onClick={() => setAdding(true)} disabled={tasks.length >= SITE_LIMITS.maxTasks}>
+            <InkButton variant="secondary" size="sm" onClick={() => setAdding(true)} disabled={tasks.length >= SITE_LIMITS.maxTasks}>
               Add task
             </InkButton>
           )}
@@ -272,7 +272,7 @@ export function TasksTab({ api }: TabProps) {
                       {t.enabled ? 'Disable' : 'Enable'}
                     </InkButton>
                     <InkButton
-                      variant="paper"
+                      variant="ghost"
                       size="sm"
                       onClick={() => {
                         if (!window.confirm(`Delete the task “${t.title}”? Entries already sent keep their answers.`)) return;

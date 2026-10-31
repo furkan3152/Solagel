@@ -1,9 +1,6 @@
 **/node_modules
 **/dist
-target
-.anchor
 .localnet
-test-ledger
 .git
 **/data
 **/*.log
@@ -11,4 +8,8 @@ test-ledger
 **/.env.*
 !**/.env.example
 docs
-programs
+brand
+media
+out
+packages/contracts/artifacts
+packages/contracts/cache

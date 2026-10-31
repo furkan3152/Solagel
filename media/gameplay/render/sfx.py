@@ -1,4 +1,4 @@
-"""Procedural sound design for the Slana videos (numpy only, 48 kHz stereo).
+"""Procedural sound design for the Elymum videos (numpy only, 48 kHz stereo).
 
 Every sound is synthesised from noise, sines and envelopes with a fixed seed, so a re-render is
 bit-identical. `make(name, **kw)` returns a float32 array of shape (n, 2).

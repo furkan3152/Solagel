@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Video A: "Slana / Gameplay" (about 55 s, 60 fps). The edit decision list: which pieces of which
+// Video A: "Elymum / Gameplay" (about 55 s, 60 fps). The edit decision list: which pieces of which
 // takes, how they are timed, reframed and ramped, the graphics on top and the sound cues.
-// One paid round in Penny Pond, told in order: a mid-round join, she eats players (slow-motion
+// One paid round in Asphodel Meadow, told in order: a mid-round join, she eats players (slow-motion
 // punch-ins with the value floating off the gulp), a bot eats her and she buys back in, the final
 // minute, the last ten seconds, the bell and the "Round over" receipt with the PAID stamp.
 // Every take is a journal replayed frame by frame (capture/replay.mjs), so the picture is a true
@@ -14,6 +14,8 @@ import { fileURLToPath } from 'node:url';
 import { Edit, events, mark, take } from './render/timeline.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+// the site's host on the end card (no domain is hard-coded: set SITE_HOST to the PUBLIC_URL host)
+const SITE = (process.env.SITE_HOST || 'elymum.io').toUpperCase();
 const OUT = resolve(HERE, 'cache/edit');
 mkdirSync(OUT, { recursive: true });
 const BPM = 82, BEAT = 60 / BPM, BAR = BEAT * 4;
@@ -29,7 +31,7 @@ const A = 'arena', A2 = has('arena2') ? 'arena2' : 'arena', S = 'spill';
 const kicker = (t, text, dur = 2.6) => { e.add('tag', t, dur, { text, x: 72, y: 72, size: 27, kick: true, dot: true, scramble: true }, 20); e.cue('tick', t + 0.05, 0.3); e.cue('tick', t + 0.2, 0.2); };
 /** A ticket lower-third with a counting value. */
 const lower = (t, dur, kickerText, from, to, o = {}) => {
-  e.add('lower', t, dur, { kicker: kickerText, count: [from, to], sign: o.sign || '', unit: o.unit ?? '$SLANA', accent: o.accent || 'pink', stub: o.stub || 'PENNY POND', countAt: o.countAt ?? 0.3, countDur: o.countDur || 0.9, w: o.w || 660, dec: o.dec }, 30);
+  e.add('lower', t, dur, { kicker: kickerText, count: [from, to], sign: o.sign || '', unit: o.unit ?? '$ELYMUM', accent: o.accent || 'pink', stub: o.stub || 'PENNY POND', countAt: o.countAt ?? 0.3, countDur: o.countDur || 0.9, w: o.w || 660, dec: o.dec }, 30);
   e.cue('whoosh', t - 0.05, 0.28, { dur: 0.4, bright: 1.3 });
   e.cue('pop', t + 0.3, 0.35);
 };
@@ -47,7 +49,7 @@ const boxSrc = (s, t, dur, x0, y0, x1, y1, label, o = {}) => {
 /** The value float off the gulp: follows Daphne's coin. */
 const float = (s, t, text, o = {}) => {
   const dur = o.dur ?? 1.5;
-  e.add('float', t, dur, { text, sub: o.sub ?? '$SLANA', track: e.trackMe(s, t, dur, 1 / 30), size: o.size ?? 120, color: o.color || 'mustard' }, 35);
+  e.add('float', t, dur, { text, sub: o.sub ?? '$ELYMUM', track: e.trackMe(s, t, dur, 1 / 30), size: o.size ?? 120, color: o.color || 'mustard' }, 35);
   e.cue('coin', t, 0.5).cue('pop', t + 0.05, 0.4);
 };
 const CHIP = [884, 12, 1036, 66]; // the round chip on the HUD (source px)
@@ -210,8 +212,8 @@ e.cue('kaching', tStamp, 0.6).cue('impact', tStamp, 0.4);
 wipe(s8.end, ['pink', 'card']);
 const tOut = s8.end;
 e.add('card', tOut - 0.05, bars(2) + 0.05, {
-  variant: 'outro', kicker: 'SLANA / ON SOLANA', tagline: 'Eat. Grow. Last the round.', tagAccent: 4, tagAt: 0.7, tagGap: 0.26,
-  foot: 'PRACTICE IS FREE  /  SLANA.IO  /  @SLANAIO', footAt: 1.6, footY: 812,
+  variant: 'outro', kicker: 'ELYMUM / ON ELYSIUM', tagline: 'Eat. Grow. Last the round.', tagAccent: 4, tagAt: 0.7, tagGap: 0.26,
+  foot: `WL → MINT → PLAY  /  ${SITE}  /  @ELYMUM`, footAt: 1.6, footY: 812,
 }, 50);
 for (let i = 0; i < 3; i++) e.cue('stamp', tOut + 0.7 + i * 0.26 + 0.1, 0.6);
 e.cue('sub', tOut + 0.4, 0.5);

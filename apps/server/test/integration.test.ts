@@ -11,37 +11,39 @@ import {
   type ServerMessage,
   type SnapshotData,
   roundAt,
-  siwsMessage,
-} from '@slana/shared';
-import bs58 from 'bs58';
-import nacl from 'tweetnacl';
+  siweMessage,
+} from '@elymum/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { createApp, type App } from '../src/app';
-import type { ChainArena, ChainGateway, ChainProfile, ChainSession } from '../src/chain/types';
+import type { ChainArena, ChainGateway, ChainSession, ServerKeyInfo } from '../src/chain/types';
 import { loadConfig } from '../src/config';
+import { testSigner } from './signers';
 
 class FakeChain implements ChainGateway {
   readonly enabled = true;
   readonly tokenReady = true;
   readonly stakeEnabled = true;
   sessions = new Map<string, ChainSession>();
-  profiles = new Map<string, ChainProfile>();
   kicked = 0;
   status(): ChainStatus {
     return {
       enabled: true,
-      cluster: 'test',
-      programId: 'Fake111',
+      chainId: 31337,
+      chainName: 'Localnet',
       rpcUrl: null,
+      explorerUrl: null,
+      arenaAddress: '0x00000000000000000000000000000000000A7e4A',
+      nftAddress: null,
       arenasEnabled: true,
       tokenReady: true,
-      token: { mint: 'Mint111', symbol: '$SLANA', decimals: 6 },
+      token: { address: '0x0000000000000000000000000000000000000707', symbol: '$ELYMUM', decimals: 18 },
       feeBps: 500,
+      serverKey: null,
     };
   }
-  async getProfile(owner: string) {
-    return this.profiles.get(owner) ?? null;
+  serverInfo(): ServerKeyInfo {
+    return { address: null, balanceWei: null, low: false };
   }
   /** The next `getSession` fails like an RPC error. */
   failNextGetSession = false;
@@ -62,8 +64,8 @@ class FakeChain implements ChainGateway {
   }
   async listArenas(): Promise<ChainArena[]> {
     return [
-      { id: 1, address: 'Arena1', entryFee: 10_000_000, maxSessions: 10, enabled: true, openSessions: 0, pot: 0 },
-      { id: 2, address: 'Arena2', entryFee: 50_000_000, maxSessions: 10, enabled: true, openSessions: 0, pot: 0 },
+      { id: 1, entryFee: 10_000_000, maxSessions: 10, enabled: true, openSessions: 0, pot: 0 },
+      { id: 2, entryFee: 50_000_000, maxSessions: 10, enabled: true, openSessions: 0, pot: 0 },
     ];
   }
   kick() {
@@ -137,9 +139,10 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 let sessionSeq = 100;
 function session(player: string, opts: Partial<ChainSession> = {}): ChainSession {
-  const id = ++sessionSeq;
+  const id = opts.id ?? ++sessionSeq;
+  const arenaId = opts.arenaId ?? 1;
   return {
-    address: `Sess${id}-${player}`,
+    key: `${arenaId}:${player.toLowerCase()}:${id}`,
     id,
     player,
     arenaId: 1,
@@ -151,7 +154,7 @@ function session(player: string, opts: Partial<ChainSession> = {}): ChainSession
   };
 }
 
-const newWallet = () => bs58.encode(nacl.sign.keyPair().publicKey);
+const newWallet = () => testSigner().address;
 
 /** Connected, greeted and (with a wallet) signed-in client. */
 async function signedIn(wallet: string | null): Promise<Client> {
@@ -190,7 +193,7 @@ const jumpTo = (at: number) => {
 };
 
 beforeAll(async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'slana-int-'));
+  const dir = mkdtempSync(join(tmpdir(), 'elymum-int-'));
   const cfg = loadConfig({
     PORT: '0',
     HOST: '127.0.0.1',
@@ -198,8 +201,10 @@ beforeAll(async () => {
     BOT_TARGET: '6',
     BOT_MIN: '2',
     BOT_MAX: '6',
-    // the game gate (site setting `gamePublic`) is covered in site.test.ts
-    GAME_PUBLIC: '1',
+    // the game gate (site setting `gameAccess`) is covered in site.test.ts
+    GAME_ACCESS: 'public',
+    // no PUBLIC_URL: only development derives the SIWE origin from the request host
+    NODE_ENV: 'development',
   });
   chain = new FakeChain();
   app = await createApp(cfg, { chain, log: () => {}, persist: true, now: serverNow });
@@ -227,13 +232,13 @@ describe('server over websocket', () => {
     const pong = await c.wait('pong');
     expect(Math.abs(pong.serverNow - serverNow())).toBeLessThan(1000);
     // the token and fee ride along with the chain status (no Pass, no season)
-    expect(welcome.chain).toMatchObject({ tokenReady: true, feeBps: 500, token: { decimals: 6 } });
+    expect(welcome.chain).toMatchObject({ tokenReady: true, feeBps: 500, token: { decimals: 18 } });
     expect('pass' in welcome.chain).toBe(false);
     expect(welcome.blocked).toEqual([]);
     c.close();
   });
 
-  it('R20: arenas kept closed by the vault guard reach the lobby payloads', async () => {
+  it('arenas kept closed by the vault guard reach the lobby payloads', async () => {
     const underfunded = (app.rooms as unknown as { underfunded: Map<number, string> }).underfunded;
     underfunded.set(7, 'vault short');
     try {
@@ -312,7 +317,7 @@ describe('server over websocket', () => {
     const got = await b.wait('chat', 2000, (m) => m.from === 'Alice');
     expect(got.text).toBe('gm frens');
     await sleep(1300);
-    a.send({ t: 'chat', text: 'free sol at https://scam.xyz' });
+    a.send({ t: 'chat', text: 'free hype at https://scam.xyz' });
     const err = await a.wait('error', 2000, (m) => m.code === 'bad_request');
     expect(err.message).toMatch(/Links/);
     a.close();
@@ -320,42 +325,44 @@ describe('server over websocket', () => {
   });
 
   it('authenticates a wallet signature and rejects a bad one', async () => {
-    const kp = nacl.sign.keyPair();
-    const pubkey = bs58.encode(kp.publicKey);
-    const res = await fetch(`http://127.0.0.1:${port}/api/auth/nonce?pubkey=${pubkey}`);
-    const body = (await res.json()) as { message: string; domain: string; uri: string; chainId: string; nonce: string; issuedAt: string };
+    const signer = testSigner();
+    const address = signer.address;
+    const res = await fetch(`http://127.0.0.1:${port}/api/auth/nonce?address=${address.toLowerCase()}`);
+    const body = (await res.json()) as { message: string; address: string; domain: string; uri: string; chainId: number; nonce: string; issuedAt: string };
     const { message } = body;
-    // M1: SIWS domain = request host (no PUBLIC_URL here), with URI and Chain ID lines; the client can rebuild it
+    // SIWE domain = request host (no PUBLIC_URL here, NODE_ENV=development), with URI and the server's Chain ID; the client can rebuild it
     expect(body.domain).toBe(`127.0.0.1:${port}`);
-    expect(message.split('\n')[0]).toBe(`127.0.0.1:${port} wants you to sign in with your Solana account:`);
+    expect(body.address).toBe(address);
+    expect(body.chainId).toBe(31337);
+    expect(message.split('\n')[0]).toBe(`127.0.0.1:${port} wants you to sign in with your Ethereum account:`);
     expect(message).toContain(`\nURI: http://127.0.0.1:${port}\n`);
-    expect(message).toContain('\nChain ID: solana:localnet\n');
-    expect(siwsMessage({ domain: body.domain, address: pubkey, uri: body.uri, chainId: body.chainId, nonce: body.nonce, issuedAt: body.issuedAt })).toBe(message);
+    expect(message).toContain('\nChain ID: 31337\n');
+    expect(siweMessage({ domain: body.domain, address, uri: body.uri, chainId: body.chainId, nonce: body.nonce, issuedAt: body.issuedAt })).toBe(message);
     const c = await Client.connect(port);
     c.send({ t: 'hello', v: PROTOCOL_VERSION });
     await c.wait('welcome');
-    // wrong signature
-    c.send({ t: 'auth', pubkey, message, signature: bs58.encode(new Uint8Array(64)) });
+    // wrong signature (another wallet signed it)
+    c.send({ t: 'auth', address, message, signature: await testSigner().sign(message) });
     expect((await c.wait('error')).code).toBe('auth_failed');
-    const sig = nacl.sign.detached(new TextEncoder().encode(message), kp.secretKey);
-    c.send({ t: 'auth', pubkey, message, signature: bs58.encode(sig) });
+    const sig = await signer.sign(message);
+    c.send({ t: 'auth', address: address.toLowerCase(), message, signature: sig });
     const authed = await c.wait('authed');
-    expect(authed.pubkey).toBe(pubkey);
+    expect(authed.address).toBe(address);
     // the token works on a fresh connection; a replayed signature does not
     const d = await Client.connect(port);
     d.send({ t: 'hello', v: PROTOCOL_VERSION });
     await d.wait('welcome');
-    d.send({ t: 'auth', pubkey, message, signature: bs58.encode(sig) });
+    d.send({ t: 'auth', address, message, signature: sig });
     expect((await d.wait('error')).code).toBe('auth_failed');
     d.send({ t: 'auth', token: authed.token });
-    expect((await d.wait('authed')).pubkey).toBe(pubkey);
+    expect((await d.wait('authed')).address).toBe(address);
     c.close();
     d.close();
   });
 
   it('rate-limits sign-ins (each one reads the chain)', async () => {
-    const pubkey = bs58.encode(nacl.sign.keyPair().publicKey);
-    const token = app.auth.issueToken(pubkey);
+    const player = newWallet();
+    const token = app.auth.issueToken(player);
     const c = await Client.connect(port);
     c.send({ t: 'hello', v: PROTOCOL_VERSION });
     await c.wait('welcome');
@@ -370,16 +377,16 @@ describe('server over websocket', () => {
   });
 
   it('stake arena: join with an on-chain ticket, no cash-out, settled at value when the round ends', async () => {
-    const kp = nacl.sign.keyPair();
-    const pubkey = bs58.encode(kp.publicKey);
-    chain.sessions.set(`1:${pubkey}`, session(pubkey, { address: `Session-${pubkey}`, id: 1 }));
+    const player = newWallet();
+    const ticket = session(player, { id: 1 });
+    chain.sessions.set(`1:${player}`, ticket);
     const c = await Client.connect(port);
     c.send({ t: 'hello', v: PROTOCOL_VERSION });
     await c.wait('welcome');
     c.send({ t: 'join', room: 'arena:1', name: 'Whale', skin: 0 });
     expect((await c.wait('error')).code).toBe('auth_required');
 
-    c.send({ t: 'auth', token: app.auth.issueToken(pubkey) });
+    c.send({ t: 'auth', token: app.auth.issueToken(player) });
     await c.wait('authed');
     c.send({ t: 'join', room: 'arena:1', name: 'Whale', skin: 0 });
     const joined = await c.wait('joined');
@@ -387,14 +394,14 @@ describe('server over websocket', () => {
     expect(joined.value).toBe(10_000_000);
     const r = roundAt(serverNow());
     expect(joined.round).toEqual({ n: r.n, endsAt: r.endsAt, joinsCloseAt: r.joinsCloseAt });
-    expect(app.journal.live().map((l) => l.session)).toContain(`Session-${pubkey}`);
+    expect(app.journal.live().map((l) => l.session)).toContain(ticket.key);
 
     // paid arenas have no cash-out
     c.send({ t: 'cashout' });
     expect((await c.wait('error', 2000, (m) => m.code === 'no_cashout')).code).toBe('no_cashout');
     await sleep(100);
     expect(c.msgs.some((m) => m.t === 'cashout')).toBe(false);
-    expect(app.journal.pending.some((p) => p.key === `Session-${pubkey}`)).toBe(false);
+    expect(app.journal.pending.some((p) => p.key === ticket.key)).toBe(false);
 
     // the bell: settled at value (reason `round`), with the round's standings
     jumpTo(r.endsAt);
@@ -403,18 +410,45 @@ describe('server over websocket', () => {
     expect(over.payout).toBe(10_000_000);
     expect(over.stats.payout).toBe(10_000_000);
     expect(over.standings.find((s) => s.you)).toEqual({ name: 'Whale', value: 10_000_000, you: true });
-    const item = app.journal.pending.find((p) => p.key === `Session-${pubkey}`);
-    expect(item).toMatchObject({ kind: 'settle', payout: 10_000_000, reason: 'round', player: pubkey });
+    const item = app.journal.pending.find((p) => p.key === ticket.key);
+    expect(item).toMatchObject({ kind: 'settle', payout: 10_000_000, reason: 'round', player: player });
     expect(chain.kicked).toBeGreaterThan(0);
-    expect(app.journal.live().map((l) => l.session)).not.toContain(`Session-${pubkey}`);
+    expect(app.journal.live().map((l) => l.session)).not.toContain(ticket.key);
 
     // the same ticket cannot be reused while its settlement is pending
     c.send({ t: 'join', room: 'arena:1', name: 'Whale', skin: 0 });
     expect((await c.wait('error', 2000, (m) => m.code === 'no_session')).code).toBe('no_session');
-    app.journal.remove(`Session-${pubkey}`);
-    chain.sessions.delete(`1:${pubkey}`);
+    app.journal.remove(ticket.key);
+    chain.sessions.delete(`1:${player}`);
     c.close();
   }, 15_000);
+
+  it('holders gate: every arena seat re-checks the gate uncached (an NFT passed on since the lobby check)', async () => {
+    const player = newWallet();
+    chain.sessions.set(`1:${player}`, session(player, { id: 41 }));
+    const site = app.site as unknown as { gameOpenFor: (w: string | null, fresh?: boolean) => Promise<boolean> };
+    const original = site.gameOpenFor;
+    const asked: boolean[] = [];
+    // the cached answer still says "holder"; a fresh balanceOf read says the NFT is gone
+    site.gameOpenFor = async (_w, fresh = false) => {
+      asked.push(fresh);
+      return !fresh;
+    };
+    try {
+      const c = await signedIn(player);
+      c.send({ t: 'join', room: 'arena:1', name: 'Passer', skin: 0 });
+      expect((await c.wait('error', 2000, (m) => m.code === 'game_closed')).code).toBe('game_closed');
+      expect(asked).toEqual([false, true]);
+      expect(app.journal.live().some((l) => l.player === player)).toBe(false);
+      // practice is gated by the (cached) check only
+      c.send({ t: 'join', room: 'practice', name: 'Passer', skin: 0 });
+      expect((await c.wait('joined')).room.mode).toBe('practice');
+      c.close();
+    } finally {
+      site.gameOpenFor = original;
+      chain.sessions.delete(`1:${player}`);
+    }
+  });
 
   it('arena joins close in the last minute; an AFK staker may still come back; the next round opens joins', async () => {
     const afk = newWallet();
@@ -481,7 +515,7 @@ describe('server over websocket', () => {
     expect(err.message).toMatch(/round ended while you were away/);
     expect(err.code).toBe('round_ended');
     expect(b.msgs.some((m) => m.t === 'roundOver' || m.t === 'joined')).toBe(false);
-    expect(app.journal.settlements().find((p) => p.key === first.address)).toMatchObject({ reason: 'round', player: w });
+    expect(app.journal.settlements().find((p) => p.key === first.key)).toMatchObject({ reason: 'round', player: w });
 
     // a later return, while the settlement is pending: still round_ended (the bell's memo)
     const c = await signedIn(w);
@@ -499,12 +533,12 @@ describe('server over websocket', () => {
       await sleep(150);
       jumpTo(roundAt(serverNow()).endsAt);
       await sleep(150);
-      expect(app.journal.settlements().some((p) => p.key === sess.address)).toBe(true);
-      app.journal.remove(sess.address); // the payout landed
+      expect(app.journal.settlements().some((p) => p.key === sess.key)).toBe(true);
+      app.journal.remove(sess.key); // the payout landed
     };
 
     // back after the payout landed and the session closed on chain: round_ended
-    app.journal.remove(first.address);
+    app.journal.remove(first.key);
     await awayAtBell(session(w));
     chain.sessions.delete(`1:${w}`);
     const e = await signedIn(w);
@@ -524,7 +558,7 @@ describe('server over websocket', () => {
     chain.sessions.set(`1:${w}`, fresh);
     const f = await signedIn(w);
     f.send({ t: 'join', room: 'arena:1', name: 'Away', skin: 0 });
-    expect((await f.wait('joined', 2000)).session).toBe(fresh.address);
+    expect((await f.wait('joined', 2000)).session).toBe(fresh.key);
     expect(app.rooms.bellSettled(1, w)).toBeNull();
     f.close();
     await sleep(150);
@@ -536,10 +570,9 @@ describe('server over websocket', () => {
   }, 15_000);
 
   it('stake players who disconnect stay AFK and can reconnect', async () => {
-    const kp = nacl.sign.keyPair();
-    const pubkey = bs58.encode(kp.publicKey);
-    chain.sessions.set(`1:${pubkey}`, session(pubkey, { address: `S2-${pubkey}`, id: 2, entryFee: 20_000_000 }));
-    const token = app.auth.issueToken(pubkey);
+    const player = newWallet();
+    chain.sessions.set(`1:${player}`, session(player, { id: 2, entryFee: 20_000_000 }));
+    const token = app.auth.issueToken(player);
     const a = await Client.connect(port);
     a.send({ t: 'hello', v: PROTOCOL_VERSION });
     await a.wait('welcome');
@@ -585,7 +618,7 @@ describe('server over websocket', () => {
     expect(rooms.rooms.length).toBeGreaterThan(0);
     const lb = (await (await fetch(`http://127.0.0.1:${port}/api/leaderboard`)).json()) as { daily: unknown[] };
     expect(Array.isArray(lb.daily)).toBe(true);
-    const bad = await fetch(`http://127.0.0.1:${port}/api/auth/nonce?pubkey=nope`);
+    const bad = await fetch(`http://127.0.0.1:${port}/api/auth/nonce?address=nope`);
     expect(bad.status).toBe(400);
     const config = (await (await fetch(`http://127.0.0.1:${port}/api/config`)).json()) as { protocol: number; chain: ChainStatus };
     expect(config).toEqual({ protocol: PROTOCOL_VERSION, chain: chain.status() });
@@ -595,43 +628,43 @@ describe('server over websocket', () => {
     }
   });
 
-  it('R24: a finalized session cannot be played: collect the payout first', async () => {
-    const pubkey = newWallet();
-    const c = await signedIn(pubkey);
-    chain.sessions.set(`1:${pubkey}`, session(pubkey, { finalized: true, owed: 7_000_000 }));
+  it('a finalized session cannot be played: collect the payout first', async () => {
+    const player = newWallet();
+    const c = await signedIn(player);
+    chain.sessions.set(`1:${player}`, session(player, { finalized: true, owed: 7_000_000 }));
     c.send({ t: 'join', room: 'arena:1', name: 'Collector', skin: 0 });
     const err = await c.wait('error', 2000, (m) => m.code === 'payout_waiting');
     expect(err.message).toMatch(/Collect your payout/);
     expect(c.msgs.some((m) => m.t === 'joined')).toBe(false);
-    chain.sessions.delete(`1:${pubkey}`);
+    chain.sessions.delete(`1:${player}`);
     c.close();
   });
 
-  it('I1: a settlement queued while the join awaits blocks the join', async () => {
-    const pubkey = newWallet();
-    const c = await signedIn(pubkey);
-    const s = session(pubkey);
-    chain.sessions.set(`1:${pubkey}`, s);
+  it('a settlement queued while the join awaits blocks the join', async () => {
+    const player = newWallet();
+    const c = await signedIn(player);
+    const s = session(player);
+    chain.sessions.set(`1:${player}`, s);
     const now = Date.now();
     // the stale sweeper queues a refund for this session while the join awaits the session lookup
     chain.onGetSession = () =>
-      app.journal.enqueue({ kind: 'settle', key: s.address, player: pubkey, arenaId: 1, session: s.address, sessionId: s.id, payout: s.entryFee, score: 0, kills: 0, xp: 0, reason: 'stale', attempts: 0, nextAttemptAt: now + 60_000, createdAt: now });
+      app.journal.enqueue({ kind: 'settle', key: s.key, player: player, arenaId: 1, session: s.key, sessionId: s.id, payout: s.entryFee, score: 0, kills: 0, xp: 0, reason: 'stale', attempts: 0, nextAttemptAt: now + 60_000, createdAt: now });
     c.send({ t: 'join', room: 'arena:1', name: 'Racer', skin: 0 });
     const err = await c.wait('error', 2000, (m) => m.code === 'no_session');
     expect(err.message).toMatch(/still being settled/);
     expect(c.msgs.some((m) => m.t === 'joined')).toBe(false);
-    app.journal.remove(s.address);
-    chain.sessions.delete(`1:${pubkey}`);
+    app.journal.remove(s.key);
+    chain.sessions.delete(`1:${player}`);
     c.close();
   });
 
   it('arena join requires a session; every ticket plays alike (no Pass)', async () => {
-    const pubkey = newWallet();
-    const c = await signedIn(pubkey);
+    const player = newWallet();
+    const c = await signedIn(player);
     c.send({ t: 'join', room: 'arena:1', name: 'Noticket', skin: 0 });
     expect((await c.wait('error', 2000, (m) => m.code === 'no_session')).code).toBe('no_session');
 
-    chain.sessions.set(`2:${pubkey}`, session(pubkey, { arenaId: 2, entryFee: 50_000_000 }));
+    chain.sessions.set(`2:${player}`, session(player, { arenaId: 2, entryFee: 50_000_000 }));
     c.send({ t: 'join', room: 'arena:2', name: 'Gold', skin: 2 });
     const joined = await c.wait('joined');
     expect(joined.room.arenaId).toBe(2);
@@ -657,29 +690,30 @@ describe('server over websocket', () => {
   });
 
   it('resume existing non-live session without new charge', async () => {
-    const pubkey = newWallet();
+    const player = newWallet();
     // the ticket was bought earlier (e.g. the tab crashed before joining): it is open on-chain but in no room
-    const s = session(pubkey, { openedAt: Math.floor(Date.now() / 1000) - 120, entryFee: 30_000_000 });
-    chain.sessions.set(`1:${pubkey}`, s);
-    expect(app.rooms.liveSessions().has(s.address)).toBe(false);
+    const s = session(player, { openedAt: Math.floor(Date.now() / 1000) - 120, entryFee: 30_000_000 });
+    chain.sessions.set(`1:${player}`, s);
+    expect(app.rooms.liveSessions().has(s.key)).toBe(false);
     const kicked = chain.kicked;
     const pendingBefore = app.journal.pending.length;
-    const c = await signedIn(pubkey);
+    const c = await signedIn(player);
     c.send({ t: 'join', room: 'arena:1', name: 'Back', skin: 0 });
     const joined = await c.wait('joined');
     expect(joined.value).toBe(30_000_000);
     expect(joined.entryFee).toBe(30_000_000);
-    expect(app.rooms.liveSessions().has(s.address)).toBe(true);
+    expect(app.rooms.liveSessions().has(s.key)).toBe(true);
     // nothing was settled or charged: the same on-chain ticket simply resumes
     expect(app.journal.pending.length).toBe(pendingBefore);
     expect(chain.kicked).toBe(kicked);
-    expect(chain.sessions.get(`1:${pubkey}`)).toBe(s);
+    expect(chain.sessions.get(`1:${player}`)).toBe(s);
     c.close();
   });
 
   it('practice join routes by league', async () => {
     const pro = newWallet();
-    chain.profiles.set(pro, { owner: pro, name: 'veteran', skin: 1, xp: 99_999, level: 9, premiumSkins: 0, gamesPlayed: 50, bestScore: 9000 });
+    app.profiles.update(pro, { name: 'veteran', skin: 1 });
+    app.profiles.recordGame(pro, { score: 9000, kills: 50, xp: 99_999 });
     const a = await signedIn(pro);
     a.send({ t: 'join', room: 'practice', name: 'x', skin: 1 });
     const ja = await a.wait('joined');
@@ -696,12 +730,12 @@ describe('server over websocket', () => {
   });
 
   it('lists pending settlements', async () => {
-    const pubkey = newWallet();
+    const player = newWallet();
     const now = Date.now();
-    app.journal.enqueue({ kind: 'settle', key: `Owed-${pubkey}`, player: pubkey, arenaId: 1, session: `Owed-${pubkey}`, sessionId: 9, payout: 12_000_000, score: 1, kills: 0, xp: 0, attempts: 0, nextAttemptAt: now + 60_000, createdAt: now });
-    const res = (await (await fetch(`http://127.0.0.1:${port}/api/pending?wallet=${pubkey}`)).json()) as unknown;
-    expect(res).toEqual({ pending: [{ key: `Owed-${pubkey}`, arenaId: 1, payout: 12_000_000 }] });
+    app.journal.enqueue({ kind: 'settle', key: `Owed-${player}`, player: player, arenaId: 1, session: `Owed-${player}`, sessionId: 9, payout: 12_000_000, score: 1, kills: 0, xp: 0, attempts: 0, nextAttemptAt: now + 60_000, createdAt: now });
+    const res = (await (await fetch(`http://127.0.0.1:${port}/api/pending?wallet=${player}`)).json()) as unknown;
+    expect(res).toEqual({ pending: [{ key: `Owed-${player}`, arenaId: 1, payout: 12_000_000 }] });
     expect((await fetch(`http://127.0.0.1:${port}/api/pending?wallet=nope`)).status).toBe(400);
-    app.journal.remove(`Owed-${pubkey}`);
+    app.journal.remove(`Owed-${player}`);
   });
 });

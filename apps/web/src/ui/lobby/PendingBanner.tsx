@@ -1,24 +1,27 @@
-import { InkButton } from '../../design';
+import { Button } from '../../design';
 import { useT } from '../../i18n';
-import { useChainData } from '../../solana/chain';
-import { sessionsToCollect, type OpenSession } from '../../solana/ticket';
+import { openSessionOf, useChainData } from '../../wallet/chain';
+import { sessionsToCollect, type OpenSession } from '../../wallet/ticket';
 import { useTokenText } from './useLobby';
 
 /**
- * Payouts owed to this wallet. R24: a game settled without a usable token account
- * leaves its payout in the arena vault; this slip shows the amount and opens the
- * "Collect payout" sheet (one transaction, the token account is created if needed,
- * player-paid, no waiting time). Payouts the server is still sending are shown as such.
+ * Payouts owed to this wallet. A game whose token transfer to the player failed at settlement
+ * leaves its payout in the arena vault (`owed`); this slip shows the amount and opens the
+ * "Collect payout" sheet (one `refund` transaction, no waiting time). Payouts the server is
+ * still sending are shown as such.
  */
 export function PendingBanner({ onCollect }: { onCollect: () => void }) {
   const t = useT();
   const pending = useChainData((s) => s.pending);
   const sessions = useChainData((s) => s.sessions);
   const tok = useTokenText();
-  const collect = sessionsToCollect(sessions as Record<number, OpenSession | null>);
+  const open: Record<number, OpenSession | null> = {};
+  for (const [id, s] of Object.entries(sessions)) open[Number(id)] = openSessionOf(s);
+  const collect = sessionsToCollect(open);
   if (pending.length === 0 && collect.length === 0) return null;
   const action = collect.length > 0;
-  const total = action ? collect.reduce((s, c) => s + c.owed, 0n) : pending.reduce((s, p) => s + BigInt(p.payout), 0n);
+  // collect: base units from the chain; settling: ledger units from the server
+  const amount = action ? tok.fee(collect.reduce((s, c) => s + c.owed, 0n)) : tok.wire(pending.reduce((s, p) => s + p.payout, 0));
   return (
     <section className={`kl-owed${action ? ' is-action' : ''}`} role={action ? 'alert' : 'status'} aria-labelledby="kl-owed-k">
       <div className="kl-owed__slip">
@@ -27,16 +30,16 @@ export function PendingBanner({ onCollect }: { onCollect: () => void }) {
             {t('lo.pending.kicker')}
           </span>
           <span className="kl-owed__amount">
-            {tok.fee(total)} <span className="mono">{tok.symbol}</span>
+            {amount} <span className="mono">{tok.symbol}</span>
           </span>
         </div>
         {action ? (
           <>
             <p className="kl-owed__title">{t('lo.pending.collect')}</p>
             <p className="kl-owed__note">{t('lo.pending.collectNote')}</p>
-            <InkButton variant="pink" size="sm" icon="arrow" onClick={onCollect}>
+            <Button variant="teal" size="sm" icon="arrow" onClick={onCollect}>
               {t('lo.pending.collectCta')}
-            </InkButton>
+            </Button>
           </>
         ) : (
           <p className="kl-owed__note mono">

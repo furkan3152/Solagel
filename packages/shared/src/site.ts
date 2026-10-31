@@ -1,11 +1,24 @@
 /**
- * slana.io site: WL (allowlist) and collab applications. Types shared by the server
- * (`/api/site/*`, `/api/admin/*`) and the web app, plus the validation rules both apply.
- * See docs/specs/2026-10-17-slana-site-wl-collab-design.md.
+ * Elymum site: WL (allowlist) and collab applications, the NFT mint, the contracts registry and
+ * player profiles. Types shared by the server (`/api/site/*`, `/api/admin/*`, `/api/profile`) and
+ * the web app, plus the validation rules both apply.
+ * See docs/specs/2026-10-29-elymum-on-elysium.md (section 4.4).
  */
 
 /** The X account of the project (no `@`). */
-export const SITE_X_HANDLE_DEFAULT = 'slanaio';
+export const SITE_X_HANDLE_DEFAULT = 'elymum';
+
+/**
+ * Who may play (practice, arenas, private rooms, spectating): `admins` only, NFT `holders`
+ * (wallets with `balanceOf > 0` on the NFT) plus admins, or the `public`.
+ */
+export type GameAccess = 'admins' | 'holders' | 'public';
+export const GAME_ACCESS_MODES: readonly GameAccess[] = ['admins', 'holders', 'public'];
+export const GAME_ACCESS_DEFAULT: GameAccess = 'admins';
+
+export function isGameAccess(s: unknown): s is GameAccess {
+  return typeof s === 'string' && (GAME_ACCESS_MODES as readonly string[]).includes(s);
+}
 
 /** Site switches the admin controls. */
 export interface SiteSettings {
@@ -13,8 +26,8 @@ export interface SiteSettings {
   wlOpen: boolean;
   /** Collab applications accepted (the landing's Collab button reads it). */
   collabOpen: boolean;
-  /** The game (practice, arenas, private rooms, spectating) is open to everyone, not only admins. */
-  gamePublic: boolean;
+  /** Who may play (server `GAME_ACCESS` overrides it). */
+  gameAccess: GameAccess;
   /** The project's X handle, without `@`. */
   xHandle: string;
   /** The pinned launch post the `engage_x` task points at; null until it is live. */
@@ -24,7 +37,7 @@ export interface SiteSettings {
 export const SITE_SETTINGS_DEFAULT: SiteSettings = {
   wlOpen: true,
   collabOpen: false,
-  gamePublic: false,
+  gameAccess: GAME_ACCESS_DEFAULT,
   xHandle: SITE_X_HANDLE_DEFAULT,
   launchPostUrl: null,
 };
@@ -62,7 +75,7 @@ export interface PublicWlTask {
 
 /** Id of the seeded "Your X handle" task: its answer is the entry's `xHandle`. */
 export const WL_TASK_X_HANDLE = 'x_handle';
-/** Id of the seeded "Your Solana wallet" task: its answer is the signed-in wallet. */
+/** Id of the seeded "Your EVM wallet" task: its answer is the signed-in wallet (0x address). */
 export const WL_TASK_WALLET = 'wallet';
 
 export type WlStatus = 'pending' | 'approved' | 'rejected';
@@ -82,7 +95,13 @@ export interface WlTaskAnswer {
 /** The applicant's own view of their WL entry. */
 export interface WlEntryPublic {
   id: string;
+  /** The applicant's wallet: an EVM address, except on legacy entries. */
   wallet: string;
+  /**
+   * The entry predates the move to Elysium: its wallet is not a `0x` address. Kept for the record,
+   * never in the allowlist; re-applying with an EVM wallet and the same X handle replaces it.
+   */
+  legacy?: boolean;
   xHandle: string;
   status: WlStatus;
   tasks: WlTaskAnswer[];
@@ -132,7 +151,7 @@ export interface CollabApplyRequest {
   contactX: string;
   discord?: string;
   role: CollabRole;
-  /** A post about Slana on the community's X (tags the project). */
+  /** A post about Elymum on the community's X (tags the project). */
   postUrl: string;
   about: string;
   /** Honeypot: must be absent or empty. */
@@ -148,6 +167,8 @@ export interface CollabPublic {
   id: string;
   /** The applicant's (signed-in) wallet. */
   wallet: string;
+  /** The applicant's wallet is not an EVM address (from before the move to Elysium). */
+  legacy?: boolean;
   community: string;
   type: CollabType;
   members: number;
@@ -171,6 +192,8 @@ export interface CollabPublic {
 }
 
 export interface CollabWalletRowAdmin extends CollabWalletRow {
+  /** Not an EVM address (a legacy row): never in the allowlist. */
+  legacy?: boolean;
   /** The wallet has a WL entry. */
   dupWl: boolean;
   /** Other collabs whose list holds the wallet. */
@@ -217,7 +240,19 @@ export type SiteErrorCode =
   | 'wrong_state'
   | 'deadline_passed'
   | 'too_many_wallets'
-  | 'auth_failed';
+  | 'auth_failed'
+  /** The game is not open to this wallet (`gameAccess`). */
+  | 'game_closed'
+  /** Contracts registry: the address holds no code, or code other than the bundled artifact. */
+  | 'code_mismatch'
+  /** Contracts registry: the contract's owner is not the signed-in admin. */
+  | 'not_owner'
+  /** Contracts registry: the arena's server authority is not the server key. */
+  | 'wrong_authority'
+  /** The server has no chain (`EVM_RPC_URL` unset) or the contract is not registered. */
+  | 'chain_off'
+  /** The upstream price feed (HYPE/USD) could not be read. */
+  | 'price_unavailable';
 
 export interface SiteError {
   error: SiteErrorCode;
@@ -268,4 +303,192 @@ export function normalizeXHandle(s: unknown): string | null {
   h = h.replace(/^@/, '');
   if (!/^[A-Za-z0-9_]{1,15}$/.test(h)) return null;
   return h.toLowerCase();
+}
+
+/* ------------------------------------------------------------------ */
+/* EVM addresses                                                       */
+/* ------------------------------------------------------------------ */
+
+/** `0x` + 40 hex digits, any case. EIP-55 checksumming is done elsewhere (viem `getAddress`). */
+export const EVM_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
+
+export function isEvmAddress(s: unknown): s is `0x${string}` {
+  return typeof s === 'string' && EVM_ADDRESS_RE.test(s);
+}
+
+/** Lower-case form of an EVM address (trimmed) for comparing and keying; null when it is not one. */
+export function normalizeEvmAddress(s: unknown): `0x${string}` | null {
+  if (typeof s !== 'string') return null;
+  const t = s.trim();
+  return EVM_ADDRESS_RE.test(t) ? (t.toLowerCase() as `0x${string}`) : null;
+}
+
+/** Both are EVM addresses and name the same account (case-insensitive). */
+export function sameEvmAddress(a: unknown, b: unknown): boolean {
+  const x = normalizeEvmAddress(a);
+  return x !== null && x === normalizeEvmAddress(b);
+}
+
+/* ------------------------------------------------------------------ */
+/* Contracts registry (`GET /api/site/contracts`, `/api/admin/contracts`) */
+/* ------------------------------------------------------------------ */
+
+export type ContractKind = 'arena' | 'nft' | 'token';
+export const CONTRACT_KINDS: readonly ContractKind[] = ['arena', 'nft', 'token'];
+
+export interface ContractRecord {
+  /** EIP-55 checksummed. */
+  address: string;
+  /** The deploy (or registering) transaction; null when registered without one. */
+  txHash: string | null;
+  /** Chain the contract lives on. */
+  chainId: number;
+  /** Unix ms. */
+  registeredAt: number;
+  /** The admin wallet that registered it. */
+  registeredBy: string;
+}
+
+/** What `DATA_DIR/contracts.json` holds and `GET /api/site/contracts` returns. */
+export type ContractsRegistry = Record<ContractKind, ContractRecord | null>;
+
+/** `POST /api/admin/contracts` body. `DELETE /api/admin/contracts?kind=` clears a kind. */
+export interface ContractRegisterRequest {
+  kind: ContractKind;
+  address: string;
+  txHash: string | null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Mint (`/api/site/mint*`, `/api/admin/mint/*`)                        */
+/* ------------------------------------------------------------------ */
+
+/** `ElymumNFT.Phase`, in contract order (Closed = 0, Allowlist = 1, Public = 2). */
+export type MintPhase = 'closed' | 'allowlist' | 'public';
+export const MINT_PHASES: readonly MintPhase[] = ['closed', 'allowlist', 'public'];
+
+/** Default mint target in US cents (`MINT_USD_CENTS`). */
+export const MINT_USD_CENTS_DEFAULT = 100;
+
+/**
+ * `ElymumNFT.mintState()`. Wei amounts are decimal strings (JSON has no bigint);
+ * addresses and the root are 0x hex.
+ */
+export interface MintContractState {
+  phase: MintPhase;
+  priceWei: string;
+  minPriceWei: string;
+  maxPriceWei: string;
+  /** Price keeper (zero address when none). */
+  keeper: string;
+  /** Published allowlist root (bytes32; zero when unset). */
+  merkleRoot: string;
+  maxSupply: number;
+  totalSupply: number;
+  wlLimit: number;
+  publicLimit: number;
+  treasury: string;
+  /** Metadata frozen forever. */
+  frozen: boolean;
+}
+
+/** `GET /api/site/mint`. */
+export interface MintState {
+  /** Null until an NFT contract is registered. */
+  nftAddress: string | null;
+  chainId: number | null;
+  /** Null when there is no contract (or the chain is off). */
+  contract: MintContractState | null;
+  /** HYPE price in USD; null when the feed is unavailable. */
+  hypeUsd: number | null;
+  /** Current mint price in USD at `hypeUsd`; null when either is unknown. */
+  priceUsd: number | null;
+  /** The target the price is kept at (`MINT_USD_CENTS`). */
+  targetUsdCents: number;
+  /** Distinct holders (wallets with `balanceOf > 0`). */
+  holders: number;
+  /** `totalSupply >= maxSupply`. */
+  soldOut: boolean;
+  gameAccess: GameAccess;
+}
+
+/** `GET /api/site/mint/proof?wallet=0x…`. */
+export interface MintProofResponse {
+  /** The wallet is in the server's latest allowlist snapshot. */
+  eligible: boolean;
+  /** Merkle proof (bytes32 hex) for `mintAllowlist`; empty when not eligible. */
+  proof: string[];
+  /** Root of the server's snapshot the proof is for; null when there is no snapshot. */
+  root: string | null;
+  /** Root published on the contract; the proof only works when it equals `root`. */
+  onchainRoot: string | null;
+}
+
+/** A built allowlist: approved WL wallets plus submitted collab wallets, checksummed, de-duplicated, sorted. */
+export interface AllowlistSnapshot {
+  /** OpenZeppelin-compatible Merkle root (bytes32 hex). */
+  root: string;
+  count: number;
+  wallets: string[];
+  /** Unix ms. */
+  builtAt: number;
+  /** The admin wallet that built it. */
+  builtBy: string;
+  /** How many wallets came from each source (a wallet in both counts in both). */
+  sources: { wl: number; collab: number };
+}
+
+/** `POST /api/admin/mint/allowlist` response. */
+export interface AllowlistBuildResponse {
+  root: string;
+  count: number;
+}
+
+/** `GET /api/admin/mint/allowlist`. */
+export interface AllowlistStatus {
+  snapshot: AllowlistSnapshot | null;
+  /** Current approvals vs the snapshot: wallets to add / drop on the next build. */
+  diff: { added: string[]; removed: string[] };
+  onchainRoot: string | null;
+  /** The snapshot's root is the one on the contract. */
+  published: boolean;
+}
+
+/** `GET /api/admin/mint/price`. */
+export interface MintPriceQuote {
+  /** HYPE price in USD; null when the feed is unavailable. */
+  hypeUsd: number | null;
+  targetUsdCents: number;
+  /** `targetUsdCents` in wei at `hypeUsd` (decimal string); null without a price. */
+  priceWei: string | null;
+  /** Unix ms of the HYPE/USD reading. */
+  fetchedAt: number | null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Profiles (`GET /api/profile`, `PUT /api/profile`)                    */
+/* ------------------------------------------------------------------ */
+
+export interface ProfileStats {
+  games: number;
+  kills: number;
+  /** Best score. */
+  best: number;
+}
+
+/** `GET /api/profile` (signed-in). `name` is null before the player picks one. */
+export interface ProfileView {
+  /** EIP-55 checksummed. */
+  wallet: string;
+  name: string | null;
+  skin: number;
+  stats: ProfileStats;
+  /** Unix ms; null when never saved. */
+  updatedAt: number | null;
+}
+
+/** `PUT /api/profile` body. */
+export interface ProfileUpdate {
+  name: string;
+  skin: number;
 }

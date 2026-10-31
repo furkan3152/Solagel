@@ -1,5 +1,5 @@
 /**
- * Emote stickers (R4: no emoji in UI chrome). Each system emote is a
+ * Emote stickers (no emoji in UI chrome). Each system emote is a
  * die-cut risograph sticker: a card-stock border with an ink hairline, flat
  * riso inks with a misregistered second pass (multiply) and hand-lettered
  * stroke type (no fonts: SVG used as an image cannot load web fonts).
@@ -8,7 +8,7 @@
  * (decoded once into an Image and drawn above the cell).
  */
 
-import { CARD_PAPER, INK as PALETTE_INK, RISO } from '@slana/art';
+import { CARD_PAPER, INK as PALETTE_INK, RISO } from '@elymum/art';
 
 const INK = PALETTE_INK;
 const CARD = CARD_PAPER;
@@ -47,7 +47,7 @@ function letters(text: string, cx: number, top: number, h: number, color = INK, 
 }
 
 /** Die-cut base: ink hairline, card border, then `fill`. */
-function dieCut(shape: string, fill = CARD): string {
+function dieCut(shape: string, fill: string = CARD): string {
   return (
     `<g stroke-linejoin="round">` +
     `<g fill="${INK}" stroke="${INK}" stroke-width="9" opacity=".9">${shape}</g>` +

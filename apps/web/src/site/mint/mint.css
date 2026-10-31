@@ -1,0 +1,1084 @@
+/* Plate II, "The mint, after dark" (spec 6.9). Night plate, cream mint sticker, seigaiha band. */
+
+.mt-platelabel {
+  padding: 18px var(--gutter);
+}
+
+.mt-night {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  background: var(--trench);
+  color: var(--cream);
+  padding: clamp(48px, 7vw, 96px) var(--gutter) clamp(120px, 12vw, 168px);
+}
+.mt-night--quiet {
+  padding-top: 72px;
+}
+
+/* ── sky ── */
+.mt-sky {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  width: 100%;
+  height: 100%;
+}
+.mt-sky__ring {
+  fill: none;
+  stroke: var(--reef);
+  stroke-width: 22;
+}
+.mt-sky__ring--lights {
+  stroke: var(--current);
+  stroke-width: 3;
+  stroke-dasharray: 2 16;
+  stroke-linecap: round;
+}
+.mt-sky__stars circle {
+  fill: var(--cream);
+  opacity: 0.8;
+  animation: mt-twinkle 4s ease-in-out infinite;
+}
+.mt-sky__spark--sun {
+  fill: var(--sun);
+}
+.mt-sky__spark--foam {
+  fill: var(--foam);
+}
+@keyframes mt-twinkle {
+  0%,
+  100% {
+    opacity: 0.8;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.mt-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: -1;
+  height: clamp(90px, 9vw, 130px);
+  --sg-fill: var(--trench);
+}
+.mt-band .kb-seigaiha {
+  width: 100%;
+  height: 100%;
+}
+
+/* ── layout ── */
+.mt-wrap {
+  position: relative;
+  max-width: 1240px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: clamp(32px, 4vw, 56px);
+  align-items: center;
+}
+.mt-wrap--quiet {
+  grid-template-columns: auto 1fr;
+  max-width: 760px;
+  min-height: 280px;
+}
+.mt-wrap--loading {
+  grid-template-columns: 1fr;
+  justify-items: center;
+}
+.mt-quiet__h {
+  font-size: var(--t-h2);
+  color: var(--cream);
+  margin: 0 0 10px;
+}
+.mt-err {
+  margin: 0 0 18px;
+  color: var(--down-ink);
+  font-weight: 600;
+}
+
+/* ── copy ── */
+.mt-kicker {
+  display: block;
+  color: var(--foam);
+}
+.mt-h {
+  margin: 12px 0 18px;
+  font-size: clamp(44px, 5.2vw, 72px);
+  line-height: 0.98;
+  color: var(--cream);
+}
+.mt-h em {
+  font-style: normal;
+  color: var(--sun);
+}
+.mt-lede {
+  max-width: 440px;
+  margin: 0;
+  color: #bfd8dd;
+  font-size: 17px;
+  line-height: 1.55;
+}
+.mt-limits {
+  margin: 14px 0 0;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--foam);
+}
+
+/* WL → MINT → PLAY */
+.mt-track {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin: 28px 0 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.mt-track__stop {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border: 2.5px solid var(--foam);
+  border-radius: var(--r-pill);
+  color: var(--foam);
+  white-space: nowrap;
+}
+.mt-track__stop + .mt-track__stop {
+  position: relative;
+  margin-left: 34px;
+}
+.mt-track__stop + .mt-track__stop::before {
+  content: '';
+  position: absolute;
+  right: calc(100% + 6px);
+  top: 50%;
+  width: 22px;
+  border-top: 2.5px dotted var(--foam);
+}
+.mt-track__stop.is-on {
+  background: var(--sun);
+  color: var(--ink-fixed);
+  border-color: var(--outline);
+  box-shadow: 3px 3px 0 var(--shadow-ink, #000507);
+  transform: rotate(-2deg);
+}
+.mt-track__stop.is-past {
+  background: var(--reef);
+  color: var(--foam);
+}
+.mt-copy .mt-track:first-child {
+  margin: 0 0 28px;
+}
+
+/* ── the mint sticker ── */
+.mt-card {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  gap: 28px;
+  padding: 28px;
+  border: var(--stroke) solid var(--outline);
+  border-radius: 26px;
+  background: var(--sticker);
+  color: var(--ink);
+  box-shadow: 8px 8px 0 #000507;
+}
+.mt-card__right {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+.mt-card__kick {
+  display: block;
+  color: var(--ink-3);
+}
+.mt-card__h {
+  margin: 6px 0 8px;
+  font-size: var(--t-h3);
+  line-height: 1.02;
+}
+.mt-card__head p,
+.mt-card__teaser {
+  margin: 0;
+  font-size: 15px;
+  color: var(--ink-2);
+}
+
+/* emblem panel */
+.mt-emblem {
+  position: relative;
+  align-self: stretch;
+  min-height: 360px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: var(--stroke) solid var(--outline);
+  border-radius: 20px;
+  background: var(--teal);
+}
+.mt-emblem__rays {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  stroke: var(--teal-s);
+}
+.mt-waves {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: min(34%, 120px);
+  stroke: var(--teal-s);
+}
+.mt-waves__fill {
+  fill: var(--teal);
+  stroke: none;
+}
+.mt-emblem__no,
+.mt-emblem__phase {
+  position: absolute;
+  top: 12px;
+  z-index: 1;
+  padding: 3px 8px;
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: var(--r-tag);
+  background: var(--sticker);
+  color: var(--ink-fixed);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.mt-emblem__no {
+  left: 12px;
+}
+.mt-emblem__phase {
+  right: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transform: rotate(3deg);
+  box-shadow: 2px 2px 0 var(--outline);
+}
+.mt-emblem__phase--live {
+  background: var(--sun);
+}
+.mt-emblem__phase--done {
+  background: #d4ece4;
+}
+.mt-emblem__seal {
+  position: relative;
+  margin-bottom: 48px;
+}
+.mt-emblem__rib {
+  position: absolute;
+  left: -2px;
+  right: -2px;
+  bottom: 18px;
+  margin: 0;
+  padding: 5px 0 6px;
+  border-top: var(--stroke) solid var(--outline);
+  border-bottom: var(--stroke) solid var(--outline);
+  background: var(--sun);
+  color: var(--ink-fixed);
+  text-align: center;
+  font-size: 21px;
+  line-height: 1.15;
+  font-variation-settings: var(--fv-wonk);
+}
+
+/* gauge, price */
+.mt-card .kb-gauge__sub {
+  max-width: 200px;
+}
+.mt-price {
+  padding: 14px 0;
+  border-top: 2.5px dashed var(--sand-2);
+  border-bottom: 2.5px dashed var(--sand-2);
+}
+.mt-price__fig {
+  display: block;
+}
+.mt-price__tick {
+  margin: 8px 0 0;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--ink-3);
+}
+
+/* quantity, total */
+.mt-qty {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.mt-qty__lbl {
+  margin-bottom: 6px;
+}
+.mt-total {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  text-align: right;
+}
+.mt-total__sub {
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--ink-3);
+}
+
+.mt-mintbtn {
+  font-size: 20px;
+}
+
+/* the two wallet steps */
+.mt-steps {
+  display: grid;
+  gap: 8px;
+  margin: -4px 0 0;
+  padding: 12px 14px;
+  list-style: none;
+  border: var(--stroke-sm) dashed var(--sand-2);
+  border-radius: 12px;
+  font-size: 14px;
+}
+.mt-steps__s {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: var(--ink-3);
+}
+.mt-steps__s.is-on,
+.mt-steps__s.is-done {
+  color: var(--ink);
+  font-weight: 600;
+}
+.mt-steps__n {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  display: inline-grid;
+  place-items: center;
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: 50%;
+  background: var(--linen);
+  font-size: 12px;
+}
+.mt-steps__s.is-on .mt-steps__n {
+  background: var(--sun);
+  animation: mt-pulse 1.1s ease-in-out infinite;
+}
+.mt-steps__s.is-done .mt-steps__n {
+  background: var(--up);
+  color: var(--cream);
+}
+.mt-steps__s.is-wait .mt-steps__n {
+  border-style: dashed;
+}
+@keyframes mt-pulse {
+  50% {
+    transform: scale(1.15);
+  }
+}
+
+.mt-why {
+  margin: -6px 0 0;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+.mt-why .kicker {
+  margin-right: 6px;
+  color: var(--ink-3);
+}
+.mt-why--error {
+  color: var(--down-ink);
+  font-weight: 600;
+}
+.mt-why--error .kicker {
+  color: var(--down-ink);
+}
+
+/* the WL status sticker */
+.mt-wl {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 2.5px solid var(--outline);
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.mt-wl__text {
+  min-width: 0;
+}
+.mt-wl__text .kb-addr {
+  margin-right: 4px;
+  vertical-align: middle;
+}
+.mt-wl__dot {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: 2.5px solid var(--outline);
+  border-radius: 50%;
+  color: var(--cream);
+}
+.mt-wl__dot .kb-icon {
+  stroke-width: 3.2;
+}
+.mt-wl--ok {
+  background: #e3f1ec;
+  border-color: var(--up);
+}
+.mt-wl--ok .mt-wl__dot {
+  background: var(--up);
+}
+.mt-wl--no {
+  background: #fbe6e1;
+  border-color: var(--down-s);
+}
+.mt-wl--no .mt-wl__dot {
+  background: var(--down-s);
+}
+.mt-wl--wait {
+  background: #fbf0d4;
+  border-color: var(--sun-s);
+}
+.mt-wl--wait .mt-wl__dot {
+  background: var(--sun);
+  color: var(--ink-fixed);
+}
+.mt-wl--idle {
+  background: var(--linen);
+  border-color: var(--sand-2);
+}
+.mt-wl--idle .mt-wl__dot {
+  background: var(--teal);
+}
+
+.mt-fine {
+  margin: -6px 0 0;
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+
+.mt-facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 0;
+  padding: 14px 0;
+  border-top: 2.5px dashed var(--sand-2);
+  border-bottom: 2.5px dashed var(--sand-2);
+}
+.mt-facts dd {
+  margin: 4px 0 0;
+  font-size: 17px;
+}
+
+.mt-signin {
+  display: grid;
+  gap: 8px;
+}
+
+.mt-textlink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--foam);
+  font: 700 15px var(--font-body);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+  cursor: pointer;
+}
+.mt-textlink:hover {
+  color: var(--cream);
+}
+.mt-textlink:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+.mt-linkbtn {
+  text-decoration: none;
+}
+
+/* ── minted ── */
+.mt-wrap--done {
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+}
+.mt-done__cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 14px;
+  margin-top: 30px;
+}
+.mt-play {
+  min-width: 200px;
+  font-size: 24px;
+  min-height: 64px;
+}
+
+.mt-pile {
+  position: relative;
+  min-height: 460px;
+  display: grid;
+  place-items: center;
+}
+.mt-tokens {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 22px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mt-token {
+  position: relative;
+  padding: 10px;
+  border: var(--stroke) solid var(--outline);
+  border-radius: 22px;
+  background: var(--sticker);
+  box-shadow: 6px 6px 0 #000507;
+}
+.mt-token img {
+  display: block;
+  width: clamp(150px, 19vw, 260px);
+  height: auto;
+  aspect-ratio: 1;
+  border: var(--stroke) solid var(--outline);
+  border-radius: 14px;
+  background: var(--trench);
+}
+.mt-pile--1 .mt-token img {
+  width: clamp(220px, 26vw, 330px);
+}
+.mt-pile--3 .mt-token img,
+.mt-pile--4 .mt-token img {
+  width: clamp(130px, 14vw, 190px);
+}
+.mt-pile--2 .mt-token:nth-child(2) {
+  margin-top: 46px;
+}
+.mt-token__tag {
+  position: absolute;
+  right: -16px;
+  top: -14px;
+  z-index: 2;
+  padding: 4px 10px;
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: var(--r-tag);
+  background: var(--sun);
+  color: var(--ink-fixed);
+  box-shadow: 3px 3px 0 #000507;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ta-da */
+.mt-burst {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: min(620px, 120%);
+  aspect-ratio: 1;
+  margin: calc(min(620px, 120%) / -2) 0 0 calc(min(620px, 120%) / -2);
+  z-index: 0;
+  pointer-events: none;
+}
+.mt-burst__art {
+  display: block;
+  width: 100%;
+  height: 100%;
+  animation: mt-turn 60s linear infinite;
+}
+.mt-burst__outer {
+  fill: var(--teal);
+  stroke: var(--outline);
+  stroke-width: 3;
+  stroke-linejoin: round;
+}
+.mt-burst__inner {
+  fill: var(--sun);
+  stroke: var(--outline);
+  stroke-width: 3;
+  stroke-linejoin: round;
+}
+.mt-burst__core {
+  fill: var(--sun-s);
+}
+@keyframes mt-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.mt-confetti {
+  position: absolute;
+  left: 50%;
+  top: 45%;
+  width: 0;
+  height: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+.mt-confetti--still {
+  z-index: 0;
+}
+.mt-confetti__bit {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: block;
+  margin: -14px 0 0 -14px;
+}
+.mt-pile__ground {
+  position: absolute;
+  left: 0;
+  bottom: -24px;
+  z-index: 3;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+}
+.mt-pile__snack {
+  margin-bottom: 10px;
+}
+.mt-pile__snack--2 {
+  margin-left: 6px;
+  margin-bottom: 12px;
+}
+
+/* ── responsive ── */
+@media (max-width: 1100px) {
+  .mt-card {
+    grid-template-columns: 210px minmax(0, 1fr);
+    gap: 22px;
+    padding: 22px;
+  }
+}
+@media (max-width: 960px) {
+  .mt-wrap,
+  .mt-wrap--done {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .mt-lede {
+    max-width: 560px;
+  }
+}
+@media (max-width: 640px) {
+  .mt-card {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 16px;
+    gap: 20px;
+    border-radius: 22px;
+    box-shadow: 5px 5px 0 #000507;
+  }
+  .mt-emblem {
+    min-height: 280px;
+  }
+  .mt-emblem__seal .kb-coin {
+    width: 150px;
+    height: auto;
+  }
+  .mt-h {
+    font-size: 46px;
+  }
+  .mt-wrap--quiet {
+    grid-template-columns: 1fr;
+  }
+  .mt-sky__ring {
+    display: none;
+  }
+  .mt-pile {
+    order: -1;
+    min-height: 330px;
+    margin: 24px 0 8px;
+  }
+  .mt-pile--2 .mt-token:nth-child(2) {
+    margin-top: 0;
+  }
+  .mt-tokens {
+    gap: 16px;
+  }
+  .mt-pile--2 .mt-token img,
+  .mt-pile--3 .mt-token img,
+  .mt-pile--4 .mt-token img {
+    width: 128px;
+  }
+  .mt-play {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mt-burst__art,
+  .mt-sky__stars circle,
+  .mt-steps__s.is-on .mt-steps__n {
+    animation: none;
+  }
+}
+
+@media (max-width: 420px) {
+  .mt-card .kb-gauge__art {
+    width: 112px;
+    height: auto;
+  }
+  .mt-card .kb-gauge__num {
+    font-size: 24px;
+  }
+  .mt-card .kb-gauge {
+    gap: 12px;
+  }
+  .mt-qty .kb-qty__btn {
+    width: 44px;
+  }
+  .mt-qty {
+    flex-wrap: nowrap;
+    gap: 10px;
+  }
+  .mt-total {
+    flex: 1;
+    min-width: 0;
+  }
+  .mt-total .kb-hype {
+    font-size: 17px;
+  }
+}
+
+/* ---------------------------------------------------------------- */
+/* Rituals: the wax seal, the hand of cards, the flap, the flip      */
+/* ---------------------------------------------------------------- */
+
+/* the wax seal pressed onto the ribbon */
+.mt-emblem:has(.mt-emblem__wax) .mt-emblem__rib {
+  padding-right: 44px;
+}
+.mt-emblem__wax {
+  position: absolute;
+  right: 6px;
+  bottom: 4px;
+  z-index: 2;
+  rotate: -12deg;
+}
+.mt-wax--trembling {
+  animation: mt-tremble 0.34s ease-in-out infinite;
+}
+@keyframes mt-tremble {
+  0%,
+  100% {
+    transform: rotate(0deg) translate(0, 0);
+  }
+  25% {
+    transform: rotate(-4deg) translate(-1px, 1px);
+  }
+  75% {
+    transform: rotate(4deg) translate(1px, -1px);
+  }
+}
+.mt-wax__crack {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: mt-crack 2.4s ease-in-out infinite;
+}
+@keyframes mt-crack {
+  0% {
+    stroke-dashoffset: 1;
+  }
+  70%,
+  100% {
+    stroke-dashoffset: 0.45;
+  }
+}
+
+/* the unsealing, centred on the pile: drop in, shake, crack, light, snap (0.84 s), halves tumble */
+.mt-unseal {
+  position: absolute;
+  left: 50%;
+  top: 45%;
+  z-index: 4;
+  pointer-events: none;
+}
+.mt-unseal svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.mt-unseal__whole {
+  animation: mt-seal 840ms linear both;
+}
+@keyframes mt-seal {
+  0% {
+    opacity: 0;
+    transform: scale(1.6) rotate(-14deg);
+    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  16% {
+    opacity: 1;
+    transform: scale(0.92) rotate(2deg);
+  }
+  24% {
+    transform: scale(1) rotate(0deg);
+  }
+  40% {
+    transform: translateX(-4px) rotate(-5deg);
+  }
+  48% {
+    transform: translateX(4px) rotate(5deg);
+  }
+  56% {
+    transform: translateX(-3px) rotate(-4deg);
+  }
+  64% {
+    transform: translateX(3px) rotate(3deg);
+  }
+  96% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.05);
+  }
+}
+.mt-unseal__crack {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: mt-crack-run 200ms ease-in 400ms both;
+}
+@keyframes mt-crack-run {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.mt-unseal svg.mt-unseal__rays {
+  inset: -30%;
+  width: 160%;
+  height: 160%;
+  opacity: 0;
+  animation: mt-rays 1240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes mt-rays {
+  0%,
+  38% {
+    opacity: 0;
+    transform: scale(0.4) rotate(0deg);
+  }
+  58% {
+    opacity: 1;
+    transform: scale(0.95) rotate(8deg);
+  }
+  78% {
+    opacity: 1;
+    transform: scale(1.45) rotate(18deg);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.8) rotate(24deg);
+  }
+}
+.mt-unseal__half {
+  opacity: 0;
+  animation: mt-half-l 1000ms linear 810ms both;
+}
+.mt-unseal__half--r {
+  animation-name: mt-half-r;
+}
+@keyframes mt-half-l {
+  0% {
+    opacity: 0;
+    transform: none;
+    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  3% {
+    opacity: 1;
+  }
+  20% {
+    transform: translate(-84px, -40px) rotate(-32deg);
+    animation-timing-function: cubic-bezier(0.55, 0, 1, 0.45);
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-200px, 470px) rotate(-230deg);
+  }
+}
+@keyframes mt-half-r {
+  0% {
+    opacity: 0;
+    transform: none;
+    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  3% {
+    opacity: 1;
+  }
+  20% {
+    transform: translate(84px, -40px) rotate(32deg);
+    animation-timing-function: cubic-bezier(0.55, 0, 1, 0.45);
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(200px, 470px) rotate(230deg);
+  }
+}
+.mt-unseal__snap {
+  overflow: visible;
+  opacity: 0;
+  animation: mt-snap 420ms ease-out 800ms both;
+}
+@keyframes mt-snap {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.4);
+  }
+}
+
+/* the hand of emblem cards next to the quantity */
+.mt-hand {
+  position: relative;
+  flex: 1 1 120px;
+  align-self: center;
+  height: 64px;
+  min-width: 110px;
+  perspective: 600px;
+}
+.mt-hand__card {
+  position: absolute;
+  left: 50%;
+  top: 6px;
+  width: 36px;
+  height: 50px;
+  margin-left: -18px;
+  display: grid;
+  place-items: center;
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: 8px;
+  background: var(--teal);
+  box-shadow: 2px 2px 0 var(--outline);
+  transform-origin: 50% 230%;
+}
+.mt-hand__wax {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  width: 13px;
+  height: 13px;
+  border: 2px solid var(--outline);
+  border-radius: 46% 54% 50% 50%;
+  background: var(--coral);
+}
+.mt-hand__more {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  padding: 1px 6px;
+  border: 2px solid var(--outline);
+  border-radius: var(--r-tag);
+  background: var(--sun);
+  color: var(--ink-fixed);
+  font-size: 11px;
+  font-weight: 700;
+}
+@media (max-width: 420px) {
+  .mt-hand {
+    display: none;
+  }
+}
+
+/* the split-flap price */
+.mt-flap {
+  display: inline-block;
+  perspective: 500px;
+}
+.mt-flap__face {
+  display: inline-block;
+  transform-origin: 50% 0;
+}
+
+/* the minted emblem, a two-faced card */
+.mt-flipcard {
+  position: relative;
+  transform-style: preserve-3d;
+}
+.mt-flipcard__front,
+.mt-flipcard__back {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.mt-flipcard__back {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: var(--stroke) solid var(--outline);
+  border-radius: 14px;
+  background: var(--teal);
+  transform: rotateY(180deg);
+}
+.mt-flipcard__back .kb-seigaiha {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.mt-flipcard__mark {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 112px;
+  height: 112px;
+  border: var(--stroke) solid var(--outline);
+  border-radius: 50%;
+  background: var(--sticker);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mt-wax--trembling,
+  .mt-wax__crack {
+    animation: none;
+  }
+  .mt-wax__crack {
+    stroke-dashoffset: 0.5;
+  }
+}

@@ -52,4 +52,4 @@ export function installDomStubs(): void {
   Element.prototype.scrollIntoView = () => {};
 }
 
-export const SETTINGS = { wlOpen: true, collabOpen: true, gamePublic: false, xHandle: 'slanaio', launchPostUrl: null };
+export const SETTINGS = { wlOpen: true, collabOpen: true, gameAccess: 'admins' as const, xHandle: 'elymum', launchPostUrl: null };

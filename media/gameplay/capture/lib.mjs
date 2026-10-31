@@ -1,9 +1,9 @@
-// Capture toolkit for the Slana gameplay and how-to-play videos.
+// Capture toolkit for the Elymum gameplay and how-to-play videos.
 //
 // Drives the real web app (`pnpm demo`, fake chain) with Playwright and records takes:
 //   - video: CDP screencast frames (JPEG) with their timestamps, conformed afterwards to a
 //     60 fps CFR mezzanine (`video.mp4`, nearest frame, so time t is frame round(t*60));
-//   - audio: the dev audio tap (`window.__slanaAudioTap`, the master bus after the limiter)
+//   - audio: the dev audio tap (`window.__elymumAudioTap`, the master bus after the limiter)
 //     through MediaRecorder, aligned to the first video frame (`audio.wav`);
 //   - telemetry: a 10 Hz log of the HUD and of where things are on screen (my coin, threats,
 //     prey, the arena round: ms to the bell and its phase) plus discrete events (value floats,
@@ -22,11 +22,12 @@ export const CACHE = resolve(ROOT, 'media/gameplay/cache');
 export const TAKES = resolve(CACHE, 'takes');
 const require = createRequire(resolve(ROOT, 'apps/web/package.json'));
 const { chromium } = require('playwright');
-const { installDevWallet, loadOrCreateKeypair } = await import(resolve(ROOT, 'scripts/lib/dev-wallet.mjs'));
+const { installDevWallet, loadOrCreateKey } = await import(resolve(ROOT, 'scripts/lib/dev-wallet.mjs'));
+const { resolveChromium } = await import(resolve(ROOT, 'scripts/lib/common.mjs'));
 import { attachJournal } from './journal.mjs';
 
-export const BASE = process.env.SLANA_URL || 'http://localhost:5173/play';
-export const CHROME = process.env.CHROME_PATH;
+export const BASE = process.env.ELYMUM_URL || 'http://localhost:5173/play';
+export const CHROME = resolveChromium(chromium).executablePath;
 export const FFMPEG = process.env.FFMPEG || '/usr/bin/ffmpeg';
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const T0 = Date.now();
@@ -49,7 +50,7 @@ export function pageHelpers() {
   window.addEventListener('keydown', (e) => keys.push({ t: Date.now() / 1000, code: e.code }), true);
 
   function scan() {
-    const S = window.__slana;
+    const S = window.__elymum;
     if (!S) return null;
     const st = S.useUi.getState();
     if (st.screen !== 'playing') return { screen: st.screen };
@@ -184,7 +185,7 @@ export function pageHelpers() {
 
   /** One telemetry sample: HUD + where my coin, threats and prey sit on screen. */
   window.__sample = () => {
-    const S = window.__slana;
+    const S = window.__elymum;
     const t = Date.now() / 1000;
     if (!S) return { t };
     const st = S.useUi.getState();
@@ -212,12 +213,12 @@ export function pageHelpers() {
   };
 
   /**
-   * The arena round on screen (or of the Penny Pond room in the lobby): ms to the bell and the
+   * The arena round on screen (or of the Asphodel Meadow room in the lobby): ms to the bell and the
    * phase ('open' | 'closing'). Rounds are wall-clock aligned and the demo server runs on this
    * machine, so the local clock is the server's.
    */
   window.__round = (arenaId) => {
-    const S = window.__slana;
+    const S = window.__elymum;
     if (!S) return null;
     const st = S.useUi.getState();
     let r = st.room?.mode === 'arena' && (arenaId == null || st.room.arenaId === arenaId) ? st.room.round : null;
@@ -234,7 +235,7 @@ export function pageHelpers() {
   /** Discrete events from the store (exact times). */
   window.__events = [];
   const hook = () => {
-    const S = window.__slana;
+    const S = window.__elymum;
     if (!S || window.__hooked) return;
     window.__hooked = true;
     S.useUi.subscribe((s, p) => {
@@ -252,7 +253,7 @@ export function pageHelpers() {
       if (s.chat.length !== p.chat.length && s.chat.length) push('chat', s.chat[s.chat.length - 1]?.text);
     });
   };
-  const iv = setInterval(() => { if (window.__slana) { hook(); clearInterval(iv); } }, 200);
+  const iv = setInterval(() => { if (window.__elymum) { hook(); clearInterval(iv); } }, 200);
   window.__keys = keys;
 }
 
@@ -268,12 +269,13 @@ export async function setupContext(ctx, o) {
     ...(o.settings || {}),
   };
   await ctx.addInitScript((s) => {
-    if (!sessionStorage.getItem('__set')) { localStorage.setItem('slana.settings.v1', JSON.stringify(s)); sessionStorage.setItem('__set', '1'); }
+    if (!sessionStorage.getItem('__set')) { localStorage.setItem('elymum.settings.v1', JSON.stringify(s)); sessionStorage.setItem('__set', '1'); }
     // captures keep one look: no automatic quality drop
-    localStorage.setItem('slana.autoQuality', 'off');
+    localStorage.setItem('elymum.autoQuality', 'off');
   }, settings);
-  const kp = o.keyPath ? loadOrCreateKeypair(o.keyPath) : undefined;
-  await installDevWallet(ctx, kp);
+  // the Dev Wallet (EIP-6963): a 0x key kept in a file so a replay shows the same address; the fake chain needs no RPC
+  const key = o.keyPath ? loadOrCreateKey(o.keyPath) : undefined;
+  await installDevWallet(ctx, key);
   await ctx.addInitScript(pageHelpers);
 }
 
@@ -292,7 +294,7 @@ export class Player {
     if (o.journal) {
       mkdirSync(dirname(o.journal), { recursive: true });
       // the replay needs the same wallet (its address is on screen)
-      o.keyPath ||= `${o.journal}.key.json`;
+      o.keyPath ||= `${o.journal}.key`;
       await attachJournal(this.ctx, o.journal);
     }
     await setupContext(this.ctx, o);
@@ -301,18 +303,18 @@ export class Player {
     this.page.on('pageerror', (e) => this.problems.push(`[pageerror] ${e.message}`));
     this.page.on('console', (m) => m.type() === 'error' && this.problems.push(`[console.error] ${m.text()}`));
     await this.page.goto(BASE, { waitUntil: 'networkidle' });
-    await this.page.waitForFunction(() => !!window.__slana && window.__slana.useUi.getState().connected, null, { timeout: 30000 });
-    await this.page.waitForFunction(() => !!window.__slanaChain, null, { timeout: 20000 });
+    await this.page.waitForFunction(() => !!window.__elymum && window.__elymum.useUi.getState().connected, null, { timeout: 30000 });
+    await this.page.waitForFunction(() => !!window.__elymumChain, null, { timeout: 20000 });
     await this.page.mouse.move(this.cur.x, this.cur.y);
     if (o.noDraw || o.journal) {
       // a staged rival only needs to steer: skip its canvas work (a patch of this page only)
-      await this.ui(() => { const e = window.__slana.engine; e.renderer.draw = () => {}; e.renderer.drawMinimap = () => {}; });
+      await this.ui(() => { const e = window.__elymum.engine; e.renderer.draw = () => {}; e.renderer.drawMinimap = () => {}; });
     }
     return this;
   }
 
   ui(fn, arg) { return this.page.evaluate(fn, arg); }
-  screen() { return this.ui(() => window.__slana.useUi.getState().screen); }
+  screen() { return this.ui(() => window.__elymum.useUi.getState().screen); }
   wait(ms) { return this.page.waitForTimeout(ms); }
 
   async moveTo(x, y, speed = 1) {
@@ -368,8 +370,8 @@ export class Player {
     await this.page.waitForSelector('.wl-sheet', { timeout: 5000 });
     await this.wait(600);
     await this.click('.wl-item');
-    await this.page.waitForFunction(() => !!window.__slana.useUi.getState().auth, null, { timeout: 15000 });
-    await this.page.waitForFunction(() => window.__slanaChain?.useChainData.getState().tokenBalance != null, null, { timeout: 15000 });
+    await this.page.waitForFunction(() => !!window.__elymum.useUi.getState().auth, null, { timeout: 15000 });
+    await this.page.waitForFunction(() => window.__elymumChain?.useChainData.getState().tokenBalance != null, null, { timeout: 15000 });
     await this.wait(800);
   }
 
@@ -377,7 +379,7 @@ export class Player {
     await this.click('[role="radio"][data-kb-value="practice"]', { fx: 0.4 });
     await this.wait(300);
     await this.click('.kl-cta');
-    await this.page.waitForFunction(() => window.__slana.useUi.getState().screen === 'playing', null, { timeout: 20000 });
+    await this.page.waitForFunction(() => window.__elymum.useUi.getState().screen === 'playing', null, { timeout: 20000 });
   }
 
   /** Buys an arena ticket through the lobby sheet and waits for the room. */
@@ -392,31 +394,31 @@ export class Player {
     await this.page.waitForSelector('.tf-sheet', { timeout: 8000 });
     await this.wait(slow ? 1400 : 500);
     if (slow && this.onSheet) await this.onSheet(this);
-    await this.ui((ms) => { if (window.__slanaChain?.fakeWallet) window.__slanaChain.fakeWallet.delayMs = ms; }, signDelay);
+    await this.ui((ms) => { if (window.__elymumChain?.fakeWallet) window.__elymumChain.fakeWallet.delayMs = ms; }, signDelay);
     await this.click('.tf-sheet .kb-btn--pink', { before: slow ? 600 : 200 });
     if (held) {
       // joins are closed: the lobby holds the ticket and joins by itself at the bell
-      await this.page.waitForFunction(() => { const s = window.__slana.useUi.getState(); return s.screen === 'playing' || !!s.held; }, null, { timeout: 15000 });
+      await this.page.waitForFunction(() => { const s = window.__elymum.useUi.getState(); return s.screen === 'playing' || !!s.held; }, null, { timeout: 15000 });
       return (await this.screen()) === 'playing' ? 'playing' : 'held';
     }
     try {
-      const ok = await this.page.waitForFunction(() => window.__slana.useUi.getState().screen === 'playing', null, { timeout: 15000 }).then(() => true, () => false);
+      const ok = await this.page.waitForFunction(() => window.__elymum.useUi.getState().screen === 'playing', null, { timeout: 15000 }).then(() => true, () => false);
       if (!ok) {
         // the ticket is open but the room did not start: the lobby offers "Resume"
         log(`${this.o.name}: resume`);
         await this.click('.kl-cta');
-        await this.page.waitForFunction(() => window.__slana.useUi.getState().screen === 'playing', null, { timeout: 20000 });
+        await this.page.waitForFunction(() => window.__elymum.useUi.getState().screen === 'playing', null, { timeout: 20000 });
       }
     } catch (e) {
       mkdirSync(resolve(CACHE, 'debug'), { recursive: true });
       await this.page.screenshot({ path: resolve(CACHE, `debug/buy-${this.o.name}.png`) }).catch(() => {});
-      const st = await this.ui(() => { const s = window.__slana.useUi.getState(); return { screen: s.screen, toasts: s.toasts.map((t) => t.text), modal: s.modal }; }).catch(() => null);
+      const st = await this.ui(() => { const s = window.__elymum.useUi.getState(); return { screen: s.screen, toasts: s.toasts.map((t) => t.text), modal: s.modal }; }).catch(() => null);
       throw new Error(`buyTicket(${this.o.name}) failed: ${JSON.stringify(st)} ${this.problems.slice(-3).join(' | ')}`);
     }
   }
 
   brain(o) { return this.ui((o) => window.__brain(o), o); }
-  /** The round of arena `arenaId` (default: the room on screen, else Penny Pond): {left (ms), phase, n}. */
+  /** The round of arena `arenaId` (default: the room on screen, else Asphodel Meadow): {left (ms), phase, n}. */
   round(arenaId) { return this.ui((a) => window.__round(a), arenaId ?? null); }
   /** Waits until pred(round) holds (polls every 250 ms). */
   async untilRound(pred, timeoutMs = 400_000, arenaId) {
@@ -483,7 +485,7 @@ export class Recorder {
     this.audioStart = null;
     if (this.p.o.audio !== 'off') {
       this.audioStart = await page.evaluate(() => new Promise((res) => {
-        const stream = window.__slanaAudioTap?.();
+        const stream = window.__elymumAudioTap?.();
         if (!stream || typeof MediaRecorder === 'undefined') return res(null);
         const rec = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 256000 });
         rec.ondataavailable = async (e) => {
@@ -543,7 +545,7 @@ export class Recorder {
       await this.p.page.evaluate(() => window.__journal.flush()).catch(() => {});
       await sleep(800);
       renameSync(this.p.o.journal, `${this.dir}/journal.jsonl`);
-      if (existsSync(`${this.p.o.journal}.key.json`)) { renameSync(`${this.p.o.journal}.key.json`, `${this.dir}/key.json`); this.p.o.keyPath = `${this.dir}/key.json`; }
+      if (existsSync(`${this.p.o.journal}.key`)) { renameSync(`${this.p.o.journal}.key`, `${this.dir}/wallet.key`); this.p.o.keyPath = `${this.dir}/wallet.key`; }
       rmSync(`${this.dir}/frames`, { recursive: true, force: true });
       this.frames = [this.t0];
     } else if (!this.video) this.frames = [this.audioStart ?? this.t0];

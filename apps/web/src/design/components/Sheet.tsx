@@ -47,7 +47,7 @@ function useIsNarrow(): boolean {
 }
 
 /**
- * Modal on desktop, bottom sheet on phones. Paper texture, taped corners.
+ * Modal on desktop, bottom sheet on phones: a cream sticker taped to the page.
  * Traps focus, closes on Esc and on the scrim, restores focus to the opener.
  */
 export function Sheet({
@@ -160,7 +160,7 @@ export function Sheet({
             {!narrow && (
               <>
                 <Tape rotate={-38} width={92} style={{ left: -24, top: 10 }} />
-                <Tape rotate={36} width={92} tone="pink" style={{ right: -24, top: 10 }} />
+                <Tape rotate={36} width={92} tone="sun" style={{ right: -24, top: 10 }} />
               </>
             )}
             {narrow && <span className="kb-sheet__grip" aria-hidden="true" />}

@@ -1,5 +1,4 @@
-import '../../polyfills';
-import { PublicKey } from '@solana/web3.js';
+import { getAddress, isAddress } from 'viem';
 import {
   COLLAB_ROLES,
   COLLAB_TYPES,
@@ -10,7 +9,9 @@ import {
   type CollabRole,
   type CollabType,
   type CollabWalletRow,
-} from '@slana/shared';
+} from '@elymum/shared';
+
+import { siteHost } from '../settings';
 
 export { ROLE_LABEL, TYPE_LABEL } from './labels';
 
@@ -42,11 +43,11 @@ export function applyErrors(d: ApplyDraft): ApplyErrors {
   const members = Number(d.members.replace(/[\s,._]/g, ''));
   if (!d.members.trim()) e.members = 'How many members does it have?';
   else if (!Number.isInteger(members) || members < 1 || members > SITE_LIMITS.members) e.members = 'Use a whole number from 1 to 10,000,000.';
-  if (!normalizeXHandle(d.communityX)) e.communityX = "That is not an X handle. Use the community's handle, like @slanaio.";
+  if (!normalizeXHandle(d.communityX)) e.communityX = "That is not an X handle. Use the community's handle, like @elymum.";
   if (!normalizeXHandle(d.contactX)) e.contactX = 'That is not an X handle. Use your own handle, like @yourname.';
   if (d.discord.trim().length > SITE_LIMITS.discord) e.discord = `Keep it under ${SITE_LIMITS.discord} characters.`;
   if (!COLLAB_ROLES.includes(d.role as CollabRole)) e.role = 'Pick your role.';
-  if (!d.postUrl.trim()) e.postUrl = "Post about Slana on your community's X first, then paste the link.";
+  if (!d.postUrl.trim()) e.postUrl = "Post about Elymum on your community's X first, then paste the link.";
   else if (!isXStatusUrl(d.postUrl.trim())) e.postUrl = X_POST;
   const about = d.about.trim();
   if (!about) e.about = 'Tell us a little about your community.';
@@ -70,28 +71,33 @@ export function applyBody(d: ApplyDraft, website: string): CollabApplyRequest {
   return body;
 }
 
-/** A Solana user wallet: base58, 32 bytes, on the ed25519 curve (a PDA is not a wallet). */
+/**
+ * An EVM wallet: `0x` + 40 hex digits, not the zero address. All-lower or all-upper case is
+ * accepted as is; a mixed-case address must carry a valid EIP-55 checksum (a wrong one is a typo).
+ */
 export function isUserWallet(s: string): boolean {
-  if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s)) return false;
-  try {
-    return PublicKey.isOnCurve(new PublicKey(s).toBytes());
-  } catch {
-    return false;
-  }
+  if (!/^0x[0-9a-fA-F]{40}$/.test(s)) return false;
+  if (/^0x0{40}$/i.test(s)) return false;
+  const body = s.slice(2);
+  if (body === body.toLowerCase() || body === body.toUpperCase()) return true;
+  return isAddress(s, { strict: true });
 }
 
-const B58_TOKEN = /[1-9A-HJ-NP-Za-km-z]{32,44}/g;
+/** The checksummed form of a wallet (unchanged when it is not an address). */
+export const checksumWallet = (s: string): string => (isAddress(s.trim(), { strict: false }) ? getAddress(s.trim()) : s.trim());
+
+const ADDRESS_TOKEN = /0x[0-9a-fA-F]{40}/g;
 
 /**
- * Parses a pasted list: one person per line, a name and a wallet ("alice 9xQe…", "alice, 9xQe…",
- * "9xQe… alice", tabs from a sheet). Lines without anything that looks like a wallet are skipped.
+ * Parses a pasted list: one person per line, a name and a wallet ("alice 0xAbC…", "alice, 0xAbC…",
+ * "0xAbC… alice", tabs from a sheet). Lines without anything that looks like a wallet are skipped.
  */
 export function parsePastedList(text: string): CollabWalletRow[] {
   const out: CollabWalletRow[] = [];
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
     if (!line) continue;
-    const tokens = [...line.matchAll(B58_TOKEN)].filter((m) => {
+    const tokens = [...line.matchAll(ADDRESS_TOKEN)].filter((m) => {
       const before = line[(m.index ?? 0) - 1];
       const after = line[(m.index ?? 0) + m[0].length];
       return (!before || /[\s,;|\t:]/.test(before)) && (!after || /[\s,;|\t]/.test(after));
@@ -126,18 +132,19 @@ export function rowErrors(rows: CollabWalletRow[]): (string | null)[] {
     const w = r.wallet.trim();
     if (!w && !r.name.trim()) return null;
     if (!w) return 'Add a wallet, or clear the name.';
-    if (!isUserWallet(w)) return 'Not a Solana wallet address.';
+    if (!isUserWallet(w)) return /^0x[0-9a-fA-F]{40}$/.test(w) ? 'Checksum mismatch: check this address for a typo.' : 'Not an EVM wallet address (0x followed by 40 hex characters).';
     if (r.name.trim().length > SITE_LIMITS.walletName) return `Keep the name under ${SITE_LIMITS.walletName} characters.`;
-    const first = seen.get(w);
+    const key = w.toLowerCase();
+    const first = seen.get(key);
     if (first !== undefined) return `Listed twice (row ${first + 1}).`;
-    seen.set(w, i);
+    seen.set(key, i);
     return null;
   });
 }
 
-/** The filled rows, trimmed, as the server takes them. */
+/** The filled rows, trimmed and checksummed, as the server takes them. */
 export const filledRows = (rows: CollabWalletRow[]): CollabWalletRow[] =>
-  rows.filter((r) => r.wallet.trim() || r.name.trim()).map((r) => ({ name: r.name.trim(), wallet: r.wallet.trim() }));
+  rows.filter((r) => r.wallet.trim() || r.name.trim()).map((r) => ({ name: r.name.trim(), wallet: checksumWallet(r.wallet) }));
 
 /** "2d 04:12:09" / "04:12:09" left until `deadline`. */
 export function countdown(deadline: number, now: number): string {
@@ -153,19 +160,19 @@ export function countdown(deadline: number, now: number): string {
 }
 
 /** The raffle post the guide offers to copy. */
-export function rafflePost(community: string, spots: number | null, deadline: number | null): string {
+export function rafflePost(community: string, spots: number | null, deadline: number | null, host: string = siteHost()): string {
   const n = spots ? `${spots} ` : '';
   const when = deadline ? new Date(deadline).toLocaleDateString('en-US', { day: 'numeric', month: 'short' }) : 'soon';
   return [
-    `${community || 'Our community'} x @slanaio`,
+    `${community || 'Our community'} x @elymum`,
     '',
-    `We have ${n}Slana WL spots to raffle. Coins eat coins on Solana, and the arena opens soon.`,
+    `We have ${n}Elymum WL spots to raffle. Coins eat coins on Elysium, and the arena opens soon.`,
     '',
     'To enter:',
-    '1. Follow @slanaio',
+    '1. Follow @elymum',
     '2. Like and repost this post',
-    '3. Reply with your Solana wallet',
+    '3. Reply with your EVM wallet (0x…)',
     '',
-    `Winners picked by ${when}. slana.io`,
+    `Winners picked by ${when}. ${host}`,
   ].join('\n');
 }

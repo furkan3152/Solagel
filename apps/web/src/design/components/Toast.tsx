@@ -24,7 +24,7 @@ export interface ToastProps {
 
 const TONE_ICON: Record<ToastTone, IconName> = { info: 'info', success: 'check', error: 'close' };
 
-/** A torn slip taped to the screen. Use inside `ToastViewport` for live updates. */
+/** A sticker note taped to the screen. Use inside `ToastViewport` for live updates. */
 export function Toast({ tone = 'info', title, message, icon, onClose, closeLabel, tilt = 0 }: ToastProps) {
   return (
     <div
@@ -32,7 +32,7 @@ export function Toast({ tone = 'info', title, message, icon, onClose, closeLabel
       style={{ transform: `rotate(${tilt}deg)` }}
       role={tone === 'error' ? 'alert' : 'status'}
     >
-      <Tape rotate={-3} width={64} tone={tone === 'error' ? 'pink' : tone === 'success' ? 'teal' : 'mustard'} style={{ left: 18, top: -9 }} />
+      <Tape rotate={-3} width={64} tone={tone === 'error' ? 'blush' : tone === 'success' ? 'mist' : 'sun'} style={{ left: 18, top: -9 }} />
       <div className="kb-toast__slip">
         <span className="kb-toast__mark" aria-hidden="true">
           <Icon name={icon ?? TONE_ICON[tone]} size={18} />

@@ -1,5 +1,4 @@
-import type { ChainStatus, RoomInfo, ServerMessage } from '@slana/shared';
-import { WalletContext, type WalletContextState } from '@solana/wallet-adapter-react';
+import type { ChainStatus, RoomInfo, ServerMessage } from '@elymum/shared';
 import { act, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -41,7 +40,7 @@ const { GameEngine } = await import('../src/game/engine');
 const { setEngine } = await import('../src/game/instance');
 const { Kb } = await import('../src/design');
 const { useUi } = await import('../src/store');
-const { useChainData } = await import('../src/solana/chain');
+const { useChainData } = await import('../src/wallet/chain');
 const { Lobby } = await import('../src/ui/lobby/Lobby');
 
 // jsdom has no canvas: the same null it returns, without the "not implemented" warning
@@ -64,20 +63,25 @@ const ARENAS: RoomInfo[] = [1, 2, 3, 4].map((id) => ({
   bots: 10,
   maxPlayers: 50,
   arenaId: id,
+  // ledger units on the wire (6 decimals of the 18-decimal token)
   entryFee: [0, 1000, 10_000, 50_000, 250_000][id] * 1_000_000,
 }));
 /** The server before `set-token`: the chain is on, the game token is not set, practice only. */
 const UNSET: ChainStatus = {
   enabled: true,
-  cluster: 'devnet',
-  programId: null,
+  chainId: 99801,
+  chainName: 'Elysium Testnet',
   rpcUrl: null,
+  explorerUrl: null,
+  arenaAddress: null,
+  nftAddress: null,
   arenasEnabled: false,
   tokenReady: false,
   token: null,
   feeBps: 500,
+  serverKey: null,
 };
-const SET: ChainStatus = { ...UNSET, arenasEnabled: true, tokenReady: true, token: { mint: 'Mint111', symbol: '$SLANA', decimals: 6 } };
+const SET: ChainStatus = { ...UNSET, arenasEnabled: true, tokenReady: true, token: { address: '0x0000000000000000000000000000000000007e57', symbol: '$ELYMUM', decimals: 18 } };
 
 let engine: InstanceType<typeof GameEngine>;
 
@@ -101,14 +105,11 @@ afterEach(() => {
 });
 
 /** No wallet connected (practice needs none). */
-const NO_WALLET = { publicKey: null, connected: false, connecting: false, wallets: [], wallet: null } as unknown as WalletContextState;
 const lobby = () =>
   render(
-    <WalletContext.Provider value={NO_WALLET}>
-      <Kb>
-        <Lobby />
-      </Kb>
-    </WalletContext.Provider>,
+    <Kb>
+      <Lobby />
+    </Kb>,
   );
 /** The big ticket button under the list (Quick Play). */
 const cta = () => document.querySelector<HTMLButtonElement>('button.kl-cta')!;
@@ -127,7 +128,7 @@ describe('lobby while the game token is not set', () => {
     }
     // prices still read from the default arenas, in the default symbol
     expect(within(arenas[0]).getByText('1,000')).toBeTruthy();
-    expect(within(arenas[0]).getByText('$SLANA')).toBeTruthy();
+    expect(within(arenas[0]).getByText('$ELYMUM')).toBeTruthy();
     expect(screen.getByText('Arenas opening soon')).toBeTruthy();
     // practice is selected and plays
     const practice = within(ticketsGroup()).getAllByRole('radio').find((el) => el.getAttribute('data-kb-value') === 'practice')!;
@@ -163,7 +164,7 @@ describe('lobby while the game token is not set', () => {
     // an arena can now be picked; without a wallet its button asks to connect (the path to buying)
     act(() => arenas[0].click());
     expect(cta().textContent).toContain('Connect wallet');
-    expect(cta().textContent).toContain('Penny Pond · 1,000 $SLANA');
+    expect(cta().textContent).toContain('Asphodel Meadow · 1,000 $ELYMUM');
     expect(cta().disabled).toBe(false);
   });
 });

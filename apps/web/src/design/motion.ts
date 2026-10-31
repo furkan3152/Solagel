@@ -1,11 +1,11 @@
-import { useReducedMotion as useMotionReducedMotion, type Transition } from 'motion/react';
+import { useReducedMotion as useMotionReducedMotion, type Transition, type Variants } from 'motion/react';
 import { DUR, EASE } from './curves';
 
 /**
- * Motion rules:
- *  - micro interactions 120–180 ms, screen transitions 260–360 ms with a spring
- *    that overshoots, stamp 420 ms (1.4 → 1 scale, 2–3° turn, ink spread);
- *  - buttons collapse 3–4 px like a press, numbers count, lists stagger 30 ms;
+ * Motion rules (spec §6.6, Ring Storybook):
+ *  - things are stickers and toys: they pop, drop, sink into their shadow and
+ *    bob; springs for coins, buttons and stickers, `EASE.out` for the rest;
+ *  - 160 ms state, 320 ms enter, 640 ms scene; lists stagger 40 ms;
  *  - prefers-reduced-motion: loops stop, transitions shorten to fades.
  */
 
@@ -22,6 +22,10 @@ export const springs = {
   page: { type: 'spring', stiffness: 320, damping: 26, mass: 1 },
   /** A pinned note swinging on its tape until it hangs still. */
   pin: { type: 'spring', stiffness: 380, damping: 14, mass: 0.8 },
+  /** Storybook pop: a sticker or coin bouncing to full size. */
+  pop: { type: 'spring', stiffness: 520, damping: 17, mass: 0.7 },
+  /** A sticker slapped down on the page: falls, squashes, settles its tilt. */
+  drop: { type: 'spring', stiffness: 360, damping: 20, mass: 0.9 },
 } as const satisfies Record<string, Transition>;
 
 export { clamp01, bezier, EASE, DUR, zoomIn, dropScale, DROP_LAND, slowmoScale, SLOWMO_TOTAL } from './curves';
@@ -51,8 +55,72 @@ export const presets = {
 
 export type SpringName = keyof typeof springs;
 
-/** Lists appear 30 ms apart. */
-export const STAGGER = 0.03;
+/** Lists appear 40 ms apart (spec §6.6). */
+export const STAGGER = 0.04;
+
+/**
+ * Storybook moves (spec §6.6) as motion variants: `hidden` → `shown`
+ * (`rest` / `pressed` for press, `still` / `moving` for loops). Use with
+ * `initial="hidden" animate="shown"`, or through `useMoves()`, which swaps in
+ * the reduced-motion twins (a 120 ms fade; loops stand still).
+ */
+export const moves = {
+  /** A sticker or coin popping into existence: 0.6 → 1 with a bounce. */
+  popIn: {
+    hidden: { opacity: 0, scale: 0.6, rotate: -4 },
+    shown: { opacity: 1, scale: 1, rotate: 0, transition: springs.pop },
+  },
+  /** A sticker slapped onto the page from above; lands on its tilt (custom = degrees). */
+  stickerDrop: {
+    hidden: (tilt: number = -1.5) => ({ opacity: 0, y: -28, scale: 1.06, rotate: tilt - 5 }),
+    shown: (tilt: number = -1.5) => ({ opacity: 1, y: 0, scale: 1, rotate: tilt, transition: { ...springs.drop, opacity: { duration: 0.12 } } }),
+  },
+  /** A button sinking into its hard shadow. Pair with the CSS shadow (or use the .kb-btn press). */
+  press: {
+    rest: { x: 0, y: 0 },
+    hover: { x: -1, y: -1 },
+    pressed: { x: 3, y: 3, transition: springs.press },
+  },
+  /** The idle bob of a coin character (2.6 s loop). */
+  bob: {
+    still: { y: 0 },
+    moving: { y: [0, -7, 0], transition: { duration: 2.6, ease: 'easeInOut', repeat: Infinity } },
+  },
+  /** One chomp: a squash towards the food and back. */
+  chomp: {
+    still: { scaleX: 1, scaleY: 1, x: 0 },
+    moving: {
+      scaleX: [1, 1.08, 0.96, 1],
+      scaleY: [1, 0.9, 1.05, 1],
+      x: [0, 6, 0, 0],
+      transition: { duration: 0.42, times: [0, 0.35, 0.7, 1], ease: 'easeOut' },
+    },
+  },
+  /** A parent that staggers its children 40 ms apart (children use any `hidden`/`shown` move). */
+  stagger: {
+    hidden: {},
+    shown: { transition: { staggerChildren: STAGGER, delayChildren: 0.04 } },
+  },
+} as const satisfies Record<string, Variants>;
+
+export type MoveName = keyof typeof moves;
+
+const REDUCED_MOVES: Record<MoveName, Variants> = {
+  popIn: { hidden: { opacity: 0 }, shown: { opacity: 1, transition: { duration: 0.12 } } },
+  stickerDrop: {
+    hidden: (tilt: number = -1.5) => ({ opacity: 0, rotate: tilt }),
+    shown: (tilt: number = -1.5) => ({ opacity: 1, rotate: tilt, transition: { duration: 0.12 } }),
+  },
+  press: { rest: {}, hover: {}, pressed: {} },
+  bob: { still: { y: 0 }, moving: { y: 0 } },
+  chomp: { still: {}, moving: {} },
+  stagger: { hidden: {}, shown: {} },
+};
+
+/** The Storybook moves, or their reduced-motion twins when the user asks for less motion. */
+export function useMoves(): Record<MoveName, Variants> {
+  return useReducedMotion() ? REDUCED_MOVES : moves;
+}
 
 /** Printer feel: snaps forward in `steps` ticks with a short hold between. */
 export function printerEase(steps: number): (t: number) => number {

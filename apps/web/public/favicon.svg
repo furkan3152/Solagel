@@ -1,19 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-56 -56 116 116">
+  <!-- Elymum coin E-mark (design/motifs/Wordmark.tsx CoinMark): cyan coin, one hard shade, ink outline, fat cream E. -->
   <defs>
-    <radialGradient id="g" cx="0.35" cy="0.3" r="0.8">
-      <stop offset="0" stop-color="#43FCC4"/>
-      <stop offset="0.5" stop-color="#A46BFF"/>
-      <stop offset="1" stop-color="#8022FB"/>
-    </radialGradient>
+    <clipPath id="c"><circle r="46"/></clipPath>
   </defs>
-  <circle cx="32" cy="32" r="28" fill="url(#g)" stroke="#4E00B7" stroke-width="4"/>
-  <circle cx="32" cy="32" r="21.5" fill="none" stroke="#fff" stroke-opacity=".35" stroke-width="2"/>
-  <ellipse cx="21" cy="18" rx="7" ry="4" fill="#fff" opacity=".5" transform="rotate(-28 21 18)"/>
-  <circle cx="23" cy="32" r="4.2" fill="#2B1B44"/>
-  <circle cx="41" cy="32" r="4.2" fill="#2B1B44"/>
-  <circle cx="24.4" cy="30.4" r="1.4" fill="#fff"/>
-  <circle cx="42.4" cy="30.4" r="1.4" fill="#fff"/>
-  <ellipse cx="17" cy="38" rx="3.6" ry="2.2" fill="#FF8FCB" opacity=".7"/>
-  <ellipse cx="47" cy="38" rx="3.6" ry="2.2" fill="#FF8FCB" opacity=".7"/>
-  <path d="M28 38.5 Q32 42.5 36 38.5" fill="none" stroke="#2B1B44" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="4" cy="4" r="47" fill="#04181C"/>
+  <circle r="46" fill="#2490B0"/>
+  <circle cx="-5" cy="-7" r="45" fill="#34B7DD" clip-path="url(#c)"/>
+  <circle r="36" fill="none" stroke="#2490B0" stroke-width="3"/>
+  <path d="M-36 -10 A37 37 0 0 1 -18 -32" stroke="#FFFFFF" stroke-width="5" fill="none" stroke-linecap="round" opacity=".85"/>
+  <circle r="46" fill="none" stroke="#04181C" stroke-width="5"/>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M15 -22 H-12 V22 H15 M-12 0 H10" stroke="#04181C" stroke-width="22" transform="translate(3 3)"/>
+    <path d="M15 -22 H-12 V22 H15 M-12 0 H10" stroke="#04181C" stroke-width="22"/>
+    <path d="M15 -22 H-12 V22 H15 M-12 0 H10" stroke="#F6EEDA" stroke-width="14"/>
+  </g>
 </svg>

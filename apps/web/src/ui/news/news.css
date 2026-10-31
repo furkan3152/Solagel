@@ -1,104 +1,162 @@
-/* ─────────────────────── Paper Ticket · the standings page ───────────────────────
- * A newspaper results page: section tabs (Today / All time), a
- * headline on the leader and a results table with dotted leaders. The
- * standings are the server's off-chain records: no prizes.
+/* ─────────────────────────── Ring Storybook · standings ───────────────────────────
+ * Today / All time: the top three coins standing on terraces (sun, teal, mist
+ * steps with ink edges and hard shadows), then the table in Geist Mono with
+ * dashed rules and leader dots, inside a sticker panel.
  * ------------------------------------------------------------------------- */
 
 .nw-page {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
+  max-width: 1080px;
 }
 .nw-tabs {
-  margin-top: -2px;
-}
-.nw-panel {
-  min-width: 0;
+  margin-bottom: 22px;
 }
 .nw-panel:focus-visible {
+  outline: 3px solid var(--focus);
   outline-offset: 6px;
+  border-radius: var(--r-card);
 }
 .nw-cols {
-  display: flex;
-  flex-direction: column;
-  gap: 28px;
+  display: block;
 }
 .nw-lead {
   display: flex;
   flex-direction: column;
-  min-width: 0;
+  gap: 18px;
 }
 .nw-headline {
-  max-width: 22ch;
-  font-size: clamp(32px, 4.4vw, 56px);
-  font-weight: 800;
-  font-stretch: 78%;
-  line-height: 0.93;
-  letter-spacing: -0.035em;
-  text-wrap: balance;
+  font-size: var(--t-h2);
+  line-height: 1;
 }
 .nw-deck {
-  margin: 10px 0 18px;
-  max-width: 60ch;
-  font-size: 17px;
-  line-height: 1.45;
+  font-size: var(--t-lede);
   color: var(--ink-2);
 }
 .nw-deck b {
   color: var(--ink);
 }
 .nw-note {
-  margin-top: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
   font-size: var(--t-small);
-  line-height: 1.45;
   color: var(--ink-2);
 }
 
-/* ── the results table ────────────────────────────────────────────────── */
+/* ── the podium ───────────────────────────────────────────────────────── */
+.nw-podium {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 180px));
+  justify-content: center;
+  align-items: end;
+  gap: 0 14px;
+  padding: 34px 0 0;
+}
+.nw-podium__spot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+}
+.nw-podium__name {
+  max-width: 100%;
+  margin: 2px 0 8px;
+  overflow: hidden;
+  font-weight: 700;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nw-podium__step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding-top: 10px;
+  border: var(--stroke) solid var(--outline);
+  border-bottom: 0;
+  border-radius: 14px 14px 0 0;
+  color: var(--ink-fixed);
+  box-shadow: 4px 0 0 var(--shadow-ink);
+}
+.nw-podium__spot.is-1 .nw-podium__step {
+  height: 112px;
+  background: var(--sun);
+}
+.nw-podium__spot.is-2 .nw-podium__step {
+  height: 84px;
+  background: var(--spray);
+}
+.nw-podium__spot.is-3 .nw-podium__step {
+  height: 64px;
+  background: var(--mist);
+}
+.nw-podium__n {
+  font-size: 34px;
+  line-height: 1;
+}
+.nw-podium__score {
+  font-size: 13px;
+}
+.nw-podium + .nw-table {
+  margin-top: -18px;
+}
+
+/* ── the table ────────────────────────────────────────────────────────── */
 .nw-table {
   width: 100%;
-  border-collapse: collapse;
-  font-variant-numeric: tabular-nums;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: var(--stroke) solid var(--outline);
+  border-radius: var(--r-card);
+  background: var(--sticker);
+  color: var(--on-sticker);
+  box-shadow: var(--sh-4);
+  overflow: hidden;
+  --ink: #04181c;
+  --ink-2: #4a453b;
+  --ink-3: #6b655a;
+  --teal-ink: #2d7388;
 }
 .nw-table thead th {
-  padding: 0 6px 8px;
-  border-bottom: 2px solid var(--ink);
-  font-size: var(--t-label);
+  padding: 12px 16px 10px;
+  border-bottom: var(--stroke) solid var(--outline);
+  background: var(--mist);
+  font-size: 11px;
   font-weight: 500;
-  color: var(--ink-2);
   text-align: left;
-  white-space: nowrap;
-}
-.nw-table tbody th,
-.nw-table tbody td {
-  padding: 7px 6px;
-  border-bottom: 1px solid var(--line-soft);
-  vertical-align: middle;
-}
-.nw-table tbody tr.is-top-3 th,
-.nw-table tbody tr.is-top-3 td {
-  border-bottom: 1.5px solid var(--ink);
-}
-.nw-table__rank {
-  width: 54px;
+  color: #1e6f8c;
 }
 .nw-table thead .nw-table__rank {
-  padding-left: 0;
-}
-.nw-table tbody .nw-table__rank {
-  padding-left: 0;
+  width: 76px;
 }
 .nw-table__num {
-  width: 1%;
-  font-size: 13px;
-  white-space: nowrap;
+  width: 90px;
   text-align: right !important;
 }
-.nw-table__name {
-  max-width: 0;
-  width: 100%;
-  font-weight: 700;
+.nw-table tbody td,
+.nw-table tbody th {
+  padding: 9px 16px;
+  border-bottom: 2px dashed var(--rule);
+  font-weight: 400;
   text-align: left;
+  vertical-align: middle;
+}
+.nw-table tbody tr:last-child td,
+.nw-table tbody tr:last-child th {
+  border-bottom: 0;
+}
+.nw-table tbody td.nw-table__num {
+  font-size: 15px;
+}
+.nw-table tbody tr.is-top-3 td,
+.nw-table tbody tr.is-top-3 th {
+  border-bottom: var(--stroke-sm) solid var(--outline);
+}
+.nw-table tr.is-me td,
+.nw-table tr.is-me th {
+  background: #fbe7b0;
 }
 .nw-table__who {
   display: flex;
@@ -110,90 +168,142 @@
   flex: none;
 }
 .nw-table__label {
-  flex: 0 1 auto;
-  min-width: 0;
   overflow: hidden;
+  font-size: 16px;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 16.5px;
-  letter-spacing: -0.01em;
 }
 .nw-table tr.is-top .nw-table__label {
-  font-size: 20px;
+  font-family: var(--font-display);
+  font-variation-settings: var(--fv-display);
   font-weight: 800;
+  font-size: 19px;
+}
+.nw-table tr.is-me .nw-table__label {
+  font-weight: 700;
 }
 .nw-table__leader {
   flex: 1;
-  min-width: 10px;
-  align-self: center;
-  border-bottom: 1.5px dotted var(--line);
-  transform: translateY(4px);
+  min-width: 16px;
+  height: 0;
+  border-top: 2.5px dotted var(--sand-2);
 }
 .nw-table__me {
   flex: none;
-  min-height: 22px;
-  padding: 1px 6px;
-  font-size: 10.5px;
 }
-.nw-table tr.is-me .nw-table__label {
-  /* a highlighter pass over the name */
-  background: linear-gradient(transparent 52%, color-mix(in srgb, var(--pink) 46%, transparent) 52%, color-mix(in srgb, var(--pink) 46%, transparent) 92%, transparent 92%);
-}
+
 .nw-rank {
   font-size: 13px;
-  color: var(--ink-2);
+  color: var(--ink-3);
 }
 .nw-rank.is-medal {
   position: relative;
   display: inline-grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
-  border: 2px solid var(--ink-fixed);
+  width: 32px;
+  height: 32px;
+  border: var(--stroke-sm) solid var(--outline);
   border-radius: 50%;
+  box-shadow: var(--sh-1);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 14px;
   color: var(--ink-fixed);
-  font-family: var(--font-display);
-  font-size: 19px;
-  font-weight: 800;
-  line-height: 1;
 }
 .nw-rank.is-1 {
-  background: var(--mustard);
-  box-shadow: 2px 2px 0 var(--pink);
+  background: var(--sun);
 }
 .nw-rank.is-2 {
-  background: var(--teal);
-  box-shadow: 2px 2px 0 var(--mustard);
+  background: var(--spray);
 }
 .nw-rank.is-3 {
-  background: var(--pink);
-  box-shadow: 2px 2px 0 var(--teal);
+  background: var(--mist);
 }
 .nw-rank__crown {
   position: absolute;
   top: -13px;
   left: 50%;
   margin-left: -7px;
-  color: var(--mustard-ink);
+  color: var(--sun-s);
 }
 
-/* phones: names get the room */
-@media (max-width: 559px) {
+@media (max-width: 639px) {
+  .nw-podium {
+    gap: 0 8px;
+  }
+  .nw-podium__spot.is-1 .nw-podium__step {
+    height: 84px;
+  }
+  .nw-podium__spot.is-2 .nw-podium__step {
+    height: 64px;
+  }
+  .nw-podium__spot.is-3 .nw-podium__step {
+    height: 50px;
+  }
+  .nw-podium__n {
+    font-size: 26px;
+  }
+  .nw-podium canvas {
+    transform: scale(0.8);
+  }
+  .nw-podium__name {
+    font-size: 13px;
+  }
+  .nw-table thead th,
+  .nw-table tbody td,
+  .nw-table tbody th {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+  .nw-table thead .nw-table__rank {
+    width: 50px;
+  }
+  .nw-table__num {
+    width: 64px;
+  }
   .nw-table__leader {
     display: none;
   }
-  .nw-table__rank {
-    width: 42px;
+}
+
+/* the podium's coins hop on their terraces (squash on landing); the winner wears a crown */
+.nw-podium__hop {
+  position: relative;
+  display: inline-block;
+  transform-origin: 50% 100%;
+  animation: nw-hop 2.4s cubic-bezier(0.3, 0, 0.4, 1) infinite;
+}
+.nw-podium__crown {
+  position: absolute;
+  left: 50%;
+  top: -26px;
+  z-index: 1;
+  width: 46px;
+  margin-left: -23px;
+  transform: rotate(-9deg);
+  filter: drop-shadow(2px 2px 0 #04181c);
+}
+@keyframes nw-hop {
+  0%,
+  58%,
+  100% {
+    transform: translateY(0) scale(1, 1);
   }
-  .nw-rank.is-medal {
-    width: 30px;
-    height: 30px;
-    font-size: 16px;
+  64% {
+    transform: translateY(0) scale(1.1, 0.88);
   }
-  .nw-table tr.is-top .nw-table__label {
-    font-size: 18px;
+  76% {
+    transform: translateY(-16px) scale(0.95, 1.06);
   }
-  .nw-tabs .kb-icon {
-    display: none;
+  88% {
+    transform: translateY(0) scale(1.08, 0.92);
+  }
+  94% {
+    transform: translateY(0) scale(0.98, 1.02);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nw-podium__hop {
+    animation: none;
   }
 }

@@ -1,331 +1,218 @@
+import { elymumArenaAbi, elymumNFTAbi, testTokenAbi } from '@elymum/contracts';
+import { BaseError, ContractFunctionRevertedError, decodeErrorResult, type Abi, type Hex } from 'viem';
+
+type AbiError = Extract<Abi[number], { type: 'error' }>;
+
 /**
- * Error helpers: extract the program error code from whatever a wallet, web3.js or Anchor
- * throws, and turn it into a short message players can understand.
+ * Error helpers: turn whatever viem, a browser wallet or an RPC throws into a short message
+ * people understand. Custom errors of both contracts (and of OpenZeppelin's ERC-20/721/Ownable)
+ * are decoded with the bundled ABIs; wallet errors (4001 rejected, 4902 unknown chain, chain
+ * mismatch, insufficient funds) get their own kinds.
  */
 
-import { toBase58, type Address } from './program';
+/** Every custom error the SDK can decode (both contracts, the TestToken and OZ ERC-20 errors), de-duplicated by name. */
+export const ELYMUM_ERRORS_ABI: readonly AbiError[] = (() => {
+  const seen = new Map<string, AbiError>();
+  for (const item of [...elymumArenaAbi, ...elymumNFTAbi, ...testTokenAbi] as readonly Abi[number][]) {
+    if (item.type === 'error' && !seen.has(item.name)) seen.set(item.name, item as AbiError);
+  }
+  return [...seen.values()];
+})();
 
-export interface ErrorInfo {
-  code: number;
-  name: string;
-  /** Friendly, player-facing message. */
-  message: string;
-}
-
-/** `SlanaError` codes (6000 + enum index in `error.rs`). */
-export const SlanaErrorCode = {
-  Unauthorized: 6000,
-  Paused: 6001,
-  InvalidFee: 6002,
-  InvalidName: 6003,
-  InvalidSkin: 6004,
-  ArenaDisabled: 6005,
-  ArenaFull: 6006,
-  InsufficientPot: 6007,
-  RefundTooEarly: 6008,
-  ArenaHasOpenSessions: 6009,
-  MathOverflow: 6010,
-  SessionMismatch: 6011,
-  MintNotAllowed: 6012,
-  FreezeAuthorityPresent: 6013,
-  ArenaBusy: 6014,
-  InvalidMaxSessions: 6015,
-  EntryFeeZero: 6016,
-  FeeAboveLimit: 6017,
-  EntryFeeAboveLimit: 6018,
-  SettleFeeAboveLimit: 6019,
-  SessionFinalized: 6020,
-  InvalidAuthority: 6021,
-  TokenNotSet: 6022,
-  TokenAlreadySet: 6023,
-} as const;
-
-export type SlanaErrorName = keyof typeof SlanaErrorCode;
-
-/** Player-facing message for an "already in use" failure on the arena session PDA. */
-export const SESSION_IN_USE_MESSAGE =
-  'You still have a session in this arena. Collect your payout (or resume your ticket) first.';
-
-const FRIENDLY: Record<SlanaErrorName, string> = {
-  Unauthorized: 'You are not allowed to do that (wrong wallet or account).',
-  Paused: 'Slana is paused for maintenance — arena joins are disabled for now.',
-  InvalidFee: 'Invalid fee configuration.',
-  InvalidName: 'Names must be 1–16 bytes long and cannot contain control characters.',
-  InvalidSkin: 'That skin does not exist.',
-  ArenaDisabled: 'This arena is closed right now.',
-  ArenaFull: 'This arena is full — try again in a moment.',
-  InsufficientPot: 'The arena pot cannot cover this payout right now.',
-  RefundTooEarly: 'Refunds open 24 hours after you joined the arena.',
-  ArenaHasOpenSessions: 'The arena still has open sessions.',
-  MathOverflow: 'That amount is too large.',
-  SessionMismatch: 'This settlement belongs to an older arena session.',
-  MintNotAllowed: 'This token mint is not supported.',
-  FreezeAuthorityPresent: 'The token mint must not have a freeze authority.',
-  ArenaBusy: 'The arena has open sessions — try again when they are settled.',
-  InvalidMaxSessions: 'Max sessions must be between 2 and 2000.',
-  EntryFeeZero: 'The entry fee must be greater than zero.',
-  FeeAboveLimit: 'The fee changed a moment ago and is now higher than shown. Nothing was charged; check the ticket again.',
-  EntryFeeAboveLimit: 'The entry fee changed a moment ago and is now higher than shown. Nothing was charged; check the ticket again.',
-  SettleFeeAboveLimit: 'The settle deposit changed a moment ago and is now higher than shown. Nothing was charged; check the ticket again.',
-  SessionFinalized: 'This game is already settled. Collect your payout.',
-  InvalidAuthority: 'The admin, server or fee wallet key must not be the default (all zero) key.',
+/** Player/admin-facing text per custom error name. */
+export const ERROR_MESSAGES: Readonly<Record<string, string>> = {
+  // ElymumArena
+  ZeroAddress: 'An address must not be the zero address.',
+  NotServer: 'Only the game server key can do that.',
+  Paused: 'Elymum is paused for maintenance: arena joins are closed for now.',
   TokenNotSet: 'Arenas are opening soon: the game token is not set yet.',
   TokenAlreadySet: 'The game token is already set; it can be set only once.',
+  NotAContract: 'That address is not a contract.',
+  InvalidFee: 'The fee must be at most 10 %.',
+  InvalidArenaId: 'Arena ids start at 1.',
+  ArenaExists: 'That arena already exists.',
+  UnknownArena: 'That arena does not exist.',
+  EntryFeeZero: 'The entry fee must be greater than zero.',
+  InvalidMaxSessions: 'Max sessions must be between 2 and 2000.',
+  ArenaBusy: 'The arena has open tickets: its entry fee can change once they are settled.',
+  ArenaDisabled: 'This arena is closed right now.',
+  ArenaEnabled: 'Disable the arena before sweeping it.',
+  ArenaFull: 'This arena is full. Try again in a moment.',
+  ArenaHasOpenSessions: 'The arena still has open tickets.',
+  SessionExists: 'You already have a ticket in this arena. Play it, or collect your payout first.',
+  NoSession: 'You have no ticket in this arena.',
+  RefundTooEarly: 'Refunds open 24 hours after you joined.',
+  InsufficientVault: 'The arena vault cannot cover that amount right now.',
+  FeeOnTransferToken: 'Tokens that take a fee on transfer are not supported.',
+  SweepIdNotIncreasing: 'That loot sweep was already done.',
+  CannotRescueGameToken: 'The game token can never be rescued.',
+  NativeTransferFailed: 'The HYPE transfer failed.',
+  RenounceDisabled: 'Ownership cannot be renounced.',
+  SafeERC20FailedOperation: 'The token transfer failed.',
+  ReentrancyGuardReentrantCall: 'Re-entrant call refused.',
+  OwnableUnauthorizedAccount: 'Only the contract owner can do that. Connect the owner wallet.',
+  OwnableInvalidOwner: 'That owner address is not valid.',
+  // ElymumNFT
+  ZeroQuantity: 'Choose at least one.',
+  MintClosed: 'The mint is not open.',
+  NotAllowlisted: 'This wallet is not on the allowlist.',
+  WlLimitExceeded: 'You reached the allowlist limit for this wallet.',
+  PublicLimitExceeded: 'You reached the public mint limit for this wallet.',
+  SoldOut: 'Sold out.',
+  InsufficientPayment: 'The price changed a moment ago and the payment is short. Nothing was charged; try again.',
+  RefundFailed: 'The refund of the overpayment failed (the wallet cannot receive HYPE).',
+  WithdrawFailed: 'The withdrawal to the treasury failed.',
+  NotPriceSetter: 'Only the owner or the price keeper can set the price.',
+  PriceOutOfBounds: 'That price is outside the keeper bounds.',
+  InvalidPriceBounds: 'Price bounds need 0 < min ≤ max.',
+  MaxSupplyIncrease: 'The max supply can only go down.',
+  MaxSupplyBelowTotal: 'The max supply cannot go below what is already minted.',
+  MetadataIsFrozen: 'The metadata is frozen.',
+  RoyaltyTooHigh: 'The royalty must be at most 10 %.',
+  ERC721NonexistentToken: 'That token does not exist.',
+  ERC2981InvalidDefaultRoyaltyReceiver: 'That royalty receiver is not valid.',
+  ERC2981InvalidDefaultRoyalty: 'That royalty is not valid.',
+  // ERC-20 / TestToken
+  ERC20InsufficientBalance: 'Your token balance is too low.',
+  ERC20InsufficientAllowance: 'The token approval is too low. Approve the amount and try again.',
+  ERC20InvalidReceiver: 'That receiver is not valid.',
+  ERC20InvalidSpender: 'That spender is not valid.',
+  FaucetCooldown: 'The faucet gives once per hour. Try again later.',
 };
 
-/** Program errors by code (6000–6023). */
-export const SLANA_ERRORS: Readonly<Record<number, ErrorInfo>> = Object.fromEntries(
-  (Object.keys(SlanaErrorCode) as SlanaErrorName[]).map((name) => [
-    SlanaErrorCode[name],
-    { code: SlanaErrorCode[name], name, message: FRIENDLY[name] },
-  ]),
-);
-
-/** The Anchor framework errors this program can realistically hit. */
-export const ANCHOR_ERRORS: Readonly<Record<number, ErrorInfo>> = Object.fromEntries(
-  (
-    [
-      [101, 'InstructionFallbackNotFound', 'The program on this cluster does not match this app version.'],
-      [102, 'InstructionDidNotDeserialize', 'The program could not read this request (version mismatch?).'],
-      [2000, 'ConstraintMut', 'An account that must be writable was passed read-only.'],
-      [2001, 'ConstraintHasOne', 'That account belongs to someone else.'],
-      [2002, 'ConstraintSigner', 'A required signature is missing.'],
-      [2003, 'ConstraintRaw', 'An account constraint was violated.'],
-      [2006, 'ConstraintSeeds', 'Account address mismatch — the data was stale, please try again.'],
-      [2012, 'ConstraintAddress', 'Unexpected account address — please refresh and try again.'],
-      [2014, 'ConstraintTokenMint', 'That token account holds a different token.'],
-      [2015, 'ConstraintTokenOwner', 'That token account belongs to someone else.'],
-      [2040, 'ConstraintDuplicateMutableAccount', 'The same account was passed twice as writable (e.g. the fee wallet token account as the player token account).'],
-      [3001, 'AccountDiscriminatorNotFound', 'An account has no data (not created yet).'],
-      [3002, 'AccountDiscriminatorMismatch', 'An account has the wrong type.'],
-      [3003, 'AccountDidNotDeserialize', 'An account could not be read (version mismatch?).'],
-      [3007, 'AccountOwnedByWrongProgram', 'An account is owned by the wrong program.'],
-      [3012, 'AccountNotInitialized', 'A required account does not exist yet (create a profile first, or it was already closed).'],
-      [4100, 'DeclaredProgramIdMismatch', 'The program id does not match this app.'],
-    ] as const
-  ).map(([code, name, message]) => [code, { code, name, message }]),
-);
-
-const MAX_DEPTH = 4;
-const NESTED_KEYS = ['cause', 'error', 'originalError', 'inner', 'err'] as const;
-
-function asRecord(v: unknown): Record<string, unknown> | null {
-  return v !== null && typeof v === 'object' ? (v as Record<string, unknown>) : null;
-}
-
-/** `{ InstructionError: [index, { Custom: n }] }` → n. */
-function customFromTxError(v: unknown): number | null {
-  const r = asRecord(v);
-  if (!r) return null;
-  const ie = r.InstructionError;
-  if (Array.isArray(ie) && ie.length === 2) {
-    const inner = asRecord(ie[1]);
-    if (inner && typeof inner.Custom === 'number') return inner.Custom;
-  }
-  return null;
-}
-
-/** Program error code in transaction logs (Anchor log line or `custom program error: 0x..`). */
-export function codeFromLogs(logs: readonly string[]): number | null {
-  for (const line of logs) {
-    const m = /Error Number: (\d+)/.exec(line);
-    if (m) return Number(m[1]);
-  }
-  for (const line of logs) {
-    const c = codeFromText(line);
-    if (c !== null) return c;
-  }
-  return null;
-}
-
-/** Program error code embedded in an error message. */
-export function codeFromText(text: string): number | null {
-  const patterns: [RegExp, number][] = [
-    [/Error Number: (\d+)/, 10],
-    [/"Custom"\s*:\s*(\d+)/, 10],
-    [/Custom\((\d+)\)/, 10],
-    [/custom program error: 0x([0-9a-fA-F]+)/, 16],
-  ];
-  for (const [re, radix] of patterns) {
-    const m = re.exec(text);
-    if (m) return parseInt(m[1], radix);
-  }
-  return null;
-}
-
-function logsOf(r: Record<string, unknown>): string[] | null {
-  for (const k of ['logs', 'transactionLogs', 'errorLogs']) {
-    const v = r[k];
-    if (Array.isArray(v) && v.every((l) => typeof l === 'string')) return v as string[];
-  }
-  const sim = asRecord(r.simulationResponse);
-  if (sim && Array.isArray(sim.logs)) return sim.logs as string[];
-  return null;
-}
-
-function findCode(err: unknown, depth: number): number | null {
-  if (err === null || err === undefined || depth > MAX_DEPTH) return null;
-  if (typeof err === 'string') return codeFromText(err);
-  const r = asRecord(err);
-  if (!r) return null;
-
-  // AnchorError: { error: { errorCode: { number } } }
-  const anchor = asRecord(asRecord(r.error)?.errorCode);
-  if (anchor && typeof anchor.number === 'number') return anchor.number;
-  // Anchor ProgramError: { code, msg }
-  if (typeof r.code === 'number' && typeof r.msg === 'string') return r.code;
-  // Raw transaction error objects (confirmTransaction value.err, SendTransactionError.transactionError)
-  const direct = customFromTxError(r) ?? customFromTxError(r.err) ?? customFromTxError(asRecord(r.value)?.err);
-  if (direct !== null) return direct;
-
-  const logs = logsOf(r);
-  if (logs) {
-    const c = codeFromLogs(logs);
-    if (c !== null) return c;
-  }
-  if (typeof r.message === 'string') {
-    const c = codeFromText(r.message);
-    if (c !== null) return c;
-  }
-  const txErr = asRecord(r.transactionError);
-  if (txErr && typeof txErr.message === 'string') {
-    const c = codeFromText(txErr.message);
-    if (c !== null) return c;
-  }
-  // Wallet adapters and wrappers keep the original error in `error`/`cause`.
-  for (const k of NESTED_KEYS) {
-    const inner = r[k];
-    if (inner !== undefined && inner !== err) {
-      const c = findCode(inner, depth + 1);
-      if (c !== null) return c;
-    }
-  }
-  return null;
-}
-
-/**
- * Program error code (e.g. 6011) carried by an Anchor error, a `SendTransactionError`
- * (simulation logs), a confirmation error (`InstructionError: Custom(n)`) or a wallet error
- * wrapping one of those. `null` when there is none.
- */
-export function programErrorCode(err: unknown): number | null {
-  return findCode(err, 0);
-}
-
-/** Every message/log string reachable from an error (for pattern matching). */
-function collectText(err: unknown, depth = 0, out: string[] = []): string[] {
-  if (err === null || err === undefined || depth > MAX_DEPTH) return out;
-  if (typeof err === 'string') {
-    out.push(err);
-    return out;
-  }
-  const r = asRecord(err);
-  if (!r) return out;
-  if (typeof r.message === 'string') out.push(r.message);
-  if (typeof r.name === 'string') out.push(r.name);
-  const logs = logsOf(r);
-  if (logs) out.push(...logs);
-  const txErr = asRecord(r.transactionError);
-  if (txErr && typeof txErr.message === 'string') out.push(txErr.message);
-  for (const k of NESTED_KEYS) {
-    const inner = r[k];
-    if (inner !== undefined && inner !== err) {
-      if (typeof inner === 'object' && inner !== null && !(inner instanceof Error) && !('message' in inner)) {
-        try {
-          out.push(JSON.stringify(inner));
-        } catch {
-          /* ignore */
-        }
-      }
-      collectText(inner, depth + 1, out);
-    }
-  }
-  return out;
-}
-
-function walletCode(err: unknown, depth = 0): number | null {
-  const r = asRecord(err);
-  if (!r || depth > MAX_DEPTH) return null;
-  if (typeof r.code === 'number' && r.code === 4001) return 4001;
-  for (const k of NESTED_KEYS) {
-    const c = walletCode(r[k], depth + 1);
-    if (c !== null) return c;
-  }
-  return null;
-}
+export type ErrorKind =
+  | 'rejected' // the person declined in the wallet (4001)
+  | 'contract' // a decoded custom error
+  | 'revert' // a revert without a known error
+  | 'wrong-chain' // wallet on another chain
+  | 'chain-not-added' // 4902
+  | 'insufficient-funds' // not enough HYPE for gas / value
+  | 'pending' // -32002, a request already open in the wallet
+  | 'network'
+  | 'unknown';
 
 export interface DescribedError {
-  /** Program error code, if the error came from a program. */
-  code: number | null;
-  /** Stable name for i18n (`InsufficientPot`, `UserRejected`, …), null when unknown. */
+  kind: ErrorKind;
+  /** Custom error name (`ArenaFull`) or a viem error name; null when unknown. */
   name: string | null;
-  /** Player-facing message. */
+  /** Decoded custom error arguments. */
+  args: readonly unknown[];
+  /** EIP-1193 / JSON-RPC code when there was one. */
+  code: number | null;
+  /** Short human message. */
   message: string;
-}
-
-const KNOWN_TEXT: [RegExp, string, string][] = [
-  [/user rejected|rejected the request|user denied|request rejected|user canceled|user cancelled/i, 'UserRejected', 'You cancelled the request in your wallet.'],
-  [
-    /Attempt to debit an account but found no record of a prior credit|insufficient funds|insufficient lamports|InsufficientFundsFor(Fee|Rent)/i,
-    'InsufficientFunds',
-    'Not enough SOL in your wallet for this (including the network fee).',
-  ],
-  [
-    /was not confirmed in|TransactionExpiredTimeoutError/i,
-    'ConfirmationTimeout',
-    'The network is slow — the transaction may still go through. Check your wallet before retrying.',
-  ],
-  [
-    /block height exceeded|blockhash not found|TransactionExpired|has expired|BlockhashNotFound/i,
-    'BlockhashExpired',
-    'The transaction expired before it was confirmed — please try again.',
-  ],
-  [/already in use/i, 'AccountAlreadyInUse', 'That account already exists (already registered or already joined?).'],
-];
-
-const NETWORK_TEXT =
-  /failed to fetch|fetch failed|networkerror|network request failed|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND|socket hang up|429|too many requests|timed out|timeout/i;
-
-function plainMessage(err: unknown): string {
-  if (typeof err === 'string') return err;
-  const r = asRecord(err);
-  if (r && typeof r.message === 'string' && r.message.trim()) {
-    // web3.js prepends long "Simulation failed." prefixes and appends logs; keep the first line.
-    return r.message.split('\n')[0].trim();
-  }
-  return 'Something went wrong.';
 }
 
 export interface DescribeContext {
-  /** Session PDA of a join: "already in use" on it means a session (maybe finalized) is still open. */
-  session?: Address | null;
+  /** Gas token symbol for the funds message (default HYPE). */
+  gasSymbol?: string;
+  /** Name of the chain the wallet should be on. */
+  chainName?: string;
 }
 
-/** Maps any error to `{ code, name, message }` with a friendly message. */
-export function describeError(err: unknown, ctx: DescribeContext = {}): DescribedError {
-  const code = programErrorCode(err);
-  if (code !== null && SLANA_ERRORS[code]) {
-    const e = SLANA_ERRORS[code];
-    return { code, name: e.name, message: e.message };
+/** Decodes revert data (`0x` + selector + args) against `ELYMUM_ERRORS_ABI`; null when unknown. */
+export function decodeRevertData(data: Hex): { name: string; args: readonly unknown[] } | null {
+  if (!/^0x[0-9a-fA-F]{8}/.test(data)) return null;
+  try {
+    const r = decodeErrorResult({ abi: ELYMUM_ERRORS_ABI as Abi, data });
+    return { name: r.errorName, args: (r.args ?? []) as readonly unknown[] };
+  } catch {
+    return null;
   }
-  const text = collectText(err).join('\n');
-  if (/already in use/i.test(text)) {
-    const session = ctx.session ? toBase58(ctx.session) : null;
-    if (session !== null && text.includes(session)) {
-      return { code: null, name: 'SessionInUse', message: SESSION_IN_USE_MESSAGE };
+}
+
+/** Human message for a custom error name (falls back to the name). */
+export function errorMessage(name: string): string {
+  return ERROR_MESSAGES[name] ?? `The transaction was refused (${name}).`;
+}
+
+type Obj = Record<string, unknown>;
+
+/** Visits err, its causes and nested `error`/`data` objects (bounded). */
+function* nested(err: unknown, depth = 0, seen = new Set<unknown>()): Generator<Obj> {
+  if (!err || typeof err !== 'object' || seen.has(err) || depth > 8) return;
+  seen.add(err);
+  const o = err as Obj;
+  yield o;
+  for (const k of ['cause', 'error', 'data', 'info', 'originalError']) yield* nested(o[k], depth + 1, seen);
+}
+
+function findCode(err: unknown): number | null {
+  for (const o of nested(err)) if (typeof o.code === 'number') return o.code;
+  return null;
+}
+
+function findRevertData(err: unknown): Hex | null {
+  for (const o of nested(err)) {
+    for (const k of ['data', 'raw']) {
+      const v = o[k];
+      if (typeof v === 'string' && /^0x[0-9a-fA-F]{8}/.test(v)) return v as Hex;
     }
   }
-  if (walletCode(err) === 4001) return { code: null, name: 'UserRejected', message: 'You cancelled the request in your wallet.' };
-  for (const [re, name, message] of KNOWN_TEXT) {
-    if (re.test(text)) return { code: name === 'UserRejected' ? null : code, name, message };
+  return null;
+}
+
+function textOf(err: unknown): string {
+  if (err instanceof BaseError) return `${err.shortMessage}\n${err.details ?? ''}\n${err.message}`;
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === 'object' && typeof (err as Obj).message === 'string') return (err as Obj).message as string;
+  return String(err);
+}
+
+/** Classifies and explains an error from viem, a wallet or an RPC. */
+export function describeError(err: unknown, ctx: DescribeContext = {}): DescribedError {
+  const gas = ctx.gasSymbol ?? 'HYPE';
+  const code = findCode(err);
+  const names: string[] = [];
+  if (err instanceof BaseError) err.walk((e) => (names.push((e as Error).name), false));
+  const text = textOf(err);
+  const has = (n: string) => names.includes(n);
+  const out = (kind: ErrorKind, message: string, name: string | null = null, args: readonly unknown[] = []): DescribedError => ({ kind, name, args, code, message });
+
+  if (code === 4001 || has('UserRejectedRequestError') || /user (rejected|denied)|rejected the request/i.test(text)) {
+    return out('rejected', 'You declined the request in your wallet.', 'UserRejectedRequestError');
   }
-  if (code !== null) {
-    const e = ANCHOR_ERRORS[code];
-    if (e) return { code, name: e.name, message: e.message };
-    return { code, name: null, message: `The transaction failed (program error ${code}).` };
+  if (code === 4902 || /unrecognized chain|chain .*not (been )?added|unknown chain/i.test(text)) {
+    return out('chain-not-added', `Your wallet does not know ${ctx.chainName ?? 'this chain'} yet. Add it and try again.`, 'ChainNotAdded');
   }
-  if (NETWORK_TEXT.test(text)) {
-    return { code: null, name: 'NetworkError', message: 'Could not reach the Solana network — check your connection and try again.' };
+  if (has('ChainMismatchError') || /does not match the target chain|chain mismatch/i.test(text)) {
+    return out('wrong-chain', `Your wallet is on another network. Switch to ${ctx.chainName ?? 'the right chain'} and try again.`, 'ChainMismatchError');
   }
-  return { code: null, name: null, message: plainMessage(err) };
+  if (code === -32002 || /already pending/i.test(text)) {
+    return out('pending', 'Your wallet already has a request open. Check the wallet window.', 'RequestPending');
+  }
+
+  // a decoded custom error
+  if (err instanceof BaseError) {
+    const reverted = err.walk((e) => e instanceof ContractFunctionRevertedError) as ContractFunctionRevertedError | null;
+    if (reverted?.data?.errorName && reverted.data.errorName !== 'Error' && reverted.data.errorName !== 'Panic') {
+      const name = reverted.data.errorName;
+      return out('contract', errorMessage(name), name, (reverted.data.args ?? []) as readonly unknown[]);
+    }
+    if (reverted?.raw) {
+      const d = decodeRevertData(reverted.raw);
+      if (d) return out('contract', errorMessage(d.name), d.name, d.args);
+    }
+  }
+  const data = findRevertData(err);
+  const decoded = data ? decodeRevertData(data) : null;
+  if (decoded) return out('contract', errorMessage(decoded.name), decoded.name, decoded.args);
+
+  if (has('InsufficientFundsError') || /insufficient funds/i.test(text)) {
+    return out('insufficient-funds', `Not enough ${gas} for this transaction and its gas.`, 'InsufficientFundsError');
+  }
+  if (has('ContractFunctionRevertedError') || /execution reverted|reverted/i.test(text)) {
+    const reason = /reverted with reason string '([^']+)'/.exec(text)?.[1];
+    return out('revert', reason ? `The transaction was refused: ${reason}` : 'The transaction was refused by the contract.', 'Reverted');
+  }
+  if (has('HttpRequestError') || has('TimeoutError') || /fetch failed|ECONNREFUSED|network error|failed to fetch/i.test(text)) {
+    return out('network', 'Could not reach the network. Check your connection and try again.', 'NetworkError');
+  }
+  const short = err instanceof BaseError ? err.shortMessage : text.split('\n')[0];
+  return out('unknown', short || 'Something went wrong.', err instanceof Error ? err.name : null);
+}
+
+/** `describeError(err).message`. */
+export function humanError(err: unknown, ctx: DescribeContext = {}): string {
+  return describeError(err, ctx).message;
 }

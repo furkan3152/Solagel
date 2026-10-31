@@ -37,6 +37,10 @@ export const EASE = {
   wipe: [0.7, 0, 0.2, 1],
   /** Leaving with a flick of the finger. */
   flick: [0.55, 0, 0.9, 0.45],
+  /** Storybook entrances (spec §6.6): quick out, soft landing. */
+  out: [0.22, 1, 0.36, 1],
+  /** A springy overshoot for CSS-like keyframes (stickers, buttons). */
+  spring: [0.34, 1.56, 0.64, 1],
 } as const satisfies Record<string, readonly [number, number, number, number]>;
 
 /** Durations in seconds (spec: 180–600 ms; reduced motion: fades ≤ 150 ms). */

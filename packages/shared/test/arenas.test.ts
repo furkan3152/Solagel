@@ -20,8 +20,14 @@ describe('arena catalog', () => {
     }
   });
 
-  it('names the tiers as in the design spec', () => {
-    expect(DEFAULT_ARENAS.map((a) => arenaMeta(a.id).name)).toEqual(['Penny Pond', 'Silver Creek', 'Gold Lake', 'Whale Bay']);
+  it('names the tiers after Elysian places (spec section 1)', () => {
+    expect(DEFAULT_ARENAS.map((a) => arenaMeta(a.id).name)).toEqual(['Asphodel Meadow', 'Lethe Shore', 'Golden Bough', 'Isles of the Blessed']);
+  });
+
+  it('uses the arena inks of the design spec', () => {
+    expect(DEFAULT_ARENAS.map((a) => arenaMeta(a.id).ink)).toEqual(['#6FCDE8', '#93D9EE', '#F2C14E', '#3C9A87']);
+    expect(arenaMeta(2).inkTo).toBe('#2D7388');
+    expect(arenaMeta(1).inkTo).toBeUndefined();
   });
 
   it('gives every tier its own ink and keeps entry fees ascending', () => {

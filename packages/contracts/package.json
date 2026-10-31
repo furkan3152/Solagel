@@ -1,0 +1,29 @@
+{
+  "name": "@elymum/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Elymum smart contracts for Elysium: the arena (tickets, settlements, loot burn) and the NFT (allowlist + public mint)",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "compile": "hardhat build",
+    "test": "hardhat test",
+    "export": "node scripts/export-artifacts.mjs",
+    "build": "hardhat build && node scripts/export-artifacts.mjs",
+    "typecheck": "tsc --noEmit",
+    "gas": "hardhat run scripts/gas-report.ts"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox-viem": "^5.0.7",
+    "@openzeppelin/contracts": "5.6.1",
+    "@types/node": "^22.19.0",
+    "forge-std": "github:foundry-rs/forge-std#v1.9.7",
+    "hardhat": "^3.21.1",
+    "typescript": "~5.9.3",
+    "viem": "^2.57.13"
+  }
+}

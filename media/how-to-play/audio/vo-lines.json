@@ -1,16 +1,16 @@
 [
  {
   "id": "intro",
-  "text": "Here's how to play Slana, | step by step.",
+  "text": "Here's how to play Elymum, | step by step.",
   "speed": 0.98
  },
  {
   "id": "c1",
-  "text": "Slana is an on-chain coin arena game. || You're a coin, | in a live arena on Solana. || Eat smaller players. | Take their tokens. | And be alive at the bell, | to get *paid.*"
+  "text": "Elymum is an on-chain coin arena game. || You're a coin, | in a live arena on Elysium. || Eat smaller players. | Take their tokens. | And be alive at the bell, | to get *paid.*"
  },
  {
   "id": "c2",
-  "text": "Start for free. || In the lobby, | pick the Practice ticket | and press Start practice. || No wallet. | No tokens. | Just you, and the bots."
+  "text": "Warm up first. || In the lobby, | pick the Practice ticket | and press Start practice. || No tokens at stake. | Just you, and the bots."
  },
  {
   "id": "c3a",
@@ -48,7 +48,7 @@
  },
  {
   "id": "c5a",
-  "text": "Ready to play for real? | Connect a wallet, | and buy a ticket. || There are four arenas, | open to everyone, | each with a fixed entry fee. || Penny Pond: | one thousand Slana. | Silver Creek: | ten thousand. | Gold Lake: | fifty thousand. | And Whale Bay: | two hundred fifty thousand.",
+  "text": "Ready to play for real? | Connect a wallet, | and buy a ticket. || There are four arenas, | open to everyone, | each with a fixed entry fee. || Asphodel Meadow: | one thousand Elymum. | Lethe Shore: | ten thousand. | Golden Bough: | fifty thousand. | And Isles of the Blessed: | two hundred fifty thousand.",
   "speed": 1.04
  },
  {
@@ -91,11 +91,11 @@
  },
  {
   "id": "nft",
-  "text": "And the Slana NFT? | A *free* mint. | WL open at slana dot io slash W L."
+  "text": "And the Elymum NFT? | It mints for *one dollar,* | in HYPE. | The WL comes first, | and the emblem opens the game."
  },
  {
   "id": "outro",
-  "text": "Slana. | Eat. | Grow. | Last the round. || See you at slana dot io.",
+  "text": "Elymum. | Eat. | Grow. | Last the round. || See you at @elymum.",
   "speed": 0.94
  }
 ]

@@ -4,7 +4,6 @@ import {
   canEat,
   clamp,
   coversVictim,
-  formatSol,
   levelFromXp,
   lootTier,
   massToRadius,
@@ -22,7 +21,7 @@ describe('formulas', () => {
     expect(radiusToMass(massToRadius(1234))).toBeCloseTo(1234, 6);
   });
 
-  it('levels mirror the on-chain formula', () => {
+  it('levels follow 1 + floor(sqrt(xp / 50))', () => {
     expect(levelFromXp(0)).toBe(1);
     expect(levelFromXp(49)).toBe(1);
     expect(levelFromXp(50)).toBe(2);
@@ -64,14 +63,6 @@ describe('formulas', () => {
   it('xp per game is clamped', () => {
     expect(xpForGame(0, 0, 0)).toBe(1);
     expect(xpForGame(1_000_000, 100, 1e9)).toBe(2000);
-  });
-
-  it('formats SOL compactly', () => {
-    expect(formatSol(153_000_000)).toBe('◎0.153');
-    expect(formatSol(1_200_000_000)).toBe('◎1.2');
-    expect(formatSol(10_000_000_000)).toBe('◎10');
-    expect(formatSol(100_000_000_000)).toBe('◎100');
-    expect(formatSol(0)).toBe('◎0');
   });
 
   it('sizes loot pieces by their value relative to the entry fee', () => {

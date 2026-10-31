@@ -1,13 +1,34 @@
 import { describe, expect, it } from 'vitest';
-import { SITE_SETTINGS_DEFAULT, isXStatusUrl, normalizeXHandle, type ErrorCode } from '../src';
+import {
+  CONTRACT_KINDS,
+  GAME_ACCESS_DEFAULT,
+  GAME_ACCESS_MODES,
+  MINT_PHASES,
+  SITE_SETTINGS_DEFAULT,
+  SITE_X_HANDLE_DEFAULT,
+  isEvmAddress,
+  isGameAccess,
+  isXStatusUrl,
+  normalizeEvmAddress,
+  normalizeXHandle,
+  sameEvmAddress,
+  type ContractsRegistry,
+  type ErrorCode,
+  type MintProofResponse,
+  type SiteErrorCode,
+  type SiteSettings,
+  type WlEntryPublic,
+} from '../src';
+
+const ADDR = '0x52908400098527886E0F7030069857D2E4169EE7';
 
 describe('site helpers', () => {
   it('normalises X handles', () => {
-    expect(normalizeXHandle('@SlanaIO')).toBe('slanaio');
-    expect(normalizeXHandle('  slana_io ')).toBe('slana_io');
-    expect(normalizeXHandle('https://x.com/Slanaio')).toBe('slanaio');
-    expect(normalizeXHandle('https://twitter.com/slanaio/')).toBe('slanaio');
-    expect(normalizeXHandle('x.com/slanaio?s=21')).toBe('slanaio');
+    expect(normalizeXHandle('@Elymum')).toBe('elymum');
+    expect(normalizeXHandle('  elymum_io ')).toBe('elymum_io');
+    expect(normalizeXHandle('https://x.com/Elymum')).toBe('elymum');
+    expect(normalizeXHandle('https://twitter.com/elymum/')).toBe('elymum');
+    expect(normalizeXHandle('x.com/elymum?s=21')).toBe('elymum');
     expect(normalizeXHandle('')).toBeNull();
     expect(normalizeXHandle('@')).toBeNull();
     expect(normalizeXHandle('a'.repeat(16))).toBeNull();
@@ -16,21 +37,92 @@ describe('site helpers', () => {
   });
 
   it('accepts X status links only', () => {
-    expect(isXStatusUrl('https://x.com/slanaio/status/1790000000000000000')).toBe(true);
+    expect(isXStatusUrl('https://x.com/elymum/status/1790000000000000000')).toBe(true);
     expect(isXStatusUrl('https://twitter.com/a_b/status/1?s=20')).toBe(true);
-    expect(isXStatusUrl('http://x.com/slanaio/status/1')).toBe(false);
-    expect(isXStatusUrl('https://x.com/slanaio')).toBe(false);
-    expect(isXStatusUrl('https://evil.com/x.com/slanaio/status/1')).toBe(false);
+    expect(isXStatusUrl('http://x.com/elymum/status/1')).toBe(false);
+    expect(isXStatusUrl('https://x.com/elymum')).toBe(false);
+    expect(isXStatusUrl('https://evil.com/x.com/elymum/status/1')).toBe(false);
     expect(isXStatusUrl('https://x.com/toolonghandle1234/status/1')).toBe(false);
     expect(isXStatusUrl('https://x.com/a/status/1 javascript:')).toBe(false);
   });
 
-  it('defaults: WL open, collab and game closed', () => {
-    expect(SITE_SETTINGS_DEFAULT).toEqual({ wlOpen: true, collabOpen: false, gamePublic: false, xHandle: 'slanaio', launchPostUrl: null });
+  it('defaults: WL open, collab closed, game for admins only, X handle elymum', () => {
+    expect(SITE_X_HANDLE_DEFAULT).toBe('elymum');
+    expect(SITE_SETTINGS_DEFAULT).toEqual({ wlOpen: true, collabOpen: false, gameAccess: 'admins', xHandle: 'elymum', launchPostUrl: null });
+    // @ts-expect-error gamePublic became gameAccess
+    const old: SiteSettings = { ...SITE_SETTINGS_DEFAULT, gamePublic: true };
+    expect(old).toBeDefined();
+  });
+
+  it('knows the game access modes', () => {
+    expect(GAME_ACCESS_MODES).toEqual(['admins', 'holders', 'public']);
+    expect(GAME_ACCESS_DEFAULT).toBe('admins');
+    for (const m of GAME_ACCESS_MODES) expect(isGameAccess(m)).toBe(true);
+    for (const bad of ['', 'Admins', 'everyone', true, null, undefined, 1]) expect(isGameAccess(bad)).toBe(false);
   });
 
   it('has the game_closed error code', () => {
     const code: ErrorCode = 'game_closed';
-    expect(code).toBe('game_closed');
+    const site: SiteErrorCode = 'game_closed';
+    expect([code, site]).toEqual(['game_closed', 'game_closed']);
+  });
+
+  it('marks legacy WL entries', () => {
+    const e: WlEntryPublic = { id: '1', wallet: '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU', legacy: true, xHandle: 'a', status: 'pending', tasks: [], createdAt: 0, updatedAt: 0 };
+    expect(isEvmAddress(e.wallet)).toBe(false);
+  });
+});
+
+describe('EVM addresses', () => {
+  it('accepts 0x + 40 hex in any case', () => {
+    expect(isEvmAddress(ADDR)).toBe(true);
+    expect(isEvmAddress(ADDR.toLowerCase())).toBe(true);
+    expect(isEvmAddress('0x' + 'A'.repeat(40))).toBe(true);
+  });
+
+  it('rejects everything else', () => {
+    for (const bad of [
+      '',
+      '0x',
+      ADDR.slice(0, -1),
+      ADDR + '0',
+      ADDR.slice(2),
+      '0X' + ADDR.slice(2),
+      '0x' + 'g'.repeat(40),
+      ` ${ADDR}`,
+      '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU',
+      42,
+      null,
+      undefined,
+    ]) {
+      expect(isEvmAddress(bad), String(bad)).toBe(false);
+    }
+  });
+
+  it('normalises to lower case for comparing', () => {
+    expect(normalizeEvmAddress(ADDR)).toBe(ADDR.toLowerCase());
+    expect(normalizeEvmAddress(`  ${ADDR}\n`)).toBe(ADDR.toLowerCase());
+    expect(normalizeEvmAddress('0x123')).toBeNull();
+    expect(normalizeEvmAddress({})).toBeNull();
+    expect(sameEvmAddress(ADDR, ADDR.toLowerCase())).toBe(true);
+    expect(sameEvmAddress(ADDR, '0x' + '0'.repeat(40))).toBe(false);
+    expect(sameEvmAddress('nope', 'nope')).toBe(false);
+  });
+});
+
+describe('mint and registry types', () => {
+  it('lists the phases in contract order and the contract kinds', () => {
+    expect(MINT_PHASES).toEqual(['closed', 'allowlist', 'public']);
+    expect(CONTRACT_KINDS).toEqual(['arena', 'nft', 'token']);
+  });
+
+  it('type-checks the payloads', () => {
+    const reg: ContractsRegistry = {
+      arena: { address: ADDR, txHash: '0x' + 'a'.repeat(64), chainId: 99801, registeredAt: 1, registeredBy: ADDR },
+      nft: null,
+      token: null,
+    };
+    const proof: MintProofResponse = { eligible: false, proof: [], root: null, onchainRoot: null };
+    expect([reg.arena?.chainId, proof.eligible]).toEqual([99801, false]);
   });
 });

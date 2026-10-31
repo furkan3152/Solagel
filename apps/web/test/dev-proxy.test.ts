@@ -1,14 +1,14 @@
 import { createServer as createHttpServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { siwsMessage } from '@slana/shared';
+import { siweMessage } from '@elymum/shared';
 import { createServer, type ViteDevServer } from 'vite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { expectedLoginMessage } from '../src/solana/siws';
+import { expectedLoginMessage } from '../src/wallet/siwe';
 import { gameServerProxy } from '../vite.config';
 
 /**
  * The documented dev setup (`pnpm dev`: web on :5173 proxying `/api` to the game
- * server on :8787). The server names the request's Host in the SIWS message, so
+ * server on :8787). The server names the request's Host in the SIWE message, so
  * the proxy must pass the browser's Host through or the client refuses to sign.
  */
 describe('dev proxy keeps the page host for sign-in', () => {
@@ -16,15 +16,15 @@ describe('dev proxy keeps the page host for sign-in', () => {
   let vite: ViteDevServer;
   let webPort = 0;
   let targetHost = '';
-  const pubkey = '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin';
+  const address = '0x1111111111111111111111111111111111111111';
 
   beforeAll(async () => {
     // a stand-in game server: answers the nonce request the way apps/server does (domain = Host)
     game = createHttpServer((req, res) => {
       const domain = req.headers.host ?? '';
-      const fields = { domain, uri: `http://${domain}`, chainId: 'solana:devnet', nonce: 'n0nce', issuedAt: '2026-10-15T00:00:00.000Z' };
+      const fields = { domain, uri: `http://${domain}`, chainId: 31337, nonce: '0123456789abcdef01234567', issuedAt: '2026-10-29T00:00:00.000Z' };
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ...fields, message: siwsMessage({ ...fields, address: pubkey }) }));
+      res.end(JSON.stringify({ ...fields, message: siweMessage({ ...fields, address }) }));
     });
     await new Promise<void>((r) => game.listen(0, '127.0.0.1', r));
     targetHost = `127.0.0.1:${(game.address() as AddressInfo).port}`;
@@ -47,11 +47,11 @@ describe('dev proxy keeps the page host for sign-in', () => {
   it('forwards the browser Host, so the client accepts the sign-in message', async () => {
     // the page's host (here the dev server's own address), never the proxy target's
     const pageHost = `127.0.0.1:${webPort}`;
-    const res = await fetch(`http://${pageHost}/api/auth/nonce?pubkey=${pubkey}`);
+    const res = await fetch(`http://${pageHost}/api/auth/nonce?address=${address}`);
     const body = await res.json();
     expect(body.domain).toBe(pageHost);
     expect(body.domain).not.toBe(targetHost);
-    expect(expectedLoginMessage(body, pubkey, [pageHost])).toBe(body.message);
+    expect(expectedLoginMessage(body, address, [pageHost])).toBe(body.message);
   });
 
   it('keeps the proxy target for the WebSocket', () => {

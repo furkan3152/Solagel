@@ -1,4 +1,4 @@
-import { TICK_MS, arenaMeta, type BlockedArena, type League, type RoomInfo, type RoundWindow } from '@slana/shared';
+import { TICK_MS, arenaMeta, type BlockedArena, type League, type RoomInfo, type RoundWindow } from '@elymum/shared';
 import type { ChainGateway } from '../chain/types';
 import type { ServerConfig } from '../config';
 import type { Conn } from '../net/conn';
@@ -191,7 +191,7 @@ export class RoomManager {
   }
 
   /**
-   * Vault guard while the server runs (R20): on every arena refresh, every arena's vault is
+   * Vault guard while the server runs: on every arena refresh, every arena's vault is
    * compared with what the journal owes it, so a disable → sweep → re-enable sequence is
    * caught even when it happens between two refreshes. A healthy vault clears a stale entry.
    *
@@ -252,7 +252,7 @@ export class RoomManager {
   }
 
   /**
-   * Vault guard (R20), checked when an arena is attached (no instance yet in this
+   * Vault guard, checked when an arena is attached (no instance yet in this
    * process): its on-chain vault must hold at least what the journal says it owes (loot +
    * pending payouts + loot sweeps + live tickets). A vault swept or drained while loot was journaled
    * would otherwise pay old loot with other players' entry fees, or fail `InsufficientPot`.

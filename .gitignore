@@ -8,24 +8,20 @@ build/
 *.tsbuildinfo
 apps/web/dist/
 
-# anchor / rust
-target/
-.anchor/
-test-ledger/
+# hardhat (packages/contracts: build output; src/artifacts.ts is committed)
+packages/contracts/artifacts/
+packages/contracts/cache/
+# local chain state (scripts/localnet.mjs: addresses, server env with a local dev key)
 .localnet/
-.surfpool/
-**/*.rs.bk
 
 # runtime data / secrets
 apps/server/data/
 data/
-*.keypair.json
 keys/
 .env
 .env.*
 !.env.example
-*-keypair.json
-id.json
+server-key.json
 *.pem
 *.key
 
@@ -42,4 +38,7 @@ out/videos/
 # media renders: caches, venvs, models, raw takes
 media/gameplay/cache/
 media/how-to-play/cache/
+# the gameplay film's human voice recordings (large audio; the mixer reads them in place)
+media/gameplay-film/audio/vo-human.wav
+media/gameplay-film/audio/vo-human/
 media/**/__pycache__/

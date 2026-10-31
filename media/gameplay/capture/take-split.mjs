@@ -18,14 +18,14 @@ async function revive() {
   rec.mark('died');
   await hero.wait(3000);
   await hero.click('.g-death .kb-btn--pink').catch(() => {});
-  await hero.page.waitForFunction(() => window.__slana.useUi.getState().screen === 'playing', null, { timeout: 15000 }).catch(() => {});
+  await hero.page.waitForFunction(() => window.__elymum.useUi.getState().screen === 'playing', null, { timeout: 15000 }).catch(() => {});
   await hero.wheel(-360, 60, 60);
   rec.mark('respawn');
   return true;
 }
 /** A smaller coin in split range, in screen pixels, or null. */
 const prey = () => hero.ui(() => {
-  const e = window.__slana.engine, w = e.world, mine = w.myCells();
+  const e = window.__elymum.engine, w = e.world, mine = w.myCells();
   if (mine.length !== 1) return null;
   const c = mine[0];
   let best = null;

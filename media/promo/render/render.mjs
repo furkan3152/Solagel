@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Frame renderer for the Slana promo.
+// Frame renderer for the Elymum promo. SITE_HOST=<host> sets the address on end cards (default elymum.io).
 //
 // Serves media/promo over a local HTTP port, opens scenes/promo.html in
 // headless Chromium (one browser per worker), steps the timeline frame by
@@ -9,7 +9,7 @@
 //   node render/render.mjs [--from 0] [--to 52.8] [--workers 3]
 //                                                     → cache/video.mp4 (picture only, near-lossless)
 //
-//   node render/render.mjs --project media/free-mint [--w 1080 --h 1920] [--out file.mp4]
+//   node render/render.mjs --project media/mint-film [--w 1080 --h 1920] [--out file.mp4]
 //                                                     → another scene set with the same stage contract
 //                                                       (its timeline.json, `page`, cache/), at any frame size
 // Env: CHROME_PATH (optional; defaults to Playwright's Chromium), FFMPEG.
@@ -30,14 +30,16 @@ const PROMO = resolve(opt('--project', HERE));
 const TL = JSON.parse(readFileSync(join(PROMO, 'timeline.json'), 'utf8'));
 const FPS = TL.fps;
 const VW = Number(opt('--w', TL.width)), VH = Number(opt('--h', TL.height));
-const PAGE = `/${TL.page || 'scenes/promo.html'}?w=${VW}&h=${VH}`;
+// SITE_HOST: the host shown on end cards and WL tickets (the site's PUBLIC_URL host)
+const SITE_HOST = process.env.SITE_HOST || 'elymum.io';
+const PAGE = `/${TL.page || 'scenes/promo.html'}?w=${VW}&h=${VH}&site=${encodeURIComponent(SITE_HOST)}`;
 
 // ── static server ──
 const FONT_DIR = join(ROOT, 'apps/web/node_modules');
 const ROUTES = {
-  '/fonts/brico.woff2': join(FONT_DIR, '@fontsource-variable/bricolage-grotesque/files/bricolage-grotesque-latin-standard-normal.woff2'),
-  '/fonts/dmmono-400.woff2': join(FONT_DIR, '@fontsource/dm-mono/files/dm-mono-latin-400-normal.woff2'),
-  '/fonts/dmmono-500.woff2': join(FONT_DIR, '@fontsource/dm-mono/files/dm-mono-latin-500-normal.woff2'),
+  '/fonts/fraunces.woff2': join(FONT_DIR, '@fontsource-variable/fraunces/files/fraunces-latin-full-normal.woff2'),
+  '/fonts/dm-sans.woff2': join(FONT_DIR, '@fontsource-variable/dm-sans/files/dm-sans-latin-opsz-normal.woff2'),
+  '/fonts/geist-mono.woff2': join(FONT_DIR, '@fontsource-variable/geist-mono/files/geist-mono-latin-wght-normal.woff2'),
 };
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.jpg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.woff2': 'font/woff2' };
 const server = createServer((req, res) => {

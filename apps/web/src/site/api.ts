@@ -13,6 +13,15 @@ import type {
   CollabPublic,
   CollabStatus,
   CollabWalletRow,
+  AllowlistBuildResponse,
+  AllowlistStatus,
+  ContractKind,
+  ContractRegisterRequest,
+  ContractsRegistry,
+  GameAccess,
+  MintPriceQuote,
+  MintProofResponse,
+  MintState,
   PublicWlTask,
   SiteCounts,
   SiteErrorCode,
@@ -22,11 +31,11 @@ import type {
   WlStatus,
   WlSubmitRequest,
   WlTask,
-} from '@slana/shared';
+} from '@elymum/shared';
 import { SERVER } from '../config';
 
 /**
- * The slana.io site API (`/api/site/*`, `/api/admin/*`, `/api/auth/*`). Every error is a
+ * The site API (`/api/site/*`, `/api/admin/*`, `/api/auth/*`). Every error is a
  * `SiteApiError` with the server's code, its short English message and the offending field.
  */
 export class SiteApiError extends Error {
@@ -43,12 +52,12 @@ export class SiteApiError extends Error {
 
 /** User-facing fallbacks when the server sends no message. */
 const FALLBACK: Partial<Record<SiteApiError['code'], string>> = {
-  network: 'Cannot reach slana.io right now. Check your connection and try again.',
+  network: 'Cannot reach the server right now. Check your connection and try again.',
   unauthorized: 'Your sign-in expired. Sign in with your wallet again.',
   forbidden: 'This wallet is not an admin.',
   rate_limited: 'Too many tries. Wait a minute and try again.',
-  wl_closed: 'Applications are closed. Follow @slanaio for the next round.',
-  collab_closed: 'Collab applications are closed. Follow @slanaio for the next round.',
+  wl_closed: 'Applications are closed. Follow @elymum for the next round.',
+  collab_closed: 'Collab applications are closed. Follow @elymum for the next round.',
   already_applied: 'This wallet has already applied.',
   handle_taken: 'This X handle has already applied.',
   collab_limit: 'This X account has already applied twice.',
@@ -57,6 +66,12 @@ const FALLBACK: Partial<Record<SiteApiError['code'], string>> = {
   too_many_wallets: 'There are more wallets than spots.',
   auth_failed: 'The wallet signature did not check out. Try again.',
   bad_request: 'Something in the form is not right.',
+  game_closed: 'The game is not open to this wallet yet.',
+  code_mismatch: 'That address holds no code, or code other than the Elymum contract this server ships with.',
+  not_owner: 'The contract owner is not the signed-in admin wallet.',
+  wrong_authority: "The arena's server authority is not this server's key.",
+  chain_off: 'The server has no chain configured, or the contract is not registered.',
+  price_unavailable: 'The HYPE price feed is unavailable right now.',
 };
 
 export interface RequestOpts {
@@ -124,10 +139,20 @@ const q = (params: Record<string, string | number | undefined | null>): string =
 
 /* ── auth ─────────────────────────────────────────────────────────── */
 
+export interface AuthMe {
+  address: string;
+  admin: boolean;
+  /** The wallet may play under the current `gameAccess` (admins, NFT holders or everyone). */
+  canPlay?: boolean;
+  /** The wallet holds an Elymum NFT (`balanceOf > 0`). */
+  holder?: boolean;
+}
+
 export const auth = {
-  login: (pubkey: string, message: string, signature: string) =>
-    request<{ pubkey: string; token: string; admin: boolean }>('/api/auth/login', { method: 'POST', body: { pubkey, message, signature } }),
-  me: (token: string) => request<{ pubkey: string; admin: boolean }>('/api/auth/me', { token }),
+  /** SIWE: `message` is the rebuilt `siweMessage`, `signature` the wallet's `personal_sign` (0x hex). */
+  login: (address: string, message: string, signature: string) =>
+    request<{ address: string; token: string; admin: boolean }>('/api/auth/login', { method: 'POST', body: { address, message, signature } }),
+  me: (token: string) => request<AuthMe>('/api/auth/me', { token }),
 };
 
 /* ── public site ──────────────────────────────────────────────────── */
@@ -144,6 +169,12 @@ export const site = {
     request<{ collab: CollabPublic }>(`/api/site/collab/${encodeURIComponent(id)}/wallets`, { method: 'PUT', token, body: { wallets, raffleUrl } }).then((r) => r.collab),
   submitWallets: (token: string, id: string, wallets: CollabWalletRow[], raffleUrl: string) =>
     request<{ collab: CollabPublic }>(`/api/site/collab/${encodeURIComponent(id)}/submit`, { method: 'POST', token, body: { wallets, raffleUrl } }).then((r) => r.collab),
+  /** `GET /api/site/mint`: contract state, HYPE/USD, the price in USD, holders, game access. */
+  mint: (signal?: AbortSignal) => request<MintState>('/api/site/mint', { signal }),
+  /** `GET /api/site/mint/proof?wallet=0x…`. */
+  mintProof: (wallet: string, signal?: AbortSignal) => request<MintProofResponse>(`/api/site/mint/proof${q({ wallet })}`, { signal }),
+  /** `GET /api/site/contracts`: the registered contracts. */
+  contracts: () => request<ContractsRegistry>('/api/site/contracts'),
 };
 
 /* ── admin ────────────────────────────────────────────────────────── */
@@ -160,10 +191,19 @@ export type TaskInput = Partial<Pick<WlTask, 'kind' | 'title' | 'body' | 'target
 export function adminApi(token: string) {
   const id = encodeURIComponent;
   return {
-    me: () => request<{ pubkey: string; admin: true }>('/api/admin/me', { token }),
+    me: () => request<{ address: string; admin: true }>('/api/admin/me', { token }),
     counts: () => request<SiteCounts>('/api/admin/counts', { token }),
-    settings: () => request<{ settings: SiteSettings; gamePublicEnv: boolean }>('/api/admin/settings', { token }),
-    saveSettings: (patch: Partial<SiteSettings>) => request<{ settings: SiteSettings; gamePublicEnv: boolean }>('/api/admin/settings', { method: 'PUT', token, body: patch }),
+    /** `gameAccessEnv`: the server's `GAME_ACCESS` override (null when unset). */
+    settings: () => request<AdminSettingsResponse>('/api/admin/settings', { token }),
+    saveSettings: (patch: Partial<SiteSettings>) => request<AdminSettingsResponse>('/api/admin/settings', { method: 'PUT', token, body: patch }),
+    /** `POST /api/admin/contracts`: the server checks the code hash, the owner and (arena) the server authority. */
+    registerContract: (body: ContractRegisterRequest) => request<{ registry: ContractsRegistry } | ContractsRegistry>('/api/admin/contracts', { method: 'POST', token, body }).then(registryOf),
+    clearContract: (kind: ContractKind) => request<{ registry: ContractsRegistry } | ContractsRegistry>(`/api/admin/contracts${q({ kind })}`, { method: 'DELETE', token }).then(registryOf),
+    /** `POST /api/admin/mint/allowlist`: builds a snapshot of the allowlist. */
+    buildAllowlist: () => request<AllowlistBuildResponse>('/api/admin/mint/allowlist', { method: 'POST', token, body: {} }),
+    allowlist: () => request<AllowlistStatus>('/api/admin/mint/allowlist', { token }),
+    /** `GET /api/admin/mint/price`: HYPE/USD and the $1 price in wei. */
+    mintPrice: () => request<MintPriceQuote>('/api/admin/mint/price', { token }),
     tasks: () => request<{ tasks: WlTask[] }>('/api/admin/tasks', { token }).then((r) => r.tasks),
     createTask: (t: TaskInput) => request<{ task: WlTask }>('/api/admin/tasks', { method: 'POST', token, body: t }).then((r) => r.task),
     updateTask: (taskId: string, t: TaskInput) => request<{ task: WlTask }>(`/api/admin/tasks/${id(taskId)}`, { method: 'PUT', token, body: t }).then((r) => r.task),
@@ -174,7 +214,7 @@ export function adminApi(token: string) {
     wlStatus: (entryId: string, status: WlStatus) => request<{ entry: WlEntryAdmin }>(`/api/admin/wl/${id(entryId)}/status`, { method: 'PUT', token, body: { status } }).then((r) => r.entry),
     wlBulk: (ids: string[], status: WlStatus) => request<{ updated: number }>('/api/admin/wl/status', { method: 'POST', token, body: { ids, status } }),
     wlNote: (entryId: string, note: string) => request<{ entry: WlEntryAdmin }>(`/api/admin/wl/${id(entryId)}/note`, { method: 'PUT', token, body: { note } }).then((r) => r.entry),
-    wlCsv: (scope: 'approved' | 'all') => downloadCsv(`/api/admin/wl.csv${q({ scope })}`, token, `slana-wl-${scope}.csv`),
+    wlCsv: (scope: 'approved' | 'all') => downloadCsv(`/api/admin/wl.csv${q({ scope })}`, token, `elymum-wl-${scope}.csv`),
     collabs: (p: { status?: CollabStatus | 'closed' | ''; q?: string }) => request<{ items: CollabAdmin[] }>(`/api/admin/collabs${q(p)}`, { token }).then((r) => r.items),
     collab: (cid: string) => request<{ collab: CollabAdmin }>(`/api/admin/collabs/${id(cid)}`, { token }).then((r) => r.collab),
     approveCollab: (cid: string, spots: number, deadline: number) =>
@@ -184,12 +224,21 @@ export function adminApi(token: string) {
       request<{ collab: CollabAdmin }>(`/api/admin/collabs/${id(cid)}/extend`, { method: 'POST', token, body: spots === undefined ? { deadline } : { deadline, spots } }).then((r) => r.collab),
     unlockCollab: (cid: string) => request<{ collab: CollabAdmin }>(`/api/admin/collabs/${id(cid)}/unlock`, { method: 'POST', token }).then((r) => r.collab),
     collabNote: (cid: string, note: string) => request<{ collab: CollabAdmin }>(`/api/admin/collabs/${id(cid)}/note`, { method: 'PUT', token, body: { note } }).then((r) => r.collab),
-    collabCsv: (cid: string) => downloadCsv(`/api/admin/collabs/${id(cid)}/wallets.csv`, token, `slana-collab-${cid}.csv`),
-    allCollabsCsv: () => downloadCsv('/api/admin/collabs/wallets.csv', token, 'slana-collab-wallets.csv'),
+    collabCsv: (cid: string) => downloadCsv(`/api/admin/collabs/${id(cid)}/wallets.csv`, token, `elymum-collab-${cid}.csv`),
+    allCollabsCsv: () => downloadCsv('/api/admin/collabs/wallets.csv', token, 'elymum-collab-wallets.csv'),
     integrity: integrityApi(token),
   };
 }
 export type AdminApi = ReturnType<typeof adminApi>;
+
+export interface AdminSettingsResponse {
+  settings: SiteSettings;
+  /** The server's `GAME_ACCESS` env override; it wins over the stored setting. */
+  gameAccessEnv?: GameAccess | null;
+}
+
+/** The registry from either `{ registry }` or the bare registry. */
+const registryOf = (r: { registry: ContractsRegistry } | ContractsRegistry): ContractsRegistry => ('registry' in r ? r.registry : r);
 
 export interface IntegrityFilter {
   status?: IntegrityFlagStatus | '';
@@ -213,7 +262,7 @@ function integrityApi(token: string) {
     overview: () => request<IntegrityOverview>(base, { token }),
     scan: () => request<IntegrityOverview>(`${base}/scan`, { method: 'POST', token, body: {} }),
     flags: (f: IntegrityFilter) => request<{ flags: IntegrityFlag[] }>(`${base}/flags${q({ ...f, minScore: f.minScore ?? undefined })}`, { token }).then((r) => r.flags),
-    flagsCsv: (f: IntegrityFilter) => downloadCsv(`${base}/flags.csv${q({ ...f, minScore: f.minScore ?? undefined })}`, token, 'slana-integrity-flags.csv'),
+    flagsCsv: (f: IntegrityFilter) => downloadCsv(`${base}/flags.csv${q({ ...f, minScore: f.minScore ?? undefined })}`, token, 'elymum-integrity-flags.csv'),
     setStatus: (flagId: string, status: IntegrityFlagStatus, note?: string) =>
       request<{ flag: IntegrityFlag }>(`${base}/flags/${id(flagId)}/status`, { method: 'POST', token, body: note === undefined ? { status } : { status, note } }).then((r) => r.flag),
     wallet: (wallet: string, other?: string) => request<IntegrityWalletView>(`${base}/wallet/${id(wallet)}${q({ other })}`, { token }),

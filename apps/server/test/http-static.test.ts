@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { NullChain } from '../src/chain/types';
 import { loadConfig } from '../src/config';
-import { createHttpServer } from '../src/http';
+import { createHttpServer, redactUrls } from '../src/http';
 
 /** The single-origin deploy (`WEB_DIST`): static files plus the SPA fallback for client routes like `/docs`. */
 describe('static web client', () => {
@@ -16,11 +16,11 @@ describe('static web client', () => {
   });
 
   async function start(): Promise<string> {
-    const web = mkdtempSync(join(tmpdir(), 'slana-web-'));
-    writeFileSync(join(web, 'index.html'), '<!doctype html><title>Slana</title>');
+    const web = mkdtempSync(join(tmpdir(), 'elymum-web-'));
+    writeFileSync(join(web, 'index.html'), '<!doctype html><title>Elymum</title>');
     mkdirSync(join(web, 'assets'));
     writeFileSync(join(web, 'assets', 'app-1234.js'), 'console.log(1)');
-    const cfg = loadConfig({ DATA_DIR: mkdtempSync(join(tmpdir(), 'slana-data-')), WEB_DIST: web } as NodeJS.ProcessEnv);
+    const cfg = loadConfig({ DATA_DIR: mkdtempSync(join(tmpdir(), 'elymum-data-')), WEB_DIST: web } as NodeJS.ProcessEnv);
     server = createHttpServer(cfg, { chain: new NullChain(), rooms: {} as never, leaderboards: {} as never, auth: {} as never, startedAt: Date.now() });
     await new Promise<void>((r) => server!.listen(0, '127.0.0.1', () => r()));
     const addr = server.address();
@@ -34,7 +34,7 @@ describe('static web client', () => {
       expect(res.status, path).toBe(200);
       expect(res.headers.get('content-type'), path).toMatch(/text\/html/);
       expect(res.headers.get('cache-control'), path).toBe('no-cache');
-      expect(await res.text(), path).toContain('<title>Slana</title>');
+      expect(await res.text(), path).toContain('<title>Elymum</title>');
     }
   });
 
@@ -50,5 +50,24 @@ describe('static web client', () => {
     expect(api.status).toBe(404);
     expect(api.headers.get('content-type')).toMatch(/json/);
     expect((await fetch(`${url}/pass/1.json`)).headers.get('content-type')).toMatch(/json/);
+  });
+
+  it('answers an unexpected error with a generic 500 and logs the details with URLs redacted', async () => {
+    const logs: string[] = [];
+    const cfg = loadConfig({ DATA_DIR: mkdtempSync(join(tmpdir(), 'elymum-data-')) } as NodeJS.ProcessEnv);
+    const boom = () => {
+      throw new Error('HTTP request failed. URL: https://rpc.example/v2/SECRETKEY123?apikey=SECRET2');
+    };
+    server = createHttpServer(cfg, { chain: new NullChain(), rooms: { online: boom, list: boom } as never, leaderboards: {} as never, auth: {} as never, startedAt: Date.now(), log: (m) => logs.push(m) });
+    await new Promise<void>((r) => server!.listen(0, '127.0.0.1', () => r()));
+    const addr = server.address();
+    const res = await fetch(`http://127.0.0.1:${typeof addr === 'object' && addr ? addr.port : 0}/api/rooms`);
+    expect(res.status).toBe(500);
+    const text = await res.text();
+    expect(JSON.parse(text)).toEqual({ error: 'internal', message: 'internal server error' });
+    expect(text).not.toMatch(/SECRET|rpc\.example/);
+    expect(logs.join('\n')).toMatch(/\/api\/rooms failed: Error: HTTP request failed/);
+    expect(logs.join('\n')).not.toMatch(/SECRET/);
+    expect(redactUrls('see wss://a.example:8443/k/abc?x=1 and http://b.example')).toBe('see wss://a.example:8443/<redacted> and http://b.example/<redacted>');
   });
 });

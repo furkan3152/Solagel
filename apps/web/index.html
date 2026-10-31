@@ -3,42 +3,55 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#FCF4DF" />
-    <title>Slana · Eat. Grow. Last the round.</title>
-    <meta name="description" content="Slana: riso coins that eat coins. On-chain coin arenas on Solana with 5-minute rounds. Join the WL for the Slana NFT, or bring your community as a collab." />
-    <link rel="canonical" href="https://slana.io/" />
+    <meta name="theme-color" content="#F8F7F4" />
+    <title>Elymum · Eat. Grow. Last the round.</title>
+    <meta name="description" content="Elymum: coins that eat coins. On-chain coin arenas on Elysium with 5-minute rounds. Join the WL for the Elymum NFT, mint at $1 in HYPE, or bring your community as a collab." />
+    <link rel="canonical" href="%VITE_PUBLIC_URL%/" />
 
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="Slana" />
-    <meta property="og:url" content="https://slana.io" />
-    <meta property="og:title" content="Slana · Eat. Grow. Last the round." />
-    <meta property="og:description" content="Riso coins that eat coins. On-chain coin arenas on Solana, 5-minute rounds. The WL for the Slana NFT is open." />
-    <meta property="og:image" content="https://slana.io/og-slana.png" />
+    <meta property="og:site_name" content="Elymum" />
+    <meta property="og:url" content="%VITE_PUBLIC_URL%/" />
+    <meta property="og:title" content="Elymum · Eat. Grow. Last the round." />
+    <meta property="og:description" content="Coins that eat coins. On-chain coin arenas on Elysium, 5-minute rounds. The WL for the Elymum NFT is open." />
+    <meta property="og:image" content="%VITE_PUBLIC_URL%/og-elymum.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="The Slana wordmark printed in riso ink, with coins eating coins on paper." />
+    <meta property="og:image:alt" content="The Elymum wordmark over the ring of Elysium, with coins eating coins." />
 
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:site" content="@slanaio" />
-    <meta name="twitter:creator" content="@slanaio" />
-    <meta name="twitter:title" content="Slana · Eat. Grow. Last the round." />
-    <meta name="twitter:description" content="Riso coins that eat coins. On-chain coin arenas on Solana, 5-minute rounds. The WL is open." />
-    <meta name="twitter:image" content="https://slana.io/og-slana.png" />
+    <meta name="twitter:site" content="@elymum" />
+    <meta name="twitter:creator" content="@elymum" />
+    <meta name="twitter:title" content="Elymum · Eat. Grow. Last the round." />
+    <meta name="twitter:description" content="Coins that eat coins. On-chain coin arenas on Elysium, 5-minute rounds. The WL is open." />
+    <meta name="twitter:image" content="%VITE_PUBLIC_URL%/og-elymum.png" />
 
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <style>
-      /* first paint: the paper stock before any script runs */
+      /* first paint: the day paper before any script runs */
       html,
       body {
         margin: 0;
-        background: #fcf4df;
+        background: #f8f7f4;
       }
+      /* before any script: a coin munching a row of seeds (React replaces #root when it mounts) */
+      .boot { min-height: 100vh; display: grid; place-items: center; opacity: 0; animation: boot-in 0.3s 0.45s forwards; }
+      .boot__row { position: relative; width: 290px; height: 78px; border-bottom: 3px dotted #04181c; }
+      .boot__seed { position: absolute; bottom: 8px; width: 13px; height: 17px; margin-left: -6.5px; box-sizing: border-box; border: 2.5px solid #04181c; border-radius: 50% 50% 50% 50% / 62% 62% 40% 40%; background: #f2c14e; transform-origin: 50% 100%; animation: boot-seed 2.8s infinite backwards; }
+      .boot__seed:nth-child(3n + 2) { background: #93d9ee; }
+      .boot__seed:nth-child(3n) { background: #f39b86; }
+      .boot__coin { position: absolute; left: 0; bottom: -6px; animation: boot-walk 2.8s linear infinite; }
+      .boot__coin svg { display: block; animation: boot-step 0.28s ease-in-out infinite; }
+      @keyframes boot-in { to { opacity: 1; } }
+      @keyframes boot-seed { 0% { transform: scale(1); } 4% { transform: translateY(-5px) scale(1.25); } 8%, 55% { transform: scale(0); opacity: 0; } 62% { transform: scale(1.2, 0.8); opacity: 1; } 68%, 100% { transform: scale(1); opacity: 1; } }
+      @keyframes boot-walk { 0% { transform: translateX(-40px); opacity: 0; } 6%, 92% { opacity: 1; } 100% { transform: translateX(300px); opacity: 0; } }
+      @keyframes boot-step { 50% { transform: translateY(-4px); } }
+      @media (prefers-reduced-motion: reduce) { .boot, .boot * { animation: none !important; opacity: 1; } .boot__coin { transform: translateX(-70px); } }
     </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div class="boot" role="status" aria-label="Loading"><div class="boot__row" aria-hidden="true"><i class="boot__seed" style="left:20px;animation-delay:0.082s"></i><i class="boot__seed" style="left:54px;animation-delay:0.362s"></i><i class="boot__seed" style="left:88px;animation-delay:0.642s"></i><i class="boot__seed" style="left:122px;animation-delay:0.922s"></i><i class="boot__seed" style="left:156px;animation-delay:1.202s"></i><i class="boot__seed" style="left:190px;animation-delay:1.482s"></i><i class="boot__seed" style="left:224px;animation-delay:1.762s"></i><i class="boot__seed" style="left:258px;animation-delay:2.042s"></i><span class="boot__coin"><svg class="boot__coin-art" viewBox="-56 -56 112 112" width="64" height="64"><ellipse cy="53" rx="34" ry="5" fill="#04181c" opacity=".18"/><circle r="46" fill="#d49a2b"/><circle cx="-6" cy="-8" r="40" fill="#f2c14e"/><circle r="46" fill="none" stroke="#04181c" stroke-width="5.2"/><ellipse cx="-15" cy="-6" rx="10" ry="12.5" fill="#fff" stroke="#04181c" stroke-width="4"/><ellipse cx="15" cy="-6" rx="10" ry="12.5" fill="#fff" stroke="#04181c" stroke-width="4"/><circle cx="-11" cy="-5" r="6" fill="#04181c"/><circle cx="19" cy="-5" r="6" fill="#04181c"/><path d="M-20 8 Q0 4 20 8 Q20 38 0 38 Q-20 38 -20 8Z" fill="#04181c"/><path d="M-14 9 l4 6 l4 -6 M6 9 l4 6 l4 -6" fill="#fff"/></svg></span></div></div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

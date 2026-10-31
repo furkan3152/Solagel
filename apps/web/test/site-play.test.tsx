@@ -4,8 +4,9 @@ import { PlayGate, playAccess } from '../src/site/play/PlayGate';
 import { TOKEN_KEY } from '../src/site/session';
 import { SETTINGS, installDomStubs, json, mockFetch } from './site-helpers';
 
-const ADMIN = '4re3F7w3Nn15Qj4R8tgdshoX8jRN1UUvrc8amKABuZb3';
-const store = (pubkey: string, token: string) => localStorage.setItem(TOKEN_KEY, JSON.stringify({ pubkey, token, exp: Date.now() + 3600_000 }));
+const ADMIN = '0xAdA0000000000000000000000000000000000001';
+const USER = '0x1111111111111111111111111111111111111111';
+const store = (address: string, token: string) => localStorage.setItem(TOKEN_KEY, JSON.stringify({ address, token, exp: Date.now() + 3600_000 }));
 
 let restore = () => {};
 beforeEach(() => {
@@ -15,18 +16,20 @@ beforeEach(() => {
 afterEach(() => restore());
 
 describe('the /play gate', { timeout: 30_000 }, () => {
-  it('blocks a visitor with no session: "The arena opens soon", a link back to /', async () => {
+  it('blocks a visitor with no session: "The ring is closed", links to the WL, the mint and home', async () => {
     ({ restore } = mockFetch({ 'GET /api/site/settings': { settings: SETTINGS } }));
     const onAllowed = vi.fn();
     render(<PlayGate onAllowed={onAllowed} />);
-    expect(await screen.findByRole('heading', { name: /The arena opens soon/ })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Back to slana.io' }).getAttribute('href')).toBe('/');
+    expect(await screen.findByRole('heading', { name: /The ring is closed/ })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Back home' }).getAttribute('href')).toBe('/');
+    expect(screen.getByRole('link', { name: 'Join the WL' }).getAttribute('href')).toBe('/wl');
+    expect(screen.getByRole('link', { name: 'Go to the mint' }).getAttribute('href')).toBe('/mint');
     expect(onAllowed).not.toHaveBeenCalled();
   });
 
   it('blocks a signed-in wallet that is not an admin', async () => {
-    store('9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin', 'user-token');
-    const { calls, restore: r } = mockFetch({ 'GET /api/site/settings': { settings: SETTINGS }, 'GET /api/auth/me': { pubkey: '9xQe', admin: false } });
+    store(USER, 'user-token');
+    const { calls, restore: r } = mockFetch({ 'GET /api/site/settings': { settings: SETTINGS }, 'GET /api/auth/me': { address: USER, admin: false, canPlay: false } });
     restore = r;
     expect(await playAccess()).toEqual({ allowed: false, reason: 'closed', session: null });
     expect(calls.find((c) => c.path === '/api/auth/me')?.auth).toBe('Bearer user-token');
@@ -37,18 +40,35 @@ describe('the /play gate', { timeout: 30_000 }, () => {
 
   it('lets the admin in with their session (the game then authenticates with it)', async () => {
     store(ADMIN, 'admin-token');
-    ({ restore } = mockFetch({ 'GET /api/site/settings': { settings: SETTINGS }, 'GET /api/auth/me': { pubkey: ADMIN, admin: true } }));
+    ({ restore } = mockFetch({ 'GET /api/site/settings': { settings: SETTINGS }, 'GET /api/auth/me': { address: ADMIN, admin: true } }));
     const onAllowed = vi.fn();
     render(<PlayGate onAllowed={onAllowed} />);
-    await waitFor(() => expect(onAllowed).toHaveBeenCalledWith({ pubkey: ADMIN, token: 'admin-token', admin: true }));
-    expect(screen.queryByRole('heading', { name: /opens soon/ })).toBeNull();
+    await waitFor(() => expect(onAllowed).toHaveBeenCalledWith({ address: ADMIN, token: 'admin-token', admin: true }));
+    expect(screen.queryByRole('heading', { name: /ring is closed/ })).toBeNull();
   });
 
   it('opens to everyone when the game is public', async () => {
-    ({ restore } = mockFetch({ 'GET /api/site/settings': { settings: { ...SETTINGS, gamePublic: true } } }));
+    ({ restore } = mockFetch({ 'GET /api/site/settings': { settings: { ...SETTINGS, gameAccess: 'public' } } }));
     const onAllowed = vi.fn();
     render(<PlayGate onAllowed={onAllowed} />);
     await waitFor(() => expect(onAllowed).toHaveBeenCalledWith(null));
     expect(await playAccess()).toMatchObject({ allowed: true, reason: 'public' });
+  });
+
+  it('holders mode: a signed-in holder plays; anyone else is asked to sign in with the NFT wallet', async () => {
+    const holders = { settings: { ...SETTINGS, gameAccess: 'holders' } };
+    ({ restore } = mockFetch({ 'GET /api/site/settings': holders }));
+    expect(await playAccess()).toEqual({ allowed: false, reason: 'holders', session: null });
+    render(<PlayGate onAllowed={vi.fn()} />);
+    expect(await screen.findByRole('heading', { name: /Holders only/ })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Go to the mint' }).getAttribute('href')).toBe('/mint');
+    restore();
+    store(USER, 'holder-token');
+    ({ restore } = mockFetch({ 'GET /api/site/settings': holders, 'GET /api/auth/me': { address: USER, admin: false, canPlay: true } }));
+    expect(await playAccess()).toEqual({ allowed: true, reason: 'holder', session: { address: USER, token: 'holder-token', admin: false } });
+    restore();
+    // a non-holder stays outside
+    ({ restore } = mockFetch({ 'GET /api/site/settings': holders, 'GET /api/auth/me': { address: USER, admin: false, canPlay: false } }));
+    expect((await playAccess()).reason).toBe('holders');
   });
 });

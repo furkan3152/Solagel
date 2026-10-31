@@ -2,7 +2,8 @@ import { motion } from 'motion/react';
 import type { HTMLAttributes } from 'react';
 import { springs, stampKeyframes, useReducedMotion } from '../motion';
 
-export type StampTone = 'pink' | 'teal' | 'mustard' | 'ink' | 'red';
+/** `up` (DONE, green), `down` (EATEN, red), `teal`, `sun`, `cyan`, `ink`; legacy `pink`/`red` → down, `mustard` → sun. */
+export type StampTone = 'up' | 'down' | 'teal' | 'sun' | 'cyan' | 'ink' | 'pink' | 'mustard' | 'red';
 
 type SpanAttrs = Omit<
   HTMLAttributes<HTMLSpanElement>,
@@ -26,15 +27,15 @@ export interface StampProps extends SpanAttrs {
 }
 
 /**
- * A rubber stamp: framed mono caps in a riso ink, worn by a noise mask and
- * multiplied into the paper. Stamp-in = 1.4 → 1 with a squash on impact
- * (420 ms keyframes), a 3° turn that settles on the `stamp` spring, and an
- * ink bloom ring.
+ * A rubber stamp ("DONE", "SEALED", "EATEN"): framed Geist Mono caps in one
+ * ink, a little worn, pressed on at an angle. Stamp-in = 1.4 → 1 with a squash
+ * on impact (420 ms keyframes), a 3° turn that settles on the `stamp` spring,
+ * and an ink bloom ring. Reduced motion: a fade.
  */
 export function Stamp({
   text,
-  tone = 'pink',
-  rotate = -8,
+  tone = 'up',
+  rotate = -7,
   animateIn = false,
   size = 'md',
   round = false,

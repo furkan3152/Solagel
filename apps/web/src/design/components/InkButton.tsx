@@ -1,49 +1,28 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
-import { Icon, type IconName } from '../icons';
+import { Button, type ButtonVariant } from './Button';
+import type { IconName } from '../icons';
 
 export interface InkButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> {
-  variant?: 'ink' | 'pink' | 'paper';
+  /**
+   * Legacy variants, drawn in the Storybook look: `pink` → primary (sun),
+   * `ink` → teal sticker, `paper` → cream sticker. New code: `Button`.
+   */
+  variant?: 'ink' | 'pink' | 'paper' | ButtonVariant;
   size?: 'sm' | 'md' | 'lg';
-  /** Trailing icon (the CTA arrow), printed in the accent ink. */
+  /** Trailing icon (the CTA arrow). */
   icon?: IconName;
   /** Leading icon. */
   lead?: IconName;
-  /** Mono second line (lg only reads well), e.g. "Penny Pond · 1,000 $SLANA". */
+  /** Mono second line, e.g. "Asphodel Meadow · 1,000 $ELYMUM". */
   sub?: ReactNode;
   block?: boolean;
+  loading?: boolean;
   children: ReactNode;
 }
 
-/**
- * Printed button. The offset shadow is the second riso pass (misregistration):
- * it slides out a hair on hover and the button collapses 4 px into it on press.
- * Pure CSS so keyboard :active and reduced motion behave the same.
- */
-export function InkButton({
-  variant = 'ink',
-  size = 'md',
-  icon,
-  lead,
-  sub,
-  block = false,
-  className,
-  children,
-  type = 'button',
-  ...rest
-}: InkButtonProps) {
-  const iconSize = size === 'lg' ? 28 : size === 'md' ? 22 : 18;
-  return (
-    <button
-      type={type}
-      className={`kb-btn kb-btn--${variant} kb-btn--${size}${block ? ' kb-btn--block' : ''}${sub ? ' has-sub' : ''}${className ? ` ${className}` : ''}`}
-      {...rest}
-    >
-      {lead && <Icon name={lead} size={iconSize} className="kb-btn__lead" />}
-      <span className="kb-btn__label">
-        <span className="kb-btn__text">{children}</span>
-        {sub != null && <span className="kb-btn__sub mono">{sub}</span>}
-      </span>
-      {icon && <Icon name={icon} size={iconSize} className="kb-btn__icon" />}
-    </button>
-  );
+const MAP: Record<string, ButtonVariant> = { pink: 'primary', ink: 'teal', paper: 'secondary' };
+
+/** Back-compat name for `Button` (screens written for Paper Ticket keep compiling). */
+export function InkButton({ variant = 'ink', ...rest }: InkButtonProps) {
+  return <Button variant={MAP[variant] ?? (variant as ButtonVariant)} {...rest} />;
 }

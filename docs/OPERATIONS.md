@@ -1,74 +1,97 @@
-# Slana: operations guide
+# Elymum: operations guide
 
-What comes after the setup: the fee wallet, the loot burn, pausing, shutting an arena down, key rotation and the journal
-backup. Setup: [DEPLOY.md](DEPLOY.md). Money flow and trust model: [ARCHITECTURE.md](ARCHITECTURE.md). Every command below
-exists in `pnpm admin help`.
+What comes after the setup: the server key and its gas, the allowlist, the $1 price, opening the game,
+pausing, retiring an arena, ownership, key rotation and backups. Setup: [DEPLOY.md](DEPLOY.md). Money flow and
+trust model: [ARCHITECTURE.md](ARCHITECTURE.md).
 
-The commands take `--url`, `--keypair` (default `~/.config/solana/id.json`; it must be the admin wallet
-`D2Ts7yCiVjedo6uwqpkM44QA8J45NdVU1J3k5m6iWtvm`, `SLANA_ADMIN` in `scripts/admin-wallet.conf`) and `--program`; see
-[DEPLOY.md](DEPLOY.md). Every admin command is run by this wallet; the server key is a separate hot key that only
-settles sessions and burns floor loot. `pnpm admin` reads a keypair file only (no `usb://ledger`); the admin panel below signs with a browser wallet or a Ledger instead. Before and after every operation:
+Everything on chain is done from **`/admin`** with the **owner wallet** (connect, Sign in, then the tabs); the
+CLI (`pnpm admin help`) has the same operations for a key file. Every transaction is previewed before the
+wallet prompt, a double click cannot send twice, and on mainnet a red MAINNET banner stays at the top. The
+server key is a separate hot key that only settles tickets, burns floor loot and (optionally) keeps the mint
+price at $1.
 
-```bash
-pnpm admin status
-```
+## The admin panel
 
-`status` prints: the admin and server keys (with their SOL balances), the token (`token: not set (run \`pnpm admin
-set-token --mint <CA>\`; arenas open after it)` until it is set, then the mint, token program, decimals, symbol and
-supply), the fee wallet, its token account and balance (and a warning when that account is missing), the fee and the
-deposit, `paused`, the totals and the arenas (open tickets / cap, vault, enabled or not).
+| Tab | What it does |
+|---|---|
+| **Launch** | The live checklist: chain, server key gas, contracts deployed and registered, token, arenas, allowlist root, $1 price, mint phase, game access. Each line links to the tab that fixes it |
+| **Deploy** | The deploy wizard (DEPLOY.md, section 3); on testnet also the TestToken |
+| **Mint** | Phase (closed / allowlist / public), publish the allowlist root, Sync to $1, price bounds and keeper, per-wallet limits, max supply (down only), base URI and freeze, contract URI, royalty, treasury, withdraw, owner mint |
+| **Arena** | Token, arenas (create, entry fee, cap, enable), fee, fee wallet, pause, server authority, sweeps, the server key's HYPE balance |
+| **Play** | Play the arenas yourself before launch |
+| **WL**, **Tasks**, **Collabs** | The whitelist applications, the WL steps, the community collabs |
+| **Integrity** | Cheat and collusion flags, bans, held payouts, detector settings |
+| **Settings** | `wlOpen`, `collabOpen`, who may play (`gameAccess`: admins / holders / public), the X handle (default `elymum`) |
 
-## Admin panel
+Admin endpoints need a SIWE session whose wallet is in `ADMIN_WALLETS`. Contract actions also need the
+connected wallet to be the contract's owner and on the chain the server reports; otherwise signing is blocked
+with the reason.
 
-`/admin` on the web app (not linked from the lobby) does every `pnpm admin` operation signed by the connected browser
-wallet: Phantom, Solflare, or a Ledger through either. Connect the admin wallet; any other wallet sees the status
-read-only. Each action opens a review sheet that lists every instruction to be signed (decoded values and every
-account), then the wallet prompt; the result shows the signature with an explorer link and the status is re-read.
+## The server key and gas
 
-| Task | In `/admin` | CLI |
-|---|---|---|
-| Status | Status card (Refresh) | `pnpm admin status` |
-| Pause / unpause | Pause | `update-config --paused true\|false` |
-| Fee, settle fee, server key, fee wallet, admin transfer | Update config (warns when the server authority is not this server's key; an admin transfer needs an explicit acknowledgement) | `update-config ...` |
-| Enable / disable an arena, entry fee, cap | Update arena | `update-arena ...` |
-| Shut an arena down | Sweep arena (disabled and idle arenas only; acknowledgement required) | `sweep --id N --force` |
-| Recreate the fee wallet's token account | Fee wallet token account → Recreate | `update-config --fee-wallet <same>` |
-| Close the program for good (emergency) | Close program (upgrade authority wallet only; type the program id and acknowledge) | `scripts/close-program.sh` |
+- `SERVER_PRIVATE_KEY=auto` keeps the key in `DATA_DIR/server-key.json` (mode 0600); its address is logged and
+  published as `serverKey`. It must be the arena's **server authority** (set at deploy, changeable in Arena).
+- It pays gas in **HYPE** for every settlement batch (one per arena per bell, chunked at 40 tickets), every loot
+  burn and, when it is the price keeper, every re-price. Below **0.01 HYPE** the server logs a warning and the
+  Launch and Arena tabs show it; with no gas at all the log says `!!! chain: the server key ... cannot pay gas`
+  and settlements wait (nothing is lost: they stay in the journal). Top it up from any wallet.
+- `!!! chain: the server key ... is NOT the arena's server authority` means the arena points at another key: set
+  the server authority again (Arena tab) or run the server with the right key.
 
-The program id is pinned in the build (the SDK's `PROGRAM_ID`), and the cluster is read from the RPC's genesis hash.
-If the game server reports another program id, or the genesis hash is unknown or does not match the claimed cluster
-(`SOLANA_CLUSTER` / `VITE_SOLANA_CLUSTER`), signing is blocked and a red banner says why. On a verified mainnet a red
-MAINNET banner stays at the top.
+## WL, collabs and the allowlist
 
-An admin transfer refuses the current admin, the program, the config, the server key and off-curve addresses. It needs
-the new address typed again and an explicit acknowledgement. Hand the program to a multisig with the CLI instead
-(`update-config --admin`), because a Squads vault is a program-derived address.
-
-## WL and collabs (slana.io)
-
-The site's applications are run from `/admin` with an admin wallet (`ADMIN_WALLETS`) signed in: connect it, press
-**Sign in** (free, no transaction), then use the tabs. Nothing here touches the chain.
+The site's applications are run from `/admin` with an admin wallet signed in. Nothing here touches the chain
+until you publish a root.
 
 | Task | In `/admin` |
 |---|---|
-| Open or close the WL, collabs, the game; the X handle | **Settings** (`wlOpen`, `collabOpen`, `gamePublic`, X handle). When `GAME_PUBLIC=1` is set on the server the game is open whatever the switch says |
-| Play before launch | **Play** → Open the arena |
-| Review WL entries | **WL**: counts, filter by status, search (wallet, handle, note or id), **Open** an entry for its answers (every link clickable), approve / reject / reset, a note |
-| Approve many at once | **WL**: tick rows (or the header box for the page), then Approve / Reject / Reset selected (up to 500) |
-| Export the allowlist | **WL** → CSV: approved (or CSV: all). Columns `wallet,x_handle,status,created_at,dup_collabs,note` |
-| Edit the WL steps | **Tasks**: add, edit, reorder (Up / Down), enable or disable, delete. Entries already sent keep the tasks they answered |
-| Open the like / repost / reply step | **Tasks** → Launch post: paste the pinned post's link. Until then the step reads "opens when the post is live" and is not required |
-| Review a community | **Collabs** → Open: every field and link, then **Approve** with spots and a deadline, or **Reject** |
-| More time or more spots | **Collabs** → Open → Extend (an approved or submitted collab; a submitted list stays locked) |
-| Let a community fix its list | **Collabs** → Open → Unlock list (the wallets are kept) |
-| Export collab wallets | **Collabs** → Open → CSV (one collab), or CSV: all submitted wallets. Columns `collab_id,community,name,wallet,dup_wl,dup_collabs` |
+| Open or close the WL and collabs; the X handle | **Settings** |
+| Review WL entries | **WL**: counts, filter, search (wallet, handle, note, id), open an entry for its answers, approve / reject / reset, a note; bulk actions on up to 500 rows |
+| Export | **WL** → CSV (approved or all): `wallet,x_handle,status,created_at,dup_collabs,legacy,note` |
+| Edit the WL steps | **Tasks**: add, edit, reorder, enable, delete; paste the launch post link to open the like / repost / reply step |
+| Communities | **Collabs**: approve with spots and a deadline, extend, unlock a submitted list, export wallets (with a `legacy` column) |
 
-**Duplicates are flagged, never dropped.** A collab wallet that is also on the WL (`dup_wl`) or in another collab's list
-(`dup_collabs`) is marked in the collab detail and the CSVs; the WL list shows `dup` for an entry whose wallet sits in a
-collab list. Decide by hand before the mint.
+- Wallets are EVM addresses (checksummed). Entries from before the move whose wallet is not `0x...` are kept,
+  marked **legacy**, and never in the allowlist. A legacy entry's X handle can be claimed by exactly one EVM
+  application: it is a fresh **pending** entry with the note "claims legacy handle @x (legacy status: ...)" and
+  inherits nothing (anyone can type a handle). The legacy entry is kept; both show in the WL list. Verify the claim
+  (e.g. ask the X account) before approving.
+- Duplicates are flagged, never dropped: a collab wallet that is also on the WL (`dup_wl`) or in another list
+  (`dup_collabs`) is marked; decide by hand.
+- **Publishing the allowlist** (Mint tab): the server snapshots every approved WL wallet plus every wallet of a
+  submitted collab list (EVM only, de-duplicated, sorted) and builds the Merkle tree; you sign `setMerkleRoot`.
+  Players fetch their proof from `/api/site/mint/proof?wallet=`. When approvals change after a publish, the panel
+  shows the diff (to add / to drop): publish again. Publishing a new root does not affect tokens already minted.
+- Site files: `DATA_DIR/site/{settings,tasks,wl,collab}.json` (atomic writes). Back them up with the journal.
 
-The files are `DATA_DIR/site/{settings,tasks,wl,collab}.json`, written atomically. Back them up with the journal (see
-[Journal backup](#journal-backup)). Tasks are verified by hand: there is no X API.
+## The mint at $1 in HYPE
+
+The price is held in wei; the target is `MINT_USD_CENTS` (100 = $1) at the HYPE/USD price from Hyperliquid's
+public info API. The UI always shows the HYPE amount with its USD value.
+
+- **By hand:** Mint → **Sync to $1** computes the wei price for the current HYPE/USD and asks your wallet to call
+  `setPrice`. Do it before opening a phase and whenever the USD value drifts.
+- **Automatically (price keeper):** set **price bounds** (`setPriceBounds`, e.g. $0.80 to $1.25 in wei at today's
+  rate) and make the **server key the price keeper** (`setPriceKeeper`). Every 5 minutes the server re-prices when
+  the price is off by more than 2 %, always clamped into your bounds; it logs `price keeper: ...`. It only moves after
+  two consecutive HYPE/USD readings agree within 3 %, and at most ±20 % per update (a big move takes several
+  5-minute checks). The keeper can
+  never price outside the bounds; widen or move them yourself if HYPE moves a lot. Remove the keeper
+  (`setPriceKeeper(0)`) to stop it.
+- **Phases:** Closed → **Allowlist** (proof required, `wlLimit` per wallet) → **Public** (`publicLimit` per wallet;
+  allowlisted wallets may still use their allowlist allowance). Opening the mint offers "activate the game for
+  holders" (sets `gameAccess` to `holders`).
+- **Who may play:** `admins` (default), `holders` (NFT `balanceOf > 0`, cached 15 s, plus admins) or `public`;
+  `GAME_ACCESS` on the server overrides the setting. In `holders` mode every room entry checks the gate, and every
+  arena seat (each new ticket, i.e. each round) re-reads `balanceOf` uncached right before seating.
+  **Known limitation:** the gate is a snapshot at seat time. One NFT can be passed between wallets between rounds
+  (or between joins), so several wallets can take turns playing on a single NFT; a seated player is not removed
+  mid-round if they transfer it away. Tickets are bought on chain, so the server cannot refuse a ticket purchase
+  itself: a non-holder who buys one is refused at the seat and gets the entry fee back by the stale-session refund.
+- **Money:** mint proceeds stay in the NFT contract until **Withdraw** sends the whole balance to the treasury.
+- **Metadata:** `tokenURI = baseURI + id`, served by the server at `/api/nft/<id>` (JSON) and `/api/nft/<id>.svg`.
+  Change the base URI if the domain changes; **Freeze metadata** is forever.
+- Supply can only go down (`setMaxSupply`, never below what is minted). Owner mints are for giveaways and the team.
 
 ## Integrity (cheat and collusion detection)
 
@@ -118,10 +141,10 @@ guard, the settlement worker never sends it, and the stale sweeper never refunds
 - **Settle at 0** (a reason is required) settles the ticket on chain with payout 0. The value stays in the arena vault
   and is journaled as a forfeit (`journal.json` → `forfeits`), so the books still add up:
   Σ live + Σ loot + Σ pending + Σ forfeited = Σ entry fees − Σ paid. Forfeited value is surplus in the vault; it leaves
-  only through `sweep_arena` when the arena is retired.
+  only through `sweepArena` when the arena is retired.
 
 **Decide within 24 hours.** A held ticket is still open on chain, and after 24 h its player may refund it themselves at
-the entry fee (`refund_session`). The tab marks items older than 12 h in red. Every hold, release, settle at 0, ban and
+the entry fee (`refund`). The tab marks items older than 12 h in red. Every hold, release, settle at 0, ban and
 unban is logged (`integrity: HELD …`, `RELEASED`, `SETTLED AT 0`, `BANNED`).
 
 **Files.** `DATA_DIR/integrity/state.json` (settings, bans, flags; atomic writes), `secret.key` (keep it with the
@@ -131,215 +154,109 @@ transfers, one per 30 s flush, deleted after 30 days or beyond 3,000 files). An 
 20,000 tickets and 60,000 transfers.
 
 **Cost.** The telemetry runs in the arena rooms only: a few counters per input message and a threat check every second
-tick. `pnpm -F @slana/server integrity-sim` plays the same seeded arena with and without it and prints both tick times,
+tick. `pnpm -F @elymum/server integrity-sim` plays the same seeded arena with and without it and prints both tick times,
 the flags honest players raise (none at the defaults) and those two scripted bots raise.
 
 ## Monitoring
 
-- `GET /api/health`: `ok`, uptime, players online, room count (the Docker health check uses it).
-- `GET /api/rooms`: rooms, instances, human and bot counts, loot on the floor.
-- `GET /api/pending?wallet=<address>`: the payouts the server is still sending for a wallet. The game of a player without
-  a token account (or whose account refuses the payout) no longer waits (R24): the server settles it without the account,
-  the session becomes `finalized` and the `owed` amount stays in the vault; the log says `finalized … (to collect)`. The
-  player collects it with "Collect payout" on the web, with no waiting time. In the `status` output these sessions count
-  as open (the vault cannot be swept).
-- `GET /api/config`: `chain.tokenReady` is `false` until `set-token` has run, then `true` with the token's mint, symbol and
-  decimals and the current `feeBps`. After `set-token` the server picks the token up within 30 s and logs
-  `game token set — mint …`; no restart is needed. New arenas can take up to about 60 s to appear in `/api/rooms`.
-- Server log lines starting with `!!!` need attention (e.g. an unreadable journal, an arena whose vault falls short, an
-  unusable fee wallet token account, an unreadable integrity state). `integrity: HELD …` means a payout waits in
-  `/admin` → Integrity. The server logs a warning when the server key drops below ◎0.05.
+- `GET /api/health`: ok, uptime, players, rooms (the Docker health check).
+- `GET /api/config`: the chain (`chainId`, `chainName`, `explorerUrl`), the arena and NFT addresses, `tokenReady`,
+  the token, `feeBps`, `serverKey`.
+- `GET /api/rooms`: rooms, instances, humans, bots, floor loot.
+- `GET /api/pending?wallet=0x...`: payouts the server is still sending for a wallet. A finalized session (the payout
+  transfer failed) is collected by the player with `refund`, any time.
+- `GET /api/site/mint`: the mint state, HYPE/USD, the price in USD, holders, game access.
+- Log lines starting with `!!!` need attention: an unreadable journal, an arena whose vault falls short, the wrong
+  server authority, no gas, a fee wallet that cannot receive the token, an arena contract whose code hash differs.
+  `integrity: HELD ...` means a payout waits in `/admin` → Integrity.
 
 ## The fee wallet
 
-The whole fee of every settlement (5 % of profit by default, at most 10 %) is paid to one token account: a token
-account of the game mint owned by `Config.fee_wallet`. By default the fee wallet is the admin wallet. There is no
-treasury vault, no season pool and no on-chain burn split; what the fee wallet holds is yours, and tokens are burned
-off-chain by hand (the plan is 75 % burned, 25 % kept).
+Every fee (5 % of profit by default, at most 10 %, fixed per ticket at join) is transferred to the fee wallet in
+the same `settle` batch. A swept arena's vault also goes there. It is an ordinary address: what it holds is yours.
+If the fee transfer fails (a token that refuses that address), the whole batch reverts and the server logs
+`!!! chain: settle batches revert on the fee transfer`: change the fee wallet (Arena tab, `setFeeWallet`) and the
+pending settlements go out by themselves.
 
-- `pnpm admin set-token` creates the fee wallet's associated token account in the same transaction (the admin pays its
-  rent). `pnpm admin update-config --fee-wallet <pubkey>` does the same for a new fee wallet, and `pnpm admin sweep`
-  creates it if it is missing. `pnpm admin status` shows the account and its balance.
-- **Never close the fee wallet's token account.** Settlement checks the account before every payout. If it is missing,
-  owned by another program, of another mint, frozen or otherwise unusable, **every settlement is held**: players are not
-  paid until it is fixed. The server logs this loudly, about once a minute:
+## Arena rounds and the loot burn
 
-  ```
-  !!! chain: fee wallet token account <address> (fee wallet <wallet>) is <problem>: ALL settlements are held. Recreate it ...
-  ```
+Paid arenas play wall-clock rounds: `ROUND_SECONDS` (default 300) and `ROUND_JOIN_CLOSE_SECONDS` (default 60,
+capped at half a round). Round *n* covers `[n x ROUND_SECONDS, (n + 1) x ROUND_SECONDS)` of Unix time, so keep the
+server clock synced. At the bell every live ticket is settled at its value in one batch, and the floor loot is
+journaled as a sweep and sent with `sweepLoot(arenaId, sweepId, amount)`, which **burns** it (to `0x...dEaD`). The
+`sweepId` is monotonic and kept in the journal, so a sweep is never applied twice.
 
-  Nothing is lost and no player is blamed: the held items wait in the journal and go out by themselves (the log says
-  `fee wallet token account … is usable again — settlements resume`) as soon as the account exists again. To recreate it,
-  press "Recreate token account" in `/admin`, run `pnpm admin update-config --fee-wallet <the current fee wallet>` (it prepends the idempotent account creation), or
-  `spl-token create-account <MINT> --owner <fee wallet> --fee-payer <keypair>` (add `--program-id` for a Token-2022 mint).
-  The server never creates the account itself.
-- **Do not add Token-2022 extensions to the fee wallet's token account** (for example a required memo, `MemoTransfer`).
-  The fee is sent without a memo, so an account that demands one refuses it and settlements are held like above.
-- Moving the tokens out is up to you: they are an ordinary balance of the fee wallet. Keep the token account open (it can
-  stay at a balance of 0).
-- A different fee wallet (`update-config --fee-wallet`) applies to settlements from then on, including tickets that are
-  already open (the fee goes to whichever wallet is in the Config at settlement); the new wallet's token account is
-  created in the same transaction.
-- The fee wallet may play as an ordinary player. When its own token account is both the player's and the fee account, the
-  server settles that ticket without the player's account (the amount is kept as `owed`) and the wallet collects it with
-  "Collect payout".
-
-## Arena rounds and the loot sweep
-
-Paid arenas play wall-clock rounds: `ROUND_SECONDS` (default 300) and `ROUND_JOIN_CLOSE_SECONDS` (default 60, capped at half
-a round) in the server environment. Round *n* covers `[n × ROUND_SECONDS, (n + 1) × ROUND_SECONDS)` of Unix time, so keep
-the server clock synced (NTP). There is no cash-out: at the bell every live ticket is paid its value, and the loot left
-on the floor is journaled as a `sweep` item (`sweep:<roomId>:<round>`) and sent with the server-signed program
-instruction `sweep_loot(amount)`, which burns that amount from the arena vault (the token supply drops; the program
-emits `LootBurned`).
-
-- A sweep is journaled like a payout. After a crash it is resumed; it is resent only once its blockhash has provably
-  expired, so it is never applied twice. It belongs to no wallet, so `GET /api/pending?wallet=` does not list it; the journal (`DATA_DIR/journal.json`, kind `sweep`) and the log do.
-- `!!! chain: arena #N vault cannot cover the loot sweep ...` means the vault holds less than the journal says; the server
-  retries with backoff. Do not force anything: check the arena with `pnpm admin status` first. `!!! chain: dropping
-  malformed loot sweep` and `... without a recorded blockhash expiry; not resending` need a manual look at the journal.
-- `sweep_loot` burns, and its only cap is the vault balance (the same trust as `settle_session`). The server computes the
-  amount from the floor loot it holds; only the server key can send it. A leaked server key could therefore burn an
-  arena's whole vault, including tickets that have not been played: **protect the server key** like the payout key it is
-  (a separate hot key, minimal SOL, rotate it at once if it may have leaked, see below).
-- A short `ROUND_SECONDS` is for demos and tests (`ROUND_SECONDS=90 pnpm demo`; the localnet e2e uses 30). Keep the
-  default in production so players see the same 5-minute rounds the guide describes.
+- `!!! chain: arena #N vault cannot cover ...` means the vault holds less than the journal says; the server retries
+  with backoff. Check the arena in `/admin` → Arena before doing anything.
+- `sweepLoot` is capped only by the vault (the same trust as a payout): **protect the server key**.
+- Unplayed tickets are settled at their entry fee after `STALE_SESSION_AFTER_S` (15 minutes).
 
 ## Pausing and emergencies
 
-| What | Command | Effect |
+| What | How | Effect |
 |---|---|---|
-| Stop new tickets | `pnpm admin update-config --paused true` | `join_arena` is refused; payouts and refunds go on. To undo: `--paused false` |
-| Close one arena | `pnpm admin update-arena --id N --enabled false` | no tickets can be bought for that arena; open tickets are played and close |
-| Close the arenas on the server | `STAKE_ENABLED=false` in the server environment, restart | the arenas leave the lobby; the payout queue keeps running |
-| Change the fee or the deposit | `pnpm admin update-config --fee-bps N --settle-fee-lamports N` | the fee rate and the deposit apply to tickets bought from now on (an open ticket keeps the rate of the moment it was bought: `Session.fee_bps`); the fee is at most 1000 (10 %) and the whole of it goes to the fee wallet |
-| Change the fee wallet | `pnpm admin update-config --fee-wallet <pubkey>` | the new wallet's token account is created in the same transaction (admin pays); it must stay open, see "The fee wallet" |
+| Stop new tickets | Arena → **Pause** (`setPaused(true)`; CLI `pnpm admin pause`) | `join` is refused; **settlements, refunds and collects go on**. Undo with Unpause |
+| Close one arena | Arena → disable it (`updateArena(..., enabled=false)`) | no new tickets there; open ones are played and settle |
+| Close the arenas on the server | `STAKE_ENABLED=false`, restart | the arenas leave the lobby; the settlement queue keeps running |
+| Close the game to players | Settings → who may play: `admins` | everyone else sees the gate; tickets already bought can still be refunded after 24 h |
+| Close the mint | Mint → phase **Closed** | no mints; nothing else changes |
+| Change the fee | Arena → fee (`setFeeBps`, at most 1,000 bps) | applies to tickets bought from now on |
 
-On `SIGTERM`/`SIGINT` the server settles the players in the arenas at their current value (an operator exit, not a cash-out they chose) and saves its state; use it for restarts (Docker
-`stop` sends SIGTERM).
+On `SIGTERM` the server settles the players in the arenas at their current value (an operator exit) and saves its
+state; Docker `stop` and Render deploys send it.
 
-### Shutting an arena down for good (sweep)
+### Retiring an arena (sweep)
 
-1. `pnpm admin update-arena --id N --enabled false`
-2. Wait for the open tickets to close: `status` → `open 0/…`. Live tickets are paid at the next round bell (at most
-   `ROUND_SECONDS`, 5 minutes by default); those that do not close can be refunded by the player after 24 hours. Settled sessions whose payout
-   has not been collected (`finalized`) also count as open: `sweep` is refused (`ArenaHasOpenSessions`) until the player
-   presses "Collect payout"; that amount belongs to the player, you have to wait.
-3. Make sure no loot is left in that arena's rooms in `/api/rooms`, and that `GET /api/pending` / the server log shows no
-   pending payout or loot sweep for that arena (the CLI cannot see the server's journal).
-4. ```bash
-   pnpm admin sweep --id N --force
-   ```
-   Without `--force` the command only prints the warning and stops. The whole vault moves to the fee wallet's token
-   account (the command creates it if it is missing). `sweep_arena` only works on a disabled arena with no open tickets (the per-round `sweep_loot` is separate: it burns, see Arena rounds). Do not re-enable a swept
-   arena: loot left in the server's journal is no longer in the vault. The server checks this too: when it binds an arena
-   whose vault does not cover the journal's debt (loot + pending payouts + live tickets), it keeps the arena disabled and
-   logs `!!! arena #N KEPT DISABLED`.
+1. Disable the arena (Arena tab).
+2. Wait until it has no open sessions: live tickets settle at the next bell; a finalized payout counts as open
+   until its player collects it (that money is theirs: wait); unsettled tickets can be refunded by players after
+   24 h. Make sure `/api/rooms` shows no loot left in its rooms and the log no pending item for it.
+3. **Sweep arena** (`sweepArena(id)`): the whole vault goes to the fee wallet. The contract refuses while the arena
+   is enabled or has open sessions. Do not re-enable a swept arena; the server keeps an arena whose vault does not
+   cover the journal disabled (`!!! arena #N KEPT DISABLED`).
+
+## Ownership
+
+Both contracts are **Ownable2Step**: ownership moves only when the new owner accepts.
+
+1. From the current owner: `transferOwnership(newOwner)` on the arena and on the NFT (the admin panel's Arena and
+   Mint tabs where offered, or the contract's write page on the explorer, or any tool that sends a contract call;
+   the SDK has `transferOwnershipCall`).
+2. From the new owner: `acceptOwnership()` on each contract. Until then the old owner stays in control.
+3. Add the new owner to `ADMIN_WALLETS` on the server (and remove the old one when you are done). Registering the
+   contracts again from `/admin` is only needed if you move to new contracts.
+
+A multisig (e.g. a Safe on Elysium, when available) can be the new owner: it then signs every owner action.
+The fee wallet and the NFT treasury are separate settings: change them too if they were the old owner.
 
 ## Rotating the server key
 
-Only `Config.server_authority` can sign payouts; the pending payouts in the journal are sent with the new key.
+1. Pause the arena (optional but calm) and stop the server (SIGTERM: live tickets settle, the journal is saved).
+2. Give the server a new key: move `DATA_DIR/server-key.json` aside (with `auto` a new key is generated at the next
+   start) or set `SERVER_PRIVATE_KEY` to a new 0x key or key file. Start the server and note the new `serverKey`.
+3. Fund the new key with HYPE.
+4. Arena → **Server authority** → the new key (`setServerAuthority`). If the old key was the NFT price keeper, set the
+   new one as keeper too (`setPriceKeeper`). The pending settlements in the journal go out with the new key.
+5. Move any HYPE left on the old key elsewhere and destroy it.
 
-1. Generate and fund a new key:
-   ```bash
-   solana-keygen new -o keys/server-2.json --no-bip39-passphrase
-   solana transfer $(solana-keygen pubkey keys/server-2.json) 0.5 --allow-unfunded-recipient
-   ```
-2. Stop the server (SIGTERM: players are cashed out, payouts stay in the journal).
-3. Change it on-chain:
-   ```bash
-   pnpm admin update-config --server $(solana-keygen pubkey keys/server-2.json)
-   ```
-4. Start the server with the same `DATA_DIR` and `SERVER_KEYPAIR=keys/server-2.json`; the pending payouts are sent with
-   the new key. As long as the key does not match, the server says "server key is not the program server authority",
-   waits and retries.
-5. Withdraw the SOL left on the old key and destroy the key.
+If the key **leaked**: pause first, then step 4 at once. Until it is replaced the old key can settle open tickets
+with any amount up to a vault and burn up to a vault with `sweepLoot`.
 
-If the key leaked, first `pnpm admin update-config --paused true`, then step 3 right away: until it is replaced, the
-old key can close open tickets with any amount that does not exceed the vault and burn up to a vault's balance with `sweep_loot`. For the admin key use
-`update-config --admin <new>`; for the upgrade authority `solana program set-upgrade-authority`.
+## Journal and data backup
 
-## Journal backup
-
-Contents of `DATA_DIR`:
-
-| File | Contents | If it is lost |
+| File in `DATA_DIR` | Contents | If it is lost |
 |---|---|---|
-| `journal.json` | pending payouts, live values in the arenas, loot in the rooms | **owed payouts drop out of the queue** (players can only get their entry fee refunded after 24 hours); the stale-ticket sweeper stays off until `STALE_SWEEP_ACK=1` |
-| `leaderboards.json` | the server's Today / All time tables | display only |
-| `*.dev-fake.json` | `DEV_FAKE_CHAIN` files | nothing to do with real money |
+| `journal.json` | pending settlements, live values, floor loot, the last `sweepId`, the arena contract it belongs to | owed payouts drop out of the queue (players can only refund the entry fee after 24 h); the stale sweeper stays off while a quarantined copy exists |
+| `server-key.json` | the server key (`auto`) | a new key: set it as server authority again |
+| `contracts.json` | the registered arena and NFT | register them again from `/admin` |
+| `site/*.json`, `profiles.json`, `leaderboards.json` | WL, collabs, tasks, settings, names and skins, standings | the site data and profiles are gone; keep backups |
+| `integrity/` | integrity state, the hashing secret, ticket summaries | flags and bans are gone |
 
-- Whenever a payout is queued, and as values change at most once a second, the journal is **written to a temporary file
-  and renamed**: the file on disk is a complete snapshot at every moment. Copy it regularly (e.g. once a minute, from a
-  persistent volume) and keep the backups encrypted (they contain wallet addresses).
-- An unreadable journal is moved aside as `journal.json.corrupt-<time>` and the server starts empty; a `!!!` warning
-  appears in the log. Stop the server and put the last good backup back.
-- **After a quarantine the stale-ticket sweeper is off (M9).** While a `journal.json.corrupt-*` file is in `DATA_DIR`, the
-  server does not refund tickets that look unplayed from their entry fee: the lost journal may hold those tickets' real
-  outcome (e.g. a winning round-end payout). Every 30 minutes the log says `!!! chain: stale-session sweeper is OFF`. Inspect the
-  quarantined file, settle the owed payouts by hand (or put the good backup back), then restart with
-  `STALE_SWEEP_ACK=1` or move the file out of `DATA_DIR`.
-- Restore: stop the server, put the file in place as `DATA_DIR/journal.json`, start it. The records of tickets already
-  paid or refunded drop out by themselves (session closed or `SessionMismatch`); live tickets from the old snapshot are
-  cashed out automatically. An old backup can bring back loot collected after its date: use the newest backup you have.
-- Never use the same `DATA_DIR` or the same `SERVER_KEYPAIR` on two servers at once.
-
-## Program upgrade
-
-```bash
-anchor build --ignore-keys && pnpm -F @slana/sdk sync-idl && scripts/build-lean.sh && scripts/test-program.sh
-scripts/deploy-lean.sh <cluster-url> target/deploy/slana-keypair.json   # with the upgrade authority
-```
-
-> **Never `anchor deploy`.** It deploys `target/deploy/slana.so`, the 454,704-byte Anchor reference, instead of the lean
-> program (39,032 bytes), and its rent would lock about ◎3.2. Upgrades always go through `scripts/deploy-lean.sh` (`solana program deploy target/deploy/slana_lean.so`).
-
-The upgrade authority is the admin wallet: `deploy-lean.sh` moves it there after a deploy, so an upgrade is signed by the
-admin (`--keypair <admin keypair> --upgrade-authority <admin keypair>`); it skips the move when the admin already is the
-authority. Never pass `--final`: the program must stay upgradeable and closable.
-
-Keep the account layout (state.rs) backward compatible; if the new `.so` is larger, first run
-`solana program extend <PROGRAM_ID> <bytes>`. On mainnet, try the upgrade on devnet first; a multisig is optional later.
-
-## Emergency stop / close
-
-The program is deliberately kept upgradeable (never `--final`), so the admin wallet can stop or close it at any time.
-Three steps, from gentle to final. Run every command with the admin wallet.
-
-**(a) Instant pause.** Stops new tickets at once; payouts, refunds and collections keep working.
-
-```bash
-pnpm admin update-config --paused true --keypair <admin keypair>     # undo: --paused false
-```
-
-**(b) Optional graceful wind-down.** Do this when there is time, so no player or token is stranded:
-
-1. Pause (a) and set `STAKE_ENABLED=false` on the server, so the arenas leave the lobby.
-2. Disable the arenas (`pnpm admin update-arena --id N --enabled false`) and let the open sessions settle. Players
-   collect their payouts and, after 24 hours, refund any ticket that did not settle. `pnpm admin status` must show
-   `open 0` for every arena.
-3. Sweep each idle arena into the fee wallet: `pnpm admin sweep --id N --force`.
-4. Move the fee wallet's tokens wherever you want them (they are an ordinary balance of that wallet).
-
-**(c) Instant close.** Irreversible.
-
-```bash
-scripts/close-program.sh <cluster-url> <admin-keypair>          # prints the state, asks you to type the program id
-scripts/close-program.sh <cluster-url> <admin-keypair> --force  # no confirmation
-```
-
-In `/admin`, the **Close program** card does the same with the browser wallet: it is shown only when the connected
-wallet is the program's upgrade authority (usually the admin), lists the tokens and open sessions still in the arenas,
-and signs the loader's `Close` only after the program id is retyped and the warning acknowledged. The reclaimed rent
-goes to that wallet.
-
-The script prints the on-chain state first (`pnpm admin status`: the paused flag, each arena's open sessions and vault,
-the fee wallet and its token account), then a warning, then runs `solana program close <PROGRAM_ID>
---bypass-warning --recipient <admin> --keypair <admin>` and prints the reclaimed SOL (about 0.2729 SOL of ProgramData
-rent).
-
-> **Warning.** Once the program is closed, every token left in a program-owned vault (the arenas) is
-> **permanently inaccessible**, open sessions can no longer settle or refund, and nothing can be recovered. A closed
-> program id can **never be reused**: redeploying means a new program id, a new Config and a new token setup (`init`, then `set-token` again). This is also
-> the only way out of a wrong `set-token`: the token can be set once and never changed. Prefer (a) and (b) unless it is a
-> real emergency.
+- The journal is written to a temporary file and renamed, so the file on disk is always a complete snapshot. Copy
+  `DATA_DIR` regularly and keep the copies encrypted (they hold a private key and wallet addresses).
+- An unreadable journal is moved aside as `journal.json.corrupt-<time>` with a `!!!` log, and the stale sweeper stays
+  off until you inspect it and restart with `STALE_SWEEP_ACK=1` (or move the file away).
+- **The journal is bound to one arena contract.** While it owes money (pending settlements, live tickets, floor loot)
+  on an arena, the server refuses to switch to another arena contract: `POST /api/admin/contracts` answers 409
+  `wrong_state`. Let the rounds settle first, or start the new arena on a fresh `DATA_DIR`.
+- Never run two servers on the same `DATA_DIR` or the same server key.

@@ -1,4 +1,4 @@
-// Slana motion graphics: Paper Ticket components drawn as a pure function of time.
+// Elymum motion graphics: Paper Ticket components drawn as a pure function of time.
 //
 // The page is driven frame by frame (render/overlays.mjs):
 //   setup(items)  builds every item once; an item is {id, type, start, dur, z?, props}
@@ -14,9 +14,9 @@
   stage.style.width = W + 'px'; stage.style.height = H + 'px';
   const C = {}; // component factories
   const live = [];
-  const ART = window.SlanaArt;
-  const INKC = '#1b1732', PAPER = '#fcf4df', CARD = '#fffdf6';
-  const COL = { pink: '#fb2f85', teal: '#01aca4', mustard: '#ffb413', blue: '#3055fc', green: '#17ad65', red: '#f72e1c', ink: INKC, paper: PAPER, card: CARD, pinkInk: '#d1166b', tealInk: '#0f736e' };
+  const ART = window.ElymumArt;
+  const INKC = '#04181c', PAPER = '#f8f7f4', CARD = '#f6eeda';
+  const COL = { pink: '#34b7dd', teal: '#2d7388', mustard: '#f2c14e', blue: '#93d9ee', green: '#3c9a87', red: '#ff5252', ink: INKC, paper: PAPER, card: CARD, pinkInk: '#2490b0', tealInk: '#1f5566' };
   const col = (c) => COL[c] || c || COL.pink;
 
   // ── easing ──
@@ -53,7 +53,7 @@
     d.style.cssText = `position:absolute;inset:0;background:${tone};`;
     if (grid) {
       const g = el('div');
-      g.style.cssText = 'position:absolute;inset:-60px;background-image:linear-gradient(rgba(48,85,252,.13) 2px,transparent 2px),linear-gradient(90deg,rgba(48,85,252,.13) 2px,transparent 2px),linear-gradient(rgba(48,85,252,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(48,85,252,.06) 1px,transparent 1px);background-size:240px 240px,240px 240px,48px 48px,48px 48px;';
+      g.style.cssText = 'position:absolute;inset:-60px;background-image:linear-gradient(rgba(147,217,238,.13) 2px,transparent 2px),linear-gradient(90deg,rgba(147,217,238,.13) 2px,transparent 2px),linear-gradient(rgba(147,217,238,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(147,217,238,.06) 1px,transparent 1px);background-size:240px 240px,240px 240px,48px 48px,48px 48px;';
       d.appendChild(g);
       d._grid = g;
     }
@@ -99,7 +99,7 @@
       // the wordmark: ink letters over a misregistered pink print
       const wm = el('div');
       wm.style.cssText = 'position:absolute;left:0;right:0;top:300px;text-align:center;height:330px;';
-      const word = p.word || 'slana';
+      const word = p.word || 'elymum';
       const mk = (color) => {
         const w = el('div', 'disp');
         w.style.cssText = `position:absolute;left:0;right:0;top:0;font-size:330px;letter-spacing:-.045em;color:${color};white-space:nowrap;`;
@@ -161,10 +161,10 @@
       tk.innerHTML = `
         <div style="position:absolute;inset:0;background:${CARD};border:5px solid ${INKC};border-radius:22px;box-shadow:14px 14px 0 ${INKC};overflow:hidden">
           <div style="position:absolute;left:0;top:0;bottom:0;width:26px;background:${col(p.accent)};border-right:5px solid ${INKC}"></div>
-          <div class="mono" style="position:absolute;left:74px;top:52px;font-size:26px;color:#5b5577">${esc(p.kicker || '')}</div>
+          <div class="mono" style="position:absolute;left:74px;top:52px;font-size:26px;color:#6b655a">${esc(p.kicker || '')}</div>
           <div class="ttl disp" style="position:absolute;left:68px;top:108px;font-size:${p.titleSize || 128}px;white-space:nowrap">${esc(p.title)}</div>
           <div class="sub" style="position:absolute;left:74px;top:${p.titleSize > 130 ? 290 : 272}px;width:640px;font-size:38px;font-weight:600;line-height:1.18;color:${INKC}">${esc(p.sub || '')}</div>
-          <div style="position:absolute;right:186px;top:24px;bottom:24px;border-left:5px dashed rgba(27,23,50,.35)"></div>
+          <div style="position:absolute;right:186px;top:24px;bottom:24px;border-left:5px dashed rgba(4,24,28,.35)"></div>
           <div class="mono" style="position:absolute;right:0;top:0;bottom:0;width:186px;display:flex;align-items:center;justify-content:center;font-size:24px;writing-mode:vertical-rl;transform:rotate(180deg)">${esc(p.stub || 'HOW TO PLAY')}</div>
         </div>
         <div style="position:absolute;right:${186 - 19}px;top:-22px;width:42px;height:42px;border-radius:50%;background:${PAPER};border-bottom:5px solid ${INKC}"></div>
@@ -352,7 +352,7 @@
     return { root, update };
   };
 
-  /** A small mono label (kicker); dot = live dot; anchor tr/tl/br/bl. */
+  /** A small mono label (kicker); dot = live dot; pin tr/tl/br/bl. */
   C.tag = (p) => {
     const root = el('div', `it tag mono${p.ink ? ' ink' : ''}${p.kick ? ' kick' : ''}`);
     root.innerHTML = `${p.dot ? '<span class="dot"></span>' : ''}<span class="tx"></span>`;
@@ -365,10 +365,10 @@
     const update = (lt, dur) => {
       if (!placed) {
         const r = root.getBoundingClientRect();
-        const x = p.anchor && p.anchor.includes('r') ? p.x - r.width : p.x;
-        const y = p.anchor && p.anchor.includes('b') ? p.y - r.height : p.y;
+        const x = p.pin && p.pin.includes('r') ? p.x - r.width : p.x;
+        const y = p.pin && p.pin.includes('b') ? p.y - r.height : p.y;
         root.style.left = x + 'px'; root.style.top = y + 'px';
-        root.style.transformOrigin = p.anchor && p.anchor.includes('r') ? 'right center' : 'left center';
+        root.style.transformOrigin = p.pin && p.pin.includes('r') ? 'right center' : 'left center';
         placed = true;
       }
       const a = seg(lt, 0, 0.3);
@@ -417,7 +417,7 @@
   };
 
   /** A value float: a big riso number ("+1,000") popping off the coin that ate, rising, fading.
-   * props: text, sub ('$SLANA'), x/y or track [[lt, x, y, r], ...] (follows a coin), color, size. */
+   * props: text, sub ('$ELYMUM'), x/y or track [[lt, x, y, r], ...] (follows a coin), color, size. */
   C.float = (p) => {
     const root = el('div', 'it disp');
     const size = p.size || 132;
@@ -429,7 +429,7 @@
     const main = mk(c, true);
     const sub = el('div', 'mono');
     sub.style.cssText = `position:absolute;left:0;right:0;top:${size * 1.02}px;font-size:${size * 0.2}px;letter-spacing:0.18em;color:${INKC};text-align:center;`;
-    sub.textContent = p.sub ?? '$SLANA';
+    sub.textContent = p.sub ?? '$ELYMUM';
     const box = el('div');
     box.style.cssText = 'position:relative;';
     box.appendChild(ghost); box.appendChild(main); box.appendChild(sub);
@@ -530,7 +530,7 @@
     const update = (lt, dur) => {
       if (!placed) {
         const r = root.getBoundingClientRect();
-        root.style.left = (p.anchor === 'center' ? p.x - r.width / 2 : p.x) + 'px';
+        root.style.left = (p.pin === 'center' ? p.x - r.width / 2 : p.x) + 'px';
         root.style.top = p.y - r.height / 2 + 'px';
         placed = true;
       }
@@ -772,10 +772,10 @@
       if (r === '-') return '<div class="rule"></div>';
       if (r === '=') return '<div class="rule2"></div>';
       const [l, v, style] = r;
-      return `<div class="row" style="${style === 'dim' ? 'color:#5b5577' : style === 'pink' ? 'color:#c71466' : style === 'teal' ? 'color:#0f736e' : ''}"><span class="l">${esc(l)}</span><span class="d"></span><span class="r">${esc(v)}</span></div>`;
+      return `<div class="row" style="${style === 'dim' ? 'color:#6b655a' : style === 'pink' ? 'color:#1e6f8c' : style === 'teal' ? 'color:#1f5566' : ''}"><span class="l">${esc(l)}</span><span class="d"></span><span class="r">${esc(v)}</span></div>`;
     });
-    rc.innerHTML = `<div class="in"><h3>${esc(p.title || 'SLANA CASH-OUT')}</h3><div class="sub mono">${esc(p.sub || '')}</div>${rows.join('')}
-      ${p.net ? `<div class="rule2"></div><div class="net"><span class="mono" style="font-size:22px">${esc(p.netLabel || 'NET')}</span><span><b>${esc(p.net)}</b> <span class="mono" style="font-size:20px">$SLANA</span></span></div>` : ''}</div><div class="zig"></div>`;
+    rc.innerHTML = `<div class="in"><h3>${esc(p.title || 'ELYMUM CASH-OUT')}</h3><div class="sub mono">${esc(p.sub || '')}</div>${rows.join('')}
+      ${p.net ? `<div class="rule2"></div><div class="net"><span class="mono" style="font-size:22px">${esc(p.netLabel || 'NET')}</span><span><b>${esc(p.net)}</b> <span class="mono" style="font-size:20px">$ELYMUM</span></span></div>` : ''}</div><div class="zig"></div>`;
     const clip = el('div');
     clip.style.cssText = 'position:relative;overflow:hidden;padding:0 30px 40px 30px;margin:0 -30px;';
     clip.appendChild(rc);
@@ -963,7 +963,7 @@
     const r = p.r || 26;
     root.innerHTML = `<div style="position:absolute;left:${r * 0.2}px;top:${r * 0.2}px;width:${2 * r}px;height:${2 * r}px;border-radius:50%;background:${COL.pink};mix-blend-mode:multiply"></div>
       <div style="position:absolute;left:0;top:0;width:${2 * r}px;height:${2 * r}px;box-sizing:border-box;border-radius:50%;background:${COL.mustard};border:${Math.max(3, r * 0.14)}px solid ${INKC}"></div>
-      <div style="position:absolute;left:${r * 0.4}px;top:${r * 0.4}px;width:${1.2 * r}px;height:${1.2 * r}px;box-sizing:border-box;border-radius:50%;border:${Math.max(2, r * 0.1)}px solid rgba(27,23,50,.45)"></div>`;
+      <div style="position:absolute;left:${r * 0.4}px;top:${r * 0.4}px;width:${1.2 * r}px;height:${1.2 * r}px;box-sizing:border-box;border-radius:50%;border:${Math.max(2, r * 0.1)}px solid rgba(4,24,28,.45)"></div>`;
     root.style.left = p.x - r + 'px'; root.style.top = p.y - r + 'px';
     stage.appendChild(root);
     const update = (lt, dur) => {
@@ -991,8 +991,8 @@
     return { root, update };
   };
 
-  /** The NFT beat (media/free-mint/scenes/nft.js), full frame on its canvas: sealed cards dealt and
-   *  turned, "Slana NFT. / Free mint.", the WL ticket (slana.io/wl). p: {times, out, kicker, lead,
+  /** The NFT beat (media/mint-film/scenes/nft.js), full frame on its canvas: sealed cards dealt and
+   *  turned, "Elymum NFT. / $1 in HYPE.", the WL ticket (<SITE_HOST>/wl). p: {times, out, kicker, lead,
    *  plain (the plain mention, see drawBeat)}. */
   C.nft = (p) => {
     const root = el('div', 'it');

@@ -22,7 +22,7 @@ export function sanitizeChat(raw: unknown): string {
   return takeCodePoints(raw.replace(INVISIBLE, '').replace(/\s+/g, ' ').trim(), MAX_CHAT_LENGTH).trim();
 }
 
-/** UTF-8 byte length (on-chain names are limited to 16 bytes). */
+/** UTF-8 byte length (profile names are limited to 16 bytes). */
 export const utf8Length = (s: string): number => new TextEncoder().encode(s).length;
 
 /** Truncates to at most `maxBytes` UTF-8 bytes without splitting a code point. */
@@ -38,6 +38,6 @@ export function truncateUtf8(s: string, maxBytes: number): string {
   return out;
 }
 
-/** Shortens a base58 address: 7xKX…AsU. */
-export const shortAddress = (addr: string, head = 4, tail = 4): string =>
+/** Shortens an EVM address: 0x12Ab…9fE0 (`head` counts the `0x`). */
+export const shortAddress = (addr: string, head = 6, tail = 4): string =>
   addr.length <= head + tail + 1 ? addr : `${addr.slice(0, head)}…${addr.slice(-tail)}`;

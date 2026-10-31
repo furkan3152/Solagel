@@ -1,9 +1,9 @@
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { TICK_MS } from '@slana/shared';
+import { TICK_MS } from '@elymum/shared';
 import { describe, expect, it } from 'vitest';
-import type { ChainProfile } from '../src/chain/types';
+import type { ProfileSummary } from '@elymum/shared';
 import { NullChain } from '../src/chain/types';
 import { loadConfig } from '../src/config';
 import { RoomManager } from '../src/rooms/manager';
@@ -14,7 +14,7 @@ import { ArenaChain, arena, fakeConn, roomDeps, stakeJoin } from './helpers';
 const FEE = 1_000_000;
 
 function manager(env: Record<string, string> = {}, chain = new ArenaChain([arena(1, FEE), arena(3, 5 * FEE)]), journal = new Journal(null)) {
-  const cfg = loadConfig({ DATA_DIR: mkdtempSync(join(tmpdir(), 'slana-mm-')), ...env });
+  const cfg = loadConfig({ DATA_DIR: mkdtempSync(join(tmpdir(), 'elymum-mm-')), ...env });
   return new RoomManager(cfg, roomDeps(chain, journal), chain);
 }
 
@@ -103,7 +103,7 @@ describe('matchmaking', () => {
   });
 
   it('instances share arenaId and journal arena key', async () => {
-    const path = join(mkdtempSync(join(tmpdir(), 'slana-mm-')), 'journal.json');
+    const path = join(mkdtempSync(join(tmpdir(), 'elymum-mm-')), 'journal.json');
     const j1 = new Journal(path);
     const m1 = manager({ ARENA_INSTANCE_CAP: '1' }, undefined, j1);
     const a1 = (await m1.arenaRoom(1))!;
@@ -154,7 +154,7 @@ describe('matchmaking', () => {
 
     const logs: string[] = [];
     const swept = new ArenaChain([{ ...arena(1, FEE), pot: 5 * FEE }, { ...arena(3, 5 * FEE), pot: 50 * FEE }]);
-    const cfg = loadConfig({ DATA_DIR: mkdtempSync(join(tmpdir(), 'slana-mm-')) });
+    const cfg = loadConfig({ DATA_DIR: mkdtempSync(join(tmpdir(), 'elymum-mm-')) });
     const m = new RoomManager(cfg, { ...roomDeps(swept, journal), log: (l) => logs.push(l) }, swept);
     await m.ensureArenaRooms();
     expect(m.rooms.has('arena-1-1')).toBe(false);
@@ -178,11 +178,11 @@ describe('matchmaking', () => {
     expect(m2.blockedArenas()).toEqual([]);
   });
 
-  it('R20 while running: a swept arena with live loot stays blocked when re-enabled', async () => {
+  it('while running: a swept arena with live loot stays blocked when re-enabled', async () => {
     const journal = new Journal(null);
     const logs: string[] = [];
     const chain = new ArenaChain([{ ...arena(1, FEE), pot: 0 }]);
-    const cfg = loadConfig({ DATA_DIR: mkdtempSync(join(tmpdir(), 'slana-mm-')) });
+    const cfg = loadConfig({ DATA_DIR: mkdtempSync(join(tmpdir(), 'elymum-mm-')) });
     const m = new RoomManager(cfg, { ...roomDeps(chain, journal), log: (l) => logs.push(l) }, chain);
     const refresh = async () => {
       (m as unknown as { arenaCache: unknown }).arenaCache = null; // the 30 s cache expired
@@ -220,11 +220,11 @@ describe('matchmaking', () => {
     expect(logs.some((l) => /arena #1: vault .* now covers the journal/.test(l))).toBe(true);
   });
 
-  it('R20: disable → sweep → re-enable between two refreshes is still caught (every arena, every refresh)', async () => {
+  it('disable → sweep → re-enable between two refreshes is still caught (every arena, every refresh)', async () => {
     const journal = new Journal(null);
     const logs: string[] = [];
     const chain = new ArenaChain([{ ...arena(1, FEE), pot: 0 }]);
-    const cfg = loadConfig({ DATA_DIR: mkdtempSync(join(tmpdir(), 'slana-mm-')) });
+    const cfg = loadConfig({ DATA_DIR: mkdtempSync(join(tmpdir(), 'elymum-mm-')) });
     const m = new RoomManager(cfg, { ...roomDeps(chain, journal), log: (l) => logs.push(l) }, chain);
     const a1 = (await m.arenaRoom(1))!;
     spillStaker(a1, FEE);
@@ -250,10 +250,10 @@ describe('matchmaking', () => {
     expect(logs.filter((l) => /arena #1 KEPT DISABLED/.test(l))).toHaveLength(1);
   });
 
-  it('R20: a stale (cached) pot of a running arena is not blocked when the fresh read covers it', async () => {
+  it('a stale (cached) pot of a running arena is not blocked when the fresh read covers it', async () => {
     const journal = new Journal(null);
     const chain = new ArenaChain([{ ...arena(1, FEE), pot: 0 }]);
-    const cfg = loadConfig({ DATA_DIR: mkdtempSync(join(tmpdir(), 'slana-mm-')) });
+    const cfg = loadConfig({ DATA_DIR: mkdtempSync(join(tmpdir(), 'elymum-mm-')) });
     const m = new RoomManager(cfg, { ...roomDeps(chain, journal), log: () => {} }, chain);
     const a1 = (await m.arenaRoom(1))!;
     spillStaker(a1, FEE);
@@ -265,11 +265,11 @@ describe('matchmaking', () => {
     expect(await m.arenaRoom(1)).toBe(a1);
   });
 
-  it('R20: a disabled → enabled flip is re-checked even without a sweep in between', async () => {
+  it('a disabled → enabled flip is re-checked even without a sweep in between', async () => {
     const journal = new Journal(null);
     journal.commit({ loot: { roomId: 'arena-1-1', arenaId: 1, items: [{ x: 1, y: 1, value: 2 * FEE }] } });
     const chain = new ArenaChain([{ ...arena(1, FEE), enabled: false, pot: 2 * FEE }]);
-    const cfg = loadConfig({ DATA_DIR: mkdtempSync(join(tmpdir(), 'slana-mm-')) });
+    const cfg = loadConfig({ DATA_DIR: mkdtempSync(join(tmpdir(), 'elymum-mm-')) });
     const m = new RoomManager(cfg, { ...roomDeps(chain, journal), log: () => {} }, chain);
     await m.ensureArenaRooms();
     expect(m.blockedArenas()).toEqual([]);
@@ -341,15 +341,15 @@ describe('matchmaking', () => {
 
     // level 5 profiles are always pro
     const vet = fakeConn('vet', '10.0.0.10');
-    vet.profile = { level: 5 } as ChainProfile;
+    vet.profile = { level: 5 } as ProfileSummary;
     expect(m.leagueFor(vet)).toBe('pro');
-    vet.profile = { level: 4 } as ChainProfile;
+    vet.profile = { level: 4 } as ProfileSummary;
     expect(m.leagueFor(vet)).toBe('rookie');
   });
 
   it('works without a chain (no arenas)', async () => {
     const chain = new NullChain();
-    const cfg = loadConfig({ DATA_DIR: mkdtempSync(join(tmpdir(), 'slana-mm-')) });
+    const cfg = loadConfig({ DATA_DIR: mkdtempSync(join(tmpdir(), 'elymum-mm-')) });
     const m = new RoomManager(cfg, roomDeps(chain), chain);
     expect(await m.arenaRoom(1)).toBeNull();
     expect(m.lobbyRoom().opts.mode).toBe('practice');
