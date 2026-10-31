@@ -11,6 +11,7 @@ import { IntegrityStore } from './integrity/store';
 import { Leaderboards } from './leaderboards';
 import type { Limiter } from './net/limiter';
 import { Gateway } from './net/gateway';
+import { BotSettingsStore, defaultBotSettings } from './bots/settings';
 import { RoomManager } from './rooms/manager';
 import { ProfileStore } from './profiles';
 import { ContractsStore } from './site/contracts';
@@ -141,7 +142,10 @@ export async function createApp(
       },
     },
     chain,
+    // the admin's bot settings (DATA_DIR/site/bots.json; the BOT_* env vars are the defaults), applied live
+    new BotSettingsStore(persist ? cfg.dataDir : null, defaultBotSettings(cfg.bots), log),
   );
+  site.setBots({ store: rooms.botSettings, live: () => rooms.botCounts(), chainId: () => chain.status().chainId, log });
   chain.setLiveSessionProvider(() => rooms.liveSessions());
   // the game token was set on chain (picked up by the 30 s config watcher, no restart): attach the
   // arenas now (a fresh read of the arena list) instead of waiting for the next arena timer

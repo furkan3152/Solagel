@@ -1,26 +1,43 @@
-import { BASIC_SKINS, BOT_NAMES, PlayerFlag, clamp } from '@elymum/shared';
+import { BASIC_SKINS, PlayerFlag, clamp, pickBotName, type LeftReason } from '@elymum/shared';
 import type { Player } from '../game/entities';
 import { randRange, type Rng } from '../game/rng';
 import type { World } from '../game/world';
 import { BotBrain } from './brain';
 import { rollPersonality, type BotMix } from './personality';
+import type { StakedBotTicket } from './staked';
 
 export interface BotManagerOptions {
   /** Desired total population (humans + bots). */
   target: number;
   /** Bots kept even when many humans are online. */
   min: number;
+  /** The bot cap of the room (admin `cap`). */
   max: number;
   /** Difficulty mix (default `standard`). */
   mix?: BotMix;
+  /** Bots on (default true). Off: every bot goes home and none spawns. */
+  enabled?: boolean;
 }
 
 export interface Bot {
   player: Player;
   brain: BotBrain;
-  /** Bots "go home" after a while so the leaderboard keeps changing. */
+  /** Bots "go home" after a while so the leaderboard keeps changing (staked bots: never). */
   retireAt: number;
+  /** Testnet staked bots only: the arena ticket the bot plays (see `StakedBotSource`). */
+  staked?: StakedBotTicket;
 }
+
+/** A bot that left the room without dying (the room shows "<name> went home"). */
+export interface BotDeparture {
+  pid: number;
+  name: string;
+  skin: number;
+  reason: LeftReason;
+}
+
+/** Names bots wore lately in this room: some come back as "regulars". */
+const REGULARS_KEPT = 40;
 
 /** Emote ids (see @elymum/shared EMOTES). */
 const EMOTE_GM = 0;
@@ -40,26 +57,63 @@ export class BotManager {
   private pendingEmotes: { pid: number; id: number }[] = [];
   /** Player ids of bots that left this tick (rooms forget their player info). */
   retired: number[] = [];
+  /** Bots that went home (not died) since the last `takeDepartures`. */
+  private departures: BotDeparture[] = [];
+  private regulars: string[] = [];
+  private opts: BotManagerOptions;
 
   constructor(
     private readonly world: World,
-    private readonly opts: BotManagerOptions,
+    opts: BotManagerOptions,
     private readonly rng: Rng,
-  ) {}
+  ) {
+    this.opts = { ...opts };
+  }
 
+  get options(): Readonly<BotManagerOptions> {
+    return this.opts;
+  }
+
+  get enabled(): boolean {
+    return this.opts.enabled !== false;
+  }
+
+  /** The room's bot cap. */
+  get cap(): number {
+    return this.enabled ? Math.max(0, this.opts.max) : 0;
+  }
+
+  /** Bots wanted for this many humans: `clamp(target − humans, min, cap)`, 0 when bots are off. */
   desired(humans: number): number {
-    return clamp(this.opts.target - humans, this.opts.min, this.opts.max);
+    if (!this.enabled) return 0;
+    const cap = this.cap;
+    return clamp(this.opts.target - humans, Math.min(this.opts.min, cap), cap);
   }
 
   isBot(pid: number): boolean {
     return this.bots.has(pid);
   }
 
+  /** Testnet staked bots in the room (they hold a ticket). */
+  get stakedCount(): number {
+    let n = 0;
+    for (const b of this.bots.values()) if (b.staked) n++;
+    return n;
+  }
+
+  /** Remembers a name for a later comeback (a "regular" of this room). */
+  private remember(name: string): void {
+    const i = this.regulars.indexOf(name);
+    if (i >= 0) this.regulars.splice(i, 1);
+    this.regulars.push(name);
+    if (this.regulars.length > REGULARS_KEPT) this.regulars.shift();
+  }
+
+  /** A natural name nobody in the room wears (humans included); sometimes a returning regular. */
   private pickName(): string {
-    const used = new Set([...this.world.players.values()].map((p) => p.name));
-    const free = BOT_NAMES.filter((n) => !used.has(n));
-    if (free.length > 0) return free[Math.floor(this.rng() * free.length)];
-    return `${BOT_NAMES[Math.floor(this.rng() * BOT_NAMES.length)]}_${Math.floor(this.rng() * 90 + 10)}`;
+    const used: string[] = [];
+    for (const p of this.world.players.values()) used.push(p.name);
+    return pickBotName(this.rng, used, this.regulars);
   }
 
   /** Bots wear the basic skins only. */
@@ -67,18 +121,21 @@ export class BotManager {
     return Math.floor(this.rng() * BASIC_SKINS.length);
   }
 
-  spawnBot(mass?: number): Bot {
+  spawnBot(mass?: number, staked?: StakedBotTicket): Bot {
+    const taken = new Set([...this.world.players.values()].map((p) => p.name.toLowerCase()));
+    const name = staked?.name && !taken.has(staked.name.toLowerCase()) ? staked.name : this.pickName();
     const player = this.world.addPlayer({
-      name: this.pickName(),
+      name,
       skin: this.pickSkin(),
-      flags: PlayerFlag.Bot,
+      flags: staked ? PlayerFlag.Bot | PlayerFlag.Staker : PlayerFlag.Bot,
       isBot: true,
       mass,
     });
     const bot: Bot = {
       player,
       brain: new BotBrain(rollPersonality(this.rng, this.opts.mix ?? 'standard'), this.rng),
-      retireAt: this.world.now + randRange(this.rng, 4 * 60_000, 12 * 60_000),
+      retireAt: staked ? Infinity : this.world.now + randRange(this.rng, 4 * 60_000, 12 * 60_000),
+      ...(staked ? { staked } : {}),
     };
     this.bots.set(player.id, bot);
     if (this.rng() < 0.2) this.pendingEmotes.push({ pid: player.id, id: EMOTE_GM });
@@ -87,8 +144,67 @@ export class BotManager {
 
   /** The world reported this bot's death: forget it and maybe respawn later. */
   onDeath(pid: number, now: number): void {
-    if (!this.bots.delete(pid)) return;
+    const bot = this.bots.get(pid);
+    if (!bot) return;
+    this.bots.delete(pid);
+    this.remember(bot.player.name);
     this.spawnQueue.push(now + randRange(this.rng, 1500, 5000));
+  }
+
+  /** A bot goes home now: it leaves the world and a departure is recorded. */
+  private sendHome(bot: Bot, reason: LeftReason): void {
+    const p = bot.player;
+    this.bots.delete(p.id);
+    this.world.removePlayer(p.id);
+    this.retired.push(p.id);
+    this.remember(p.name);
+    this.departures.push({ pid: p.id, name: p.name, skin: p.skin, reason });
+  }
+
+  /**
+   * Sends zero-value bots home until at most `want` bots are left (staked bots hold a ticket and
+   * stay until death or the bell). Picks bots out of danger first, then the smallest. Returns how many left.
+   */
+  trimTo(want: number, reason: LeftReason): number {
+    let n = 0;
+    while (this.bots.size > want) {
+      let pick: Bot | null = null;
+      let pickScore = Infinity;
+      for (const b of this.bots.values()) {
+        if (b.staked) continue;
+        const score = b.player.totalMass() + (b.brain.lastDanger > 0.2 ? 1e9 : 0);
+        if (score < pickScore) {
+          pick = b;
+          pickScore = score;
+        }
+      }
+      if (!pick) break;
+      this.sendHome(pick, reason);
+      n++;
+    }
+    if (this.bots.size >= want) this.spawnQueue.length = 0;
+    return n;
+  }
+
+  /**
+   * A human just took a seat (`humans` counts them): bots over the wanted number go home at once
+   * (zero-value bots only), so humans + bots stays at the target and bots never hold a seat.
+   */
+  makeRoom(humans: number): number {
+    return this.trimTo(this.desired(humans), 'make_room');
+  }
+
+  /** New admin settings, applied live: bots over the new cap (or all, when off) go home now. */
+  setOptions(opts: BotManagerOptions, humans: number): number {
+    this.opts = { ...opts };
+    return this.trimTo(this.desired(humans), 'settings');
+  }
+
+  /** Bots that went home since the last call (the room broadcasts the feed lines). */
+  takeDepartures(): BotDeparture[] {
+    const d = this.departures;
+    this.departures = [];
+    return d;
   }
 
   /**
@@ -97,6 +213,7 @@ export class BotManager {
    */
   resetRound(): number[] {
     const gone = [...this.bots.keys()];
+    for (const b of this.bots.values()) this.remember(b.player.name);
     for (const pid of gone) this.world.removePlayer(pid);
     this.bots.clear();
     this.spawnQueue = [];
@@ -129,16 +246,10 @@ export class BotManager {
     // top up if below target (e.g. a human left)
     const queued = this.spawnQueue.length;
     if (this.bots.size + queued < want) this.spawnQueue.push(now + randRange(this.rng, 400, 2500));
-    // drop extra bots slowly as humans join (smallest first)
-    if (this.bots.size > want + 1 && now - this.lastTrimAt > 8000) {
+    // joins make room at once (`makeRoom`); anything else over the wanted number leaves slowly
+    if (this.bots.size > want && now - this.lastTrimAt > 8000) {
       this.lastTrimAt = now;
-      let smallest: Bot | null = null;
-      for (const b of this.bots.values()) if (!smallest || b.player.totalMass() < smallest.player.totalMass()) smallest = b;
-      if (smallest) {
-        this.bots.delete(smallest.player.id);
-        this.world.removePlayer(smallest.player.id);
-        this.retired.push(smallest.player.id);
-      }
+      this.trimTo(this.bots.size - 1, 'retired');
     }
     if (queued > 0 && this.bots.size >= want) this.spawnQueue.length = 0;
 
@@ -149,9 +260,7 @@ export class BotManager {
         bot.retireAt = now + 10_000;
         continue;
       }
-      this.bots.delete(bot.player.id);
-      this.world.removePlayer(bot.player.id);
-      this.retired.push(bot.player.id);
+      this.sendHome(bot, 'retired');
       this.spawnQueue.push(now + randRange(this.rng, 1500, 4000));
       break;
     }

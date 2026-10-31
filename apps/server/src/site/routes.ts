@@ -8,6 +8,7 @@ import type { ServerConfig } from '../config';
 import { Limiter } from '../net/limiter';
 import { ProfileError, type ProfileStore } from '../profiles';
 import type { Journal } from '../stake/journal';
+import { botRoutes, type BotAdmin } from './bots';
 import { clearContract, registerContract, type ContractsStore } from './contracts';
 import { emblemSvg } from './emblem';
 import { parseNftPath, type MintService } from './mint';
@@ -96,6 +97,8 @@ export class SiteApi {
   private readonly admins: Set<string>;
   /** Cheat and collusion detection (`/api/admin/integrity/*`); absent in bare unit tests. */
   private integrity: IntegrityService | null = null;
+  /** Bot settings and live counts (`/api/admin/bots`); absent in bare unit tests. */
+  private bots: BotAdmin | null = null;
 
   constructor(
     private readonly cfg: ServerConfig,
@@ -109,6 +112,10 @@ export class SiteApi {
 
   setIntegrity(svc: IntegrityService | null): void {
     this.integrity = svc;
+  }
+
+  setBots(admin: BotAdmin | null): void {
+    this.bots = admin;
   }
 
   /** Admin wallets compare case-insensitively (stored checksummed). */
@@ -363,6 +370,9 @@ export class SiteApi {
           q,
           wallet,
         );
+      case 'bots':
+        if (seg.length !== 1 || !this.bots) break;
+        return botRoutes(this.bots, { send, method: (r, ...m) => this.method(r, ...m), readJson: (r) => readJson(r) }, req, res, wallet);
       case 'settings':
         if (seg.length !== 1) break;
         if (this.method(req, 'GET', 'PUT') === 'PUT') s.updateSettings(await readJson(req));

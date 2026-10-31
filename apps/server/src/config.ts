@@ -26,7 +26,7 @@ export interface ServerConfig {
   privateRoomCapacity: number;
   /** Humans per arena instance before another instance opens (`ARENA_INSTANCE_CAP`). */
   arenaInstanceCap: number;
-  /** Bot population per room kind. */
+  /** Bot population per room kind: the defaults of the admin's bot settings (`BotSettingsStore`). */
   bots: { practiceRookie: BotManagerOptions; practicePro: BotManagerOptions; arena: BotManagerOptions; private: BotManagerOptions };
   /**
    * Arena round clock (`ROUND_SECONDS`, `ROUND_JOIN_CLOSE_SECONDS`; defaults `RULES.roundMs` /
@@ -199,23 +199,24 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     practiceCapacity: Math.max(1, int(env.PRACTICE_CAPACITY ?? env.FREE_ROOM_CAPACITY, CAPACITY.practice)),
     privateRoomCapacity: int(env.PRIVATE_ROOM_CAPACITY, CAPACITY.private),
     arenaInstanceCap: Math.max(1, int(env.ARENA_INSTANCE_CAP, CAPACITY.arena)),
+    // env defaults of the admin's bot settings (`/api/admin/bots`, DATA_DIR/site/bots.json wins): cap 12 per room
     bots: {
       practiceRookie: {
-        target: int(env.BOT_TARGET, 20),
+        target: int(env.BOT_TARGET, 12),
         min: int(env.BOT_MIN, 4),
-        max: int(env.BOT_MAX, 20),
+        max: int(env.BOT_MAX, 12),
         mix: 'rookie',
       },
       practicePro: {
-        target: int(env.BOT_TARGET, 20),
+        target: int(env.BOT_TARGET, 12),
         min: int(env.BOT_MIN, 4),
-        max: int(env.BOT_MAX, 20),
+        max: int(env.BOT_MAX, 12),
         mix: 'standard',
       },
       arena: {
-        target: int(env.ARENA_BOT_TARGET, 24),
+        target: int(env.ARENA_BOT_TARGET, 12),
         min: int(env.ARENA_BOT_MIN, 2),
-        max: int(env.ARENA_BOT_MAX, 16),
+        max: int(env.ARENA_BOT_MAX, 12),
         mix: 'standard',
       },
       private: {

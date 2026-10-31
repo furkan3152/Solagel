@@ -59,7 +59,7 @@ export class ViewState {
         const sig = `${p.skin}|${p.flags}|${p.name}`;
         if (this.knownPlayers.get(p.id) !== sig) {
           this.knownPlayers.set(p.id, sig);
-          players.push({ id: p.id, skin: p.skin, flags: p.flags, name: p.name });
+          players.push({ id: p.id, skin: p.skin, flags: p.flags, name: p.name, isBot: p.isBot });
         }
       }
     });
