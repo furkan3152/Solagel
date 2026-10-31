@@ -35,7 +35,7 @@ export async function createChain(
   cfg: ServerConfig,
   journal: Journal,
   log: (m: string) => void,
-  opts: { contracts?: () => ContractsView } = {},
+  opts: { contracts?: () => ContractsView; stateChainId?: number | null } = {},
 ): Promise<ChainGateway> {
   if (cfg.devFakeChain) {
     assertDevFakeChainAllowed(cfg);
@@ -52,7 +52,7 @@ export async function createChain(
   }
   try {
     const { EvmChain } = await import('./evm');
-    return new EvmChain(cfg, journal, log, { contracts: opts.contracts });
+    return new EvmChain(cfg, journal, log, { contracts: opts.contracts, ...(opts.stateChainId !== undefined ? { stateChainId: opts.stateChainId } : {}) });
   } catch (err) {
     log(`chain: failed to initialise (${(err as Error).message}); running without chain`);
     return new NullChain(chainName ?? undefined);

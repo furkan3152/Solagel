@@ -425,8 +425,8 @@ export interface AllowlistSnapshot {
   builtAt: number;
   /** The admin wallet that built it. */
   builtBy: string;
-  /** How many wallets came from each source (a wallet in both counts in both). */
-  sources: { wl: number; collab: number };
+  /** How many wallets came from each source (a wallet in several counts in each). `holders`: imported testnet emblem holders. */
+  sources: { wl: number; collab: number; holders?: number };
 }
 
 /** `POST /api/admin/mint/allowlist` response. */
@@ -478,8 +478,109 @@ export interface ProfileView {
   updatedAt: number | null;
 }
 
+/**
+ * The emblem skin: the Elymum emblem's coin face and colour as an in-game skin, unlocked for wallets
+ * holding the NFT (checked by the server on `PUT /api/profile` and at every join). Outside the
+ * `SKINS` table: a client renders it with its own emblem art.
+ */
+export const EMBLEM_SKIN_ID = 100;
+
+/** `GET /api/profile` / `PUT /api/profile` response. */
+export interface ProfileResponse {
+  profile: ProfileView;
+  /** Skin ids this wallet may pick: the basic skins, plus `EMBLEM_SKIN_ID` for NFT holders. */
+  skinOptions?: number[];
+  /** The wallet holds an Elymum emblem (laurel on the name tag, emblem skin). */
+  holder?: boolean;
+}
+
 /** `PUT /api/profile` body. */
 export interface ProfileUpdate {
   name: string;
   skin: number;
+}
+
+/* ------------------------------------------------------------------ */
+/* Network (`GET /api/admin/network`)                                   */
+/* ------------------------------------------------------------------ */
+
+export interface NetworkContractCheck {
+  kind: ContractKind;
+  address: string;
+  /** `ok`: the bundled artifact's code; `mismatch`: other code; `missing`: no code; null: not checked (RPC down). */
+  code: 'ok' | 'mismatch' | 'missing' | null;
+  registeredBy: string;
+}
+
+/** `GET /api/admin/network`: the chain the server runs on, its health and the chain-keyed state. */
+export interface NetworkInfo {
+  /** Null while the chain is off. */
+  chainId: number | null;
+  chainName: string;
+  /** Elysium Testnet or a localnet (not mainnet). */
+  testnet: boolean;
+  rpcOk: boolean;
+  rpcLatencyMs: number | null;
+  /** Latest block (decimal string); null when the RPC did not answer. */
+  block: string | null;
+  serverKey: string | null;
+  serverBalanceWei: string | null;
+  /** The server key's HYPE is below 0.01 (fund it: it pays every settlement). */
+  low: boolean;
+  /** The registered contracts of the current chain, with a code check. */
+  contracts: NetworkContractCheck[];
+  /** Other chain ids with stored state under `DATA_DIR/chains/`. */
+  otherChains: number[];
+}
+
+/* ------------------------------------------------------------------ */
+/* Faucet (`GET /api/site/faucet`)                                      */
+/* ------------------------------------------------------------------ */
+
+/** Kinetiq's HYPE faucet (gas on Elysium Testnet). */
+export const HYPE_FAUCET_URL_DEFAULT = 'https://elysium.kinetiq.xyz/testnet-faucet';
+
+/** `GET /api/site/faucet`: the TestToken faucet (testnet only). Amounts in base units (decimal strings). */
+export interface FaucetConfig {
+  /** A test chain with a registered TestToken. */
+  enabled: boolean;
+  chainId: number | null;
+  /** The TestToken (null when none is registered). */
+  token: string | null;
+  decimals: number;
+  /** Per claim for a wallet without the emblem; null when unknown. */
+  amount: string | null;
+  /** Per claim for an emblem holder; null when unknown. */
+  holderAmount: string | null;
+  cooldownSecs: number | null;
+  /** The NFT the holder bonus reads; null: no bonus. */
+  holderNft: string | null;
+  hypeFaucetUrl: string;
+}
+
+/* ------------------------------------------------------------------ */
+/* Testnet emblem holders → mainnet WL (`/api/admin/mint/import-holders`) */
+/* ------------------------------------------------------------------ */
+
+export interface HolderWlEntry {
+  /** EIP-55 checksummed. */
+  wallet: string;
+  source: 'testnet-emblem';
+  chainId: number;
+  /** Token ids held at the import (decimal strings). */
+  tokenIds: string[];
+}
+
+/** `GET` / `POST /api/admin/mint/import-holders`. */
+export interface HolderWlView {
+  entries: HolderWlEntry[];
+  counts: {
+    wallets: number;
+    tokens: number;
+    /** Imported wallets that are also approved WL or collab wallets (counted once in the allowlist). */
+    alsoWl: number;
+  };
+  /** Unix ms of the last import; null before the first. */
+  importedAt: number | null;
+  importedFrom: number | null;
 }

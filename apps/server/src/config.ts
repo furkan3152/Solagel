@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
-import { CAPACITY, RULES, TOKEN_SYMBOL_DEFAULT, MINT_USD_CENTS_DEFAULT, chainByKey, isGameAccess, type GameAccess } from '@elymum/shared';
+import { CAPACITY, HYPE_FAUCET_URL_DEFAULT, RULES, TOKEN_SYMBOL_DEFAULT, MINT_USD_CENTS_DEFAULT, chainByKey, isGameAccess, type GameAccess } from '@elymum/shared';
 import { HYPE_PRICE_URL_DEFAULT } from '@elymum/sdk';
 import { getAddress, isAddress } from 'viem';
 import type { BotManagerOptions } from './bots/manager';
@@ -96,6 +96,13 @@ export interface ServerConfig {
     staleSweepAck: boolean;
     /** `LOG_CHUNK_BLOCKS`: blocks per `eth_getLogs` request of the session and holder indexes (default 10,000). */
     logChunkBlocks: number;
+    /**
+     * `TESTNET_RPC_URL`: Elysium Testnet RPC for reading the testnet emblem holders after `EVM_RPC_URL`
+     * moved to mainnet (`POST /api/admin/mint/import-holders`). Default: the public testnet RPC.
+     */
+    testnetRpcUrl: string;
+    /** `HYPE_FAUCET_URL`: the HYPE (gas) faucet the `/faucet` page links to (default Kinetiq's testnet faucet). */
+    hypeFaucetUrl: string;
   };
   /** NFT mint: the USD target (`MINT_USD_CENTS`, default 100) and the HYPE/USD feed (`HYPE_PRICE_URL`). */
   mint: { usdCents: number; hypePriceUrl: string };
@@ -252,6 +259,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       staleSessionAfterS: Math.max(1, int(env.STALE_SESSION_AFTER_S, 15 * 60)),
       staleSweepAck: bool(env.STALE_SWEEP_ACK, false),
       logChunkBlocks: Math.max(100, int(env.LOG_CHUNK_BLOCKS, 10_000)),
+      testnetRpcUrl: blank(env.TESTNET_RPC_URL)?.replace(/\/+$/, '') ?? chainByKey('elysium-testnet').rpcUrl!,
+      hypeFaucetUrl: blank(env.HYPE_FAUCET_URL) ?? HYPE_FAUCET_URL_DEFAULT,
     },
     mint: {
       usdCents: Math.max(1, int(env.MINT_USD_CENTS, MINT_USD_CENTS_DEFAULT)),

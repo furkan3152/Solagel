@@ -156,7 +156,7 @@ export function writeSnapshot(w: BinaryWriter, s: SnapshotData): void {
     const p = s.players[i];
     w.u16(p.id);
     w.u8(p.skin);
-    w.u8(p.isBot ? p.flags | PlayerFlag.Bot : p.flags);
+    w.u8((p.isBot ? p.flags | PlayerFlag.Bot : p.flags) | (p.holder ? PlayerFlag.Holder : 0));
     w.str8(p.name);
   }
 
@@ -211,7 +211,7 @@ export function decodeSnapshot(buf: ArrayBuffer | ArrayBufferView): SnapshotData
     const id = r.u16();
     const skin = r.u8();
     const flags = r.u8();
-    players[i] = { id, skin, flags, name: r.str8(), isBot: (flags & PlayerFlag.Bot) !== 0 };
+    players[i] = { id, skin, flags, name: r.str8(), isBot: (flags & PlayerFlag.Bot) !== 0, ...((flags & PlayerFlag.Holder) !== 0 ? { holder: true } : {}) };
   }
 
   const nUpserts = r.u16();

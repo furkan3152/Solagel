@@ -1,6 +1,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { ELYSIUM_TESTNET_CHAIN_ID } from '@elymum/shared';
 import { BOT_ROOM_KINDS, BotSettingsError, type BotRoomKind, type BotSettings, type BotSettingsStore } from '../bots/settings';
+import type { StakedBotStatus } from '../bots/testnet-source';
+import { isTestChain } from '../chain/state-dir';
 import { SiteFail } from './validate';
 
 /** One room's live bot numbers. */
@@ -20,8 +22,10 @@ export interface BotAdmin {
   live: () => BotRoomCount[];
   /** The server chain's id (null while off): staked bots play on Elysium Testnet only. */
   chainId: () => number | null;
-  /** A staked-bot source is plugged in (the testnet bot wallets run). */
+  /** A staked-bot source is plugged in and may play now (a test chain with the arenas on). */
   stakedSource?: () => boolean;
+  /** The staked-bot wallets and what is in their way (`TestnetBotSource.status`). */
+  stakedStatus?: () => StakedBotStatus;
   log?: (m: string) => void;
 }
 
@@ -39,8 +43,10 @@ export interface BotAdminView {
   defaults: BotSettings;
   /** The chain is Elysium Testnet: arenas may field staked bots. */
   testnet: boolean;
-  /** Staked bots really run (testnet and a staked-bot source is plugged in). */
+  /** Staked bots really run (a test chain and a staked-bot source is plugged in). */
   stakedActive: boolean;
+  /** The staked-bot wallets (absent without a source): wallet count, live tickets, the current problem. */
+  staked?: StakedBotStatus;
   live: {
     rooms: BotRoomCount[];
     byKind: Record<BotRoomKind, KindTotals>;
@@ -62,11 +68,13 @@ export function botAdminView(a: BotAdmin): BotAdminView {
     }
   }
   const testnet = a.chainId() === ELYSIUM_TESTNET_CHAIN_ID;
+  const staked = a.stakedStatus?.();
   return {
     settings: a.store.settings,
     defaults: structuredClone(a.store.defaults),
     testnet,
-    stakedActive: testnet && (a.stakedSource?.() ?? false),
+    stakedActive: isTestChain(a.chainId()) && (a.stakedSource?.() ?? false),
+    ...(staked ? { staked } : {}),
     live: { rooms, byKind, totals },
   };
 }

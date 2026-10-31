@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { SITE_LIMITS, type GameAccess, type SiteError, type SiteSettings } from '@elymum/shared';
+import { BASIC_SKINS, EMBLEM_SKIN_ID, SITE_LIMITS, type GameAccess, type ProfileResponse, type SiteError, type SiteSettings } from '@elymum/shared';
 import type { Auth } from '../auth';
 import type { ChainGateway } from '../chain/types';
 import { integrityRoutes } from '../integrity/routes';
@@ -8,7 +8,10 @@ import type { ServerConfig } from '../config';
 import { Limiter } from '../net/limiter';
 import { ProfileError, type ProfileStore } from '../profiles';
 import type { Journal } from '../stake/journal';
+import type { HolderReader } from '../chain/evm-client';
 import { botRoutes, type BotAdmin } from './bots';
+import { importHolders, type HolderWlStore } from './holder-wl';
+import { FaucetInfo, networkInfo } from './network';
 import { clearContract, registerContract, type ContractsStore } from './contracts';
 import { emblemSvg } from './emblem';
 import { parseNftPath, type MintService } from './mint';
@@ -24,6 +27,17 @@ export interface SiteExtras {
   journal?: Journal;
   /** Public base URL (`PUBLIC_URL`; the request host only in development): NFT metadata links. */
   baseUrl?: (req: IncomingMessage) => string;
+  /** `DATA_DIR` (the chain-keyed state under `chains/`); null: memory only. */
+  dataDir?: string | null;
+  /** Imported testnet emblem holders (`site/holder-wl.json`). */
+  holderWl?: HolderWlStore;
+  /** The NFT registered on a chain (its chain-keyed registry). */
+  nftOf?: (chainId: number) => { address: string; txHash: string | null } | null;
+  /** A holder reader on a chain (the server's client, or `TESTNET_RPC_URL`). */
+  holderReaderFor?: (chainId: number) => HolderReader | null;
+  /** The TestToken faucet settings (`GET /api/site/faucet`). */
+  faucet?: FaucetInfo;
+  log?: (m: string) => void;
 }
 
 export interface SiteLimits {
@@ -206,14 +220,26 @@ export class SiteApi {
     send(res, 200, { address: wallet, token: this.auth.issueToken(wallet), admin: this.isAdmin(wallet) });
   }
 
-  /** `GET /api/profile` and `PUT /api/profile {name, skin}` (signed-in). */
+  /** Skin ids a wallet may pick: the basic skins, plus the emblem skin for holders. */
+  private skinOptions(holder: boolean): number[] {
+    return [...BASIC_SKINS.map((s) => s.id), ...(holder ? [EMBLEM_SKIN_ID] : [])];
+  }
+
+  /** `GET /api/profile` and `PUT /api/profile {name, skin}` (signed-in): `{ profile, skinOptions, holder }`. */
   private async profileRoutes(req: IncomingMessage, res: ServerResponse, ip: string): Promise<void> {
     const profiles = this.ext.profiles;
     if (!profiles) throw new SiteFail(404, 'not_found', 'Not found');
-    if (this.method(req, 'GET', 'PUT') === 'GET') return send(res, 200, { profile: profiles.view(this.session(req)) });
+    if (this.method(req, 'GET', 'PUT') === 'GET') {
+      const wallet = this.session(req);
+      const holder = await this.isHolder(wallet);
+      return send(res, 200, { profile: profiles.view(wallet), skinOptions: this.skinOptions(holder), holder } satisfies ProfileResponse);
+    }
     const wallet = this.writer(req, ip);
+    const body = await readJson(req);
+    // the emblem skin is checked on chain right now (a sold emblem no longer unlocks it)
+    const holder = await this.isHolder(wallet, body.skin === EMBLEM_SKIN_ID);
     try {
-      return send(res, 200, { profile: profiles.update(wallet, await readJson(req)) });
+      return send(res, 200, { profile: profiles.update(wallet, body, { emblem: holder }), skinOptions: this.skinOptions(holder), holder } satisfies ProfileResponse);
     } catch (err) {
       if (err instanceof ProfileError) throw new SiteFail(400, 'bad_request', err.message, err.field);
       throw err;
@@ -263,6 +289,13 @@ export class SiteApi {
         if (seg.length !== 1) break;
         this.method(req, 'GET');
         return send(res, 200, this.ext.contracts?.effective(this.chainId()) ?? { arena: null, nft: null, token: null });
+      case 'faucet': {
+        if (seg.length !== 1) break;
+        this.method(req, 'GET');
+        const faucet = this.ext.faucet ?? (this.ext.chain ? new FaucetInfo({ chain: this.ext.chain, contracts: this.ext.contracts ?? null, hypeFaucetUrl: this.cfg.chain.hypeFaucetUrl }) : null);
+        if (!faucet) throw new SiteFail(503, 'chain_off', 'The faucet is not available on this server.');
+        return send(res, 200, await faucet.get());
+      }
       case 'mint': {
         const mint = this.ext.mint;
         if (seg.length === 1) {
@@ -316,6 +349,11 @@ export class SiteApi {
       case 'me':
         this.method(req, 'GET');
         return send(res, 200, { address: wallet, admin: true });
+      case 'network': {
+        if (seg.length !== 1 || !this.ext.chain) break;
+        this.method(req, 'GET');
+        return send(res, 200, await networkInfo({ chain: this.ext.chain, contracts: this.ext.contracts ?? null, dataDir: this.ext.dataDir ?? null }));
+      }
       case 'contracts': {
         if (seg.length !== 1) break;
         const contracts = this.ext.contracts;
@@ -347,6 +385,29 @@ export class SiteApi {
         if (seg.length === 2 && seg[1] === 'allowlist') {
           if (this.method(req, 'GET', 'POST') === 'GET') return send(res, 200, await mint.allowlistStatus());
           return send(res, 201, mint.buildAllowlist(wallet));
+        }
+        if (seg.length === 2 && seg[1] === 'import-holders') {
+          const store = this.ext.holderWl;
+          if (!store) throw new SiteFail(503, 'chain_off', 'Holder imports are not available on this server.');
+          const onList = () => {
+            const src = this.store.allowlistSources();
+            const set = new Set([...src.wl, ...src.collab].map((w) => w.toLowerCase()));
+            return (w: string) => set.has(w.toLowerCase());
+          };
+          if (this.method(req, 'GET', 'POST') === 'GET') return send(res, 200, store.view(onList()));
+          await importHolders(
+            {
+              store,
+              nftOf: (id) => this.ext.nftOf?.(id) ?? null,
+              readerFor: (id) => this.ext.holderReaderFor?.(id) ?? null,
+              chunkBlocks: this.cfg.chain.logChunkBlocks,
+              now: Date.now(),
+              log: this.ext.log,
+            },
+            await readJson(req),
+            wallet,
+          );
+          return send(res, 201, store.view(onList()));
         }
         if (seg.length === 2 && seg[1] === 'price') {
           this.method(req, 'GET');

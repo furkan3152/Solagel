@@ -63,6 +63,14 @@ function keyFromFile(raw: string): Hex | null {
  * Throws with a message that never contains the key.
  */
 export function loadServerKey(spec: string, dataDir?: string): PrivateKeyAccount {
+  return loadServerKeySecret(spec, dataDir).account;
+}
+
+/**
+ * `loadServerKey` with the private key itself: the testnet bot wallets are derived from it
+ * (`deriveBotKey`). Never log or send it anywhere.
+ */
+export function loadServerKeySecret(spec: string, dataDir?: string): { account: PrivateKeyAccount; privateKey: Hex } {
   const trimmed = spec.trim();
   if (trimmed === '') throw new Error('SERVER_PRIVATE_KEY is not set');
   if (trimmed === 'auto') {
@@ -74,10 +82,10 @@ export function loadServerKey(spec: string, dataDir?: string): PrivateKeyAccount
       const address = privateKeyToAccount(privateKey).address;
       writeFileSync(path, JSON.stringify({ address, privateKey }, null, 2), { mode: 0o600, flag: 'wx' });
     }
-    return loadServerKey(path);
+    return loadServerKeySecret(path);
   }
   const direct = /^(0x)?[0-9a-fA-F]{64}$/.test(trimmed) ? asHexKey(trimmed) : null;
-  if (direct) return privateKeyToAccount(direct);
+  if (direct) return { account: privateKeyToAccount(direct), privateKey: direct };
   // anything key-like that is not exactly a key (quoted, truncated, a stray character): never read as a path
   if (looksLikeKey(trimmed) || looksLikeKey(unquote(trimmed))) {
     throw new Error(
@@ -93,5 +101,5 @@ export function loadServerKey(spec: string, dataDir?: string): PrivateKeyAccount
   }
   const key = keyFromFile(raw);
   if (!key) throw new Error(`SERVER_PRIVATE_KEY: ${shownPath(path)} does not hold a private key (0x + 64 hex digits)`);
-  return privateKeyToAccount(key);
+  return { account: privateKeyToAccount(key), privateKey: key };
 }

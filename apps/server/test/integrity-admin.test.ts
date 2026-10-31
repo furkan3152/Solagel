@@ -251,7 +251,7 @@ describe('integrity admin API', () => {
     expect(j.forfeits().at(-1)).toMatchObject({ key: k2, amount: 7000, reason: 'Confirmed collusion', by: h.admin });
     expect(books()).toBe(before);
     // journaled on disk
-    const disk = JSON.parse(readFileSync(join(h.dir, 'journal.json'), 'utf8'));
+    const disk = JSON.parse(readFileSync(join(h.dir, 'chains', '31337', 'journal.json'), 'utf8'));
     expect(disk.forfeits.at(-1)).toMatchObject({ key: k2, amount: 7000 });
     j.remove(k1);
     j.remove(k2);

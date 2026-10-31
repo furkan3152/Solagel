@@ -72,6 +72,12 @@ export interface EvmChainDeps {
   loops?: boolean;
   /** Receipt wait per transaction (default 90 s). */
   receiptTimeoutMs?: number;
+  /**
+   * The chain id the server's chain-keyed state (journal, registry) was opened for at boot
+   * (`DATA_DIR/chains/<id>/`). When the RPC answers another id (or the id was unknown at boot: null),
+   * arenas and the settlement worker stay off until a restart. Undefined: no check (tests).
+   */
+  stateChainId?: number | null;
 }
 
 /** One item of a settle batch, with the on-chain session it was checked against. */
@@ -116,6 +122,8 @@ export class EvmChain implements ChainGateway {
   /** The journal belongs to this arena (false: it still owes money on another contract). */
   private journalBound = true;
   private balance: bigint | null = null;
+  /** The RPC's chain is not the one the state was opened for (`EvmChainDeps.stateChainId`). */
+  private chainMismatch = false;
 
   private liveSessions: () => Set<string> = () => new Set();
   private readonly settledListeners: ((e: SettledEvent) => void)[] = [];
@@ -220,6 +228,14 @@ export class EvmChain implements ChainGateway {
         this.chainId = await withTimeout(this.client.getChainId(), 20_000, 'eth_chainId');
         const info = this.chainInfo();
         this.log(`chain: ${info.name} (chain id ${this.chainId}) via ${where}`);
+        const want = this.deps.stateChainId;
+        if (want !== undefined && want !== this.chainId) {
+          this.chainMismatch = true;
+          this.log(
+            `!!! chain: the server state was opened for ${want === null ? 'an unknown chain' : `chain ${want}`}, but the RPC is chain ${this.chainId}: ` +
+              'arenas and settlements stay OFF until the server restarts (it then opens the state of this chain)',
+          );
+        }
       }
       this.enabled = true;
       await this.syncContracts();
@@ -342,7 +358,7 @@ export class EvmChain implements ChainGateway {
   }
 
   private updateStakeEnabled(): void {
-    this.stakeEnabled = this.authorized === true && this.cfg.chain.stakeEnabled && this.tokenReady && this.journalBound;
+    this.stakeEnabled = this.authorized === true && this.cfg.chain.stakeEnabled && this.tokenReady && this.journalBound && !this.chainMismatch;
   }
 
   /** Ledger units with the token's display decimals and symbol (for logs). */
@@ -626,6 +642,7 @@ export class EvmChain implements ChainGateway {
 
   /** Why nothing can be sent now (null: the worker may send). */
   private async blockedReason(): Promise<string | null> {
+    if (this.chainMismatch) return 'the RPC chain is not the chain the state was opened for (restart the server)';
     if (!this.arena) return 'no arena contract registered';
     if (this.arenaCode !== 'ok') return `arena contract ${this.arena} is not usable (${this.arenaCode ?? 'unchecked'})`;
     if (!this.journalBound) return `the journal belongs to arena ${this.journal.contract}, not ${this.arena}`;
@@ -972,7 +989,7 @@ export class EvmChain implements ChainGateway {
    * Returns the number of sessions queued.
    */
   async sweepStale(): Promise<number> {
-    if (this.stopped || !this.enabled || this.authorized !== true || !this.client || !this.arena || !this.tokenReady || !this.journalBound) return 0;
+    if (this.stopped || !this.enabled || this.authorized !== true || !this.client || !this.arena || !this.tokenReady || !this.journalBound || this.chainMismatch) return 0;
     if (!this.staleSweepAllowed()) return 0;
     const t = this.token()!;
     try {

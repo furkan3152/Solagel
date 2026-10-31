@@ -1,5 +1,7 @@
 import type { Server } from 'node:http';
 import { join } from 'node:path';
+import { ELYSIUM_TESTNET_CHAIN_ID, chainByKey } from '@elymum/shared';
+import type { Hex } from 'viem';
 import { Auth } from './auth';
 import { assertDevFakeChainAllowed, createChain, dataFileNames } from './chain';
 import { PriceKeeper } from './chain/price-keeper';
@@ -12,6 +14,13 @@ import { Leaderboards } from './leaderboards';
 import type { Limiter } from './net/limiter';
 import { Gateway } from './net/gateway';
 import { BotSettingsStore, defaultBotSettings } from './bots/settings';
+import type { StakedBotSource } from './bots/staked';
+import { TestnetBotSource } from './bots/testnet-source';
+import { viemHolderReader, type HolderReader } from './chain/evm-client';
+import { loadServerKeySecret } from './chain/server-key';
+import { chainDir, isTestChain, migrateLegacyState, resolveStateChainId, stateDir } from './chain/state-dir';
+import { HolderWlStore } from './site/holder-wl';
+import { FaucetInfo } from './site/network';
 import { RoomManager } from './rooms/manager';
 import { ProfileStore } from './profiles';
 import { ContractsStore } from './site/contracts';
@@ -31,8 +40,14 @@ export interface App {
   site: SiteApi;
   /** Player profiles (names, skins, stats): `DATA_DIR/profiles.json`. */
   profiles: ProfileStore;
-  /** The contracts registry: `DATA_DIR/contracts.json` (plus `ARENA_ADDRESS` / `NFT_ADDRESS`). */
+  /** The contracts registry of the current chain: `DATA_DIR/chains/<id>/contracts.json` (plus `ARENA_ADDRESS` / `NFT_ADDRESS`). */
   contracts: ContractsStore;
+  /** The chain id the chain-keyed state was opened for (`DATA_DIR/chains/<id>/`); null: none (chain off, dev fake chain). */
+  stateChainId: number | null;
+  /** Testnet staked bots (null on any other chain, or without a server key). */
+  stakedBots: TestnetBotSource | null;
+  /** Imported testnet emblem holders (`DATA_DIR/site/holder-wl.json`). */
+  holderWl: HolderWlStore;
   /** The NFT mint: state, HYPE/USD, holders, allowlist, metadata. */
   mint: MintService;
   /** Keeps the mint price at $1 in HYPE when the server key is the NFT's price keeper; null without a chain. */
@@ -60,6 +75,14 @@ export async function createApp(
     apiLimiter?: Limiter;
     /** HYPE/USD feed (default: Hyperliquid at `HYPE_PRICE_URL`); tests inject one. */
     fetchPrice?: PriceFetcher;
+    /** The chain id to key the state on (default: the injected chain's, else `eth_chainId` of `EVM_RPC_URL`). */
+    chainId?: number | null;
+    /** The key testnet bot wallets are derived from (default: `SERVER_PRIVATE_KEY`); tests inject one with an injected chain. */
+    stakedBotKey?: Hex;
+    /** A staked-bot source to use instead of the testnet one (tests). */
+    stakedBots?: StakedBotSource;
+    /** Holder readers per chain (default: the server's client on its own chain, `TESTNET_RPC_URL` for the testnet). */
+    holderReaderFor?: (chainId: number) => HolderReader | null;
   } = {},
 ): Promise<App> {
   const log = opts.log ?? ((m: string) => console.log(`[${new Date().toISOString()}] ${m}`));
@@ -67,7 +90,13 @@ export async function createApp(
   // refuse a misconfigured DEV_FAKE_CHAIN before any file is opened
   assertDevFakeChainAllowed(cfg);
   const files = dataFileNames(cfg);
-  const journal = new Journal(persist ? join(cfg.dataDir, files.journal) : null, log);
+  // chain-keyed state: DATA_DIR/chains/<chainId>/ (registry, journal, bot wallets, allowlist snapshots)
+  const stateChainId =
+    opts.chainId !== undefined ? opts.chainId : opts.chain ? opts.chain.status().chainId : await resolveStateChainId(cfg, { persist, log });
+  if (persist && stateChainId !== null) migrateLegacyState(cfg.dataDir, stateChainId, log);
+  const chainState = persist ? stateDir(cfg.dataDir, stateChainId) : null;
+  if (stateChainId !== null) log(`state: chain ${stateChainId} (${persist ? join(cfg.dataDir, 'chains', String(stateChainId)) : 'in memory'})`);
+  const journal = new Journal(chainState ? join(chainState, files.journal) : null, log);
   const recovered = journal.recoverLive();
   if (recovered > 0) log(`journal: ${recovered} stake player(s) were alive at last shutdown → queued automatic payout`);
   if (journal.pending.length > 0) log(`journal: ${journal.pending.length} settlement(s) pending`);
@@ -76,13 +105,15 @@ export async function createApp(
   if (cfg.adminWallets.length === 0) {
     log('!!! ADMIN_WALLETS is not set: NOBODY is admin (/admin and /api/admin/* refuse everyone). Set it to the owner\'s 0x address.');
   }
-  const contracts = new ContractsStore(persist ? cfg.dataDir : null, { arena: cfg.chain.arenaAddress, nft: cfg.chain.nftAddress }, log);
-  const chain = opts.chain ?? (await createChain(cfg, journal, log, { contracts: () => contracts.view() }));
+  const contracts = new ContractsStore(chainState, { arena: cfg.chain.arenaAddress, nft: cfg.chain.nftAddress }, log);
+  const chain = opts.chain ?? (await createChain(cfg, journal, log, { contracts: () => contracts.view(), stateChainId }));
   // a newly registered (or cleared) contract is picked up at once, without a restart
   contracts.onChange(() => void chain.refresh?.());
   const auth = new Auth(cfg.authSecret, { onChain: chain.verifyMessage ? (a, m, sig) => chain.verifyMessage!(a, m, sig) : null });
   const profiles = new ProfileStore(persist ? join(cfg.dataDir, files.profiles) : null, log);
-  const siteStore = new SiteStore(persist ? cfg.dataDir : null, { now: opts.siteNow, log });
+  // on Elysium Testnet the game is open to everyone unless the admin already chose otherwise
+  const siteStore = new SiteStore(persist ? cfg.dataDir : null, { now: opts.siteNow, log, ...(stateChainId === ELYSIUM_TESTNET_CHAIN_ID ? { defaults: { gameAccess: 'public' } } : {}) });
+  const holderWl = new HolderWlStore(persist ? cfg.dataDir : null, log);
   const fetchPrice = opts.fetchPrice ?? hyperliquidPrice(cfg.mint.hypePriceUrl);
   const nftRecord = () => {
     const r = contracts.effective(null).nft;
@@ -93,12 +124,26 @@ export async function createApp(
     client: () => chain.evm?.() ?? null,
     nft: nftRecord,
     chainId: () => chain.status().chainId,
-    dataDir: persist ? cfg.dataDir : null,
+    stateDir: chainState,
+    holderWl: () => holderWl.wallets(),
     usdCents: cfg.mint.usdCents,
     fetchPrice,
     logChunkBlocks: cfg.chain.logChunkBlocks,
     log,
   });
+  // the NFT of another chain comes from that chain's registry (the testnet emblem import after the move to mainnet)
+  const nftOf = (id: number) => {
+    const r = id === chain.status().chainId || id === stateChainId ? contracts.effective(id).nft : persist ? new ContractsStore(chainDir(cfg.dataDir, id)).stored().nft : null;
+    return r ? { address: r.address, txHash: r.txHash } : null;
+  };
+  const holderReaderFor =
+    opts.holderReaderFor ??
+    ((id: number): HolderReader | null => {
+      const own = chain.evm?.() ?? null;
+      if (own && id === chain.status().chainId) return own;
+      if (id === ELYSIUM_TESTNET_CHAIN_ID) return viemHolderReader(cfg.chain.testnetRpcUrl || chainByKey('elysium-testnet').rpcUrl!);
+      return null;
+    });
   const site = new SiteApi(cfg, auth, siteStore, opts.siteLimits, {
     chain,
     contracts,
@@ -106,6 +151,12 @@ export async function createApp(
     profiles,
     journal,
     baseUrl: (req) => publicBaseUrl(cfg, req),
+    dataDir: persist ? cfg.dataDir : null,
+    holderWl,
+    nftOf,
+    holderReaderFor,
+    faucet: new FaucetInfo({ chain, contracts, hypeFaucetUrl: cfg.chain.hypeFaucetUrl }),
+    log,
   });
   const priceKeeper = chain.evm
     ? new PriceKeeper({ client: () => chain.evm?.() ?? null, nft: () => nftRecord()?.address ?? null, usdCents: cfg.mint.usdCents, fetchPrice, log })
@@ -122,9 +173,48 @@ export async function createApp(
   const held = journal.held().length;
   if (held > 0) log(`integrity: ${held} settlement(s) held for admin review (/admin → Integrity)`);
 
+  // the admin's bot settings (DATA_DIR/site/bots.json; the BOT_* env vars are the defaults), applied live
+  const botSettings = new BotSettingsStore(persist ? cfg.dataDir : null, defaultBotSettings(cfg.bots), log);
+  // testnet staked bots: their own wallets (derived from the server key), real tickets; never on mainnet
+  let roomsRef: RoomManager | null = null;
+  let stakedBots: TestnetBotSource | null = null;
+  const botChainId = stateChainId ?? chain.status().chainId;
+  if (!opts.stakedBots && chain.evm && isTestChain(botChainId)) {
+    let key: Hex | null = opts.stakedBotKey ?? null;
+    if (!key && !opts.chain && cfg.chain.serverKey) {
+      try {
+        key = loadServerKeySecret(cfg.chain.serverKey, cfg.dataDir).privateKey;
+      } catch (err) {
+        log(`bots: staked bots off — the server key cannot be read (${(err as Error).message})`);
+      }
+    }
+    if (key) {
+      stakedBots = new TestnetBotSource({
+        chain: () => {
+          const st = chain.status();
+          return { chainId: st.chainId, stakeEnabled: chain.stakeEnabled, arena: st.arenaAddress, token: st.token ? { address: st.token.address, decimals: st.token.decimals } : null };
+        },
+        client: () => chain.evm?.() ?? null,
+        serverKey: key,
+        settings: botSettings,
+        journal,
+        stateDir: chainState,
+        joinsOpen: () => {
+          if (!roomsRef) return false;
+          const now = roomsRef.now();
+          return now < roomsRef.roundWindow(now).joinsCloseAt;
+        },
+        log,
+      });
+      log(`bots: testnet staked bots on (chain ${botChainId}; ${stakedBots.addresses().length} bot wallet(s) known; the server key must be a TestToken minter and hold HYPE)`);
+    }
+  }
+  const stakedSource: StakedBotSource | undefined = opts.stakedBots ?? stakedBots ?? undefined;
+
   const rooms = new RoomManager(
     cfg,
     {
+      stakedBots: stakedSource,
       chain,
       journal,
       leaderboards,
@@ -142,10 +232,17 @@ export async function createApp(
       },
     },
     chain,
-    // the admin's bot settings (DATA_DIR/site/bots.json; the BOT_* env vars are the defaults), applied live
-    new BotSettingsStore(persist ? cfg.dataDir : null, defaultBotSettings(cfg.bots), log),
+    botSettings,
   );
-  site.setBots({ store: rooms.botSettings, live: () => rooms.botCounts(), chainId: () => chain.status().chainId, log });
+  roomsRef = rooms;
+  site.setBots({
+    store: rooms.botSettings,
+    live: () => rooms.botCounts(),
+    chainId: () => chain.status().chainId,
+    stakedSource: () => (stakedBots ? stakedBots.active() : !!opts.stakedBots),
+    ...(stakedBots ? { stakedStatus: () => stakedBots!.status() } : {}),
+    log,
+  });
   chain.setLiveSessionProvider(() => rooms.liveSessions());
   // the game token was set on chain (picked up by the 30 s config watcher, no restart): attach the
   // arenas now (a fresh read of the arena list) instead of waiting for the next arena timer
@@ -162,6 +259,8 @@ export async function createApp(
   gateway.setGameGate((wallet, fresh) => site.gameOpenFor(wallet, fresh));
   // wallets the admin banned after an integrity review cannot start arena games (practice still works)
   gateway.setBanGate((wallet) => integrity.isBanned(wallet));
+  // emblem holders wear a laurel and may play the emblem skin (cached holder check of the NFT)
+  gateway.setHolderCheck((wallet) => mint.isHolder(wallet));
   integrity.start();
   priceKeeper?.start();
   gateway.attach(server);
@@ -182,6 +281,9 @@ export async function createApp(
     site,
     profiles,
     contracts,
+    stateChainId,
+    stakedBots,
+    holderWl,
     mint,
     priceKeeper,
     integrity,

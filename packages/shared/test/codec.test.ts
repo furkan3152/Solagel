@@ -112,7 +112,7 @@ describe('snapshot codec', () => {
       { id: 65535, skin: 255, flags: 255, name: 'Renée🚀' },
     ];
     const decoded = decodeSnapshot(encodeSnapshot({ tick: 9, view: { x: 1, y: 2, h: 3 }, players, upserts: [], removals: [] }));
-    expect(decoded.players).toEqual(players.map((p) => ({ ...p, isBot: (p.flags & PlayerFlag.Bot) !== 0 })));
+    expect(decoded.players).toEqual(players.map((p) => ({ ...p, isBot: (p.flags & PlayerFlag.Bot) !== 0, ...((p.flags & PlayerFlag.Holder) !== 0 ? { holder: true } : {}) })));
     expect(decoded.players.map((p) => (p.flags & PlayerFlag.Staker) !== 0)).toEqual([false, false, true, true]);
   });
 

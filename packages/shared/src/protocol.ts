@@ -39,6 +39,8 @@ export const PlayerFlag = {
   Verified: 2,
   /** Plays an arena ticket (tokens at stake). */
   Staker: 4,
+  /** The wallet holds an Elymum emblem (the name tag wears a laurel). Old clients ignore the bit. */
+  Holder: 8,
 } as const;
 
 /** Binary client → server opcodes (first byte). */
@@ -68,6 +70,11 @@ export interface PlayerInfo {
    * `decodeSnapshot` always sets it, `writeSnapshot` sets the flag bit when it is true.
    */
   isBot?: boolean;
+  /**
+   * The player's wallet holds an Elymum emblem (show the laurel). On the wire this is
+   * `PlayerFlag.Holder` in `flags`; `decodeSnapshot` sets it only when true.
+   */
+  holder?: boolean;
 }
 
 export interface EntityRecord {
