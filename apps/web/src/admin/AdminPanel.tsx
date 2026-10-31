@@ -15,6 +15,7 @@ import { LaunchTab, type ChecklistTab } from './LaunchTab';
 import { MintTab } from './MintTab';
 import { NetworkTab } from './NetworkTab';
 import { HolderPerksCard, HoldersOnlyCard, TestTokenAdminCard } from './SetupExtras';
+import { QuickSetup } from './QuickSetup';
 import { SummaryBar } from './SummaryBar';
 import { chainBlockers, walletChainNote, type AdminNetwork } from './net';
 import { readOwner, type Plan } from './plan';
@@ -177,6 +178,7 @@ export function AdminPanel({
       )}
       {tab === 'setup' && (
         <>
+          <QuickSetup ctx={ctx} />
           <DeployTab ctx={ctx} />
           <h2 className="ad-h3 ad-section-h">Emblem perks</h2>
           <div className="ad-mint__forms">
