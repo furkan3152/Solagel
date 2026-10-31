@@ -95,3 +95,18 @@ describe('round clock config', () => {
     expect(parseRoundConfig({ ROUND_SECONDS: 'soon' })).toEqual({ roundMs: 300_000, closeMs: 60_000 });
   });
 });
+
+describe('auth secret without AUTH_SECRET', () => {
+  it('is generated once into DATA_DIR/auth-secret (0600) and reused after a restart', async () => {
+    const { mkdtempSync, statSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { persistedAuthSecret } = await import('../src/config');
+    const dir = mkdtempSync(join(tmpdir(), 'elymum-secret-'));
+    const a = persistedAuthSecret(dir);
+    const b = persistedAuthSecret(dir);
+    expect(a.equals(b)).toBe(true);
+    expect(a.toString('utf8')).toMatch(/^[0-9a-f]{64}$/);
+    expect(statSync(join(dir, 'auth-secret')).mode & 0o777).toBe(0o600);
+  });
+});

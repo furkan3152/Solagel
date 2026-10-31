@@ -2378,3 +2378,29 @@ body {
 .ad-fund .ad-note {
   flex-basis: 100%;
 }
+
+/* register-an-existing-contract: the three kinds as one radio row */
+.ad-choice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 12px;
+}
+.ad-choice__opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 2px solid var(--outline);
+  border-radius: 12px;
+  background: var(--card, #fff);
+  font-weight: 600;
+  cursor: pointer;
+}
+.ad-choice__opt.is-on {
+  background: var(--sun);
+}
+.ad-choice__opt input {
+  accent-color: var(--teal);
+}
