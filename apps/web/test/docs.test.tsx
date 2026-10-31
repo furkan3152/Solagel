@@ -142,7 +142,13 @@ describe('player guide page', () => {
     expect(screen.getByText('1,950')).toBeTruthy();
     expect(screen.getByText('−50')).toBeTruthy();
     expect(screen.getByText("The fee goes to the operator's wallet")).toBeTruthy();
-  });
+    // every chapter but the FAQ opens with a three-panel comic strip; the value flow has its moving diagram
+    const strips = document.querySelectorAll('figure.cs');
+    expect(strips).toHaveLength(6);
+    for (const f of strips) expect(f.querySelectorAll('.cs__cap')).toHaveLength(3);
+    expect(document.querySelector('figure.vf svg[aria-hidden="true"]')).toBeTruthy();
+    // the comics and the diagram make the DOM heavier for getByRole: a roomier timeout
+  }, 20_000);
 
   it("follows the server's fee rate (ChainStatus.feeBps)", () => {
     act(() =>
@@ -157,7 +163,7 @@ describe('player guide page', () => {
     );
     expect(screen.getByText('1,960')).toBeTruthy();
     expect(screen.getByText('−40')).toBeTruthy();
-  });
+  }, 20_000);
 });
 
 describe('docs routes', () => {

@@ -36,6 +36,7 @@ export function DeployTab({ ctx }: { ctx: ChainCtx }) {
               <span className="ad-step__n num" aria-hidden="true">
                 {s.state === 'done' ? <Icon name="check" size={16} /> : i + 1}
               </span>
+              {s.state === 'active' && <StepCrane />}
               <span className="ad-step__text">
                 <strong className="ad-step__label">{s.label}</strong>
                 <span className={`ad-step__detail${/0x[0-9a-fA-F]{8}/.test(s.detail) ? ' is-hex' : ''}`}>{s.detail}</span>
@@ -58,6 +59,25 @@ export function DeployTab({ ctx }: { ctx: ChainCtx }) {
         {!net.mainnet && net.info && <TestTokenCard ctx={ctx} onLocal={setLocal} local={local} />}
       </div>
     </div>
+  );
+}
+
+/** The little crane over the step being built: it lowers a block, lifts, swings, lowers again. */
+function StepCrane() {
+  return (
+    <svg className="ad-stepcrane" viewBox="0 0 56 52" width={56} height={52} aria-hidden="true" focusable="false">
+      <g fill="none" stroke="var(--ink-fixed)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M44 50 V8 M50 50 V8 M44 14 L50 20 M44 26 L50 32 M44 38 L50 44" />
+        <path d="M6 8 H54 M6 12 H54" />
+        <path d="M47 8 L47 2 L10 8" strokeWidth={1.4} />
+      </g>
+      <g className="ad-stepcrane__load">
+        <path className="ad-stepcrane__cable" d="M14 12 V26" stroke="var(--ink-fixed)" strokeWidth={1.4} />
+        <g className="ad-stepcrane__block">
+          <rect x={8} y={26} width={13} height={9} rx={2} fill="var(--sun)" stroke="var(--ink-fixed)" strokeWidth={2} />
+        </g>
+      </g>
+    </svg>
   );
 }
 

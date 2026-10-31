@@ -273,7 +273,7 @@ export function CollabsTab({ api }: TabProps) {
       {!items ? (
         <StampSpinner label="Loading" />
       ) : items.length === 0 ? (
-        <Empty>No collabs here yet. Communities find you through the Collab button on the landing.</Empty>
+        <Empty scene="mail" mood="smile">No collabs here yet. Communities find you through the Collab button on the landing.</Empty>
       ) : (
         <div className="ad-tablewrap">
           <table className="ad-table">

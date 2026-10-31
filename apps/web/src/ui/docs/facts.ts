@@ -86,7 +86,7 @@ export type DocBlock =
   /** Newspaper table. */
   | { kind: 'table'; caption: string; head: string[]; rows: string[][]; numeric?: number[] }
   /** Boxes joined by arrows: how value moves. */
-  | { kind: 'flow'; label: string; steps: { title: string; text: string }[] }
+  | { kind: 'flow'; label: string; steps: { title: string; text: string }[]; diagram?: { ticket: string; vault: string; wallet: string; fee: string } }
   /** The worked fee example as a receipt (at the server's fee rate). */
   | { kind: 'fee-example' }
   /** Two columns compared side by side. */
@@ -102,7 +102,15 @@ export interface DocSection {
   title: string;
   /** One-line summary under the title. */
   lede: string;
+  /** The three-panel comic that opens the section (captions; the drawings live in Comics.tsx). */
+  strip?: DocStrip;
   blocks: DocBlock[];
+}
+
+/** A section's comic strip: a label and one caption per panel. */
+export interface DocStrip {
+  label: string;
+  panels: [string, string, string];
 }
 
 export interface DocsContent {

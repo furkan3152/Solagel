@@ -2,7 +2,8 @@ import { formatHypeAmount, needsReprice, sameAddress } from '@elymum/sdk';
 import { planDefaultArenas, type StatusSnapshot } from '@elymum/sdk/ops';
 import type { AllowlistStatus, MintPriceQuote, SiteCounts, SiteSettings } from '@elymum/shared';
 import { useEffect, useState } from 'react';
-import { Button, CoinCharacter, Stamp, type CoinMood, type CoinPaint } from '../design';
+import { Button, CoinCharacter, Counter, Stamp, type CoinMood, type CoinPaint } from '../design';
+import { LaunchScene, type SceneStageId } from './LaunchScene';
 import type { AdminNetwork } from './net';
 import { Mark, type ChainCtx } from './ui';
 
@@ -137,7 +138,7 @@ export function LaunchTab({ ctx, go }: { ctx: ChainCtx; go: (tab: ChecklistTab |
         </div>
         <div className="ad-launch__prog">
           <span className="num ad-launch__count">
-            {done}
+            <Counter value={done} />
             <small> / {total}</small>
           </span>
           <span className="ad-launch__bar" aria-hidden="true">
@@ -146,6 +147,7 @@ export function LaunchTab({ ctx, go }: { ctx: ChainCtx; go: (tab: ChecklistTab |
           <span className="mono ad-launch__cap">lines done</span>
         </div>
       </header>
+      <LaunchScene stages={stages.map((s) => ({ id: s.id as SceneStageId, title: s.title, state: s.state }))} mainnet={ctx.net.mainnet} wlQueue={counts?.wl.approved ?? 0} />
       <ol className="ad-terraces" data-testid="launch-checklist">
         {stages.map((st, i) => (
           <li key={st.id} className={`ad-terrace is-${st.state}`} style={{ ['--terrace' as string]: i }} data-stage={st.id}>

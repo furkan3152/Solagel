@@ -315,7 +315,7 @@ function HeldCard({ api, held, money, onChanged }: { api: IntegrityApi; held: In
       </p>
       {flashNode}
       {held.length === 0 ? (
-        <Empty mood="smile">Nothing is held. Every payout went out as settled.</Empty>
+        <Empty mood="happy" scene="vault">Nothing is held. Every payout went out as settled.</Empty>
       ) : (
         <div className="ad-tablewrap">
           <table className="ad-table">
@@ -650,7 +650,7 @@ export function IntegrityTab({ api: adminApi }: TabProps) {
         {!flags ? (
           <StampSpinner label="Loading" />
         ) : flags.length === 0 ? (
-          <Empty mood="smile">No flags{status ? ` with status ${status}` : ''}. The floor looks honest.</Empty>
+          <Empty mood="happy" scene="clear">No flags{status ? ` with status ${status}` : ''}. The floor looks honest.</Empty>
         ) : (
           <div className="ad-tablewrap">
             <table className="ad-table">

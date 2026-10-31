@@ -239,7 +239,7 @@ export function WlTab({ api }: TabProps) {
       {!data ? (
         <StampSpinner label="Loading" />
       ) : items.length === 0 ? (
-        <Empty>
+        <Empty scene="queue">
           No entries{status ? ` with status ${status}` : ''}
           {query ? ` matching “${query}”` : ''}. {status === 'pending' && !query ? 'Inbox zero. Have a snack.' : ''}
         </Empty>

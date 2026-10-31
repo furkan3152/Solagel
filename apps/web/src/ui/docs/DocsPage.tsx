@@ -1,11 +1,13 @@
 import { useMemo, useRef } from 'react';
-import { CoinCharacter, Dateline, Icon, Receipt, Rule, Stamp, useReducedMotion, type ReceiptLine } from '../../design';
+import { CoinCharacter, Dateline, Icon, Receipt, Rule, Stamp, useOffscreenPause, useReducedMotion, type ReceiptLine } from '../../design';
 import { feeBps } from '../../wallet/ticket';
 import { useUi } from '../../store';
 import { useTokenText } from '../lobby/useLobby';
 import { PageHead } from '../PageHead';
 import { docsEn } from './content.en';
 import { EXAMPLE, feeExample, type DocBlock, type DocsContent } from './facts';
+import { ComicStrip } from './Comics';
+import { ValueFlow } from './ValueFlow';
 import './docs.css';
 
 /**
@@ -77,6 +79,7 @@ export function DocsPage() {
                 </div>
               </header>
               <div className="dc-sec__body">
+                {s.strip && <ComicStrip id={s.id} strip={s.strip} />}
                 {s.blocks.map((b, j) => (
                   <Block key={j} block={b} c={c} />
                 ))}
@@ -124,25 +127,7 @@ function Block({ block: b, c }: { block: DocBlock; c: DocsContent }) {
         </ul>
       );
     case 'keys':
-      return (
-        <figure className="dc-keys-fig kb-island">
-          <figcaption className="dc-cap mono" id="dc-keys-cap">
-            {b.caption}
-          </figcaption>
-          <table className="dc-keys" aria-labelledby="dc-keys-cap">
-            <tbody>
-              {b.rows.map((r) => (
-                <tr key={r.key}>
-                  <th scope="row">
-                    <kbd className="dc-kbd mono">{r.key}</kbd>
-                  </th>
-                  <td>{r.action}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </figure>
-      );
+      return <KeysFig caption={b.caption} rows={b.rows} />;
     case 'table':
       return (
         <div className="dc-table-wrap kb-island">
@@ -173,18 +158,21 @@ function Block({ block: b, c }: { block: DocBlock; c: DocsContent }) {
       );
     case 'flow':
       return (
-        <ol className="dc-flow" aria-label={b.label}>
-          {b.steps.map((s, i) => (
-            <li key={i} className="dc-flow__step kb-island">
-              <span className="dc-flow__no num" aria-hidden="true">
-                {String(i + 1).padStart(2, '0')}
-              </span>
-              <span className="dc-flow__title mono">{s.title}</span>
-              <span className="dc-flow__text">{s.text}</span>
-              {i < b.steps.length - 1 && <Icon name="arrow" size={20} className="dc-flow__arrow" />}
-            </li>
-          ))}
-        </ol>
+        <>
+          {b.diagram && <ValueFlow labels={b.diagram} />}
+          <ol className="dc-flow" aria-label={b.label}>
+            {b.steps.map((s, i) => (
+              <li key={i} className="dc-flow__step kb-island">
+                <span className="dc-flow__no num" aria-hidden="true">
+                  {String(i + 1).padStart(2, '0')}
+                </span>
+                <span className="dc-flow__title mono">{s.title}</span>
+                <span className="dc-flow__text">{s.text}</span>
+                {i < b.steps.length - 1 && <Icon name="arrow" size={20} className="dc-flow__arrow" />}
+              </li>
+            ))}
+          </ol>
+        </>
       );
     case 'fee-example':
       return <FeeExample c={c} />;
@@ -231,6 +219,32 @@ function Block({ block: b, c }: { block: DocBlock; c: DocsContent }) {
     default:
       return null;
   }
+}
+
+/** The controls as key stickers that press themselves one after another (paused off screen). */
+function KeysFig({ caption, rows }: { caption: string; rows: { key: string; action: string }[] }) {
+  const [ref, visible] = useOffscreenPause<HTMLElement>();
+  return (
+    <figure ref={ref} className="dc-keys-fig kb-island" data-paused={!visible || undefined}>
+      <figcaption className="dc-cap mono" id="dc-keys-cap">
+        {caption}
+      </figcaption>
+      <table className="dc-keys" aria-labelledby="dc-keys-cap">
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={r.key}>
+              <th scope="row">
+                <kbd className="dc-kbd mono" style={{ ['--i' as string]: i }}>
+                  {r.key}
+                </kbd>
+              </th>
+              <td>{r.action}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </figure>
+  );
 }
 
 /** The worked example: a 1,000-token ticket with 2,000 in the till at the bell, at the server's fee rate. */

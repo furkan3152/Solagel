@@ -6,6 +6,7 @@ import { sendWithWallet, txErrorText, type TxPhase } from '../wallet/tx';
 import type { AdminNetwork } from './net';
 import { planRefusals, previewOf, readOwner, sendPlan, type Plan, type PlanResult } from './plan';
 import { CopyButton } from './ui';
+import { Foreman } from './LaunchScene';
 
 export interface SignedEntry {
   at: number;
@@ -39,6 +40,32 @@ function stationIndex(s: State): number {
   if (s.kind === 'done') return STATIONS.length;
   if (s.kind !== 'busy') return -1;
   return STATIONS.findIndex((x) => x.id === s.phase);
+}
+
+/**
+ * The ink that squeezes out from under the SIGNED stamp when it lands: a soft blot spreading
+ * past the frame and a few droplets flicked outward. Decorative; a fade under reduced motion.
+ */
+export function InkSplat() {
+  const drops: [number, number, number][] = [
+    [-74, -22, 4],
+    [70, -26, 3.2],
+    [-62, 26, 3],
+    [80, 18, 4.4],
+    [6, -40, 2.6],
+    [-20, 38, 2.4],
+  ];
+  return (
+    <svg className="ad-splat" viewBox="-100 -50 200 100" aria-hidden="true" focusable="false">
+      <path
+        className="ad-splat__blot"
+        d="M-62 -18 Q-66 -34 -44 -30 Q-30 -42 -8 -34 Q14 -44 34 -32 Q60 -38 62 -18 Q76 -6 64 10 Q70 30 44 28 Q24 40 0 32 Q-24 42 -42 30 Q-68 34 -64 12 Q-78 0 -62 -18Z"
+      />
+      {drops.map(([x, y, r], i) => (
+        <circle key={i} className="ad-splat__drop" cx={x} cy={y} r={r} style={{ ['--dx' as string]: `${-x * 0.5}px`, ['--dy' as string]: `${-y * 0.5}px` }} />
+      ))}
+    </svg>
+  );
 }
 
 /** A hash or an address, in full, linked to the explorer when there is one. */
@@ -193,7 +220,7 @@ export function TxPreview({
       <div
         ref={box}
         tabIndex={-1}
-        className={`kb-tx ad-txp__box${net.mainnet ? ' is-mainnet' : ''}`}
+        className={`kb-tx ad-txp__box${net.mainnet ? ' is-mainnet' : ''}${state.kind === 'done' ? ' is-thump' : ''}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="ad-txp-h"
@@ -347,7 +374,15 @@ export function TxPreview({
         )}
         {state.kind === 'done' && (
           <div className="ad-txp__done" role="status" data-testid="tx-done">
-            <Stamp text="Signed" tone="up" animateIn rotate={-6} className="ad-txp__stamp" />
+            <span className="ad-txp__seal">
+              <span className="ad-txp__inked">
+                <InkSplat />
+                <Stamp text="Signed" tone="up" animateIn rotate={-6} className="ad-txp__stamp" />
+              </span>
+              <svg className="ad-txp__foreman" viewBox="-34 -52 68 80" width={58} height={68} aria-hidden="true" focusable="false">
+                <Foreman mood={state.afterError ? 'worried' : 'thumbs'} r={20} />
+              </svg>
+            </span>
             <dl className="ad-txp__result">
               <div>
                 <dt className="mono">Transaction</dt>

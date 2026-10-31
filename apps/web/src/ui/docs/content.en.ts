@@ -47,6 +47,7 @@ export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps): DocsCo
       id: 'play',
       title: 'How to play',
       lede: 'Eat food, grow, swallow smaller coins, run from bigger ones.',
+      strip: { label: 'The one rule', panels: ['Eat the food. Grow.', `${num(R.eatRatio)} times bigger? Lunch.`, 'Smaller? Run.'] },
       blocks: [
         {
           kind: 'p',
@@ -79,6 +80,7 @@ export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps): DocsCo
       id: 'rooms',
       title: 'Rooms and entry fees',
       lede: 'Practice is free, arenas take a ticket. Every arena has a fixed entry fee.',
+      strip: { label: 'Two doors', panels: ['Practice: free, with bots.', 'Arenas: show a ticket.', 'The entry fee goes into the vault.'] },
       blocks: [
         {
           kind: 'list',
@@ -123,10 +125,12 @@ export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps): DocsCo
       id: 'value',
       title: 'Value flow and loot',
       lede: 'In a ticket room your coin carries tokens. Eat a player and their tokens move to you.',
+      strip: { label: 'Who carries the tokens', panels: ['Eat a player...', '...and their tokens hop to you.', 'Bots carry nothing.'] },
       blocks: [
         {
           kind: 'flow',
           label: 'How value moves',
+          diagram: { ticket: 'Your ticket', vault: 'Arena vault', wallet: 'Your wallet', fee: 'Fee wallet' },
           steps: [
             { title: 'Entry', text: 'Your value starts at the entry fee.' },
             { title: 'Eating', text: "An eaten cell moves its share of the victim's value to the eater: ⌊V · m / M⌋. The last cell moves everything left." },
@@ -161,6 +165,7 @@ export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps): DocsCo
       id: 'payout',
       title: 'Rounds, payout and fees',
       lede: `Arenas play ${R.roundMin}-minute rounds. Stay alive until the bell and you are paid your value.`,
+      strip: { label: 'Five minutes, then lunch', panels: [`${R.roundMin} minutes on the clock.`, 'The bell rings. Everyone alive is paid.', `The fee is ${pct(feeBps)} of the profit, never of the entry.`] },
       blocks: [
         {
           kind: 'p',
@@ -199,6 +204,7 @@ export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps): DocsCo
       id: 'fair',
       title: 'Fair play and transparency',
       lede: 'The money rules are on-chain, the game itself runs on a server. Know what you trust.',
+      strip: { label: 'Two kinds of trust', panels: ['Money rules: on-chain.', 'The game: on the server.', 'Know which is which.'] },
       blocks: [
         {
           kind: 'compare',
@@ -245,6 +251,7 @@ export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps): DocsCo
       id: 'wallet',
       title: 'Wallet safety',
       lede: 'Read before you sign. Elymum never asks for your secret recovery phrase.',
+      strip: { label: 'Read before you sign', panels: ['Someone asks for your phrase.', 'Never. Not to anyone.', 'Sign only what you have read.'] },
       blocks: [
         {
           kind: 'list',

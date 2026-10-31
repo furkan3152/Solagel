@@ -466,3 +466,78 @@ label.ad-cap,
 .ad-filters .ad-int__narrow {
   width: 130px;
 }
+
+/* empty-drawer vignettes (common.tsx EmptyArt) */
+.ad-empty__art {
+  flex: none;
+  overflow: visible;
+}
+.ad-es__float {
+  animation: ad-es-float 3.2s ease-in-out infinite;
+}
+@keyframes ad-es-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2.5px); }
+}
+.ad-es__z {
+  animation: ad-es-z 2.8s ease-in-out infinite;
+}
+@keyframes ad-es-z {
+  0%, 100% { transform: translate(0, 0); opacity: 0.4; }
+  50% { transform: translate(3px, -4px); opacity: 1; }
+}
+.ad-es__rope {
+  transform-box: fill-box;
+  transform-origin: 50% 0;
+  animation: ad-es-rope 3s ease-in-out infinite;
+}
+@keyframes ad-es-rope {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(0.88); }
+}
+.ad-es__plane {
+  animation: ad-es-plane 5s ease-in-out infinite;
+}
+@keyframes ad-es-plane {
+  0% { transform: translate(-40px, 10px) rotate(-8deg); opacity: 0; }
+  15% { opacity: 1; }
+  60% { transform: translate(0, 0) rotate(4deg); opacity: 1; }
+  85% { transform: translate(18px, -8px) rotate(10deg); opacity: 0; }
+  100% { opacity: 0; }
+}
+.ad-es__lens {
+  animation: ad-es-lens 3.6s ease-in-out infinite;
+}
+@keyframes ad-es-lens {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(14px, 4px); }
+}
+.ad-es__spark {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ad-es-spark 1.8s ease-in-out infinite alternate;
+}
+@keyframes ad-es-spark {
+  from { transform: scale(0.7); opacity: 0.5; }
+  to { transform: scale(1.1); opacity: 1; }
+}
+.ad-es__door {
+  transform-box: fill-box;
+  transform-origin: 0 50%;
+  animation: ad-es-door 4s ease-in-out infinite;
+}
+@keyframes ad-es-door {
+  0%, 100% { transform: scaleX(1); }
+  50% { transform: scaleX(0.8); }
+}
+@media (max-width: 480px) {
+  .ad-empty {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ad-empty__art * {
+    animation: none !important;
+  }
+}

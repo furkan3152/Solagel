@@ -1993,3 +1993,127 @@ body {
     min-width: 640px;
   }
 }
+
+/* ── SIGNED: the stamp thumps the sheet, ink spreads, the foreman approves ── */
+.ad-txp__box.is-thump {
+  animation: ad-thump 0.42s 0.12s cubic-bezier(0.3, 1.6, 0.5, 1) both;
+}
+@keyframes ad-thump {
+  0% { transform: translateY(0) scale(1); }
+  30% { transform: translateY(4px) scale(0.992, 0.985); }
+  100% { transform: translateY(0) scale(1); }
+}
+.ad-txp__seal {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+}
+.ad-txp__inked {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  padding: 6px 10px;
+}
+.ad-txp__inked .kb-stamp {
+  position: relative;
+  z-index: 1;
+}
+.ad-splat {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 190px;
+  height: 95px;
+  transform: translate(-50%, -50%);
+  overflow: visible;
+  pointer-events: none;
+}
+.ad-splat__blot {
+  fill: var(--up);
+  opacity: 0.16;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ad-blot 0.7s 0.16s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+@keyframes ad-blot {
+  from { transform: scale(0.35) rotate(-8deg); opacity: 0; }
+  to { transform: scale(1) rotate(0); opacity: 0.16; }
+}
+.ad-splat__drop {
+  fill: var(--up-ink);
+  opacity: 0.55;
+  animation: ad-drop 0.5s 0.18s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+@keyframes ad-drop {
+  from { transform: translate(var(--dx), var(--dy)) scale(0.2); opacity: 0; }
+  to { transform: translate(0, 0) scale(1); opacity: 0.55; }
+}
+.ad-txp__foreman {
+  flex: none;
+  overflow: visible;
+  animation: ad-foreman-in 0.5s 0.5s cubic-bezier(0.3, 1.5, 0.5, 1) both;
+}
+@keyframes ad-foreman-in {
+  from { transform: translateY(16px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ad-txp__box.is-thump,
+  .ad-splat__blot,
+  .ad-splat__drop,
+  .ad-txp__foreman {
+    animation: none !important;
+  }
+}
+
+/* the active deploy step has its own little crane; finished steps pop their check in */
+.ad-stepcrane {
+  position: absolute;
+  right: 8px;
+  top: -14px;
+  overflow: visible;
+  pointer-events: none;
+}
+.ad-stepcrane__load {
+  transform-origin: 14px 12px;
+  animation: ad-sc-swing 2.2s ease-in-out infinite alternate;
+}
+@keyframes ad-sc-swing {
+  from { transform: rotate(-6deg); }
+  to { transform: rotate(6deg); }
+}
+.ad-stepcrane__cable {
+  transform-box: fill-box;
+  transform-origin: 50% 0;
+  animation: ad-sc-cable 4.4s ease-in-out infinite;
+}
+@keyframes ad-sc-cable {
+  0%, 30%, 100% { transform: scaleY(1); }
+  55%, 70% { transform: scaleY(1.7); }
+}
+.ad-stepcrane__block {
+  animation: ad-sc-block 4.4s ease-in-out infinite;
+}
+@keyframes ad-sc-block {
+  0%, 30%, 100% { transform: translateY(0); }
+  55%, 70% { transform: translateY(10px); }
+}
+.ad-step.is-done .ad-step__n {
+  animation: ad-step-pop 0.5s cubic-bezier(0.3, 1.6, 0.5, 1) both;
+}
+.ad-step.is-done:nth-child(2) .ad-step__n { animation-delay: 0.08s; }
+.ad-step.is-done:nth-child(3) .ad-step__n { animation-delay: 0.16s; }
+.ad-step.is-done:nth-child(4) .ad-step__n { animation-delay: 0.24s; }
+.ad-step.is-done:nth-child(5) .ad-step__n { animation-delay: 0.32s; }
+.ad-step.is-done:nth-child(6) .ad-step__n { animation-delay: 0.4s; }
+.ad-step.is-done:nth-child(7) .ad-step__n { animation-delay: 0.48s; }
+@keyframes ad-step-pop {
+  from { transform: scale(0.4) rotate(-20deg); }
+  to { transform: scale(1) rotate(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ad-stepcrane *,
+  .ad-step.is-done .ad-step__n {
+    animation: none !important;
+  }
+}
