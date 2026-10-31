@@ -1,5 +1,7 @@
 import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { CoinMark, Icon, Kb, RingScene, Wordmark as InkWordmark, type IconName } from '../design';
+import { FooterLife } from './FooterLife';
+import { usePeelLetters } from './peel';
 import { Link, usePath } from './router';
 import { siteHost, useSiteSettings, xProfile } from './settings';
 import './site.css';
@@ -98,8 +100,9 @@ function ConnectFallback() {
   );
 }
 
-export function SiteHeader({ cta: _cta = true }: { cta?: boolean }) {
+export function SiteHeader({ cta: _cta = true, children }: { cta?: boolean; /** Extras hung under the header line (the landing's seed rail). */ children?: ReactNode }) {
   const path = usePath();
+  const peel = usePeelLetters<HTMLSpanElement>();
   const [menu, setMenu] = useState(false);
   useEffect(() => setMenu(false), [path]);
   useEffect(() => {
@@ -127,7 +130,9 @@ export function SiteHeader({ cta: _cta = true }: { cta?: boolean }) {
       <div className="st-head__inner">
         <Link href="/" className="st-head__home" aria-label="Elymum home">
           <CoinMark size={38} className="st-head__coin" />
-          <Wordmark />
+          <span ref={peel.ref} className={peel.className}>
+            <Wordmark />
+          </span>
         </Link>
         <nav className="st-nav" aria-label="Site">
           {links}
@@ -153,6 +158,7 @@ export function SiteHeader({ cta: _cta = true }: { cta?: boolean }) {
           {links}
         </nav>
       )}
+      {children}
     </header>
   );
 }
@@ -164,6 +170,7 @@ export function SiteFooter() {
     <Kb theme="night" paper={false} className="st-foot-kb">
     <footer className="st-foot">
       <RingScene time="night" variant="horizon" clouds={false} animate={false} className="st-foot__ring" />
+      <FooterLife />
       <div className="st-foot__inner">
         <div className="st-foot__brand">
           <InkWordmark height={64} diecut playful={false} className="st-foot__mark" />

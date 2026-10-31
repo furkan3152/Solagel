@@ -105,7 +105,14 @@ body {
   transition: transform var(--dur-state) var(--ease-spring);
 }
 .st-head__home:hover .st-head__coin {
-  transform: rotate(-14deg) translateY(-2px);
+  animation: st-coin-toss 0.8s cubic-bezier(0.3, 0.6, 0.35, 1);
+}
+/* the header coin is tossed: up, a full flip on its edge, a little bounce on landing */
+@keyframes st-coin-toss {
+  0% { transform: translateY(0) rotateY(0); }
+  45% { transform: translateY(-9px) rotateY(270deg); }
+  75% { transform: translateY(0) rotateY(360deg) scale(1.06, 0.92); }
+  100% { transform: translateY(0) rotateY(360deg) scale(1); }
 }
 .st-head .st-mark__art {
   width: auto;
@@ -240,6 +247,7 @@ body {
   }
   .st-head__home:hover .st-head__coin {
     transform: none;
+    animation: none;
   }
 }
 
@@ -605,4 +613,226 @@ select.st-input {
 .st-gate p {
   font-size: 18px;
   color: var(--ink-2);
+}
+
+/* wordmark letters as stickers (peel.ts): after the load hop they rest; a pointed-at letter
+   peels up off the page, wobbles on its tape and slaps back down */
+.st-peel.is-settled .kb-wordmark__letter {
+  animation: none;
+}
+.st-peel.is-settled .kb-wordmark__letter.is-peel {
+  animation: st-peel 0.86s cubic-bezier(0.3, 0.7, 0.4, 1) both;
+}
+.st-peel .kb-wordmark {
+  cursor: default;
+}
+@keyframes st-peel {
+  0% { transform: translateY(0) rotate(0) scale(1); }
+  22% { transform: translate(3px, -14px) rotate(-11deg) scale(1.1); }
+  44% { transform: translate(-1px, -6px) rotate(7deg) scale(1.04); }
+  62% { transform: translateY(2px) rotate(-3deg) scale(0.97, 1.03); }
+  76% { transform: translateY(0) rotate(1.5deg) scale(1.02, 0.97); }
+  100% { transform: translateY(0) rotate(0) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .st-peel .kb-wordmark__letter.is-peel {
+    animation: none !important;
+  }
+}
+
+/* ── the loading screen: a coin munching a row of seeds (SiteLoader.tsx, index.html) ── */
+.st-loadpage {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+}
+.st-load {
+  --loop: 2.8s;
+  display: grid;
+  justify-items: center;
+  gap: 18px;
+  animation: st-load-in 0.3s 0.35s both;
+}
+@keyframes st-load-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+.st-load__row {
+  position: relative;
+  width: 290px;
+  height: 78px;
+  border-bottom: 3px dotted var(--outline);
+}
+.st-load__seed {
+  position: absolute;
+  left: calc(20px + var(--i) * 34px);
+  bottom: 8px;
+  width: 13px;
+  height: 17px;
+  margin-left: -6.5px;
+  border-radius: 50% 50% 50% 50% / 62% 62% 40% 40%;
+  background: var(--sun);
+  border: 2.5px solid var(--outline);
+  box-shadow: inset -3px -3px 0 rgba(4, 24, 28, 0.16);
+  transform-origin: 50% 100%;
+  animation: st-seed var(--loop) calc(0.082s + var(--i) * 0.28s) infinite backwards;
+}
+.st-load__seed:nth-child(3n + 2) {
+  background: var(--foam);
+}
+.st-load__seed:nth-child(3n) {
+  background: var(--blush, #f39b86);
+}
+@keyframes st-seed {
+  0% { transform: scale(1); opacity: 1; }
+  4% { transform: translateY(-5px) scale(1.25) rotate(-10deg); opacity: 1; }
+  8% { transform: translate(-8px, -2px) scale(0); opacity: 0; }
+  55% { transform: scale(0); opacity: 0; }
+  62% { transform: scale(1.2, 0.8); opacity: 1; }
+  68%, 100% { transform: scale(1); opacity: 1; }
+}
+.st-load__coin {
+  position: absolute;
+  left: 0;
+  bottom: -6px;
+  line-height: 0;
+  animation: st-munch-walk var(--loop) linear infinite;
+}
+.st-load__coin > .kb-coin {
+  animation: st-munch-step 0.28s ease-in-out infinite;
+}
+@keyframes st-munch-walk {
+  0% { transform: translateX(-40px); opacity: 0; }
+  6% { opacity: 1; }
+  92% { opacity: 1; }
+  100% { transform: translateX(300px); opacity: 0; }
+}
+@keyframes st-munch-step {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  50% { transform: translateY(-4px) rotate(2deg); }
+}
+.st-load__label {
+  margin: 0;
+  font-size: var(--t-micro, 12px);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2, #4a453b);
+}
+.st-load__dots i {
+  font-style: normal;
+  animation: st-dot 1.2s infinite;
+}
+.st-load__dots i:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.st-load__dots i:nth-child(3) {
+  animation-delay: 0.4s;
+}
+@keyframes st-dot {
+  0%, 60%, 100% { opacity: 0.25; }
+  30% { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .st-load,
+  .st-load__seed,
+  .st-load__coin,
+  .st-load__coin > .kb-coin,
+  .st-load__dots i {
+    animation: none;
+  }
+  .st-load__coin {
+    transform: translateX(-70px);
+  }
+}
+
+/* ── page turns between site pages (router.tsx turnPage, View Transitions) ──
+   The header keeps its place; the old page swings away on its spine like a book page, with a
+   shadow sweeping over the page underneath, which settles up from the paper. */
+.st-head {
+  view-transition-name: st-head;
+}
+::view-transition-group(st-head) {
+  animation: none;
+}
+::view-transition-image-pair(root) {
+  isolation: auto;
+}
+::view-transition-old(root) {
+  z-index: 2;
+  transform-origin: 0 50%;
+  animation: st-turn-away 0.62s cubic-bezier(0.55, 0.05, 0.6, 0.9) both;
+}
+::view-transition-new(root) {
+  z-index: 1;
+  animation: st-turn-under 0.62s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+html[data-turn='back']::view-transition-old(root) {
+  transform-origin: 100% 50%;
+  animation-name: st-turn-away-back;
+}
+@keyframes st-turn-away {
+  0% { transform: perspective(2200px) rotateY(0); filter: brightness(1); opacity: 1; }
+  70% { opacity: 1; }
+  100% { transform: perspective(2200px) rotateY(-96deg); filter: brightness(0.7); opacity: 0; }
+}
+@keyframes st-turn-away-back {
+  0% { transform: perspective(2200px) rotateY(0); filter: brightness(1); opacity: 1; }
+  70% { opacity: 1; }
+  100% { transform: perspective(2200px) rotateY(96deg); filter: brightness(0.7); opacity: 0; }
+}
+@keyframes st-turn-under {
+  0% { transform: scale(0.965) translateY(10px); filter: brightness(0.82); }
+  100% { transform: none; filter: brightness(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+}
+
+/* footer night life over the terraces (FooterLife.tsx): same box and framing as .st-foot__ring */
+.st-life {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 240px;
+  pointer-events: none;
+}
+.st-life__glow {
+  opacity: 0.18;
+  animation: st-glow 4.2s ease-in-out infinite;
+}
+@keyframes st-glow {
+  0%, 100% { opacity: 0.12; }
+  50% { opacity: 0.42; }
+}
+.st-life__step {
+  animation: st-step 0.5s ease-in-out infinite;
+}
+@keyframes st-step {
+  50% { transform: translateY(-2px); }
+}
+.st-life__lantern {
+  animation: st-glow 1.6s ease-in-out infinite;
+}
+.st-life__fly {
+  animation: st-fly 6s ease-in-out infinite;
+}
+@keyframes st-fly {
+  0%, 100% { transform: translate(0, 0); opacity: 0.2; }
+  25% { transform: translate(14px, -10px); opacity: 1; }
+  50% { transform: translate(26px, 2px); opacity: 0.5; }
+  75% { transform: translate(10px, 8px); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .st-life__glow,
+  .st-life__step,
+  .st-life__lantern,
+  .st-life__fly {
+    animation: none;
+  }
 }

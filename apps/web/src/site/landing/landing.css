@@ -159,6 +159,125 @@
 }
 .ld-pond__c {
   position: absolute;
+  pointer-events: auto;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.42s var(--ease-spring);
+}
+.ld-pond__body {
+  display: block;
+  transform: scale(var(--grow, 1));
+  transform-origin: 50% 100%;
+  transition: transform 0.5s var(--ease-spring);
+}
+/* the shy one edges away from the pointer, with a nervous shiver */
+.ld-pond__c.is-fleeing {
+  transform: translateX(var(--flee));
+}
+.ld-pond__c.is-fleeing .ld-pond__body {
+  animation: ld-shiver 0.16s linear infinite;
+}
+@keyframes ld-shiver {
+  0%, 100% { transform: scale(var(--grow, 1)) translateX(0); }
+  50% { transform: scale(var(--grow, 1)) translateX(1.5px); }
+}
+.ld-pond__c.is-chew .ld-pond__body {
+  animation: ld-gulp 0.9s var(--ease-spring);
+}
+@keyframes ld-gulp {
+  0% { transform: scale(var(--grow, 1)); }
+  18% { transform: scale(calc(var(--grow, 1) * 1.12), calc(var(--grow, 1) * 0.86)); }
+  40% { transform: scale(calc(var(--grow, 1) * 0.94), calc(var(--grow, 1) * 1.08)); }
+  100% { transform: scale(var(--grow, 1)); }
+}
+.ld-pond__c.is-full .ld-pond__body {
+  animation: ld-nope 0.5s ease-in-out 2;
+}
+@keyframes ld-nope {
+  0%, 100% { transform: scale(var(--grow, 1)) rotate(0); }
+  25% { transform: scale(var(--grow, 1)) rotate(-7deg); }
+  75% { transform: scale(var(--grow, 1)) rotate(7deg); }
+}
+.ld-pond__pear {
+  position: absolute;
+  left: 50%;
+  top: 30%;
+  translate: -50% 0;
+  animation: ld-pear-drop 0.42s cubic-bezier(0.5, 0, 0.9, 0.6) both;
+}
+@keyframes ld-pear-drop {
+  0% { transform: translateY(-240px) rotate(-30deg); opacity: 0; }
+  15% { opacity: 1; }
+  100% { transform: translateY(0) rotate(10deg) scale(0.7); opacity: 1; }
+}
+.ld-pond__crumbs {
+  position: absolute;
+  left: 50%;
+  top: 48%;
+}
+.ld-pond__crumbs i {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  margin: -4px;
+  border-radius: 40% 60% 50% 50%;
+  background: #c9d86a;
+  border: 2px solid var(--outline);
+  animation: ld-crumb 0.6s cubic-bezier(0.2, 0.7, 0.4, 1) both;
+  transform: rotate(var(--a)) translateX(0);
+}
+@keyframes ld-crumb {
+  0% { transform: rotate(var(--a)) translateX(6px) scale(1); opacity: 1; }
+  100% { transform: rotate(var(--a)) translateX(54px) scale(0.4); opacity: 0; }
+}
+.ld-pond__tag {
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  padding: 2px 8px;
+  white-space: nowrap;
+  background: var(--sun);
+  color: var(--ink-fixed);
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: var(--r-tag);
+  box-shadow: var(--sh-1);
+  font-size: 14px;
+  animation: ld-tag-rise 0.95s var(--ease-out) both;
+}
+@keyframes ld-tag-rise {
+  0% { transform: translate(-50%, 10px) scale(0.7); opacity: 0; }
+  20% { transform: translate(-50%, 0) scale(1); opacity: 1; }
+  80% { opacity: 1; }
+  100% { transform: translate(-50%, -18px); opacity: 0; }
+}
+.ld-pond__hint {
+  position: absolute;
+  left: max(16px, 2%);
+  bottom: 150px;
+  z-index: 3;
+  margin: 0;
+  padding: 4px 10px;
+  font-size: var(--t-micro);
+  color: var(--ink-fixed);
+  background: var(--cream);
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: var(--r-tag);
+  box-shadow: var(--sh-1);
+  transform: rotate(-3deg);
+  pointer-events: none;
+}
+.ld-pond__hint::after {
+  content: '';
+  position: absolute;
+  left: 34px;
+  top: 100%;
+  width: 10px;
+  height: 10px;
+  margin-top: -5px;
+  background: var(--cream);
+  border-right: var(--stroke-sm) solid var(--outline);
+  border-bottom: var(--stroke-sm) solid var(--outline);
+  transform: rotate(45deg);
 }
 .ld-chase {
   position: absolute;
@@ -800,34 +919,84 @@
   position: relative;
   height: 470px;
 }
-.ld-nft__fan > div {
+/* the fan: three cards on slots (left, front, right); a shuffle moves the slot, the CSS
+   transition carries the card there, z-index steps midway so the old front tucks behind */
+.ld-nft__fan {
+  --spread: 158px;
+  --side: 0.84;
+}
+.ld-fan__card {
   position: absolute;
-}
-.ld-nft__fan > div:nth-child(1) {
-  left: 4%;
-  top: 40px;
-}
-.ld-nft__fan > div:nth-child(2) {
-  right: 4%;
-  top: 30px;
-}
-.ld-nft__fan > div:nth-child(3) {
   left: 50%;
   top: 0;
+  width: 280px;
   margin-left: -140px;
-  z-index: 2;
+  transform-origin: 50% 90%;
+  transition:
+    transform 0.78s cubic-bezier(0.3, 1.3, 0.45, 1),
+    z-index 0.78s steps(2, jump-none);
+}
+.ld-fan__card[data-slot='front'] {
+  z-index: 3;
+  transform: translate(0, 0) rotate(-1.5deg);
+}
+.ld-fan__card[data-slot='left'] {
+  z-index: 1;
+  transform: translate(calc(var(--spread) * -1), 46px) rotate(-8deg) scale(var(--side));
+}
+.ld-fan__card[data-slot='right'] {
+  z-index: 1;
+  transform: translate(var(--spread), 36px) rotate(7deg) scale(var(--side));
+}
+.ld-fan__card[data-slot='front'] .ld-emblem {
+  animation: ld-deal 0.78s ease-out;
+}
+/* the dealt card lifts off the deck on its way to the front */
+@keyframes ld-deal {
+  0% { translate: 0 0; }
+  40% { translate: 0 -26px; }
+  100% { translate: 0 0; }
+}
+.ld-fan__deal {
+  position: absolute;
+  left: 0;
+  bottom: 6px;
+  z-index: 4;
+  min-height: 40px;
+  padding: 6px 14px;
+  font-size: var(--t-micro);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-fixed);
+  background: var(--cream);
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: var(--r-tag);
+  box-shadow: var(--sh-2);
+  transform: rotate(-3deg);
+  cursor: pointer;
+  transition: transform var(--dur-state) var(--ease-spring), box-shadow var(--dur-state);
+}
+.ld-fan__deal:hover {
+  transform: rotate(-1deg) translate(-1px, -2px);
+}
+.ld-fan__deal:active {
+  transform: rotate(-3deg) translate(2px, 2px);
+  box-shadow: none;
+}
+.ld-fan__deal:focus-visible {
+  outline: 3px solid var(--cyan);
+  outline-offset: 3px;
 }
 .ld-emblem {
   position: relative;
-  width: 280px;
+  width: 100%;
+  box-sizing: border-box;
   padding: 14px 14px 18px;
   background: var(--cream);
   border: var(--stroke) solid var(--outline);
   border-radius: 22px;
   box-shadow: var(--sh-5);
-}
-.ld-emblem:not(.is-front) {
-  width: 236px;
 }
 .ld-emblem__panel {
   position: relative;
@@ -839,9 +1008,23 @@
   border: var(--stroke) solid var(--outline);
   border-radius: 16px;
 }
+.ld-emblem__panel {
+  transition: background-color 0.5s;
+}
 .ld-emblem:not(.is-front) .ld-emblem__panel {
-  height: 270px;
   background: var(--current);
+}
+.ld-emblem__rib,
+.ld-emblem__stamp {
+  transition: opacity 0.4s, transform 0.4s var(--ease-spring);
+}
+.ld-emblem:not(.is-front) .ld-emblem__rib {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.ld-emblem.is-front .ld-emblem__stamp {
+  opacity: 0;
+  transform: scale(1.4);
 }
 .ld-emblem__waves {
   position: absolute;
@@ -878,6 +1061,7 @@
   bottom: 40px;
 }
 .ld-price {
+  position: absolute;
   right: 0;
   bottom: 0;
   z-index: 3;
@@ -907,11 +1091,9 @@
   height: 110px;
 }
 @media (max-width: 1099px) {
-  .ld-nft__fan > div:nth-child(1) {
-    left: 0;
-  }
-  .ld-nft__fan > div:nth-child(2) {
-    right: 0;
+  .ld-nft__fan {
+    --spread: 128px;
+    --side: 0.78;
   }
 }
 @media (max-width: 899px) {
@@ -930,30 +1112,18 @@
   .ld-nft__fan {
     height: 440px;
   }
-  .ld-nft__fan > div:nth-child(1) {
-    left: 0;
-    top: 56px;
+  .ld-nft__fan {
+    --spread: 74px;
+    --side: 0.66;
   }
-  .ld-nft__fan > div:nth-child(2) {
-    right: 0;
-    top: 56px;
+  .ld-fan__card {
+    width: 240px;
+    margin-left: -120px;
   }
   .ld-emblem__rib {
     font-size: 18px;
   }
-  .ld-emblem:not(.is-front) {
-    width: 150px;
-  }
-  .ld-emblem:not(.is-front) .ld-emblem__panel {
-    height: 230px;
-  }
-  .ld-emblem.is-front {
-    width: 240px;
-  }
-  .ld-nft__fan > div:nth-child(3) {
-    margin-left: -120px;
-  }
-  .ld-emblem.is-front .ld-emblem__panel {
+  .ld-emblem .ld-emblem__panel {
     height: 280px;
   }
   .ld-price {
@@ -1286,5 +1456,215 @@
   }
   .ld-suspect:hover .ld-suspect__coin {
     transform: none;
+  }
+}
+
+/* ── new: coins that notice you, notes that unfold ───────────────────── */
+.ld-gaze {
+  display: inline-block;
+  vertical-align: bottom;
+  line-height: 0;
+}
+/* FAQ answers unfold like a folded paper note: the flap swings down from the question, the
+   crease fades as it flattens */
+.ld-qa {
+  perspective: 900px;
+}
+.ld-qa[open] .ld-qa__a {
+  position: relative;
+  isolation: isolate;
+  transform-origin: 50% 0;
+  animation: ld-unfold 0.52s cubic-bezier(0.25, 0.9, 0.35, 1.15) both;
+}
+.ld-qa[open] .ld-qa__a::before {
+  content: '';
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  top: 50%;
+  height: 0;
+  border-top: 2px dashed rgba(26, 47, 58, 0.2);
+  z-index: -1;
+  animation: ld-crease 0.9s ease-out both;
+  pointer-events: none;
+}
+@keyframes ld-unfold {
+  0% { transform: rotateX(-88deg); opacity: 0; }
+  35% { opacity: 1; }
+  70% { transform: rotateX(9deg); }
+  100% { transform: rotateX(0); opacity: 1; }
+}
+@keyframes ld-crease {
+  0%, 40% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ld-fan__card,
+  .ld-emblem__rib,
+  .ld-emblem__stamp {
+    transition: none;
+  }
+  .ld-fan__card[data-slot='front'] .ld-emblem {
+    animation: none;
+  }
+  .ld-qa[open] .ld-qa__a,
+  .ld-qa[open] .ld-qa__a::before {
+    animation: none;
+  }
+  .ld-qa[open] .ld-qa__a::before {
+    display: none;
+  }
+  .ld-pond__c,
+  .ld-pond__body {
+    transition: none;
+  }
+}
+
+/* the ring tram (ArenaTram.tsx): rides the band of the map between the four places */
+.ld-tram {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 40px;
+  height: 300px;
+  pointer-events: none;
+  z-index: 0;
+}
+.ld-tram__car {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 84px;
+  height: 64px;
+  offset-anchor: 50% calc(100% + 10px);
+  offset-rotate: auto;
+}
+.ld-tram__car svg {
+  display: block;
+  animation: ld-tram-rock 0.9s ease-in-out infinite;
+  transform-origin: 50% 100%;
+}
+.ld-tram__car[data-dir='back'] svg {
+  scale: -1 1;
+}
+@keyframes ld-tram-rock {
+  0%, 100% { rotate: -1.2deg; }
+  50% { rotate: 1.2deg; }
+}
+.ld-place {
+  z-index: 1;
+}
+.ld-place.is-stop .ld-place__pin {
+  animation: ld-pin-hop 0.6s cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+@keyframes ld-pin-hop {
+  0% { transform: rotate(-45deg) translate(0, 0); }
+  40% { transform: rotate(-45deg) translate(5px, -5px); }
+  100% { transform: rotate(-45deg) translate(0, 0); }
+}
+@media (max-width: 899px) {
+  .ld-tram {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ld-tram__car svg,
+  .ld-place.is-stop .ld-place__pin {
+    animation: none;
+  }
+}
+
+/* the seed rail (SeedRail.tsx): a coin eats its way along the header line as you read */
+.ld-rail {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 0;
+  container-type: inline-size;
+  pointer-events: none;
+}
+.ld-rail__seeds {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 3px;
+  height: 12px;
+  background: radial-gradient(circle at 50% 50%, var(--sun) 0 2.6px, var(--outline) 2.7px 4.2px, transparent 4.6px) 0 0 / 24px 12px repeat-x;
+  clip-path: inset(0 0 0 calc(var(--p) * (100% - 30px) + 22px));
+}
+.ld-rail__coin {
+  position: absolute;
+  left: 0;
+  top: -6px;
+  line-height: 0;
+  transform: translateX(calc(var(--p) * (100cqw - 30px)));
+}
+@media (max-width: 479px) {
+  .ld-rail__seeds {
+    background-size: 20px 12px;
+  }
+}
+
+/* dusk between the day and the night plates (DuskSeam.tsx) */
+.ld-dusk {
+  position: relative;
+  height: 340px;
+  overflow: hidden;
+  background: var(--trench, #0f2a30);
+  border-top: var(--stroke) solid var(--outline);
+}
+.ld-dusk__art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.ld-dusk__clock {
+  position: absolute;
+  left: max(var(--gutter, 20px), calc(50% - 640px));
+  top: 22px;
+  padding: 6px 12px;
+  font-size: 22px;
+  color: var(--ink-fixed);
+  background: var(--sun);
+  border: var(--stroke) solid var(--outline);
+  border-radius: 12px;
+  box-shadow: var(--sh-2);
+  transform: rotate(-3deg);
+}
+.ld-dusk__note {
+  position: absolute;
+  left: max(var(--gutter, 20px), calc(50% - 640px));
+  top: 78px;
+  max-width: 60%;
+  padding: 3px 9px;
+  font-size: var(--t-micro);
+  color: var(--ink-fixed);
+  background: var(--cream);
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: var(--r-tag);
+}
+@media (max-width: 479px) {
+  .ld-dusk {
+    height: 260px;
+  }
+  .ld-dusk__note {
+    display: none;
+  }
+  .ld-dusk__clock {
+    font-size: 18px;
+  }
+}
+.ld-dusk__lights {
+  animation: ld-lights-crawl 3.2s linear infinite;
+}
+@keyframes ld-lights-crawl {
+  to { stroke-dashoffset: -25; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ld-dusk__lights {
+    animation: none;
   }
 }

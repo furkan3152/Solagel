@@ -35,10 +35,23 @@
         margin: 0;
         background: #f8f7f4;
       }
+      /* before any script: a coin munching a row of seeds (React replaces #root when it mounts) */
+      .boot { min-height: 100vh; display: grid; place-items: center; opacity: 0; animation: boot-in 0.3s 0.45s forwards; }
+      .boot__row { position: relative; width: 290px; height: 78px; border-bottom: 3px dotted #04181c; }
+      .boot__seed { position: absolute; bottom: 8px; width: 13px; height: 17px; margin-left: -6.5px; box-sizing: border-box; border: 2.5px solid #04181c; border-radius: 50% 50% 50% 50% / 62% 62% 40% 40%; background: #f2c14e; transform-origin: 50% 100%; animation: boot-seed 2.8s infinite backwards; }
+      .boot__seed:nth-child(3n + 2) { background: #93d9ee; }
+      .boot__seed:nth-child(3n) { background: #f39b86; }
+      .boot__coin { position: absolute; left: 0; bottom: -6px; animation: boot-walk 2.8s linear infinite; }
+      .boot__coin svg { display: block; animation: boot-step 0.28s ease-in-out infinite; }
+      @keyframes boot-in { to { opacity: 1; } }
+      @keyframes boot-seed { 0% { transform: scale(1); } 4% { transform: translateY(-5px) scale(1.25); } 8%, 55% { transform: scale(0); opacity: 0; } 62% { transform: scale(1.2, 0.8); opacity: 1; } 68%, 100% { transform: scale(1); opacity: 1; } }
+      @keyframes boot-walk { 0% { transform: translateX(-40px); opacity: 0; } 6%, 92% { opacity: 1; } 100% { transform: translateX(300px); opacity: 0; } }
+      @keyframes boot-step { 50% { transform: translateY(-4px); } }
+      @media (prefers-reduced-motion: reduce) { .boot, .boot * { animation: none !important; opacity: 1; } .boot__coin { transform: translateX(-70px); } }
     </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div class="boot" role="status" aria-label="Loading"><div class="boot__row" aria-hidden="true"><i class="boot__seed" style="left:20px;animation-delay:0.082s"></i><i class="boot__seed" style="left:54px;animation-delay:0.362s"></i><i class="boot__seed" style="left:88px;animation-delay:0.642s"></i><i class="boot__seed" style="left:122px;animation-delay:0.922s"></i><i class="boot__seed" style="left:156px;animation-delay:1.202s"></i><i class="boot__seed" style="left:190px;animation-delay:1.482s"></i><i class="boot__seed" style="left:224px;animation-delay:1.762s"></i><i class="boot__seed" style="left:258px;animation-delay:2.042s"></i><span class="boot__coin"><svg class="boot__coin-art" viewBox="-56 -56 112 112" width="64" height="64"><ellipse cy="53" rx="34" ry="5" fill="#04181c" opacity=".18"/><circle r="46" fill="#d49a2b"/><circle cx="-6" cy="-8" r="40" fill="#f2c14e"/><circle r="46" fill="none" stroke="#04181c" stroke-width="5.2"/><ellipse cx="-15" cy="-6" rx="10" ry="12.5" fill="#fff" stroke="#04181c" stroke-width="4"/><ellipse cx="15" cy="-6" rx="10" ry="12.5" fill="#fff" stroke="#04181c" stroke-width="4"/><circle cx="-11" cy="-5" r="6" fill="#04181c"/><circle cx="19" cy="-5" r="6" fill="#04181c"/><path d="M-20 8 Q0 4 20 8 Q20 38 0 38 Q-20 38 -20 8Z" fill="#04181c"/><path d="M-14 9 l4 6 l4 -6 M6 9 l4 6 l4 -6" fill="#fff"/></svg></span></div></div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

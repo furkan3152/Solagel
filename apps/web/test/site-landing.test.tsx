@@ -1,6 +1,7 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Landing } from '../src/site/landing/Landing';
+import { SiteApp } from '../src/site/mount';
 import { resetSiteSettings } from '../src/site/settings';
 import { setReducedMotion } from '../src/test/media';
 import { SETTINGS, installDomStubs, mockFetch } from './site-helpers';
@@ -76,5 +77,36 @@ describe('the landing (/)', { timeout: 30_000 }, () => {
     render(<Landing />);
     await waitFor(() => expect(screen.getByRole('link', { name: 'Collab, soon' })).toBeTruthy());
     expect(screen.getByText(/WL is open/)).toBeTruthy();
+  });
+
+  it('feeds a pond coin on click and shuffles the sealed emblems on demand', async () => {
+    ({ restore } = mockFetch({ 'GET /api/site/settings': { settings: SETTINGS } }));
+    setReducedMotion(false);
+    render(<Landing />);
+    const hungry = document.querySelector('.ld-pond__c--hungry') as HTMLElement;
+    fireEvent.click(hungry);
+    expect(hungry.classList.contains('is-drop')).toBe(true);
+    await waitFor(() => expect(hungry.classList.contains('is-chew')).toBe(true), { timeout: 4000 });
+    expect(hungry.textContent).toContain('+a bite');
+    const front = () => (document.querySelector('.ld-fan__card[data-slot="front"] .ld-emblem__coin') as HTMLElement).closest('.ld-fan__card')?.getAttribute('data-slot');
+    const before = [...document.querySelectorAll('.ld-fan__card')].map((c) => c.getAttribute('data-slot')).join();
+    act(() => fireEvent.click(screen.getByRole('button', { name: 'Shuffle the deck' })));
+    const after = [...document.querySelectorAll('.ld-fan__card')].map((c) => c.getAttribute('data-slot')).join();
+    expect(after).not.toBe(before);
+    expect(front()).toBe('front');
+  });
+
+  it('shows the unbuilt terrace for a path the site does not know', async () => {
+    ({ restore } = mockFetch({ 'GET /api/site/settings': { settings: SETTINGS } }));
+    history.pushState(null, '', '/Terrace-Nine');
+    try {
+      render(<SiteApp />);
+      expect(screen.getByRole('heading', { level: 1, name: /This terrace hasn.t been built yet/ })).toBeTruthy();
+      expect(screen.getByText('/Terrace-Nine', { selector: 'code' })).toBeTruthy();
+      expect(screen.getByRole('link', { name: /Walk back to the plain/ }).getAttribute('href')).toBe('/');
+      await waitFor(() => expect(document.title).toBe('Off the map · Elymum'));
+    } finally {
+      history.pushState(null, '', '/');
+    }
   });
 });

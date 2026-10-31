@@ -1,4 +1,5 @@
 import { useSyncExternalStore, type AnchorHTMLAttributes, type MouseEvent } from 'react';
+import { flushSync } from 'react-dom';
 
 /** Paths the site app renders itself; anything else (`/play`, `/admin`) is a full page load. */
 export const SITE_PATHS = ['/', '/wl', '/collab', '/docs', '/mint'] as const;
@@ -27,6 +28,35 @@ export function usePath(): string {
   return useSyncExternalStore(subscribe, () => normalizePath(location.pathname), () => '/');
 }
 
+type TurnDoc = Document & { startViewTransition?: (update: () => void) => { finished: Promise<void> } };
+
+/**
+ * A page change is a page turn in the picture book: the old page swings away on its spine and
+ * the next one lies underneath (site.css `::view-transition-*`), while the header stays put. Going
+ * further into the site the page turns to the left, coming back it turns to the right. Browsers
+ * without view transitions, and reduced motion, just swap the page.
+ */
+function turnPage(from: string, to: string, update: () => void): void {
+  const doc = document as TurnDoc;
+  const calm = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!doc.startViewTransition || calm || from === to) {
+    update();
+    return;
+  }
+  const order = (p: string) => {
+    const i = (SITE_PATHS as readonly string[]).indexOf(p);
+    return i < 0 ? SITE_PATHS.length : i;
+  };
+  const root = document.documentElement;
+  root.dataset.turn = order(to) >= order(from) ? 'on' : 'back';
+  try {
+    const t = doc.startViewTransition(() => flushSync(update));
+    void t.finished.finally(() => delete root.dataset.turn);
+  } catch {
+    update();
+  }
+}
+
 /** Client-side navigation between site pages; other paths load as a full page. */
 export function navigate(href: string): void {
   const url = new URL(href, location.href);
@@ -34,14 +64,15 @@ export function navigate(href: string): void {
     location.assign(url.href);
     return;
   }
+  const from = normalizePath(location.pathname);
+  const to = normalizePath(url.pathname);
   const same = url.pathname === location.pathname && url.search === location.search;
-  if (!same || url.hash !== location.hash) history.pushState(null, '', `${url.pathname}${url.search}${url.hash}`);
-  window.dispatchEvent(new Event(EVENT));
-  if (url.hash) {
-    requestAnimationFrame(() => document.getElementById(url.hash.slice(1))?.scrollIntoView());
-  } else if (!same) {
-    window.scrollTo({ top: 0 });
-  }
+  turnPage(from, to, () => {
+    if (!same || url.hash !== location.hash) history.pushState(null, '', `${url.pathname}${url.search}${url.hash}`);
+    window.dispatchEvent(new Event(EVENT));
+    if (url.hash) requestAnimationFrame(() => document.getElementById(url.hash.slice(1))?.scrollIntoView());
+    else if (!same) window.scrollTo({ top: 0 });
+  });
 }
 
 /** An anchor that moves between site pages without a reload (modifier clicks keep their meaning). */

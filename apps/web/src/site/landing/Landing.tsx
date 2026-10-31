@@ -1,6 +1,6 @@
 import { DEFAULT_ARENAS, arenaMeta, type GameAccess } from '@elymum/shared';
-import { motion } from 'motion/react';
-import type { CSSProperties, ReactNode } from 'react';
+import { motion, useInView } from 'motion/react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   CoinCharacter,
   FoodBit,
@@ -20,10 +20,15 @@ import {
   type CoinPaint,
 } from '../../design';
 import { FACTS } from '../../ui/docs/facts';
+import { usePeelLetters } from '../peel';
 import { Link } from '../router';
 import { SiteFooter, SiteHeader, SiteLinkButton } from '../Shell';
 import { useSiteSettings, xProfile } from '../settings';
+import { ArenaTram } from './ArenaTram';
 import { CoinPond } from './CoinPond';
+import { DuskSeam } from './DuskSeam';
+import { GazeCoin } from './GazeCoin';
+import { SeedRail } from './SeedRail';
 import { useLandingSound } from './sound';
 import './landing.css';
 
@@ -38,6 +43,7 @@ const pct = (bps: number) => `${bps / 100}%`;
 function Hero({ collabOpen, gameAccess, wlOpen, sound }: { collabOpen: boolean; gameAccess: GameAccess; wlOpen: boolean; sound: ReturnType<typeof useLandingSound> }) {
   const reduced = useReducedMotion();
   const m = useMoves();
+  const peel = usePeelLetters<HTMLHeadingElement>();
   return (
     <section className="ld-hero" aria-labelledby="ld-hero-title">
       <RingScene time="dawn" variant="full" animate={!reduced} className="ld-hero__ring">
@@ -45,7 +51,7 @@ function Hero({ collabOpen, gameAccess, wlOpen, sound }: { collabOpen: boolean; 
           <motion.div className="ld-hero__drop" variants={m.stickerDrop} custom={-1.6} initial="hidden" animate="shown">
             <Sticker pad="lg" lift="lg" tape className="ld-hero__card">
               <p className="kicker ld-hero__kicker">A five-minute feast · on Elysium</p>
-              <h1 id="ld-hero-title" className="ld-hero__title">
+              <h1 id="ld-hero-title" ref={peel.ref} className={`ld-hero__title ${peel.className}`}>
                 <Wordmark height={104} playful={!reduced} className="ld-hero__mark" />
               </h1>
               <p className="ld-hero__tag">You are small change with a big appetite.</p>
@@ -97,6 +103,11 @@ function Hero({ collabOpen, gameAccess, wlOpen, sound }: { collabOpen: boolean; 
           </motion.div>
         </div>
         <CoinPond still={reduced} events={{ onEat: sound.chomp }} />
+        {!reduced && (
+          <p className="ld-pond__hint mono" aria-hidden="true">
+            Psst: tap a coin to feed it
+          </p>
+        )}
         <button type="button" className="ld-sound mono" aria-pressed={sound.on} onClick={sound.toggle}>
           <Icon name={sound.on ? 'sound' : 'mute'} size={16} />
           <span>Sound {sound.on ? 'on' : 'off'}</span>
@@ -212,7 +223,7 @@ function Round() {
               ]}
             />
             <span className="ld-orbit__core" aria-hidden="true">
-              <CoinCharacter paint="sun" mood="chomp" size={112} look={[2, 1]} />
+              <GazeCoin paint="sun" mood="chomp" size={112} look={[2, 1]} reach={0.7} />
             </span>
             <Seigaiha tone="night" rows={2} r={30} className="ld-orbit__waves" />
           </Sticker>
@@ -287,7 +298,7 @@ function Cast() {
                     {c.handle} <b className="num">{c.worth}</b>
                   </span>
                   <span className="ld-suspect__coin">
-                    <CoinCharacter paint={c.paint} mood={c.mood} size={c.size} look={c.look} sweat={c.sweat} feet ground bob phase={i * 0.37} title={`${c.handle}, ${c.mood}`} />
+                    <GazeCoin paint={c.paint} mood={c.mood} size={c.size} look={c.look} sweat={c.sweat} wary={c.mood === 'scared'} feet ground bob phase={i * 0.37} title={`${c.handle}, ${c.mood}`} />
                   </span>
                 </span>
                 <span className="ld-suspect__bio">{c.bio}</span>
@@ -302,18 +313,87 @@ function Cast() {
 
 /* ── Plate V · the mint, after dark ───────────────────────────────────── */
 
-function Emblem({ i, front }: { i: number; front?: boolean }) {
+/** The three sealed emblems of the fan: which paint each wears and the slot it starts in. */
+const EMBLEMS: { paint: CoinPaint; tilt: number }[] = [
+  { paint: 'cyan', tilt: -8 },
+  { paint: 'sun', tilt: -1.5 },
+  { paint: 'up', tilt: 7 },
+];
+const SLOTS = ['left', 'front', 'right'] as const;
+
+function Emblem({ paint, front, waking }: { paint: CoinPaint; front: boolean; waking: boolean }) {
   return (
-    <div className={`ld-emblem ld-emblem--${i}${front ? ' is-front' : ''}`}>
+    <div className={`ld-emblem${front ? ' is-front' : ''}`}>
       <div className="ld-emblem__panel">
         <Seigaiha tone="ink" rows={5} r={26} span={360} filled={false} className="ld-emblem__waves" />
         <span className="ld-emblem__no kb-tag num">No. ????</span>
         <span className="ld-emblem__coin">
-          <CoinCharacter paint={front ? 'sun' : i === 0 ? 'cyan' : 'up'} mood={front ? 'smug' : 'sleepy'} size={front ? 150 : 120} look={[2, 0]} bob={front} />
+          <CoinCharacter paint={paint} mood={!front ? 'sleepy' : waking ? 'open' : 'smug'} size={150} look={waking ? [3, -3] : [2, 0]} bob={front} />
         </span>
+        <Stamp text="Sealed" tone="ink" size="sm" rotate={-12} className="ld-emblem__stamp" />
       </div>
-      {front ? <span className="ld-emblem__rib">Sealed. For now.</span> : <Stamp text="Sealed" tone="ink" size="sm" rotate={-12} className="ld-emblem__stamp" />}
+      <span className="ld-emblem__rib">Sealed. For now.</span>
     </div>
+  );
+}
+
+/**
+ * The fan of sealed emblems shuffles itself like a hand of cards while it is on screen (every
+ * 4.6 s, not while the visitor hovers it): the front card slides off to a side and tucks behind,
+ * a side card comes forward and its sleepy coin wakes up and peeks out. The sticker button deals
+ * the next card at once. Reduced motion: no automatic shuffle; the button still deals (no tween).
+ */
+function EmblemFan() {
+  const m = useMoves();
+  const reduced = useReducedMotion();
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref, { amount: 0.4 });
+  const [turn, setTurn] = useState(0);
+  const [hold, setHold] = useState(false);
+  const [waking, setWaking] = useState(false);
+  const deal = () => {
+    setTurn((t) => t + 1);
+    setWaking(true);
+  };
+  useEffect(() => {
+    if (!waking) return;
+    const t = setTimeout(() => setWaking(false), 1300);
+    return () => clearTimeout(t);
+  }, [waking, turn]);
+  useEffect(() => {
+    if (reduced || !inView || hold) return;
+    const t = setInterval(deal, 4600);
+    return () => clearInterval(t);
+  }, [reduced, inView, hold]);
+  return (
+    <motion.div
+      ref={ref}
+      className="ld-nft__fan"
+      initial="hidden"
+      whileInView="shown"
+      viewport={view}
+      variants={m.stagger}
+      onPointerEnter={() => setHold(true)}
+      onPointerLeave={() => setHold(false)}
+    >
+      {EMBLEMS.map((e, i) => {
+        const slot = SLOTS[(i + turn) % 3];
+        return (
+          <div key={e.paint} className="ld-fan__card" data-slot={slot}>
+            <motion.div variants={m.stickerDrop} custom={0}>
+              <Emblem paint={e.paint} front={slot === 'front'} waking={slot === 'front' && waking} />
+            </motion.div>
+          </div>
+        );
+      })}
+      <motion.div className="ld-price" variants={m.popIn}>
+        <span className="num ld-price__n">$1.00</span>
+        <span className="mono ld-price__l">in HYPE · each</span>
+      </motion.div>
+      <motion.button type="button" className="ld-fan__deal mono" onClick={deal} variants={m.popIn}>
+        Shuffle the deck
+      </motion.button>
+    </motion.div>
   );
 }
 
@@ -353,21 +433,7 @@ function Nft() {
               </SiteLinkButton>
             </div>
           </motion.div>
-          <motion.div className="ld-nft__fan" initial="hidden" whileInView="shown" viewport={view} variants={m.stagger}>
-            <motion.div variants={m.stickerDrop} custom={-8}>
-              <Emblem i={0} />
-            </motion.div>
-            <motion.div variants={m.stickerDrop} custom={7}>
-              <Emblem i={2} />
-            </motion.div>
-            <motion.div variants={m.stickerDrop} custom={-1.5}>
-              <Emblem i={1} front />
-            </motion.div>
-            <motion.div className="ld-price" variants={m.popIn}>
-              <span className="num ld-price__n">$1.00</span>
-              <span className="mono ld-price__l">in HYPE · each</span>
-            </motion.div>
-          </motion.div>
+          <EmblemFan />
         </div>
         <Seigaiha tone="night" rows={3} r={36} className="ld-nft__waves" />
       </div>
@@ -384,8 +450,13 @@ const PLACES: Record<number, { line: string; x: number; y: number }> = {
   4: { line: 'Heroes only. Heroes with a quarter of a million.', x: 88, y: 152 },
 };
 
+// where the tram pulls in, beside each place's pin and clear of the tickets
+const STOPS_X = [17, 31, 57, 82];
+
 function Arenas({ gameAccess }: { gameAccess: GameAccess }) {
   const m = useMoves();
+  const reduced = useReducedMotion();
+  const mapRef = useRef<HTMLDivElement>(null);
   const open = gameAccess === 'public' ? { tone: 'live' as const, text: 'Open now' } : gameAccess === 'holders' ? { tone: 'ok' as const, text: 'Open to emblem holders' } : { tone: 'idle' as const, text: 'Opens after the mint' };
   return (
     <section className="ld-plate ld-arenas" id="arenas" aria-labelledby="ld-arenas-h">
@@ -403,12 +474,13 @@ function Arenas({ gameAccess }: { gameAccess: GameAccess }) {
             <p>Entry fees are in {SYMBOL}. Practice is free and needs no wallet at all.</p>
           </div>
         </div>
-        <div className="ld-map">
+        <div className="ld-map" ref={mapRef}>
           <svg className="ld-map__ring" viewBox="0 0 1000 300" preserveAspectRatio="none" aria-hidden="true" focusable="false">
             <path d="M-20 290 C 180 -40, 820 -40, 1020 290" fill="none" className="ld-map__band" strokeWidth="34" />
             <path d="M-20 290 C 180 -40, 820 -40, 1020 290" fill="none" className="ld-map__edge" strokeWidth="3" />
             <path d="M-20 290 C 180 -40, 820 -40, 1020 290" fill="none" className="ld-map__lights" strokeWidth="5" strokeDasharray="2 20" strokeLinecap="round" />
           </svg>
+          <ArenaTram stopsX={STOPS_X} places={mapRef} still={reduced} />
           <motion.ol className="ld-map__list" variants={m.stagger} initial="hidden" whileInView="shown" viewport={view}>
             {DEFAULT_ARENAS.map((a, i) => {
               const meta = arenaMeta(a.id);
@@ -500,7 +572,7 @@ function Faq({ handle }: { handle: string }) {
             </h2>
           </div>
           <span className="ld-faq__coin" aria-hidden="true">
-            <CoinCharacter paint="cream" mood="open" size={120} look={[3, -2]} feet ground bob />
+            <GazeCoin paint="cream" mood="open" size={120} look={[3, -2]} feet ground bob />
           </span>
         </div>
         <div className="ld-faq__list">
@@ -531,13 +603,16 @@ export function Landing() {
       <a className="st-skip" href="#main">
         Skip to content
       </a>
-      <SiteHeader />
+      <SiteHeader>
+        <SeedRail />
+      </SiteHeader>
       <main id="main" className="ld-main" tabIndex={-1}>
         <PlateLabel numeral={1} title="The plain at dawn" aside="05:00 AM" className="ld-plate1" />
         <Hero collabOpen={settings.collabOpen} gameAccess={settings.gameAccess} wlOpen={settings.wlOpen} sound={sound} />
         <Feast />
         <Round />
         <Cast />
+        <DuskSeam />
         <Kb theme="night" className="ld-night">
           <Nft />
           <Arenas gameAccess={settings.gameAccess} />
