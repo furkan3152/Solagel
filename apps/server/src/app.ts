@@ -105,7 +105,7 @@ export async function createApp(
   if (cfg.adminWallets.length === 0) {
     log('!!! ADMIN_WALLETS is not set: NOBODY is admin (/admin and /api/admin/* refuse everyone). Set it to the owner\'s 0x address.');
   }
-  const contracts = new ContractsStore(chainState, { arena: cfg.chain.arenaAddress, nft: cfg.chain.nftAddress }, log);
+  const contracts = new ContractsStore(chainState, { arena: cfg.chain.arenaAddress, nft: cfg.chain.nftAddress, token: cfg.chain.tokenAddress }, log);
   const chain = opts.chain ?? (await createChain(cfg, journal, log, { contracts: () => contracts.view(), stateChainId }));
   // a newly registered (or cleared) contract is picked up at once, without a restart
   contracts.onChange(() => void chain.refresh?.());

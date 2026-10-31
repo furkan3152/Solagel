@@ -22,7 +22,7 @@ export class ContractsStore {
 
   constructor(
     private readonly dataDir: string | null,
-    private readonly overrides: { arena: string | null; nft: string | null } = { arena: null, nft: null },
+    private readonly overrides: { arena: string | null; nft: string | null; token?: string | null } = { arena: null, nft: null },
     private readonly log: (m: string) => void = () => {},
   ) {
     this.load();
@@ -92,7 +92,7 @@ export class ContractsStore {
   /** The effective registry: env overrides (`registeredBy: "env"`) win over stored records. */
   effective(chainId: number | null): ContractsRegistry {
     const out = this.stored();
-    for (const kind of ['arena', 'nft'] as const) {
+    for (const kind of ['arena', 'nft', 'token'] as const) {
       const env = this.overrides[kind];
       if (env && isAddress(env, { strict: false })) {
         const address = getAddress(env);
@@ -109,9 +109,9 @@ export class ContractsStore {
     return { arena: r.arena?.address ?? null, arenaTx: r.arena?.txHash ?? null, nft: r.nft?.address ?? null };
   }
 
-  /** The kind is fixed by an env var (`ARENA_ADDRESS` / `NFT_ADDRESS`): registering it has no effect. */
+  /** The kind is fixed by an env var (`ARENA_ADDRESS` / `NFT_ADDRESS` / `TOKEN_ADDRESS`): registering it has no effect. */
   overridden(kind: ContractKind): boolean {
-    return kind !== 'token' && !!this.overrides[kind];
+    return !!this.overrides[kind];
   }
 
   set(kind: ContractKind, record: ContractRecord): void {
@@ -161,7 +161,7 @@ export async function registerContract(deps: RegisterDeps, body: Record<string, 
   if (txHash !== null && (typeof txHash !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(txHash))) throw bad('txHash', 'txHash must be a transaction hash (0x + 64 hex digits)');
   const { client, chainId } = deps;
   if (!client || chainId === null) throw new SiteFail(503, 'chain_off', 'The server has no chain (EVM_RPC_URL unset or unreachable).');
-  if (deps.store.overridden(k)) throw new SiteFail(409, 'wrong_state', `${k === 'arena' ? 'ARENA_ADDRESS' : 'NFT_ADDRESS'} is set on the server: it overrides the registry.`);
+  if (deps.store.overridden(k)) throw new SiteFail(409, 'wrong_state', `${k === 'arena' ? 'ARENA_ADDRESS' : k === 'nft' ? 'NFT_ADDRESS' : 'TOKEN_ADDRESS'} is set on the server: it overrides the registry.`);
 
   const code = await client.codeCheck(address, k);
   if (k === 'token' && code !== 'ok') {
