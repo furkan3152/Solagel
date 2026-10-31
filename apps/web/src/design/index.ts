@@ -56,3 +56,4 @@ export { ScreenTransition, markTransitionOrigin, type ScreenTransitionProps, typ
 export { StampSpinner, Skeleton, type StampSpinnerProps, type SkeletonProps } from './components/Loading';
 // motifs
 export * from './motifs';
+export { SceneCoin, type SceneCoinProps, type SceneCoinMood } from './motifs/SceneCoin';
