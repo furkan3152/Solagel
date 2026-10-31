@@ -16,19 +16,17 @@ import {
   type ErrorCode,
   type MintProofResponse,
   type SiteErrorCode,
-  type SiteSettings,
-  type WlEntryPublic,
 } from '../src';
 
 const ADDR = '0x52908400098527886E0F7030069857D2E4169EE7';
 
 describe('site helpers', () => {
   it('normalises X handles', () => {
-    expect(normalizeXHandle('@Elymum')).toBe('elymum');
+    expect(normalizeXHandle('@ElymumIO')).toBe('elymumio');
     expect(normalizeXHandle('  elymum_io ')).toBe('elymum_io');
-    expect(normalizeXHandle('https://x.com/Elymum')).toBe('elymum');
-    expect(normalizeXHandle('https://twitter.com/elymum/')).toBe('elymum');
-    expect(normalizeXHandle('x.com/elymum?s=21')).toBe('elymum');
+    expect(normalizeXHandle('https://x.com/ElymumIO')).toBe('elymumio');
+    expect(normalizeXHandle('https://twitter.com/elymumio/')).toBe('elymumio');
+    expect(normalizeXHandle('x.com/elymumio?s=21')).toBe('elymumio');
     expect(normalizeXHandle('')).toBeNull();
     expect(normalizeXHandle('@')).toBeNull();
     expect(normalizeXHandle('a'.repeat(16))).toBeNull();
@@ -37,21 +35,18 @@ describe('site helpers', () => {
   });
 
   it('accepts X status links only', () => {
-    expect(isXStatusUrl('https://x.com/elymum/status/1790000000000000000')).toBe(true);
+    expect(isXStatusUrl('https://x.com/elymumio/status/1790000000000000000')).toBe(true);
     expect(isXStatusUrl('https://twitter.com/a_b/status/1?s=20')).toBe(true);
-    expect(isXStatusUrl('http://x.com/elymum/status/1')).toBe(false);
-    expect(isXStatusUrl('https://x.com/elymum')).toBe(false);
-    expect(isXStatusUrl('https://evil.com/x.com/elymum/status/1')).toBe(false);
+    expect(isXStatusUrl('http://x.com/elymumio/status/1')).toBe(false);
+    expect(isXStatusUrl('https://x.com/elymumio')).toBe(false);
+    expect(isXStatusUrl('https://evil.com/x.com/elymumio/status/1')).toBe(false);
     expect(isXStatusUrl('https://x.com/toolonghandle1234/status/1')).toBe(false);
     expect(isXStatusUrl('https://x.com/a/status/1 javascript:')).toBe(false);
   });
 
-  it('defaults: WL open, collab closed, game for admins only, X handle elymum', () => {
-    expect(SITE_X_HANDLE_DEFAULT).toBe('elymum');
-    expect(SITE_SETTINGS_DEFAULT).toEqual({ wlOpen: true, collabOpen: false, gameAccess: 'admins', xHandle: 'elymum', launchPostUrl: null });
-    // @ts-expect-error gamePublic became gameAccess
-    const old: SiteSettings = { ...SITE_SETTINGS_DEFAULT, gamePublic: true };
-    expect(old).toBeDefined();
+  it('defaults: WL open, collab closed, game for admins only, X handle elymumio', () => {
+    expect(SITE_X_HANDLE_DEFAULT).toBe('elymumio');
+    expect(SITE_SETTINGS_DEFAULT).toEqual({ wlOpen: true, collabOpen: false, gameAccess: 'admins', xHandle: 'elymumio', launchPostUrl: null });
   });
 
   it('knows the game access modes', () => {
@@ -65,11 +60,6 @@ describe('site helpers', () => {
     const code: ErrorCode = 'game_closed';
     const site: SiteErrorCode = 'game_closed';
     expect([code, site]).toEqual(['game_closed', 'game_closed']);
-  });
-
-  it('marks legacy WL entries', () => {
-    const e: WlEntryPublic = { id: '1', wallet: '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU', legacy: true, xHandle: 'a', status: 'pending', tasks: [], createdAt: 0, updatedAt: 0 };
-    expect(isEvmAddress(e.wallet)).toBe(false);
   });
 });
 
@@ -90,7 +80,7 @@ describe('EVM addresses', () => {
       '0X' + ADDR.slice(2),
       '0x' + 'g'.repeat(40),
       ` ${ADDR}`,
-      '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU',
+      'elymumio.eth',
       42,
       null,
       undefined,

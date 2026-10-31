@@ -2,7 +2,7 @@
 
 A short announcement film for the Elymum NFT: the mint costs **$1, paid in HYPE** on Elysium, the
 order is **WL → Mint → Play** (the emblem opens the game), and the WL is open at `<SITE_HOST>/wl`
-(@elymum on X). 120 BPM; every cut and slam sits on the beat grid (downbeats at 0.5 + 2k s). The
+(@elymumio on X). 120 BPM; every cut and slam sits on the beat grid (downbeats at 0.5 + 2k s). The
 canvas kit draws in the Ring Storybook palette and type (Fraunces, Geist Mono; see `media/README.md`).
 
 | Film | Beat | On screen | VO (Kokoro `af_heart`, the promo's chain) |
@@ -10,7 +10,7 @@ canvas kit draws in the Ring Storybook palette and type (Fraunces, Geist Mono; s
 | 0:00.0 | $1 mint | A sealed card spins up and cracks; "$1" and "MINT" slam in on the cyan stock; the mascot (the X profile coin) rises and falls in love. | "A one dollar mint." "The Elymum NFT is coming." |
 | 0:04.5 | Sealed | A paper wipe; five sealed cards dealt, the seals crack and the cards turn on the eighths; a $1 IN HYPE stamp. | "Sealed cards. One dollar, in HYPE." |
 | 0:08.5 | The order | An ink flood to night; three tickets; the mascot hops 01 WL OPEN, 02 $1 MINT, 03 GAME LIVE, each prints in its ink on the landing; it leaps at the camera. | "The roadmap: The whitelist. The mint. Then the game." |
-| 0:12.5 | WL open | The coin pulls back: "WL open.", the `<SITE_HOST>/wl` ticket, the wordmark, @ELYMUM and the foot line "WL OPEN · <SITE_HOST>/WL · @ELYMUM". | "The WL is open. @elymum, on X." |
+| 0:12.5 | WL open | The coin pulls back: "WL open.", the `<SITE_HOST>/wl` ticket, the wordmark, @ELYMUMIO and the foot line "WL OPEN · <SITE_HOST>/WL · @ELYMUMIO". | "The WL is open. @elymumio, on X." |
 
 Facts: $1 in HYPE (never a HYPE number: the price is held at a dollar and its HYPE value moves), the
 WL first, the order WL → Mint → Play. No supply, no dates, no perks. The VO lines changed length

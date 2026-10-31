@@ -11,7 +11,7 @@ the hole into the gameplay montage. A round clock runs down to the bell and the 
 prints. A page turn deals the four arena tickets, a whip pan crosses to the fee bar: one flat 5% of
 profit. The floor-loot stub catches fire, and the fire burns through to a short, plain NFT mention:
 the cards are dealt face up on the paper stock, "$1 IN HYPE", "Elymum NFTs.". An ink flood carries
-it to the end card (the site's host from `SITE_HOST`, @elymum).
+it to the end card (the site's host from `SITE_HOST`, @elymumio).
 
 Everything is deterministic. No CSS animation and no wall clock are used, so any frame can be
 re-rendered on its own.
@@ -37,7 +37,7 @@ same beat-aligned pieces (the score is rendered on the scene timeline, then cut 
 | 0:30.6 | Whip pan | | |
 | 0:31.2 | Fee | "One flat fee. / 5% of profit." The floor-loot stub burns through. | "One flat fee: five percent of profit. Floor loot at the bell? Burned." |
 | 0:36.0 | NFT | The NFT kit's plain beat (`media/mint-film/scenes/nft.js`, `drawBeat` with `plain`) on the paper stock: the three cards (Goldie, Bubbles, Minty) dealt face up on the drop, a "$1 IN HYPE" kicker, "Elymum NFTs."; an ink flood to night (3.0 s). | "Elymum NFTs. One dollar, in HYPE." |
-| 0:39.0 | End card | The wordmark, "Eat. Grow. Last the round.", `SITE_HOST` / $ELYMUM, X @ELYMUM, sting. | "Eat. Grow. Last the round. @elymum." |
+| 0:39.0 | End card | The wordmark, "Eat. Grow. Last the round.", `SITE_HOST` / $ELYMUM, X @ELYMUMIO, sting. | "Eat. Grow. Last the round. @elymumio." |
 
 Music: 100 BPM, Fmaj7 / G6 / Em7 / Am7, silence-then-drop into the logo and the end card.
 
@@ -45,7 +45,7 @@ The vertical cut (`vertical.mjs`) is built with the gameplay kit at 1080x1920: t
 riso headline, "Five-minute rounds." over the drop-in and the round clock, "Alive at the bell?"
 over the last ten seconds (a last gulp), "Get paid." over the bell and the receipt, the plain NFT
 mention (the gameplay kit's `nft` component with `plain`, one bar, on the 82 BPM grid) and the end card with the site's host and
-@elymum, on the game's 82 BPM score with the promo's voice lines.
+@elymumio, on the game's 82 BPM score with the promo's voice lines.
 
 ## Voice
 
@@ -69,10 +69,10 @@ intonation of the top-graded voices (af_bella and bf_emma measure flatter). Swit
 (`tts.py --voice`).
 
 The scripts are written for the ear: short sentences, contractions, numbers in words ("one
-thousand", "five percent", "at elymum"). Script marks (`voice.py`): `|` a breath, `||` a beat,
+thousand", "five percent", "at elymum eye-oh"). Script marks (`voice.py`): `|` a breath, `||` a beat,
 `{0.6}` a pause, `*word*` an emphasis (its own chunk, read a touch slower after a lift-in pause);
 each chunk is synthesised on its own and joined with the pauses. Fixed pronunciations: Elymum
-/ˈɛlɪməm/, $ELYMUM, Elysium /ɪlˈɪziəm/, HYPE, @elymum. The promo reads punchier
+/ˈɛlɪməm/, $ELYMUM, Elysium /ɪlˈɪziəm/, HYPE, @elymumio. The promo reads punchier
 (per-line speeds up to 1.12x, emphasis on the payoffs) than the how-to (1.0x, more air).
 The mixer gives every line the same loudness (-19 LUFS before the bus), runs the VO chain
 (high-pass 80 Hz, mud cut, presence, air, de-esser, 3:1 compression, light room) and ducks the
@@ -139,7 +139,7 @@ time. New takes need new `footage` entries (pick moments with the takes' events)
 
 ## Brand values
 
-- The site's host (`SITE_HOST`, the `PUBLIC_URL` host; default elymum.io) and **@elymum** (X) on the end card (`sceneEnd` in `scenes/scenes.js`).
+- The site's host (`SITE_HOST`, the `PUBLIC_URL` host; default elymum.io) and **@elymumio** (X) on the end card (`sceneEnd` in `scenes/scenes.js`).
 - The NFT: the promo says only "Elymum NFTs." and "$1 in HYPE" (no other mint terms, no WL, no HYPE amount,
   no supply, no dates, no perks).
 - **$ELYMUM** is the token name on the end card, the ticket stub, the receipt and the tags.

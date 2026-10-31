@@ -19,7 +19,7 @@
   {"id": "ten_seconds", "at": 90.0, "picture": "The large countdown, the last ten seconds (the game's own tick each second)"},
   {"id": "bell", "at": 100.0, "picture": "The bell: the world freezes, the bell wave"},
   {"id": "paid", "at": 102.5, "picture": "The 'Round over' landing report: till, fee, paid, place; the PAID stamp lands"},
-  {"id": "end_card", "at": 110.0, "picture": "End card: Elymum wordmark, 'Join the WL', @elymum, the site host"}
+  {"id": "end_card", "at": 110.0, "picture": "End card: Elymum wordmark, 'Join the WL', @elymumio, the site host"}
  ],
  "vo": [
   {"id": "hook_a", "at": 1.0, "beat": "home_hero"},

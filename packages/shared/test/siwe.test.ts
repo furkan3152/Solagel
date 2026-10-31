@@ -41,7 +41,7 @@ describe('siweMessage', () => {
       ['domain', 'elymum.io/path'],
       ['domain', ''],
       ['address', '0x1234'],
-      ['address', '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU'],
+      ['address', 'not-an-evm-address'],
       ['uri', 'not a uri'],
       ['chainId', 0],
       ['chainId', 1.5],

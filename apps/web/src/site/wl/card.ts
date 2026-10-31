@@ -406,7 +406,7 @@ export function drawTicketCard(canvas: HTMLCanvasElement, handle: string, opts: 
   ctx.globalAlpha = 0.92;
   ctx.fillText('"No snow is there, nor heavy storm, nor ever rain."', X + 6, 590);
   ctx.globalAlpha = 1;
-  label(ctx, '@elymum', CARD_W - X - 4, 590, ELYSIUM.foam, 17, 'right');
+  label(ctx, '@elymumio', CARD_W - X - 4, 590, ELYSIUM.foam, 17, 'right');
 }
 
 /** The card as a PNG. */

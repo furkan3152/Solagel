@@ -123,7 +123,7 @@ the whole flow (ticket → round → bell → payout → fee) before mainnet. Re
 ## 4. The allowlist and the mint
 
 1. **WL**: approve or reject applications in `/admin` → **WL**; approve communities and collect their wallet lists in
-   **Collabs**. Only EVM addresses count; entries from before the move (non-EVM wallets) are kept and marked `legacy` (never in the allowlist).
+   **Collabs**. Wallets are EVM addresses (0x…); anything else is refused.
 2. **Publish the allowlist root** (Mint tab): the server builds a snapshot of every approved WL wallet plus every
    wallet in a submitted collab list (checksummed, de-duplicated, sorted) and its Merkle root; you sign
    `setMerkleRoot`. The panel warns when approvals changed since the published root: publish again.

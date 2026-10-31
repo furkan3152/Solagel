@@ -5,7 +5,7 @@
  *  8.5  ROADMAP       an ink flood to night; three tickets, the mascot hops 01 WL OPEN, 02 $1 MINT,
  *                     03 GAME LIVE (each prints in its ink as it lands), then leaps at the camera
  * 12.5  WL OPEN       the coin pulls back to reveal the pink: "WL open.", the <site>/wl ticket,
- *                     the wordmark and @elymum
+ *                     the wordmark and @elymumio
  *
  * Landscape (1920x1080) and portrait (1080x1920) from the same code (?w=&h=). Draws with the promo
  * kit (media/promo/scenes/lib.js) and the NFT kit (nft.js). Deterministic.
@@ -296,7 +296,7 @@
     if (P) NFT.wlTicket(ctx, W / 2 - 430, 1120, 860, 190, tp, { size: 112, underline: prog(t, 15.1, 15.6) });
     else NFT.wlTicket(ctx, 860, 500, 860, 190, tp, { size: 104, underline: prog(t, 15.1, 15.6) });
     shockDots(ctx, P ? W / 2 : 1290, P ? 1215 : 595, t - 13.7, C.card, 700, 0.3);
-    // the sign-off: wordmark + @elymum
+    // the sign-off: wordmark + @elymumio
     const wk = prog(t, 16.0, 16.4);
     if (wk > 0) {
       const wy = P ? 1540 : 900, wx = P ? W / 2 - 330 : 860;
@@ -306,7 +306,7 @@
       const m = wordmarkMetrics(ctx, sz);
       wordmark(ctx, wx + (P ? (660 - m.total) / 2 : 0), wy + (1 - E.outBack(wk)) * 40, sz, { reg: 1 - spring(t - 16.0, 1.5, 6), dark: true, color: C.card });
       ctx.restore();
-      NFT.pill(ctx, '@ELYMUM', P ? W / 2 : 860 + m.total + 60, P ? 1660 : wy - sz * 0.3, P ? 34 : 32, t, 16.2, { align: P ? 'center' : 'left', dot: C.teal });
+      NFT.pill(ctx, '@ELYMUMIO', P ? W / 2 : 860 + m.total + 60, P ? 1660 : wy - sz * 0.3, P ? 34 : 32, t, 16.2, { align: P ? 'center' : 'left', dot: C.teal });
     }
     // foot line: the whole call to action in one row
     const fa = prog(t, 16.5, 16.9);
@@ -315,7 +315,7 @@
       ctx.globalAlpha = fa;
       font(ctx, P ? 28 : 28, 500, 'mono'); ctx.letterSpacing = (P ? 5 : 7) + 'px';
       ctx.fillStyle = C.ink; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(`WL OPEN  ·  ${window.SITE_HOST.toUpperCase()}/WL  ·  @ELYMUM`, W / 2, P ? 1800 : 1022);
+      ctx.fillText(`WL OPEN  ·  ${window.SITE_HOST.toUpperCase()}/WL  ·  @ELYMUMIO`, W / 2, P ? 1800 : 1022);
       ctx.restore();
     }
     mascot(ctx, mx, my + (pb < 1 ? 0 : bob), rr, { ghostOver: true, expr: wink ? 'happy' : 'proud', lookX: P ? 0 : 0.7, lookY: 0.2, rot: Math.sin(t * 1.7) * 0.03 });

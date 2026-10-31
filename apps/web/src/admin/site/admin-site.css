@@ -109,10 +109,6 @@
   display: inline-flex;
   gap: 6px;
 }
-.ad-legacy {
-  font-size: 13px;
-}
-
 /* empty table */
 .ad-empty {
   display: flex;

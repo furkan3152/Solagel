@@ -126,12 +126,12 @@ describe('v2 message shapes', () => {
       { t: 'join', room: 'practice', name: 'gm', skin: 0 },
       { t: 'join', room: 'arena:3', name: 'gm', skin: 0 },
     ];
-    // @ts-expect-error joins carry no Pass any more
-    const withPass: ClientMessage = { t: 'join', room: 'arena:3', name: 'gm', skin: 0, pass: 'Asset11111111111111111111111111111111111111' };
+    // @ts-expect-error joins carry no pass
+    const withPass: ClientMessage = { t: 'join', room: 'arena:3', name: 'gm', skin: 0, pass: 'x' };
     const auth: ClientMessage = { t: 'auth', address: '0x1111111111111111111111111111111111111111', message: 'm', signature: '0xsig' };
-    // @ts-expect-error auth carries an address now
-    const pubkey: ClientMessage = { t: 'auth', pubkey: 'x', message: 'm', signature: 's' };
-    expect([targets, old, joins, withPass, auth, pubkey]).toHaveLength(6);
+    // @ts-expect-error auth carries an EVM address
+    const noAddress: ClientMessage = { t: 'auth', message: 'm', signature: 's' };
+    expect([targets, old, joins, withPass, auth, noAddress]).toHaveLength(6);
   });
 
   it('type-checks the server messages', () => {

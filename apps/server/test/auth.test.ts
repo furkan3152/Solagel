@@ -95,7 +95,7 @@ describe('SIWE login message (EIP-4361)', () => {
   it('checksumAddress refuses a mixed-case address with a wrong checksum', () => {
     expect(checksumAddress('0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266')).toBe('0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266');
     expect(checksumAddress('0xF39Fd6e51aad88F6F4ce6aB8827279cffFb92266')).toBeNull();
-    expect(checksumAddress('D2Ts7yCiVjedo6uwqpkM44QA8J45NdVU1J3k5m6iWtvm')).toBeNull();
+    expect(checksumAddress('not-an-evm-address')).toBeNull();
   });
 
   it('takes the domain from PUBLIC_URL (the request host only in development); the chain id is the server\'s', () => {

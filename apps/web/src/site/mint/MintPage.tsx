@@ -310,7 +310,7 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
             </h1>
             <p className="mt-lede">
               {n <= 1 ? 'Unsealed and in your wallet.' : 'Unsealed, all of them, and in your wallet.'}{' '}
-              {playOpen ? 'The ring is open to holders. It is feeding time.' : 'The ring opens to holders soon. The first bell rings on @elymum.'}
+              {playOpen ? 'The ring is open to holders. It is feeding time.' : 'The ring opens to holders soon. The first bell rings on @elymumio.'}
             </p>
             <div className="mt-done__cta">
               {playOpen ? (
@@ -319,7 +319,7 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
                 </LinkButton>
               ) : (
                 <LinkButton href={X_URL} variant="primary" size="lg" target="_blank" rel="noreferrer">
-                  Follow @elymum
+                  Follow @elymumio
                 </LinkButton>
               )}
               {tx && (
@@ -437,7 +437,7 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
       <>
         {gauge}
         {priceRow}
-        <p className="mt-card__teaser">WL first, then public. The date lands on @elymum before it lands anywhere else.</p>
+        <p className="mt-card__teaser">WL first, then public. The date lands on @elymumio before it lands anywhere else.</p>
         {session ? (
           <ClosedWlStatus wl={wl} address={session.address} />
         ) : (
@@ -446,9 +446,9 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
             <WalletSignIn label="Sign in to see my WL status" />
           </div>
         )}
-        {session && wl && !wl.legacy && wl.status === 'approved' ? (
+        {session && wl && wl.status === 'approved' ? (
           <LinkButton href={X_URL} variant="secondary" size="lg" block target="_blank" rel="noreferrer">
-            Follow @elymum for the date
+            Follow @elymumio for the date
           </LinkButton>
         ) : (
           <LinkButton href="/wl" route variant="primary" size="lg" block icon="arrow">
@@ -464,7 +464,7 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
         <div className="mt-card__head">
           <span className="kicker mt-card__kick">{fmt(state.holders)} {plural(state.holders, 'holder')}</span>
           <h2 className="mt-card__h display">Sold out.</h2>
-          <p>Every emblem found a pocket. Holders, the ring is {playOpen ? 'open: go eat.' : 'warming up; the first bell rings on @elymum.'}</p>
+          <p>Every emblem found a pocket. Holders, the ring is {playOpen ? 'open: go eat.' : 'warming up; the first bell rings on @elymumio.'}</p>
         </div>
         {playOpen ? (
           <LinkButton href="/play" variant="primary" size="lg" block icon="arrow">
@@ -472,7 +472,7 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
           </LinkButton>
         ) : (
           <LinkButton href={X_URL} variant="primary" size="lg" block target="_blank" rel="noreferrer">
-            Follow @elymum
+            Follow @elymumio
           </LinkButton>
         )}
         <WlNote tone="idle" glyph="info">
@@ -656,12 +656,6 @@ function ClosedWlStatus({ wl, address }: { wl: WlEntryPublic | null | undefined;
     return (
       <WlNote tone="idle" glyph="info" testId="mt-wl">
         {chip} <span>has no WL entry yet. Three chores fix that.</span>
-      </WlNote>
-    );
-  if (wl.legacy)
-    return (
-      <WlNote tone="no" glyph="info" testId="mt-wl">
-        Your WL entry is from before the move to Elysium: re-apply with an EVM wallet.
       </WlNote>
     );
   if (wl.status === 'approved')

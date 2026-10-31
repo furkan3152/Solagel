@@ -29,9 +29,6 @@ describe('chain env (EVM)', () => {
       HYPE_PRICE_URL: 'https://price.example/info',
       TOKEN_SYMBOL: '$TEST',
       GAME_ACCESS: 'holders',
-      SOLANA_RPC_URL: 'https://api.devnet.solana.com',
-      PROGRAM_ID: 'x',
-      SERVER_KEYPAIR: 'y',
     } as NodeJS.ProcessEnv);
     expect(cfg.chain).toMatchObject({
       rpcUrl: 'https://rpc.example/key123',
@@ -45,7 +42,6 @@ describe('chain env (EVM)', () => {
     });
     expect(cfg.mint).toEqual({ usdCents: 250, hypePriceUrl: 'https://price.example/info' });
     expect(cfg.gameAccess).toBe('holders');
-    for (const gone of ['cluster', 'programId', 'serverKeypair', 'priorityFeeMicroLamports', 'wsUrl']) expect(gone in cfg.chain).toBe(false);
   });
 
   it('defaults: chain off, $ELYMUM, $1 mint on Hyperliquid, the setting decides who plays', () => {

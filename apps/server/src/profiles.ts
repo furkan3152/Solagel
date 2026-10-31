@@ -48,7 +48,7 @@ export class ProfileError extends Error {
 
 /**
  * Player profiles: the name and skin a signed-in wallet picked (`PUT /api/profile`) and the stats the
- * server recorded from its own games (games, kills, best score, XP). Replaces the old on-chain profiles.
+ * server recorded from its own games (games, kills, best score, XP).
  * Kept in memory, written to `DATA_DIR/profiles.json` (write-to-temp + rename) on change after a short
  * delay and on `flush()`. `path` null: memory only (tests).
  */

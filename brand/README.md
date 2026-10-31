@@ -40,7 +40,7 @@ The PNGs are committed (about 3 MB in all) so people can grab them without runni
 ## Rules the templates follow
 
 - Copy is short and a little wry; the product is "Elymum", the chain "Elysium", the gas token HYPE, the
-  mint "$1 in HYPE", the handle `@elymum`. No domain is written into the art: the site lives at whatever
+  mint "$1 in HYPE", the handle `@elymumio`. No domain is written into the art: the site lives at whatever
   `PUBLIC_URL` says, and moving it (for example to elymum.io) needs no new images.
 - The mint art never shows a HYPE amount: the price is held at $1 and its HYPE value moves.
 - No gradients except the sky, no soft shadows, no purple, no emoji; one sun (primary) button per image.

@@ -21,7 +21,6 @@ import { testSigner } from './signers';
 
 const wallet = () => testSigner().address;
 const post = (h = 'alice', id = '1790000000000000001') => `https://x.com/${h}/status/${id}`;
-const SOL = 'D2Ts7yCiVjedo6uwqpkM44QA8J45NdVU1J3k5m6iWtvm';
 
 /** A chain gateway with arenas plus EVM access (the fake contracts): what the site reads the NFT through. */
 class EvmTestChain extends ArenaChain {
@@ -471,7 +470,7 @@ describe('profiles', () => {
     a.recordGame(w, { score: 200, kills: 1, xp: 30 });
     a.flush();
     const raw = JSON.parse(readFileSync(path, 'utf8'));
-    raw.profiles.push({ wallet: SOL, name: 'old' });
+    raw.profiles.push({ wallet: 'not-a-wallet', name: 'old' });
     writeFileSync(path, JSON.stringify(raw));
     const b = new ProfileStore(path);
     expect(b.size).toBe(1);
@@ -481,118 +480,85 @@ describe('profiles', () => {
   });
 });
 
-describe('legacy (pre-Elysium) site data', () => {
-  function seed(dir: string): void {
+describe('X handle migration (previous default @elymum → @elymumio)', () => {
+  const now = 1_700_000_000_000;
+  const seededOld = [
+    { id: 'follow_x', kind: 'follow_x', title: 'Follow @elymum', body: 'Follow @elymum on X.', target: 'https://x.com/elymum', required: true, enabled: false, order: 0 },
+    { id: 'post_x', kind: 'post_x', title: 'Post about Elymum on X', body: 'Post about Elymum on X, tag @elymum, then paste the link to your post.', target: null, required: true, enabled: true, order: 1 },
+    { id: 'engage_launch', kind: 'engage_x', title: 'Like, repost and reply to the launch post', body: 'Like, repost and reply to the pinned launch post, then paste the link to your reply.', target: null, required: true, enabled: true, order: 2 },
+    { id: 'custom', kind: 'join_link', title: 'Say hi to @elymum', body: 'Admin text about @elymum stays as written.', target: 'https://x.com/elymum', required: false, enabled: true, order: 3 },
+  ];
+  const oldAnswer = { id: 'follow_x', kind: 'follow_x', title: 'Follow @elymum', target: 'https://x.com/elymum', required: true, answer: true };
+
+  function seed(dir: string, settings: Record<string, unknown>): void {
     mkdirSync(join(dir, 'site'), { recursive: true });
-    writeFileSync(join(dir, SITE_FILES.settings), JSON.stringify({ wlOpen: true, collabOpen: true, gamePublic: true, xHandle: 'slanaio', launchPostUrl: null }));
-    writeFileSync(
-      join(dir, SITE_FILES.tasks),
-      JSON.stringify([
-        { id: 'follow_x', kind: 'follow_x', title: 'Follow @slanaio', body: 'Follow @slanaio on X.', target: 'https://x.com/slanaio', required: true, enabled: false, order: 0 },
-        { id: 'custom', kind: 'text', title: 'Your Solana memories', body: 'kept: not a seeded task', target: null, required: false, enabled: true, order: 1 },
-      ]),
-    );
-    const now = 1_700_000_000_000;
+    writeFileSync(join(dir, SITE_FILES.settings), JSON.stringify(settings));
+    writeFileSync(join(dir, SITE_FILES.tasks), JSON.stringify(seededOld));
     writeFileSync(
       join(dir, SITE_FILES.wl),
-      JSON.stringify([
-        { id: 'wl_old', wallet: SOL, xHandle: 'oldtimer', status: 'approved', tasks: [], note: 'early', createdAt: now, updatedAt: now },
-        { id: 'wl_old2', wallet: '8xYzR9MzN1nXHzS5eqb7KvR7cJBpfF3QeyhXHhFJ1kTr', xHandle: 'stayer', status: 'pending', tasks: [], note: '', createdAt: now, updatedAt: now },
-      ]),
-    );
-    writeFileSync(
-      join(dir, SITE_FILES.collab),
-      JSON.stringify([
-        {
-          id: 'co_old',
-          wallet: SOL,
-          community: 'Old Guild',
-          type: 'guild',
-          members: 5,
-          communityX: 'oldguild',
-          contactX: 'oldtimer',
-          discord: '',
-          role: 'founder',
-          postUrl: post('oldguild'),
-          about: 'x',
-          status: 'submitted',
-          spots: 2,
-          deadline: now + 1,
-          wallets: [
-            { name: 'sol', wallet: SOL },
-            { name: 'evm', wallet: '0x00000000000000000000000000000000000000c1' },
-          ],
-          raffleUrl: post('oldguild', '2'),
-          submittedAt: now,
-          note: '',
-          createdAt: now,
-          updatedAt: now,
-        },
-      ]),
+      JSON.stringify([{ id: 'wl_1', wallet: wallet(), xHandle: 'early', status: 'approved', tasks: [oldAnswer], note: 'follows @elymum', createdAt: now, updatedAt: now }]),
     );
   }
 
-  it('the one legacy handle claim survives a restart: the handle stays taken, both entries kept', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'elymum-legacy-'));
-    seed(dir);
-    const s = new SiteStore(dir);
-    const w = wallet();
-    const claimed = s.submitWl(w, wlBody('oldtimer'));
-    expect(claimed).toMatchObject({ wallet: w, status: 'pending' });
-    const again = new SiteStore(dir);
-    expect(again.listWl({ q: 'oldtimer' }).items).toHaveLength(2);
-    expect(again.myWl(w)?.id).toBe(claimed.id);
-    expect(() => again.submitWl(wallet(), wlBody('oldtimer'))).toThrow(/already applied/);
+  it('seeds new data with @elymumio', () => {
+    const s = new SiteStore(null);
+    expect(s.settings.xHandle).toBe('elymumio');
+    expect(s.tasks[0]).toMatchObject({ id: 'follow_x', title: 'Follow @elymumio', body: 'Follow @elymumio on X.', target: 'https://x.com/elymumio' });
+    expect(s.tasks[1].body).toBe('Post about Elymum on X, tag @elymumio, then paste the link to your post.');
   });
 
-  it('migrates settings (gamePublic → gameAccess, slanaio → elymum) and seeded task text', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'elymum-legacy-'));
-    seed(dir);
+  it('switches a stored previous default handle and rewrites only the seeded tasks', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'elymum-handle-'));
+    seed(dir, { wlOpen: true, collabOpen: false, gameAccess: 'holders', xHandle: 'elymum', launchPostUrl: null });
     const logs: string[] = [];
     const s = new SiteStore(dir, { log: (m) => logs.push(m) });
-    expect(s.settings).toEqual({ wlOpen: true, collabOpen: true, gameAccess: 'public', xHandle: 'elymum', launchPostUrl: null });
-    expect(JSON.parse(readFileSync(join(dir, SITE_FILES.settings), 'utf8'))).not.toHaveProperty('gamePublic');
-    expect(s.tasks[0]).toMatchObject({ id: 'follow_x', title: 'Follow @elymum', target: 'https://x.com/elymum', enabled: false });
-    expect(s.tasks[1].title).toBe('Your Solana memories');
-    expect(logs.join()).toMatch(/legacy WL entr/);
-    // gamePublic false → admins
-    writeFileSync(join(dir, SITE_FILES.settings), JSON.stringify({ gamePublic: false, xHandle: 'other' }));
-    expect(new SiteStore(dir).settings).toMatchObject({ gameAccess: 'admins', xHandle: 'other' });
+    expect(s.settings).toEqual({ wlOpen: true, collabOpen: false, gameAccess: 'holders', xHandle: 'elymumio', launchPostUrl: null });
+    expect(JSON.parse(readFileSync(join(dir, SITE_FILES.settings), 'utf8')).xHandle).toBe('elymumio');
+    const [follow, postX, engage, custom] = s.tasks;
+    // the seeded tasks keep their admin edits (enabled: false) and get the new handle
+    expect(follow).toMatchObject({ id: 'follow_x', title: 'Follow @elymumio', body: 'Follow @elymumio on X.', target: 'https://x.com/elymumio', enabled: false });
+    expect(postX.body).toBe('Post about Elymum on X, tag @elymumio, then paste the link to your post.');
+    expect(engage).toEqual(seededOld[2]);
+    // an admin-written task is never touched
+    expect(custom).toEqual(seededOld[3]);
+    expect(JSON.parse(readFileSync(join(dir, SITE_FILES.tasks), 'utf8'))[0].title).toBe('Follow @elymumio');
+    // answers stored in WL entries (and the admin's note) stay as they were
+    expect(s.getWl('wl_1')).toMatchObject({ note: 'follows @elymum', tasks: [oldAnswer] });
+    expect(logs.join('\n')).toMatch(/previous default/);
+    expect(logs.join('\n')).toMatch(/2 seeded WL task\(s\) now name @elymumio/);
+    // idempotent: a second load changes nothing
+    const again: string[] = [];
+    const s2 = new SiteStore(dir, { log: (m) => again.push(m) });
+    expect(s2.tasks).toEqual(s.tasks);
+    expect(again).toEqual([]);
   });
 
-  it('keeps legacy entries (legacy: true), never in the allowlist; their X handle can be claimed once, as a fresh entry for review', async () => {
-    const h = await harness({}, seed);
+  it('keeps a handle the admin chose, and points the seeded tasks at it', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'elymum-handle-'));
+    seed(dir, { wlOpen: true, collabOpen: true, gameAccess: 'admins', xHandle: 'elymum_arena', launchPostUrl: null });
+    const s = new SiteStore(dir);
+    expect(s.settings.xHandle).toBe('elymum_arena');
+    expect(s.tasks[0]).toMatchObject({ title: 'Follow @elymum_arena', target: 'https://x.com/elymum_arena' });
+    expect(s.tasks[3]).toEqual(seededOld[3]);
+  });
+
+  it('never rewrites a longer handle that only starts with the previous one', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'elymum-handle-'));
+    mkdirSync(join(dir, 'site'), { recursive: true });
+    const tasks = [{ ...seededOld[0], title: 'Follow @elymumio and @Elymum_fans', body: 'See https://x.com/elymumio and x.com/ELYMUM.', target: 'https://x.com/elymumio' }];
+    writeFileSync(join(dir, SITE_FILES.tasks), JSON.stringify(tasks));
+    const s = new SiteStore(dir);
+    expect(s.tasks[0]).toMatchObject({ title: 'Follow @elymumio and @Elymum_fans', body: 'See https://x.com/elymumio and x.com/elymumio.', target: 'https://x.com/elymumio' });
+  });
+
+  it('serves the migrated tasks over the API', async () => {
+    const h = await harness({}, (dir) => seed(dir, { wlOpen: true, collabOpen: false, gameAccess: 'admins', xHandle: 'elymum', launchPostUrl: null }));
     try {
-      const s = h.app.site.store;
-      const list = s.listWl({}).items;
-      expect(list.find((e) => e.id === 'wl_old')).toMatchObject({ wallet: SOL, legacy: true, status: 'approved' });
-      const collab = s.getCollab('co_old');
-      expect(collab.legacy).toBe(true);
-      expect(collab.wallets.map((w) => !!w.legacy)).toEqual([true, false]);
-      // only the EVM collab wallet is eligible
-      expect(h.app.mint.currentAllowlist().wallets).toEqual(['0x00000000000000000000000000000000000000C1']);
-      // re-apply with an EVM wallet and the legacy entry's handle
-      const w = wallet();
-      const r = await h.call('POST', '/api/site/wl', { wallet: w, body: wlBody('oldtimer') });
-      expect(r.status).toBe(201);
-      // a new pending entry: it never takes over the legacy one nor inherits its "approved" or its note
-      expect(r.body.entry).toMatchObject({ wallet: w, xHandle: 'oldtimer', status: 'pending' });
-      expect(r.body.entry.id).not.toBe('wl_old');
-      expect(r.body.entry.legacy).toBeUndefined();
-      const fresh = (await h.call('GET', `/api/admin/wl/${r.body.entry.id}`, { wallet: ADMIN })).body.entry;
-      expect(fresh.note).toBe('claims legacy handle @oldtimer (legacy status: approved, legacy entry wl_old); verify before approving');
-      expect(fresh.note).not.toContain('early');
-      // the legacy entry is kept as it was (plus a pointer to the claim); both are visible to the admin
-      const old = (await h.call('GET', '/api/admin/wl/wl_old', { wallet: ADMIN })).body.entry;
-      expect(old).toMatchObject({ id: 'wl_old', wallet: SOL, legacy: true, status: 'approved' });
-      expect(old.note).toBe(`early\nhandle claimed by EVM application ${r.body.entry.id} (${w})`);
-      expect(s.listWl({ q: 'oldtimer' }).items.map((e) => e.id).sort()).toEqual([r.body.entry.id, 'wl_old'].sort());
-      expect((await h.call('GET', '/api/site/wl', { wallet: w })).body.entry.id).toBe(r.body.entry.id);
-      // not in the allowlist until an admin approves it
-      expect(h.app.mint.currentAllowlist().wallets).not.toContain(w);
-      // exactly one claim: the handle is now taken
-      expect((await h.call('POST', '/api/site/wl', { wallet: wallet(), body: wlBody('oldtimer') })).body.error).toBe('handle_taken');
-      expect(s.counts().wl.total).toBe(3);
+      const r = await h.call('GET', '/api/site/tasks');
+      expect(r.status).toBe(200);
+      // follow_x is disabled in this data, so post_x leads
+      expect(r.body.tasks[0]).toMatchObject({ id: 'post_x', body: 'Post about Elymum on X, tag @elymumio, then paste the link to your post.' });
+      expect((await h.call('GET', '/api/site/settings')).body.settings.xHandle).toBe('elymumio');
     } finally {
       await h.app.close();
     }

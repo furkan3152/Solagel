@@ -208,7 +208,7 @@ function Collab() {
             <p className="wl-note">
               Questions? DM{' '}
               <a className="cb-link" href={X_URL} target="_blank" rel="noreferrer">
-                @elymum
+                @elymumio
               </a>{' '}
               on X. We answer, slowly but kindly.
             </p>
@@ -309,13 +309,13 @@ function ClosedCard({ onSignIn }: { onSignIn?: () => void }) {
         <p className="cb-state__text">
           We are not taking new communities right now. Follow{' '}
           <a className="cb-link" href={X_URL} target="_blank" rel="noreferrer">
-            @elymum
+            @elymumio
           </a>{' '}
           on X for the next round.
         </p>
         <div className="wl-row">
           <a className="kb-btn kb-btn--teal kb-btn--md" href={X_URL} target="_blank" rel="noreferrer">
-            <XIcon /> Follow @elymum
+            <XIcon /> Follow @elymumio
           </a>
           {onSignIn && (
             <button type="button" className="wl-textlink" onClick={onSignIn}>
@@ -437,7 +437,7 @@ export function ApplyForm({ d, setD, onApplied, onCancel }: { d: ApplyDraft; set
           value={d.postUrl}
           onChange={(e) => set('postUrl')(e.target.value)}
           error={errors.postUrl}
-          hint="Post about Elymum on your community's X (tag @elymum), then paste the link here. You cannot apply without it."
+          hint="Post about Elymum on your community's X (tag @elymumio), then paste the link here. You cannot apply without it."
           placeholder="https://x.com/yourcommunity/status/…"
           inputMode="url"
           spellCheck={false}
@@ -569,17 +569,6 @@ function StateCard({ stamp, tone, title, children, c, vignette }: { stamp: strin
   );
 }
 
-/** A collab whose applicant wallet predates the move to Elysium: its rows need EVM wallets. */
-function LegacyNote({ c }: { c: CollabPublic }) {
-  if (!c.legacy && !c.wallets.some((w) => !/^0x[0-9a-fA-F]{40}$/.test(w.wallet))) return null;
-  return (
-    <p className="cb-legacy" role="note" data-testid="cb-legacy">
-      Some wallets here are from before the move to Elysium. Only EVM wallets (0x…) go on the allowlist: replace them with EVM wallets
-      {c.phase === 'approved' ? ' before you submit.' : ', or DM @elymum on X if the list is already locked.'}
-    </p>
-  );
-}
-
 export function CollabView({ collab: c, onChange, onGuide, onExpired }: { collab: CollabPublic; onChange: (c: CollabPublic) => void; onGuide: () => void; onExpired: () => void }) {
   if (c.phase === 'in_review')
     return (
@@ -605,7 +594,7 @@ export function CollabView({ collab: c, onChange, onGuide, onExpired }: { collab
       >
         Thanks for applying. We cannot offer spots to this community this round. DM{' '}
         <a className="cb-link" href={X_URL} target="_blank" rel="noreferrer">
-          @elymum
+          @elymumio
         </a>{' '}
         on X if something changed.
       </StateCard>
@@ -794,7 +783,7 @@ function SpotsView({ c, onChange, onGuide, onExpired }: { c: CollabPublic; onCha
         <p className="cb-state__text">
           {c.wallets.length} {c.wallets.length === 1 ? 'wallet is' : 'wallets are'} on the way to the Elymum WL. The list is locked; DM{' '}
           <a className="cb-link" href={X_URL} target="_blank" rel="noreferrer">
-            @elymum
+            @elymumio
           </a>{' '}
           if you need a change.
         </p>
@@ -806,7 +795,7 @@ function SpotsView({ c, onChange, onGuide, onExpired }: { c: CollabPublic; onCha
         <p className="cb-state__text">
           The list was not submitted in time. DM{' '}
           <a className="cb-link" href={X_URL} target="_blank" rel="noreferrer">
-            @elymum
+            @elymumio
           </a>{' '}
           on X if you need more time.
         </p>
@@ -838,7 +827,6 @@ function SpotsView({ c, onChange, onGuide, onExpired }: { c: CollabPublic; onCha
       <div className="cb-state__body">
         {head}
         <MissionLog c={c} />
-        <LegacyNote c={c} />
         <div className="cb-raffle">
           {locked ? (
             c.raffleUrl && (

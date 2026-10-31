@@ -329,7 +329,7 @@ chips.push([7, 'TIPS', t, e.t]);
 const tOut = e.t;
 e.add('wipe', tOut - 0.35, 0.7, { colors: ['ink', 'card'] }, 90);
 e.cue('paper', tOut - 0.35, 0.45);
-e.add('card', tOut, 4.3, { variant: 'outro', kicker: 'ELYMUM / ON ELYSIUM', tagline: 'Eat. Grow. Last the round.', tagAccent: 4, tagAt: 0.75, tagGap: 0.42, foot: `MINT AN EMBLEM, THEN PLAY  /  ${SITE}  /  @ELYMUM`, footAt: 2.0, footY: 812 }, 50);
+e.add('card', tOut, 4.3, { variant: 'outro', kicker: 'ELYMUM / ON ELYSIUM', tagline: 'Eat. Grow. Last the round.', tagAccent: 4, tagAt: 0.75, tagGap: 0.42, foot: `MINT AN EMBLEM, THEN PLAY  /  ${SITE}  /  @ELYMUMIO`, footAt: 2.0, footY: 812 }, 50);
 for (let i = 0; i < 3; i++) e.cue('stamp', tOut + 0.75 + i * 0.42 + 0.1, 0.55);
 say('outro', tOut + 0.55);
 e.at(tOut + 4.3);

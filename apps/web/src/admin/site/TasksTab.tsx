@@ -177,7 +177,7 @@ export function TasksTab({ api }: TabProps) {
             setLaunchErr(null);
           }}
           error={launchErr ?? undefined}
-          placeholder="https://x.com/elymum/status/…"
+          placeholder="https://x.com/elymumio/status/…"
         />
         <div className="ad-actions">
           <InkButton variant="pink" size="sm" onClick={() => void saveLaunch()} disabled={(launch.trim() || null) === launchSaved}>

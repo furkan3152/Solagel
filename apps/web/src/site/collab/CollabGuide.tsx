@@ -26,7 +26,7 @@ export function CollabGuide({ open, onClose, community, spots, deadline }: { ope
           <strong>Get your spots.</strong> Once approved, this page shows how many Elymum WL spots you have and a timer to hand them out.
         </li>
         <li>
-          <strong>Post your raffle</strong> on your community&apos;s X. Use the post below or your own, with @elymum in it.
+          <strong>Post your raffle</strong> on your community&apos;s X. Use the post below or your own, with @elymumio in it.
         </li>
         <li>
           <strong>Add the winners</strong> here: a name (Discord or X) and an EVM wallet (0x…) per person. Paste a whole list at once if you like. Save as you go.
@@ -42,7 +42,7 @@ export function CollabGuide({ open, onClose, community, spots, deadline }: { ope
         <li>One person per spot, one wallet per person.</li>
         <li>EVM wallets only (0x…). No exchange deposit addresses.</li>
         <li>No bots, no farms. We may remove wallets that look like either, and flag wallets already on another list.</li>
-        <li>After you submit, the list is locked. DM @elymum on X if you need a change.</li>
+        <li>After you submit, the list is locked. DM @elymumio on X if you need a change.</li>
       </ul>
       <h3 className="cb-guide__h">A post for your raffle</h3>
       <div className="cb-guide__note">
@@ -57,7 +57,7 @@ export function CollabGuide({ open, onClose, community, spots, deadline }: { ope
           {copied ? 'Copied' : 'Copy the post'}
         </Button>
         <span className="wl-note" role="status">
-          {copied ? 'The post is on your clipboard.' : 'It mentions @elymum and this site.'}
+          {copied ? 'The post is on your clipboard.' : 'It mentions @elymumio and this site.'}
         </span>
       </div>
     </Sheet>

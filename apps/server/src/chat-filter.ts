@@ -20,5 +20,5 @@ export function maskProfanity(text: string): string {
 
 /** Rejects obvious scam bait in chat (links, "send hype", seed phrase talk). */
 export function looksLikeScam(text: string): boolean {
-  return /(https?:\/\/|www\.|\.(com|io|xyz|gg|app|net|org)\b|t\.me\/|seed phrase|private key|send (me )?(hype|eth|sol)\b|airdrop claim)/i.test(text);
+  return /(https?:\/\/|www\.|\.(com|io|xyz|gg|app|net|org)\b|t\.me\/|seed phrase|private key|send (me )?(hype|eth|usdc|usdt)\b|airdrop claim)/i.test(text);
 }

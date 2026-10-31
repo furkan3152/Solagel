@@ -531,7 +531,7 @@ describe('settlement worker (batched settle)', () => {
     const h = await harness();
     h.journal.commit({
       enqueue: [
-        { ...settleItem(h.evm.join(1, wallet()), K), key: 'a', player: 'D2Ts7yCiVjedo6uwqpkM44QA8J45NdVU1J3k5m6iWtvm' },
+        { ...settleItem(h.evm.join(1, wallet()), K), key: 'a', player: 'not-an-evm-address' },
         { ...settleItem(h.evm.join(1, wallet()), K), key: 'b', sessionId: undefined },
         { ...settleItem(h.evm.join(1, wallet()), K), key: 'c', payout: -1 },
       ],

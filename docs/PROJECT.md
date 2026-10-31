@@ -6,7 +6,7 @@ gas token **HYPE**). The money rules live in two Solidity contracts, the game ru
 the code is laid out and how it is run. The source of truth for everything is
 [the spec](specs/2026-10-29-elymum-on-elysium.md).
 
-> **Status (2026-10-29).** The project moved to Elysium: the contracts, the
+> **Status (2026-10-29).** Elymum runs on Elysium: the contracts, the
 > SDK, the server's EVM gateway, SIWE sign-in and the mint system are built, and the interface is being redrawn in the
 > Ring Storybook language. The flow is **WL → Mint → Play**: for now the public site collects WL applications; the
 > owner deploys every contract from their own wallet in `/admin`. Mainnet launches on Nov 9; until then everything
@@ -220,8 +220,8 @@ the owner. Protect the server key.
 
 | Route | Who | What |
 |---|---|---|
-| `/` | everyone | The landing in the Ring Storybook style: the ring at dawn, the coins, how a round works, the NFT plate, the arenas, FAQ, X @elymum. CTAs: Join the WL, Collab |
-| `/wl` | everyone | "Three small chores": the admin-defined steps (follow @elymum, repost the pinned post, connect an EVM wallet with a free SIWE signature), one entry per wallet and per X handle, a shareable boarding pass |
+| `/` | everyone | The landing in the Ring Storybook style: the ring at dawn, the coins, how a round works, the NFT plate, the arenas, FAQ, X @elymumio. CTAs: Join the WL, Collab |
+| `/wl` | everyone | "Three small chores": the admin-defined steps (follow @elymumio, repost the pinned post, connect an EVM wallet with a free SIWE signature), one entry per wallet and per X handle, a shareable boarding pass |
 | `/collab` | communities | Apply → in review → approved with spots and a deadline → raffle on X → paste the winners' EVM wallets → submit (locks) |
 | `/mint` | everyone | The mint after dark: phase, eligibility and proof, quantity, price in HYPE with its USD value; minted emblems and a Play button when the game is open to holders |
 | `/play` | per `gameAccess` | The game: admins only, holders, or everyone |

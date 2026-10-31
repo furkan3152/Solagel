@@ -1272,7 +1272,7 @@ function sceneEnd(ctx, t) {
   });
   ctx.save(); ctx.globalAlpha = tw(t, 50.6, 51.0);
   font(ctx, 24, 500, 'mono'); ctx.letterSpacing = '5px'; ctx.fillStyle = C.nightInk; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('X  @ELYMUM  /  WL → MINT → PLAY ON ELYSIUM', W / 2, 920);
+  ctx.fillText('X  @ELYMUMIO  /  WL → MINT → PLAY ON ELYSIUM', W / 2, 920);
   ctx.restore();
   hud(ctx, t, 7, true, tw(t, 50.6, 51.0));
 }
