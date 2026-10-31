@@ -28,6 +28,8 @@ export interface Plan {
   contract: string;
   call?: ContractCall;
   deploy?: { name: DeployName; params: DeployParams };
+  /** A plain HYPE transfer from the connected wallet (funding the server key). */
+  transfer?: { to: Address; value: bigint };
   /** Owner-only call: this contract's `owner()` is re-read right before signing and must be the connected wallet. */
   ownerOf?: Address;
   /** The owner as last read (shown, and checked at once). */
@@ -72,7 +74,11 @@ export function previewOf(plan: Plan): PlanPreview {
       valueText: null,
     };
   }
-  throw new TypeError('a plan needs a call or a deploy');
+  if (plan.transfer) {
+    const t = plan.transfer;
+    return { signature: 'transfer HYPE', functionName: 'send HYPE', to: t.to, args: [], value: t.value, valueText: hypeText(t.value) };
+  }
+  throw new TypeError('a plan needs a call, a deploy or a transfer');
 }
 
 /** `0.0312 HYPE` for a wei value (the preview shows the same text). */
@@ -101,5 +107,8 @@ export function sendPlan(plan: Plan, wallet: WalletClient, from: Address): Promi
     const p = plan.deploy.params;
     return wallet.deployContract({ abi: p.abi as Abi, bytecode: p.bytecode, args: p.args as unknown[], account: from, chain: wallet.chain } as never);
   }
-  return Promise.reject(new TypeError('a plan needs a call or a deploy'));
+  if (plan.transfer) {
+    return wallet.sendTransaction({ to: plan.transfer.to, value: plan.transfer.value, account: from, chain: wallet.chain } as never);
+  }
+  return Promise.reject(new TypeError('a plan needs a call, a deploy or a transfer'));
 }

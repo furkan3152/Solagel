@@ -2363,3 +2363,18 @@ body {
   margin: 8px 0 -6px;
   font-size: 22px;
 }
+
+/* fund the server key: amount + one button on a line, wrapping on phones */
+.ad-fund {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 14px;
+  margin-top: 14px;
+}
+.ad-fund .ad-field {
+  flex: 0 1 220px;
+}
+.ad-fund .ad-note {
+  flex-basis: 100%;
+}
