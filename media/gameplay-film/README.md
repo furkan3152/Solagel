@@ -84,6 +84,38 @@ ids can be blended (`--voice "am_michael:0.8+am_puck:0.2"`), and `--blend af_nic
 voice lightly into some takes. Kokoro has no emphasis control: `*word*` keeps the word's stress and
 slows its sentence a little; the rest of the "not a robot" work is in `audio/post.py`.
 
+## The picture (`picture/`)
+
+Shot from the real UI (the web dev server on the fake chain) at 1920x1080 and rendered frame by frame
+with the gameplay kit's deterministic journal replay (`media/gameplay/capture/journal.mjs`): a take
+records what the page received (WebSocket, fetch, input, scroll), `picture/replay.mjs` plays it back on a
+virtual clock and screenshots exact take times, so the film runs at a true 30 fps with a drawn cursor.
+
+| Path | What it is |
+|---|---|
+| `picture/lib.mjs` | Paths, the browser, the drawn cursor, eased mouse paths and scrolls, marks |
+| `picture/stage.mjs` | The /mint beat's staging: a live public mint (`/api/site/mint`), a tiny JSON-RPC for the Dev Wallet's mint transaction, the emblem images |
+| `picture/take-site.mjs` | Home (the pond, a pear), Plate II and III, /wl (two chores stamped), /mint (two emblems minted) |
+| `picture/take-round.mjs`, `take-arena.mjs`, `players.mjs` | Arena takes (1920x1080, journals): the lobby and the ticket, a round with staged rival wallets (snacks that come at her, a big coin that turns on her, a small one she splits onto), the final minute, the bell, the landing report |
+| `picture/endcard/` | The end card: a page drawn with the app's design system (served by the dev server) |
+| `picture/edit.mjs` | The edit: every output frame is a take and a take time, cut to `cues.json` from the takes' marks and events |
+| `picture/replay.mjs`, `compose.mjs`, `render.sh` | Render the frames the edit uses, lay them out, encode with `out/work/voice/preview/mix.wav` |
+
+```bash
+# the stack: fake chain, public game, a fresh data dir, free ports
+(cd apps/server && NODE_ENV=development DEV_FAKE_CHAIN=1 DEV_FAKE_TOKEN=1 GAME_ACCESS=public PORT=8797 DATA_DIR=$PWD/../../out/work/film/data pnpm dev) &
+(cd apps/web && GAME_SERVER=http://127.0.0.1:8797 pnpm exec vite --port 5437 --strictPort) &
+node media/gameplay-film/picture/take-site.mjs                    # ~1 min
+node media/gameplay-film/picture/take-arena.mjs --name arena      # a whole round: eats, a chase, the bell
+node media/gameplay-film/picture/take-round.mjs --name round      # the lobby, the ticket, the drop
+node media/gameplay-film/picture/take-round.mjs --name splitK --beats split --grow 100   # the split onto lil_wei
+EDIT_ARGS="--main arena --lobby round --eat arena --threat arena --split splitK" media/gameplay-film/picture/render.sh
+# -> out/videos/elymum-film-narrated.mp4 (+ four stills)
+```
+
+Takes are live play with bots, so a new take tells a slightly different story: check its marks and
+events (`out/work/film/takes/<take>/events.json`) and pick the takes per beat with `EDIT_ARGS`.
+
 ## Outputs (`out/work/voice/`)
 
 `music.wav` and `stems/music-*.wav`; `sfx.wav` and `sfx/*.wav` (one per sound); `takes/` (TTS);

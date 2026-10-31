@@ -1,0 +1,17 @@
+html, body, #root { width: 1920px; height: 1080px; overflow: hidden; }
+.ec { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #0b2a31; }
+.ec-sky { position: absolute; inset: 0; }
+.ec-sky svg { width: 100%; height: 100%; display: block; }
+.ec-band { position: absolute; left: 0; right: 0; bottom: 0; height: 150px; opacity: 0.9; overflow: hidden; }
+.ec-band svg { width: 100%; height: 100%; }
+.ec-card { position: absolute; left: 50%; top: 50%; width: 900px; margin-left: -450px; margin-top: -280px; }
+.ec-sticker { position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; padding: 64px 56px 56px !important; }
+.ec-tape { position: absolute; top: -18px; left: 50%; margin-left: -75px; }
+.ec-mark { display: flex; justify-content: center; }
+.ec-line { font-family: var(--kb-font-display, 'Fraunces Variable', serif); font-size: 40px; font-weight: 700; margin: 18px 0 34px; color: var(--kb-ink, #04181c); letter-spacing: -0.01em; }
+.ec-row { display: flex; gap: 26px; align-items: center; justify-content: center; }
+.ec-cta { font-size: 28px !important; padding: 18px 34px !important; gap: 12px; pointer-events: none; }
+.ec-x { font-family: 'Geist Mono Variable', ui-monospace, monospace; text-transform: none; letter-spacing: 0; display: inline-flex; align-items: center; gap: 10px; font-size: 28px; font-weight: 600; padding: 16px 28px; border-radius: 999px; border: 3px solid #04181c; background: #f6eeda; color: #04181c; box-shadow: 4px 4px 0 #04181c; }
+.ec-coin { position: absolute; left: -86px; bottom: -64px; }
+.ec-pear { position: absolute; left: 40px; bottom: -30px; }
+.ec-shy { position: absolute; right: -96px; bottom: -40px; }
