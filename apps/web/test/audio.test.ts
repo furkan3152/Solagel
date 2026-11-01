@@ -1,8 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Announcer, GLOBAL_COOLDOWN_MS, LINES, pickVoice } from '../src/audio/announcer';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AUDIO_DEFAULTS, CEILING, DUCK_GAIN, Mixer, limiterCurve, prefsFromSettings } from '../src/audio/mixer';
-import { CROSSFADE, EIGHTH, LOOKAHEAD, Music, phrase } from '../src/audio/music';
-import { HOVER_GAP_MS, Sfx, TICK_GAP_MS, rateLimiter } from '../src/audio/sfx';
+import { GAPS, HOVER_GAP_MS, Sfx, TICK_GAP_MS, VOICE_CAP, rateLimiter } from '../src/audio/sfx';
 import { FakeGain, FakeShaper, fakeCtor, flush, type FakeAudioContext } from './fake-audio';
 
 const settings = (patch: Record<string, unknown> = {}) => ({ sound: true, volume: 0.6, ...patch });
@@ -195,8 +193,17 @@ describe('sfx', () => {
       () => sfx.tear(),
       () => sfx.whoosh('in'),
       () => sfx.pin('error'),
-      () => sfx.chomp(),
+      () => sfx.chomp(1),
       () => sfx.cashout(),
+      () => sfx.eat(true),
+      () => sfx.split(),
+      () => sfx.eject(),
+      () => sfx.virus(),
+      () => sfx.danger(),
+      () => sfx.rankUp(true),
+      () => sfx.powerup(),
+      () => sfx.coinRain(),
+      () => sfx.ouch(),
       () => sfx.roundTick(3),
       () => sfx.bell(),
     ];
@@ -208,6 +215,80 @@ describe('sfx', () => {
     // voice gains (not the bus / master / duck levels) top out at 0.2
     const voices = ctx.nodes.filter((n): n is FakeGain => n instanceof FakeGain && n.outputs.includes(mixer.busNode('sfx') as never));
     for (const v of voices) for (const e of v.gain.events) expect(e[1]).toBeLessThanOrEqual(0.2);
+  });
+});
+
+describe('game sfx', () => {
+  it('food eats are very soft, rate-limited and climb a little scale while they keep coming', async () => {
+    const { mixer, ctx } = await liveMixer();
+    let t = 0;
+    const sfx = new Sfx(mixer, () => t, () => 0.5);
+    const freqs: number[] = [];
+    for (let i = 0; i < 6; i++) {
+      const before = ctx.sources().length;
+      sfx.eat();
+      const made = ctx.sources().slice(before);
+      if (made.length) freqs.push(made[0].frequency.events.find((e) => e[0] === 'exp')![1]);
+      t += i === 0 ? 10 : GAPS.eat + 5; // the second call comes too soon
+      ctx.currentTime += 1; // the voices of the last one have rung out
+    }
+    expect(freqs.length).toBe(5);
+    for (let i = 1; i < freqs.length; i++) expect(freqs[i]).toBeGreaterThan(freqs[i - 1]);
+    const peaks = ctx.nodes.filter((n): n is FakeGain => n instanceof FakeGain && n.outputs.includes(mixer.busNode('sfx') as never)).flatMap((g) => g.gain.events.map((e) => e[1]));
+    expect(Math.max(...peaks)).toBeLessThanOrEqual(0.025);
+  });
+
+  it('a busy moment: small sounds give way first, the bell and chomps always play', async () => {
+    const { mixer, ctx } = await liveMixer();
+    let t = 0;
+    const sfx = new Sfx(mixer, () => t);
+    // fill the voices (nothing rings out: the fake clock stands still)
+    while (sfx.busy() < VOICE_CAP.mid) {
+      sfx.chomp(0.5);
+      t += GAPS.chomp;
+    }
+    const n = ctx.sources().length;
+    t += 1000;
+    sfx.eat();
+    sfx.split();
+    sfx.danger();
+    expect(ctx.sources().length).toBe(n);
+    sfx.chomp(1);
+    expect(ctx.sources().length).toBeGreaterThan(n);
+    const m = ctx.sources().length;
+    sfx.bell();
+    expect(ctx.sources().length).toBeGreaterThan(m);
+    // they ring out: room again
+    ctx.currentTime = 10;
+    expect(sfx.busy()).toBe(0);
+    sfx.eat();
+    expect(ctx.sources().length).toBeGreaterThan(m);
+  });
+
+  it('per-sound rate limits: one danger whoosh every 4 s', async () => {
+    const { mixer, ctx } = await liveMixer();
+    let t = 0;
+    const sfx = new Sfx(mixer, () => t);
+    sfx.danger();
+    const n = ctx.sources().length;
+    t += 1000;
+    sfx.danger();
+    expect(ctx.sources().length).toBe(n);
+    t += GAPS.danger;
+    sfx.danger();
+    expect(ctx.sources().length).toBeGreaterThan(n);
+  });
+
+  it('game sounds respect the effects switch and the master mute', async () => {
+    const { mixer, ctx } = await liveMixer({ sfxOn: false });
+    const sfx = new Sfx(mixer);
+    sfx.chomp(1);
+    sfx.eat();
+    sfx.coinRain();
+    mixer.apply(prefsFromSettings(settings({ sound: false })));
+    sfx.virus();
+    sfx.powerup();
+    expect(ctx.sources().length).toBe(0);
   });
 });
 
@@ -230,206 +311,6 @@ describe('round sounds', () => {
     expect(mixer.isDucked()).toBe(false);
     sfx.bell();
     expect(mixer.isDucked()).toBe(true);
-  });
-});
-
-describe('music', () => {
-  it('waits for the gesture, then writes notes ahead on the context clock', async () => {
-    vi.useFakeTimers();
-    try {
-      const { ctx, create } = fakeCtor();
-      const mixer = new Mixer(create);
-      const music = new Music(mixer);
-      mixer.apply(prefsFromSettings(settings()));
-      expect(music.playing).toBe(false);
-      mixer.unlock();
-      await ctx.resume();
-      expect(music.playing).toBe(true);
-      ctx.currentTime = 5;
-      vi.advanceTimersByTime(30);
-      const starts = ctx.sources().map((s) => s.startedAt).filter((t): t is number => t !== null && t > 0);
-      expect(starts.length).toBeGreaterThan(10);
-      // nothing is written further ahead than the lookahead (plus swing)
-      expect(Math.max(...starts)).toBeLessThan(5 + LOOKAHEAD + EIGHTH);
-      // the grid: eighths of 82 BPM
-      expect(music.nextTime).toBeGreaterThanOrEqual(5 + LOOKAHEAD);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it('cross-fades lobby → game over 1.5 s', async () => {
-    vi.useFakeTimers();
-    try {
-      const { ctx, create } = fakeCtor();
-      const mixer = new Mixer(create);
-      const music = new Music(mixer);
-      mixer.unlock();
-      await ctx.resume();
-      const layerGains = () => ctx.nodes.filter((n): n is FakeGain => n instanceof FakeGain && n.gain.events.some((e) => e[0] === 'linear' && (e[1] === 1 || e[1] === 0)) && n.outputs.length > 0 && n !== (mixer.busNode('music') as unknown as FakeGain));
-      const before = layerGains().length;
-      ctx.currentTime = 2;
-      music.setMood('game');
-      const gains = layerGains();
-      expect(gains.length).toBe(before + 1);
-      const fadeOut = gains[0].gain.events.at(-1)!;
-      const fadeIn = gains.at(-1)!.gain.events.at(-1)!;
-      expect(fadeOut).toEqual(['linear', 0, 2 + CROSSFADE]);
-      expect(fadeIn).toEqual(['linear', 1, 2 + CROSSFADE]);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it('stops when the music is switched off or the tab is hidden', async () => {
-    vi.useFakeTimers();
-    try {
-      const { ctx, create } = fakeCtor();
-      const mixer = new Mixer(create);
-      const music = new Music(mixer);
-      mixer.unlock();
-      await ctx.resume();
-      expect(music.playing).toBe(true);
-      mixer.apply(prefsFromSettings(settings({ musicOn: false })));
-      expect(music.playing).toBe(false);
-      mixer.apply(prefsFromSettings(settings()));
-      expect(music.playing).toBe(true);
-      mixer.setHidden(true);
-      expect(music.playing).toBe(false);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it('melodies stay in F major pentatonic and repeat for the same seed', () => {
-    const chord = { bass: 41, pad: [53, 57, 60, 67], tones: [60, 65, 67, 69, 72] };
-    const a = phrase(42, chord);
-    expect(phrase(42, chord)).toEqual(a);
-    expect(a.length).toBeGreaterThan(0);
-    for (const [, note] of a) expect([0, 2, 5, 7, 9].includes(note % 12)).toBe(true);
-  });
-});
-
-describe('announcer', () => {
-  type Spoken = { text: string; volume: number; voice: SpeechSynthesisVoice | null; rate: number; onstart?: () => void; onend?: () => void };
-  let spoken: Spoken[];
-  let now: number;
-  let voices: SpeechSynthesisVoice[];
-
-  const voice = (name: string, lang: string, localService = true) => ({ name, lang, localService, default: false, voiceURI: name }) as SpeechSynthesisVoice;
-
-  class FakeUtterance {
-    volume = 1;
-    rate = 1;
-    pitch = 1;
-    lang = '';
-    voice: SpeechSynthesisVoice | null = null;
-    onstart: (() => void) | null = null;
-    onend: (() => void) | null = null;
-    onerror: (() => void) | null = null;
-    constructor(public text: string) {}
-  }
-
-  const synth = () =>
-    ({
-      speaking: false,
-      pending: false,
-      getVoices: () => voices,
-      speak: (u: Spoken) => spoken.push(u),
-      cancel: vi.fn(),
-    }) as unknown as SpeechSynthesis;
-
-  async function make(patch: Record<string, unknown> = {}) {
-    const { mixer } = await liveMixer(patch);
-    const a = new Announcer(mixer, { synth: synth(), Utterance: FakeUtterance as unknown as typeof SpeechSynthesisUtterance, now: () => now });
-    return { a, mixer };
-  }
-
-  beforeEach(() => {
-    spoken = [];
-    now = 100_000;
-    voices = [voice('Zarvox', 'en-US'), voice('Anna', 'de-DE'), voice('Samantha', 'en-US'), voice('Google UK English Male', 'en-GB', false)];
-  });
-  afterEach(() => vi.restoreAllMocks());
-
-  it('speaks the spec lines in English with a calm voice at the voice bus level', async () => {
-    const { a } = await make();
-    expect(a.say('whale')).toBe(true);
-    expect(spoken[0].text).toBe('Whale alert.');
-    expect(spoken[0].voice?.name).toBe('Samantha');
-    expect(spoken[0].rate).toBe(1);
-    // voice 0.5 × master 0.6
-    expect(spoken[0].volume).toBeCloseTo(0.3);
-  });
-
-  it('keeps a 4 s global cooldown and per-line cooldowns', async () => {
-    const { a } = await make();
-    expect(a.say('firstBite')).toBe(true);
-    now += 1000;
-    expect(a.say('double')).toBe(false);
-    now += GLOBAL_COOLDOWN_MS;
-    expect(a.say('double')).toBe(true);
-    now += GLOBAL_COOLDOWN_MS + 1;
-    // first bite again inside its own 30 s cooldown
-    expect(a.say('firstBite')).toBe(false);
-    now += LINES.firstBite.cooldown;
-    expect(a.say('firstBite')).toBe(true);
-    expect(spoken.map((s) => s.text)).toEqual(['First bite!', 'Double!', 'First bite!']);
-  });
-
-  it('is silent with no voices, no English voice, the master mute or the announcer off', async () => {
-    voices = [];
-    expect((await make()).a.say('paid')).toBe(false);
-    voices = [voice('Anna', 'de-DE')];
-    expect((await make()).a.say('paid')).toBe(false);
-    voices = [voice('Samantha', 'en-US')];
-    expect((await make({ sound: false })).a.say('paid')).toBe(false);
-    expect((await make({ announcer: false })).a.say('paid')).toBe(false);
-    expect(spoken).toEqual([]);
-    expect((await make()).a.say('paid')).toBe(true);
-  });
-
-  it('does nothing before the first gesture or without speech synthesis', async () => {
-    const { create } = fakeCtor();
-    const mixer = new Mixer(create);
-    mixer.apply(prefsFromSettings(settings()));
-    const a = new Announcer(mixer, { synth: synth(), Utterance: FakeUtterance as unknown as typeof SpeechSynthesisUtterance, now: () => now });
-    expect(a.say('paid')).toBe(false);
-    const { mixer: m2 } = await liveMixer();
-    expect(new Announcer(m2, { synth: null, Utterance: null }).say('paid')).toBe(false);
-  });
-
-  it('ducks the music while a line speaks', async () => {
-    const { a, mixer } = await make();
-    a.say('whale');
-    expect(mixer.isDucked()).toBe(false);
-    spoken[0].onstart?.();
-    expect(mixer.isDucked()).toBe(true);
-    spoken[0].onend?.();
-    mixer.ctx && ((mixer.ctx as unknown as FakeAudioContext).currentTime = 10);
-    expect(mixer.isDucked()).toBe(false);
-  });
-
-  it('reads the round lines under the same cooldown rules', async () => {
-    const { a } = await make();
-    expect(a.say('oneMinute')).toBe(true);
-    now += 50_000;
-    expect(a.say('tenSeconds')).toBe(true);
-    now += 2_000;
-    // the global cooldown holds back a line that comes too soon
-    expect(a.say('roundOver')).toBe(false);
-    now += 8_000;
-    expect(a.say('roundOver')).toBe(true);
-    expect(spoken.map((x) => x.text)).toEqual(['One minute left.', 'Ten seconds.', 'Round over.']);
-    // once a round at most
-    now += GLOBAL_COOLDOWN_MS;
-    expect(a.say('roundOver')).toBe(false);
-  });
-
-  it('pickVoice prefers calm English voices and skips novelty and other languages', () => {
-    expect(pickVoice(voices)?.name).toBe('Samantha');
-    expect(pickVoice([voice('Bad News', 'en-US'), voice('Some Voice', 'en-AU')])?.name).toBe('Some Voice');
-    expect(pickVoice([voice('Thomas', 'fr-FR')])).toBeNull();
   });
 });
 

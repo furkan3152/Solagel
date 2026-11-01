@@ -3,13 +3,20 @@ import type { Mixer } from './mixer';
 /**
  * The effects kit: every sound is synthesized (oscillators and shaped noise),
  * so there are no files. Paper sounds (rustle, tick, punch, stamp, tear,
- * printer, envelope, seal) for the interface; coins and chomps for the game.
- * Levels sit well under the mixer's −12 dBFS ceiling: loudest voices peak
- * around 0.3 before the sfx bus (0.7) and master (0.6).
+ * printer, envelope, seal) for the interface; soft eats, meaty chomps, pops,
+ * whooshes and shimmers for the game. Levels sit well under the mixer's
+ * −12 dBFS ceiling: loudest voices peak around 0.2 before the sfx bus (0.7)
+ * and master (0.6).
+ *
+ * Busy moments stay clean: every game sound has its own rate limit, and a
+ * voice cap counts the oscillators and noise grains still ringing. Small
+ * sounds (food, coins) give way first (`low`: under 14 voices), game sounds
+ * next (`mid`: under 26); the bell, chomps and payouts always play.
  */
 
 export type StampKind = 'plain' | 'paid' | 'valid';
 export type PinKind = 'info' | 'success' | 'error' | 'warn';
+export type Tier = 'low' | 'mid' | 'high';
 
 /** Allows at most one call per `gapMs` (hover ticks: 125 ms, so 8 per second). */
 export function rateLimiter(gapMs: number, now: () => number = () => performance.now()): () => boolean {
@@ -26,6 +33,25 @@ export function rateLimiter(gapMs: number, now: () => number = () => performance
 export const HOVER_GAP_MS = 125;
 /** Round countdown ticks: one per second at most (a late frame never doubles one). */
 export const TICK_GAP_MS = 700;
+/** Voices ringing at once above which a tier's sounds are skipped. */
+export const VOICE_CAP: Record<Tier, number> = { low: 14, mid: 26, high: Infinity };
+/** Minimum gap per game sound, ms. */
+export const GAPS = {
+  eat: 45,
+  coin: 60,
+  chomp: 60,
+  split: 90,
+  eject: 70,
+  virus: 150,
+  danger: 4000,
+  rank: 1500,
+  coinRain: 3000,
+  powerup: 200,
+} as const;
+/** Food eaten within this of the last one climbs the little scale (ms). */
+const COMBO_MS = 380;
+/** C major pentatonic from G5 up: food eats walk up it while they keep coming. */
+const EAT_STEPS = [784, 880, 1046, 1175, 1318, 1568, 1760, 2093];
 
 interface ToneOpts {
   type?: OscillatorType;
@@ -49,8 +75,11 @@ export class Sfx {
   private printing: AudioScheduledSourceNode[] = [];
   private lastPlayed = -Infinity;
   private readonly hoverOk: () => boolean;
-  private readonly blipOk: () => boolean;
   private readonly tickOk: () => boolean;
+  private readonly gaps: Record<keyof typeof GAPS, () => boolean>;
+  /** Context end times of the voices still ringing (the cap counts them). */
+  private ends: number[] = [];
+  private combo = { at: -Infinity, step: 0 };
 
   constructor(
     private readonly mixer: Mixer,
@@ -58,13 +87,27 @@ export class Sfx {
     private readonly random: () => number = Math.random,
   ) {
     this.hoverOk = rateLimiter(HOVER_GAP_MS, now);
-    this.blipOk = rateLimiter(55, now);
     this.tickOk = rateLimiter(TICK_GAP_MS, now);
+    this.gaps = Object.fromEntries(Object.entries(GAPS).map(([k, ms]) => [k, rateLimiter(ms, now)])) as Record<keyof typeof GAPS, () => boolean>;
   }
 
   /** Did any effect start in the last `ms`? (The generic click yields to a specific sound.) */
   playedWithin(ms: number): boolean {
     return this.now() - this.lastPlayed < ms;
+  }
+
+  /** Voices still ringing now. */
+  busy(): number {
+    const t = this.mixer.ctx?.currentTime ?? 0;
+    if (this.ends.length) this.ends = this.ends.filter((e) => e > t);
+    return this.ends.length;
+  }
+
+  /** May a game sound of `tier` start now (audible, under its rate limit and the voice cap)? */
+  private may(gap: keyof typeof GAPS, tier: Tier): boolean {
+    if (!this.mixer.input('sfx')) return false;
+    if (this.busy() >= VOICE_CAP[tier]) return false;
+    return this.gaps[gap]();
   }
 
   /* ── voices ─────────────────────────────────────────────────────── */
@@ -94,6 +137,7 @@ export class Sfx {
     osc.connect(g).connect(bus);
     osc.start(t);
     osc.stop(t + dur + 0.02);
+    this.ends.push(t + dur + 0.02);
   }
 
   private noise(dur: number, from: number, to: number, o: NoiseOpts = {}): AudioBufferSourceNode | null {
@@ -119,6 +163,7 @@ export class Sfx {
     src.connect(filter).connect(g).connect(bus);
     const offset = o.offset ?? this.random() * (buf.duration - dur - 0.05);
     src.start(t, Math.max(0, offset), dur + 0.02);
+    this.ends.push(t + dur + 0.02);
     return src;
   }
 
@@ -224,6 +269,120 @@ export class Sfx {
     if (kind === 'success') this.tone(f * 1.5, 0.14, { type: 'sine', gain: 0.025, delay: 0.08 });
   }
 
+  /* ── game ───────────────────────────────────────────────────────── */
+
+  /** A token gain: a small bright coin clink. */
+  coin(): void {
+    if (!this.may('coin', 'low')) return;
+    this.tone(1760, 0.08, { type: 'triangle', gain: 0.035 });
+    this.tone(2637, 0.12, { type: 'sine', gain: 0.025, delay: 0.05 });
+  }
+
+  /**
+   * Food: a very soft bloop. Eats that keep coming walk up a pentatonic scale (a little tune
+   * instead of a buzz); a gold pellet adds a sparkle. Rate limited, the first to give way.
+   */
+  eat(gold = false): void {
+    if (!this.may('eat', 'low')) return;
+    const t = this.now();
+    const c = this.combo;
+    c.step = t - c.at < COMBO_MS ? Math.min(EAT_STEPS.length - 1, c.step + 1) : 0;
+    c.at = t;
+    const f = EAT_STEPS[c.step] * (1 + (this.random() - 0.5) * 0.01);
+    this.tone(f * 0.8, 0.07, { type: 'sine', slideTo: f, gain: 0.022, attack: 0.004 });
+    this.noise(0.012, 3800, 2600, { gain: 0.012, q: 1.2 });
+    if (gold) {
+      this.tone(f * 1.5, 0.14, { type: 'triangle', gain: 0.03, delay: 0.04 });
+      this.tone(f * 2, 0.18, { type: 'sine', gain: 0.02, delay: 0.08 });
+    }
+  }
+
+  /** Old name of `eat` (food pellets). */
+  blip(gold = false): void {
+    this.eat(gold);
+  }
+
+  /**
+   * Eating a player: a meaty chomp. A jaw thump, two or three crunches, a gulp and a small coin
+   * chime. `size` 0..1 (the victim against me) makes it lower and longer.
+   */
+  chomp(size = 0.3): void {
+    if (!this.may('chomp', 'high')) return;
+    const s = Math.min(1, Math.max(0, size));
+    const low = 1 - 0.3 * s;
+    this.tone(150 * low, 0.16 + 0.06 * s, { type: 'sine', slideTo: 52, gain: 0.17, attack: 0.003 });
+    const bites = s > 0.5 ? 3 : 2;
+    for (let i = 0; i < bites; i++) this.noise(0.032, 1500 * low, 480, { gain: 0.085 - i * 0.018, q: 1.1, delay: i * 0.038 });
+    this.tone(330 * low, 0.13, { type: 'triangle', slideTo: 140 * low, gain: 0.055, delay: 0.09 + 0.02 * s, attack: 0.01 });
+    this.tone(1046, 0.12, { type: 'triangle', gain: 0.035, delay: 0.17 });
+    this.tone(1568, 0.16, { type: 'triangle', gain: 0.03, delay: 0.22 });
+  }
+
+  /** One of my cells eaten (not a death): a short squeak down. */
+  ouch(): void {
+    if (!this.may('chomp', 'mid')) return;
+    this.tone(500, 0.22, { type: 'triangle', slideTo: 140, gain: 0.07 });
+    this.noise(0.05, 1200, 500, { gain: 0.04 });
+  }
+
+  /** Split: a quick "fwip" up and two little pops. */
+  split(): void {
+    if (!this.may('split', 'mid')) return;
+    this.noise(0.13, 600, 4200, { type: 'bandpass', q: 0.9, gain: 0.06, attack: 0.03 });
+    this.tone(520, 0.05, { type: 'sine', slideTo: 790, gain: 0.045, delay: 0.07 });
+    this.tone(620, 0.05, { type: 'sine', slideTo: 930, gain: 0.035, delay: 0.1 });
+  }
+
+  /** Tip / eject: a soft "pfft" and a drop. */
+  eject(): void {
+    if (!this.may('eject', 'mid')) return;
+    this.noise(0.08, 2200, 900, { gain: 0.045, q: 1 });
+    this.tone(620, 0.07, { type: 'sine', slideTo: 280, gain: 0.035, delay: 0.01 });
+  }
+
+  /** A virus popped on me: a pop, a sproing and a few flying bits. */
+  virus(): void {
+    if (!this.may('virus', 'mid')) return;
+    this.noise(0.05, 1800, 700, { gain: 0.11, q: 0.9 });
+    this.tone(160, 0.38, { type: 'sine', slideTo: 540, gain: 0.1, attack: 0.004 });
+    this.tone(322, 0.3, { type: 'triangle', slideTo: 1080, gain: 0.03, delay: 0.01 });
+    for (let i = 0; i < 4; i++) this.noise(0.015, 5200 + this.random() * 1500, 3500, { gain: 0.025, delay: 0.08 + i * 0.05 + this.random() * 0.02 });
+  }
+
+  /** Old name of `virus`. */
+  boing(): void {
+    this.virus();
+  }
+
+  /** A bigger coin is right behind me: a low whoosh and a double thump. Once every 4 s at most. */
+  danger(): void {
+    if (!this.may('danger', 'mid')) return;
+    this.noise(0.7, 260, 1100, { type: 'bandpass', q: 0.8, gain: 0.06, attack: 0.35 });
+    this.tone(72, 0.22, { type: 'sine', slideTo: 52, gain: 0.09, attack: 0.008 });
+    this.tone(70, 0.22, { type: 'sine', slideTo: 50, gain: 0.07, delay: 0.27, attack: 0.008 });
+  }
+
+  /** Up the leaderboard: two mallet notes up; to the top: three and a sparkle. */
+  rankUp(top = false): void {
+    // reaching the top always rings (it often comes right after a climb); climbs are rate-limited
+    const ok = top ? !!this.mixer.input('sfx') && this.busy() < VOICE_CAP.mid && (this.gaps.rank(), true) : this.may('rank', 'mid');
+    if (!ok) return;
+    const notes = top ? [784, 988, 1175] : [784, 988];
+    notes.forEach((f, i) => {
+      this.tone(f, 0.28, { type: 'sine', gain: 0.05, delay: i * 0.09, attack: 0.003 });
+      this.tone(f * 3.93, 0.05, { type: 'sine', gain: 0.012, delay: i * 0.09, attack: 0.002 });
+    });
+    if (top) this.tone(2349, 0.4, { type: 'triangle', gain: 0.02, delay: 0.3 });
+  }
+
+  /** Power-up pickup: a sparkle up-sweep and a rising mallet arpeggio. */
+  powerup(): void {
+    if (!this.may('powerup', 'mid')) return;
+    this.noise(0.3, 2000, 8000, { type: 'bandpass', q: 0.8, gain: 0.025, attack: 0.12 });
+    [784, 988, 1175, 1568].forEach((f, i) => this.tone(f, 0.14, { type: 'triangle', gain: 0.04, delay: i * 0.05 }));
+    this.tone(2349, 0.3, { type: 'sine', gain: 0.018, delay: 0.22 });
+  }
+
   /** A payout: a cascade of coins settling into a pile. */
   coinCascade(n = 14): void {
     for (let i = 0; i < n; i++) {
@@ -231,50 +390,6 @@ export class Sfx {
       this.tone(1500 + this.random() * 1100, 0.07, { type: 'triangle', gain: 0.03 * (1 - i / (n * 1.6)), delay: at });
     }
     this.mixer.duck(1);
-  }
-
-  /* ── game ───────────────────────────────────────────────────────── */
-
-  /** A token gain: a small bright coin clink. */
-  coin(): void {
-    this.tone(1760, 0.08, { type: 'triangle', gain: 0.035 });
-    this.tone(2637, 0.12, { type: 'sine', gain: 0.025, delay: 0.05 });
-  }
-
-  /** Food pellet: soft high blip (rate limited, random pitch). */
-  blip(gold = false): void {
-    if (!this.mixer.input('sfx') || !this.blipOk()) return;
-    const base = gold ? 1320 : 880 + this.random() * 520;
-    this.tone(base, 0.06, { type: 'triangle', slideTo: base * 1.5, gain: gold ? 0.07 : 0.025 });
-    if (gold) this.tone(base * 1.5, 0.1, { type: 'sine', gain: 0.05, delay: 0.05 });
-  }
-
-  chomp(): void {
-    this.tone(220, 0.12, { type: 'triangle', slideTo: 110, gain: 0.1 });
-    this.noise(0.1, 1800, 600, { gain: 0.09 });
-    this.tone(1046, 0.12, { type: 'triangle', gain: 0.05, delay: 0.06 });
-    this.tone(1568, 0.16, { type: 'triangle', gain: 0.04, delay: 0.11 });
-  }
-
-  ouch(): void {
-    this.tone(500, 0.25, { type: 'triangle', slideTo: 120, gain: 0.08 });
-  }
-
-  split(): void {
-    this.noise(0.18, 400, 3200, { gain: 0.07 });
-  }
-
-  eject(): void {
-    this.tone(700, 0.06, { type: 'sine', slideTo: 300, gain: 0.05 });
-  }
-
-  boing(): void {
-    this.tone(180, 0.35, { type: 'sine', slideTo: 520, gain: 0.12 });
-    this.noise(0.25, 2500, 300, { gain: 0.06 });
-  }
-
-  powerup(): void {
-    [660, 880, 1100, 1320].forEach((f, i) => this.tone(f, 0.12, { type: 'triangle', gain: 0.045, delay: i * 0.06 }));
   }
 
   cashout(): void {
@@ -315,8 +430,15 @@ export class Sfx {
     this.mixer.duck(2.2);
   }
 
+  /** Coin rain: a shimmer of little bells falling over a second and a half, and a high sparkle. */
   coinRain(): void {
-    for (let i = 0; i < 6; i++) this.tone(1568 + i * 120, 0.09, { type: 'triangle', gain: 0.035, delay: i * 0.07 });
+    if (!this.may('coinRain', 'mid')) return;
+    this.noise(0.9, 6000, 9000, { type: 'bandpass', q: 0.7, gain: 0.02, attack: 0.4 });
+    for (let i = 0; i < 12; i++) {
+      const at = 0.05 + (i / 12) ** 0.85 * 1.4 + this.random() * 0.04;
+      const f = 1800 + this.random() * 2400 - i * 60;
+      this.tone(f, 0.16, { type: i % 2 ? 'sine' : 'triangle', gain: 0.022, delay: at, attack: 0.002 });
+    }
     this.mixer.duck(0.8);
   }
 }
