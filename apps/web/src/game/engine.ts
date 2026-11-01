@@ -635,7 +635,8 @@ export class GameEngine {
           else toast(m.reason === 'cooldown' ? 'info' : 'warn', t(`boost.err.${m.reason}` as 'boost.err.guest'));
           return;
         }
-        sound.powerup();
+        // the pickup chime plus the caster's magnet / push / generic line (caller.ts)
+        caller.powerUp(m.kind === 'magnet' ? 'magnet' : m.kind === 'shock' ? 'push' : 'other');
         // magnet and speed show as the map power-up chips they share an effect with
         const type = m.kind === 'magnet' ? PowerUpType.Magnet : m.kind === 'speed' ? PowerUpType.Pump : null;
         if (type !== null && m.ms > 0) {
