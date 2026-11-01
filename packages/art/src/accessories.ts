@@ -23,22 +23,51 @@ function inked(ctx: CanvasRenderingContext2D, fill: string, lineW: number): void
   ctx.stroke();
 }
 
-const differs = (a: string, b: string, alt: string): string => (a.toUpperCase() === b.toUpperCase() ? alt : a);
+/** `alt` when the two paints are the same colour (hex, any case), else `a`; no string garbage per coin. */
+const differs = (a: string, b: string, alt: string): string => (sameHex(a, b) ? alt : a);
+function sameHex(a: string, b: string): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a.charCodeAt(i);
+    const y = b.charCodeAt(i);
+    // ASCII case-insensitive (a–z = A–Z + 32)
+    if (x !== y && (x | 32) !== (y | 32)) return false;
+  }
+  return true;
+}
 
 /** Where the coin symbol sits for an accessory (hats carry it on the front). */
-export function symbolAnchor(kind: AccessoryKind, r: number): { x: number; y: number; s: number; onTop: boolean } {
+export function symbolAnchor(
+  kind: AccessoryKind,
+  r: number,
+  out: { x: number; y: number; s: number; onTop: boolean } = { x: 0, y: 0, s: 0, onTop: false },
+): { x: number; y: number; s: number; onTop: boolean } {
   switch (kind) {
     case 'cap':
-      return { x: -r * 0.02, y: -r * 0.74, s: r * 0.13, onTop: true };
+      return anchorAt(out, -r * 0.02, -r * 0.74, r * 0.13, true);
     case 'beanie':
-      return { x: 0, y: -r * 0.84, s: r * 0.13, onTop: true };
+      return anchorAt(out, 0, -r * 0.84, r * 0.13, true);
     case 'cowboy':
-      return { x: 0, y: -r * 0.86, s: r * 0.1, onTop: true };
+      return anchorAt(out, 0, -r * 0.86, r * 0.1, true);
     default:
       // a small embossed mark on the forehead, above the big eyes
-      return { x: 0, y: -r * 0.64, s: r * 0.105, onTop: false };
+      return anchorAt(out, 0, -r * 0.64, r * 0.105, false);
   }
 }
+
+function anchorAt<T extends { x: number; y: number; s: number; onTop: boolean }>(o: T, x: number, y: number, s: number, onTop: boolean): T {
+  o.x = x;
+  o.y = y;
+  o.s = s;
+  o.onTop = onTop;
+  return o;
+}
+
+/** Loop constants (an array literal in a draw call is garbage every frame). */
+const SIDES = [-1, 1] as const;
+const THREE = [-1, 0, 1] as const;
+const GEMS = [RISO.fluoPink, RISO.teal, RISO.fluoPink] as const;
 
 /** Accessories drawn BEFORE the body (they stick out from behind it). */
 export function drawAccessoryBack(ctx: CanvasRenderingContext2D, kind: AccessoryKind, r: number, c: AccessoryColors, time: number): void {
@@ -46,7 +75,7 @@ export function drawAccessoryBack(ctx: CanvasRenderingContext2D, kind: Accessory
   switch (kind) {
     case 'horns': {
       const fill = differs(RISO.red, c.body, RISO.mustard);
-      for (const s of [-1, 1]) {
+      for (const s of SIDES) {
         ctx.save();
         ctx.translate(s * r * 0.52, -r * 0.72);
         ctx.rotate(s * 0.35);
@@ -118,14 +147,15 @@ export function drawAccessoryFront(ctx: CanvasRenderingContext2D, kind: Accessor
       ctx.lineTo(r * 0.42, r * 0.16);
       ctx.closePath();
       inked(ctx, differs(RISO.mustard, c.body, RISO.orange), lw * 0.85);
-      [RISO.fluoPink, RISO.teal, RISO.fluoPink].forEach((g, i) => {
+      for (let i = 0; i < 3; i++) {
         ctx.beginPath();
         ctx.arc((i - 1) * r * 0.22, r * 0.04, r * 0.055, 0, TAU);
-        inked(ctx, g, lw * 0.5);
-      });
-      for (const x of [-r * 0.5, 0, r * 0.5]) {
+        inked(ctx, GEMS[i], lw * 0.5);
+      }
+      for (const k of THREE) {
+        const x = k * r * 0.5;
         ctx.beginPath();
-        ctx.arc(x, x === 0 ? -r * 0.44 : -r * 0.3, r * 0.05, 0, TAU);
+        ctx.arc(x, k === 0 ? -r * 0.44 : -r * 0.3, r * 0.05, 0, TAU);
         inked(ctx, CARD_PAPER, lw * 0.5);
       }
       break;
@@ -224,7 +254,7 @@ export function drawAccessoryFront(ctx: CanvasRenderingContext2D, kind: Accessor
       ctx.save();
       ctx.translate(0, -r * 1.38);
       ctx.scale(Math.abs(spin) < 0.15 ? 0.15 : spin, 1);
-      for (const s of [-1, 1]) {
+      for (const s of SIDES) {
         ctx.beginPath();
         ctx.ellipse(s * r * 0.24, 0, r * 0.24, r * 0.07, 0, 0, TAU);
         inked(ctx, s < 0 ? RISO.fluoPink : RISO.teal, lw * 0.6);
@@ -236,7 +266,7 @@ export function drawAccessoryFront(ctx: CanvasRenderingContext2D, kind: Accessor
       break;
     }
     case 'headphones': {
-      for (const s of [-1, 1]) {
+      for (const s of SIDES) {
         ctx.beginPath();
         ctx.ellipse(s * r * 0.98, -r * 0.08, r * 0.15, r * 0.25, 0, 0, TAU);
         inked(ctx, c.accent, lw * 0.85);
@@ -322,7 +352,7 @@ export function drawAccessoryFront(ctx: CanvasRenderingContext2D, kind: Accessor
       // two leafy branches hugging the top of the head, tips meeting at the crown
       const leaf = differs(RISO.green, c.body, RISO.mustard);
       const R = r * 0.94;
-      for (const s of [-1, 1]) {
+      for (const s of SIDES) {
         ctx.strokeStyle = INK;
         ctx.lineWidth = lw * 0.6;
         ctx.beginPath();
@@ -330,7 +360,7 @@ export function drawAccessoryFront(ctx: CanvasRenderingContext2D, kind: Accessor
         ctx.stroke();
         for (let i = 0; i < 5; i++) {
           const a = s < 0 ? Math.PI * (1.08 + i * 0.085) : Math.PI * (1.92 - i * 0.085);
-          for (const side of [-1, 1]) {
+          for (const side of SIDES) {
             ctx.save();
             ctx.translate(Math.cos(a) * R, Math.sin(a) * R);
             // tangent pointing towards the crown, leaves fanned out either side

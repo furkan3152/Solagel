@@ -12,13 +12,14 @@ import {
   type RoundStanding,
   type ServerMessage,
   type SnapshotData,
+  decodeSnapshot,
 } from '@elymum/shared';
 import { ledgerDecimals } from '@elymum/sdk';
 import { SERVER } from '../config';
 import { DROP_LAND, DUR, SLOWMO_TOTAL, slowmoScale } from '../design/curves';
 import { t } from '../i18n';
 import { FrameGovernor } from '../render/governor';
-import { Renderer } from '../render/renderer';
+import { Renderer, type FrameInput } from '../render/renderer';
 import { FOOD_COLORS } from '../render/sprites';
 import { toast, useUi } from '../store';
 import { Camera } from './camera';
@@ -68,6 +69,11 @@ export class GameEngine {
   private lastMinimap = 0;
   private lastTargetSent = 0;
   private lastTarget = { x: NaN, y: NaN };
+  /** Per-frame scratch (reused: the render loop allocates nothing in the steady state). */
+  private readonly aim = { x: 0, y: 0 };
+  private readonly targetBuf = new ArrayBuffer(9);
+  private frameInput: FrameInput | null = null;
+  private readonly minimapInput: Parameters<Renderer['drawMinimap']>[1] = { world: this.world, camera: this.camera, leaders: [], dark: false, now: 0, reduced: false };
   private minimap: HTMLCanvasElement | null = null;
   private frames = 0;
   private fpsAt = performance.now();
@@ -375,13 +381,13 @@ export class GameEngine {
     this.snapQueue = [];
   }
 
-  private onSnapshot(s: SnapshotData): void {
-    // the bell froze the world: the next round's snapshots wait (in order) until the thaw
+  private onSnapshot(buf: ArrayBuffer): void {
+    // the bell froze the world: the next round's snapshots wait (in order, decoded) until the thaw
     if (this.frozen) {
-      this.snapQueue.push(s);
+      this.snapQueue.push(decodeSnapshot(buf));
       return;
     }
-    this.world.apply(s, performance.now());
+    this.world.applyBinary(buf, performance.now());
   }
 
   private onMessage(m: ServerMessage): void {
@@ -643,14 +649,21 @@ export class GameEngine {
   /* Frame                                                            */
   /* ---------------------------------------------------------------- */
 
+  /** Where I steer, in world units (a scratch point: read it right away), or null. */
   private aimPoint(): { x: number; y: number } | null {
     const me = this.world.myStats();
+    const a = this.aim;
     if (this.input.stick.active && me) {
       const reach = Math.max(260, me.maxR * 3);
-      return { x: me.x + this.input.stick.x * reach, y: me.y + this.input.stick.y * reach };
+      a.x = me.x + this.input.stick.x * reach;
+      a.y = me.y + this.input.stick.y * reach;
+      return a;
     }
-    if (this.input.mouse.active) return this.camera.toWorld(this.input.mouse.x, this.input.mouse.y);
-    return me ? { x: me.x, y: me.y } : null;
+    if (this.input.mouse.active) return this.camera.toWorld(this.input.mouse.x, this.input.mouse.y, a);
+    if (!me) return null;
+    a.x = me.x;
+    a.y = me.y;
+    return a;
   }
 
   private sendTarget(force = false): void {
@@ -661,8 +674,10 @@ export class GameEngine {
     const moved = Math.hypot(aim.x - this.lastTarget.x, aim.y - this.lastTarget.y) > 1.5;
     if (!force && (now - this.lastTargetSent < 33 || (!moved && now - this.lastTargetSent < 250))) return;
     this.lastTargetSent = now;
-    this.lastTarget = aim;
-    this.net.sendBinary(encodeTarget(aim.x, aim.y));
+    this.lastTarget.x = aim.x;
+    this.lastTarget.y = aim.y;
+    // one buffer for every target (the socket copies what it sends)
+    this.net.sendBinary(encodeTarget(aim.x, aim.y, this.targetBuf));
   }
 
   /** A cell of mine ate a coin: first bite of this life, then doubles and triples within 4 s. */
@@ -705,7 +720,8 @@ export class GameEngine {
             if (!arena) this.particles.text(ev.x, ev.y, `+${Math.floor((ev.r * ev.r) / 100)}`, undefined, 24);
           } else if (ev.me) {
             sound.ouch();
-          } else if (!this.particles.lowQuality) {
+          } else {
+            // someone else's bite: a few scraps (the low look throws a third of them, never none)
             this.particles.scraps(ev.x, ev.y, ev.r, 6, [look.body, look.overprint]);
           }
           // a bot ate a staker: the victim's tokens spill as loot
@@ -837,28 +853,32 @@ export class GameEngine {
 
     const dropT = this.drop ? Math.max(0, (now - this.drop.at) / (DUR.drop * 1000)) : 1;
     if (dropT >= 1) this.drop = null;
-    this.renderer.draw({
-      now,
-      dt: rdt,
-      drop: dropT < 1 ? dropT : null,
-      world,
-      camera: this.camera,
-      particles: this.particles,
-      settings: ui.settings,
-      reduced: this.reduced,
-      aim: ui.screen === 'playing' ? this.aimPoint() : null,
-      coinRain: !!ui.banner && ui.banner.kind === 'coinrain' && ui.banner.until > Date.now(),
-      rand: this.rand,
-    });
+    // one frame input, updated in place
+    const fi = (this.frameInput ??= { now, dt: rdt, drop: null, world, camera: this.camera, particles: this.particles, settings: ui.settings, reduced: false, aim: null, coinRain: false, rand: this.rand });
+    fi.now = now;
+    fi.dt = rdt;
+    fi.drop = dropT < 1 ? dropT : null;
+    fi.settings = ui.settings;
+    fi.reduced = this.reduced;
+    fi.aim = ui.screen === 'playing' ? this.aimPoint() : null;
+    fi.coinRain = !!ui.banner && ui.banner.kind === 'coinrain' && ui.banner.until > Date.now();
+    this.renderer.draw(fi);
 
-    if (this.minimap && ui.settings.showMinimap && now - this.lastMinimap > 66) {
+    // the minimap: 15 times a second, 5 with the automatic drop's invisible savings
+    if (this.minimap && ui.settings.showMinimap && now - this.lastMinimap > (this.renderer.autoLite ? 200 : 66)) {
       this.lastMinimap = now;
-      this.renderer.drawMinimap(this.minimap, { world, camera: this.camera, leaders: ui.leaders, dark: ui.settings.theme === 'dark', now, reduced: this.reduced });
+      const mi = this.minimapInput;
+      mi.leaders = ui.leaders;
+      mi.dark = ui.settings.theme === 'dark';
+      mi.now = now;
+      mi.reduced = this.reduced;
+      this.renderer.drawMinimap(this.minimap, mi);
     }
 
     this.frames++;
     if (now - this.fpsAt >= 1000) {
-      useUi.setState({ fps: Math.round((this.frames * 1000) / (now - this.fpsAt)) });
+      // the fps readout re-renders the HUD: only while it is on screen
+      if (ui.settings.showFps) useUi.setState({ fps: Math.round((this.frames * 1000) / (now - this.fpsAt)) });
       this.frames = 0;
       this.fpsAt = now;
     }

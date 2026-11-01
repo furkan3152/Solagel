@@ -10,39 +10,14 @@ import { SiteApiError, auth } from './api';
  * the same key the game engine reads (`elymum.auth.v1`), so an admin who signs in on `/admin`
  * plays on `/play` without signing again.
  */
-export interface SiteSession {
-  /** The signed-in wallet, EIP-55 checksummed. */
-  address: string;
-  token: string;
-  admin: boolean;
-}
+export type { SiteSession } from './storedSession';
+import type { SiteSession } from './storedSession';
 
 export type { MessageSigner } from '../wallet/siwe';
 
-export const TOKEN_KEY = 'elymum.auth.v1';
-const ADMIN_KEY = 'elymum.site.admin.v1';
-/** Tokens last 24 h on the server; reuse one only while it has a margin left. */
-const TTL_MS = 23 * 3600_000;
+import { ADMIN_KEY, TOKEN_KEY, TTL_MS, readStoredSession, same, type Stored } from './storedSession';
 
-interface Stored {
-  address: string;
-  token: string;
-  exp: number;
-}
-
-const same = (a: string | null | undefined, b: string | null | undefined): boolean => !!a && !!b && a.toLowerCase() === b.toLowerCase();
-
-export function readStoredSession(): SiteSession | null {
-  try {
-    const raw = localStorage.getItem(TOKEN_KEY);
-    if (!raw) return null;
-    const data = JSON.parse(raw) as Stored;
-    if (typeof data?.token !== 'string' || typeof data.address !== 'string' || !(data.exp > Date.now() + 60_000)) return null;
-    return { address: data.address, token: data.token, admin: same(localStorage.getItem(ADMIN_KEY), data.address) };
-  } catch {
-    return null;
-  }
-}
+export { TOKEN_KEY, readStoredSession } from './storedSession';
 
 function store(s: SiteSession | null): void {
   try {

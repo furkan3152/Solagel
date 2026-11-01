@@ -28,6 +28,14 @@ interface Particle {
 const MAX = 900;
 const TAU = Math.PI * 2;
 const MONO_FONT = '"Geist Mono Variable", "Geist Mono", ui-monospace, monospace';
+/**
+ * Sticker text is set at one font size and scaled (setting `ctx.font` parses a CSS font string:
+ * a new size every frame was a new string and a parse per sticker per frame).
+ */
+const TEXT_PX = 100;
+const TEXT_FONT = `700 ${TEXT_PX}px ${MONO_FONT}`;
+
+type Spawn = Omit<Particle, 'seed' | 'g' | 'text' | 'over' | 'tw'> & { seed?: number; g?: number; text?: string; over?: string };
 
 /** Paints that need a darker ink to read as text on cream sticker stock. */
 const ON_CREAM: Record<string, string> = {
@@ -50,13 +58,46 @@ const visible = (color: string): string => (color === INK ? CARD_PAPER : color);
  * into a single mark that only fades.
  */
 export class Particles {
+  /** Live particles are `list[0 … n)` (the array never shrinks: a shorter `length` makes V8 drop its backing store). */
   private list: Particle[] = [];
+  private n = 0;
+  /** Retired particles, reused by the next ones (no garbage per burst). */
+  private pool: Particle[] = [];
+  private nPool = 0;
   lowQuality = false;
   reduced = false;
 
-  private add(p: Omit<Particle, 'seed' | 'g'> & { seed?: number; g?: number }): void {
-    if (this.list.length >= MAX) this.list.shift();
-    this.list.push({ seed: Math.random(), g: 0, ...p });
+  private spawn(): Particle {
+    if (this.n >= MAX) {
+      // full: the oldest goes (the rest move down one; the array keeps its size)
+      const old = this.list[0];
+      this.list.copyWithin(0, 1, this.n);
+      this.n--;
+      return old;
+    }
+    if (this.nPool > 0) return this.pool[--this.nPool];
+    return ({ kind: 'dot', x: 0, y: 0, vx: 0, vy: 0, life: 0, max: 1, size: 0, color: '', rot: 0, vr: 0, seed: 0, g: 0, text: undefined, over: undefined, tw: undefined } as Particle);
+  }
+
+  private add(p: Spawn): void {
+    const q = this.spawn();
+    q.kind = p.kind;
+    q.x = p.x;
+    q.y = p.y;
+    q.vx = p.vx;
+    q.vy = p.vy;
+    q.life = p.life;
+    q.max = p.max;
+    q.size = p.size;
+    q.color = p.color;
+    q.rot = p.rot;
+    q.vr = p.vr;
+    q.seed = p.seed ?? Math.random();
+    q.g = p.g ?? 0;
+    q.text = p.text;
+    q.over = p.over;
+    q.tw = undefined;
+    this.list[this.n++] = q;
   }
 
   /** Eat pop where food was eaten: a flat flash of the food's colour and five pop lines. */
@@ -121,7 +162,9 @@ export class Particles {
 
   /** Little paint dots kicked off a split / eject. */
   dots(x: number, y: number, r: number, color: string, n = 6): void {
-    if (this.reduced || this.lowQuality) return;
+    if (this.reduced) return;
+    // the low look (the automatic drop's last resort) throws fewer dots, never none
+    if (this.lowQuality) n = Math.ceil(n / 2);
     for (let i = 0; i < n; i++) {
       const a = (i / n) * TAU + Math.random();
       this.add({ kind: 'dot', x, y, vx: Math.cos(a) * r * 1.4, vy: Math.sin(a) * r * 1.4, life: 0, max: 0.4, size: r * 0.09, color, rot: 0, vr: 0 });
@@ -149,10 +192,13 @@ export class Particles {
 
   update(dt: number): void {
     let w = 0;
-    for (let i = 0; i < this.list.length; i++) {
+    for (let i = 0; i < this.n; i++) {
       const p = this.list[i];
       p.life += dt;
-      if (p.life >= p.max) continue;
+      if (p.life >= p.max) {
+        this.pool[this.nPool++] = p;
+        continue;
+      }
       p.x += p.vx * dt;
       p.y += p.vy * dt;
       const drag = p.kind === 'text' ? 1.4 : p.kind === 'scrap' ? 2.4 : 3.2;
@@ -161,7 +207,7 @@ export class Particles {
       p.rot += p.vr * dt;
       this.list[w++] = p;
     }
-    this.list.length = w;
+    this.n = w;
   }
 
   /**
@@ -189,7 +235,8 @@ export class Particles {
   /** Draws in world space; `zoom` keeps lines and text a constant on-screen size. */
   draw(ctx: CanvasRenderingContext2D, zoom: number): void {
     const ink = 1 / zoom;
-    for (const p of this.list) {
+    for (let i = 0; i < this.n; i++) {
+      const p = this.list[i];
       const k = p.life / p.max;
       switch (p.kind) {
         case 'splat':
@@ -308,9 +355,11 @@ export class Particles {
     const fs = (p.size * 0.78) / zoom;
     const stock = p.over === ELYSIUM.sun || p.over === ELYSIUM.mist || p.over === ELYSIUM.foam ? p.over : CARD_PAPER;
     const color = p.color === CARD_PAPER || p.color === ELYSIUM.white ? INK : (ON_CREAM[p.color] ?? p.color);
-    ctx.font = `700 100px ${MONO_FONT}`;
-    p.tw ??= ctx.measureText(p.text!).width;
-    const tw = (p.tw * fs) / 100;
+    if (p.tw === undefined) {
+      ctx.font = TEXT_FONT;
+      p.tw = ctx.measureText(p.text!).width;
+    }
+    const tw = (p.tw * fs) / TEXT_PX;
     const padX = fs * 0.55;
     const w = tw + padX * 2;
     const h = fs * 1.6;
@@ -333,11 +382,14 @@ export class Particles {
     ctx.lineWidth = 2.5 / zoom;
     ctx.strokeStyle = INK;
     ctx.stroke();
-    ctx.font = `700 ${fs}px ${MONO_FONT}`;
+    // the text at one font size, scaled to fs (no font string per frame)
+    const ts = fs / TEXT_PX;
+    ctx.scale(ts, ts);
+    ctx.font = TEXT_FONT;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = color;
-    ctx.fillText(p.text!, 0, fs * 0.05);
+    ctx.fillText(p.text!, 0, TEXT_PX * 0.05);
     ctx.restore();
   }
 
@@ -376,6 +428,7 @@ export class Particles {
   }
 
   clear(): void {
-    this.list.length = 0;
+    for (let i = 0; i < this.n; i++) this.pool[this.nPool++] = this.list[i];
+    this.n = 0;
   }
 }

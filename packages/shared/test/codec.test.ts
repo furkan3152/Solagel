@@ -195,3 +195,45 @@ describe('client input codec', () => {
     expect(decodeClientInput(encodeTarget(Number.POSITIVE_INFINITY, 1))).toBeNull();
   });
 });
+
+describe('readSnapshot (streaming)', () => {
+  it('hands the sink exactly what decodeSnapshot returns', async () => {
+    const { readSnapshot, decodeUtf8, HAS_PLAYER, HAS_VARIANT, encodeSnapshot, decodeSnapshot, EntityKind } = await import('../src/index');
+    const snap = {
+      tick: 77,
+      view: { x: 1200.5, y: 980.25, h: 1600 },
+      players: [
+        { id: 3, skin: 4, flags: 1, name: 'mochi_moon' },
+        { id: 9, skin: 0, flags: 0, name: 'Däphne ☀' },
+      ],
+      upserts: [
+        { id: 1, kind: EntityKind.Cell, x: 10.5, y: 20.25, r: 40, playerId: 3, flags: 2 },
+        { id: 2, kind: EntityKind.Food, x: 1, y: 2, r: 10, variant: 7 },
+        { id: 3, kind: EntityKind.Virus, x: 5, y: 6, r: 100 },
+        { id: 4, kind: EntityKind.Loot, x: 7, y: 8, r: 16, variant: 3 },
+      ],
+      removals: [{ id: 11, eaterId: 1 }],
+    };
+    const buf = encodeSnapshot(snap);
+    const ref = decodeSnapshot(buf);
+    const got = { tick: 0, view: { x: 0, y: 0, h: 0 }, players: [] as { id: number; skin: number; flags: number; name: string }[], upserts: [] as Record<string, number>[], removals: [] as { id: number; eaterId: number }[] };
+    readSnapshot(buf, {
+      snapshotBegin: (tick, x, y, h) => Object.assign(got, { tick, view: { x, y, h } }),
+      snapshotPlayer: (id, skin, flags, bytes, at, len) => got.players.push({ id, skin, flags, name: decodeUtf8(bytes, at, len) }),
+      snapshotUpsert: (id, kind, x, y, r, has, playerId, flags, variant) =>
+        got.upserts.push({ id, kind, x, y, r, ...(has & HAS_PLAYER ? { playerId, flags } : {}), ...(has & HAS_VARIANT ? { variant } : {}) }),
+      snapshotRemoval: (id, eaterId) => got.removals.push({ id, eaterId }),
+    });
+    expect(got.tick).toBe(ref.tick);
+    expect(got.view).toEqual(ref.view);
+    expect(got.players).toEqual(ref.players.map(({ id, skin, flags, name }) => ({ id, skin, flags, name })));
+    expect(got.upserts).toEqual(ref.upserts);
+    expect(got.removals).toEqual(ref.removals);
+  });
+
+  it('rejects what decodeSnapshot rejects', async () => {
+    const { readSnapshot } = await import('../src/index');
+    const noop = { snapshotBegin() {}, snapshotPlayer() {}, snapshotUpsert() {}, snapshotRemoval() {} };
+    expect(() => readSnapshot(new Uint8Array([9, 0, 0, 0, 0]).buffer, noop)).toThrow(/not a snapshot/);
+  });
+});

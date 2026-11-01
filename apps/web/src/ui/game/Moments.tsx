@@ -155,7 +155,11 @@ export function BellMoment() {
           >
             <span className="gm-bell__swing">
               <span className="gm-bell__rope" />
-              <BellArt />
+              <span className="gm-bell__art">
+                {/* its hard shadow: the same art in ink, offset (a filter on a swinging layer is redrawn every frame) */}
+                <BellArt shadow />
+                <BellArt />
+              </span>
             </span>
           </motion.span>
         </motion.div>
@@ -164,10 +168,10 @@ export function BellMoment() {
   );
 }
 
-/** A small brass bell on its rope: flat sun paint, one shade, ink edge, a clapper that swings late. */
-function BellArt() {
+/** A small brass bell on its rope: flat sun paint, one shade, ink edge, a clapper that swings late. `shadow`: all ink (its hard shadow). */
+function BellArt({ shadow = false }: { shadow?: boolean }) {
   return (
-    <svg className="gm-bell__svg" viewBox="0 0 160 220" focusable="false">
+    <svg className={`gm-bell__svg${shadow ? ' gm-bell__svg--shadow' : ''}`} viewBox="0 0 160 220" focusable="false">
       <path d="M80 0 V44" stroke="#04181C" strokeWidth="5" />
       <path d="M80 0 V44" stroke="#DCCDA8" strokeWidth="2" strokeDasharray="4 3" />
       <g className="gm-bell__body">
@@ -230,8 +234,13 @@ export function DeathMoment() {
           exit={{ opacity: 0, transition: { duration: 0.22 } }}
           style={{ '--paint': look.body } as CSSProperties}
         >
-          <svg className="gm-mouth__svg" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice" focusable="false">
-            <g className="gm-mouth__face">
+          {/*
+            Three page-level layers (the face, the jaw, the lip), each its own SVG on the same
+            viewBox: the gulp scales the stack and the jaw and lip shut, all as compositor
+            transforms. Animating elements inside one SVG repainted the whole screen every frame.
+          */}
+          <div className="gm-mouth__face">
+            <svg className="gm-mouth__svg" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice" focusable="false">
               <circle cx="50" cy="40" r="46" className="gm-mouth__body" />
               {/* eyes, looking down at me */}
               <g className="gm-mouth__eyes">
@@ -244,14 +253,20 @@ export function DeathMoment() {
               </g>
               <ellipse cx="28" cy="38" rx="5" ry="3" fill="#F39B86" opacity="0.85" />
               <ellipse cx="72" cy="38" rx="5" ry="3" fill="#F39B86" opacity="0.85" />
-              <g className="gm-mouth__jaw">
+            </svg>
+            <div className="gm-mouth__jaw">
+              <svg className="gm-mouth__svg" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice" focusable="false">
                 <ellipse cx="50" cy="52" rx="22" ry="15" fill="#04181C" />
                 <ellipse cx="50" cy="61" rx="13" ry="6" fill="#F39B86" />
                 <path d="M50 57 V64" stroke="#D9714F" strokeWidth="1.2" strokeLinecap="round" />
-              </g>
-              <ellipse cx="50" cy="52" rx="22" ry="15" className="gm-mouth__lip" />
-            </g>
-          </svg>
+              </svg>
+            </div>
+            <div className="gm-mouth__lip">
+              <svg className="gm-mouth__svg" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice" focusable="false">
+                <ellipse cx="50" cy="52" rx="22" ry="15" className="gm-mouth__lipline" />
+              </svg>
+            </div>
+          </div>
           <span className="gm-mouth__shut" />
         </motion.div>
       )}
@@ -286,13 +301,11 @@ export function ValueFlyers() {
       const id = ++seq.current;
       const f: Flyer = { ...d, id, dx: r.left + r.width / 2 - d.x, dy: r.top + r.height / 2 - d.y };
       setList((l) => [...l.slice(-(MAX_FLYERS - 1)), f]);
-      // the till gulps it down as it arrives
+      // the till gulps it down as it arrives (a Web Animation: restarting a CSS class animation
+      // needed a forced layout to take)
       window.setTimeout(() => {
-        const el = document.querySelector('.g-till');
-        if (!el) return;
-        el.classList.remove('is-gulp');
-        void (el as HTMLElement).offsetWidth;
-        el.classList.add('is-gulp');
+        const el = document.querySelector<HTMLElement>('.g-till');
+        el?.animate?.(GULP, { duration: 340, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' });
       }, FLY_S * 1000 - 60);
       window.setTimeout(() => setList((l) => l.filter((x) => x.id !== id)), FLY_S * 1000 + 40);
     };
@@ -303,23 +316,39 @@ export function ValueFlyers() {
   return (
     <div className="gm-flyers" aria-hidden="true">
       {list.map((f) => (
-        <motion.span
-          key={f.id}
-          className="gm-flyer num"
-          style={{ left: f.x, top: f.y }}
-          initial={{ x: '-50%', y: '-50%', scale: 0.4, rotate: -12 }}
-          animate={{
-            // pop on the spot, then an arc up into the till
-            x: ['-50%', '-50%', `calc(-50% + ${f.dx * 0.45}px)`, `calc(-50% + ${f.dx}px)`],
-            y: ['-50%', 'calc(-50% - 18px)', `calc(-50% + ${f.dy * 0.35 - 40}px)`, `calc(-50% + ${f.dy}px)`],
-            scale: [0.4, 1.15, 0.95, 0.5],
-            rotate: [-12, 6, -4, 0],
-          }}
-          transition={{ duration: FLY_S, times: [0, 0.22, 0.6, 1], ease: ['easeOut', 'easeInOut', 'easeIn'] }}
-        >
-          {f.text}
-        </motion.span>
+        <Flyer key={f.id} f={f} />
       ))}
     </div>
+  );
+}
+
+/** The till's gulp (scale only). */
+const GULP: Keyframe[] = [{ transform: 'scale(1)' }, { transform: 'scale(1.09, 0.94)', offset: 0.35 }, { transform: 'scale(0.97, 1.03)', offset: 0.7 }, { transform: 'scale(1)' }];
+
+/**
+ * One gain sticker: pops on the spot, then arcs up into the till. A Web Animation of transform
+ * only, so it runs on the compositor (no React or JS work per frame while it flies).
+ */
+function Flyer({ f }: { f: Flyer }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el?.animate) return;
+    const at = (x: number, y: number, s: number, r: number) => `translate(-50%, -50%) translate(${x}px, ${y}px) scale(${s}) rotate(${r}deg)`;
+    const a = el.animate(
+      [
+        { transform: at(0, 0, 0.4, -12), easing: 'ease-out' },
+        { transform: at(0, -18, 1.15, 6), offset: 0.22, easing: 'ease-in-out' },
+        { transform: at(f.dx * 0.45, f.dy * 0.35 - 40, 0.95, -4), offset: 0.6, easing: 'ease-in' },
+        { transform: at(f.dx, f.dy, 0.5, 0) },
+      ],
+      { duration: FLY_S * 1000, fill: 'forwards' },
+    );
+    return () => a.cancel();
+  }, [f]);
+  return (
+    <span ref={ref} className="gm-flyer num" style={{ left: f.x, top: f.y, transform: 'translate(-50%, -50%) scale(0.4) rotate(-12deg)' }}>
+      {f.text}
+    </span>
   );
 }

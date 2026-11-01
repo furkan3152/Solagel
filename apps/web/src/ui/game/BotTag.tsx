@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { useT } from '../../i18n';
 
 /**
@@ -5,11 +6,11 @@ import { useT } from '../../i18n';
  * Bots are always labelled: nobody should mistake one for a person. The in-canvas name tag draws
  * the same chip (render/labels.ts).
  */
-export function BotTag() {
+export const BotTag = memo(function BotTag() {
   const t = useT();
   return (
     <span className="g-bot mono" title={t('g.botTitle')} aria-label={t('g.bot')} data-testid="bot-tag">
       {t('g.botTag')}
     </span>
   );
-}
+});
