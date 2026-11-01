@@ -146,3 +146,20 @@ export async function fakeFaucetClaim(onPhase: (p: TxPhase, hash?: Hash) => void
   fakeFaucet.nextAt = Math.floor(Date.now() / 1000) + fakeFaucet.cooldownSecs;
   return h;
 }
+
+/** "Sends" a native HYPE transfer (the custom room fee): the server's fake chain accepts this hash as the payment. */
+export async function fakeHypePayment(wei: bigint, onPhase: (p: TxPhase, hash?: Hash) => void): Promise<{ ok: true; hash: Hash } | { ok: false; name: string }> {
+  onPhase('signing');
+  await sleep(fakeWallet.delayMs);
+  if (fakeWallet.failNext) {
+    const name = fakeWallet.failNext;
+    fakeWallet.failNext = null;
+    return { ok: false, name };
+  }
+  if (fakeWallet.wei < wei) return { ok: false, name: 'InsufficientFunds' };
+  const h = fakeHash();
+  onPhase('confirming', h);
+  await sleep(fakeWallet.delayMs);
+  fakeWallet.wei -= wei;
+  return { ok: true, hash: h };
+}

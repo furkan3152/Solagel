@@ -23,6 +23,9 @@ import { chainDir, isTestChain, migrateLegacyState, resolveStateChainId, stateDi
 import { HolderWlStore } from './site/holder-wl';
 import { FaucetInfo } from './site/network';
 import { RoomManager } from './rooms/manager';
+import { CustomRoomService } from './rooms/custom';
+import { UsedPayments, devFakePaymentReader, viemPaymentReader, type PaymentReader } from './chain/payment';
+import { checksumAddress } from './auth';
 import { ProfileStore } from './profiles';
 import { AvatarStore } from './avatars';
 import { ContractsStore } from './site/contracts';
@@ -56,6 +59,8 @@ export interface App {
   priceKeeper: PriceKeeper | null;
   /** Cheat and collusion detection: telemetry, flags, bans, auto-hold (`/api/admin/integrity/*`). */
   integrity: IntegrityService;
+  /** Paid custom rooms: settings, live rooms, payment checks (`/api/rooms/custom/*`, `/api/admin/custom-rooms`). */
+  customRooms: CustomRoomService;
   /** Resolves once the HTTP server is listening; returns the bound port. */
   listen(): Promise<number>;
   close(): Promise<void>;
@@ -85,6 +90,10 @@ export async function createApp(
     stakedBots?: StakedBotSource;
     /** Holder readers per chain (default: the server's client on its own chain, `TESTNET_RPC_URL` for the testnet). */
     holderReaderFor?: (chainId: number) => HolderReader | null;
+    /** Reads custom-room payments (default: the server's RPC; the fake chain's own on `DEV_FAKE_CHAIN`); tests inject one. */
+    paymentReader?: PaymentReader | null;
+    /** Wall clock of the custom rooms (Unix ms); tests inject one. */
+    customNow?: () => number;
   } = {},
 ): Promise<App> {
   const log = opts.log ?? ((m: string) => console.log(`[${new Date().toISOString()}] ${m}`));
@@ -248,6 +257,27 @@ export async function createApp(
     botSettings,
   );
   roomsRef = rooms;
+  // custom rooms: paid with a HYPE transfer to the treasury (checked on chain), restored after a restart
+  let paymentReader: PaymentReader | null | undefined = opts.paymentReader;
+  const customRooms = new CustomRoomService({
+    rooms,
+    dataDir: persist ? cfg.dataDir : null,
+    suffix: cfg.devFakeChain ? '.dev-fake' : '',
+    used: new UsedPayments(chainState ? join(chainState, cfg.devFakeChain ? 'room-payments.dev-fake.json' : 'room-payments.json') : null, log),
+    reader: () => {
+      if (paymentReader !== undefined) return paymentReader;
+      if (cfg.devFakeChain) return (paymentReader = devFakePaymentReader());
+      if (!chain.enabled || !cfg.chain.rpcUrl) return null;
+      return (paymentReader = viemPaymentReader(cfg.chain.rpcUrl));
+    },
+    chainId: () => chain.status().chainId,
+    isHolder: (wallet) => mint.isHolder(wallet),
+    ownerWallet: checksumAddress(cfg.adminWallets[0] ?? null),
+    now: opts.customNow,
+    log,
+  });
+  customRooms.restore();
+  site.setCustomRooms(customRooms);
   // a removed (or replaced) picture comes off the live coins at once
   site.onAvatarChange((wallet) => void rooms.clearAvatar(wallet));
   site.setBots({
@@ -306,6 +336,7 @@ export async function createApp(
     mint,
     priceKeeper,
     integrity,
+    customRooms,
     listen: () =>
       new Promise((resolve) => {
         server.listen(cfg.port, cfg.host, () => {
@@ -323,6 +354,7 @@ export async function createApp(
       stopRpcLog();
       mint.flush();
       rooms.shutdown();
+      customRooms.flush();
       integrity.close();
       priceKeeper?.stop();
       leaderboards.flush();

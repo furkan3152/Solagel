@@ -11,6 +11,8 @@ import { ProfileError, type ProfileStore } from '../profiles';
 import type { Journal } from '../stake/journal';
 import type { HolderReader } from '../chain/evm-client';
 import { botRoutes, type BotAdmin } from './bots';
+import { customRoomAdminRoutes, customRoomRoutes } from './custom-rooms';
+import type { CustomRoomService } from '../rooms/custom';
 import { importHolders, type HolderWlStore } from './holder-wl';
 import { FaucetInfo, networkInfo } from './network';
 import { clearContract, registerContract, type ContractsStore } from './contracts';
@@ -136,6 +138,8 @@ export class SiteApi {
   private integrity: IntegrityService | null = null;
   /** Bot settings and live counts (`/api/admin/bots`); absent in bare unit tests. */
   private bots: BotAdmin | null = null;
+  /** Custom rooms (`/api/rooms/custom/*`, `/api/admin/custom-rooms`); absent in bare unit tests. */
+  private customRooms: CustomRoomService | null = null;
   /** Told when a wallet's picture is removed or replaced (live rooms drop it from the coin). */
   private avatarChanged: ((wallet: string) => void) | null = null;
   private readonly avatarIp: Limiter;
@@ -164,6 +168,10 @@ export class SiteApi {
 
   setBots(admin: BotAdmin | null): void {
     this.bots = admin;
+  }
+
+  setCustomRooms(svc: CustomRoomService | null): void {
+    this.customRooms = svc;
   }
 
   /** Admin wallets compare case-insensitively (stored checksummed). */
@@ -216,7 +224,9 @@ export class SiteApi {
       path === '/api/auth/login' ||
       path === '/api/auth/me' ||
       path === '/api/profile' ||
-      path === '/api/profile/avatar';
+      path === '/api/profile/avatar' ||
+      path === '/api/rooms/custom' ||
+      path.startsWith('/api/rooms/custom/');
     if (!mine) return false;
     try {
       if (path === '/api/auth/login' || path === '/api/auth/me') await this.authRoutes(req, res, path, ip);
@@ -225,6 +235,7 @@ export class SiteApi {
       else if (path.startsWith('/api/avatar/')) this.serveAvatar(req, res, path.slice('/api/avatar/'.length));
       else if (path.startsWith('/api/nft/')) await this.nftRoutes(req, res, url);
       else if (path.startsWith('/api/site/')) await this.siteRoutes(req, res, url, ip);
+      else if (path.startsWith('/api/rooms/custom')) await this.customRoutes(req, res, path, ip);
       else await this.adminRoutes(req, res, url);
     } catch (err) {
       if (err instanceof SiteFail && err.status === 413) res.setHeader('Connection', 'close');
@@ -387,6 +398,27 @@ export class SiteApi {
     const wallet = this.session(req);
     if (!this.limits.writeWallet.allow(wallet)) throw new SiteFail(429, 'rate_limited', 'Too many requests. Try again in a few minutes.');
     return wallet;
+  }
+
+  private async customRoutes(req: IncomingMessage, res: ServerResponse, path: string, ip: string): Promise<void> {
+    const svc = this.customRooms;
+    if (!svc) throw new SiteFail(404, 'not_found', 'Not found');
+    const rest = path.slice('/api/rooms/custom'.length).replace(/^\//, '');
+    return customRoomRoutes(
+      svc,
+      {
+        send,
+        method: (r, ...m) => this.method(r, ...m),
+        readJson: (r) => readJson(r),
+        wallet: (r) => bearerWallet(this.auth, r),
+        writer: (r) => this.writer(r, ip),
+        isAdmin: (w) => this.isAdmin(w),
+        origin: (r) => this.baseUrl(r),
+      },
+      req,
+      res,
+      rest === '' ? [] : rest.split('/'),
+    );
   }
 
   private async siteRoutes(req: IncomingMessage, res: ServerResponse, url: URL, ip: string): Promise<void> {
@@ -564,6 +596,9 @@ export class SiteApi {
           q,
           wallet,
         );
+      case 'custom-rooms':
+        if (seg.length > 2 || !this.customRooms) break;
+        return customRoomAdminRoutes(this.customRooms, { send, method: (r, ...m) => this.method(r, ...m), readJson: (r) => readJson(r) }, req, res, seg.slice(1), wallet);
       case 'bots':
         if (seg.length !== 1 || !this.bots) break;
         return botRoutes(this.bots, { send, method: (r, ...m) => this.method(r, ...m), readJson: (r) => readJson(r) }, req, res, wallet);

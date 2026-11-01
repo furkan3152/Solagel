@@ -4,8 +4,20 @@ import type { ChainGateway } from '../chain/types';
 import type { ServerConfig } from '../config';
 import type { Conn } from '../net/conn';
 import type { ArenaEntry } from '../stake/ledger';
-import { Room, type BellSettled, type RoomDeps } from './room';
+import type { BotManagerOptions } from '../bots/manager';
+import { Room, type BellSettled, type RoomDeps, type RoomOptions } from './room';
 import { RoundClock } from './round-clock';
+
+/** What the room manager asks of the custom-room service (`CustomRoomService`). */
+export interface CustomRoomHooks {
+  /** Closes rooms whose time ran out (called about once a second from the tick loop). */
+  sweep(now: number): void;
+  /** A human's game ended in a custom room (its own leaderboard). */
+  onGame(room: Room, e: { name: string; score: number; kills: number }): void;
+}
+
+/** A custom room that closed is remembered this long (a late joiner hears `room_closed`, not "no such room"). */
+export const CLOSED_MEMO_MS = 3600_000;
 
 /** How long the gateway remembers an AFK ticket settled at a bell (for `round_ended`). */
 export const BELL_MEMO_MS = 30 * 60_000;
@@ -49,6 +61,10 @@ export class RoomManager {
   private readonly bellMemo = new Map<string, BellSettled & { at: number }>();
   /** The admin's bot settings (`/api/admin/bots`), applied live to every room. */
   readonly botSettings: BotSettingsStore;
+  private custom: CustomRoomHooks | null = null;
+  private lastCustomSweep = 0;
+  /** Codes of custom rooms that closed lately → when. */
+  private readonly closedCodes = new Map<string, number>();
 
   constructor(
     private readonly cfg: ServerConfig,
@@ -65,6 +81,7 @@ export class RoomManager {
       clock: deps.clock ?? new RoundClock(deps.now, deps.round ?? cfg.round),
       onGameOver: (e) => {
         this.onGameOver(e);
+        if (e.room.opts.custom) this.custom?.onGame(e.room, { name: e.player.name, score: Math.floor(e.stats.maxMass), kills: e.stats.playersEaten });
         deps.onGameOver?.(e);
       },
       onBellSettled: (e) => {
@@ -162,12 +179,18 @@ export class RoomManager {
     return best ?? this.createPractice('rookie');
   }
 
-  privateRoom(code: string | null): Room | null {
-    if (code) return this.rooms.get(`priv-${code}`) ?? null;
+  /** A fresh private-room code (5 characters of `CODE_ALPHABET`), not used by a live or lately closed room. */
+  newPrivateCode(): string {
     let c = '';
     do {
       c = Array.from({ length: 5 }, () => CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)]).join('');
-    } while (this.rooms.has(`priv-${c}`));
+    } while (this.rooms.has(`priv-${c}`) || this.closedCodes.has(c));
+    return c;
+  }
+
+  privateRoom(code: string | null): Room | null {
+    if (code) return this.rooms.get(`priv-${code}`) ?? null;
+    const c = this.newPrivateCode();
     const room = new Room(
       {
         id: `priv-${c}`,
@@ -181,6 +204,52 @@ export class RoomManager {
     );
     this.rooms.set(room.id, room);
     return room;
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* Custom rooms (paid private rooms with their own rules)           */
+  /* ---------------------------------------------------------------- */
+
+  /** Plugs in the custom-room service (expiry sweeps, the rooms' own leaderboards). */
+  setCustomRooms(hooks: CustomRoomHooks | null): void {
+    this.custom = hooks;
+  }
+
+  /**
+   * Opens a custom room `priv-<code>` (its bots are its own: the admin's bot settings never touch it).
+   * Throws when the code is taken.
+   */
+  createCustomRoom(code: string, opts: Omit<RoomOptions, 'id' | 'mode' | 'code' | 'bots'> & { bots: BotManagerOptions | null }): Room {
+    const id = `priv-${code}`;
+    if (this.rooms.has(id)) throw new Error(`room ${id} exists`);
+    this.closedCodes.delete(code);
+    const room = new Room({ ...opts, id, mode: 'private', code }, this.deps);
+    this.rooms.set(id, room);
+    return room;
+  }
+
+  /** Closes a custom room: everyone in it goes back to the lobby with `message`. False when it is not open. */
+  closeCustomRoom(code: string, message: string): boolean {
+    const room = this.rooms.get(`priv-${code}`);
+    if (!room?.opts.custom) return false;
+    try {
+      room.evict(message);
+    } finally {
+      this.rooms.delete(room.id);
+      this.closedCodes.set(code, Date.now());
+    }
+    return true;
+  }
+
+  /** The custom room `code` closed within the last hour. */
+  customClosedLately(code: string, now = Date.now()): boolean {
+    const at = this.closedCodes.get(code);
+    return at !== undefined && now - at < CLOSED_MEMO_MS;
+  }
+
+  /** Live custom rooms. */
+  customRooms(): Room[] {
+    return [...this.rooms.values()].filter((r) => !!r.opts.custom);
   }
 
   /* ---------------------------------------------------------------- */
@@ -430,7 +499,11 @@ export class RoomManager {
 
   /** Re-applies the bot settings to every room (an admin change, no restart). */
   applyBotSettings(): void {
-    for (const room of this.rooms.values()) room.setBotOptions(this.botSettings.options(botKindOf(room.opts.mode, room.opts.league)));
+    for (const room of this.rooms.values()) {
+      // custom rooms keep the bots their creator chose
+      if (room.opts.custom) continue;
+      room.setBotOptions(this.botSettings.options(botKindOf(room.opts.mode, room.opts.league)));
+    }
   }
 
   /** Live bot counts per room (for `GET /api/admin/bots`). */
@@ -503,6 +576,14 @@ export class RoomManager {
       }
     }
     const now = Date.now();
+    if (this.custom && now - this.lastCustomSweep >= 1000) {
+      this.lastCustomSweep = now;
+      try {
+        this.custom.sweep(now);
+      } catch (err) {
+        this.deps.log(`custom rooms: sweep failed: ${(err as Error).stack ?? err}`);
+      }
+    }
     if (now - this.lastCleanup > 15_000) {
       this.lastCleanup = now;
       this.cleanup(now);
@@ -514,7 +595,8 @@ export class RoomManager {
     for (const room of [...this.rooms.values()]) {
       const idle = room.conns.size === 0 && room.humans.size === 0;
       if (!idle) continue;
-      if (room.opts.mode === 'private' && now - room.lastActivity > 120_000) this.rooms.delete(room.id);
+      // custom rooms live until their time runs out (the custom-room service closes them)
+      if (room.opts.mode === 'private' && !room.opts.custom && now - room.lastActivity > 120_000) this.rooms.delete(room.id);
       // every league keeps its first room
       if (room.opts.mode === 'practice' && !room.id.endsWith('-1') && now - room.lastActivity > 300_000) this.rooms.delete(room.id);
       // extra arena instances close once empty, with no ticket and no loot left on their floor
@@ -528,6 +610,7 @@ export class RoomManager {
         this.rooms.delete(room.id);
     }
     for (const [ip, at] of this.promotions) if (now - at >= PROMOTION_MS) this.promotions.delete(ip);
+    for (const [code, at] of this.closedCodes) if (now - at >= CLOSED_MEMO_MS) this.closedCodes.delete(code);
   }
 
   shutdown(): void {

@@ -15,6 +15,7 @@ import { MobileControls, useIsTouch } from './MobileControls';
 import { RoundIntro, SunsetSky, ValueFlyers } from './Moments';
 import { RoundChip, RoundCountdown } from './RoundChip';
 import { SpectateBar } from './SpectateBar';
+import { CustomRoomBar } from '../../rooms/CustomRoomBar';
 
 /* ───────────────────────── "You're worth" (top centre) ───────────────────────── */
 
@@ -99,7 +100,7 @@ function PondTag() {
       </svg>
       <span className="g-pond__text">
         <b className="g-pond__name">{roomName(room)}</b>
-        <span className="g-pond__label mono">{t('g.practiceTag')}</span>
+        {room.custom ? <CustomRoomBar room={room} /> : <span className="g-pond__label mono">{t('g.practiceTag')}</span>}
       </span>
       {room.mode === 'private' && room.code && (
         <button

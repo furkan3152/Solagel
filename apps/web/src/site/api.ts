@@ -1,4 +1,6 @@
 import type {
+  CustomRoomSettings,
+  CustomRoomView,
   AdminAvatarEntry,
   IntegrityBan,
   IntegrityFlag,
@@ -42,6 +44,14 @@ import { SERVER } from '../config';
  * The site API (`/api/site/*`, `/api/admin/*`, `/api/auth/*`). Every error is a
  * `SiteApiError` with the server's code, its short English message and the offending field.
  */
+/** `GET /api/admin/custom-rooms`. */
+export interface CustomRoomsAdminView {
+  settings: CustomRoomSettings;
+  /** Where fees go now: the setting, else the owner wallet (first ADMIN_WALLETS entry). */
+  treasury: string | null;
+  rooms: CustomRoomView[];
+}
+
 export class SiteApiError extends Error {
   constructor(
     readonly status: number,
@@ -241,6 +251,12 @@ export function adminApi(token: string) {
     bots: () => request<BotAdminView>('/api/admin/bots', { token }),
     /** `PUT /api/admin/bots`: a partial settings update; answers like the GET. */
     saveBots: (patch: BotSettingsPatch) => request<BotAdminView>('/api/admin/bots', { method: 'PUT', token, body: patch }),
+    /** `GET /api/admin/custom-rooms`: the custom room settings, the effective treasury and the live rooms. */
+    customRooms: () => request<CustomRoomsAdminView>('/api/admin/custom-rooms', { token }),
+    /** `PUT /api/admin/custom-rooms`: a partial settings update; answers like the GET. */
+    saveCustomRooms: (patch: Partial<CustomRoomSettings>) => request<CustomRoomsAdminView>('/api/admin/custom-rooms', { method: 'PUT', token, body: patch }),
+    /** `DELETE /api/admin/custom-rooms/<CODE>`: closes a live room (everyone in it goes back to the lobby). */
+    closeCustomRoom: (code: string) => request<{ closed: CustomRoomView; rooms: CustomRoomView[] }>(`/api/admin/custom-rooms/${id(code)}`, { method: 'DELETE', token }),
     /**
      * `POST /api/admin/mint/import-holders` (`{ fromChainId? }`, default the testnet): adds every
      * testnet emblem holder to the mainnet allowlist, recorded per wallet with the source.

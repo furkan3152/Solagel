@@ -40,6 +40,7 @@ import { QuickPlay } from './QuickPlay';
 import { SplitFlap } from './SplitFlap';
 import { TicketList } from './TicketList';
 import { useLobbyModel, useMedia } from './useLobby';
+import { RoomCard } from '../../rooms/RoomCard';
 
 /**
  * The lobby, a page of the picture book: the masthead (mark, page tabs, wallet), a plate
@@ -218,6 +219,8 @@ export function Lobby() {
           </div>
         )}
       </div>
+      {/* a private room with your own rules, for a small HYPE fee; join one by code */}
+      <RoomCard />
     </section>
   );
 

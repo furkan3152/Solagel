@@ -637,6 +637,13 @@ export class GameEngine {
           return;
         }
         this.ticketRetry = null;
+        if (m.code === 'room_closed') {
+          // a custom room closed (time up, or closed by its creator): back to the lobby with the reason
+          if (useUi.getState().screen !== 'lobby') this.backToLobby();
+          else this.net.send({ t: 'spectate' });
+          toast('info', m.message || t('err.room_closed'), undefined, 8000);
+          return;
+        }
         if (m.code === 'game_closed') {
           // the game is admin-only for now: no toast loop, one friendly "opens soon" sheet
           this.heldTicket.refused();

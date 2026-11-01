@@ -12,6 +12,7 @@ import {
   writeSnapshot,
   xpForGame,
   type ClientInput,
+  type CustomRoomSummary,
   type DeathStats,
   type LbEntry,
   type League,
@@ -111,6 +112,24 @@ export interface RoomOptions {
   bots: BotManagerOptions | null;
   stake?: { arenaId: number; buyIn: number };
   seed?: number;
+  /** The world size and population (default `WORLD_PRESETS[mode]`; custom rooms bring their own). */
+  world?: WorldShape;
+  /** Power-up airdrops (default on). */
+  powerUps?: boolean;
+  /**
+   * Custom rooms (a paid private room with its own rules): shown to clients as `RoomInfo.custom`.
+   * Their games stay off the global leaderboards (the rules differ); the room keeps its own.
+   */
+  custom?: CustomRoomSummary;
+}
+
+/** A world's size and population targets (`WORLD_PRESETS` shape). */
+export interface WorldShape {
+  width: number;
+  height: number;
+  foodTarget: number;
+  virusTarget: number;
+  maxPowerUps: number;
 }
 
 interface ChatLine {
@@ -159,9 +178,9 @@ export class Room {
     readonly opts: RoomOptions,
     private readonly deps: RoomDeps,
   ) {
-    const preset = WORLD_PRESETS[opts.mode];
+    const preset = opts.world ?? WORLD_PRESETS[opts.mode];
     const seed = opts.seed ?? (Math.random() * 2 ** 32) >>> 0;
-    this.world = new World({ ...preset, powerUps: true, coinRain: opts.mode !== 'arena', seed });
+    this.world = new World({ ...preset, powerUps: opts.powerUps ?? true, coinRain: opts.mode !== 'arena', seed });
     this.bots = opts.bots ? new BotManager(this.world, opts.bots, mulberry32(seed ^ 0xb07)) : null;
     this.ledger = opts.mode === 'arena' ? new ArenaLedger() : null;
     this.clock = deps.clock ?? new RoundClock(deps.now, deps.round);
@@ -222,6 +241,7 @@ export class Room {
       loot: this.ledger ? this.lootValue() : undefined,
       code: this.opts.code,
       round: this.round(),
+      ...(this.opts.custom ? { custom: this.opts.custom } : {}),
     };
   }
 
@@ -447,6 +467,11 @@ export class Room {
     this.pushChat(line);
   }
 
+  /** A system line in the room's chat (e.g. "1 minute left"). */
+  announce(text: string): void {
+    this.pushChat({ pid: 0, from: 'Elymum', skin: 1, text, system: true });
+  }
+
   private pushChat(line: ChatLine): void {
     this.chatLog.push(line);
     if (this.chatLog.length > CHAT_HISTORY) this.chatLog.shift();
@@ -589,7 +614,8 @@ export class Room {
     const now = Date.now();
     const score = stats.maxMass;
 
-    this.deps.leaderboards.submit({ name: p.name, score, skin: p.skin, wallet, kills: stats.playersEaten, at: now });
+    // custom rooms play by their own rules: they keep their own board (see `RoomManager`), not the global one
+    if (!this.opts.custom) this.deps.leaderboards.submit({ name: p.name, score, skin: p.skin, wallet, kills: stats.playersEaten, at: now });
 
     const enqueue: SettlementItem[] = [];
     const loss = this.losses.get(p.id);
@@ -915,6 +941,30 @@ export class Room {
           : null;
       conn.send({ t: 'lb', top, me, leaders, players: ranking.length });
     }
+  }
+
+  /**
+   * Closes a free room for good (a custom room's time ran out, or it was closed early): every game
+   * ends (counted like leaving), and every connection, players and spectators alike, hears
+   * `room_closed` and is detached. The caller drops the room from the manager. Never for arenas.
+   */
+  evict(message: string): number {
+    if (this.ledger) throw new Error('arena rooms are never evicted');
+    let n = 0;
+    for (const [pid, c] of [...this.humans]) {
+      const p = this.world.players.get(pid);
+      if (p?.alive) {
+        this.finishHuman(p, c, 'left');
+        n++;
+      }
+    }
+    for (const c of [...this.conns]) {
+      c.player = null;
+      c.spectating = false;
+      c.send({ t: 'error', code: 'room_closed', message });
+      this.detach(c);
+    }
+    return n;
   }
 
   /** Server shutdown: settle every stake player at their current value (an operator exit). */
