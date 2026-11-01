@@ -1267,6 +1267,14 @@
 .kb-toasts > * {
   pointer-events: auto;
 }
+/* in a game the top-right corner belongs to the leaderboard: slips hang under the weight sticker */
+.kb-toasts.kb-toasts--game {
+  top: 168px;
+  right: auto;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(340px, calc(100vw - 32px));
+}
 @media (max-width: 639px) {
   .kb-toasts {
     left: 16px;
@@ -1379,6 +1387,8 @@
   border-bottom: 2px dashed var(--rule);
 }
 .kb-sheet__kicker {
+  /* clear of the tape strip on the sheet's top-left corner */
+  padding-left: 40px;
   font-size: var(--t-label);
   color: var(--teal-ink);
   margin-bottom: 6px;
