@@ -85,9 +85,12 @@
   max-width: 760px;
   min-height: 280px;
 }
-.mt-wrap--loading {
-  grid-template-columns: 1fr;
-  justify-items: center;
+/* the skeleton card (MintShell.tsx): the real layout with stand-in rows while the state loads */
+.mt-skel {
+  padding: 4px 0 8px;
+}
+.mt-skel-text {
+  opacity: 0.45;
 }
 .mt-quiet__h {
   font-size: var(--t-h2);

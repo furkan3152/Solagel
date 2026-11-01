@@ -11,6 +11,7 @@ import { announceProvider } from '../src/wallet/eip6963';
 import { resetWallets, useWallet } from '../src/wallet/store';
 import { ALICE, BOB, chainStatus, detail, fakeProvider } from './evm-helpers';
 import { installDomStubs, mockFetch } from './site-helpers';
+import { fetchMintState, prefetchMintState, readCachedMint, resetMintState, takeEarlyMint, writeCachedMint } from '../src/site/mint/mintState';
 
 const NFT = '0x0000000000000000000000000000000000000f7e';
 const ROOT = `0x${'ab'.repeat(32)}`;
@@ -144,7 +145,7 @@ describe('/mint page', { timeout: 30_000 }, () => {
   it('Closed: the teaser and a way to the WL', async () => {
     ({ restore } = mockFetch({ 'GET /api/site/mint': mintState(contract({ phase: 'closed' })) }));
     render(<Mint pollMs={0} />);
-    expect((await screen.findByTestId('mt-phase')).textContent).toBe('Closed');
+    await waitFor(() => expect(screen.getByTestId('mt-phase').textContent).toBe('Closed'));
     expect(screen.getByRole('heading', { name: 'Sealed. For now.' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Join the WL' }).getAttribute('href')).toBe('/wl');
     expect(screen.getByTestId('mt-price').textContent).toMatch(/0\.0300\s*HYPE.*\$1\.00/);
@@ -205,7 +206,7 @@ describe('/mint page', { timeout: 30_000 }, () => {
   it('Sold out, with Play for holders', async () => {
     ({ restore } = mockFetch({ 'GET /api/site/mint': mintState(contract({ totalSupply: 5000 }), { soldOut: true }) }));
     render(<Mint pollMs={0} />);
-    expect((await screen.findByTestId('mt-phase')).textContent).toBe('Sold out');
+    await waitFor(() => expect(screen.getByTestId('mt-phase').textContent).toBe('Sold out'));
     expect(screen.getByRole('link', { name: 'Play' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /^Mint/ })).toBeNull();
   });
@@ -272,9 +273,8 @@ describe('/mint on the testnet (1 HYPE, public, 3 per wallet)', { timeout: 30_00
   it('says the testnet price, not "one dollar"', async () => {
     ({ restore } = mockFetch({ 'GET /api/site/mint': testnetState() }));
     render(<Mint pollMs={0} />);
-    const h = await screen.findByRole('heading', { level: 1 });
-    await waitFor(() => expect(h.textContent).toMatch(/1 HYPE on testnet/));
-    expect(h.textContent).not.toMatch(/dollar/i);
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1 }).textContent).toMatch(/1 HYPE on testnet/));
+    expect(screen.getByRole('heading', { level: 1 }).textContent).not.toMatch(/dollar/i);
     expect(document.querySelector('.mt-lede')!.textContent).toMatch(/Testnet mint: 1 HYPE/);
     expect(document.querySelector('.mt-lede')!.textContent).not.toMatch(/pinned to a dollar/);
     expect(screen.getByTestId('mt-mainnet-note').textContent).toMatch(/mainnet mint will be much cheaper/);
@@ -450,5 +450,76 @@ describe('WalletSignIn with a session but no connected wallet (header, WL)', () 
     } finally {
       stop();
     }
+  });
+});
+
+describe('/mint loads fast: skeleton, kept state, early start, timeouts', { timeout: 30_000 }, () => {
+  afterEach(() => resetMintState());
+
+  it('shows the skeleton card at once while nothing is known', () => {
+    let release: (v: unknown) => void = () => {};
+    ({ restore } = mockFetch({ 'GET /api/site/mint': () => new Promise((r) => (release = r)) }));
+    render(<Mint pollMs={0} />);
+    expect(screen.getByTestId('mt-phase').textContent).toBe('Loading');
+    expect(document.querySelector('.mt-page[data-loading]')).toBeTruthy();
+    expect(document.querySelector('.mt-page[data-view]')).toBeNull();
+    release(mintState(contract({ phase: 'closed' })));
+  });
+
+  it('paints the kept state at once (marked stale), then the fresh answer replaces and is kept', async () => {
+    writeCachedMint(mintState(contract({ phase: 'closed' })), Date.now() - 60_000);
+    ({ restore } = mockFetch({ 'GET /api/site/mint': mintState(contract({ phase: 'public' })) }));
+    render(<Mint pollMs={0} />);
+    // first render, before any answer: the real card from the kept state
+    expect(screen.getByTestId('mt-phase').textContent).toBe('Closed');
+    expect(document.querySelector('.mt-page[data-stale]')).toBeTruthy();
+    await waitFor(() => expect(screen.getByTestId('mt-phase').textContent).toBe('Public'));
+    expect(document.querySelector('.mt-page[data-stale]')).toBeNull();
+    expect(readCachedMint()?.state.contract?.phase).toBe('public');
+  });
+
+  it('ignores a kept state that is unreadable or too old', () => {
+    localStorage.setItem('elymum.mint-state.v1', '{not json');
+    expect(readCachedMint()).toBeNull();
+    writeCachedMint(mintState(contract()), Date.now() - 10 * 24 * 3600_000);
+    expect(readCachedMint()).toBeNull();
+  });
+
+  it('a kept state survives a server that does not answer (no error screen)', async () => {
+    writeCachedMint(mintState(contract({ phase: 'closed' })));
+    ({ restore } = mockFetch({ 'GET /api/site/mint': () => new Response('{}', { status: 503 }) }));
+    render(<Mint pollMs={0} />);
+    expect(screen.getByTestId('mt-phase').textContent).toBe('Closed');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByText('The mint is not answering.')).toBeNull();
+  });
+
+  it('times out a hung request and retries', async () => {
+    let n = 0;
+    ({ restore } = mockFetch({
+      'GET /api/site/mint': () => {
+        n++;
+        // the first try hangs (the server waiting on a slow RPC); the second answers
+        return n === 1 ? new Promise(() => {}) : mintState(contract({ phase: 'public' }));
+      },
+    }));
+    const s = await fetchMintState({ timeoutMs: 30, backoff: () => 0 });
+    expect(s.contract?.phase).toBe('public');
+    expect(n).toBe(2);
+  });
+
+  it('gives up after the retries with a plain message', async () => {
+    ({ restore } = mockFetch({ 'GET /api/site/mint': () => new Promise(() => {}) }));
+    await expect(fetchMintState({ timeoutMs: 20, retries: 1, backoff: () => 0 })).rejects.toThrow(/taking too long/);
+  });
+
+  it('the page takes the request the site entry started early', async () => {
+    const fetched = mockFetch({ 'GET /api/site/mint': mintState(contract({ phase: 'closed' })) });
+    restore = fetched.restore;
+    prefetchMintState();
+    render(<Mint pollMs={0} />);
+    await waitFor(() => expect(screen.getByTestId('mt-phase').textContent).toBe('Closed'));
+    expect(fetched.calls.filter((c) => c.path === '/api/site/mint')).toHaveLength(1);
+    expect(takeEarlyMint()).toBeNull();
   });
 });

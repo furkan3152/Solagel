@@ -8,7 +8,7 @@ import type { Mixer } from './mixer';
  * around 0.3 before the sfx bus (0.7) and master (0.6).
  */
 
-export type StampKind = 'plain' | 'paid' | 'valid' | 'eaten';
+export type StampKind = 'plain' | 'paid' | 'valid';
 export type PinKind = 'info' | 'success' | 'error' | 'warn';
 
 /** Allows at most one call per `gapMs` (hover ticks: 125 ms, so 8 per second). */
@@ -168,9 +168,9 @@ export class Sfx {
     this.noise(0.02, 5000, 3800, { gain: 0.03, delay: 0.16 });
   }
 
-  /** A rubber stamp landing. PAID rings like a till, VALID double-taps, EATEN is darker. */
+  /** A rubber stamp landing. PAID rings like a till, VALID double-taps. */
   stamp(kind: StampKind = 'plain'): void {
-    const low = kind === 'eaten' ? 90 : 115;
+    const low = 115;
     this.tone(low, 0.16, { type: 'sine', slideTo: 55, gain: 0.2 });
     this.noise(0.08, 900, 280, { gain: 0.13 });
     if (kind === 'valid') {
@@ -180,8 +180,6 @@ export class Sfx {
       this.tone(1568, 0.5, { type: 'sine', gain: 0.045, delay: 0.06 });
       this.tone(2093, 0.6, { type: 'sine', gain: 0.03, delay: 0.1 });
       this.mixer.duck(0.8);
-    } else if (kind === 'eaten') {
-      this.noise(0.12, 500, 200, { type: 'lowpass', q: 0.7, gain: 0.08, delay: 0.02 });
     }
   }
 
@@ -224,12 +222,6 @@ export class Sfx {
     const f = kind === 'error' ? 330 : kind === 'warn' ? 440 : kind === 'success' ? 880 : 660;
     this.tone(f, 0.12, { type: 'sine', gain: 0.035, delay: 0.02, slideTo: kind === 'error' ? f * 0.85 : undefined });
     if (kind === 'success') this.tone(f * 1.5, 0.14, { type: 'sine', gain: 0.025, delay: 0.08 });
-  }
-
-  /** My coin lands on the paper (join / respawn). */
-  drop(): void {
-    this.tone(140, 0.12, { type: 'sine', slideTo: 80, gain: 0.12 });
-    this.tone(1320, 0.18, { type: 'triangle', gain: 0.025, delay: 0.015 });
   }
 
   /** A payout: a cascade of coins settling into a pile. */
@@ -283,11 +275,6 @@ export class Sfx {
 
   powerup(): void {
     [660, 880, 1100, 1320].forEach((f, i) => this.tone(f, 0.12, { type: 'triangle', gain: 0.045, delay: i * 0.06 }));
-  }
-
-  death(): void {
-    [523, 440, 349, 262].forEach((f, i) => this.tone(f, 0.24, { type: 'triangle', gain: 0.06, delay: i * 0.13 }));
-    this.mixer.duck(1.4);
   }
 
   cashout(): void {

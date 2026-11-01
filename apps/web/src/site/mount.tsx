@@ -2,7 +2,8 @@ import { lazy, StrictMode, Suspense, useEffect, useState, type ComponentType } f
 import { createRoot } from 'react-dom/client';
 import { Landing } from './landing/Landing';
 import { NotFound } from './NotFound';
-import { isLazyPage, loadPage, loadedPage } from './pages';
+import { prefetchMintState } from './mint/mintState';
+import { isLazyPage, loadPage, loadedPage, warmPage } from './pages';
 import { installChunkRecovery, PageBoundary } from './recover';
 import { isSitePath, usePath } from './router';
 import { SiteLoader } from './SiteLoader';
@@ -22,6 +23,32 @@ function lazyPage(path: string): ComponentType {
   return c;
 }
 
+/**
+ * `/mint`'s stand-in while its heavy chunk (wallets, viem) downloads: a small chunk of its own with
+ * the site frame and the skeleton card, so the page has its shape at once.
+ */
+const loadMintShell = () => import('./mint/MintShell').then((m) => ({ default: m.MintPageSkeleton }));
+const MintShell = lazy(loadMintShell);
+const SHELLS: Record<string, ComponentType> = { '/mint': MintShell };
+
+/** After the landing has settled (idle), fetch the mint page's code so the click finds it ready. */
+function warmFromLanding(): () => void {
+  const w = window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number; cancelIdleCallback?: (id: number) => void };
+  let idle: number | undefined;
+  const timer = window.setTimeout(() => {
+    const go = () => {
+      void loadMintShell();
+      void warmPage('/mint');
+    };
+    if (w.requestIdleCallback) idle = w.requestIdleCallback(go, { timeout: 4000 });
+    else go();
+  }, 1500);
+  return () => {
+    clearTimeout(timer);
+    if (idle !== undefined) w.cancelIdleCallback?.(idle);
+  };
+}
+
 const TITLES: Record<string, string> = {
   '/': 'Elymum · Eat. Grow. Last the round.',
   '/wl': 'Join the WL · Elymum',
@@ -37,6 +64,7 @@ export function SiteApp() {
     document.title = TITLES[path] ?? (isSitePath(path) ? TITLES['/'] : 'Off the map · Elymum');
   }, [path]);
   const [attempt, setAttempt] = useState(0);
+  useEffect(() => (path === '/' ? warmFromLanding() : undefined), [path]);
   if (path === '/')
     return (
       <PageBoundary resetKey={path}>
@@ -45,6 +73,7 @@ export function SiteApp() {
     );
   if (!isLazyPage(path)) return <NotFound path={path} />;
   const Page = lazyPage(path);
+  const Shell = SHELLS[path];
   return (
     <PageBoundary
       resetKey={`${path}#${attempt}`}
@@ -55,7 +84,13 @@ export function SiteApp() {
       }}
     >
       <Suspense fallback={<SiteLoader />}>
-        <Page />
+        {Shell ? (
+          <Suspense fallback={<Shell />}>
+            <Page />
+          </Suspense>
+        ) : (
+          <Page />
+        )}
       </Suspense>
     </PageBoundary>
   );
@@ -65,6 +100,12 @@ export function SiteApp() {
 export function mount(root: HTMLElement): void {
   document.documentElement.dataset.theme = 'light';
   installChunkRecovery();
+  if ((location.pathname.replace(/\/+$/, '') || '/') === '/mint') {
+    // the mint state, the page's code and its skeleton all start now, side by side
+    prefetchMintState();
+    void loadMintShell();
+    void warmPage('/mint');
+  }
   createRoot(root).render(
     <StrictMode>
       <SiteApp />

@@ -1,8 +1,10 @@
 import { EMOTES, type DeathStats, type RoomInfo } from '@elymum/shared';
-import { act, render, screen } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { chainStatus } from './evm-helpers';
 import { Kb } from '../src/design';
+import { setEngine } from '../src/game/instance';
+import type { GameEngine } from '../src/game/engine';
 import { useUi } from '../src/store';
 import { setReducedMotion } from '../src/test/media';
 import { DeathSheet, receiptNumbers, settlementFor, stickerSvg } from '../src/ui/game';
@@ -69,7 +71,7 @@ describe('emote stickers', () => {
 });
 
 describe('death sheet', () => {
-  it('says Eaten., names the bot line and shows the value lost', async () => {
+  it('says Game over, names the bot line, shows the value lost and one Start over button', async () => {
     useUi.setState({
       screen: 'dead',
       room: ARENA,
@@ -82,11 +84,12 @@ describe('death sheet', () => {
     );
     // the sheet waits out the death slow motion
     expect(screen.queryByRole('dialog')).toBeNull();
-    expect(await screen.findByRole('dialog', { name: 'Eaten.' })).toBeTruthy();
+    expect(await screen.findByRole('dialog', { name: 'Game over' })).toBeTruthy();
     expect(screen.getByText('Bot · your tokens spilled across the map')).toBeTruthy();
     expect(screen.getByText('−1,450')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Buy back in/ })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Practice/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Start over/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Practice|Buy back in/ })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Watch who is still eating' })).toBeTruthy();
   });
 
   it('names the player who ate us (reduced motion: no slow-motion wait)', () => {
@@ -98,5 +101,26 @@ describe('death sheet', () => {
       </Kb>,
     );
     expect(screen.getByText('Nakamoto ate you')).toBeTruthy();
+  });
+
+  it('practice: Start over rejoins the same practice room at once', () => {
+    setReducedMotion(true);
+    const play = vi.fn();
+    setEngine({ play, backToLobby: vi.fn(), watch: vi.fn() } as unknown as GameEngine);
+    const PRACTICE: RoomInfo = { id: 'practice-rookie-1', mode: 'practice', name: 'Practice', width: 4000, height: 4000, players: 2, bots: 18, maxPlayers: 40 };
+    useUi.setState({ screen: 'dead', room: PRACTICE, death: { stats: STATS, killer: 'Nakamoto', killerSkin: 1 } });
+    try {
+      render(
+        <Kb>
+          <DeathSheet />
+        </Kb>,
+      );
+      expect(screen.getByRole('dialog', { name: 'Game over' })).toBeTruthy();
+      expect(screen.queryByText(/New ticket/)).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Start over' }));
+      expect(play).toHaveBeenCalledWith('practice');
+    } finally {
+      setEngine(null);
+    }
   });
 });

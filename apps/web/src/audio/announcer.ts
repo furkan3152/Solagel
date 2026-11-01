@@ -11,14 +11,11 @@ import type { Mixer } from './mixer';
  */
 
 export type LineId =
-  | 'joined'
-  | 'punched'
   | 'firstBite'
   | 'double'
   | 'triple'
   | 'whale'
   | 'paid'
-  | 'eaten'
   | 'oneMinute'
   | 'tenSeconds'
   | 'roundOver';
@@ -32,14 +29,11 @@ interface Line {
 export const GLOBAL_COOLDOWN_MS = 4000;
 
 export const LINES: Record<LineId, Line> = {
-  joined: { key: 'an.joined', cooldown: 20_000 },
-  punched: { key: 'an.punched', cooldown: 15_000 },
   firstBite: { key: 'an.firstBite', cooldown: 30_000 },
   double: { key: 'an.double', cooldown: 12_000 },
   triple: { key: 'an.triple', cooldown: 12_000 },
   whale: { key: 'an.whale', cooldown: 60_000 },
   paid: { key: 'an.paid', cooldown: 10_000 },
-  eaten: { key: 'an.eaten', cooldown: 10_000 },
   // the round clock: at most once a round each (rounds are 5 minutes; demos run shorter ones)
   oneMinute: { key: 'an.oneMinute', cooldown: 20_000 },
   tenSeconds: { key: 'an.tenSeconds', cooldown: 20_000 },

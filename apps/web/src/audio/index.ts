@@ -7,7 +7,7 @@ import { Sfx } from './sfx';
 /**
  * The game's sound: one mixer, the effects kit, the music generator and the
  * announcer. `startAudio()` (once, from the app root) connects them to the
- * store: settings → levels, screens → music mood and whooshes, lobby pages →
+ * store: settings → levels, screens → music mood and the whoosh back to the lobby, lobby pages →
  * page turns, toasts → pins, sheets → paper lifts, and every button, link,
  * tab, ticket and switch → a small paper sound (hover ticks rate-limited).
  */
@@ -109,8 +109,9 @@ export function startAudio(): () => void {
   );
   // sheets lift off the table and settle back
   on(SHEET_EVENT as keyof WindowEventMap, (e) => {
-    const open = (e as CustomEvent<{ open: boolean }>).detail?.open === true;
-    sound.sheet(open);
+    const detail = (e as CustomEvent<{ open: boolean; quiet?: boolean }>).detail;
+    if (detail?.quiet) return;
+    sound.sheet(detail?.open === true);
   });
 
   offs.push(
@@ -118,9 +119,8 @@ export function startAudio(): () => void {
       if (s.settings !== prev.settings) mixer.apply(prefsFromSettings(s.settings));
       if (s.screen !== prev.screen) {
         music.setMood(moodFor(s.screen));
-        const fromPaper = prev.screen === 'lobby';
-        if (fromPaper && s.screen !== 'lobby') sound.whoosh('in');
-        else if (s.screen === 'lobby') sound.whoosh('out');
+        // into a room is silent (the start whoosh was turned off); back to the lobby still whooshes out
+        if (s.screen === 'lobby' && prev.screen !== 'lobby') sound.whoosh('out');
       }
       if (s.page !== prev.page && s.screen === 'lobby') {
         const order = ['play', 'ranks', 'profile', 'docs'];

@@ -1,5 +1,5 @@
 import { RULES, roundAt, type DeathStats, type RoomInfo, type RoundInfo } from '@elymum/shared';
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Kb } from '../src/design';
 import { ServerClock, serverClock } from '../src/game/clock';
@@ -291,18 +291,27 @@ describe('death sheet in an arena', () => {
     );
   };
 
-  it('"Buy back in" with the fee while joins are open', () => {
+  it('"Start over" with the new ticket fee while joins are open', () => {
     clockAt(START + 30_000);
     eaten();
-    expect(screen.getByRole('button', { name: /^Buy back in · 1K \$ELYMUM/ })).toBeTruthy();
-    expect(screen.queryByText(/Next round in/)).toBeNull();
+    const cta = screen.getByRole('button', { name: /^Start over/ });
+    expect(cta.textContent).toContain('New ticket · 1K $ELYMUM');
+    expect(screen.queryByText(/next round in/)).toBeNull();
   });
 
-  it('"Next round in m:ss" in the final minute', () => {
+  it('"Start over" says when the next round opens in the final minute', () => {
     clockAt(R.endsAt - 42_000);
     eaten();
-    expect(screen.getByRole('button', { name: /^Next round in 0:42/ })).toBeTruthy();
-    expect(screen.queryByText(/Buy back in/)).toBeNull();
+    const cta = screen.getByRole('button', { name: /^Start over/ });
+    expect(cta.textContent).toContain('New ticket · next round in 0:42');
+    expect(screen.queryByText(/1K \$ELYMUM/)).toBeNull();
+  });
+
+  it('"Start over" opens this arena\'s ticket flow from the lobby', () => {
+    clockAt(START + 30_000);
+    eaten();
+    fireEvent.click(screen.getByRole('button', { name: /^Start over/ }));
+    expect(useUi.getState().lobbyIntent).toMatchObject({ ticket: 'arena:1', open: true });
   });
 });
 

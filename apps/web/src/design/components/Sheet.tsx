@@ -29,6 +29,8 @@ export interface SheetProps {
    * with reduced motion.
    */
   enterFrom?: TargetAndTransition | null;
+  /** No paper-lift sound when it opens or closes (the game-over sheet stays silent). */
+  quiet?: boolean;
 }
 
 const FOCUSABLE =
@@ -63,6 +65,7 @@ export function Sheet({
   footer,
   theme: themeProp,
   enterFrom = null,
+  quiet = false,
 }: SheetProps) {
   const ctxTheme = useKbTheme();
   const theme = themeProp ?? ctxTheme;
@@ -73,11 +76,13 @@ export function Sheet({
   const titleId = useId();
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const quietRef = useRef(quiet);
+  quietRef.current = quiet;
 
   useEffect(() => {
     if (!open) return;
     // the app's sound listens for this (the design system stays free of audio code)
-    window.dispatchEvent(new CustomEvent('kb:sheet', { detail: { open: true } }));
+    window.dispatchEvent(new CustomEvent('kb:sheet', { detail: { open: true, quiet: quietRef.current } }));
     const opener = document.activeElement as HTMLElement | null;
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -117,7 +122,7 @@ export function Sheet({
       document.removeEventListener('keydown', onKey, true);
       document.body.style.overflow = prevOverflow;
       opener?.focus?.();
-      window.dispatchEvent(new CustomEvent('kb:sheet', { detail: { open: false } }));
+      window.dispatchEvent(new CustomEvent('kb:sheet', { detail: { open: false, quiet: quietRef.current } }));
     };
   }, [open]);
 

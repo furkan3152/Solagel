@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { Address, Hash } from 'viem';
 import { Button, CoinCharacter, Icon, Sheet, Stamp, StampSpinner, markTransitionOrigin, useReducedMotion } from '../design';
 import { engine } from '../game/instance';
-import { announce, sound } from '../audio';
+import { sound } from '../audio';
 import { useT } from '../i18n';
 import { toast, updateSettings, useUi } from '../store';
 import { ticketName, useTokenText } from '../ui/lobby/useLobby';
@@ -138,7 +138,6 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
     setPhase('stamped');
     setStep(null);
     if (!reduced) later(290, () => sound.stamp('valid'));
-    later(reduced ? 300 : 700, () => announce('punched'));
     const href = isFakeHash(h) ? null : explorerTx(h);
     toast('success', t('tf.ticketOk'), href ? { href, label: t('tf.viewTx') } : undefined, 6000);
     updateSettings({ lastArena: arenaId });
