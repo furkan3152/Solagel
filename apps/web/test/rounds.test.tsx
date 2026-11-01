@@ -104,7 +104,7 @@ describe('round sound cues', () => {
   it('one minute, ten seconds, a tick each of the last ten seconds, then the bell once', () => {
     const { c, calls } = cues();
     for (let t = R.endsAt - 62_000; t <= R.endsAt + 500; t += 250) c.update(at(t));
-    expect(calls).toEqual(['oneMinute', 'tenSeconds', 'tick 10', 'tick 9', 'tick 8', 'tick 7', 'tick 6', 'tick 5', 'tick 4', 'tick 3', 'tick 2', 'tick 1', `bell ${N}`, 'roundOver']);
+    expect(calls).toEqual(['oneMinute', 'tenSeconds', 'tick 10', 'tick 9', 'tick 8', 'tick 7', 'tick 6', 'tick 5', 'tick 4', 'countdown', 'tick 3', 'tick 2', 'tick 1', `bell ${N}`, 'roundOver']);
     // the server's roundOver for the same round does not ring it again
     c.ring(N);
     expect(calls.filter((x) => x.startsWith('bell'))).toHaveLength(1);

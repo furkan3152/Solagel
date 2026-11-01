@@ -7,7 +7,7 @@ import { roundStartLabel } from '../../game/round';
 import { useChainData } from '../../wallet/chain';
 import { isFakeHash } from '../../wallet/devFake';
 import { feeBps } from '../../wallet/ticket';
-import { sound } from '../../audio';
+import { announce, sound } from '../../audio';
 import { BotTag } from './BotTag';
 import { useT } from '../../i18n';
 import { explorerTx } from '../../wallet/links';
@@ -98,7 +98,10 @@ export function RoundOverSheet() {
 
   const settled = settlementFor(settledRaw, ticket?.session);
   useEffect(() => {
-    if (settled && printed) sound.stamp('paid');
+    if (!settled || !printed) return;
+    sound.stamp('paid');
+    // the till paid out: the announcer calls it
+    if ((res?.payout ?? 0) > 0) announce('paid');
   }, [settled, printed]);
 
   const toLobby = () => engine()?.backToLobby();

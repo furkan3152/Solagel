@@ -2,10 +2,9 @@
  * The mixer: one AudioContext, three buses (music, sfx, voice) into a master
  * gain and a soft limiter that keeps every peak under −12 dBFS.
  *
- *   music layers → saturation → [music bus] → [duck] ┐
- *   sfx voices                → [sfx bus]            ├→ [master] → [limiter] → speakers
- *   (speech is OS audio; its   [voice bus]           ┘                       └→ dev tap
- *    volume follows this bus)
+ *   music loops   → [music bus] → [duck] ┐
+ *   sfx voices    → [sfx bus]            ├→ [master] → [limiter] → speakers
+ *   announcer     → [voice bus]          ┘                       └→ dev tap
  *
  * The context is created on the first user gesture (`unlock`), so nothing can
  * sound before the player has touched the page. Levels come from the persisted
