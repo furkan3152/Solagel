@@ -28,6 +28,7 @@ import {
   getTokenBalance,
   planJoin,
   sendCall,
+  setArenaHoldersOnlyCall,
   setTokenCall,
   testTokenSetMinterCall,
   type ContractCall,
@@ -43,7 +44,9 @@ import { Journal, sweepKey, type SettlementItem } from '../src/stake/journal';
 import { BotSettingsStore, defaultBotSettings } from '../src/bots/settings';
 import { TestnetBotSource } from '../src/bots/testnet-source';
 import type { Player } from '../src/game/entities';
+import type { EvmClient } from '../src/chain/evm-client';
 import { Room } from '../src/rooms/room';
+import { RoundClock } from '../src/rooms/round-clock';
 import { fakeConn, roomDeps } from './helpers';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -374,4 +377,124 @@ describe('testnet staked bots on a hardhat node', () => {
     expect((await getArena(client, arena, 1)).vault).toBe(0n);
     await chain.stop();
   }, 120_000);
+  it('three short rounds in a row: bots re-buy every round on the same wallets, survive an RPC failure, skip the holders-only arena', async (ctx) => {
+    if (!up) return ctx.skip();
+    const token = await deployedAddress(client, await deployTestToken(wallets.get(admin.address)!, { owner: admin.address }));
+    const arena = await deployedAddress(
+      client,
+      await deployArena(wallets.get(admin.address)!, { admin: admin.address, serverAuthority: server.address, feeWallet: feeWallet.address }),
+    );
+    await send(admin.address, setTokenCall(arena, token));
+    for (const call of createDefaultArenaCalls(arena, 18)) await send(admin.address, call);
+    await send(admin.address, setArenaHoldersOnlyCall(arena, 4, true));
+    await send(admin.address, testTokenSetMinterCall(token, server.address, true));
+    const journal = new Journal(null);
+    const logs: string[] = [];
+    const cfg = loadConfig({ EVM_RPC_URL: url, SERVER_PRIVATE_KEY: KEYS[1], DATA_DIR: mkdtempSync(join(tmpdir(), 'elymum-bots-rounds-')) } as unknown as NodeJS.ProcessEnv);
+    const chain = new EvmChain(cfg, journal, (m) => logs.push(m), { contracts: () => ({ arena, nft: null }), loops: false, receiptTimeoutMs: 20_000, stateChainId: 31337 });
+    await chain.start();
+    expect(chain.stakeEnabled).toBe(true);
+
+    const ROUND = { roundMs: 120_000, closeMs: 10_000 };
+    const clock = { now: roundAt(1_791_000_000_000, ROUND.roundMs, ROUND.closeMs).startsAt + 1_000 };
+    const roundClock = new RoundClock(() => clock.now, ROUND);
+    let rooms: Room[] = [];
+    // an RPC that fails on demand (the session read of the next purchase)
+    let failSessions = 0;
+    const flaky = (c: EvmClient | null): EvmClient | null =>
+      c &&
+      new Proxy(c, {
+        get(target, prop) {
+          const v = Reflect.get(target, prop, target);
+          if (prop === 'session')
+            return async (...a: Parameters<EvmClient['session']>) => {
+              if (failSessions > 0) {
+                failSessions--;
+                throw new Error('RPC Request failed.');
+              }
+              return target.session(...a);
+            };
+          return typeof v === 'function' ? v.bind(target) : v;
+        },
+      });
+    const settings = new BotSettingsStore(null, defaultBotSettings(cfg.bots));
+    settings.update({ testnet: { stakedPerArena: 2, bankroll: '5000', gasHype: '0.05' } });
+    const source = new TestnetBotSource({
+      chain: () => {
+        const st = chain.status();
+        return { chainId: st.chainId, stakeEnabled: chain.stakeEnabled, arena: st.arenaAddress, token: st.token };
+      },
+      client: () => flaky(chain.evm()),
+      serverKey: KEYS[1],
+      settings,
+      journal,
+      stateDir: mkdtempSync(join(tmpdir(), 'elymum-bots-rounds-state-')),
+      log: (m) => logs.push(m),
+      receiptTimeoutMs: 20_000,
+      now: () => clock.now,
+      joinsOpen: () => clock.now < roundClock.window().joinsCloseAt,
+      liveSessions: () => new Set(rooms.flatMap((r) => r.liveSessions())),
+    });
+    const deps = { ...roomDeps(chain, journal, () => clock.now), round: ROUND, clock: roundClock, stakedBots: source, stakedAskMs: 0 };
+    const make = (id: number, buyIn: number) =>
+      new Room({ id: `arena-${id}-1`, mode: 'arena', name: `Arena ${id}`, instance: 1, maxPlayers: 50, bots: { target: 4, min: 0, max: 4 }, stake: { arenaId: id, buyIn }, seed: 20 + id }, deps);
+    const r1 = make(1, K);
+    const r4 = make(4, 250 * K);
+    rooms = [r1, r4];
+    // nobody watching for longer than the sleep delay (the production case): arenas with bots keep playing
+    for (const r of rooms) r.lastActivity = 0;
+    expect(r1.sleeping || r4.sleeping).toBe(false);
+    const tick = () => {
+      for (const r of rooms) r.tick(TICK_MS);
+    };
+    const until = async (cond: () => boolean) => {
+      const deadline = Date.now() + 40_000;
+      while (!cond() && Date.now() < deadline) {
+        clock.now += 100;
+        tick();
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      expect(cond()).toBe(true);
+    };
+    const bought = () => logs.filter((l) => /bought a ticket in arena #\d/.test(l));
+
+    const walletsSeen = new Set<string>();
+    for (let round = 1; round <= 3; round++) {
+      const w = roundClock.window();
+      const before = bought().length;
+      if (round === 2) failSessions = 1;
+      await until(() => r1.bots!.stakedCount === 2);
+      expect(bought().length - before).toBe(2);
+      const bots = [...r1.bots!.bots.values()].filter((b) => b.staked).map((b) => b.staked!.stake.player as Address);
+      for (const b of bots) {
+        walletsSeen.add(b);
+        expect((await getSession(client, arena, 1, b)).id).toBeGreaterThan(0n);
+      }
+      // the holders-only arena: zero-value bots only, never a ticket
+      expect(r4.bots!.stakedCount).toBe(0);
+      expect(r4.bots!.bots.size).toBeGreaterThan(0);
+      expect(r1.bots!.bots.size).toBeLessThanOrEqual(4);
+
+      // the bell: both bots settled at their value, the chain worker pays them in one pass
+      const settledBefore = journal.settlements().length;
+      clock.now = w.endsAt + 100;
+      tick();
+      expect(r1.round()!.n).toBe(w.n + 1);
+      expect(journal.settlements().length - settledBefore).toBe(2);
+      expect(journal.settlements().every((i) => i.reason === 'round')).toBe(true);
+      await chain.processPending();
+      expect(journal.pending.filter((p) => p.kind === 'settle')).toHaveLength(0);
+      for (const b of bots) expect((await getSession(client, arena, 1, b)).id).toBe(0n);
+      expect(r1.bots!.bots.size).toBeGreaterThan(0); // zero-value bots keep playing into the next round
+    }
+    // 3 rounds × 2 tickets on the same 2 wallets (settled, reused: no churn), the RPC failure retried
+    expect(bought()).toHaveLength(6);
+    expect(walletsSeen.size).toBe(2);
+    expect(source.addresses()).toHaveLength(2);
+    expect(logs.join('\n')).toMatch(/ticket for arena #1 failed \(RPC Request failed\.\); retrying/);
+    expect(logs.filter((l) => /arena #4/.test(l))).toEqual([expect.stringMatching(/holders-only and no bot wallet holds an emblem/)]);
+    expect((await getArena(client, arena, 4)).openSessions).toBe(0);
+    expect((await getArena(client, arena, 1)).openSessions).toBe(0);
+    await chain.stop();
+  }, 180_000);
 });

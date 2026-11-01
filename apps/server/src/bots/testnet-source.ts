@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { approveCall, formatHypeAmount, joinCall, refundCall, testTokenMintCall, toLedger, type ArenaInfo } from '@elymum/sdk';
+import { approveCall, formatHypeAmount, joinCall, refundCall, testTokenMintCall, toLedger, type ArenaInfo, type SessionInfo } from '@elymum/sdk';
 import { concat, getAddress, keccak256, numberToHex, parseEther, parseUnits, toHex, type Address, type Hash, type Hex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import type { EvmClient } from '../chain/evm-client';
@@ -15,6 +15,8 @@ import type { StakedBotSource, StakedBotTicket } from './staked';
 export const BOT_KEY_TAG = 'elymum-bot';
 /** Most bot wallets one chain keeps (the pool grows only when every wallet is busy). */
 export const MAX_BOT_WALLETS = 256;
+/** Wallets kept on top of what the settings need (`walletBudget`). */
+export const SPARE_BOT_WALLETS = 4;
 /** Ticket purchases running at once (each is a few transactions). */
 const MAX_CONCURRENT = 3;
 const ARENA_TTL_MS = 30_000;
@@ -22,6 +24,19 @@ const CHECK_TTL_MS = 60_000;
 const HOLDER_TTL_MS = 5 * 60_000;
 const WARN_EVERY_MS = 10 * 60_000;
 const RECEIPT_TIMEOUT_MS = 60_000;
+/** Retry backoff after a failed purchase: 2 s, 4 s, 8 s … at most 60 s (never given up). */
+export const BACKOFF_BASE_MS = 2_000;
+export const BACKOFF_MAX_MS = 60_000;
+/** Every wallet busy: ask again after this long (no log spam, no RPC storm). */
+const NO_WALLET_WAIT_MS = 5_000;
+/** A settlement younger than this is about to free its wallet: wait for it instead of growing the pool. */
+const SETTLE_SOON_MS = 60_000;
+/** A ticket handed to a room that the room never seated is dropped from `playing` after this long. */
+const HANDOFF_GRACE_MS = 30_000;
+/** In-use flags are reconciled (rooms, journal) at most this often from `acquire`. */
+const RECONCILE_EVERY_MS = 30_000;
+/** An open on-chain session of a bot wallet that nobody plays is adopted only while younger than this. */
+const ADOPT_MAX_AGE_S = 3600;
 const MAX_UINT256 = (1n << 256n) - 1n;
 /** secp256k1 group order: a derived key must be below it (and not zero). */
 const SECP256K1_N = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n;
@@ -67,6 +82,12 @@ export interface TestnetBotDeps {
   stateDir: string | null;
   /** New tickets only while the round's joins are open (default: always). */
   joinsOpen?: () => boolean;
+  /**
+   * Session keys live in the rooms right now (`RoomManager.liveSessions`). With it the source
+   * reconciles its in-use flags against the rooms and adopts open on-chain sessions of bot
+   * wallets that no room plays (a join whose receipt came too late, a crash between join and seat).
+   */
+  liveSessions?: () => Set<string>;
   log?: (m: string) => void;
   now?: () => number;
   receiptTimeoutMs?: number;
@@ -99,12 +120,29 @@ class Blocked extends Error {}
  * The room then seats the ticket (`Room.seatStakedBot`) and settles it like a player's ticket.
  *
  * Anything in the way (not a minter, the server key out of HYPE, an RPC error) is logged at most
- * every 10 minutes and the arena simply fields zero staked bots: `acquire` never throws.
+ * every 10 minutes, the arena's next purchase backs off (2 s doubling to 60 s, never given up) and
+ * the room fields zero-value bots meanwhile: `acquire` never throws.
+ *
+ * The wallet pool grows lazily (a wallet is created and funded only when every wallet is busy) up
+ * to `walletBudget` (the settings' staked targets × 2 + spare). A wallet is busy in an arena while
+ * its ticket plays (`playing`, freed by `released` at once) and while its settlement is pending in
+ * the journal (until the chain worker confirms it). `reconcile` drops flags no room backs; an open
+ * on-chain session of a bot wallet that no room plays is adopted at the next pick. Holders-only
+ * arenas are skipped quietly when no bot wallet holds an emblem (no wallet is created for them).
  */
 export class TestnetBotSource implements StakedBotSource {
   private readonly wallets: BotWallet[] = [];
-  /** `address:arenaId` (lower case) of tickets bought and not released yet. */
-  private readonly playing = new Set<string>();
+  /** `address:arenaId` (lower case) of tickets bought and not released yet → session key, hand-off time. */
+  private readonly playing = new Map<string, { session: string; at: number }>();
+  /** Per arena: failed purchases in a row and when the next try may run. */
+  private readonly backoff = new Map<number, { fails: number; until: number }>();
+  /** Holders-only arenas: when the last check found no bot wallet holding an emblem. */
+  private readonly noHolders = new Map<number, number>();
+  private lastReconcileAt = -Infinity;
+  /** `address:arenaId` → when its ticket was released (its settlement then frees the wallet soon). */
+  private readonly releasedAt = new Map<string, number>();
+  /** Every arena read so far → holders-only (sizes the wallet pool, survives the arena cache). */
+  private readonly seenArenas = new Map<number, boolean>();
   /** Wallets a purchase is running for (one at a time per wallet). */
   private readonly locked = new Set<string>();
   private running = 0;
@@ -178,8 +216,19 @@ export class TestnetBotSource implements StakedBotSource {
     return this.wallets.map((w) => w.address);
   }
 
+  /**
+   * How many bot wallets the settings need: every non-holders-only arena seen fields its staked
+   * target, and a wallet whose last ticket's settlement is still on its way to the chain cannot
+   * buy the next one yet (×2), plus a few spare. Capped at `maxWallets` (default 256).
+   */
+  walletBudget(): number {
+    let need = 0;
+    for (const [id, holdersOnly] of this.seenArenas) if (!holdersOnly) need += this.deps.settings.stakedWanted(id);
+    return Math.min(this.deps.maxWallets ?? MAX_BOT_WALLETS, need * 2 + SPARE_BOT_WALLETS);
+  }
+
   private addWallet(): BotWallet | null {
-    const max = this.deps.maxWallets ?? MAX_BOT_WALLETS;
+    const max = this.walletBudget();
     let index = (this.wallets.at(-1)?.index ?? -1) + 1;
     while (this.wallets.length < max) {
       const key = deriveBotKey(this.deps.serverKey, index);
@@ -217,9 +266,11 @@ export class TestnetBotSource implements StakedBotSource {
 
   wanted(arenaId: number): number {
     if (!this.context()) return 0;
-    const a = this.arenaCache.get(arenaId)?.value;
-    // holders-only arenas (the Isles): only bot wallets holding an emblem may go
-    if (a?.holdersOnly && !this.wallets.some((w) => this.holderCache.get(w.address.toLowerCase())?.value)) return 0;
+    // holders-only arenas (the Isles): only bot wallets holding an emblem may go; re-checked every 5 min
+    if (this.seenArenas.get(arenaId)) {
+      const none = this.noHolders.get(arenaId);
+      if (none !== undefined && this.now() - none < HOLDER_TTL_MS) return 0;
+    }
     return this.deps.settings.stakedWanted(arenaId);
   }
 
@@ -227,26 +278,45 @@ export class TestnetBotSource implements StakedBotSource {
     const ctx = this.context();
     if (!ctx || this.running >= MAX_CONCURRENT) return null;
     if (this.deps.joinsOpen && !this.deps.joinsOpen()) return null;
+    const now = this.now();
+    const b = this.backoff.get(arenaId);
+    if (b && now < b.until) return null;
+    if (now - this.lastReconcileAt >= RECONCILE_EVERY_MS) this.reconcile();
     this.running++;
     let wallet: BotWallet | null = null;
     try {
       const arena = await this.arenaInfo(ctx, arenaId);
       if (!arena.exists || !arena.enabled) return null;
+      if (arena.holdersOnly && !(await this.anyHolder(ctx, arena))) return null;
       await this.checkMinter(ctx);
-      wallet = await this.pickWallet(ctx, arena);
-      if (!wallet) {
-        this.warn('wallets', `bots: no free bot wallet for arena #${arenaId} (${this.wallets.length} in use)`);
+      const pick = await this.pickWallet(ctx, arena);
+      if (pick === 'wait') {
+        this.backoff.set(arenaId, { fails: b?.fails ?? 0, until: this.now() + NO_WALLET_WAIT_MS });
         return null;
       }
-      const ticket = await this.buy(ctx, wallet, arena);
+      if (!pick) {
+        this.backoff.set(arenaId, { fails: b?.fails ?? 0, until: this.now() + NO_WALLET_WAIT_MS });
+        this.warn(`wallets:${arenaId}`, `bots: no free bot wallet for arena #${arenaId} (all ${this.wallets.length} of ${this.walletBudget()} busy)`);
+        return null;
+      }
+      wallet = pick.wallet;
+      const ticket = pick.adopt ? this.ticketOf(ctx, wallet, pick.adopt) : await this.buy(ctx, wallet, arena);
       this.problemV = null;
-      this.playing.add(`${wallet.address.toLowerCase()}:${arenaId}`);
-      this.log(`bots: ${wallet.address} bought a ticket in arena #${arenaId} for ${roomId} (session ${ticket.stake.sessionId})`);
+      this.backoff.delete(arenaId);
+      this.playing.set(`${wallet.address.toLowerCase()}:${arenaId}`, { session: ticket.stake.session, at: this.now() });
+      this.log(
+        pick.adopt
+          ? `bots: ${wallet.address} adopted its open session ${ticket.stake.sessionId} in arena #${arenaId} for ${roomId}`
+          : `bots: ${wallet.address} bought a ticket in arena #${arenaId} for ${roomId} (session ${ticket.stake.sessionId})`,
+      );
       return ticket;
     } catch (err) {
       const msg = (err as Error).message.split('\n')[0].slice(0, 240);
       this.problemV = msg;
-      this.warn(err instanceof Blocked ? `blocked:${msg}` : 'error', err instanceof Blocked ? `!!! bots: ${msg}` : `bots: ticket for arena #${arenaId} failed (${msg})`);
+      // retry with backoff, never give up: 2 s, 4 s, 8 s … 60 s
+      const fails = (this.backoff.get(arenaId)?.fails ?? 0) + 1;
+      this.backoff.set(arenaId, { fails, until: this.now() + Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * 2 ** (fails - 1)) });
+      this.warn(err instanceof Blocked ? `blocked:${msg}` : 'error', err instanceof Blocked ? `!!! bots: ${msg}` : `bots: ticket for arena #${arenaId} failed (${msg}); retrying`);
       return null;
     } finally {
       if (wallet) this.locked.delete(wallet.address.toLowerCase());
@@ -255,8 +325,33 @@ export class TestnetBotSource implements StakedBotSource {
   }
 
   released(ticket: StakedBotTicket, _reason: SettleReason, _item: SettlementItem): void {
-    // the wallet is free again once the chain worker settled the session (checked on chain at the next pick)
-    this.playing.delete(`${ticket.stake.player.toLowerCase()}:${ticket.stake.arenaId}`);
+    // the wallet is free again once the chain worker settled the session (its pending settlement
+    // in the journal keeps it out of `pickWallet` until then; the receipt may take a while)
+    const k = `${ticket.stake.player.toLowerCase()}:${ticket.stake.arenaId}`;
+    this.playing.delete(k);
+    this.releasedAt.set(k, this.now());
+  }
+
+  /**
+   * Reconciles the in-use flags with the rooms and the journal (on a timer, at boot, and from
+   * `acquire`): a ticket no room plays any more (its settlement got lost, a hand-off the room
+   * could not seat) frees its flag; the wallet's on-chain session is then read at the next pick
+   * (closed: reused; still open: adopted, or left to the stale sweeper when old). Without a
+   * `liveSessions` provider nothing is dropped. Returns the flags dropped.
+   */
+  reconcile(): number {
+    this.lastReconcileAt = this.now();
+    const live = this.deps.liveSessions?.();
+    if (!live) return 0;
+    let n = 0;
+    for (const [k, p] of this.playing) {
+      if (live.has(p.session)) continue;
+      if (this.now() - p.at < HANDOFF_GRACE_MS) continue; // being seated right now
+      this.playing.delete(k);
+      n++;
+    }
+    if (n > 0) this.log(`bots: ${n} bot ticket flag(s) without a room dropped (reconciled with the rooms and the journal)`);
+    return n;
   }
 
   /* ---------------------------------------------------------------- */
@@ -268,6 +363,8 @@ export class TestnetBotSource implements StakedBotSource {
     if (hit && this.now() - hit.at < ARENA_TTL_MS) return hit.value;
     const value = await ctx.client.arena(ctx.arena, id);
     this.arenaCache.set(id, { at: this.now(), value });
+    if (value.exists) this.seenArenas.set(id, value.holdersOnly);
+    else this.seenArenas.delete(id);
     return value;
   }
 
@@ -288,41 +385,79 @@ export class TestnetBotSource implements StakedBotSource {
     }
   }
 
+  /** A holder check (cached 5 min); an RPC error throws (retried with backoff) instead of caching "no". */
   private async isHolder(ctx: { client: EvmClient; arena: Address }, w: BotWallet): Promise<boolean> {
     const k = w.address.toLowerCase();
     const hit = this.holderCache.get(k);
     if (hit && this.now() - hit.at < HOLDER_TTL_MS) return hit.value;
-    const value = await ctx.client.isArenaHolder(ctx.arena, w.address).catch(() => false);
+    const value = await ctx.client.isArenaHolder(ctx.arena, w.address);
     this.holderCache.set(k, { at: this.now(), value });
     return value;
   }
 
-  /** A wallet without an open session in this arena (a finalized one collects its payout first). */
-  private async pickWallet(ctx: { client: EvmClient; arena: Address }, arena: ArenaInfo): Promise<BotWallet | null> {
-    const pendingPlayers = new Set(
-      this.deps.journal.pending.filter((p) => p.kind === 'settle' && p.arenaId === arena.id).map((p) => (p as SettlementItem).player.toLowerCase()),
-    );
+  /**
+   * Holders-only arenas: does any known bot wallet hold an emblem? When none does the arena is
+   * skipped quietly (one log line per arena and process, no wallet is created or funded) and
+   * `wanted` answers 0 until the next check, 5 min later.
+   */
+  private async anyHolder(ctx: { client: EvmClient; arena: Address }, arena: ArenaInfo): Promise<boolean> {
+    for (const w of this.wallets) if (await this.isHolder(ctx, w)) return true;
+    if (!this.noHolders.has(arena.id)) {
+      this.log(`bots: arena #${arena.id} is holders-only and no bot wallet holds an emblem: no staked bots there (zero-value bots fill it)`);
+    }
+    this.noHolders.set(arena.id, this.now());
+    return false;
+  }
+
+  /**
+   * A wallet without an open session in this arena (a finalized one collects its payout first),
+   * or an open session of a bot wallet no room plays (`adopt`). `wait`: every wallet is busy but
+   * one is about to be freed by a settlement on its way to the chain (no new wallet for that).
+   * Null: every wallet is busy and the pool is at its budget.
+   */
+  private async pickWallet(
+    ctx: { client: EvmClient; arena: Address },
+    arena: ArenaInfo,
+  ): Promise<{ wallet: BotWallet; adopt?: SessionInfo } | 'wait' | null> {
+    const pending = this.deps.journal.pending.filter((p): p is SettlementItem => p.kind === 'settle' && p.arenaId === arena.id);
+    const pendingPlayers = new Set(pending.map((p) => p.player.toLowerCase()));
+    const fresh = (p: SettlementItem) => {
+      const at = this.releasedAt.get(`${p.player.toLowerCase()}:${arena.id}`);
+      return (at !== undefined && this.now() - at < SETTLE_SOON_MS) || Date.now() - p.createdAt < SETTLE_SOON_MS;
+    };
+    const soon = new Set(pending.filter((p) => !p.held && fresh(p)).map((p) => p.player.toLowerCase()));
+    const live = this.deps.liveSessions?.();
     const candidates = [...this.wallets];
+    let waitFor = false;
     for (;;) {
       let w = candidates.shift() ?? null;
       if (!w) {
         // holders-only arenas never get fresh wallets (a new wallet holds no emblem)
         if (arena.holdersOnly) return null;
+        if (waitFor) return 'wait';
         w = this.addWallet();
         if (!w) return null;
       }
       const k = w.address.toLowerCase();
-      if (this.locked.has(k) || this.playing.has(`${k}:${arena.id}`) || pendingPlayers.has(k)) continue;
+      if (this.locked.has(k) || this.playing.has(`${k}:${arena.id}`)) continue;
+      if (pendingPlayers.has(k)) {
+        if (soon.has(k)) waitFor = true;
+        continue;
+      }
       if (arena.holdersOnly && !(await this.isHolder(ctx, w))) continue;
       this.locked.add(k);
-      let s;
+      let s: SessionInfo;
       try {
         s = await ctx.client.session(ctx.arena, arena.id, w.address);
       } catch (err) {
         this.locked.delete(k);
         throw err;
       }
-      if (s.id === 0n) return w;
+      if (s.id === 0n) return { wallet: w };
+      if (!s.finalized && live && !live.has(sessionKey(arena.id, w.address, s.id)) && this.now() / 1000 - s.openedAt < ADOPT_MAX_AGE_S) {
+        // a ticket bought but never seated (late receipt, a crash between join and seat): play it
+        return { wallet: w, adopt: s };
+      }
       if (s.finalized && s.owed > 0n) {
         // the last payout could not be transferred: collect it, use another wallet now
         await this.wait(ctx.client, await ctx.client.signer(w.key).send(refundCall(ctx.arena, arena.id))).catch(() => undefined);
@@ -371,13 +506,18 @@ export class TestnetBotSource implements StakedBotSource {
     this.arenaCache.delete(arena.id);
     const s = await client.session(ctx.arena, arena.id, w.address);
     if (s.id === 0n || s.finalized) throw new Error(`the join of ${w.address} left no open session`);
+    return this.ticketOf(ctx, w, s);
+  }
+
+  /** The ticket of an open session of a bot wallet. */
+  private ticketOf(ctx: { decimals: number }, w: BotWallet, s: SessionInfo): StakedBotTicket {
     const entryFee = toLedger(s.entryFee, ctx.decimals, 'floor');
     return {
       stake: {
         player: w.address,
-        session: sessionKey(arena.id, w.address, s.id),
+        session: sessionKey(s.arenaId, w.address, s.id),
         sessionId: Number(s.id),
-        arenaId: arena.id,
+        arenaId: s.arenaId,
         entryFee,
         value: entryFee,
         openedAt: s.openedAt,
