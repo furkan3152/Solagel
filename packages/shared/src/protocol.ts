@@ -411,7 +411,12 @@ export type ErrorCode =
   /** The game is not open to this wallet (`SiteSettings.gameAccess`: admins only, or NFT holders and admins). */
   | 'game_closed'
   /** The admin banned this wallet from arenas (integrity review). Practice still works. */
-  | 'banned';
+  | 'banned'
+  /**
+   * The server could not read the chain right now (the RPC is rate-limiting): the ticket is safe and
+   * untouched; the server retries a join on its own, then the player tries again. Never "no ticket".
+   */
+  | 'chain_busy';
 
 /** Parse a join target into its parts. Returns null for malformed input. */
 export function parseJoinTarget(

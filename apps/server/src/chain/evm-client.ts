@@ -1,6 +1,4 @@
 import {
-  createElymumPublicClient,
-  createElymumWalletClient,
   elymumArenaAbi,
   elymumNFTAbi,
   getAllowance,
@@ -26,8 +24,23 @@ import {
 } from '@elymum/sdk';
 import { checkDeployedCode, type CodeCheck } from '@elymum/sdk/ops';
 import { chainInfo, type ChainOverrides } from '@elymum/shared';
-import { getAddress, parseEventLogs, verifyMessage as verifyEoaMessage, type Address, type Hash, type Hex, type PublicClient, type WalletClient } from 'viem';
+import {
+  createPublicClient,
+  createWalletClient,
+  getAddress,
+  http,
+  parseEventLogs,
+  verifyMessage as verifyEoaMessage,
+  type Address,
+  type Chain,
+  type Hash,
+  type Hex,
+  type PublicClient,
+  type Transport,
+  type WalletClient,
+} from 'viem';
 import { privateKeyToAccount, type PrivateKeyAccount } from 'viem/accounts';
+import { rpcBudgetFor } from './rpc-budget';
 
 export type { CodeCheck } from '@elymum/sdk/ops';
 export type ContractKindCode = 'arena' | 'nft' | 'token';
@@ -129,6 +142,41 @@ const ownableAbi = [
 ] as const;
 
 const RPC_TIMEOUT_MS = 20_000;
+/** Multicall3 (same address on every chain that has it; Elysium Testnet does). */
+export const MULTICALL3 = '0xcA11bde05977b3631167028862bE2a173976CA11' as Address;
+/** Outer timeout of one viem request: it includes the wait for the RPC budget and the 429 retries. */
+const TRANSPORT_TIMEOUT_MS = 120_000;
+/** Receipt polling: first look after this long, then slower (one `eth_getTransactionReceipt` per look). */
+const RECEIPT_FIRST_POLL_MS = 500;
+const RECEIPT_MAX_POLL_MS = 3_000;
+
+/**
+ * viem transport on `rpcUrl` through the process-wide RPC budget (`rpc-budget.ts`): rate-limited,
+ * prioritised, 429-aware. `batch`: JSON-RPC batching (reads only; the signers send one request each).
+ */
+export function budgetTransport(rpcUrl: string, opts: { batch?: boolean } = {}): Transport {
+  if (!/^https?:\/\//i.test(rpcUrl)) throw new TypeError(`RPC URL must start with http:// or https://, got ${JSON.stringify(rpcUrl)}`);
+  return http(rpcUrl, {
+    fetchFn: rpcBudgetFor(rpcUrl).fetchFn(),
+    // 429s are retried inside the budget (with its backoff); viem must not multiply them
+    retryCount: 0,
+    timeout: TRANSPORT_TIMEOUT_MS,
+    batch: opts.batch ? { batchSize: 8, wait: 10 } : false,
+  });
+}
+
+/** A public client through the budget; `multicall` merges concurrent `eth_call`s into one Multicall3 call. */
+function budgetPublicClient(rpcUrl: string, chain: Chain | undefined, opts: { pollingInterval?: number; multicall?: boolean } = {}): PublicClient {
+  const withMc = opts.multicall && chain ? { ...chain, contracts: { ...(chain.contracts ?? {}), multicall3: { address: MULTICALL3 } } } : chain;
+  return createPublicClient({
+    chain: withMc,
+    transport: budgetTransport(rpcUrl, { batch: true }),
+    ...(opts.pollingInterval ? { pollingInterval: opts.pollingInterval } : {}),
+    ...(opts.multicall && chain ? { batch: { multicall: { wait: 10, batchSize: 4_096 } } } : {}),
+  }) as PublicClient;
+}
+
+const sleepMs = (ms: number) => new Promise<void>((r) => setTimeout(r, ms).unref());
 
 /** Decodes the arena's events of a receipt (logs of other contracts are ignored). */
 export function decodeArenaEvents(logs: readonly { address: string; data: Hex; topics: readonly Hex[] }[], arena: Address | null): ArenaEvent[] {
@@ -198,7 +246,7 @@ function viemReads(publicClient: PublicClient): HolderReader {
 
 /** A read-only client for an NFT's holders on any RPC (the testnet emblem import). */
 export function viemHolderReader(rpcUrl: string): HolderReader {
-  return viemReads(createElymumPublicClient(rpcUrl, undefined, { pollingInterval: 1_000 }));
+  return viemReads(budgetPublicClient(rpcUrl, undefined, { pollingInterval: 1_000 }));
 }
 
 /** Runs async jobs one at a time (the server key's sends: nonces come from the pending count). */
@@ -212,11 +260,16 @@ function serial(): <T>(job: () => Promise<T>) => Promise<T> {
 }
 
 /** `EvmClient` over viem: a public client on `rpcUrl` and a wallet client with the server key. */
-export function viemEvmClient(rpcUrl: string, account: PrivateKeyAccount, opts: { chainId: number; overrides?: ChainOverrides; pollingInterval?: number }): EvmClient {
+export function viemEvmClient(
+  rpcUrl: string,
+  account: PrivateKeyAccount,
+  opts: { chainId: number; overrides?: ChainOverrides; pollingInterval?: number; multicall?: boolean },
+): EvmClient {
   const chain = toViemChain(chainInfo(opts.chainId, { ...opts.overrides, rpcUrl }));
-  const pollingInterval = opts.pollingInterval ?? 1_000;
-  const publicClient: PublicClient = createElymumPublicClient(rpcUrl, chain, { pollingInterval });
-  const wallet: WalletClient = createElymumWalletClient(rpcUrl, { account, chain, pollingInterval });
+  const pollingInterval = opts.pollingInterval ?? 2_000;
+  const publicClient: PublicClient = budgetPublicClient(rpcUrl, chain, { pollingInterval, multicall: opts.multicall });
+  const walletOf = (a: PrivateKeyAccount): WalletClient => createWalletClient({ account: a, chain, transport: budgetTransport(rpcUrl), pollingInterval });
+  const wallet: WalletClient = walletOf(account);
   // one server-key transaction at a time (the settlement worker, the price keeper and the bot funding share the key)
   const queue = serial();
   const signers = new Map<string, EvmSigner>();
@@ -253,7 +306,7 @@ export function viemEvmClient(rpcUrl: string, account: PrivateKeyAccount, opts: 
       const bot = privateKeyToAccount(privateKey);
       let s = signers.get(bot.address);
       if (!s) {
-        const w = createElymumWalletClient(rpcUrl, { account: bot, chain, pollingInterval });
+        const w = walletOf(bot);
         const q = serial();
         s = {
           address: bot.address,
@@ -267,12 +320,20 @@ export function viemEvmClient(rpcUrl: string, account: PrivateKeyAccount, opts: 
       }
       return s;
     },
+    // one `eth_getTransactionReceipt` per look, slowing down (viem's waiter also polls the block number)
     receipt: async (hash, arena, timeoutMs) => {
-      try {
-        const r = await publicClient.waitForTransactionReceipt({ hash, timeout: timeoutMs });
-        return { status: r.status, blockNumber: r.blockNumber, events: decodeArenaEvents(r.logs, arena) };
-      } catch {
-        return null;
+      const deadline = Date.now() + timeoutMs;
+      let delay = RECEIPT_FIRST_POLL_MS;
+      for (;;) {
+        await sleepMs(Math.max(0, Math.min(delay, deadline - Date.now())));
+        try {
+          const r = await publicClient.getTransactionReceipt({ hash });
+          return { status: r.status, blockNumber: r.blockNumber, events: decodeArenaEvents(r.logs, arena) };
+        } catch {
+          /* not mined yet (TransactionReceiptNotFoundError), or the RPC is busy: look again */
+        }
+        if (Date.now() >= deadline) return null;
+        delay = Math.min(RECEIPT_MAX_POLL_MS, Math.round(delay * 1.6));
       }
     },
     verifyMessage: async (address, message, signature) => {
@@ -302,8 +363,18 @@ export function viemEvmClient(rpcUrl: string, account: PrivateKeyAccount, opts: 
 
 /** Reads `eth_chainId` of an RPC (with a timeout). */
 export async function readChainId(rpcUrl: string): Promise<number> {
-  const client = createElymumPublicClient(rpcUrl);
+  const client = budgetPublicClient(rpcUrl, undefined);
   return withTimeout(client.getChainId(), RPC_TIMEOUT_MS, 'eth_chainId');
+}
+
+/** Whether Multicall3 is deployed on the RPC's chain (false on errors: plain calls then). */
+export async function hasMulticall3(rpcUrl: string): Promise<boolean> {
+  try {
+    const code = await withTimeout(budgetPublicClient(rpcUrl, undefined).getCode({ address: MULTICALL3 }), RPC_TIMEOUT_MS, 'eth_getCode');
+    return !!code && code !== '0x';
+  } catch {
+    return false;
+  }
 }
 
 /** EOA signature check without any RPC (personal_sign / EIP-191). */

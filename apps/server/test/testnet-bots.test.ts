@@ -27,6 +27,8 @@ function setup(
     joinsOpen?: () => boolean;
     liveSessions?: () => Set<string>;
     journal?: Journal;
+    maxTicketsPerMinute?: number;
+    round?: () => number;
   } = {},
 ) {
   const evm = new FakeEvm();
@@ -51,6 +53,9 @@ function setup(
       now: opts.now,
       joinsOpen: opts.joinsOpen,
       liveSessions: opts.liveSessions,
+      // the purchase caps have their own tests
+      maxTicketsPerMinute: opts.maxTicketsPerMinute ?? Infinity,
+      round: opts.round,
     });
   return { evm, settings, journal, logs, view, dir, source: make(), make };
 }
@@ -452,3 +457,58 @@ function eat(room: Room, eater: Player, victim: Player): void {
   }
   expect(victim.alive).toBe(false);
 }
+
+describe('testnet staked bots: purchase caps (the 429 incident: bots re-bought after every death)', () => {
+  it('buys at most `maxTicketsPerMinute` tickets per minute over every arena, without touching the RPC when capped', async () => {
+    const clock = { now: 1_800_000_000_000 };
+    const t = setup({ now: () => clock.now, maxTicketsPerMinute: 2 });
+    expect(await t.source.acquire(1, 'arena-1-1')).not.toBeNull();
+    expect(await t.source.acquire(1, 'arena-1-1')).not.toBeNull();
+    const reads = t.evm.sessionReads;
+    const sent = t.evm.sentBy.length;
+    expect(await t.source.acquire(1, 'arena-1-1')).toBeNull();
+    // refused before any chain read or transaction
+    expect(t.evm.sessionReads).toBe(reads);
+    expect(t.evm.sentBy.length).toBe(sent);
+    expect(t.source.purchasesLastMinute()).toBe(2);
+    clock.now += 60_000;
+    expect(await t.source.acquire(1, 'arena-1-1')).not.toBeNull();
+  });
+
+  it('each arena buys at most its staked target per round: a bot that dies is replaced at the next round', async () => {
+    const clock = { now: 1_800_000_000_000 };
+    let round = 100;
+    const t = setup({ now: () => clock.now, round: () => round });
+    t.settings.update({ testnet: { stakedPerArena: 2 } });
+    const a = (await t.source.acquire(1, 'arena-1-1'))!;
+    expect(await t.source.acquire(1, 'arena-1-1')).not.toBeNull();
+    // a bot dies mid-round: its ticket is settled and closed on chain, its wallet is free again
+    const item: SettlementItem = {
+      kind: 'settle',
+      key: a.stake.session,
+      player: a.stake.player,
+      arenaId: 1,
+      session: a.stake.session,
+      sessionId: a.stake.sessionId,
+      payout: 0,
+      score: 0,
+      kills: 0,
+      xp: 0,
+      reason: 'death',
+      attempts: 0,
+      nextAttemptAt: clock.now,
+      createdAt: clock.now,
+    };
+    t.source.released(a, 'death', item);
+    t.evm.close(1, a.stake.player);
+    clock.now += 120_000;
+    // same round: no replacement (zero-value bots hold the seat)
+    expect(await t.source.acquire(1, 'arena-1-1')).toBeNull();
+    // another arena has its own allowance
+    t.evm.addArena(2, 1000n);
+    expect(await t.source.acquire(2, 'arena-2-1')).not.toBeNull();
+    // the next round: bought again
+    round++;
+    expect(await t.source.acquire(1, 'arena-1-1')).not.toBeNull();
+  });
+});

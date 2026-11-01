@@ -108,8 +108,19 @@ export class FakeEvm implements EvmClient {
     };
   }
 
-  private check(): void {
+  /**
+   * Methods answering like the rate-limited public RPC (HTTP 429): method name → how many more calls
+   * fail (`Infinity`: until removed).
+   */
+  limited = new Map<string, number>();
+
+  private check(method?: string): void {
     if (this.rpcDown) throw new TypeError('fetch failed');
+    const n = method ? this.limited.get(method) : undefined;
+    if (n !== undefined && n > 0) {
+      this.limited.set(method!, n - 1);
+      throw Object.assign(new Error('HTTP request failed.\n\nStatus: 429\nDetails: {"error":"Rate Limit Exceeded. Please get an api key"}'), { status: 429 });
+    }
   }
 
   /** Creates an arena (entry fee in whole tokens). */
@@ -177,7 +188,7 @@ export class FakeEvm implements EvmClient {
     return this.block;
   }
   async codeCheck(address: Address, _kind: ContractKindCode) {
-    this.check();
+    this.check('codeCheck');
     return this.code.get(address.toLowerCase()) ?? 'ok';
   }
   async hasCode(address: Address) {
@@ -185,16 +196,16 @@ export class FakeEvm implements EvmClient {
   }
   configReads = 0;
   async arenaConfig(_arena: Address) {
-    this.check();
+    this.check('arenaConfig');
     this.configReads++;
     return structuredClone(this.config);
   }
   async arenas(_arena: Address) {
-    this.check();
+    this.check('arenas');
     return [...this.arenaMap.values()].map((a) => ({ ...a }));
   }
   async arena(_arena: Address, id: number) {
-    this.check();
+    this.check('arena');
     const a = this.arenaMap.get(id);
     return a ? { ...a } : { ...this.addArenaShape(id) };
   }
@@ -203,7 +214,7 @@ export class FakeEvm implements EvmClient {
   }
   sessionReads = 0;
   async session(_arena: Address, arenaId: number, player: Address) {
-    this.check();
+    this.check('session');
     this.sessionReads++;
     const s = this.sessions.get(`${arenaId}:${player.toLowerCase()}`);
     return s ? { ...s } : { arenaId, player: getAddress(player), id: 0n, entryFee: 0n, openedAt: 0, feeBps: 0, finalized: false, owed: 0n };
@@ -300,7 +311,7 @@ export class FakeEvm implements EvmClient {
     return this.joined.filter((j) => j.blockNumber >= from && j.blockNumber <= to);
   }
   async transferLogs(_nft: Address, from: bigint, to: bigint) {
-    this.check();
+    this.check('transferLogs');
     return this.transfers.filter((t) => t.blockNumber >= from && t.blockNumber <= to);
   }
   async deployBlock() {
@@ -397,7 +408,7 @@ export class FakeEvm implements EvmClient {
     return this.owners.get(contract.toLowerCase()) ?? ADMIN;
   }
   async mintState(_nft: Address) {
-    this.check();
+    this.check('mintState');
     return { ...this.mint, soldOut: this.mint.totalSupply >= this.mint.maxSupply };
   }
   async nftBalance(_nft: Address, owner: Address) {

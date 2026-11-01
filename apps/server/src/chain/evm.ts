@@ -18,9 +18,11 @@ import { getAddress, isAddress, type Address, type Hash, type Hex } from 'viem';
 import type { PrivateKeyAccount } from 'viem/accounts';
 import type { ServerConfig } from '../config';
 import type { Journal, JournalItem, SettlementItem, SweepItem } from '../stake/journal';
-import { readChainId, viemEvmClient, withTimeout, type ArenaEvent, type EvmClient } from './evm-client';
+import { ChainCache } from './chain-cache';
+import { hasMulticall3, readChainId, viemEvmClient, withTimeout, type ArenaEvent, type EvmClient } from './evm-client';
+import { isRateLimited, isTransientRpcError, withRpcPriority } from './rpc-budget';
 import { loadServerKey } from './server-key';
-import { sessionKey, type ChainArena, type ChainGateway, type ChainSession, type ServerKeyInfo, type SettledEvent } from './types';
+import { ChainBusyError, sessionKey, type ChainArena, type ChainGateway, type ChainSession, type ServerKeyInfo, type SettledEvent } from './types';
 
 /* ------------------------------------------------------------------ */
 /* Tunables                                                            */
@@ -31,8 +33,19 @@ const REFRESH_INTERVAL_MS = 30_000;
 const SWEEP_INTERVAL_MS = 5 * 60_000;
 /** Sessions nobody plays for this long are settled at their entry fee; `STALE_SESSION_AFTER_S` overrides it. */
 export const STALE_SESSION_AFTER_S = 15 * 60;
-const ARENA_TTL_MS = 30_000;
-const CONFIG_TTL_MS = 30_000;
+/** The arena list is re-read at most this often (settlements mark it stale; RPC errors serve the last good one). */
+export const ARENA_TTL_MS = 60_000;
+/** After a failed arena-list read the last good list is served this long before the next try. */
+export const ARENA_RETRY_MS = 15_000;
+/** The arena config is re-read at most this often by the 30 s watcher (`refresh()` always re-reads). */
+export const CONFIG_TTL_MS = 3 * 60_000;
+/** A journal item that failed on a rate limit / timeout is retried within this (never the 5-minute cap). */
+export const TRANSIENT_RETRY_MAX_MS = 30_000;
+/** `Joined` log scan: blocks per `eth_getLogs` (adaptive between these; the start is `LOG_CHUNK_BLOCKS`). */
+const LOG_CHUNK_MIN = 100n;
+const LOG_CHUNK_MAX = 500_000n;
+/** The persisted last good reads (`DATA_DIR/chains/<id>/chain-cache.json`). */
+export const CHAIN_CACHE_FILE = 'chain-cache.json';
 /** How long the worker waits for a receipt before it re-checks on the next pass. */
 export const RECEIPT_TIMEOUT_MS = 90_000;
 /** How long a dropped item's earlier transaction is looked up (it is mined by then, or never). */
@@ -47,6 +60,8 @@ const INDEX_LOOKBACK_BLOCKS = 1_000_000n;
 /** Concurrent session reads of the stale sweeper. */
 const READ_CONCURRENCY = 8;
 
+/** A stale arena list: everything but the vaults, which are unknown (`pot: null` skips the vault guard). */
+const unknownPots = (list: ChainArena[]): ChainArena[] => list.map((a) => ({ ...a, pot: null }));
 const short = (s: string): string => (s.length > 14 ? `${s.slice(0, 6)}…${s.slice(-4)}` : s);
 const firstLine = (err: unknown): string => String((err as Error)?.message ?? err).split('\n')[0].slice(0, 240);
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms).unref());
@@ -78,6 +93,11 @@ export interface EvmChainDeps {
    * arenas and the settlement worker stay off until a restart. Undefined: no check (tests).
    */
   stateChainId?: number | null;
+  /**
+   * Where the last good chain reads are kept across restarts (`DATA_DIR/chains/<id>`): the arena list,
+   * the arena config, the code check and the deploy block. Null / absent: memory only.
+   */
+  cacheDir?: string | null;
 }
 
 /** One item of a settle batch, with the on-chain session it was checked against. */
@@ -148,6 +168,12 @@ export class EvmChain implements ChainGateway {
   private stopped = false;
   private readonly lastWarn = new Map<string, number>();
   private readonly now: () => number;
+  /** Last good reads on disk (arena list, config, code check, deploy block). */
+  private readonly cache: ChainCache;
+  /** When the last arena-list read failed (the stale list is served until `ARENA_RETRY_MS` later). */
+  private arenaFailedAt = -Infinity;
+  /** Blocks per `Joined` log request (adaptive). */
+  private logChunk: bigint;
 
   constructor(
     private readonly cfg: ServerConfig,
@@ -156,6 +182,8 @@ export class EvmChain implements ChainGateway {
     private readonly deps: EvmChainDeps = {},
   ) {
     this.now = deps.now ?? Date.now;
+    this.cache = ChainCache.in(deps.cacheDir ?? null, CHAIN_CACHE_FILE, log);
+    this.logChunk = BigInt(Math.max(Number(LOG_CHUNK_MIN), cfg.chain.logChunkBlocks));
   }
 
   /* ---------------------------------------------------------------- */
@@ -189,7 +217,7 @@ export class EvmChain implements ChainGateway {
     if (staleAfterS !== STALE_SESSION_AFTER_S) this.log(`chain: unplayed sessions are settled at their entry fee after ${staleAfterS} s (STALE_SESSION_AFTER_S)`);
     this.timers.push(
       setInterval(() => this.kick(), WORKER_INTERVAL_MS),
-      setInterval(() => void this.refresh(), REFRESH_INTERVAL_MS),
+      setInterval(() => void withRpcPriority('normal', () => this.refresh({ configMaxAgeMs: CONFIG_TTL_MS })), REFRESH_INTERVAL_MS),
       setInterval(() => void this.checkBalance(), SWEEP_INTERVAL_MS),
       setInterval(() => void this.sweepStale(), Math.min(SWEEP_INTERVAL_MS, Math.max(1_000, staleAfterS * 1000))),
     );
@@ -201,6 +229,7 @@ export class EvmChain implements ChainGateway {
 
   async stop(): Promise<void> {
     this.stopped = true;
+    this.cache.flush();
     for (const t of this.timers) clearInterval(t);
     this.timers = [];
     if (this.running) await Promise.race([this.running.catch(() => {}), sleep(STOP_GRACE_MS)]);
@@ -221,8 +250,12 @@ export class EvmChain implements ChainGateway {
     const where = this.cfg.chain.rpcUrl ?? 'injected client';
     try {
       if (!this.client) {
-        const chainId = await readChainId(this.cfg.chain.rpcUrl!);
-        this.client = viemEvmClient(this.cfg.chain.rpcUrl!, this.account!, { chainId, overrides: this.overrides(chainId) });
+        const rpcUrl = this.cfg.chain.rpcUrl!;
+        const chainId = await readChainId(rpcUrl);
+        // concurrent eth_calls are merged into one Multicall3 call where the chain has it
+        const multicall = await hasMulticall3(rpcUrl);
+        this.client = viemEvmClient(rpcUrl, this.account!, { chainId, overrides: this.overrides(chainId), multicall });
+        if (multicall) this.log('chain: Multicall3 found — concurrent reads are batched into one eth_call');
       }
       if (this.chainId === null) {
         this.chainId = await withTimeout(this.client.getChainId(), 20_000, 'eth_chainId');
@@ -264,7 +297,7 @@ export class EvmChain implements ChainGateway {
    * 30 s loop (also run right after a registry change): re-probe while offline, otherwise pick up a
    * newly registered arena and re-read its config. Public so tests (and the registry) drive it.
    */
-  async refresh(): Promise<void> {
+  async refresh(opts: { configMaxAgeMs?: number } = {}): Promise<void> {
     if (this.stopped || !this.started || !this.serverAddress) return;
     if (!this.enabled) {
       if (await this.probe()) {
@@ -273,12 +306,17 @@ export class EvmChain implements ChainGateway {
       }
       return;
     }
-    await this.syncContracts();
+    await this.syncContracts(opts.configMaxAgeMs ?? 0);
     this.announceStatus();
   }
 
-  /** Picks the arena address from the registry, checks its code once, reads its config. */
-  private async syncContracts(): Promise<void> {
+  /**
+   * Picks the arena address from the registry, checks its code once (a positive check is kept on
+   * disk: code at an address does not change), reads its config when older than `configMaxAgeMs`
+   * (0: now). A config kept on disk is applied first, so a restart while the RPC refuses us still
+   * knows the token and the server authority (and refreshes them as soon as it can).
+   */
+  private async syncContracts(configMaxAgeMs = 0): Promise<void> {
     const view = this.deps.contracts?.() ?? { arena: this.cfg.chain.arenaAddress, nft: this.cfg.chain.nftAddress };
     const next = view.arena && isEvm(view.arena) ? getAddress(view.arena) : null;
     if (next !== this.arena) {
@@ -298,8 +336,11 @@ export class EvmChain implements ChainGateway {
       return;
     }
     if (this.arenaCode !== 'ok') {
+      const codeKey = `code:${this.arena.toLowerCase()}`;
       try {
-        this.arenaCode = await this.client!.codeCheck(this.arena, 'arena');
+        // a positive check is kept on disk (the code at an address does not change): no read after a restart
+        this.arenaCode = this.cache.get<string>(codeKey) === 'ok' ? 'ok' : await this.client!.codeCheck(this.arena, 'arena');
+        if (this.arenaCode === 'ok') this.cache.set(codeKey, 'ok');
       } catch (err) {
         this.warn('code', `chain: code check of ${this.arena} failed (${firstLine(err)})`);
         return;
@@ -320,7 +361,12 @@ export class EvmChain implements ChainGateway {
       }
       this.journalBound = bound;
     }
-    await this.freshConfig();
+    if (!this.config) {
+      const kept = this.cache.get<ArenaConfig>(`config:${this.arena.toLowerCase()}`);
+      // stale (read again below), but it knows the token and the authority while the RPC refuses us
+      if (kept && typeof kept.serverAuthority === 'string') this.applyConfig(kept, 0);
+    }
+    await this.currentConfig(configMaxAgeMs);
   }
 
   /** The game token of the cached config, null while it is unset (or unknown). */
@@ -345,7 +391,7 @@ export class EvmChain implements ChainGateway {
     this.announced = { tokenReady: ready, arenasEnabled: arenas, arena: this.arena };
     if (ready && !before.tokenReady) {
       const t = this.token()!;
-      this.arenaCache = null;
+      this.arenasStale();
       this.log(`chain: game token set — ${t.address} (${t.decimals} decimals) · arenas ${arenas ? 'on' : 'off'}`);
     }
     for (const fn of this.statusListeners) {
@@ -368,9 +414,9 @@ export class EvmChain implements ChainGateway {
     return `${formatToken(ledger, ledgerDecimals(t.decimals), { maxFrac: 6 })} ${this.cfg.chain.tokenSymbol}`;
   }
 
-  private applyConfig(config: ArenaConfig): void {
+  private applyConfig(config: ArenaConfig, at = this.now()): void {
     this.config = config;
-    this.configAt = this.now();
+    this.configAt = at;
     const ours = this.serverAddress!;
     const authorized = config.serverAuthority.toLowerCase() === ours.toLowerCase();
     if (!authorized && this.authorized !== false) {
@@ -397,6 +443,7 @@ export class EvmChain implements ChainGateway {
     try {
       const config = await this.client.arenaConfig(this.arena);
       this.applyConfig(config);
+      this.cache.set(`config:${this.arena.toLowerCase()}`, config);
       return config;
     } catch (err) {
       this.warn('config', `chain: config refresh failed (${firstLine(err)})`);
@@ -408,7 +455,9 @@ export class EvmChain implements ChainGateway {
   async checkBalance(): Promise<void> {
     if (!this.enabled || !this.client || !this.serverAddress) return;
     try {
-      this.balance = await this.client.balance(this.serverAddress);
+      const client = this.client;
+      const who = this.serverAddress;
+      this.balance = await withRpcPriority('low', () => client.balance(who));
       if (this.balance < LOW_BALANCE_WEI) {
         this.warn('balance', `chain: WARNING the server key ${this.serverAddress} holds only ${formatHype(this.balance, 6)} — fund it, it pays the gas of every settlement`, 30 * 60_000);
       }
@@ -474,12 +523,17 @@ export class EvmChain implements ChainGateway {
     };
   }
 
-  /** Always read fresh from the chain; null when there is no session or on RPC errors. */
+  /**
+   * Always read fresh from the chain (high priority: a paid join waits on it); null when there is no
+   * session. An RPC failure (after the budget's retries) throws `ChainBusyError`: never "no ticket".
+   */
   async getSession(arenaId: number, player: string): Promise<ChainSession | null> {
     const t = this.token();
     if (!this.tokenReady || !t || !this.client || !this.arena || !isEvm(player) || !Number.isInteger(arenaId) || arenaId < 1 || arenaId > 65_535) return null;
+    const client = this.client;
+    const arena = this.arena;
     try {
-      const s = await this.client.session(this.arena, arenaId, getAddress(player));
+      const s = await withRpcPriority('high', () => client.session(arena, arenaId, getAddress(player)));
       if (s.id === 0n || s.id > BigInt(Number.MAX_SAFE_INTEGER)) return null;
       return {
         key: sessionKey(arenaId, player, s.id),
@@ -493,17 +547,32 @@ export class EvmChain implements ChainGateway {
       };
     } catch (err) {
       this.warn('session', `chain: session lookup failed (${firstLine(err)})`);
-      return null;
+      throw new ChainBusyError('session lookup', err);
     }
   }
 
-  /** Created arenas, cached 30 s (`fresh` bypasses). Amounts in ledger units (vaults rounded down). */
+  /**
+   * Created arenas, cached 60 s (`fresh` bypasses; a settlement or a sweep marks the list stale).
+   * Amounts in ledger units (vaults rounded down). When the read fails, the last good list is served
+   * (also one kept on disk from before a restart) and the next read waits `ARENA_RETRY_MS`; only when
+   * no list was ever read does it throw `ChainBusyError`.
+   */
   async listArenas(fresh = false): Promise<ChainArena[]> {
     const t = this.token();
     if (!this.tokenReady || !t || !this.client || !this.arena) return [];
-    if (!fresh && this.arenaCache && this.now() - this.arenaCache.at < ARENA_TTL_MS) return this.arenaCache.value;
+    const cacheKey = `arenas:${this.arena.toLowerCase()}:${t.decimals}`;
+    if (!this.arenaCache) {
+      const kept = this.cache.get<ChainArena[]>(cacheKey);
+      // from before a restart: served while the RPC refuses us, re-read at the first chance
+      if (Array.isArray(kept) && kept.length > 0) this.arenaCache = { at: -Infinity, value: kept };
+    }
+    const now = this.now();
+    if (!fresh && this.arenaCache && now - this.arenaCache.at < ARENA_TTL_MS) return this.arenaCache.value;
+    if (!fresh && this.arenaCache && now - this.arenaFailedAt < ARENA_RETRY_MS) return unknownPots(this.arenaCache.value);
+    const client = this.client;
+    const arenaAddr = this.arena;
     try {
-      const value = (await this.client.arenas(this.arena))
+      const value = (await withRpcPriority('normal', () => client.arenas(arenaAddr)))
         .filter((a) => a.exists)
         .map(
           (a): ChainArena => ({
@@ -516,11 +585,21 @@ export class EvmChain implements ChainGateway {
           }),
         );
       this.arenaCache = { at: this.now(), value };
+      this.arenaFailedAt = -Infinity;
+      this.cache.set(cacheKey, value);
       return value;
     } catch (err) {
-      this.warn('arenas', `chain: arena list failed (${firstLine(err)})`);
-      return this.arenaCache?.value ?? [];
+      this.arenaFailedAt = this.now();
+      this.warn('arenas', `chain: arena list failed (${firstLine(err)})${this.arenaCache ? ' — serving the last good list' : ''}`);
+      // the vaults of a stale list are unknown now: the vault guard must not block an arena on them
+      if (this.arenaCache) return unknownPots(this.arenaCache.value);
+      throw new ChainBusyError('arena list', err);
     }
+  }
+
+  /** The arena list goes stale (re-read at the next ask); its value stays for RPC errors. */
+  private arenasStale(): void {
+    if (this.arenaCache) this.arenaCache.at = -Infinity;
   }
 
   async verifyMessage(address: string, message: string, signature: string): Promise<boolean> {
@@ -541,7 +620,7 @@ export class EvmChain implements ChainGateway {
   }
 
   private emit(e: SettledEvent): void {
-    this.arenaCache = null;
+    this.arenasStale();
     for (const fn of this.settledListeners) {
       try {
         fn(e);
@@ -579,7 +658,8 @@ export class EvmChain implements ChainGateway {
       do {
         this.rerun = false;
         try {
-          await this.pass();
+          // settlements and loot sweeps go before every background read
+          await withRpcPriority('high', () => this.pass());
         } catch (err) {
           this.log(`chain: worker error: ${(err as Error).stack ?? err}`);
         }
@@ -605,7 +685,9 @@ export class EvmChain implements ChainGateway {
     }
     const blocked = await this.blockedReason();
     if (blocked) {
-      for (const item of due) if (this.isPending(item.key)) this.journal.retryLater(item.key, blocked, this.now());
+      // a config the RPC did not answer is an RPC hiccup: look again soon, not after minutes
+      const transient = blocked === 'config unavailable';
+      for (const item of due) if (this.isPending(item.key)) this.journal.retryLater(item.key, blocked, this.now(), transient ? { maxDelayMs: TRANSIENT_RETRY_MAX_MS } : {});
       return;
     }
     const byArena = new Map<number, SettlementItem[]>();
@@ -655,6 +737,15 @@ export class EvmChain implements ChainGateway {
     return null;
   }
 
+  /**
+   * Retries a journal item later; an RPC rate limit / timeout (`err`) keeps the backoff short (at most
+   * `TRANSIENT_RETRY_MAX_MS`): the RPC budget already spaces the calls, the item must not wait minutes.
+   */
+  private retryItem(key: string, label: string, err?: unknown, opts: { delayMs?: number } = {}): void {
+    const transient = err !== undefined && isTransientRpcError(err);
+    this.journal.retryLater(key, label, this.now(), { ...opts, ...(transient ? { maxDelayMs: TRANSIENT_RETRY_MAX_MS } : {}) });
+  }
+
   private isPending(key: string): boolean {
     return this.journal.pending.some((p) => p.key === key);
   }
@@ -693,7 +784,7 @@ export class EvmChain implements ChainGateway {
         try {
           s = await client.session(arena, item.arenaId!, getAddress(item.player));
         } catch (err) {
-          this.journal.retryLater(item.key, `session lookup failed: ${firstLine(err)}`, this.now());
+          this.retryItem(item.key, `session lookup failed: ${firstLine(err)}`, err);
           return;
         }
         const id = BigInt(item.sessionId!);
@@ -779,7 +870,7 @@ export class EvmChain implements ChainGateway {
     try {
       s = await this.client!.session(this.arena!, item.arenaId!, getAddress(item.player));
     } catch (err) {
-      this.journal.retryLater(item.key, `${skipped ? `skipped (${settleSkipReasonText(skipped.reason)}); ` : ''}session re-check failed: ${firstLine(err)}`, this.now());
+      this.retryItem(item.key, `${skipped ? `skipped (${settleSkipReasonText(skipped.reason)}); ` : ''}session re-check failed: ${firstLine(err)}`, err);
       return false;
     }
     if (s.id === c.sessionId && !s.finalized) {
@@ -853,7 +944,7 @@ export class EvmChain implements ChainGateway {
     }
     for (const item of items) {
       if (item.attempts > 0 && item.attempts % 5 === 0) this.log(`!!! chain: settlement ${item.key} still failing after ${item.attempts + 1} attempts: ${label}`);
-      this.journal.retryLater(item.key, label, this.now());
+      this.retryItem(item.key, label, err);
     }
   }
 
@@ -877,7 +968,7 @@ export class EvmChain implements ChainGateway {
     try {
       info = await client.arena(arenaAddr, item.arenaId);
     } catch (err) {
-      this.journal.retryLater(key, `arena lookup failed: ${firstLine(err)}`, this.now());
+      this.retryItem(key, `arena lookup failed: ${firstLine(err)}`, err);
       return;
     }
     if (!info.exists) {
@@ -887,7 +978,7 @@ export class EvmChain implements ChainGateway {
     const last = Number(info.lastSweepId);
     if (item.sweepId !== undefined && last >= item.sweepId) {
       this.journal.remove(key);
-      this.arenaCache = null;
+      this.arenasStale();
       this.log(`chain: burned ${this.units(item.amount)} loot of ${item.roomId} (round ${item.round}) · sweep #${item.sweepId} (confirmed)${item.sentTx ? ` · ${item.sentTx}` : ''}`);
       return;
     }
@@ -912,14 +1003,14 @@ export class EvmChain implements ChainGateway {
       if (d.name === 'NotServer') await this.freshConfig();
       if (d.name === 'InsufficientVault') this.warn(`sweep-pot-${item.arenaId}`, `!!! chain: arena #${item.arenaId} vault cannot cover the loot sweep ${key} — retrying with backoff`);
       if (item.attempts > 0 && item.attempts % 5 === 0) this.log(`!!! chain: loot sweep ${key} still failing after ${item.attempts + 1} attempts: ${label}`);
-      this.journal.retryLater(key, label, this.now());
+      this.retryItem(key, label, err);
       return;
     }
     this.journal.markSent(key, hash, this.now());
     const receipt = await client.receipt(hash, arenaAddr, this.deps.receiptTimeoutMs ?? RECEIPT_TIMEOUT_MS);
     if (receipt?.status === 'success') {
       this.journal.remove(key);
-      this.arenaCache = null;
+      this.arenasStale();
       this.log(`chain: burned ${this.units(item.amount)} loot of ${item.roomId} (round ${item.round}) · sweep #${sweepId} · ${hash}`);
       return;
     }
@@ -960,23 +1051,37 @@ export class EvmChain implements ChainGateway {
     const arena = this.arena!;
     const latest = await client.blockNumber();
     if (this.index.next === null) {
-      let start: bigint | null = null;
-      if (this.arenaTx && /^0x[0-9a-fA-F]{64}$/.test(this.arenaTx)) start = await client.txBlock(this.arenaTx as Hash);
+      const deployKey = `deploy:${arena.toLowerCase()}`;
+      const kept = this.cache.get<bigint>(deployKey);
+      let start: bigint | null = typeof kept === 'bigint' ? kept : null;
+      if (start === null && this.arenaTx && /^0x[0-9a-fA-F]{64}$/.test(this.arenaTx)) start = await client.txBlock(this.arenaTx as Hash);
+      // the binary search costs ~25 reads: done once per arena, then kept on disk
       start ??= await client.deployBlock(arena);
+      if (start !== null) this.cache.set(deployKey, start);
       if (start === null) {
         start = latest > INDEX_LOOKBACK_BLOCKS ? latest - INDEX_LOOKBACK_BLOCKS : 0n;
         this.log(`chain: deploy block of ${arena} unknown — the stale-session index starts at block ${start}`);
       }
       this.index.next = start;
     }
-    const chunk = BigInt(this.cfg.chain.logChunkBlocks);
     const index = this.index;
     let from: bigint = index.next!;
     while (from <= latest && !this.stopped) {
+      const chunk = this.logChunk;
       const to: bigint = from + chunk - 1n < latest ? from + chunk - 1n : latest;
-      for (const j of await client.joinedLogs(arena, from, to)) {
+      let logs;
+      try {
+        logs = await client.joinedLogs(arena, from, to);
+      } catch (err) {
+        // a range the RPC refuses (too many results / too wide) is halved; a rate limit is not the range's fault
+        if (!isRateLimited(err) && chunk > LOG_CHUNK_MIN) this.logChunk = chunk / 2n > LOG_CHUNK_MIN ? chunk / 2n : LOG_CHUNK_MIN;
+        throw err;
+      }
+      for (const j of logs) {
         index.candidates.set(sessionKey(j.arenaId, j.player, j.sessionId), { arenaId: j.arenaId, player: j.player, sessionId: j.sessionId });
       }
+      // a full-width success widens the next request (fewer calls while catching up)
+      if (to - from + 1n === chunk && chunk < LOG_CHUNK_MAX) this.logChunk = chunk * 2n < LOG_CHUNK_MAX ? chunk * 2n : LOG_CHUNK_MAX;
       from = to + 1n;
       index.next = from;
     }
@@ -988,7 +1093,12 @@ export class EvmChain implements ChainGateway {
    * paid but never played. Open sessions come from the arena's `Joined` logs, checked with `getSession`.
    * Returns the number of sessions queued.
    */
-  async sweepStale(): Promise<number> {
+  sweepStale(): Promise<number> {
+    // background work: after joins, settlements and the arena list
+    return withRpcPriority('low', () => this.sweepStaleNow());
+  }
+
+  private async sweepStaleNow(): Promise<number> {
     if (this.stopped || !this.enabled || this.authorized !== true || !this.client || !this.arena || !this.tokenReady || !this.journalBound || this.chainMismatch) return 0;
     if (!this.staleSweepAllowed()) return 0;
     const t = this.token()!;

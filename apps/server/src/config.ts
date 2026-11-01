@@ -97,8 +97,24 @@ export interface ServerConfig {
      * after a quarantine, so it cannot refund sessions whose real result was in the lost journal.
      */
     staleSweepAck: boolean;
-    /** `LOG_CHUNK_BLOCKS`: blocks per `eth_getLogs` request of the session and holder indexes (default 10,000). */
+    /**
+     * `LOG_CHUNK_BLOCKS`: blocks per `eth_getLogs` request of the session and holder indexes to start
+     * with (default 50,000; adaptive: doubled after a full-width success up to 500,000, halved when the
+     * RPC refuses a range).
+     */
     logChunkBlocks: number;
+    /**
+     * `RPC_MAX_RPS` / `RPC_BURST`: the server's own request budget on the RPC (calls per second and burst,
+     * defaults 4 and 8). The public Elysium RPC answers 429 above its limit; every call of the process
+     * (settlements, joins, bots, mint page, indexes) shares this budget, by priority.
+     */
+    rpcMaxRps: number;
+    rpcBurst: number;
+    /**
+     * `BOT_TICKETS_PER_MIN`: testnet staked-bot ticket purchases per minute at most, over every arena
+     * (default 4). Each bot slot also buys at most one ticket per round.
+     */
+    botTicketsPerMinute: number;
     /**
      * `TESTNET_RPC_URL`: Elysium Testnet RPC for reading the testnet emblem holders after `EVM_RPC_URL`
      * moved to mainnet (`POST /api/admin/mint/import-holders`). Default: the public testnet RPC.
@@ -291,7 +307,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       tokenSymbol: env.TOKEN_SYMBOL?.trim() || TOKEN_SYMBOL_DEFAULT,
       staleSessionAfterS: Math.max(1, int(env.STALE_SESSION_AFTER_S, 15 * 60)),
       staleSweepAck: bool(env.STALE_SWEEP_ACK, false),
-      logChunkBlocks: Math.max(100, int(env.LOG_CHUNK_BLOCKS, 10_000)),
+      logChunkBlocks: Math.max(100, int(env.LOG_CHUNK_BLOCKS, 50_000)),
+      rpcMaxRps: Math.max(0.2, Number(env.RPC_MAX_RPS) > 0 ? Number(env.RPC_MAX_RPS) : 4),
+      rpcBurst: Math.max(1, int(env.RPC_BURST, 8)),
+      botTicketsPerMinute: Math.max(0, int(env.BOT_TICKETS_PER_MIN, 4)),
       testnetRpcUrl: blank(env.TESTNET_RPC_URL)?.replace(/\/+$/, '') ?? chainByKey('elysium-testnet').rpcUrl!,
       hypeFaucetUrl: blank(env.HYPE_FAUCET_URL) ?? HYPE_FAUCET_URL_DEFAULT,
     },

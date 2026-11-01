@@ -19,6 +19,19 @@ export function parseSessionKey(key: string): { arenaId: number; player: string;
   return Number.isSafeInteger(sessionId) ? { arenaId: Number(m[1]), player: m[2], sessionId } : null;
 }
 
+/**
+ * The chain could not be read right now (the RPC is rate-limiting or unreachable). Not an answer:
+ * the caller must not conclude "no ticket" or "no arena" from it; it tells the player the network is
+ * busy and tries again (`chain_busy`).
+ */
+export class ChainBusyError extends Error {
+  readonly code = 'chain_busy';
+  constructor(what: string, cause?: unknown) {
+    super(`chain busy: ${what}${cause ? ` (${String((cause as Error)?.message ?? cause).split('\n')[0].slice(0, 200)})` : ''}`);
+    this.name = 'ChainBusyError';
+  }
+}
+
 export interface ChainSession {
   /** Journal key `<arenaId>:<player lowercase>:<sessionId>` (the settlement's key). */
   key: string;
@@ -50,7 +63,8 @@ export interface ChainArena {
   enabled: boolean;
   /**
    * Ledger units the arena vault can spend (rounded down); null when the gateway has no real vault
-   * (dev-fake), which skips the vault-vs-journal guard.
+   * (dev-fake) or the vault is unknown right now (a stale list served while the RPC refuses the read),
+   * which skips the vault-vs-journal guard.
    */
   pot: number | null;
 }
@@ -94,8 +108,15 @@ export interface ChainGateway {
   /** Arena tickets can be played (chain on, token set and usable, server authorized). */
   readonly stakeEnabled: boolean;
   status(): ChainStatus;
+  /**
+   * The wallet's session in an arena; null when it has none. Throws `ChainBusyError` when the chain
+   * cannot be read (after the RPC budget's retries): that is not "no session".
+   */
   getSession(arenaId: number, player: string): Promise<ChainSession | null>;
-  /** On-chain arenas; cached briefly unless `fresh` (a re-read that bypasses the cache). */
+  /**
+   * On-chain arenas; cached unless `fresh` (a re-read that bypasses the cache). When the RPC fails the
+   * last good list is served (stale); `ChainBusyError` only when no list was ever read.
+   */
   listArenas(fresh?: boolean): Promise<ChainArena[]>;
   /** Wake the settlement worker (new journal items). */
   kick(): void;

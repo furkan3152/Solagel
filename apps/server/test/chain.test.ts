@@ -196,12 +196,12 @@ describe('status and reads', () => {
     expect((await six.chain.listArenas(true))[0].entryFee).toBe(1_000 * 1e6);
   });
 
-  it('caches the arena list for 30 s', async () => {
+  it('caches the arena list for 60 s', async () => {
     const h = await harness();
     expect((await h.chain.listArenas()).length).toBe(2);
     h.evm.addArena(3, 50_000n);
     expect((await h.chain.listArenas()).length).toBe(2);
-    h.clock.now += 31_000;
+    h.clock.now += 61_000;
     expect((await h.chain.listArenas()).length).toBe(3);
     // RPC errors keep the cached value
     h.evm.rpcDown = true;

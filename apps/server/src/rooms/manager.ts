@@ -12,7 +12,9 @@ export const BELL_MEMO_MS = 30 * 60_000;
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 /** On-chain arena list is re-read at most this often. */
-const ARENA_CACHE_MS = 30_000;
+export const ARENA_CACHE_MS = 60_000;
+/** After a failed arena-list read the last good list is used this long before the next try. */
+export const ARENA_RETRY_MS = 10_000;
 /** Practice players with this profile level or more always play in the pro league. */
 export const PRO_LEVEL = 5;
 /** A rookie game with max mass above this promotes the player's IP to pro… */
@@ -185,9 +187,21 @@ export class RoomManager {
   /* Arenas (sharded into instances)                                  */
   /* ---------------------------------------------------------------- */
 
+  /**
+   * The on-chain arenas, cached 60 s. When the chain cannot be read the last good list is used (and
+   * read again 10 s later): a rate-limited RPC must never make a running arena "not available". Throws
+   * (`ChainBusyError`) only when no list was ever read.
+   */
   private async arenas(): Promise<Map<number, ArenaData>> {
     if (this.arenaCache && Date.now() - this.arenaCache.at < ARENA_CACHE_MS) return this.arenaCache.ids;
-    const list = await this.chain.listArenas();
+    let list;
+    try {
+      list = await this.chain.listArenas();
+    } catch (err) {
+      if (!this.arenaCache) throw err;
+      this.arenaCache.at = Date.now() - ARENA_CACHE_MS + ARENA_RETRY_MS;
+      return this.arenaCache.ids;
+    }
     const ids = new Map<number, ArenaData>(
       list.map((a) => [a.id, { buyIn: a.entryFee, maxPlayers: a.maxSessions, enabled: a.enabled, pot: a.pot }]),
     );
@@ -304,7 +318,14 @@ export class RoomManager {
    */
   async arenaRoom(arenaId: number): Promise<Room | null> {
     if (!this.arenaAllowed(arenaId)) return null;
-    const arena = (await this.arenas()).get(arenaId);
+    let arena: ArenaData | undefined;
+    try {
+      arena = (await this.arenas()).get(arenaId);
+    } catch (err) {
+      // the chain cannot be read and no list is known: an arena already running here keeps seating its players
+      arena = this.arenaFromRooms(arenaId) ?? undefined;
+      if (!arena) throw err;
+    }
     if (!arena || !arena.enabled) return null;
     if (this.underfunded.has(arenaId)) return null;
     if (this.arenaInstances(arenaId).length === 0 && !this.vaultCovers(arenaId, arena)) return null;
@@ -332,6 +353,42 @@ export class RoomManager {
     }
     const again = await this.arenaRoom(arenaId);
     return live(again) ? again : null;
+  }
+
+  /** What a running instance knows of its arena (its ticket price), for when the chain cannot be read. */
+  private arenaFromRooms(arenaId: number): ArenaData | null {
+    const first = this.arenaInstances(arenaId)[0];
+    if (!first?.opts.stake) return null;
+    return { buyIn: first.opts.stake.buyIn, maxPlayers: this.cfg.arenaInstanceCap, enabled: true, pot: null };
+  }
+
+  /**
+   * The room to spectate for `id`. An arena instance that does not exist (yet, or any more) resolves
+   * to the arena's first instance, created on demand from the arena list (cached; the chain serves its
+   * last good list when the RPC refuses us): a restart while the RPC is rate-limited must not answer
+   * "Room not found" for a running arena. Null when there is no such room or arena.
+   */
+  async spectateRoom(id: string): Promise<Room | null> {
+    const room = this.rooms.get(id);
+    if (room) return room;
+    const m = /^arena-(\d{1,5})-\d{1,4}$/.exec(id);
+    if (!m) return null;
+    const arenaId = Number(m[1]);
+    const first = this.arenaInstances(arenaId)[0];
+    if (first) return first;
+    if (!this.arenaAllowed(arenaId)) return null;
+    let a: ArenaData | undefined;
+    try {
+      a = (await this.arenas()).get(arenaId);
+    } catch {
+      return null;
+    }
+    if (!a || !a.enabled || this.underfunded.has(arenaId)) return null;
+    // the awaits above may have created it meanwhile
+    const again = this.arenaInstances(arenaId)[0];
+    if (again) return again;
+    if (!this.vaultCovers(arenaId, a)) return null;
+    return this.createArenaInstance(arenaId, a);
   }
 
   /** The instance of `arenaId` in which `wallet` holds a live ticket, if any. */

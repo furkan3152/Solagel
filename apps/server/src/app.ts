@@ -17,6 +17,7 @@ import { BotSettingsStore, defaultBotSettings } from './bots/settings';
 import type { StakedBotSource } from './bots/staked';
 import { TestnetBotSource } from './bots/testnet-source';
 import { viemHolderReader, type HolderReader } from './chain/evm-client';
+import { configureRpcBudgets, startRpcMinuteLog } from './chain/rpc-budget';
 import { loadServerKeySecret } from './chain/server-key';
 import { chainDir, isTestChain, migrateLegacyState, resolveStateChainId, stateDir } from './chain/state-dir';
 import { HolderWlStore } from './site/holder-wl';
@@ -90,6 +91,9 @@ export async function createApp(
   const persist = opts.persist ?? true;
   // refuse a misconfigured DEV_FAKE_CHAIN before any file is opened
   assertDevFakeChainAllowed(cfg);
+  // one request budget per RPC URL for the whole process (the public RPC answers 429 above its limit)
+  configureRpcBudgets({ ratePerSec: cfg.chain.rpcMaxRps, burst: cfg.chain.rpcBurst });
+  const stopRpcLog = startRpcMinuteLog(log);
   const files = dataFileNames(cfg);
   // chain-keyed state: DATA_DIR/chains/<chainId>/ (registry, journal, bot wallets, allowlist snapshots)
   const stateChainId =
@@ -107,7 +111,7 @@ export async function createApp(
     log('!!! ADMIN_WALLETS is not set: NOBODY is admin (/admin and /api/admin/* refuse everyone). Set it to the owner\'s 0x address.');
   }
   const contracts = new ContractsStore(chainState, { arena: cfg.chain.arenaAddress, nft: cfg.chain.nftAddress, token: cfg.chain.tokenAddress }, log);
-  const chain = opts.chain ?? (await createChain(cfg, journal, log, { contracts: () => contracts.view(), stateChainId }));
+  const chain = opts.chain ?? (await createChain(cfg, journal, log, { contracts: () => contracts.view(), stateChainId, cacheDir: chainState }));
   // a newly registered (or cleared) contract is picked up at once, without a restart
   contracts.onChange(() => void chain.refresh?.());
   const auth = new Auth(cfg.authSecret, { onChain: chain.verifyMessage ? (a, m, sig) => chain.verifyMessage!(a, m, sig) : null });
@@ -210,6 +214,9 @@ export async function createApp(
         },
         // reconciles in-use flags with the rooms and adopts open sessions no room plays
         liveSessions: () => roomsRef?.liveSessions() ?? new Set<string>(),
+        // each bot slot buys at most one ticket per round (no re-buy after a death), and a global cap
+        round: () => (roomsRef ? roomsRef.roundWindow().n : 0),
+        maxTicketsPerMinute: cfg.chain.botTicketsPerMinute,
         log,
       });
       log(`bots: testnet staked bots on (chain ${botChainId}; ${stakedBots.addresses().length} bot wallet(s) known; the server key must be a TestToken minter and hold HYPE)`);
@@ -313,6 +320,8 @@ export async function createApp(
       clearInterval(flushTimer);
       clearInterval(arenaTimer);
       if (botTimer) clearInterval(botTimer);
+      stopRpcLog();
+      mint.flush();
       rooms.shutdown();
       integrity.close();
       priceKeeper?.stop();
