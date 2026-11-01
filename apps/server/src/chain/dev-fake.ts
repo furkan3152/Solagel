@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { DEFAULT_ARENAS, LOCALNET_CHAIN_ID, TOKEN_SYMBOL_DEFAULT, type ChainStatus } from '@elymum/shared';
 import { getAddress } from 'viem';
 import type { Journal } from '../stake/journal';
-import { sessionKey, type ChainArena, type ChainGateway, type ChainSession, type ServerKeyInfo, type SettledEvent } from './types';
+import { sessionKey, type ChainArena, type ChainGateway, type ChainSession, type ServerKeyInfo, type SettledEvent, type TokenReceipt } from './types';
 
 /** Decimals of the fake token (18 like the real one; the ledger keeps 6 of them). */
 const DECIMALS = 18;
@@ -21,6 +21,11 @@ export const fakeTxHash = (): string => `0x${randomBytes(32).toString('hex')}`;
 export interface DevFakeChainActions {
   /** Sets the fake game token (like `setToken` from /admin); false when it was already set. */
   devSetToken(): boolean;
+  /**
+   * "Mines" a game-token transfer (the web's fake wallet buying power-ups): `tokenReceipt` of the
+   * returned hash shows it. Null while the token is not set or an address is malformed.
+   */
+  devTransfer(from: string, to: string, value: bigint): string | null;
 }
 
 /**
@@ -50,6 +55,9 @@ export class DevFakeChain implements ChainGateway, DevFakeChainActions {
   private tokenSet: boolean;
   /** Ledger units of floor loot burned at round ends. */
   burned = 0;
+  /** Fake token transfers by hash (`devTransfer`). */
+  private readonly transfers = new Map<string, TokenReceipt>();
+  private block = 1n;
 
   constructor(
     private readonly journal: Journal,
@@ -102,6 +110,26 @@ export class DevFakeChain implements ChainGateway, DevFakeChainActions {
       }
     }
     return true;
+  }
+
+  /** DEV ONLY: records a token transfer and returns its fake hash. */
+  devTransfer(from: string, to: string, value: bigint): string | null {
+    if (!this.tokenSet || value <= 0n) return null;
+    let f: string;
+    let t: string;
+    try {
+      f = getAddress(from);
+      t = getAddress(to);
+    } catch {
+      return null;
+    }
+    const hash = fakeTxHash();
+    this.transfers.set(hash, { status: 'success', blockNumber: this.block++, transfers: [{ token: getAddress(FAKE_TOKEN), from: f, to: t, value }] });
+    return hash;
+  }
+
+  async tokenReceipt(hash: string): Promise<TokenReceipt | null> {
+    return this.transfers.get(hash.toLowerCase()) ?? null;
   }
 
   async getSession(arenaId: number, player: string): Promise<ChainSession | null> {

@@ -30,6 +30,9 @@ import { MintService, hyperliquidPrice, type PriceFetcher } from './site/mint';
 import { SiteApi, type SiteLimits } from './site/routes';
 import { SiteStore } from './site/store';
 import { Journal } from './stake/journal';
+import { BoostInventory } from './shop/inventory';
+import { ShopService } from './shop/service';
+import { ShopSettingsStore } from './shop/settings';
 
 export interface App {
   server: Server;
@@ -56,6 +59,8 @@ export interface App {
   priceKeeper: PriceKeeper | null;
   /** Cheat and collusion detection: telemetry, flags, bans, auto-hold (`/api/admin/integrity/*`). */
   integrity: IntegrityService;
+  /** Bought power-ups: prices, purchases (`DATA_DIR/chains/<id>/boosts.json`) and the in-room rules. */
+  shop: ShopService;
   /** Resolves once the HTTP server is listening; returns the bound port. */
   listen(): Promise<number>;
   close(): Promise<void>;
@@ -224,6 +229,19 @@ export async function createApp(
   }
   const stakedSource: StakedBotSource | undefined = opts.stakedBots ?? stakedBots ?? undefined;
 
+  // bought power-ups: the admin's prices (DATA_DIR/site/shop.json), the charges and used payments per chain
+  const shopSettings = new ShopSettingsStore(persist ? cfg.dataDir : null, undefined, log);
+  const boostInventory = new BoostInventory(chainState ? join(chainState, files.boosts) : null, log);
+  const shop = new ShopService({
+    settings: shopSettings,
+    inventory: boostInventory,
+    chain,
+    owner: () => cfg.adminWallets[0] ?? null,
+    holder: (wallet, fresh) => mint.isHolder(wallet, fresh),
+    log,
+  });
+  site.setShop({ service: shop, settings: shopSettings, inventory: boostInventory });
+
   const rooms = new RoomManager(
     cfg,
     {
@@ -234,6 +252,7 @@ export async function createApp(
       log,
       now: opts.now,
       integrity,
+      shop,
       // the server's own records: every finished game of a signed-in wallet counts in its profile
       onGameOver: (e) => {
         const wallet = e.conn?.wallet;
@@ -248,6 +267,7 @@ export async function createApp(
     botSettings,
   );
   roomsRef = rooms;
+  shop.onCharges((wallet) => rooms.pushBoosts(wallet));
   // a removed (or replaced) picture comes off the live coins at once
   site.onAvatarChange((wallet) => void rooms.clearAvatar(wallet));
   site.setBots({
@@ -306,6 +326,7 @@ export async function createApp(
     mint,
     priceKeeper,
     integrity,
+    shop,
     listen: () =>
       new Promise((resolve) => {
         server.listen(cfg.port, cfg.host, () => {

@@ -102,6 +102,8 @@ export interface EvmClient {
   txBlock(hash: Hash): Promise<bigint | null>;
   /** Simulates (throws the decoded revert) then sends `call` signed by the server key. */
   send(call: ContractCall): Promise<Hash>;
+  /** One look at a receipt: status and its ERC-20 `Transfer` logs; null when it is not mined. Throws on RPC errors. */
+  tokenReceipt?(hash: Hash): Promise<{ status: 'success' | 'reverted'; blockNumber: bigint; transfers: { token: Address; from: Address; to: Address; value: bigint }[] } | null>;
   /** The receipt of `hash`; null when it is not mined within `timeoutMs`. */
   receipt(hash: Hash, arena: Address | null, timeoutMs: number): Promise<TxReceipt | null>;
   /** On-chain signature check (EOA, ERC-1271 and ERC-6492). */
@@ -136,6 +138,19 @@ export interface EvmSigner {
 
 /** What reading an NFT's holders needs (also on a chain the server does not run on: `TESTNET_RPC_URL`). */
 export type HolderReader = Pick<EvmClient, 'getChainId' | 'blockNumber' | 'transferLogs' | 'deployBlock' | 'txBlock' | 'nftBalance'>;
+
+/** ERC-20 `Transfer` (three topics: an NFT's has an indexed token id and does not decode as this). */
+const erc20TransferAbi = [
+  {
+    type: 'event',
+    name: 'Transfer',
+    inputs: [
+      { name: 'from', type: 'address', indexed: true },
+      { name: 'to', type: 'address', indexed: true },
+      { name: 'value', type: 'uint256', indexed: false },
+    ],
+  },
+] as const;
 
 const ownableAbi = [
   { type: 'function', name: 'owner', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'address' }] },
@@ -319,6 +334,21 @@ export function viemEvmClient(
         signers.set(bot.address, s);
       }
       return s;
+    },
+    tokenReceipt: async (hash) => {
+      let r;
+      try {
+        r = await publicClient.getTransactionReceipt({ hash });
+      } catch (err) {
+        if ((err as Error)?.name === 'TransactionReceiptNotFoundError') return null;
+        throw err;
+      }
+      const logs = parseEventLogs({ abi: erc20TransferAbi, eventName: 'Transfer', logs: r.logs, strict: true });
+      return {
+        status: r.status,
+        blockNumber: r.blockNumber,
+        transfers: logs.map((l) => ({ token: getAddress(l.address), from: getAddress(l.args.from), to: getAddress(l.args.to), value: l.args.value })),
+      };
     },
     // one `eth_getTransactionReceipt` per look, slowing down (viem's waiter also polls the block number)
     receipt: async (hash, arena, timeoutMs) => {

@@ -20,10 +20,10 @@ export function assertDevFakeChainAllowed(cfg: ServerConfig): void {
 }
 
 /** Journal / leaderboard file names: the fake chain keeps its own, so it never touches real money records. */
-export function dataFileNames(cfg: ServerConfig): { journal: string; leaderboards: string; profiles: string } {
+export function dataFileNames(cfg: ServerConfig): { journal: string; leaderboards: string; profiles: string; boosts: string } {
   return cfg.devFakeChain
-    ? { journal: 'journal.dev-fake.json', leaderboards: 'leaderboards.dev-fake.json', profiles: 'profiles.dev-fake.json' }
-    : { journal: 'journal.json', leaderboards: 'leaderboards.json', profiles: 'profiles.json' };
+    ? { journal: 'journal.dev-fake.json', leaderboards: 'leaderboards.dev-fake.json', profiles: 'profiles.dev-fake.json', boosts: 'boosts.dev-fake.json' }
+    : { journal: 'journal.json', leaderboards: 'leaderboards.json', profiles: 'profiles.json', boosts: 'boosts.json' };
 }
 
 /**

@@ -7,6 +7,8 @@ import {
   clamp,
   VIEW,
   WORLD_PRESETS,
+  boostDurationMs,
+  isBoostKind,
   sanitizeChat,
   viewSize,
   writeSnapshot,
@@ -30,6 +32,7 @@ import type { Player } from '../game/entities';
 import { mulberry32 } from '../game/rng';
 import { World, type CellEatenEvent } from '../game/world';
 import type { IntegrityService } from '../integrity/service';
+import type { ShopService, UseContext } from '../shop/service';
 import type { Leaderboards } from '../leaderboards';
 import type { Conn } from '../net/conn';
 import { sweepKey, type Journal, type JournalItem, type LiveStake, type SettleReason, type SettlementItem } from '../stake/journal';
@@ -74,6 +77,8 @@ export interface RoomDeps {
   stakedBots?: StakedBotSource;
   /** How often an arena room asks the staked-bot source for another ticket (default 3 s; tests: 0). */
   stakedAskMs?: number;
+  /** Bought power-ups (charges, cooldowns, the arena cap); absent: the `boost` message is ignored. */
+  shop?: ShopService;
 }
 
 /** An AFK staker's ticket settled at a round's bell (see `RoomDeps.onBellSettled`). */
@@ -320,6 +325,7 @@ export class Room {
       round: this.round(),
     });
     conn.send({ t: 'history', chat: this.chatLog });
+    this.sendBoosts(conn);
     return player;
   }
 
@@ -365,6 +371,7 @@ export class Room {
       round: this.round(),
     });
     conn.send({ t: 'history', chat: this.chatLog });
+    this.sendBoosts(conn);
     return true;
   }
 
@@ -451,6 +458,39 @@ export class Room {
     this.chatLog.push(line);
     if (this.chatLog.length > CHAT_HISTORY) this.chatLog.shift();
     this.broadcast({ t: 'chat', ...line });
+  }
+
+  /** The boost context of a living human (null for bots, spectators and the dead). */
+  private boostContext(conn: Conn): UseContext | null {
+    const p = conn.player;
+    if (!p || conn.room !== this || !this.humans.has(p.id)) return null;
+    return {
+      wallet: this.walletOf.get(p.id) ?? null,
+      isBot: p.isBot,
+      arena: this.opts.mode === 'arena',
+      round: this.ledger ? this.roundN : null,
+      holder: (p.flags & PlayerFlag.Holder) !== 0,
+    };
+  }
+
+  /** Sends the player their power-up charges, cooldowns and arena allowance. */
+  sendBoosts(conn: Conn): void {
+    const shop = this.deps.shop;
+    const ctx = shop ? this.boostContext(conn) : null;
+    if (shop && ctx) conn.send({ t: 'boosts', state: shop.state(ctx) });
+  }
+
+  /** A bought power-up key: the shop checks the rules, the world applies the effect (bots never get here). */
+  boost(conn: Conn, kind: unknown): void {
+    const shop = this.deps.shop;
+    const p = conn.player;
+    if (!shop || !isBoostKind(kind) || !p || p.afk) return;
+    const ctx = this.boostContext(conn);
+    if (!ctx) return;
+    const res = shop.use(ctx, kind, () => this.world.useBoost(p.id, kind));
+    if (res.ok) conn.send({ t: 'boost', kind, ok: true, ms: boostDurationMs(kind) });
+    else conn.send({ t: 'boost', kind, ok: false, reason: res.reason });
+    conn.send({ t: 'boosts', state: shop.state(ctx) });
   }
 
   emote(conn: Conn, id: unknown): void {

@@ -469,6 +469,12 @@ export class RoomManager {
     return [...this.conns].filter((c) => c.wallet === wallet);
   }
 
+  /** The wallet's power-up charges changed (a purchase): its players in rooms get the new state. */
+  pushBoosts(wallet: string): void {
+    const w = wallet.toLowerCase();
+    for (const c of this.conns) if (c.wallet?.toLowerCase() === w && c.room && c.player?.alive) c.room.sendBoosts(c);
+  }
+
   /* ---------------------------------------------------------------- */
   /* Loop                                                             */
   /* ---------------------------------------------------------------- */

@@ -15,3 +15,4 @@ export * from './chains';
 export * from './site';
 export * from './integrity';
 export * from './avatar';
+export * from './boosts';
