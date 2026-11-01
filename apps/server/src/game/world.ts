@@ -12,6 +12,7 @@ import {
   coversVictim,
   massToRadius,
   mergeDelayMs,
+  radiusToMass,
   speedForRadius,
 } from '@elymum/shared';
 import { Cell, Eject, Food, Loot, Player, PowerUp, Virus, type DynamicEntity, type StaticEntity } from './entities';
@@ -72,6 +73,14 @@ const POWERUP_TYPES = [PowerUpType.Magnet, PowerUpType.Pump, PowerUpType.Shield,
 const POWERUP_LIFETIME_MS = 45_000;
 const COIN_RAIN_MS = 25_000;
 const COIN_RAIN_EVERY_MS = 240_000;
+/** A thorn bush that was eaten grows back after this long (one at a time). */
+const VIRUS_REGROW_MS = 4_000;
+/** Thorn bushes never grow this close to a cell's edge (nor on a fresh spawn). */
+const VIRUS_CELL_CLEARANCE = 160;
+/** A spawn spot keeps this much room around thorn bushes. */
+const SPAWN_VIRUS_CLEARANCE = 220;
+/** Approximate flight distance of a freshly split half (boost only). */
+const SPLIT_REACH = RULES.splitSpeed / -Math.log(RULES.splitDecayPerSec);
 
 const emptyEvents = (): TickEvents => ({ kills: [], cellsEaten: [], pops: [], pickups: [], airdrops: [], coinRain: null, lootPicked: [], ejectsEaten: [] });
 
@@ -199,24 +208,31 @@ export class World {
     if (p) p.ejectQueued = true;
   }
 
-  /** Picks a spawn location far from anything that could eat a newborn cell. */
+  /**
+   * Picks a spawn location far from anything that could eat a newborn cell. Every cell that could
+   * eat it counts with its reach: its split lunge (when a half could still eat the newborn) plus
+   * how far it travels while the spawn shield is up, so big cells are kept clearly away.
+   */
   findSpawnSpot(radius: number): { x: number; y: number } {
     const { width, height } = this.cfg;
     const margin = Math.min(300, width / 4);
+    const newborn = radiusToMass(radius);
+    const shieldS = RULES.spawnShieldMs / 1000;
     let best = { x: width / 2, y: height / 2 };
     let bestScore = -Infinity;
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 64; i++) {
       const x = randRange(this.rng, margin, width - margin);
       const y = randRange(this.rng, margin, height - margin);
       let score = 4000;
       for (const c of this.cells) {
-        if (c.mass < RULES.startMass * RULES.eatRatio) continue;
-        const d = Math.hypot(c.x - x, c.y - y) - c.r - radius;
-        score = Math.min(score, d * (c.mass > 200 ? 0.7 : 1));
+        if (!canEat(c.mass, newborn)) continue;
+        const gap = Math.hypot(c.x - x, c.y - y) - c.r - radius;
+        const reach = (canEat(c.mass / 2, newborn) ? SPLIT_REACH : 0) + speedForRadius(c.r) * shieldS * 0.5;
+        score = Math.min(score, gap - reach);
       }
       for (const v of this.viruses) {
         const d = Math.hypot(v.x - x, v.y - y);
-        if (d < v.r + radius + 20) score -= 1000;
+        if (d < v.r + radius + SPAWN_VIRUS_CLEARANCE) score -= 1000;
       }
       if (score > bestScore) {
         bestScore = score;
@@ -304,7 +320,7 @@ export class World {
         const cy = randRange(this.rng, r * 2, this.cfg.height - r * 2);
         let ok = true;
         for (const c of this.cells) {
-          if (Math.hypot(c.x - cx, c.y - cy) < c.r + r + 40) {
+          if (Math.hypot(c.x - cx, c.y - cy) < c.r + r + VIRUS_CELL_CLEARANCE) {
             ok = false;
             break;
           }
@@ -973,7 +989,9 @@ export class World {
     const target = Math.round(this.cfg.foodTarget * (raining ? 1.35 : 1));
     const missing = target - this.foodCount;
     if (missing > 0) {
-      this.foodBudget += ((raining ? RULES.coinRainFoodPerSec : RULES.foodSpawnPerSec) * this.lastDtMs) / 1000;
+      // bigger worlds refill proportionally faster (the same refill per area)
+      const scale = Math.max(1, this.cfg.foodTarget / RULES.foodRefillRefTarget);
+      this.foodBudget += ((raining ? RULES.coinRainFoodPerSec : RULES.foodSpawnPerSec) * scale * this.lastDtMs) / 1000;
       const n = Math.min(missing, Math.floor(this.foodBudget));
       this.foodBudget -= n;
       for (let i = 0; i < n; i++) this.spawnFood();
@@ -983,7 +1001,7 @@ export class World {
 
     if (this.viruses.length < this.cfg.virusTarget && this.now >= this.nextVirusAt) {
       this.spawnVirus();
-      this.nextVirusAt = this.now + 1500;
+      this.nextVirusAt = this.now + VIRUS_REGROW_MS;
     }
 
     // power-ups: expire old ones, airdrop new ones
@@ -1000,6 +1018,20 @@ export class World {
         const pu = this.spawnPowerUp();
         this.events.airdrops.push({ x: pu.x, y: pu.y, type: pu.type });
       }
+    }
+  }
+
+  /**
+   * Sheds a player's mass above `maxTotal`: `fraction` (0..1) of the excess goes, from every cell
+   * in proportion (the shape stays). Used for the rookie league's bot mass cap.
+   */
+  shedMass(p: Player, maxTotal: number, fraction: number): void {
+    const total = p.totalMass();
+    if (!(total > maxTotal) || !(fraction > 0)) return;
+    const k = (maxTotal + (total - maxTotal) * (1 - Math.min(1, fraction))) / total;
+    for (const c of p.cells) {
+      c.setMass(c.mass * k);
+      c.version = this.tickCount;
     }
   }
 

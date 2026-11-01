@@ -22,26 +22,30 @@
   scrollbar-gutter: stable;
   -webkit-overflow-scrolling: touch;
 }
-/* the live window: everything but the frame's window is page */
-.kl-root.has-hole {
-  -webkit-mask-image: linear-gradient(#000 0 0), linear-gradient(#000 0 0);
-  -webkit-mask-size:
-    100% 100%,
-    var(--hole-w, 0) var(--hole-h, 0);
-  -webkit-mask-position:
-    0 0,
-    var(--hole-x, 0) var(--hole-y, 0);
-  -webkit-mask-repeat: no-repeat;
-  -webkit-mask-composite: xor;
-  mask-image: linear-gradient(#000 0 0), linear-gradient(#000 0 0);
-  mask-size:
-    100% 100%,
-    var(--hole-w, 0) var(--hole-h, 0);
-  mask-position:
-    0 0,
-    var(--hole-x, 0) var(--hole-y, 0);
-  mask-repeat: no-repeat;
-  mask-composite: exclude;
+/* The live window: everything but the frame's window is page. The root and the page
+ * carry no paper then; the paper is the spread of a clear box over the window (LiveFrame
+ * places it in the page's coordinates), so it scrolls with the page on the compositor.
+ * (A mask on the scroller, moved every scrolled frame, re-rasterised the whole lobby and
+ * lagged the scroll.) */
+.kl-root[data-hole] {
+  /* only the scrollbar's gutter, outside the scrolled page */
+  background: linear-gradient(var(--paper) 0 0) right top / 0 100% no-repeat border-box;
+  /* no rubber band past the page's paper */
+  overscroll-behavior: none;
+}
+.kl-root[data-hole] > .kl-sheet-page {
+  position: relative;
+  isolation: isolate;
+}
+.kl-hole {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: -1;
+  width: 0;
+  height: 0;
+  box-shadow: 0 0 0 300vmax var(--paper);
+  pointer-events: none;
 }
 .kl-sheet-page {
   flex: 1 0 auto;
@@ -703,6 +707,22 @@
 }
 .kl-root:not(.has-hole) .kl-live__window {
   background: var(--trench);
+}
+/* the frame's sticker fill around the window only (the hole shows what is under it) */
+.kl-root[data-hole] .kl-live__frame {
+  --kl-pad: 10px;
+  background:
+    linear-gradient(var(--sticker) 0 0) top / 100% var(--kl-pad) no-repeat,
+    linear-gradient(var(--sticker) 0 0) bottom / 100% var(--kl-pad) no-repeat,
+    linear-gradient(var(--sticker) 0 0) left / var(--kl-pad) 100% no-repeat,
+    linear-gradient(var(--sticker) 0 0) right / var(--kl-pad) 100% no-repeat;
+}
+/* the window's own edge and wait line were always cut out with the hole */
+.kl-root[data-hole] .kl-live__window {
+  border-color: transparent;
+}
+.kl-root[data-hole] .kl-live__wait {
+  visibility: hidden;
 }
 .kl-live__wait {
   display: inline-flex;

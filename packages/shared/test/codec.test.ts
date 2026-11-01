@@ -112,7 +112,10 @@ describe('snapshot codec', () => {
       { id: 65535, skin: 255, flags: 255, name: 'Renée🚀' },
     ];
     const decoded = decodeSnapshot(encodeSnapshot({ tick: 9, view: { x: 1, y: 2, h: 3 }, players, upserts: [], removals: [] }));
-    expect(decoded.players).toEqual(players.map((p) => ({ ...p, isBot: (p.flags & PlayerFlag.Bot) !== 0, ...((p.flags & PlayerFlag.Holder) !== 0 ? { holder: true } : {}) })));
+    // the Avatar bit travels only with an avatar id (a bare bit is dropped)
+    expect(decoded.players).toEqual(
+      players.map((p) => ({ ...p, flags: p.flags & ~PlayerFlag.Avatar, isBot: (p.flags & PlayerFlag.Bot) !== 0, ...((p.flags & PlayerFlag.Holder) !== 0 ? { holder: true } : {}) })),
+    );
     expect(decoded.players.map((p) => (p.flags & PlayerFlag.Staker) !== 0)).toEqual([false, false, true, true]);
   });
 
@@ -219,7 +222,10 @@ describe('readSnapshot (streaming)', () => {
     const got = { tick: 0, view: { x: 0, y: 0, h: 0 }, players: [] as { id: number; skin: number; flags: number; name: string }[], upserts: [] as Record<string, number>[], removals: [] as { id: number; eaterId: number }[] };
     readSnapshot(buf, {
       snapshotBegin: (tick, x, y, h) => Object.assign(got, { tick, view: { x, y, h } }),
-      snapshotPlayer: (id, skin, flags, bytes, at, len) => got.players.push({ id, skin, flags, name: decodeUtf8(bytes, at, len) }),
+      snapshotPlayer: (id, skin, flags, bytes, at, len, avatarAt) => {
+        expect(avatarAt).toBe(-1);
+        got.players.push({ id, skin, flags, name: decodeUtf8(bytes, at, len) });
+      },
       snapshotUpsert: (id, kind, x, y, r, has, playerId, flags, variant) =>
         got.upserts.push({ id, kind, x, y, r, ...(has & HAS_PLAYER ? { playerId, flags } : {}), ...(has & HAS_VARIANT ? { variant } : {}) }),
       snapshotRemoval: (id, eaterId) => got.removals.push({ id, eaterId }),
@@ -235,5 +241,68 @@ describe('readSnapshot (streaming)', () => {
     const { readSnapshot } = await import('../src/index');
     const noop = { snapshotBegin() {}, snapshotPlayer() {}, snapshotUpsert() {}, snapshotRemoval() {} };
     expect(() => readSnapshot(new Uint8Array([9, 0, 0, 0, 0]).buffer, noop)).toThrow(/not a snapshot/);
+  });
+});
+
+describe('avatar ids in player records (v7)', () => {
+  const base = (players: PlayerInfo[]): SnapshotData => ({ tick: 1, view: { x: 0, y: 0, h: 1000 }, players, upserts: [], removals: [] });
+
+  it('round-trips an avatar id after the name and sets the Avatar flag', () => {
+    const snap = base([
+      { id: 7, skin: 3, flags: PlayerFlag.Verified, name: 'Pic ☀', avatar: '0123456789abcdef' },
+      { id: 8, skin: 1, flags: 0, name: 'plain' },
+      { id: 9, skin: 2, flags: PlayerFlag.Holder, name: 'laurel', holder: true, avatar: 'ffeeddccbbaa0099' },
+    ]);
+    const buf = encodeSnapshot(snap);
+    const d = decodeSnapshot(buf);
+    expect(d.players[0]).toEqual({ id: 7, skin: 3, flags: PlayerFlag.Verified | PlayerFlag.Avatar, name: 'Pic ☀', isBot: false, avatar: '0123456789abcdef' });
+    expect(d.players[1]).toEqual({ id: 8, skin: 1, flags: 0, name: 'plain', isBot: false });
+    expect(d.players[2]).toEqual({ id: 9, skin: 2, flags: PlayerFlag.Holder | PlayerFlag.Avatar, name: 'laurel', isBot: false, holder: true, avatar: 'ffeeddccbbaa0099' });
+    // 8 bytes per avatar, nothing for the player without one
+    const without = encodeSnapshot(base(snap.players.map(({ avatar: _a, ...p }) => p)));
+    expect(buf.byteLength - without.byteLength).toBe(16);
+  });
+
+  it('never sends an avatar for a bot or a malformed id, and drops a stray Avatar bit', () => {
+    const d = decodeSnapshot(
+      encodeSnapshot(
+        base([
+          { id: 1, skin: 0, flags: 0, name: 'bot', isBot: true, avatar: '0123456789abcdef' },
+          { id: 2, skin: 0, flags: PlayerFlag.Bot, name: 'bot2', avatar: '0123456789abcdef' },
+          { id: 3, skin: 0, flags: 0, name: 'bad', avatar: 'NOT-HEX' },
+          { id: 4, skin: 0, flags: PlayerFlag.Avatar, name: 'stray' },
+        ]),
+      ),
+    );
+    for (const p of d.players) {
+      expect(p.avatar).toBeUndefined();
+      expect(p.flags & PlayerFlag.Avatar).toBe(0);
+    }
+    expect(d.players[0].isBot).toBe(true);
+    expect(d.players[1].isBot).toBe(true);
+  });
+
+  it('streams the avatar offset to the sink and rejects a truncated id', async () => {
+    const { readSnapshot, avatarIdFromBytes, avatarIdEquals } = await import('../src/index');
+    const buf = encodeSnapshot(base([{ id: 5, skin: 1, flags: 0, name: 'me', avatar: 'a1b2c3d4e5f60718' }]));
+    let seen = '';
+    readSnapshot(buf, {
+      snapshotBegin() {},
+      snapshotPlayer: (_id, _skin, flags, bytes, _at, _len, avatarAt) => {
+        expect(flags & PlayerFlag.Avatar).toBe(PlayerFlag.Avatar);
+        seen = avatarIdFromBytes(bytes, avatarAt);
+        expect(avatarIdEquals('a1b2c3d4e5f60718', bytes, avatarAt)).toBe(true);
+        expect(avatarIdEquals('a1b2c3d4e5f60719', bytes, avatarAt)).toBe(false);
+        expect(avatarIdEquals(undefined, bytes, avatarAt)).toBe(false);
+      },
+      snapshotUpsert() {},
+      snapshotRemoval() {},
+    });
+    expect(seen).toBe('a1b2c3d4e5f60718');
+    // cut inside the avatar id: header (18) + player (5 + 2 name bytes) + 4 of the 8 id bytes
+    const cut = buf.slice(0, 18 + 7 + 4);
+    const noop = { snapshotBegin() {}, snapshotPlayer() {}, snapshotUpsert() {}, snapshotRemoval() {} };
+    expect(() => readSnapshot(cut, noop)).toThrow(RangeError);
+    expect(() => decodeSnapshot(cut)).toThrow(RangeError);
   });
 });

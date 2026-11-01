@@ -3,12 +3,14 @@ import { dirname } from 'node:path';
 import {
   EMBLEM_SKIN_ID,
   MAX_NAME_LENGTH,
+  isAvatarId,
   isBasicSkin,
   levelFromXp,
   sanitizeName,
   utf8Length,
   type ProfileStats,
   type ProfileSummary,
+  type AdminAvatarEntry,
   type ProfileView,
 } from '@elymum/shared';
 import { getAddress } from 'viem';
@@ -28,6 +30,10 @@ export interface ProfileRecord {
   xp: number;
   /** Unix ms of the last name / skin change; null when never saved. */
   updatedAt: number | null;
+  /** The profile picture (`isAvatarId`, a file of the `AvatarStore`); null without one. */
+  avatar?: string | null;
+  /** Unix ms of the picture upload. */
+  avatarAt?: number | null;
 }
 
 interface ProfilesFile {
@@ -83,6 +89,8 @@ export class ProfileStore {
           best: nat(p.best),
           xp: nat(p.xp),
           updatedAt: typeof p.updatedAt === 'number' ? p.updatedAt : null,
+          avatar: isAvatarId(p.avatar) ? p.avatar : null,
+          avatarAt: isAvatarId(p.avatar) && typeof p.avatarAt === 'number' ? p.avatarAt : null,
         });
       }
     } catch (err) {
@@ -110,7 +118,38 @@ export class ProfileStore {
   view(wallet: string): ProfileView {
     const p = this.get(wallet);
     const stats: ProfileStats = { games: p?.games ?? 0, kills: p?.kills ?? 0, best: p?.best ?? 0 };
-    return { wallet: getAddress(wallet), name: p?.name ?? null, skin: p?.skin ?? 0, stats, updatedAt: p?.updatedAt ?? null };
+    return { wallet: getAddress(wallet), name: p?.name ?? null, skin: p?.skin ?? 0, stats, updatedAt: p?.updatedAt ?? null, avatar: p?.avatar ?? null };
+  }
+
+  /** The wallet's profile picture id, or null. */
+  avatar(wallet: string | null | undefined): string | null {
+    return (wallet && this.byWallet.get(wallet.toLowerCase())?.avatar) || null;
+  }
+
+  /** Sets (or with null clears) the wallet's picture. Returns the id it replaced (null when none). */
+  setAvatar(wallet: string, id: string | null): string | null {
+    if (id !== null && !isAvatarId(id)) throw new Error('bad avatar id');
+    const p = this.record(wallet);
+    const before = p.avatar ?? null;
+    p.avatar = id;
+    p.avatarAt = id ? this.now() : null;
+    this.touch();
+    return before;
+  }
+
+  /** How many profiles wear the picture (a file is deleted only when nobody does). */
+  avatarUsers(id: string): number {
+    let n = 0;
+    for (const p of this.byWallet.values()) if (p.avatar === id) n++;
+    return n;
+  }
+
+  /** Every profile picture, newest first (`GET /api/admin/avatars`). */
+  avatars(limit = 200): { items: AdminAvatarEntry[]; total: number } {
+    const all: AdminAvatarEntry[] = [];
+    for (const p of this.byWallet.values()) if (p.avatar) all.push({ wallet: p.wallet, name: p.name, avatar: p.avatar, at: p.avatarAt ?? null });
+    all.sort((a, b) => (b.at ?? 0) - (a.at ?? 0));
+    return { items: all.slice(0, Math.max(1, Math.min(1000, limit))), total: all.length };
   }
 
   /** What the game shows after a sign-in (`authed.profile`): null until the player picked a name. */

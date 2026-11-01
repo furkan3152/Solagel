@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef } from 'react';
 import { Icon, StampSpinner, Tape } from '../../design';
+import { setWorldCovered } from '../../game/backdrop';
 import { engine } from '../../game/instance';
 import { useT } from '../../i18n';
 import { useUi } from '../../store';
@@ -7,9 +8,11 @@ import { roomName } from '../game/format';
 
 /**
  * The live window: a sticker frame cut into the lobby page through which the
- * live game canvas (spectating the busiest room) shows. The hole is a CSS mask
- * on the lobby root (`--hole-*`), kept in sync with this element's box, so the
- * world is rendered once by the engine and never copied.
+ * live game canvas (spectating the busiest room) shows. The page has no paper
+ * of its own while it has a window (`.has-hole`): the paper is the spread of a
+ * clear box laid over this element's window (`.kl-hole`, in the page's own
+ * coordinates), so the world is rendered once by the engine and never copied,
+ * and scrolling moves the window and its hole together on the compositor.
  */
 export function LiveFrame() {
   const t = useT();
@@ -26,24 +29,67 @@ export function LiveFrame() {
     // the lobby root (`.has-hole`) is an ancestor; its ref is not attached yet when this runs
     const win = windowRef.current;
     const root = win?.closest<HTMLElement>('.kl-root');
-    if (!root || !win) return;
+    const page = root?.querySelector<HTMLElement>(':scope > .kl-sheet-page');
+    if (!root || !page || !win) return;
+    // The hole is placed in the page's own coordinates, so it scrolls with the page on the
+    // compositor: scrolling never touches it. It is measured again only while the layout
+    // moves: a burst of frames from mount (which follows the page's entrance motion) and after
+    // any resize of the window, the page or the root, until it has held still for 30 frames.
+    const hole = document.createElement('div');
+    hole.className = 'kl-hole';
+    hole.setAttribute('aria-hidden', 'true');
+    page.prepend(hole);
+    root.dataset.hole = '';
     let last = '';
     let raf = 0;
-    const sync = () => {
-      const r = root.getBoundingClientRect();
+    let still = 0;
+    const measure = () => {
+      const p = page.getBoundingClientRect();
       const w = win.getBoundingClientRect();
-      const key = `${w.left - r.left}|${w.top - r.top}|${w.width}|${w.height}`;
-      if (key !== last) {
-        last = key;
-        root.style.setProperty('--hole-x', `${w.left - r.left}px`);
-        root.style.setProperty('--hole-y', `${w.top - r.top}px`);
-        root.style.setProperty('--hole-w', `${w.width}px`);
-        root.style.setProperty('--hole-h', `${w.height}px`);
-      }
-      raf = requestAnimationFrame(sync);
+      const x = w.left - p.left;
+      const y = w.top - p.top;
+      const key = `${x}|${y}|${w.width}|${w.height}`;
+      if (key === last) return false;
+      last = key;
+      hole.style.transform = `translate(${x}px, ${y}px)`;
+      hole.style.width = `${w.width}px`;
+      hole.style.height = `${w.height}px`;
+      // the scrollbar's gutter is not page: it gets the paper too (a plain property, not an
+      // inherited variable, so nothing under the root restyles)
+      root.style.backgroundSize = `${root.offsetWidth - root.clientWidth}px 100%`;
+      return true;
     };
-    sync();
-    return () => cancelAnimationFrame(raf);
+    const tick = () => {
+      still = measure() ? 0 : still + 1;
+      // settled for half a second: stop until the layout moves again
+      raf = still < 30 ? requestAnimationFrame(tick) : 0;
+    };
+    const wake = () => {
+      still = 0;
+      if (!raf) raf = requestAnimationFrame(tick);
+    };
+    measure();
+    wake();
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(wake);
+    ro?.observe(win);
+    ro?.observe(page);
+    ro?.observe(root);
+    // the world is drawn only while some of the window is on screen
+    const io =
+      typeof IntersectionObserver === 'undefined'
+        ? null
+        : new IntersectionObserver((entries) => {
+            for (const e of entries) setWorldCovered(!e.isIntersecting);
+          });
+    io?.observe(win);
+    return () => {
+      cancelAnimationFrame(raf);
+      ro?.disconnect();
+      io?.disconnect();
+      hole.remove();
+      delete root.dataset.hole;
+      root.style.removeProperty('background-size');
+    };
   }, []);
 
   const name = room ? roomName(room) : '';

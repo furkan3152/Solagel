@@ -21,6 +21,8 @@ export interface CoinOpts {
   fastBody?: boolean;
   /** Below this many screen px of radius the fine interior details are skipped (see `CoinState`). */
   minPrintPx?: number;
+  /** A profile picture cut to a disc (`AvatarCache.disc`): fills the face inside the rim, no face drawn. */
+  picture?: CanvasImageSource | null;
 }
 
 /** Draws a coin character with an explicit look centred at (x, y) with world radius r. */

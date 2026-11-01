@@ -367,12 +367,14 @@ export class Gateway {
         name = sanitizeName(conn.profile.name, name);
         flags |= PlayerFlag.Verified;
       }
+      // the signed-in wallet's own profile picture, when it asked to wear it (guests and bots never have one)
+      const avatar = msg.pic === true && conn.wallet ? (this.profiles?.avatar(conn.wallet) ?? null) : null;
 
       if (target.mode === 'practice') {
         if (conn.player?.alive && conn.room?.opts.mode === 'practice') return; // already playing
         const room = this.rooms.practiceRoom(this.rooms.leagueFor(conn), conn.room);
         if (conn.player?.alive) conn.room?.leave(conn, 'switch');
-        room.join(conn, { name, skin, flags });
+        room.join(conn, { name, skin, flags, avatar });
         return;
       }
 
@@ -388,7 +390,7 @@ export class Gateway {
           return;
         }
         if (conn.player?.alive) conn.room?.leave(conn, 'switch');
-        room.join(conn, { name, skin, flags });
+        room.join(conn, { name, skin, flags, avatar });
         return;
       }
 
@@ -497,6 +499,7 @@ export class Gateway {
       room.join(conn, {
         name,
         skin,
+        avatar,
         flags: flags | PlayerFlag.Staker,
         stake: {
           player: conn.wallet,

@@ -420,7 +420,7 @@ describe('profiles', () => {
   it('GET / PUT /api/profile (signed-in), validated, used by the websocket sign-in', async () => {
     const w = wallet();
     expect((await h.call('GET', '/api/profile')).status).toBe(401);
-    expect((await h.call('GET', '/api/profile', { wallet: w })).body.profile).toEqual({ wallet: w, name: null, skin: 0, stats: { games: 0, kills: 0, best: 0 }, updatedAt: null });
+    expect((await h.call('GET', '/api/profile', { wallet: w })).body.profile).toEqual({ wallet: w, name: null, skin: 0, stats: { games: 0, kills: 0, best: 0 }, updatedAt: null, avatar: null });
     expect((await h.call('PUT', '/api/profile', { wallet: w, body: { name: '', skin: 1 } })).body.field).toBe('name');
     expect((await h.call('PUT', '/api/profile', { wallet: w, body: { name: 'n'.repeat(17), skin: 1 } })).body.field).toBe('name');
     expect((await h.call('PUT', '/api/profile', { wallet: w, body: { name: 'Coin Lord', skin: 9999 } })).body.field).toBe('skin');

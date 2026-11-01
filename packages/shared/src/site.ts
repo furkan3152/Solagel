@@ -243,7 +243,11 @@ export type SiteErrorCode =
   /** The server has no chain (`EVM_RPC_URL` unset) or the contract is not registered. */
   | 'chain_off'
   /** The upstream price feed (HYPE/USD) could not be read. */
-  | 'price_unavailable';
+  | 'price_unavailable'
+  /** Profile picture: not a PNG or WebP square of the allowed size (`AVATAR_LIMITS`). */
+  | 'bad_image'
+  /** Profile picture: an admin removed this picture; it cannot be uploaded again. */
+  | 'image_blocked';
 
 export interface SiteError {
   error: SiteErrorCode;
@@ -476,6 +480,20 @@ export interface ProfileView {
   stats: ProfileStats;
   /** Unix ms; null when never saved. */
   updatedAt: number | null;
+  /**
+   * The uploaded profile picture (`isAvatarId`, served at `avatarPath`), null without one (never
+   * uploaded, deleted, or removed by an admin). Worn in game with `join.pic`.
+   */
+  avatar?: string | null;
+}
+
+/** `GET /api/admin/avatars`: a player's profile picture, newest first. */
+export interface AdminAvatarEntry {
+  wallet: string;
+  name: string | null;
+  avatar: string;
+  /** Unix ms of the upload. */
+  at: number | null;
 }
 
 /**

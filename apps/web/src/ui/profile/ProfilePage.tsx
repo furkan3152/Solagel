@@ -12,6 +12,8 @@ import { useAddress } from '../../wallet/store';
 import { openModal, toast, updateSettings, useUi } from '../../store';
 import { CoinPortrait } from '../game/CoinPortrait';
 import { PageHead } from '../PageHead';
+import { PicturePanel, PictureTile, usePicture } from './PicturePicker';
+import { wearsPicture } from './picture';
 import { SettingsPage } from './SettingsPage';
 import './profile.css';
 
@@ -69,6 +71,7 @@ function MemberCard() {
   const auth = useUi((s) => s.auth);
   const profile = useChainData((s) => s.profile);
   const owner = useAddress();
+  const wearing = wearsPicture(settings.picture, owner ? profile?.avatar : null);
   const nf = new Intl.NumberFormat('en-US');
   const name = profile?.name ?? auth?.profile?.name ?? (settings.name || t('pf.guest'));
   const xp = auth?.profile?.xp ?? 0;
@@ -90,7 +93,7 @@ function MemberCard() {
             animate={reduced || flip === 0 ? { rotateY: 0 } : { rotateY: [0, 90, -90, 0], y: [0, -12, -12, 0], scale: [1, 0.94, 0.94, 1] }}
             transition={{ duration: 0.42, times: [0, 0.38, 0.4, 1], ease: 'easeInOut' }}
           >
-            <CoinPortrait skin={shownSkin} size={104} expression="proud" seed={11} />
+            <CoinPortrait skin={shownSkin} size={104} expression="proud" seed={11} avatar={wearing ? profile?.avatar : null} />
           </motion.span>
           {!reduced && flip > 0 && (
             <span key={`spark-${flip}`} className="pf-card__spark" aria-hidden="true">
@@ -160,6 +163,7 @@ function NameAndCoin() {
   const serverDiff = !!token && (!profile || clean !== profile.name || skin !== profile.skin);
   const localDiff = clean !== settings.name;
   const dirty = valid && (serverDiff || localDiff);
+  const pic = usePicture();
 
   const save = async () => {
     if (inFlight.current || !valid) return;
@@ -211,8 +215,9 @@ function NameAndCoin() {
       <fieldset className="pf-looks" disabled={busy}>
         <legend className="mono pf-cap">{t('pf.coin')}</legend>
         <div className="pf-grid">
+          <PictureTile pic={pic} skin={skin} group={groupId} />
           {skins.map((s) => {
-            const on = skin === s.id;
+            const on = skin === s.id && !pic.wearing;
             return (
               <label key={s.id} className={`pf-look${on ? ' is-on' : ''}`}>
                 <input
@@ -221,7 +226,7 @@ function NameAndCoin() {
                   checked={on}
                   onChange={() => {
                     sound.click();
-                    updateSettings({ skin: s.id });
+                    updateSettings({ skin: s.id, picture: false });
                   }}
                   aria-label={s.name}
                 />
@@ -232,6 +237,7 @@ function NameAndCoin() {
           })}
         </div>
         <p className="kl-note">{t('pf.coinNote')}</p>
+        <PicturePanel pic={pic} skin={skin} />
       </fieldset>
 
       <div className={`pf-save${dirty ? ' is-dirty' : ''}`}>

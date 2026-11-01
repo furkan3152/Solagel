@@ -8,9 +8,17 @@ export const radiusToMass = (radius: number): number => (radius * radius) / 100;
 
 export const START_RADIUS = massToRadius(RULES.startMass);
 
-/** Movement speed in world units per second for a cell of radius r. */
-export const speedForRadius = (r: number): number =>
-  RULES.speedK * Math.pow(Math.max(r, 1), -RULES.speedExp);
+const SPEED_AT_KNEE = RULES.speedK * Math.pow(RULES.speedKneeR, -RULES.speedExp);
+
+/**
+ * Movement speed in world units per second for a cell of radius r: `speedK · r^-speedExp` for
+ * small cells, flattening to `r^-speedExpHigh` past `speedKneeR` (continuous at the knee).
+ */
+export const speedForRadius = (r: number): number => {
+  const rr = Math.max(r, 1);
+  if (rr <= RULES.speedKneeR) return RULES.speedK * Math.pow(rr, -RULES.speedExp);
+  return SPEED_AT_KNEE * Math.pow(rr / RULES.speedKneeR, -RULES.speedExpHigh);
+};
 
 /** Milliseconds a freshly split cell must wait before it can merge back. */
 export const mergeDelayMs = (mass: number): number => RULES.mergeBaseMs + RULES.mergeMsPerMass * mass;

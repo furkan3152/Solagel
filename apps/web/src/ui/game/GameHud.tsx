@@ -375,13 +375,13 @@ function KeyHints() {
   return (
     <div className="g-keys mono" aria-label={t('g.keysLabel')}>
       <span className="g-keys__item">
-        <kbd className="kb-key">{t('g.key.mouse')}</kbd> {t('g.key.steer')}
+        <kbd className="kb-key">{t('g.key.mouse')}</kbd>/<kbd className="kb-key">{t('g.key.wasd')}</kbd> {t('g.key.steer')}
       </span>
       <span className="g-keys__item">
         <kbd className="kb-key">{t('g.key.space')}</kbd> {t('hud.split').toLowerCase()}
       </span>
       <span className="g-keys__item">
-        <kbd className="kb-key">W</kbd> {t('hud.eject').toLowerCase()}
+        <kbd className="kb-key">E</kbd> {t('hud.eject').toLowerCase()}
       </span>
       <span className="g-keys__item">
         <kbd className="kb-key">1–8</kbd> {t('g.emotes').toLowerCase()}

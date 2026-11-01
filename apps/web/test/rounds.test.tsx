@@ -179,7 +179,7 @@ describe('no cash-out in arenas', () => {
     // phones get the chat button in every room now
     expect(screen.getByRole('button', { name: 'Chat' })).toBeTruthy();
 
-    const actions = { split: vi.fn(), eject: vi.fn(), emote: vi.fn(), openChat: vi.fn(), escape: vi.fn(), spectateNext: vi.fn() };
+    const actions = { split: vi.fn(), eject: vi.fn(), emote: vi.fn(), openChat: vi.fn(), escape: vi.fn(), spectateNext: vi.fn(), steering: vi.fn(() => true) };
     const input = new Input(document.createElement('div'), actions, () => {}, () => {});
     window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyC', key: 'c' }));
     for (const fn of Object.values(actions)) expect(fn).not.toHaveBeenCalled();

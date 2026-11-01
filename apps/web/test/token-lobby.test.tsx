@@ -89,6 +89,8 @@ beforeEach(() => {
   vi.stubGlobal('requestAnimationFrame', () => 0);
   vi.stubGlobal('cancelAnimationFrame', () => {});
   net.sent = [];
+  // a returning player: the first-play brief does not hold the join
+  localStorage.setItem('elymum.brief', '1');
   useUi.setState({ ...ui0, screen: 'lobby', page: 'play' }, true);
   engine = new GameEngine(document.createElement('canvas'));
   setEngine(engine);

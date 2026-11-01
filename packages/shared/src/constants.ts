@@ -1,5 +1,5 @@
-/** Bumped whenever the wire format changes in an incompatible way (v6: bot flags on every player-facing message, `feed` left lines). */
-export const PROTOCOL_VERSION = 6;
+/** Bumped whenever the wire format changes in an incompatible way (v6: bot flags on every player-facing message, `feed` left lines; v7: player avatar ids in snapshots). */
+export const PROTOCOL_VERSION = 7;
 
 /** Simulation + snapshot rate. */
 export const TICK_RATE = 30;
@@ -50,13 +50,23 @@ export const RULES = {
   /** …plus this much per unit of the player's TOTAL mass, so giants melt faster (splitting doesn't help). */
   decayPerSecPerMass: 0.0000005,
   maxCellMass: 12_000,
-  /** Food respawn budget (pellets / second); eaten areas refill gradually. */
+  /**
+   * Food respawn budget (pellets / second) of a world with `foodRefillRefTarget` pellets; bigger
+   * worlds refill proportionally faster (same refill per area). Eaten areas refill gradually.
+   */
   foodSpawnPerSec: 60,
   coinRainFoodPerSec: 90,
+  foodRefillRefTarget: 1100,
 
-  /** speed(r) = speedK * r^-speedExp (units / second). */
+  /**
+   * speed(r) = speedK * r^-speedExp (units / second) up to `speedKneeR` (mass 100), then it falls
+   * off more gently: speed(knee) * (r / speedKneeR)^-speedExpHigh. Small coins move as before;
+   * big ones are still slower, just not as steeply.
+   */
   speedK: 1900,
   speedExp: 0.44,
+  speedKneeR: 100,
+  speedExpHigh: 0.3,
 
   /** Power-up tuning. */
   magnetMs: 10_000,
@@ -68,7 +78,7 @@ export const RULES = {
   bagMassMin: 40,
 
   /** Newly spawned players are shielded this long. */
-  spawnShieldMs: 3_000,
+  spawnShieldMs: 5_500,
 
   /** Cash-out channel duration (unused since paid arenas play timed rounds; kept for old clients). */
   cashoutMs: 3_000,
@@ -122,9 +132,10 @@ export type League = 'rookie' | 'pro';
 
 /** World presets per room mode. */
 export const WORLD_PRESETS = {
-  practice: { width: 5600, height: 5600, foodTarget: 1100, virusTarget: 22, maxPowerUps: 3 },
-  private: { width: 4600, height: 4600, foodTarget: 800, virusTarget: 16, maxPowerUps: 2 },
-  arena: { width: 6400, height: 6400, foodTarget: 1500, virusTarget: 28, maxPowerUps: 4 },
+  // food scales with the area (same density on every map); thorn bushes are sparse on purpose
+  practice: { width: 6800, height: 6800, foodTarget: 1620, virusTarget: 14, maxPowerUps: 3 },
+  private: { width: 4600, height: 4600, foodTarget: 800, virusTarget: 10, maxPowerUps: 2 },
+  arena: { width: 7800, height: 7800, foodTarget: 2230, virusTarget: 18, maxPowerUps: 4 },
 } as const satisfies Record<
   RoomMode,
   { width: number; height: number; foodTarget: number; virusTarget: number; maxPowerUps: number }

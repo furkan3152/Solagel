@@ -328,3 +328,89 @@
     animation: none;
   }
 }
+
+/* "Your picture": the add tile, the note and buttons under the coins, the crop stage */
+.pf-pic-add {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+}
+.pf-pic-add > span {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: var(--stroke-sm) dashed var(--outline);
+  border-radius: 50%;
+  background: var(--surface);
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1;
+}
+.pf-pic,
+.pf-crop {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 6px;
+  padding-top: 12px;
+  border-top: 2px dashed var(--rule);
+}
+.pf-pic .kl-note,
+.pf-crop .kl-note {
+  margin: 0;
+}
+.pf-pic__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.pf-crop__body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px 20px;
+}
+.pf-crop__stage {
+  position: relative;
+  flex: none;
+  overflow: hidden;
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: var(--r-btn);
+  background: var(--sticker);
+  touch-action: none;
+  cursor: grab;
+}
+.pf-crop__stage:active {
+  cursor: grabbing;
+}
+.pf-crop__stage canvas {
+  display: block;
+}
+.pf-crop__mask {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 200px rgba(4, 24, 28, 0.55);
+  outline: 3px solid var(--sun);
+  outline-offset: -3px;
+  pointer-events: none;
+}
+.pf-crop__side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.pf-crop__zoom {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.pf-crop__zoom input {
+  width: 140px;
+}

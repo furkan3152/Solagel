@@ -1,4 +1,5 @@
 import type {
+  AdminAvatarEntry,
   IntegrityBan,
   IntegrityFlag,
   IntegrityFlagKind,
@@ -232,6 +233,10 @@ export function adminApi(token: string) {
     collabCsv: (cid: string) => downloadCsv(`/api/admin/collabs/${id(cid)}/wallets.csv`, token, `elymum-collab-${cid}.csv`),
     allCollabsCsv: () => downloadCsv('/api/admin/collabs/wallets.csv', token, 'elymum-collab-wallets.csv'),
     integrity: integrityApi(token),
+    /** `GET /api/admin/avatars`: players' profile pictures, newest first. */
+    avatars: (limit = 200) => request<{ items: AdminAvatarEntry[]; total: number }>(`/api/admin/avatars${q({ limit })}`, { token }),
+    /** `DELETE /api/admin/avatars/<wallet>`: removes (and blocks) the wallet's picture; its coin goes back to the basic skin. */
+    removeAvatar: (wallet: string) => request<{ removed: string }>(`/api/admin/avatars/${id(wallet)}`, { method: 'DELETE', token }),
     /** `GET /api/admin/bots`: the bot settings, their env defaults and the live counts (shape: `BotAdminView`). */
     bots: () => request<BotAdminView>('/api/admin/bots', { token }),
     /** `PUT /api/admin/bots`: a partial settings update; answers like the GET. */

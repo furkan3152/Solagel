@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { BASIC_SKINS, EMBLEM_SKIN_ID, SITE_LIMITS, type GameAccess, type ProfileResponse, type SiteError, type SiteSettings } from '@elymum/shared';
-import type { Auth } from '../auth';
+import { AVATAR_LIMITS, AVATAR_TYPES, BASIC_SKINS, EMBLEM_SKIN_ID, SITE_LIMITS, isAvatarId, type GameAccess, type ProfileResponse, type SiteError, type SiteSettings } from '@elymum/shared';
+import { checksumAddress, type Auth } from '../auth';
+import { AvatarError, avatarIdOf, sanitizeAvatar, type AvatarStore } from '../avatars';
 import type { ChainGateway } from '../chain/types';
 import { integrityRoutes } from '../integrity/routes';
 import type { IntegrityService } from '../integrity/service';
@@ -37,6 +38,8 @@ export interface SiteExtras {
   holderReaderFor?: (chainId: number) => HolderReader | null;
   /** The TestToken faucet settings (`GET /api/site/faucet`). */
   faucet?: FaucetInfo;
+  /** Profile pictures (`/api/profile/avatar`, `/api/avatar/<id>`, `/api/admin/avatars`). */
+  avatars?: AvatarStore;
   log?: (m: string) => void;
 }
 
@@ -47,12 +50,18 @@ export interface SiteLimits {
   writeWallet: Limiter;
   /** `POST /api/auth/login` per IP. */
   login: Limiter;
+  /** Picture uploads per IP (default 20 an hour). */
+  avatarIp?: Limiter;
+  /** Picture uploads per signed-in wallet (default 6 an hour). */
+  avatarWallet?: Limiter;
 }
 
 export const defaultSiteLimits = (): SiteLimits => ({
   writeIp: new Limiter(60, 10 * 60_000),
   writeWallet: new Limiter(20, 10 * 60_000),
   login: new Limiter(20, 60_000),
+  avatarIp: new Limiter(20, 60 * 60_000),
+  avatarWallet: new Limiter(6, 60 * 60_000),
 });
 
 const send = (res: ServerResponse, status: number, body: unknown) => {
@@ -93,6 +102,20 @@ export async function readJson(req: IncomingMessage, limit: number = SITE_LIMITS
   return obj(parsed);
 }
 
+/** Reads a raw body of at most `limit` bytes. */
+export async function readRaw(req: IncomingMessage, limit: number): Promise<Buffer> {
+  const declared = Number(req.headers['content-length']);
+  if (Number.isFinite(declared) && declared > limit) throw new SiteFail(413, 'body_too_large', `The body is larger than ${limit} bytes`);
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req as AsyncIterable<Buffer>) {
+    size += chunk.length;
+    if (size > limit) throw new SiteFail(413, 'body_too_large', `The body is larger than ${limit} bytes`);
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
 /** `Authorization: Bearer <token>` → the session wallet (tokens come from `/api/auth/login` or the WebSocket `authed`). */
 export function bearerWallet(auth: Auth, req: IncomingMessage): string | null {
   const h = req.headers.authorization;
@@ -113,6 +136,10 @@ export class SiteApi {
   private integrity: IntegrityService | null = null;
   /** Bot settings and live counts (`/api/admin/bots`); absent in bare unit tests. */
   private bots: BotAdmin | null = null;
+  /** Told when a wallet's picture is removed or replaced (live rooms drop it from the coin). */
+  private avatarChanged: ((wallet: string) => void) | null = null;
+  private readonly avatarIp: Limiter;
+  private readonly avatarWallet: Limiter;
 
   constructor(
     private readonly cfg: ServerConfig,
@@ -122,6 +149,13 @@ export class SiteApi {
     private readonly ext: SiteExtras = {},
   ) {
     this.admins = new Set(cfg.adminWallets.map((w) => w.toLowerCase()));
+    this.avatarIp = limits.avatarIp ?? new Limiter(20, 60 * 60_000);
+    this.avatarWallet = limits.avatarWallet ?? new Limiter(6, 60 * 60_000);
+  }
+
+  /** `fn(wallet)`: the wallet's picture was removed or replaced (the rooms take it off live coins). */
+  onAvatarChange(fn: ((wallet: string) => void) | null): void {
+    this.avatarChanged = fn;
   }
 
   setIntegrity(svc: IntegrityService | null): void {
@@ -175,11 +209,20 @@ export class SiteApi {
   async handle(req: IncomingMessage, res: ServerResponse, url: URL, ip: string): Promise<boolean> {
     const path = url.pathname;
     const mine =
-      path.startsWith('/api/site/') || path.startsWith('/api/admin/') || path.startsWith('/api/nft/') || path === '/api/auth/login' || path === '/api/auth/me' || path === '/api/profile';
+      path.startsWith('/api/site/') ||
+      path.startsWith('/api/admin/') ||
+      path.startsWith('/api/nft/') ||
+      path.startsWith('/api/avatar/') ||
+      path === '/api/auth/login' ||
+      path === '/api/auth/me' ||
+      path === '/api/profile' ||
+      path === '/api/profile/avatar';
     if (!mine) return false;
     try {
       if (path === '/api/auth/login' || path === '/api/auth/me') await this.authRoutes(req, res, path, ip);
       else if (path === '/api/profile') await this.profileRoutes(req, res, ip);
+      else if (path === '/api/profile/avatar') await this.uploadRoutes(req, res, ip);
+      else if (path.startsWith('/api/avatar/')) this.serveAvatar(req, res, path.slice('/api/avatar/'.length));
       else if (path.startsWith('/api/nft/')) await this.nftRoutes(req, res, url);
       else if (path.startsWith('/api/site/')) await this.siteRoutes(req, res, url, ip);
       else await this.adminRoutes(req, res, url);
@@ -244,6 +287,79 @@ export class SiteApi {
       if (err instanceof ProfileError) throw new SiteFail(400, 'bad_request', err.message, err.field);
       throw err;
     }
+  }
+
+  /**
+   * `POST /api/profile/avatar` (raw `image/png` or `image/webp` body, at most `AVATAR_LIMITS.maxBytes`,
+   * signed-in): stores the cleaned picture as the wallet's; `DELETE` removes it. Both answer `{ profile }`.
+   */
+  private async uploadRoutes(req: IncomingMessage, res: ServerResponse, ip: string): Promise<void> {
+    const profiles = this.ext.profiles;
+    const store = this.ext.avatars;
+    if (!profiles || !store) throw new SiteFail(404, 'not_found', 'Not found');
+    if (this.method(req, 'POST', 'DELETE') === 'DELETE') {
+      const wallet = this.writer(req, ip);
+      this.dropAvatar(wallet, false);
+      return send(res, 200, { profile: profiles.view(wallet) });
+    }
+    if (!this.avatarIp.allow(ip)) throw new SiteFail(429, 'rate_limited', 'Too many pictures. Try again in an hour.');
+    const wallet = this.session(req);
+    const type = String(req.headers['content-type'] ?? '').toLowerCase().split(';')[0].trim();
+    if (!(AVATAR_TYPES as readonly string[]).includes(type)) throw new SiteFail(415, 'unsupported_media_type', 'Send the picture as image/webp or image/png');
+    if (!this.avatarWallet.allow(wallet)) throw new SiteFail(429, 'rate_limited', 'Too many pictures. Try again in an hour.');
+    const body = await readRaw(req, AVATAR_LIMITS.maxBytes);
+    let id: string;
+    try {
+      const clean = sanitizeAvatar(body);
+      if (clean.type !== type) throw new AvatarError('bad_image', 'The picture does not match its content type');
+      if (store.isBlocked(avatarIdOf(clean.bytes))) throw new SiteFail(403, 'image_blocked', 'This picture was removed by a moderator and cannot be used.');
+      id = store.put(clean);
+    } catch (err) {
+      if (err instanceof AvatarError) throw new SiteFail(err.code === 'body_too_large' ? 413 : 400, err.code, err.message);
+      throw err;
+    }
+    const before = profiles.setAvatar(wallet, id);
+    if (before && before !== id) {
+      if (profiles.avatarUsers(before) === 0) store.delete(before);
+      this.avatarChanged?.(wallet);
+    }
+    return send(res, 201, { profile: profiles.view(wallet) });
+  }
+
+  /** Clears a wallet's picture; `block`: an admin removed it (the file goes and cannot come back). */
+  private dropAvatar(wallet: string, block: boolean): string | null {
+    const profiles = this.ext.profiles!;
+    const store = this.ext.avatars!;
+    const before = profiles.avatar(wallet);
+    if (!before) return null;
+    profiles.setAvatar(wallet, null);
+    if (block) {
+      // every profile wearing the same picture loses it too
+      for (const e of profiles.avatars(Number.MAX_SAFE_INTEGER).items) {
+        if (e.avatar !== before) continue;
+        profiles.setAvatar(e.wallet, null);
+        this.avatarChanged?.(e.wallet);
+      }
+      store.block(before);
+    } else if (profiles.avatarUsers(before) === 0) store.delete(before);
+    this.avatarChanged?.(wallet);
+    return before;
+  }
+
+  /** `GET /api/avatar/<id>`: the picture file (immutable: an id is the hash of its bytes). */
+  private serveAvatar(req: IncomingMessage, res: ServerResponse, id: string): void {
+    this.method(req, 'GET', 'HEAD');
+    const file = isAvatarId(id) ? this.ext.avatars?.get(id) : null;
+    if (!file) throw new SiteFail(404, 'not_found', 'No such picture');
+    res.writeHead(200, {
+      'Content-Type': file.type,
+      'Content-Length': file.bytes.length,
+      'Cache-Control': 'public, max-age=31536000, immutable',
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy': "default-src 'none'; sandbox",
+      'Cross-Origin-Resource-Policy': 'cross-origin',
+    });
+    res.end(req.method === 'HEAD' ? undefined : file.bytes);
   }
 
   /** `GET /api/nft/contract`, `/api/nft/<id>` (JSON) and `/api/nft/<id>.svg`: minted ids only. */
@@ -420,6 +536,23 @@ export class SiteApi {
       case 'counts':
         this.method(req, 'GET');
         return send(res, 200, s.counts());
+      case 'avatars': {
+        // moderation of profile pictures: the list, newest first, and removal (the coin falls back to its basic skin)
+        const profiles = this.ext.profiles;
+        if (!profiles || !this.ext.avatars) break;
+        if (seg.length === 1) {
+          this.method(req, 'GET');
+          return send(res, 200, profiles.avatars(Number(q.get('limit') ?? 200) || 200));
+        }
+        if (seg.length !== 2) break;
+        this.method(req, 'DELETE');
+        const target = checksumAddress(seg[1]);
+        if (!target) throw new SiteFail(400, 'bad_request', 'Not a wallet address', 'wallet');
+        const removed = this.dropAvatar(target, true);
+        if (!removed) throw new SiteFail(404, 'not_found', 'This wallet has no picture');
+        this.ext.log?.(`avatars: ${wallet} removed the picture ${removed} of ${target}`);
+        return send(res, 200, { removed });
+      }
       case 'integrity':
         if (!this.integrity) break;
         return integrityRoutes(

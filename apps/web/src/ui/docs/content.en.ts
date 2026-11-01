@@ -51,15 +51,16 @@ export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps): DocsCo
       blocks: [
         {
           kind: 'p',
-          text: `You need no wallet to start: pick the Practice ticket in the lobby and press Quick Play. Your coin follows the mouse (the joystick at the bottom left on phones). Eat food (pears, grapes, seeds) to grow. To eat a coin you need at least ${num(R.eatRatio)} times its mass and must mostly cover it. The bigger you are, the slower you move.`,
+          text: `You need no wallet to start: pick the Practice ticket in the lobby and press Quick Play. Your coin follows the mouse; WASD or the arrow keys steer it too (the joystick at the bottom left on phones). Eat food (pears, grapes, seeds) to grow. To eat a coin you need at least ${num(R.eatRatio)} times its mass and must mostly cover it. The bigger you are, the slower you move.`,
         },
         {
           kind: 'keys',
           caption: 'Controls',
           rows: [
-            { key: 'Mouse', action: 'Move (joystick on phones)' },
+            { key: 'Mouse', action: 'Move toward the pointer (joystick on phones)' },
+            { key: 'WASD / arrows', action: 'Move with the keyboard (move the mouse to take it back)' },
             { key: 'Space', action: 'Split: launch a half at runners' },
-            { key: 'W', action: 'Tip out a little mass (hold to repeat)' },
+            { key: 'E', action: 'Tip out a little mass (hold to repeat)' },
             { key: 'Enter', action: 'Chat' },
             { key: '1–8', action: 'Stickers (emotes)' },
             { key: 'Q', action: 'Next player while spectating' },
@@ -146,7 +147,7 @@ export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps): DocsCo
               text: `the value you lose turns into loot coins scattered on the map: ⌈V ÷ (fee / ${R.lootEntryDiv})⌉ pieces, at least ${R.lootMin} and at most ${R.lootMax}. The pieces add up exactly to the value lost.`,
             },
             { term: 'Loot', text: 'stays on the floor until the bell, when it is burned. Only real players can pick it up; bots pass through it.' },
-            { term: 'Mass is not value.', text: 'Tipping mass (W), cactus pops and mass decay do not change your value; value only changes hands by eating.' },
+            { term: 'Mass is not value.', text: 'Tipping mass (E), cactus pops and mass decay do not change your value; value only changes hands by eating.' },
             { term: 'If you disconnect,', text: `your coin stays in the arena (it can still be eaten) and you carry on if you come back. If you are still alive at the bell, you are paid as usual.` },
             { term: 'If you die,', text: 'your value goes to the player who ate you, or to loot if a bot did. The ticket closes.' },
             { term: 'No early exit:', text: 'There is no cash-out in an arena. Your till is paid only when the round ends; a ticket never outlives its round.' },
