@@ -1,4 +1,6 @@
 import type {
+  BoostKind,
+  BoostState,
   ChainStatus,
   DeathStats,
   LbEntry,
@@ -84,7 +86,7 @@ export interface Toast {
   at: number;
 }
 
-export type Modal = 'settings' | 'howto' | 'wallet' | null;
+export type Modal = 'settings' | 'howto' | 'wallet' | 'shop' | null;
 
 /** Lobby pages: the ticket front page, the newspaper leaderboard, the profile, the player guide. */
 export type LobbyPage = 'play' | 'ranks' | 'profile' | 'docs';
@@ -123,6 +125,10 @@ export interface UiState {
   chat: ChatItem[];
   chatOpen: boolean;
   powerups: { type: PowerUpType; until: number }[];
+  /** Bought power-ups in this room (`boosts`): charges, arena allowance; null outside a game. */
+  boosts: BoostState | null;
+  /** Local clock (`Date.now`) at which each bought power-up is ready again (cooldown rings). */
+  boostReady: Record<BoostKind, number>;
   banner: { kind: 'coinrain' | 'airdrop'; until: number; text?: string } | null;
   death: { stats: DeathStats; killer: string | null; killerSkin: number | null } | null;
   /**
@@ -210,6 +216,8 @@ export const useUi = create<UiState>(() => ({
   chat: [],
   chatOpen: false,
   powerups: [],
+  boosts: null,
+  boostReady: { magnet: 0, shock: 0, speed: 0 },
   banner: null,
   death: null,
   roundResult: null,

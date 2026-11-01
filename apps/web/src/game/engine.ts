@@ -7,6 +7,7 @@ import {
   encodeSplit,
   encodeTarget,
   levelFromXp,
+  type BoostKind,
   type DeathStats,
   type RoundStanding,
   type ServerMessage,
@@ -137,6 +138,7 @@ export class GameEngine {
       canvas,
       {
         split: () => this.split(),
+        boost: (kind) => this.boost(kind),
         eject: () => this.eject(),
         emote: (id) => this.emote(id),
         openChat: () => {
@@ -281,6 +283,7 @@ export class GameEngine {
       roundResult: null,
       chatOpen: false,
       powerups: [],
+      boosts: null,
       ticket: null,
       valueDelta: null,
     });
@@ -313,6 +316,21 @@ export class GameEngine {
     this.net.send({ t: 'emote', id });
   }
 
+  /** Fires a bought power-up (the server checks the charge, the cooldown and the arena's round cap). */
+  boost(kind: BoostKind): void {
+    const s = useUi.getState();
+    if (s.screen !== 'playing' || s.chatOpen) return;
+    if (!s.boosts?.signedIn) {
+      toast('info', t('boost.err.guest'));
+      return;
+    }
+    if (s.boosts.charges[kind] <= 0) {
+      useUi.setState({ modal: 'shop' });
+      return;
+    }
+    this.net.send({ t: 'boost', kind });
+  }
+
   /* ---------------------------------------------------------------- */
   /* Rounds                                                           */
   /* ---------------------------------------------------------------- */
@@ -342,6 +360,7 @@ export class GameEngine {
       screen: 'roundover',
       roundResult: { kind, round, payout, stats, standings },
       powerups: [],
+      boosts: null,
       chatOpen: false,
     });
   }
@@ -478,6 +497,7 @@ export class GameEngine {
           death: null,
           roundResult: null,
           powerups: [],
+          boosts: null,
           hud: { ...useUi.getState().hud, value: m.value ?? null },
           valueDelta: null,
           // a new ticket: any earlier settlement belongs to an earlier ticket (the server only lets us
@@ -553,6 +573,7 @@ export class GameEngine {
           screen: 'dead',
           death: { stats: m.stats, killer: m.killer, killerSkin: m.killerSkin },
           powerups: [],
+          boosts: null,
           chatOpen: false,
         });
         return;
@@ -598,6 +619,32 @@ export class GameEngine {
           const s = useUi.getState();
           if (!s.banner || s.banner.kind !== 'coinrain') useUi.setState({ banner: { kind: 'airdrop', until: Date.now() + 3500 } });
         }
+        return;
+      }
+      case 'boosts': {
+        const now = Date.now();
+        const c = m.state.cooldownMs;
+        useUi.setState({ boosts: m.state, boostReady: { magnet: now + c.magnet, shock: now + c.shock, speed: now + c.speed } });
+        return;
+      }
+      case 'boost': {
+        if (!m.ok) {
+          if (m.reason === 'no_charges') useUi.setState({ modal: 'shop' });
+          else toast(m.reason === 'cooldown' ? 'info' : 'warn', t(`boost.err.${m.reason}` as 'boost.err.guest'));
+          return;
+        }
+        sound.powerup();
+        // magnet and speed show as the map power-up chips they share an effect with
+        const type = m.kind === 'magnet' ? PowerUpType.Magnet : m.kind === 'speed' ? PowerUpType.Pump : null;
+        if (type !== null && m.ms > 0) {
+          useUi.setState((s) => {
+            const cur = s.powerups.find((p) => p.type === type);
+            const until = Math.max(cur?.until ?? 0, Date.now()) + m.ms;
+            return { powerups: [...s.powerups.filter((p) => p.type !== type), { type, until }] };
+          });
+        }
+        const me = this.world.myStats();
+        if (me) this.particles.text(me.x, me.y - me.maxR, `${t(`boost.${m.kind}` as 'boost.magnet')}!`, undefined, 24, RISO.mustard);
         return;
       }
       case 'powerup': {

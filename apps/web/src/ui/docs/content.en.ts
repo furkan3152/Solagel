@@ -1,3 +1,4 @@
+import { BOOST_RULES, SHOP_DEFAULTS } from '@elymum/shared';
 import { FACTS as F, feeExample, type DocsContent } from './facts';
 
 const nf = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
@@ -63,6 +64,7 @@ export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps): DocsCo
             { key: 'E', action: 'Tip out a little mass (hold to repeat)' },
             { key: 'Enter', action: 'Chat' },
             { key: '1–8', action: 'Stickers (emotes)' },
+            { key: 'R / F / G', action: 'Bought power-ups: Magnet, Shockwave, Speed burst (buttons by Split on phones)' },
             { key: 'Q', action: 'Next player while spectating' },
             { key: 'Esc', action: 'Close the chat or an open panel' },
           ],
@@ -73,6 +75,10 @@ export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps): DocsCo
             { term: 'Rug cacti', text: 'pop big coins into pieces; small coins can hide behind them.' },
             { term: 'Airdrops', text: 'drop power-ups: Magnet, Pump, HODL Shield and Mega Bag.' },
             { term: 'Spawn shield:', text: `A fresh coin cannot be eaten for ${R.spawnShieldS} s.` },
+            {
+              term: 'Bought power-ups:',
+              text: `signed-in players can buy packs of ${SHOP_DEFAULTS.packSize} charges with ${symbol} in the shop (the bolt in the lobby, the + on the HUD). Magnet pulls nearby food to you for ${BOOST_RULES.magnet.durationMs / 1000} s (never coins or loot). Shockwave pushes coins your size or smaller, and food, away from you; pushed coins can neither eat nor be eaten for a moment, so nobody eats through it. Speed burst gives ${BOOST_RULES.speed.durationMs / 1000} s of extra speed. Each has a cooldown. Use them freely in practice and private rooms; in paid arenas at most ${SHOP_DEFAULTS.arenaUsesPerRound} per round. Elymum emblem holders pay ${SHOP_DEFAULTS.holderDiscountPct}% less and get ${SHOP_DEFAULTS.holderExtraArenaUses} extra arena use per round. Payments are burned by default. Bots never use them.`,
+            },
           ],
         },
       ],
