@@ -17,6 +17,8 @@ export type Theme = 'light' | 'dark';
 export interface Settings {
   name: string;
   skin: number;
+  /** Wear the uploaded profile picture on the coin (signed-in wallets with a picture; `join.pic`). */
+  picture: boolean;
   theme: Theme;
   quality: Quality;
   /** Master switch (the header's mute) and master volume. */
@@ -156,6 +158,7 @@ function loadSettings(): Settings {
   const defaults: Settings = {
     name: '',
     skin: 0,
+    picture: false,
     theme: 'light',
     quality: 'high',
     sound: true,

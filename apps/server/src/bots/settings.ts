@@ -62,9 +62,22 @@ export function botKindOf(mode: RoomMode, league?: League): BotRoomKind {
   return league === 'pro' ? 'practicePro' : 'practiceRookie';
 }
 
-/** Room-manager options of a kind's settings. */
-export function managerOptions(k: BotKindSettings): BotManagerOptions {
-  return { enabled: k.enabled, target: k.target, min: Math.min(k.min, k.cap), max: k.cap, mix: { ...k.mix } };
+/**
+ * Rookie league (newcomers): no bot keeps more mass than this (about 4x the start radius), so a
+ * fresh player never meets a whale there. Pro ponds, arenas and private rooms have no cap.
+ */
+export const ROOKIE_BOT_MASS_CAP = 300;
+
+/** Room-manager options of a kind's settings (`kind` adds the rookie league's mass cap). */
+export function managerOptions(k: BotKindSettings, kind?: BotRoomKind): BotManagerOptions {
+  return {
+    enabled: k.enabled,
+    target: k.target,
+    min: Math.min(k.min, k.cap),
+    max: k.cap,
+    mix: { ...k.mix },
+    ...(kind === 'practiceRookie' ? { massCap: ROOKIE_BOT_MASS_CAP } : {}),
+  };
 }
 
 /** Settings of a kind from the env defaults (`ServerConfig.bots`). */
@@ -248,7 +261,7 @@ export class BotSettingsStore {
 
   /** Bot-manager options of a room kind (what rooms run with). */
   options(kind: BotRoomKind): BotManagerOptions {
-    return managerOptions(this.cur.kinds[kind]);
+    return managerOptions(this.cur.kinds[kind], kind);
   }
 
   /** Testnet: staked bots the admin wants in this arena (0 when arena bots are off). */

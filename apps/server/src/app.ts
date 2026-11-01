@@ -23,6 +23,7 @@ import { HolderWlStore } from './site/holder-wl';
 import { FaucetInfo } from './site/network';
 import { RoomManager } from './rooms/manager';
 import { ProfileStore } from './profiles';
+import { AvatarStore } from './avatars';
 import { ContractsStore } from './site/contracts';
 import { MintService, hyperliquidPrice, type PriceFetcher } from './site/mint';
 import { SiteApi, type SiteLimits } from './site/routes';
@@ -111,6 +112,8 @@ export async function createApp(
   contracts.onChange(() => void chain.refresh?.());
   const auth = new Auth(cfg.authSecret, { onChain: chain.verifyMessage ? (a, m, sig) => chain.verifyMessage!(a, m, sig) : null });
   const profiles = new ProfileStore(persist ? join(cfg.dataDir, files.profiles) : null, log);
+  // profile pictures: content-addressed files next to the profiles (DATA_DIR/avatars/<id>.png|webp)
+  const avatars = new AvatarStore(persist ? join(cfg.dataDir, cfg.devFakeChain ? 'avatars.dev-fake' : 'avatars') : null, log);
   // on Elysium Testnet the game is open to everyone unless the admin already chose otherwise
   const siteStore = new SiteStore(persist ? cfg.dataDir : null, { now: opts.siteNow, log, ...(stateChainId === ELYSIUM_TESTNET_CHAIN_ID ? { defaults: { gameAccess: 'public' } } : {}) });
   const holderWl = new HolderWlStore(persist ? cfg.dataDir : null, log);
@@ -156,6 +159,7 @@ export async function createApp(
     nftOf,
     holderReaderFor,
     faucet: new FaucetInfo({ chain, contracts, hypeFaucetUrl: cfg.chain.hypeFaucetUrl }),
+    avatars,
     log,
   });
   const priceKeeper = chain.evm
@@ -237,6 +241,8 @@ export async function createApp(
     botSettings,
   );
   roomsRef = rooms;
+  // a removed (or replaced) picture comes off the live coins at once
+  site.onAvatarChange((wallet) => void rooms.clearAvatar(wallet));
   site.setBots({
     store: rooms.botSettings,
     live: () => rooms.botCounts(),

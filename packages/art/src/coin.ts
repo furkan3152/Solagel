@@ -79,7 +79,17 @@ export interface CoinState {
    * to the circle; the result looks the same.
    */
   interior?: (look: CoinLook, r: number) => CoinInterior | null;
+  /**
+   * A player's profile picture, already cut to a disc (a square image whose inscribed circle is the
+   * picture, transparent outside). It fills the coin face inside the rim (radius `PICTURE_R` × r):
+   * the body paint stays as a thin rim, the groove frames the picture, the highlight shines over it,
+   * and the face is left out (the picture is the face). Accessories and flag effects stay.
+   */
+  picture?: CanvasImageSource | null;
 }
+
+/** Radius of the profile picture on the face (fraction of r): the inner groove sits on its edge. */
+export const PICTURE_R = 0.815;
 
 /** Offset of the lit disc (units of r): the shade is the crescent it leaves on the lower right. */
 const LIT_DX = -6 / 46;
@@ -128,6 +138,24 @@ function drawRimDetails(ctx: CanvasRenderingContext2D, look: CoinLook, r: number
   ctx.lineWidth = r * 0.105;
   ctx.beginPath();
   ctx.arc(0, 0, r * 0.8, HL_A0, HL_A1);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** The groove over the picture's edge and a softer highlight over the picture. */
+function drawPictureRim(ctx: CanvasRenderingContext2D, look: CoinLook, r: number, ppu: number): void {
+  ctx.save();
+  ctx.strokeStyle = shadeFor(look);
+  ctx.lineWidth = Math.max(r * 0.06, 1.2 / ppu);
+  ctx.beginPath();
+  ctx.arc(0, 0, r * PICTURE_R, 0, TAU);
+  ctx.stroke();
+  ctx.globalAlpha *= 0.6;
+  ctx.strokeStyle = ELYSIUM.white;
+  ctx.lineCap = 'round';
+  ctx.lineWidth = r * 0.07;
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.7, HL_A0, HL_A1);
   ctx.stroke();
   ctx.restore();
 }
@@ -251,6 +279,7 @@ export function drawRisoCoin(ctx: CanvasRenderingContext2D, look: CoinLook, r: n
 
   const small = detail < (state.minPrintPx ?? 0);
   const anchor = symbolAnchor(look.accessory, r, ANCHOR);
+  const picture = detail > 7 ? (state.picture ?? null) : null;
   const cached = !small && detail > 22 && ctx.globalAlpha >= 0.999 && jellyCalm(state.jelly, Math.max(0.003, W / (2 * r) - (1 - INTERIOR_DISC))) ? (state.interior?.(look, r) ?? null) : null;
   if (cached) {
     const k = r / cached.radius;
@@ -280,8 +309,15 @@ export function drawRisoCoin(ctx: CanvasRenderingContext2D, look: CoinLook, r: n
         ctx.fill();
       }
     }
-    if (detail > 18 && !small) drawRimDetails(ctx, look, r);
-    if (!anchor.onTop && detail > 22) drawEmbossedSymbol(ctx, look, anchor);
+    if (!picture) {
+      if (detail > 18 && !small) drawRimDetails(ctx, look, r);
+      if (!anchor.onTop && detail > 22) drawEmbossedSymbol(ctx, look, anchor);
+    }
+  }
+  if (picture) {
+    const pr = r * PICTURE_R;
+    ctx.drawImage(picture, -pr, -pr, pr * 2, pr * 2);
+    if (detail > 12) drawPictureRim(ctx, look, r, ppu);
   }
 
   // ink outline
@@ -291,7 +327,7 @@ export function drawRisoCoin(ctx: CanvasRenderingContext2D, look: CoinLook, r: n
   ctx.strokeStyle = INK;
   ctx.stroke();
 
-  drawFront(ctx, look, r, state, detail, anchor, acc, W);
+  drawFront(ctx, look, r, state, detail, anchor, acc, W, !!picture);
   ctx.restore();
 }
 
@@ -315,11 +351,12 @@ function drawFront(
   anchor: { x: number; y: number; s: number; onTop: boolean },
   acc: AccessoryColors,
   W: number,
+  picture = false,
 ): void {
   const flags = state.flags ?? 0;
   const afk = (flags & CellFlag.Afk) !== 0;
   const time = state.time;
-  if (detail > 8) {
+  if (detail > 8 && !picture) {
     const f = FACE;
     f.expression = afk ? 'sleep' : state.expression;
     f.eyes = look.eyes;
@@ -336,7 +373,7 @@ function drawFront(
   }
 
   if (detail > 14) drawAccessoryFront(ctx, look.accessory, r, acc, time);
-  if (anchor.onTop && detail > 22) drawCoinSymbol(ctx, look, anchor, W);
+  if (anchor.onTop && detail > 22 && !picture) drawCoinSymbol(ctx, look, anchor, W);
 
   if (flags & CellFlag.Shield) drawShield(ctx, r, time, W);
   if (flags & CellFlag.CashingOut) drawCashout(ctx, r, state.cashout ?? ((time / 2000) % 1), W);

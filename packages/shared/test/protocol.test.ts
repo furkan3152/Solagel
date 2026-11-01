@@ -12,11 +12,11 @@ import {
   type ServerMessage,
 } from '../src';
 
-describe('protocol v6 constants', () => {
-  it('pins the wire values (v6: isBot on player-facing messages, feed left lines)', () => {
-    expect(PROTOCOL_VERSION).toBe(6);
+describe('protocol v7 constants', () => {
+  it('pins the wire values (v6: isBot on player-facing messages, feed left lines; v7: avatar ids)', () => {
+    expect(PROTOCOL_VERSION).toBe(7);
     expect(EntityKind.Loot).toBe(6);
-    expect(PlayerFlag).toEqual({ Bot: 1, Verified: 2, Staker: 4, Holder: 8 });
+    expect(PlayerFlag).toEqual({ Bot: 1, Verified: 2, Staker: 4, Holder: 8, Avatar: 16 });
   });
 
   it('keeps entity kinds and player flags distinct', () => {

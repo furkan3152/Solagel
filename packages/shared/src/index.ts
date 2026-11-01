@@ -14,3 +14,4 @@ export * from './siwe';
 export * from './chains';
 export * from './site';
 export * from './integrity';
+export * from './avatar';

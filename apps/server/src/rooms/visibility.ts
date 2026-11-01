@@ -30,13 +30,15 @@ export class ViewState {
 
   /**
    * Builds the delta for a view rectangle. Returns null when nothing changed.
-   * `entryFee` (arena rooms) sizes loot pieces (`lootTier`).
+   * `entryFee` (arena rooms) sizes loot pieces (`lootTier`). `avatars`: player id → profile picture
+   * id (humans who wear one; a player's info is sent again when it changes).
    */
   build(
     world: World,
     rect: { x0: number; y0: number; x1: number; y1: number },
     view: SnapshotData['view'],
     entryFee = 0,
+    avatars?: ReadonlyMap<number, string>,
   ): SnapshotData | null {
     const gen = ++this.gen;
     const upserts: EntityRecord[] = [];
@@ -56,10 +58,11 @@ export class ViewState {
       }
       if (e.kind === EntityKind.Cell) {
         const p = e.player;
-        const sig = `${p.skin}|${p.flags}|${p.name}`;
+        const avatar = p.isBot ? undefined : avatars?.get(p.id);
+        const sig = avatar ? `${p.skin}|${p.flags}|${p.name}|${avatar}` : `${p.skin}|${p.flags}|${p.name}`;
         if (this.knownPlayers.get(p.id) !== sig) {
           this.knownPlayers.set(p.id, sig);
-          players.push({ id: p.id, skin: p.skin, flags: p.flags, name: p.name, isBot: p.isBot });
+          players.push(avatar ? { id: p.id, skin: p.skin, flags: p.flags, name: p.name, isBot: p.isBot, avatar } : { id: p.id, skin: p.skin, flags: p.flags, name: p.name, isBot: p.isBot });
         }
       }
     });

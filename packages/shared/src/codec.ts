@@ -1,3 +1,4 @@
+import { AVATAR_ID_BYTES, avatarIdFromBytes, avatarIdToBytes, isAvatarId } from './avatar';
 import { ClientOp, EntityKind, PlayerFlag, ServerOp, type EntityRecord, type PlayerInfo, type SnapshotData } from './protocol';
 
 const encoder = new TextEncoder();
@@ -66,6 +67,13 @@ export class BinaryWriter {
     this.offset += encoded.length;
   }
 
+  /** Raw bytes of an avatar id (`avatarIdToBytes`). */
+  avatarId(id: string): void {
+    this.ensure(AVATAR_ID_BYTES);
+    avatarIdToBytes(id, this.bytes, this.offset);
+    this.offset += AVATAR_ID_BYTES;
+  }
+
   /** Patch a u16 written earlier (used for counts known only afterwards). */
   patchU16(at: number, v: number): void {
     this.view.setUint16(at, v, true);
@@ -129,6 +137,13 @@ export class BinaryReader {
     this.offset += len;
     return s;
   }
+
+  avatarId(): string {
+    if (this.offset + AVATAR_ID_BYTES > this.bytes.length) throw new RangeError('snapshot truncated');
+    const id = avatarIdFromBytes(this.bytes, this.offset);
+    this.offset += AVATAR_ID_BYTES;
+    return id;
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -138,7 +153,8 @@ export class BinaryReader {
 /**
  * Layout (little endian):
  *   u8 op=1 | u32 tick | f32 viewX | f32 viewY | f32 viewH
- *   u8 nPlayers   { u16 id | u8 skin | u8 flags | str8 name }   (flags: PlayerFlag; Bot ⇒ `isBot`)
+ *   u8 nPlayers   { u16 id | u8 skin | u8 flags | str8 name | [8 bytes avatar id] }
+ *        (flags: PlayerFlag; Bot ⇒ `isBot`; the avatar id follows only with `PlayerFlag.Avatar`, v7)
  *   u16 nUpserts  { u32 id | u8 kind | f32 x | f32 y | f32 r | kind data }
  *        Cell: u16 playerId | u8 flags ; Food/Eject/PowerUp/Loot: u8 variant ; Virus: –
  *   u16 nRemovals { u32 id | u32 eaterId }
@@ -156,8 +172,12 @@ export function writeSnapshot(w: BinaryWriter, s: SnapshotData): void {
     const p = s.players[i];
     w.u16(p.id);
     w.u8(p.skin);
-    w.u8((p.isBot ? p.flags | PlayerFlag.Bot : p.flags) | (p.holder ? PlayerFlag.Holder : 0));
+    // bots never wear a picture; the bit is the wire's, set from `avatar` alone
+    const avatar = !p.isBot && (p.flags & PlayerFlag.Bot) === 0 && isAvatarId(p.avatar) ? p.avatar : null;
+    const flags = (p.isBot ? p.flags | PlayerFlag.Bot : p.flags) | (p.holder ? PlayerFlag.Holder : 0);
+    w.u8(avatar ? flags | PlayerFlag.Avatar : flags & ~PlayerFlag.Avatar);
     w.str8(p.name);
+    if (avatar) w.avatarId(avatar);
   }
 
   w.u16(s.upserts.length);
@@ -211,7 +231,10 @@ export function decodeSnapshot(buf: ArrayBuffer | ArrayBufferView): SnapshotData
     const id = r.u16();
     const skin = r.u8();
     const flags = r.u8();
-    players[i] = { id, skin, flags, name: r.str8(), isBot: (flags & PlayerFlag.Bot) !== 0, ...((flags & PlayerFlag.Holder) !== 0 ? { holder: true } : {}) };
+    const p: PlayerInfo = { id, skin, flags, name: r.str8(), isBot: (flags & PlayerFlag.Bot) !== 0 };
+    if ((flags & PlayerFlag.Holder) !== 0) p.holder = true;
+    if ((flags & PlayerFlag.Avatar) !== 0) p.avatar = r.avatarId();
+    players[i] = p;
   }
 
   const nUpserts = r.u16();
@@ -256,8 +279,11 @@ export function decodeSnapshot(buf: ArrayBuffer | ArrayBufferView): SnapshotData
  */
 export interface SnapshotSink {
   snapshotBegin(tick: number, viewX: number, viewY: number, viewH: number): void;
-  /** `name` is the snapshot's bytes: the name is UTF-8 at `[nameAt, nameAt + nameLen)` (`decodeUtf8`). */
-  snapshotPlayer(id: number, skin: number, flags: number, name: Uint8Array, nameAt: number, nameLen: number): void;
+  /**
+   * `name` is the snapshot's bytes: the name is UTF-8 at `[nameAt, nameAt + nameLen)` (`decodeUtf8`).
+   * `avatarAt`: offset of the 8 avatar id bytes in the same array (`avatarIdFromBytes`), -1 without one.
+   */
+  snapshotPlayer(id: number, skin: number, flags: number, name: Uint8Array, nameAt: number, nameLen: number, avatarAt: number): void;
   snapshotUpsert(id: number, kind: EntityKind, x: number, y: number, r: number, has: number, playerId: number, flags: number, variant: number): void;
   snapshotRemoval(id: number, eaterId: number): void;
 }
@@ -291,8 +317,15 @@ export function readSnapshot(buf: ArrayBuffer, sink: SnapshotSink): void {
     const len = v.getUint8(o + 4);
     o += 5;
     if (o + len > bytes.length) throw new RangeError('snapshot truncated');
-    sink.snapshotPlayer(id, skin, flags, bytes, o, len);
+    const nameAt = o;
     o += len;
+    let avatarAt = -1;
+    if ((flags & PlayerFlag.Avatar) !== 0) {
+      if (o + AVATAR_ID_BYTES > bytes.length) throw new RangeError('snapshot truncated');
+      avatarAt = o;
+      o += AVATAR_ID_BYTES;
+    }
+    sink.snapshotPlayer(id, skin, flags, bytes, nameAt, len, avatarAt);
   }
   const nUpserts = v.getUint16(o, true);
   o += 2;

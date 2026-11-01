@@ -1,6 +1,6 @@
 import { createCanvas } from '@napi-rs/canvas';
 import { describe, expect, it } from 'vitest';
-import { ELYSIUM, INK, SHADE, coinOutlinePx, drawCoinInterior, drawRisoCoin, lookForBasicSkin, shadeOf, type CoinLook } from '../src/index';
+import { ELYSIUM, INK, PICTURE_R, SHADE, coinOutlinePx, drawCoinInterior, drawRisoCoin, lookForBasicSkin, shadeOf, type CoinLook } from '../src/index';
 
 const hex = (s: string): [number, number, number] => [1, 3, 5].map((i) => parseInt(s.slice(i, i + 2), 16)) as [number, number, number];
 const ctx2d = (c: { getContext(t: "2d"): unknown }) => c.getContext('2d') as unknown as CanvasRenderingContext2D;
@@ -127,3 +127,40 @@ describe('flag effects keep the caller alpha', () => {
     for (const a of writes) expect(a).toBeLessThanOrEqual(0.5 + 1e-9);
   });
 });
+
+describe('profile picture on the coin', () => {
+  /** A magenta disc picture (the colour appears nowhere in the art). */
+  const picture = () => {
+    const p = createCanvas(64, 64);
+    const pc = ctx2d(p);
+    pc.beginPath();
+    pc.arc(32, 32, 32, 0, Math.PI * 2);
+    pc.fillStyle = '#FF00FF';
+    pc.fill();
+    return p as unknown as CanvasImageSource;
+  };
+
+  it('fills the face inside the rim, keeps the body paint as the rim, and draws no face over it', () => {
+    const look = lookForBasicSkin(2);
+    const c = createCanvas(256, 256);
+    const ctx = ctx2d(c);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, 256, 256);
+    ctx.translate(128, 128);
+    drawRisoCoin(ctx, look, 100, { time: 0, lookX: 0, lookY: 0, expression: 'happy', picture: picture() });
+    const at = (x: number, y: number) => ctx.getImageData(128 + x, 128 + y, 1, 1).data;
+    // where the eyes and the mouth would be: the picture
+    for (const [x, y] of [[0, 0], [-30, -15], [30, -15], [0, 30]]) expect(near(at(x, y), [255, 0, 255], 8)).toBe(true);
+    // the rim between the picture and the ink outline keeps the body paint (upper left, lit)
+    const rim = (PICTURE_R + 1) / 2;
+    expect(near(at(-Math.round(100 * rim * 0.7071), -Math.round(100 * rim * 0.7071)), hex(look.body), 14)).toBe(true);
+  });
+
+  it('draws with every flag and a tiny size without throwing', () => {
+    const c = createCanvas(128, 128);
+    const ctx = ctx2d(c);
+    ctx.translate(64, 64);
+    for (const r of [2, 6, 12, 40]) drawRisoCoin(ctx, DRESSED, r, { time: 500, lookX: 0, lookY: 0, expression: 'happy', flags: 1 | 2 | 4 | 8 | 16, picture: picture(), pxPerUnit: 1 });
+  });
+});
+

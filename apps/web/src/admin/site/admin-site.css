@@ -537,3 +537,47 @@ label.ad-cap,
     animation: none !important;
   }
 }
+
+/* Safety → Player pictures */
+.ad-avatars {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ad-avatars__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 2px solid var(--outline);
+  border-radius: 12px;
+  background: var(--sticker);
+}
+.ad-avatars__img {
+  flex: none;
+  width: 56px;
+  height: 56px;
+  border: 2px solid var(--outline);
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--surface);
+}
+.ad-avatars__who {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+.ad-avatars__who strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ad-avatars__item > .kb-btn {
+  flex: none;
+  white-space: nowrap;
+}

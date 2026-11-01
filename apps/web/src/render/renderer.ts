@@ -1,4 +1,4 @@
-import { ELYSIUM, INK, SHADE, type CoinInterior, type CoinLook, type Expression } from '@elymum/art';
+import { ELYSIUM, INK, PICTURE_R, SHADE, type CoinInterior, type CoinLook, type Expression } from '@elymum/art';
 import { EntityKind, PlayerFlag } from '@elymum/shared';
 import { DROP_LAND, dropScale } from '../design/curves';
 import type { Camera } from '../game/camera';
@@ -7,6 +7,7 @@ import type { CEntity, ClientWorld } from '../game/state';
 import type { Quality, Settings } from '../store';
 import { qualityLevels, type QualityLevel } from './governor';
 import { stickerImage } from '../ui/game/stickers';
+import { avatars, type AvatarCache } from './avatars';
 import { drawCoinLook, type CoinOpts } from './coin';
 import type { Neighbour } from './jelly';
 import { LabelCache, type StickerLabel } from './labels';
@@ -217,7 +218,9 @@ export class Renderer {
   // per-frame scratch objects (reused: no garbage per frame)
   private readonly view = { x0: 0, y0: 0, x1: 0, y1: 0 };
   private readonly dash = [0.01, 1];
-  private readonly coin: CoinOpts = { time: 0, lookX: 0, lookY: 0, expression: 'happy', pxPerUnit: 1, jelly: null, flags: 0, seed: 0, interior: undefined, minPrintPx: 14 };
+  private readonly coin: CoinOpts = { time: 0, lookX: 0, lookY: 0, expression: 'happy', pxPerUnit: 1, jelly: null, flags: 0, seed: 0, interior: undefined, minPrintPx: 14, picture: null };
+  /** Profile pictures of the players in view (shared with the portraits). */
+  private readonly avatars: AvatarCache = avatars;
   private readonly label: StickerLabel = { name: null, value: null, verified: false, bot: false, holder: false, mine: false, x: 0, y: 0, fs: 1, devicePx: 1, zoom: 1, alpha: 1 };
 
   /** Sorts a visible entity into its layer (culled against `this.view`; see `draw`). */
@@ -723,6 +726,9 @@ export class Renderer {
     // small coins skip the fine interior details (groove, highlight); with the invisible
     // savings on, a little bigger ones too (a 1 px groove on a 20 px coin does not show)
     o.minPrintPx = this.autoLite ? 20 : 14;
+    // a player's profile picture fills the face (bots never wear one; the basic coin while it loads)
+    const avatar = player && !player.isBot ? player.avatar : undefined;
+    o.picture = avatar ? this.avatars.disc(avatar, r * this.ppu * PICTURE_R * 2) : null;
     drawCoinLook(ctx, e.x, e.y, r, look, o);
   }
 

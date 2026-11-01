@@ -7,6 +7,7 @@ import { ADMIN_GROUPS, CHAIN_GROUPS, GROUP_LABEL, adminHash, groupSummary, parse
 import type { AdminNetwork } from '../net';
 import { SummaryBar } from '../SummaryBar';
 import { AdminSessionBar, useAdminSession, type OwnerRole } from './AdminSession';
+import { AvatarsTab } from './AvatarsTab';
 import { CollabsTab } from './CollabsTab';
 import { IntegrityTab } from './IntegrityTab';
 import { SettingsTab } from './SettingsTab';
@@ -30,7 +31,7 @@ const BENCH: Record<AdminGroup, { title: string; lede: string }> = {
   mint: { title: 'Mint', lede: 'Start and stop the mint, the allowlist, the $1 price and the small print of the Elymum NFT.' },
   game: { title: 'Game', lede: 'Who may play, the arena switches, the bots and the rooms right now.' },
   community: { title: 'Community', lede: 'The WL, the chores applicants do, and the communities asking for spots.' },
-  safety: { title: 'Safety', lede: 'Farming, feeding and collusion. Evidence for a person to weigh, never a verdict.' },
+  safety: { title: 'Safety', lede: 'Farming, feeding and collusion (evidence for a person to weigh, never a verdict), and the pictures players wear.' },
   settings: { title: 'Settings', lede: 'Who may play (the same switch as in Game), which doors are open, and the X handle.' },
 };
 
@@ -116,6 +117,7 @@ export function AdminHome({ net, reloadNet }: { net: AdminNetwork; reloadNet: ()
       <>
         <SummaryBar summary={groupSummary('safety', { net, status: null })} />
         <IntegrityTab api={api} />
+        <AvatarsTab api={api} />
       </>
     );
   else

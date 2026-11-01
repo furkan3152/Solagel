@@ -401,6 +401,13 @@ export class RoomManager {
     return s;
   }
 
+  /** Takes a wallet's profile picture off its live coins in every room (moderation, a new upload). */
+  clearAvatar(wallet: string): number {
+    let n = 0;
+    for (const r of this.rooms.values()) n += r.clearAvatar(wallet);
+    return n;
+  }
+
   connsByWallet(wallet: string): Conn[] {
     return [...this.conns].filter((c) => c.wallet === wallet);
   }

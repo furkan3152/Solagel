@@ -92,6 +92,8 @@ export interface JoinOptions {
   name: string;
   skin: number;
   flags: number;
+  /** The wallet's profile picture (`isAvatarId`), worn on the coin; null / absent: none. */
+  avatar?: string | null;
   /** Arena ticket. */
   stake?: Omit<ArenaEntry, 'pid'>;
 }
@@ -132,6 +134,8 @@ export class Room {
   /** Arena rooms: value each staker lost this game (`valueLost` / `lootSpilled` in the death stats). */
   private readonly losses = new Map<number, { lost: number; spilled: number }>();
   private readonly walletOf = new Map<number, string>();
+  /** Human players wearing a profile picture → its id (bots never have one). */
+  readonly avatarOf = new Map<number, string>();
   private readonly chatLog: ChatLine[] = [];
   private readonly writer = new BinaryWriter(32 * 1024);
   private lastLbAt = 0;
@@ -256,6 +260,17 @@ export class Room {
     this.lastActivity = Date.now();
   }
 
+  /**
+   * The client clears its world mirror on every `joined` / `spectating` (and on a new socket), so
+   * the server forgets what it sent: the next snapshot carries everything in view again. Without
+   * this the two sides drift apart whenever only one of them starts over (lobby → another room,
+   * a reconnect into the same room): entities the client still holds were never removed and stood
+   * there as frozen, uneatable ghosts.
+   */
+  private freshView(conn: Conn): void {
+    conn.view.reset();
+  }
+
   /** Removes a connection from this room without touching its player. */
   detach(conn: Conn): void {
     this.conns.delete(conn);
@@ -270,6 +285,8 @@ export class Room {
   join(conn: Conn, opts: JoinOptions): Player {
     this.syncRound();
     this.attach(conn);
+    // `joined` starts the client's world mirror afresh: the view starts afresh with it (see `freshView`)
+    this.freshView(conn);
     const player = this.world.addPlayer({ name: opts.name, skin: opts.skin, flags: opts.flags, mass: RULES.startMass });
     this.humans.set(player.id, conn);
     // the human always gets in: a bot over the target goes home at once ("<name> went home")
@@ -283,6 +300,8 @@ export class Room {
     conn.lastName = opts.name;
     conn.lastSkin = opts.skin;
     if (conn.wallet) this.walletOf.set(player.id, conn.wallet);
+    if (opts.avatar) this.avatarOf.set(player.id, opts.avatar);
+    else this.avatarOf.delete(player.id);
     if (this.ledger && opts.stake) {
       this.ledger.join({ ...opts.stake, pid: player.id });
       this.integrity?.join(this, player.id, conn, opts.stake);
@@ -304,12 +323,28 @@ export class Room {
     return player;
   }
 
+  /**
+   * The wallet's picture was removed (or replaced): its coins here go back to the basic skin. The
+   * player info changes, so every viewer gets it again on the next snapshot.
+   */
+  clearAvatar(wallet: string): number {
+    let n = 0;
+    const w = wallet.toLowerCase();
+    for (const pid of [...this.avatarOf.keys()]) {
+      if (this.walletOf.get(pid)?.toLowerCase() !== w) continue;
+      this.avatarOf.delete(pid);
+      n++;
+    }
+    return n;
+  }
+
   /** A stake player reconnected: give them their AFK cells back. */
   reattach(conn: Conn, pid: number): boolean {
     this.syncRound();
     const p = this.world.players.get(pid);
     if (!p || !p.alive || !this.humans.has(pid) || this.humans.get(pid)) return false;
     this.attach(conn);
+    this.freshView(conn);
     this.humans.set(pid, conn);
     this.afkSince.delete(pid);
     p.afk = false;
@@ -343,6 +378,7 @@ export class Room {
       const i = ranking.findIndex((p) => p.id === conn.spectatePid);
       conn.spectatePid = ranking[(i + 1) % ranking.length].id;
     } else conn.spectatePid = ranking[0].id;
+    this.freshView(conn);
     conn.send({ t: 'spectating', room: this.info(), targetPid: conn.spectatePid });
   }
 
@@ -590,6 +626,7 @@ export class Room {
     this.humans.delete(p.id);
     this.afkSince.delete(p.id);
     this.walletOf.delete(p.id);
+    this.avatarOf.delete(p.id);
     for (const other of this.conns) other.view.forgetPlayer(p.id);
 
     if (c) {
@@ -738,6 +775,7 @@ export class Room {
         this.finishHuman(k.victim, null, 'death', k.killer);
       } else {
         world.removePlayer(k.victim.id);
+        this.avatarOf.delete(k.victim.id);
       }
       if (k.killer && this.bots?.isBot(k.killer.id)) this.bots.onKill(k.killer.id);
     }
@@ -836,7 +874,7 @@ export class Room {
       if (!conn.open) continue;
       if (conn.buffered > 768 * 1024) continue; // slow client: skip a frame
       const { rect, view } = this.viewFor(conn);
-      const snap = conn.view.build(this.world, rect, view, this.entryFee);
+      const snap = conn.view.build(this.world, rect, view, this.entryFee, this.avatarOf);
       if (!snap) continue;
       this.writer.reset();
       writeSnapshot(this.writer, snap);

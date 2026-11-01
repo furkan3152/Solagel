@@ -17,7 +17,15 @@ export interface BotManagerOptions {
   mix?: BotMix;
   /** Bots on (default true). Off: every bot goes home and none spawns. */
   enabled?: boolean;
+  /**
+   * Most mass a bot keeps (the rookie league, see `ROOKIE_BOT_MASS_CAP`): bots never spawn above
+   * it and shed whatever they eat past it within a second or two. Absent: no cap.
+   */
+  massCap?: number;
 }
+
+/** Share of a capped bot's excess mass that stays after one second (the rest is shed). */
+const MASS_CAP_KEEP_PER_SEC = 0.25;
 
 export interface Bot {
   player: Player;
@@ -61,6 +69,7 @@ export class BotManager {
   private departures: BotDeparture[] = [];
   private regulars: string[] = [];
   private opts: BotManagerOptions;
+  private lastUpdateAt: number | null = null;
 
   constructor(
     private readonly world: World,
@@ -231,10 +240,22 @@ export class BotManager {
     this.retired = [];
     const want = this.desired(humans);
 
+    const cap = this.opts.massCap;
     if (!this.initialized) {
       this.initialized = true;
       // seed a natural size distribution so a fresh room looks alive
-      for (let i = 0; i < want; i++) this.spawnBot(Math.round(20 + Math.pow(this.rng(), 2.2) * 420));
+      for (let i = 0; i < want; i++) {
+        const mass = Math.round(20 + Math.pow(this.rng(), 2.2) * 420);
+        this.spawnBot(cap !== undefined ? Math.min(mass, Math.max(20, Math.round(cap * 0.9))) : mass);
+      }
+    }
+
+    // the mass cap: whatever a bot eats past it melts away
+    const dt = this.lastUpdateAt === null ? 0 : Math.max(0, now - this.lastUpdateAt) / 1000;
+    this.lastUpdateAt = now;
+    if (cap !== undefined && dt > 0) {
+      const shed = 1 - Math.pow(MASS_CAP_KEEP_PER_SEC, dt);
+      for (const bot of this.bots.values()) if (bot.player.alive) this.world.shedMass(bot.player, cap, shed);
     }
 
     // spawn queued bots that are still needed

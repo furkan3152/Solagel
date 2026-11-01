@@ -4,6 +4,7 @@ import { levelProgress } from '../game/engine';
 import { useT } from '../i18n';
 import { useUi } from '../store';
 import { CoinPortrait } from '../ui/game/CoinPortrait';
+import { wearsPicture } from '../ui/profile/picture';
 import { useChainData } from './chain';
 import { useAddress } from './store';
 
@@ -31,7 +32,14 @@ export function ProfileCard({ onEdit }: { onEdit?: () => void }) {
       </div>
       <div className="kl-profile__top">
         <span className="kl-profile__photo">
-          <CoinPortrait skin={settings.skin} size={64} expression="happy" seed={9} className="kl-profile__coin" />
+          <CoinPortrait
+            skin={settings.skin}
+            size={64}
+            expression="happy"
+            seed={9}
+            className="kl-profile__coin"
+            avatar={address && wearsPicture(settings.picture, profile?.avatar) ? profile?.avatar : null}
+          />
         </span>
         <div className="kl-profile__id">
           <h3 id="kl-profile-h" className="kl-profile__name">

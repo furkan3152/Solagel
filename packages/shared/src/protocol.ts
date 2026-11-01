@@ -41,6 +41,11 @@ export const PlayerFlag = {
   Staker: 4,
   /** The wallet holds an Elymum emblem (the name tag wears a laurel). Old clients ignore the bit. */
   Holder: 8,
+  /**
+   * The player wears an uploaded profile picture (`avatar`): the wire record carries the 8-byte avatar
+   * id after the name (protocol v7). Never set for bots.
+   */
+  Avatar: 16,
 } as const;
 
 /** Binary client → server opcodes (first byte). */
@@ -75,6 +80,11 @@ export interface PlayerInfo {
    * `PlayerFlag.Holder` in `flags`; `decodeSnapshot` sets it only when true.
    */
   holder?: boolean;
+  /**
+   * The player's profile picture (`isAvatarId`: 16 lowercase hex, served at `avatarPath(id)`). On the
+   * wire this is `PlayerFlag.Avatar` in `flags` plus 8 bytes after the name; absent for bots and guests.
+   */
+  avatar?: string;
 }
 
 export interface EntityRecord {
@@ -220,6 +230,11 @@ export type ClientMessage =
       skin: number;
       /** Optional browser fingerprint (`isFingerprint`): integrity evidence only, untrusted. */
       fp?: string;
+      /**
+       * Wear the profile picture of the signed-in wallet (`ProfileView.avatar`) on the coin. Ignored for
+       * guests and wallets without a picture; the coin keeps `skin` as its rim colour.
+       */
+      pic?: boolean;
     }
   | { t: 'spectate'; room?: string; next?: boolean }
   | { t: 'leave' }

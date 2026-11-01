@@ -41,6 +41,19 @@ describe('formulas', () => {
     }
   });
 
+  it('speed falls off gently for big cells (same as before for small ones)', () => {
+    const r = (mass: number) => massToRadius(mass);
+    const old = (mass: number) => RULES.speedK * Math.pow(r(mass), -RULES.speedExp);
+    // up to the knee (mass 100) nothing changed
+    for (const m of [10, 20, 50, 100]) expect(speedForRadius(r(m))).toBeCloseTo(old(m), 6);
+    // continuous at the knee
+    expect(speedForRadius(RULES.speedKneeR + 1e-6)).toBeCloseTo(speedForRadius(RULES.speedKneeR), 3);
+    // bigger is still slower, but a 10k coin keeps half of a 100 coin's speed (it kept ~36 %)
+    expect(speedForRadius(r(1000))).toBeLessThan(speedForRadius(r(500)));
+    expect(speedForRadius(r(10_000)) / speedForRadius(r(100))).toBeGreaterThan(0.48);
+    expect(speedForRadius(r(10_000))).toBeGreaterThan(old(10_000) * 1.3);
+  });
+
   it('eat rules', () => {
     expect(canEat(125, 100)).toBe(true);
     expect(canEat(124.9, 100)).toBe(false);

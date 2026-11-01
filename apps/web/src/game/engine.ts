@@ -257,7 +257,8 @@ export class GameEngine {
   private sendJoin(room: string): void {
     const { settings } = useUi.getState();
     this.lastJoin = { room };
-    this.net.send({ t: 'join', room, name: settings.name || 'Coinie', skin: settings.skin, fp: fingerprint() });
+    // `pic`: wear the profile picture (the server takes it from the signed-in wallet's profile; guests get the basic coin)
+    this.net.send({ t: 'join', room, name: settings.name || 'Coinie', skin: settings.skin, fp: fingerprint(), ...(settings.picture ? { pic: true } : {}) });
   }
 
   spectate(room?: string): void {
@@ -406,6 +407,9 @@ export class GameEngine {
     switch (m.t) {
       case 'welcome': {
         serverClock.sync(m.serverNow);
+        // a new socket has a new (empty) view on the server: nothing it sent before will be removed
+        this.snapQueue = [];
+        this.world.reset();
         // a held ticket whose join was lost with the old socket (or still waits) goes again
         this.heldTicket.rearm();
         useUi.setState({ connected: true, connecting: false, rooms: m.rooms, chain: m.chain, online: m.online, blockedArenas: (m.blocked ?? []).map((b) => b.arenaId) });
@@ -444,7 +448,8 @@ export class GameEngine {
         return;
       }
       case 'joined': {
-        if (this.world.myPid !== m.playerId) this.snapNext = true;
+        const prevPid = this.world.myPid;
+        if (prevPid !== m.playerId) this.snapNext = true;
         const from = useUi.getState().screen;
         if (!this.reduced) {
           // the coin drops onto the paper; out of the lobby the camera also falls into the world
@@ -455,9 +460,12 @@ export class GameEngine {
         }
         this.slowmoAt = -Infinity;
         this.thaw();
+        // the server starts this connection's view afresh with every `joined`: so does the mirror
+        // (anything kept from another room, or from before a reconnect, would never be removed)
+        this.world.reset();
         this.clearHeld();
         this.life = { bites: 0, streak: 0, streakAt: -Infinity, whale: false };
-        if (this.world.myPid !== m.playerId) {
+        if (prevPid !== m.playerId) {
           const where = m.room.mode === 'arena' && m.room.arenaId !== undefined ? arenaMeta(m.room.arenaId).name : t('an.practice');
           announce('joined', { room: where });
         }
@@ -492,8 +500,8 @@ export class GameEngine {
       }
       case 'spectating': {
         this.thaw();
-        const prev = useUi.getState().room;
-        if (prev?.id !== m.room.id) this.world.reset();
+        // a fresh view on the server with every `spectating` (same room or not): a fresh mirror here
+        this.world.reset();
         this.world.width = m.room.width;
         this.world.height = m.room.height;
         useUi.setState({ room: m.room, spectateTarget: m.targetPid });

@@ -29,11 +29,25 @@ describe('v2 economy constants', () => {
   });
 
   it('sizes the worlds', () => {
-    expect(WORLD_PRESETS.arena).toEqual({ width: 6400, height: 6400, foodTarget: 1500, virusTarget: 28, maxPowerUps: 4 });
+    expect(WORLD_PRESETS.arena).toEqual({ width: 7800, height: 7800, foodTarget: 2230, virusTarget: 18, maxPowerUps: 4 });
     // the old free room, renamed
-    expect(WORLD_PRESETS.practice).toEqual({ width: 5600, height: 5600, foodTarget: 1100, virusTarget: 22, maxPowerUps: 3 });
-    expect(WORLD_PRESETS.private).toEqual({ width: 4600, height: 4600, foodTarget: 800, virusTarget: 16, maxPowerUps: 2 });
+    expect(WORLD_PRESETS.practice).toEqual({ width: 6800, height: 6800, foodTarget: 1620, virusTarget: 14, maxPowerUps: 3 });
+    expect(WORLD_PRESETS.private).toEqual({ width: 4600, height: 4600, foodTarget: 800, virusTarget: 10, maxPowerUps: 2 });
     expect(CAPACITY).toEqual({ practice: 40, private: 20, arena: 50 });
+  });
+
+  it('grew the pond and the arena maps at the same food density, with sparse thorn bushes', () => {
+    const before = { practice: { side: 5600, food: 1100 }, arena: { side: 6400, food: 1500 } };
+    for (const mode of ['practice', 'arena'] as const) {
+      const p = WORLD_PRESETS[mode];
+      const was = before[mode];
+      expect(p.width / was.side).toBeGreaterThan(1.2);
+      expect(p.width / was.side).toBeLessThan(1.3);
+      const density = p.foodTarget / (p.width * p.height);
+      expect(Math.abs(density / (was.food / (was.side * was.side)) - 1)).toBeLessThan(0.01);
+      // well under the old ~0.7 bushes per million square units
+      expect(p.virusTarget / ((p.width * p.height) / 1e6)).toBeLessThan(0.35);
+    }
   });
 
   it('types the practice leagues (checked by tsc)', () => {
