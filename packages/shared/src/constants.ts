@@ -18,9 +18,12 @@ export const RULES = {
 
   splitMinMass: 35,
   maxCells: 16,
-  /** Launch speed (units/s) of a freshly split cell; decays with splitDecayPerSec. */
-  splitSpeed: 1250,
-  /** Fraction of boost velocity kept after one second (exponential decay → ~390u flight). */
+  /**
+   * Launch speed (units/s) of a freshly split cell; decays with splitDecayPerSec. Raised with the
+   * movement speed (+15 %, was 1250) so a split still outruns a fleeing coin by the same margin.
+   */
+  splitSpeed: 1440,
+  /** Fraction of boost velocity kept after one second (exponential decay → ~450u flight). */
   splitDecayPerSec: 0.04,
   /** Own-cell collisions are ignored this long after a split so halves can fly out. */
   splitNoCollideMs: 380,
@@ -30,7 +33,8 @@ export const RULES = {
   ejectMinMass: 35,
   ejectCost: 18,
   ejectMass: 14,
-  ejectSpeed: 1000,
+  /** Raised with the movement speed (+15 %, was 1000) so ejects still leave a faster owner behind. */
+  ejectSpeed: 1150,
   ejectCooldownMs: 100,
   /** Ejected blobs cannot be re-eaten by their owner for this long. */
   ejectOwnerGraceMs: 600,
@@ -39,7 +43,8 @@ export const RULES = {
   /** A fed virus splits when it reaches this mass. */
   virusSplitMass: 198,
   virusPopRatio: 1.33,
-  virusShootSpeed: 1100,
+  /** Raised with the movement speed (+15 %, was 1100). */
+  virusShootSpeed: 1265,
   virusMaxPieces: 15,
   /** Fraction of the popped cell's mass that explodes into pieces. */
   virusPopFraction: 0.5,
@@ -60,10 +65,11 @@ export const RULES = {
 
   /**
    * speed(r) = speedK * r^-speedExp (units / second) up to `speedKneeR` (mass 100), then it falls
-   * off more gently: speed(knee) * (r / speedKneeR)^-speedExpHigh. Small coins move as before;
-   * big ones are still slower, just not as steeply.
+   * off more gently: speed(knee) * (r / speedKneeR)^-speedExpHigh. Big coins are still slower,
+   * just not as steeply. speedK 2185 (was 1900) makes every size 15 % faster; the curve's shape
+   * (both exponents and the knee) is unchanged.
    */
-  speedK: 1900,
+  speedK: 2185,
   speedExp: 0.44,
   speedKneeR: 100,
   speedExpHigh: 0.3,
