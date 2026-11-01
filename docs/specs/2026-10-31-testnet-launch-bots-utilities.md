@@ -18,8 +18,8 @@ Status: requested by the owner (2026-10-31). Builds on `2026-10-29-elymum-on-ely
 Rooms are rarely full, so bots fill them. Rules for every network:
 
 - **Visible.** Every bot carries a small `BOT` tag in the HUD lists, the name label and standings. Nobody is fooled.
-- **Natural names.** Bot names look like names real people pick (e.g. `marco_88`, `ella.v`, `kenjiplays`, `sophie_m`,
-  `deniz_k`, `frank0x`), a large varied pool, never crypto puns. No duplicates in one room.
+- **Natural names.** Bot names look like names real people pick (e.g. `sophie_m`, `ella.v`, `mattplays`, `lisa_b`,
+  `jake_r`, `emily22`), a large varied pool of English-speaking names only, never crypto puns. No duplicates in one room.
 - **Cap per room** (admin-set, default 12) and **make room for people**: when a human joins a room at the cap, a bot leaves
   (it "goes home" with a short animation) so the human gets the seat. Bots never block a join.
 - Admin controls: bots on/off per room kind, cap, minimum, difficulty mix, and a live count.
