@@ -18,14 +18,19 @@ export interface BotManagerOptions {
   /** Bots on (default true). Off: every bot goes home and none spawns. */
   enabled?: boolean;
   /**
-   * Most mass a bot keeps (the rookie league, see `ROOKIE_BOT_MASS_CAP`): bots never spawn above
-   * it and shed whatever they eat past it within a second or two. Absent: no cap.
+   * Most mass a bot keeps (per room kind, admin `massCap`; see `DEFAULT_BOT_MASS_CAPS`): bots never
+   * spawn above it and shed whatever they eat past it within a second or two. Absent: no cap.
    */
   massCap?: number;
 }
 
 /** Share of a capped bot's excess mass that stays after one second (the rest is shed). */
-const MASS_CAP_KEEP_PER_SEC = 0.25;
+const MASS_CAP_KEEP_PER_SEC = 0.2;
+/**
+ * Most brains that think in one tick: about a quarter of the room (thoughts are staggered every
+ * 120-300 ms anyway; this only flattens rare bursts). Bots over the budget think next tick.
+ */
+const thinkBudget = (bots: number): number => Math.max(3, Math.ceil(bots / 4));
 
 export interface Bot {
   player: Player;
@@ -70,6 +75,10 @@ export class BotManager {
   private regulars: string[] = [];
   private opts: BotManagerOptions;
   private lastUpdateAt: number | null = null;
+  /** Bots in a stable order for the round-robin think budget (rebuilt when the set changes). */
+  private order: Bot[] = [];
+  private orderDirty = true;
+  private cursor = 0;
 
   constructor(
     private readonly world: World,
@@ -142,11 +151,13 @@ export class BotManager {
     });
     const bot: Bot = {
       player,
-      brain: new BotBrain(rollPersonality(this.rng, this.opts.mix ?? 'standard'), this.rng),
+      brain: new BotBrain(rollPersonality(this.rng, this.opts.mix ?? 'standard'), this.rng, this.world.now),
       retireAt: staked ? Infinity : this.world.now + randRange(this.rng, 4 * 60_000, 12 * 60_000),
       ...(staked ? { staked } : {}),
     };
+    if (this.opts.massCap !== undefined) bot.brain.massCap = this.opts.massCap;
     this.bots.set(player.id, bot);
+    this.orderDirty = true;
     if (this.rng() < 0.2) this.pendingEmotes.push({ pid: player.id, id: EMOTE_GM });
     return bot;
   }
@@ -156,6 +167,7 @@ export class BotManager {
     const bot = this.bots.get(pid);
     if (!bot) return;
     this.bots.delete(pid);
+    this.orderDirty = true;
     this.remember(bot.player.name);
     this.spawnQueue.push(now + randRange(this.rng, 1500, 5000));
   }
@@ -164,6 +176,7 @@ export class BotManager {
   private sendHome(bot: Bot, reason: LeftReason): void {
     const p = bot.player;
     this.bots.delete(p.id);
+    this.orderDirty = true;
     this.world.removePlayer(p.id);
     this.retired.push(p.id);
     this.remember(p.name);
@@ -206,6 +219,7 @@ export class BotManager {
   /** New admin settings, applied live: bots over the new cap (or all, when off) go home now. */
   setOptions(opts: BotManagerOptions, humans: number): number {
     this.opts = { ...opts };
+    for (const b of this.bots.values()) b.brain.massCap = opts.massCap ?? Infinity;
     return this.trimTo(this.desired(humans), 'settings');
   }
 
@@ -225,6 +239,7 @@ export class BotManager {
     for (const b of this.bots.values()) this.remember(b.player.name);
     for (const pid of gone) this.world.removePlayer(pid);
     this.bots.clear();
+    this.orderDirty = true;
     this.spawnQueue = [];
     this.initialized = false;
     return gone;
@@ -286,10 +301,22 @@ export class BotManager {
       break;
     }
 
-    for (const bot of this.bots.values()) {
+    // brains think on their own staggered clocks; a round-robin budget flattens bursts
+    if (this.orderDirty) {
+      this.order = [...this.bots.values()];
+      this.orderDirty = false;
+      if (this.cursor >= this.order.length) this.cursor = 0;
+    }
+    const n = this.order.length;
+    let budget = thinkBudget(n);
+    const start = this.cursor;
+    for (let i = 0; i < n && budget > 0; i++) {
+      const bot = this.order[(start + i) % n];
       const p = bot.player;
       if (!p.alive || p.cells.length === 0) continue;
       if (!bot.brain.shouldThink(now)) continue;
+      budget--;
+      this.cursor = (start + i + 1) % n;
       const d = bot.brain.think(this.world, p, now);
       if (!d) continue;
       this.world.setTarget(p.id, d.target.x, d.target.y);

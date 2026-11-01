@@ -22,6 +22,13 @@ const hard: Personality = {
   virusAware: true,
   leadsTargets: true,
   virusShooter: true,
+  reactionMs: 0,
+  predictS: 0.45,
+  mistakeRate: 0,
+  foodRouting: 1,
+  wallSense: 1.25,
+  doubleSplit: true,
+  chaseMs: 9000,
 };
 
 const emptyCfg = (over: Partial<WorldConfig> = {}): WorldConfig => ({
@@ -225,8 +232,8 @@ describe('bots', () => {
     const world = new World(emptyCfg({ width: 6000, height: 3000 }));
     const bot = world.addPlayer({ spawnShield: false, name: 'bot', skin: 0, x: 3000, y: 1500, mass: 40 });
     world.setTarget(bot.id, 3000, 1500);
-    // a big splitter far to the west, charging straight at the bot
-    const whale = world.addPlayer({ spawnShield: false, name: 'whale', skin: 1, x: 1850, y: 1500, mass: 400 });
+    // a big splitter far to the west (beyond its double-split lunge), charging straight at the bot
+    const whale = world.addPlayer({ spawnShield: false, name: 'whale', skin: 1, x: 1700, y: 1500, mass: 400 });
     world.setTarget(whale.id, 6000, 1500);
     const brain = new BotBrain({ ...hard, caution: 1 }, mulberry32(4));
     brain.think(world, bot, world.now); // first look: no velocity known yet
@@ -235,5 +242,105 @@ describe('bots', () => {
     world.setTarget(bot.id, 3000, 1500);
     brain.think(world, bot, world.now);
     expect(brain.lastDanger).toBeGreaterThan(0);
+  });
+
+  it('cornered against a wall it slides out the long way instead of dithering into the corner', () => {
+    const world = new World(emptyCfg({ width: 6800, height: 6800 }));
+    const bot = world.addPlayer({ spawnShield: false, name: 'bot', skin: 0, x: 6500, y: 6300, mass: 300 });
+    const whale = world.addPlayer({ spawnShield: false, name: 'whale', skin: 1, x: 5600, y: 5900, mass: 2000 });
+    const brain = new BotBrain({ ...hard, skill: 1, doubleSplit: false, virusShooter: false }, mulberry32(1));
+    for (let i = 0; i < 300; i++) {
+      if (!bot.alive) break;
+      const c = bot.center();
+      world.setTarget(whale.id, c.x, c.y);
+      if (brain.shouldThink(world.now)) {
+        const d = brain.think(world, bot, world.now)!;
+        world.setTarget(bot.id, d.target.x, d.target.y);
+      }
+      world.tick(TICK_MS);
+    }
+    expect(bot.alive).toBe(true);
+    expect(bot.center().y).toBeLessThan(5000);
+  });
+
+  it('hard bots double-split prey just beyond one split', () => {
+    const world = new World(emptyCfg());
+    const bot = world.addPlayer({ spawnShield: false, name: 'bot', skin: 0, x: 900, y: 1500, mass: 900 });
+    const prey = world.addPlayer({ spawnShield: false, name: 'snack', skin: 2, x: 900 + 650, y: 1500, mass: 60 });
+    prey.stats.joinedAt = -60_000;
+    world.setTarget(prey.id, 900 + 650, 1500);
+    const brain = new BotBrain(hard, mulberry32(2));
+    let splits = 0;
+    drive(world, brain, bot, 1500, (s) => {
+      if (s) splits++;
+    });
+    expect(splits).toBeGreaterThanOrEqual(2);
+    expect(prey.alive).toBe(false);
+  });
+
+  it('ignores ejected bait next to a bush when it would pop', () => {
+    const world = new World(emptyCfg());
+    const bot = world.addPlayer({ spawnShield: false, name: 'bot', skin: 0, x: 1500, y: 1500, mass: 400, isBot: true });
+    const v = world.spawnVirus(1800, 1500)!;
+    for (let i = 0; i < 5; i++) world.spawnEject(v.x - v.r - 20, 1440 + i * 30, 0, 0, 999, 0);
+    for (let i = 0; i < 3; i++) world.spawnFood(1250 - i * 25, 1500, 0);
+    const brain = new BotBrain({ ...hard, aimNoise: 0 }, mulberry32(3));
+    for (let i = 0; i < 10; i++) {
+      const d = brain.think(world, bot, world.now + i * 150)!;
+      expect(d.target.x).toBeLessThan(bot.center().x);
+    }
+  });
+
+  it('heads for a rich coin field it can only see from afar', () => {
+    const world = new World(emptyCfg({ width: 6000, height: 3000 }));
+    const bot = world.addPlayer({ spawnShield: false, name: 'bot', skin: 0, x: 3000, y: 1500, mass: 40, isBot: true });
+    // a dense field 1200 to the east, a few loose coins 900 to the west
+    for (let i = 0; i < 80; i++) world.spawnFood(4100 + (i % 10) * 30, 1380 + Math.floor(i / 10) * 30, 0);
+    for (let i = 0; i < 4; i++) world.spawnFood(2100 - i * 200, 1500, 0);
+    const brain = new BotBrain({ ...hard, aimNoise: 0 }, mulberry32(4));
+    const d = brain.think(world, bot, world.now)!;
+    expect(d.target.x).toBeGreaterThan(3000);
+  });
+
+  it('easy bots notice a new threat only after their reaction delay', () => {
+    const world = new World(emptyCfg());
+    const bot = world.addPlayer({ spawnShield: false, name: 'bot', skin: 0, x: 1500, y: 1500, mass: 60 });
+    world.addPlayer({ spawnShield: false, name: 'whale', skin: 1, x: 1900, y: 1500, mass: 900 });
+    const brain = new BotBrain({ ...hard, skill: 0, distraction: 0, reactionMs: 450 }, mulberry32(5));
+    brain.think(world, bot, 1000);
+    expect(brain.lastDanger).toBe(0);
+    brain.think(world, bot, 1300);
+    expect(brain.lastDanger).toBe(0);
+    brain.think(world, bot, 1500);
+    expect(brain.lastDanger).toBeGreaterThan(0);
+  });
+
+  it('thoughts are staggered: a 12-bot room never has more than a quarter of its bots think in one tick', () => {
+    const world = new World({ ...WORLD_PRESETS.practice, powerUps: false, coinRain: false, seed: 9 });
+    const manager = new BotManager(world, { target: 12, min: 4, max: 12, mix: 'standard' }, mulberry32(9));
+    let thinks = 0;
+    const orig = BotBrain.prototype.think;
+    BotBrain.prototype.think = function (this: BotBrain, ...args: Parameters<BotBrain['think']>) {
+      thinks++;
+      return orig.apply(this, args);
+    };
+    try {
+      let most = 0;
+      let all = 0;
+      for (let i = 0; i < 600; i++) {
+        world.tick(TICK_MS);
+        thinks = 0;
+        manager.update(world.now, 0);
+        most = Math.max(most, thinks);
+        all += thinks;
+      }
+      expect(most).toBeLessThanOrEqual(3);
+      // every bot still thinks several times a second, well below the 30 Hz tick
+      const perBotPerSec = all / 12 / (600 / 30);
+      expect(perBotPerSec).toBeGreaterThan(2.5);
+      expect(perBotPerSec).toBeLessThan(10);
+    } finally {
+      BotBrain.prototype.think = orig;
+    }
   });
 });

@@ -9,13 +9,44 @@ export const SLOT_ANGLE = (Math.PI * 2) / SLOTS;
 const DIR_X = Array.from({ length: SLOTS }, (_, k) => Math.cos(k * SLOT_ANGLE));
 const DIR_Y = Array.from({ length: SLOTS }, (_, k) => Math.sin(k * SLOT_ANGLE));
 
+/** cos^2 kernel over ±6 slots (±90°), used to spread binned interest (`flushBinned`). */
+const KERNEL2 = Array.from({ length: 13 }, (_, i) => Math.cos((i - 6) * SLOT_ANGLE) ** 2);
+
 export class ContextMap {
   readonly interest = new Float64Array(SLOTS);
   readonly danger = new Float64Array(SLOTS);
+  /** Interest binned per slot (linear between the two nearest), spread once by `flushBinned`. */
+  private readonly binned = new Float64Array(SLOTS);
+  private readonly scores = new Float64Array(SLOTS);
 
   reset(): void {
     this.interest.fill(0);
     this.danger.fill(0);
+    this.binned.fill(0);
+  }
+
+  /**
+   * Cheap interest for many small sources (coins): the weight goes into the two nearest slots and
+   * is spread with the cos² kernel once, in `flushBinned` (≈ `addInterest(angle, weight, 2)`).
+   */
+  addBinned(angle: number, weight: number): void {
+    if (!(weight > 0) || !Number.isFinite(angle)) return;
+    const pos = ((angle / SLOT_ANGLE) % SLOTS + SLOTS) % SLOTS;
+    const k0 = Math.floor(pos);
+    const f = pos - k0;
+    this.binned[k0 % SLOTS] += weight * (1 - f);
+    this.binned[(k0 + 1) % SLOTS] += weight * f;
+  }
+
+  /** Spreads the binned interest into `interest` (call once, after the last `addBinned`). */
+  flushBinned(): void {
+    const b = this.binned;
+    for (let k = 0; k < SLOTS; k++) {
+      const w = b[k];
+      if (w === 0) continue;
+      for (let o = -6; o <= 6; o++) this.interest[(k + o + SLOTS) % SLOTS] += w * KERNEL2[o + 6];
+      b[k] = 0;
+    }
   }
 
   /** Adds `weight` toward `angle`, spread over neighbouring slots with a cosine^power kernel. */
@@ -56,7 +87,7 @@ export class ContextMap {
       if (this.interest[k] > maxInterest) maxInterest = this.interest[k];
     }
     const maskAbove = minDanger + Math.max(0.25, (maxDanger - minDanger) * 0.45);
-    const scores = new Float64Array(SLOTS);
+    const scores = this.scores;
     let best = -1;
     let bestScore = -Infinity;
     const contW = continuity * Math.max(maxInterest, 0.05);

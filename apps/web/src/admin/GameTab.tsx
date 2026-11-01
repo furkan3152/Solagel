@@ -161,7 +161,7 @@ export function botsPatch(saved: BotAdminView['settings'], draft: BotAdminView['
     const s = saved.kinds[kind];
     if (!s) continue;
     const p: Record<string, unknown> = {};
-    for (const f of ['enabled', 'cap', 'min', 'target'] as const) if (d[f] !== s[f]) p[f] = d[f];
+    for (const f of ['enabled', 'cap', 'min', 'target', 'massCap'] as const) if (d[f] !== s[f] && d[f] !== undefined) p[f] = d[f];
     const mix: Record<string, number> = {};
     for (const [lvl, w] of Object.entries(d.mix)) if (s.mix[lvl] !== w) mix[lvl] = w;
     if (Object.keys(mix).length) p.mix = mix;
@@ -204,7 +204,7 @@ export function stakedFix(problem: string): { text: string; hash: string } | nul
   return null;
 }
 
-/** Game → bots: per room kind on/off, cap, minimum, target and difficulty mix, testnet staked bots, and the live count. */
+/** Game → bots: per room kind on/off, cap, minimum, target, bot mass cap and difficulty mix, testnet staked bots, and the live count. */
 export function BotsCard({ ctx, arenaIds }: { ctx: ChainCtx; arenaIds: number[] }) {
   const [view, setView] = useState<BotAdminView | null>(null);
   const [draft, setDraft] = useState<BotAdminView['settings'] | null>(null);
@@ -261,6 +261,7 @@ export function BotsCard({ ctx, arenaIds }: { ctx: ChainCtx; arenaIds: number[] 
   };
   const tot = view.live.totals;
   const ids = [...new Set([...arenaIds, ...Object.keys(draft.testnet.arenas).map(Number)])].sort((a, b) => a - b);
+  const hasMassCap = Object.values(draft.kinds).some((k) => k.massCap !== undefined);
   const levels = Object.keys(Object.values(draft.kinds)[0]?.mix ?? { easy: 1, medium: 1, hard: 1 });
 
   return (
@@ -279,6 +280,11 @@ export function BotsCard({ ctx, arenaIds }: { ctx: ChainCtx; arenaIds: number[] 
               <th scope="col" className="is-num">Cap</th>
               <th scope="col" className="is-num">Min</th>
               <th scope="col" className="is-num">Target</th>
+              {hasMassCap && (
+                <th scope="col" className="is-num" title="Most mass one bot keeps; 0 = no cap">
+                  Mass cap
+                </th>
+              )}
               {levels.map((l) => (
                 <th key={l} scope="col" className="is-num">
                   {l}
@@ -309,6 +315,11 @@ export function BotsCard({ ctx, arenaIds }: { ctx: ChainCtx; arenaIds: number[] 
                   <td className="is-num">
                     <NumCell value={k.target} max={200} label={`${kind} target`} onChange={(n) => setKind(kind, { target: n })} />
                   </td>
+                  {hasMassCap && (
+                    <td className="is-num">
+                      <NumCell value={k.massCap ?? 0} max={200_000} label={`${kind} mass cap`} onChange={(n) => setKind(kind, { massCap: n })} />
+                    </td>
+                  )}
                   {levels.map((l) => (
                     <td key={l} className="is-num">
                       <NumCell value={k.mix[l] ?? 0} max={100} label={`${kind} ${l}`} onChange={(n) => setKind(kind, { mix: { ...k.mix, [l]: n } })} />

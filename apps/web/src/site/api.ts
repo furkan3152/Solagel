@@ -322,6 +322,8 @@ export interface BotKindSettings {
   target: number;
   /** Difficulty mix, as weights. */
   mix: Record<string, number>;
+  /** Most mass one bot keeps (0: no cap; older servers leave it out). */
+  massCap?: number;
 }
 
 export interface BotSettings {
