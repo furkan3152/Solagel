@@ -67,7 +67,7 @@ describe('snapshot codec', () => {
       players: [
         { id: 1, skin: 2, flags: PlayerFlag.Bot, name: 'marco88' },
         { id: 2, skin: 3, flags: PlayerFlag.Verified, name: 'human' },
-        { id: 3, skin: 4, flags: 0, name: 'deniz_k', isBot: true },
+        { id: 3, skin: 4, flags: 0, name: 'jake_r', isBot: true },
       ],
       upserts: [],
       removals: [],

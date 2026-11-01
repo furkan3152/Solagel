@@ -37,20 +37,28 @@ describe('bot names', () => {
     expect(share(/^[a-z]+$/)).toBeGreaterThan(0.05);
     expect(share(/[A-Z]/)).toBeGreaterThan(0);
     expect(share(/[A-Z]/)).toBeLessThan(0.1);
-    // international examples from the spec
-    for (const n of ['deniz_k', 'emre.dmr', 'kenjiplays', 'lisa_b', 'marco88', 'sophie_m', 'ella.v']) expect(BOT_NAMES).toContain(n);
+    for (const n of ['jake_r', 'lisa_b', 'sophie_m', 'ella.v', 'mattplays']) expect(BOT_NAMES).toContain(n);
+  });
+
+  it('has no Turkish names, even written in plain ASCII', () => {
+    const turkish = ['deniz', 'emre', 'mert', 'burak', 'elif', 'zeynep', 'ayse', 'mehmet', 'ahmet', 'selin', 'kerem', 'baris',
+      'irem', 'onur', 'esra', 'ozan', 'hakan', 'gizem', 'serkan', 'pinar', 'yusuf', 'damla', 'kaan', 'ipek', 'umut', 'melis',
+      'furkan', 'sena', 'eren', 'busra', 'arda', 'nazli', 'sinan', 'derya', 'ozge', 'volkan', 'cansu', 'tolga', 'merve', 'berk',
+      'cem', 'tuba', 'ece', 'can_', 'emrecan'];
+    const hits = BOT_NAMES.filter((n) => turkish.some((t) => n.toLowerCase().startsWith(t)));
+    expect(hits).toEqual([]);
   });
 
   it('the style rules reject what bots must not be called', () => {
     for (const n of ['gm_gummy', 'hodl_hamster', 'moon_mochi', '\u015feyma', 'a', '_lead', 'trail.', 'two__marks', 'x'.repeat(17), 'has space']) {
       expect(isNaturalBotName(n)).toBe(false);
     }
-    expect(isNaturalBotName('emre.dmr')).toBe(true);
+    expect(isNaturalBotName('jake_r')).toBe(true);
   });
 
   it('never picks a name already in the room (case-insensitive, humans count too)', () => {
     const r = rng(1);
-    const taken: string[] = ['MARCO88', 'Deniz_K'];
+    const taken: string[] = ['JAKE_R', 'Lisa_B'];
     for (let i = 0; i < BOT_NAMES.length + 40; i++) {
       const n = pickBotName(r, taken);
       expect(taken.map((t) => t.toLowerCase())).not.toContain(n.toLowerCase());

@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { requireFrom, resolveChromium } from '../scripts/lib/common.mjs';
 import { ROOT } from './lib/art.mjs';
 import * as T from './lib/templates.mjs';
+import * as X2 from './lib/x2.mjs';
 
 const OUT = join(ROOT, 'brand/out');
 const PUBLIC = join(ROOT, 'apps/web/public');
@@ -23,6 +24,8 @@ const JOBS = [
   { name: 'x-avatar-1000', make: T.xAvatar, scale: 2.5, file: 'x/x-avatar-1000.png' },
   { name: 'x-banner', make: T.xBanner, scale: 1, file: 'x/x-banner-1500x500.png' },
   { name: 'x-banner-2x', make: T.xBanner, scale: 2, file: 'x/x-banner-3000x1000.png' },
+  { name: 'x2-avatar', make: X2.xAvatar2, scale: 2.5, file: 'x/x2-avatar-1000.png' },
+  { name: 'x2-banner', make: X2.xBanner2, scale: 2, file: 'x/x2-banner-3000x1000.png' },
   { name: 'og', make: T.ogCard, scale: 1, file: 'web/og-elymum.png', copies: [join(PUBLIC, 'og-elymum.png')] },
   { name: 'favicon-32', make: () => T.favicon(32), scale: 1, file: 'web/favicon-32.png', copies: [join(PUBLIC, 'favicon-32.png')] },
   { name: 'apple-touch-icon', make: T.appleTouchIcon, scale: 1, file: 'web/apple-touch-icon.png', copies: [join(PUBLIC, 'apple-touch-icon.png')] },
