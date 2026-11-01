@@ -57,6 +57,8 @@ beforeEach(() => {
   vi.stubGlobal('cancelAnimationFrame', () => {});
   vi.spyOn(Math, 'random').mockReturnValue(0.5);
   serverClock.reset();
+  // a returning player: the first-play brief does not hold the join
+  localStorage.setItem('elymum.brief', '1');
   net.open = true;
   net.sent = [];
   useUi.setState({ ...initial, rooms: [ARENA], screen: 'lobby' }, true);

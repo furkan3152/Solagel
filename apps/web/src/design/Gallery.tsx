@@ -435,7 +435,7 @@ export function Gallery() {
               <StatusPill tone="testnet">Testnet</StatusPill>
             </div>
             <div className="gal-row gal-keys">
-              <span className="kb-key">mouse</span> steer <span className="kb-key">space</span> split <span className="kb-key">W</span> spit
+              <span className="kb-key">mouse</span> / <span className="kb-key">wasd</span> steer <span className="kb-key">space</span> split <span className="kb-key">E</span> tip
             </div>
           </Spec>
         </div>

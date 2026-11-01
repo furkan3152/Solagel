@@ -19,6 +19,7 @@ import {
   type TabItem,
 } from '../../design';
 import { formatCountdown, useRound } from '../../game/round';
+import { setWorldCovered } from '../../game/backdrop';
 import { engine } from '../../game/instance';
 import { sound } from '../../audio';
 import { useT, type TKey } from '../../i18n';
@@ -70,6 +71,16 @@ export function Lobby() {
     const id = setTimeout(() => setPunched(null), 2500);
     return () => clearTimeout(id);
   }, [punched]);
+  // No window onto the world (narrow layouts, the other pages): the paper covers the game
+  // canvas, so the engine stops drawing it once the screen wipe that may be showing it is over.
+  // With the window, LiveFrame says whether it is on screen.
+  const hasHole = wide && tab === 'play';
+  useEffect(() => {
+    if (hasHole) return;
+    const id = setTimeout(() => setWorldCovered(true), 1500);
+    return () => clearTimeout(id);
+  }, [hasHole]);
+  useEffect(() => () => setWorldCovered(false), []);
   // a new page starts at its top
   useEffect(() => {
     root.current?.scrollTo({ top: 0 });
@@ -226,7 +237,7 @@ export function Lobby() {
     <Kb
       ref={root}
       theme={themeFromSettings(theme)}
-      className={`kl-root${wide ? ` is-wide${tab === 'play' ? ' has-hole' : ''}` : mid ? ' is-mid' : ' is-phone'}`}
+      className={`kl-root${wide ? ` is-wide${hasHole ? ' has-hole' : ''}` : mid ? ' is-mid' : ' is-phone'}`}
     >
       <div className="kl-sheet-page">
         <Masthead full={mid} wide={wide} page={tab} onPage={setTab} />

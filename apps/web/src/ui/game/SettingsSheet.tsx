@@ -1,4 +1,5 @@
 import { Icon, Sheet } from '../../design';
+import { openBrief } from '../../game/brief';
 import { useT, type TKey } from '../../i18n';
 import { closeModal, useUi } from '../../store';
 import { SettingsPage } from '../profile/SettingsPage';
@@ -42,6 +43,16 @@ export function HowToSheet() {
         ))}
       </ol>
       <p className="g-howto__keys mono">{t('lobby.keys')}</p>
+      <button
+        type="button"
+        className="kl-link mono g-howto__brief"
+        onClick={() => {
+          closeModal();
+          openBrief('again');
+        }}
+      >
+        {t('howto.brief')}
+      </button>
     </Sheet>
   );
 }

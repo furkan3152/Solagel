@@ -23,7 +23,9 @@ import { Renderer, type FrameInput } from '../render/renderer';
 import { FOOD_COLORS } from '../render/sprites';
 import { toast, useUi } from '../store';
 import { Camera } from './camera';
+import { worldCovered } from './backdrop';
 import { serverClock } from './clock';
+import { holdForBrief } from './brief';
 import { HeldTicket } from './held';
 import { Input } from './input';
 import { Net } from './net';
@@ -140,7 +142,10 @@ export class GameEngine {
         emote: (id) => this.emote(id),
         openChat: () => {
           const s = useUi.getState();
-          if (s.screen === 'playing' && s.settings.showChat) useUi.setState({ chatOpen: true });
+          if (s.screen === 'playing' && s.settings.showChat) {
+            this.input.keys.clear();
+            useUi.setState({ chatOpen: true });
+          }
         },
         escape: () => {
           const s = useUi.getState();
@@ -149,6 +154,10 @@ export class GameEngine {
         },
         spectateNext: () => {
           if (useUi.getState().screen === 'spectating') this.spectateNext();
+        },
+        steering: () => {
+          const s = useUi.getState();
+          return s.screen === 'playing' && !s.chatOpen;
         },
       },
       (dy) => this.camera.wheel(dy),
@@ -237,6 +246,8 @@ export class GameEngine {
    */
   play(room: string, opts: { awaitTicket?: boolean } = {}): void {
     unlockAudio();
+    // a newcomer reads the first-play brief before the drop; closing it makes this same call
+    if (holdForBrief(room, () => this.play(room, opts))) return;
     this.ticketRetry = opts.awaitTicket ? { room, left: 4 } : null;
     this.sendJoin(room);
   }
@@ -653,10 +664,12 @@ export class GameEngine {
   private aimPoint(): { x: number; y: number } | null {
     const me = this.world.myStats();
     const a = this.aim;
-    if (this.input.stick.active && me) {
+    // the thumb stick, then the move keys (both a direction at full reach), then the mouse
+    const dir = this.input.stick.active ? this.input.stick : this.input.keys.active ? this.input.keys : null;
+    if (dir && me) {
       const reach = Math.max(260, me.maxR * 3);
-      a.x = me.x + this.input.stick.x * reach;
-      a.y = me.y + this.input.stick.y * reach;
+      a.x = me.x + dir.x * reach;
+      a.y = me.y + dir.y * reach;
       return a;
     }
     if (this.input.mouse.active) return this.camera.toWorld(this.input.mouse.x, this.input.mouse.y, a);
@@ -862,7 +875,9 @@ export class GameEngine {
     fi.reduced = this.reduced;
     fi.aim = ui.screen === 'playing' ? this.aimPoint() : null;
     fi.coinRain = !!ui.banner && ui.banner.kind === 'coinrain' && ui.banner.until > Date.now();
-    this.renderer.draw(fi);
+    // nothing of the world shows (the lobby's paper covers it, or the tab is hidden): skip the draw
+    const unseen = (ui.screen === 'lobby' && worldCovered()) || document.visibilityState === 'hidden';
+    if (!unseen) this.renderer.draw(fi);
 
     // the minimap: 15 times a second, 5 with the automatic drop's invisible savings
     if (this.minimap && ui.settings.showMinimap && now - this.lastMinimap > (this.renderer.autoLite ? 200 : 66)) {
