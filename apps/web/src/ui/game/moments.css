@@ -194,7 +194,27 @@
   display: block;
   transform-origin: 50% 0%;
   animation: gm-swing 1.5s cubic-bezier(0.36, 0, 0.3, 1) both;
-  filter: drop-shadow(5px 5px 0 #000507);
+}
+/* the hard shadow is drawn, not filtered: the rope's box shadow and an ink copy of the bell */
+.gm-bell__art {
+  position: relative;
+  display: block;
+}
+.gm-bell__art > .gm-bell__svg {
+  /* positioned, so it paints over its shadow (the copy before it) */
+  position: relative;
+}
+.gm-bell__art > .gm-bell__svg--shadow {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(5px, 5px);
+}
+.gm-bell__art > .gm-bell__svg--shadow [fill]:not([fill='none']) {
+  fill: #000507;
+}
+.gm-bell__art > .gm-bell__svg--shadow [stroke] {
+  stroke: #000507;
 }
 .gm-bell__rope {
   display: block;
@@ -204,6 +224,7 @@
   border-left: 2.5px solid #04181c;
   border-right: 2.5px solid #04181c;
   background: repeating-linear-gradient(to bottom, #dccda8 0 5px, #b9a77d 5px 8px);
+  box-shadow: 5px 5px 0 #000507;
 }
 .gm-bell__svg {
   display: block;
@@ -339,31 +360,38 @@
   pointer-events: none;
 }
 .gm-mouth__svg {
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
   height: 100%;
-}
-.gm-mouth__svg * {
-  transform-box: view-box;
 }
 .gm-mouth__body {
   fill: var(--paint, #6fcde8);
   stroke: #04181c;
   stroke-width: 1.8;
 }
-.gm-mouth__lip {
+.gm-mouth__lipline {
   fill: none;
   stroke: #04181c;
   stroke-width: 2.2;
-  transform-origin: 50px 52px;
-  animation: gm-shut 0.8s cubic-bezier(0.55, 0, 0.6, 1) both;
+}
+/*
+ * Page-level layers, so the compositor runs the beat. The pivot is the mouth, viewBox (50, 52):
+ * with `slice` one viewBox unit is max(1vw, 1vh), centred on the screen.
+ */
+.gm-mouth__face,
+.gm-mouth__jaw,
+.gm-mouth__lip {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% calc(50% + 2 * max(1vw, 1vh));
 }
 .gm-mouth__face {
-  transform-origin: 50px 52px;
   animation: gm-gulp 0.8s cubic-bezier(0.5, 0, 0.2, 1) both;
 }
-.gm-mouth__jaw {
-  transform-origin: 50px 52px;
+.gm-mouth__jaw,
+.gm-mouth__lip {
   animation: gm-shut 0.8s cubic-bezier(0.55, 0, 0.6, 1) both;
 }
 .gm-mouth__shut {
@@ -442,29 +470,12 @@
   white-space: nowrap;
   will-change: transform;
 }
-.g-till.is-gulp {
-  animation: gm-gulp-till 0.34s cubic-bezier(0.22, 1, 0.36, 1);
-}
-@keyframes gm-gulp-till {
-  0% {
-    transform: scale(1);
-  }
-  35% {
-    transform: scale(1.09, 0.94);
-  }
-  70% {
-    transform: scale(0.97, 1.03);
-  }
-  100% {
-    transform: scale(1);
-  }
-}
+/* the till's gulp as a gain arrives: a Web Animation (Moments.tsx `GULP`) */
 
 @media (prefers-reduced-motion: reduce) {
   .g-round.is-closing:not(.is-count),
   .gm-sunset.is-late .gm-sunset__band,
-  .g-death__title,
-  .g-till.is-gulp {
+  .g-death__title {
     animation: none;
   }
   .gm-sunset,

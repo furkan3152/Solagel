@@ -1,10 +1,11 @@
-import { PROTOCOL_VERSION, decodeSnapshot, type ClientMessage, type ServerMessage, type SnapshotData } from '@elymum/shared';
+import { PROTOCOL_VERSION, type ClientMessage, type ServerMessage } from '@elymum/shared';
 
 export interface NetHandlers {
   onOpen(): void;
   onClose(): void;
   onMessage(msg: ServerMessage): void;
-  onSnapshot(s: SnapshotData): void;
+  /** A binary snapshot as received (the engine applies it straight into the world: `ClientWorld.applyBinary`). */
+  onSnapshot(buf: ArrayBuffer): void;
 }
 
 /** WebSocket with automatic reconnect, JSON + binary routing and ping. */
@@ -43,7 +44,7 @@ export class Net {
         this.handlers.onMessage(msg);
       } else {
         try {
-          this.handlers.onSnapshot(decodeSnapshot(ev.data as ArrayBuffer));
+          this.handlers.onSnapshot(ev.data as ArrayBuffer);
         } catch (err) {
           console.warn('bad snapshot', err);
         }

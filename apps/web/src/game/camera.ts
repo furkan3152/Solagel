@@ -69,8 +69,10 @@ export class Camera {
     this.userZoom = clamp(this.userZoom * f, 1 / (VIEW.serverMargin - 0.04), 1.6);
   }
 
-  toWorld(sx: number, sy: number): { x: number; y: number } {
-    return { x: this.x + (sx - this.w / 2) / this.zoom, y: this.y + (sy - this.h / 2) / this.zoom };
+  toWorld(sx: number, sy: number, out: { x: number; y: number } = { x: 0, y: 0 }): { x: number; y: number } {
+    out.x = this.x + (sx - this.w / 2) / this.zoom;
+    out.y = this.y + (sy - this.h / 2) / this.zoom;
+    return out;
   }
 
   toScreen(wx: number, wy: number): { x: number; y: number } {
@@ -79,8 +81,17 @@ export class Camera {
 
   /** World rectangle currently on screen (plus padding in world units). */
   visibleRect(pad = 0): { x0: number; y0: number; x1: number; y1: number } {
+    return this.visibleRectInto({ x0: 0, y0: 0, x1: 0, y1: 0 }, pad);
+  }
+
+  /** `visibleRect` into `out` (the render loop's scratch: no garbage per frame). */
+  visibleRectInto<T extends { x0: number; y0: number; x1: number; y1: number }>(out: T, pad = 0): T {
     const hw = this.w / 2 / this.zoom + pad;
     const hh = this.h / 2 / this.zoom + pad;
-    return { x0: this.x - hw, y0: this.y - hh, x1: this.x + hw, y1: this.y + hh };
+    out.x0 = this.x - hw;
+    out.y0 = this.y - hh;
+    out.x1 = this.x + hw;
+    out.y1 = this.y + hh;
+    return out;
   }
 }

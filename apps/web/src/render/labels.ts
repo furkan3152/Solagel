@@ -42,16 +42,47 @@ export interface StickerLabel {
   alpha?: number;
 }
 
+/** A whole sticker rendered into one bitmap for one owner (a coin), redrawn only when it changes. */
+interface StickerSprite {
+  canvas: HTMLCanvasElement;
+  ctx: CanvasRenderingContext2D;
+  name: string | null;
+  value: string | null;
+  flags: number;
+  /** Font size bucket (device px) and device px per CSS px it was drawn at. */
+  px: number;
+  dpr: number;
+  /** Generation of the text cache it was drawn with (fonts arriving redraw it). */
+  gen: number;
+  /** The sticker's own size in sprite px (without the shadow and margins). */
+  lw: number;
+  lh: number;
+  /** Sprite px drawn (the canvas may be a little bigger), and the sticker's top-left inside it. */
+  w: number;
+  h: number;
+  ox: number;
+  oy: number;
+}
+
+/** Scratch label for drawing into a sprite (no per-sticker garbage). */
+const SPRITE_LABEL: StickerLabel = { name: null, value: null, verified: false, bot: false, holder: false, mine: false, x: 0, y: 0, fs: 1, devicePx: 1, zoom: 1 };
+const LAYOUT = { w: 0, h: 0 };
+
 /**
  * Name tags as small mono stickers (spec §6.5 tags): cream stock (sun for
  * me), a 2.5 px ink edge, a 2 px hard ink shadow, the name in ink and the
  * value in teal. The texts are rendered once per (text, colour, size bucket)
- * into small canvases and drawn as images; the sticker itself is two rounded
- * rects. LRU by insertion order with entry and byte caps.
+ * into small canvases (LRU by insertion order with entry and byte caps).
+ * With an owner (`drawSticker(ctx, label, owner)`), the whole sticker (stock,
+ * edge, shadow, laurel, tick, BOT chip and texts) is rendered once into the
+ * owner's bitmap and drawn with one `drawImage` per frame; it is redrawn only
+ * when its text, flags or size bucket change.
  */
 export class LabelCache {
   private readonly map = new Map<string, TextSprite>();
   private bytes = 0;
+  private readonly sprites = new WeakMap<object, StickerSprite>();
+  private gen = 0;
 
   constructor() {
     // sprites rasterised before the web fonts arrived would keep the fallback face: start over
@@ -65,6 +96,7 @@ export class LabelCache {
   clear(): void {
     this.map.clear();
     this.bytes = 0;
+    this.gen++;
   }
 
   get size(): number {
@@ -92,10 +124,113 @@ export class LabelCache {
     return s;
   }
 
-  /** Draws a name/value sticker centred at (x, y) in the current (world) transform. */
-  drawSticker(ctx: CanvasRenderingContext2D, o: StickerLabel): void {
+  /**
+   * Draws a name/value sticker centred at (x, y) in the current (world) transform. With an
+   * `owner`, from that owner's cached sticker bitmap (one drawImage), redrawn on change.
+   */
+  drawSticker(ctx: CanvasRenderingContext2D, o: StickerLabel, owner?: object): void {
     const want = o.fs * o.devicePx;
     if (want < 4 || (!o.name && !o.value)) return;
+    if (owner) {
+      this.drawCached(ctx, o, owner, want);
+      return;
+    }
+    this.drawDirect(ctx, o);
+  }
+
+  private drawCached(ctx: CanvasRenderingContext2D, o: StickerLabel, owner: object, want: number): void {
+    const px = STEP ** Math.round(Math.log(want) / Math.log(STEP));
+    // device px per CSS px: the ink edge and shadow are a fixed number of CSS px
+    const dpr = Math.round((o.devicePx / o.zoom) * 100) / 100;
+    const flags = (o.verified ? 1 : 0) | (o.bot ? 2 : 0) | (o.holder ? 4 : 0) | (o.mine ? 8 : 0);
+    let sp = this.sprites.get(owner);
+    if (!sp || sp.name !== o.name || sp.value !== o.value || sp.flags !== flags || sp.px !== px || sp.dpr !== dpr || sp.gen !== this.gen) {
+      sp = this.renderSprite(sp, o, px, dpr, flags);
+      this.sprites.set(owner, sp);
+    }
+    // world units per sprite px (the layout scales with the font size)
+    const k = o.fs / px;
+    const w = sp.lw * k;
+    const h = sp.lh * k;
+    const prev = ctx.globalAlpha;
+    if (o.alpha !== undefined) ctx.globalAlpha = prev * o.alpha;
+    ctx.drawImage(sp.canvas, 0, 0, sp.w, sp.h, o.x - w / 2 - sp.ox * k, o.y - h / 2 - sp.oy * k, sp.w * k, sp.h * k);
+    ctx.globalAlpha = prev;
+  }
+
+  private renderSprite(old: StickerSprite | undefined, o: StickerLabel, px: number, dpr: number, flags: number): StickerSprite {
+    const l = SPRITE_LABEL;
+    l.name = o.name;
+    l.value = o.value;
+    l.verified = o.verified;
+    l.bot = o.bot;
+    l.holder = o.holder;
+    l.mine = o.mine;
+    l.fs = px;
+    l.devicePx = 1;
+    l.zoom = 1 / dpr;
+    l.alpha = undefined;
+    this.layout(o.name, o.value, o.verified, !!o.bot, !!o.holder, o.mine, px, px);
+    const edge = 2.5 * dpr;
+    const sh = 2 * dpr;
+    const ox = Math.ceil(edge / 2 + 1);
+    const oy = ox;
+    const w = Math.ceil(LAYOUT.w + ox * 2 + sh);
+    const h = Math.ceil(LAYOUT.h + oy * 2 + sh);
+    let canvas = old?.canvas;
+    let sctx = old?.ctx;
+    // grown in steps, so a growing mass does not reallocate the bitmap every time
+    if (!canvas || !sctx || canvas.width < w || canvas.height < h) {
+      canvas ??= document.createElement('canvas');
+      canvas.width = Math.max(canvas.width, Math.ceil(w / 16) * 16);
+      canvas.height = Math.max(canvas.height, Math.ceil(h / 8) * 8);
+      sctx = canvas.getContext('2d')!;
+    } else {
+      sctx.setTransform(1, 0, 0, 1, 0, 0);
+      sctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+    l.x = ox + LAYOUT.w / 2;
+    l.y = oy + LAYOUT.h / 2;
+    this.drawDirect(sctx, l);
+    const sp = old ?? ({} as StickerSprite);
+    sp.canvas = canvas;
+    sp.ctx = sctx;
+    sp.name = o.name;
+    sp.value = o.value;
+    sp.flags = flags;
+    sp.px = px;
+    sp.dpr = dpr;
+    sp.gen = this.gen;
+    sp.lw = LAYOUT.w;
+    sp.lh = LAYOUT.h;
+    sp.w = w;
+    sp.h = h;
+    sp.ox = ox;
+    sp.oy = oy;
+    return sp;
+  }
+
+  /** Sticker size (into LAYOUT) for font size `fs` in the units it is drawn in; texts measured at `want` device px. */
+  private layout(name: string | null, value: string | null, verified: boolean, isBot: boolean, holder: boolean, mine: boolean, want: number, fs: number): void {
+    const k = (sp: TextSprite) => fs / sp.px;
+    const n = name ? this.text(name, INK, want) : null;
+    const v = value ? this.text(value, mine ? INK : TEXT_INKS.day.teal, want) : null;
+    const tick = name && verified ? fs * 0.95 : 0;
+    const bot = name && isBot ? this.text('BOT', CARD_PAPER, want * 0.72) : null;
+    const botPad = fs * 0.28;
+    const botW = bot ? bot.tw * ((fs * 0.72) / bot.px) : 0;
+    const botBox = bot ? botW + botPad * 2 : 0;
+    const botGap = bot ? fs * 0.4 : 0;
+    const gap = name && value ? fs * 0.62 : 0;
+    const laurel = name && holder ? fs * 1.15 : 0;
+    const textW = laurel + (n ? n.tw * k(n) : 0) + tick + botGap + botBox + gap + (v ? v.tw * k(v) : 0);
+    LAYOUT.w = textW + fs * 0.62 * 2;
+    LAYOUT.h = fs * 1.78;
+  }
+
+  /** Draws the sticker with paths and text images (the reference look; sprites are drawn with it). */
+  private drawDirect(ctx: CanvasRenderingContext2D, o: StickerLabel): void {
+    const want = o.fs * o.devicePx;
     const fs = o.fs;
     const k = (sp: TextSprite) => fs / sp.px; // world units per sprite px
     const name = o.name ? this.text(o.name, INK, want) : null;

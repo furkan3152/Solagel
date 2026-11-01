@@ -7,9 +7,9 @@ import type { CEntity, ClientWorld } from '../game/state';
 import type { Quality, Settings } from '../store';
 import { qualityLevels, type QualityLevel } from './governor';
 import { stickerImage } from '../ui/game/stickers';
-import { drawCoinLook } from './coin';
+import { drawCoinLook, type CoinOpts } from './coin';
 import type { Neighbour } from './jelly';
-import { LabelCache } from './labels';
+import { LabelCache, type StickerLabel } from './labels';
 import { LookCache } from './looks';
 import { SpriteCache, drawGlint, drawSprite } from './sprites';
 
@@ -92,13 +92,49 @@ function cellHash(i: number, j: number): number {
  * where fill rate is the limit and 1.5× still looks sharp at arm's length.
  * The low-quality setting caps it lower (1.5, and 1.25 on phones).
  */
+let coarseQuery: MediaQueryList | null | undefined;
 export function canvasDpr(quality: Quality = 'high'): number {
-  const coarse = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
+  // one MediaQueryList, read live (matchMedia makes a new object per call; the minimap asks 15 times a second)
+  if (coarseQuery === undefined) coarseQuery = typeof window.matchMedia === 'function' ? window.matchMedia('(pointer: coarse)') : null;
+  const coarse = coarseQuery?.matches === true;
   const cap = quality === 'low' ? (coarse ? 1.25 : 1.5) : coarse ? 1.5 : 2;
   return Math.min(window.devicePixelRatio || 1, cap);
 }
 
-const byRadius = (a: CEntity, b: CEntity): number => a.r - b.r;
+/**
+ * Sorts by radius in place (insertion sort: the order barely changes between frames, so this is
+ * about linear, and unlike Array#sort it never allocates merge buffers).
+ */
+function sortByRadius(a: CEntity[], n: number): void {
+  for (let i = 1; i < n; i++) {
+    const e = a[i];
+    let j = i - 1;
+    while (j >= 0 && a[j].r > e.r) {
+      a[j + 1] = a[j];
+      j--;
+    }
+    a[j + 1] = e;
+  }
+}
+
+/** Mass labels as strings, cached (a coin's mass changes far less often than it is drawn). */
+const MASS_TEXT = new Map<number, string>();
+function massText(m: number): string {
+  let s = MASS_TEXT.get(m);
+  if (s === undefined) {
+    if (MASS_TEXT.size > 4096) MASS_TEXT.clear();
+    s = String(m);
+    MASS_TEXT.set(m, s);
+  }
+  return s;
+}
+
+/** Vector length (Math.hypot is not inlined by V8: a call and a boxed result per use in the frame). */
+const len = (x: number, y: number): number => Math.sqrt(x * x + y * y);
+
+/** Line dash patterns (setLineDash copies them: one scratch array per pattern, no garbage). */
+const NO_DASH: number[] = [];
+const PARACHUTE = [-1, -0.35, 0.35, 1] as const;
 
 /** Loot is drawn bigger by size tier (0 crumb … 3 jackpot). */
 const LOOT_SCALE = [0.8, 1, 1.3, 1.75];
@@ -133,6 +169,9 @@ interface RainCoin {
   ink: string;
 }
 
+/** The coin rain's most drops on screen (the low look rains half as thick: it still rains). */
+const RAIN_MAX = 70;
+
 export class Renderer {
   private readonly ctx: CanvasRenderingContext2D;
   readonly sprites = new SpriteCache();
@@ -143,7 +182,11 @@ export class Renderer {
   /** Automatic quality levels for this screen and setting (see `FrameGovernor`); 0 = full. */
   levels: QualityLevel[] = qualityLevels(1);
   private level = 0;
+  /** Coin rain drops `rain[0 … nRain)` (never shrunk) and retired drops for reuse. */
   private rain: RainCoin[] = [];
+  private nRain = 0;
+  private rainPool: RainCoin[] = [];
+  private nRainPool = 0;
   private readonly looks = new LookCache();
   private readonly labels = new LabelCache();
   // per-frame scratch (reused, so drawing allocates nothing in the steady state)
@@ -154,12 +197,57 @@ export class Renderer {
   private readonly bodies: CEntity[] = [];
   private readonly cells: CEntity[] = [];
   private readonly nbs: Neighbour[] = [];
+  /**
+   * How many of each scratch array are live this frame. The arrays never shrink (`length = 0`
+   * makes V8 drop the backing store, so every frame regrew them: garbage); entries past the
+   * count are stale and never read.
+   */
+  private nFood = 0;
+  private nEjects = 0;
+  private nLoot = 0;
+  private nPowerUps = 0;
+  private nBodies = 0;
+  private nCells = 0;
   private readonly emoteBest = new Map<number, CEntity>();
   /** Device px per world unit of the frame being drawn. */
   private ppu = 1;
   /** When each coin last grew (its laugh is held for a moment). */
   private readonly grewAt = new WeakMap<CEntity, number>();
   private readonly interior = (look: CoinLook, r: number) => this.sprites.coinInterior(look, r, this.ppu);
+  // per-frame scratch objects (reused: no garbage per frame)
+  private readonly view = { x0: 0, y0: 0, x1: 0, y1: 0 };
+  private readonly dash = [0.01, 1];
+  private readonly coin: CoinOpts = { time: 0, lookX: 0, lookY: 0, expression: 'happy', pxPerUnit: 1, jelly: null, flags: 0, seed: 0, interior: undefined, minPrintPx: 14 };
+  private readonly label: StickerLabel = { name: null, value: null, verified: false, bot: false, holder: false, mine: false, x: 0, y: 0, fs: 1, devicePx: 1, zoom: 1, alpha: 1 };
+
+  /** Sorts a visible entity into its layer (culled against `this.view`; see `draw`). */
+  private readonly collect = (e: CEntity): void => {
+    const view = this.view;
+    const pad = e.r * 1.8;
+    if (e.x + pad < view.x0 || e.x - pad > view.x1 || e.y + pad < view.y0 || e.y - pad > view.y1) return;
+    switch (e.kind) {
+      case EntityKind.Food:
+        this.food[this.nFood++] = e;
+        break;
+      case EntityKind.Eject:
+        this.ejects[this.nEjects++] = e;
+        break;
+      case EntityKind.Loot:
+        this.loot[this.nLoot++] = e;
+        break;
+      case EntityKind.PowerUp:
+        this.powerUps[this.nPowerUps++] = e;
+        break;
+      default:
+        this.bodies[this.nBodies++] = e;
+    }
+  };
+
+  /** A dotted line: round dots `gap` apart (a scratch pattern). */
+  private dots(gap: number): number[] {
+    this.dash[1] = gap;
+    return this.dash;
+  }
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext('2d', { alpha: false })!;
@@ -182,9 +270,14 @@ export class Renderer {
     this.applySize();
   }
 
-  /** The automatic drop asks for the low look (no jelly, no coin rain). */
+  /** The automatic drop's last resort: the low look (fewer particles per burst, a thinner coin rain; every animation stays). */
   get autoLow(): boolean {
     return this.levels[this.level].low;
+  }
+
+  /** The automatic drop's invisible savings (fewer jelly vertices, no fine detail on tiny coins). */
+  get autoLite(): boolean {
+    return this.levels[this.level].lite;
   }
 
   private applySize(): void {
@@ -207,63 +300,48 @@ export class Renderer {
     const cam = f.camera;
     const theme = WORLD_THEMES[f.settings.theme] ?? WORLD_THEMES.light;
     const z = cam.zoom;
-    const low = f.settings.quality === 'low' || this.autoLow;
-    const still = low || f.reduced;
+    // the player's own low setting stills the idle loops; the automatic drop never does
+    const still = f.settings.quality === 'low' || f.reduced;
 
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.fillStyle = theme.floor;
     ctx.fillRect(0, 0, cam.w, cam.h);
 
     ctx.setTransform(this.dpr * z, 0, 0, this.dpr * z, this.dpr * (cam.w / 2 - cam.x * z), this.dpr * (cam.h / 2 - cam.y * z));
-    const view = cam.visibleRect(60);
+    const view = cam.visibleRectInto(this.view, 60);
     this.drawFloor(view, f, theme);
 
-    // collect visible entities (into arrays reused across frames: no per-frame garbage)
+    // collect visible entities (into arrays reused across frames: no per-frame garbage; a bound
+    // forEach callback, since a Map iterator makes a result object per step)
     const { food, ejects, loot, powerUps, bodies, cells } = this;
-    food.length = ejects.length = loot.length = powerUps.length = bodies.length = cells.length = 0;
-    for (const e of f.world.entities.values()) {
-      const pad = e.r * 1.8;
-      if (e.x + pad < view.x0 || e.x - pad > view.x1 || e.y + pad < view.y0 || e.y - pad > view.y1) continue;
-      switch (e.kind) {
-        case EntityKind.Food:
-          food.push(e);
-          break;
-        case EntityKind.Eject:
-          ejects.push(e);
-          break;
-        case EntityKind.Loot:
-          loot.push(e);
-          break;
-        case EntityKind.PowerUp:
-          powerUps.push(e);
-          break;
-        default:
-          bodies.push(e);
-      }
-    }
+    this.nFood = this.nEjects = this.nLoot = this.nPowerUps = this.nBodies = this.nCells = 0;
+    f.world.entities.forEach(this.collect);
+    const nBodies = this.nBodies;
 
     // food: seeds, grapes and pears over their own glow (pops in); the golden drachma breathes
-    for (const e of food) {
+    for (let i = 0; i < this.nFood; i++) {
+      const e = food[i];
       const pop = Math.min(1, (f.now - e.born) / 220);
       let sz = e.r * (0.4 + 0.6 * (1 - (1 - pop) ** 3));
       if (e.variant === 7 && !still) sz *= 1 + Math.sin(f.now / 420 + e.seed * 20) * 0.05;
       drawSprite(ctx, this.sprites.foodSprite(e.variant, e.seed), e.x, e.y, sz);
     }
 
-    for (const e of ejects) drawSprite(ctx, this.sprites.ejectSprite(e.variant), e.x, e.y, e.r);
+    for (let i = 0; i < this.nEjects; i++) drawSprite(ctx, this.sprites.ejectSprite(ejects[i].variant), ejects[i].x, ejects[i].y, ejects[i].r);
 
-    for (const e of loot) this.drawLoot(e, f, still);
+    for (let i = 0; i < this.nLoot; i++) this.drawLoot(loot[i], f, still);
 
-    for (const e of powerUps) this.drawPowerUp(e, f, still);
+    for (let i = 0; i < this.nPowerUps; i++) this.drawPowerUp(powerUps[i], f, still);
 
     // cells and thorn bushes: small first so bigger ones cover them
-    bodies.sort(byRadius);
-    for (const b of bodies) if (b.kind === EntityKind.Cell) cells.push(b);
+    sortByRadius(bodies, nBodies);
+    for (let i = 0; i < nBodies; i++) if (bodies[i].kind === EntityKind.Cell) cells[this.nCells++] = bodies[i];
 
     // shadows on the floor, all before any body (one path, one fill)
     ctx.beginPath();
     let shadows = 0;
-    for (const e of bodies) {
+    for (let i = 0; i < nBodies; i++) {
+      const e = bodies[i];
       if (e.r * z < 6) continue;
       const r = e.kind === EntityKind.Virus ? e.r * 0.95 : e.r;
       ctx.moveTo(e.x + r * 0.76, e.y + r * 1.06);
@@ -279,7 +357,8 @@ export class Renderer {
 
     this.ppu = z * this.dpr;
     const { interior } = this;
-    for (const e of bodies) {
+    for (let i = 0; i < nBodies; i++) {
+      const e = bodies[i];
       if (e.kind === EntityKind.Virus) {
         const wob = still ? 0 : Math.sin(f.now / 700 + e.seed * 10) * 0.04;
         drawSprite(ctx, this.sprites.cactusSprite(), e.x, e.y, e.r, wob);
@@ -357,7 +436,7 @@ export class Renderer {
       const solid = pass === 0;
       ctx.strokeStyle = solid ? theme.contour : theme.contourDot;
       ctx.lineWidth = (solid ? 3 : 2.4) / z;
-      ctx.setLineDash(solid ? [] : [0.01, 12 / z]);
+      ctx.setLineDash(solid ? NO_DASH : this.dots(12 / z));
       ctx.beginPath();
       for (let k = k0; k <= k1; k++) {
         if ((k % 3 === 0) !== solid) continue;
@@ -367,7 +446,7 @@ export class Renderer {
       }
       ctx.stroke();
     }
-    ctx.setLineDash([]);
+    ctx.setLineDash(NO_DASH);
 
     // grass tufts and pebbles: one path each (skipped when they would be specks)
     if (TUFT_CELL * z > 26) {
@@ -432,7 +511,7 @@ export class Renderer {
       ctx.strokeStyle = theme.lights;
       ctx.lineWidth = 3.4 / z;
       ctx.lineCap = 'round';
-      ctx.setLineDash([0.01, 16 / z]);
+      ctx.setLineDash(this.dots(16 / z));
       ctx.stroke();
       ctx.restore();
     }
@@ -445,7 +524,7 @@ export class Renderer {
     const pop = Math.min(1, (f.now - e.born) / 260);
     const popE = 1 + 0.25 * Math.sin(Math.min(1, pop) * Math.PI) * (1 - pop * 0.4);
     const r = e.r * LOOT_SCALE[tier] * (e.dying ? 1 : Math.min(1, pop * 1.6)) * (still ? 1 : popE);
-    const sp = still ? 0 : Math.hypot(e.nx - e.ox, e.ny - e.oy);
+    const sp = still ? 0 : len(e.nx - e.ox, e.ny - e.oy);
     // sun glow: two flat discs (no blur), breathing
     const breathe = still ? 1 : 1 + Math.sin(f.now / 500 + e.seed * 30) * 0.08;
     ctx.fillStyle = ELYSIUM.sun;
@@ -496,7 +575,7 @@ export class Renderer {
     ctx.strokeStyle = ELYSIUM.cream;
     ctx.lineCap = 'round';
     ctx.lineWidth = Math.max(e.r * 0.07, 2.4 / f.camera.zoom);
-    ctx.setLineDash([0.01, Math.max(e.r * 0.24, 9 / f.camera.zoom)]);
+    ctx.setLineDash(this.dots(Math.max(e.r * 0.24, 9 / f.camera.zoom)));
     ctx.lineDashOffset = still ? 0 : -f.now / 60;
     ctx.beginPath();
     ctx.arc(e.x, e.y + bob, e.r * 1.36, 0, TAU);
@@ -527,7 +606,7 @@ export class Renderer {
       ctx.closePath();
       ctx.stroke();
       ctx.beginPath();
-      for (const sx of [-1, -0.35, 0.35, 1]) {
+      for (const sx of PARACHUTE) {
         ctx.moveTo(sx * e.r * 1.05, 0);
         ctx.lineTo(sx * e.r * 0.3, e.r * 1.0);
       }
@@ -565,14 +644,14 @@ export class Renderer {
     if (mine && f.aim) {
       const dx = f.aim.x - e.x;
       const dy = f.aim.y - e.y;
-      const d = Math.hypot(dx, dy);
+      const d = len(dx, dy);
       const k = Math.min(1, d / (e.r * 2 + 1));
       if (d > 0.01) {
         lx = (dx / d) * k;
         ly = (dy / d) * k;
       }
     } else {
-      const sp = Math.hypot(e.vx, e.vy);
+      const sp = len(e.vx, e.vy);
       if (sp > 5) {
         const k = Math.min(1, sp / 160);
         lx = (e.vx / sp) * k;
@@ -580,26 +659,27 @@ export class Renderer {
       }
     }
 
-    // jelly simulation (neighbours = overlapping cells)
-    const jellyOn = f.settings.quality === 'high' && !this.autoLow && !f.reduced;
+    // jelly simulation (neighbours = overlapping cells); the automatic drop keeps it (fewer vertices)
+    const jellyOn = f.settings.quality === 'high' && !f.reduced;
     if (jellyOn && e.jelly && screenR > 14) {
+      e.jelly.density = this.autoLow ? 6 : this.autoLite ? 4.5 : 3;
       const nbs = this.nbs;
       let n = 0;
-      for (const o of cells) {
+      for (let i = 0; i < this.nCells; i++) {
+        const o = cells[i];
         if (o === e) continue;
         const dx = o.x - e.x;
         const dy = o.y - e.y;
         if (Math.abs(dx) > e.r + o.r || Math.abs(dy) > e.r + o.r) continue;
-        if (Math.hypot(dx, dy) < e.r + o.r) {
+        if (len(dx, dy) < e.r + o.r) {
           const nb = (nbs[n++] ??= { dx: 0, dy: 0, r: 0 });
           nb.dx = dx;
           nb.dy = dy;
           nb.r = o.r;
         }
       }
-      nbs.length = n;
-      const sp = Math.hypot(e.vx, e.vy);
-      e.jelly.update(f.dt, e.r, screenR, sp > 1 ? (e.vx / sp) * Math.min(1, sp / 300) : 0, sp > 1 ? (e.vy / sp) * Math.min(1, sp / 300) : 0, nbs, f.rand);
+      const sp = len(e.vx, e.vy);
+      e.jelly.update(f.dt, e.r, screenR, sp > 1 ? (e.vx / sp) * Math.min(1, sp / 300) : 0, sp > 1 ? (e.vy / sp) * Math.min(1, sp / 300) : 0, nbs, f.rand, n);
     }
 
     const spawnPop = Math.min(1, (f.now - e.born) / 180);
@@ -622,7 +702,7 @@ export class Renderer {
       ctx.strokeStyle = ELYSIUM.sun;
       ctx.lineCap = 'round';
       ctx.lineWidth = 3 / z;
-      ctx.setLineDash([0.01, 10 / z]);
+      ctx.setLineDash(this.dots(10 / z));
       ctx.lineDashOffset = still ? 0 : -f.now / 90 / z;
       ctx.beginPath();
       ctx.arc(e.x, e.y, r + Math.min(16, Math.max(8, screenR * 0.2)) / z, 0, TAU);
@@ -630,19 +710,20 @@ export class Renderer {
       ctx.restore();
     }
     const look = this.lookFor(player?.skin ?? 0);
-    drawCoinLook(ctx, e.x, e.y, r, look, {
-      time: f.reduced ? 0 : f.now,
-      lookX: lx,
-      lookY: ly,
-      expression: this.mood(e, f.now),
-      pxPerUnit: z,
-      jelly: jellyOn ? e.jelly : null,
-      flags: e.flags,
-      seed: e.seed * 10 + e.playerId,
-      interior,
-      // small coins skip the fine interior details (groove, highlight)
-      minPrintPx: 14,
-    });
+    const o = this.coin;
+    o.time = f.reduced ? 0 : f.now;
+    o.lookX = lx;
+    o.lookY = ly;
+    o.expression = this.mood(e, f.now);
+    o.pxPerUnit = z;
+    o.jelly = jellyOn ? e.jelly : null;
+    o.flags = e.flags;
+    o.seed = e.seed * 10 + e.playerId;
+    o.interior = interior;
+    // small coins skip the fine interior details (groove, highlight); with the invisible
+    // savings on, a little bigger ones too (a 1 px groove on a 20 px coin does not show)
+    o.minPrintPx = this.autoLite ? 20 : 14;
+    drawCoinLook(ctx, e.x, e.y, r, look, o);
   }
 
   /**
@@ -667,20 +748,21 @@ export class Renderer {
     let y = e.y - e.r - ring - h / 2 - 7 / z;
     const top = view.y0 + 60 + h / 2 + 8 / z;
     if (y < top) y = Math.min(top, e.y - e.r * 0.5);
-    this.labels.drawSticker(this.ctx, {
-      name: showName ? player.name : null,
-      value: showMass ? String(Math.floor((e.nr * e.nr) / 100)) : null,
-      verified: (player.flags & PlayerFlag.Verified) !== 0,
-      bot: (player.flags & PlayerFlag.Bot) !== 0,
-      holder: (player.flags & PlayerFlag.Holder) !== 0,
-      mine,
-      x: e.x,
-      y,
-      fs,
-      devicePx: z * this.dpr,
-      zoom: z,
-      alpha: e.dying ? 0.6 : 1,
-    });
+    const l = this.label;
+    l.name = showName ? player.name : null;
+    l.value = showMass ? massText(Math.floor((e.nr * e.nr) / 100)) : null;
+    l.verified = (player.flags & PlayerFlag.Verified) !== 0;
+    l.bot = (player.flags & PlayerFlag.Bot) !== 0;
+    l.holder = (player.flags & PlayerFlag.Holder) !== 0;
+    l.mine = mine;
+    l.x = e.x;
+    l.y = y;
+    l.fs = fs;
+    l.devicePx = z * this.dpr;
+    l.zoom = z;
+    l.alpha = e.dying ? 0.6 : 1;
+    // one cached bitmap per coin, redrawn when its text or size bucket changes
+    this.labels.drawSticker(this.ctx, l, e);
   }
 
   /** Emote stickers: pop in with an overshoot, tilt, bob, then peel away. */
@@ -689,14 +771,16 @@ export class Renderer {
     const z = f.camera.zoom;
     const best = this.emoteBest;
     best.clear();
-    for (const c of cells) {
+    for (let i = 0; i < this.nCells; i++) {
+      const c = cells[i];
       const p = f.world.players.get(c.playerId);
       if (!p?.emote) continue;
       const cur = best.get(c.playerId);
       if (!cur || c.r > cur.r) best.set(c.playerId, c);
     }
-    for (const [pid, c] of best) {
-      const emote = f.world.players.get(pid)!.emote!;
+    if (best.size === 0) return;
+    for (const c of best.values()) {
+      const emote = f.world.players.get(c.playerId)!.emote!;
       const img = stickerImage(emote.id);
       if (!img) continue;
       const age = f.now - emote.at;
@@ -721,25 +805,31 @@ export class Renderer {
   private drawCoinRain(f: FrameInput): void {
     const { ctx } = this;
     const cam = f.camera;
-    if (f.coinRain && f.settings.quality === 'high' && !this.autoLow && !f.reduced && this.rain.length < 70) {
+    // the automatic drop's low look rains half as thick (it still rains)
+    const max = this.autoLow ? RAIN_MAX / 2 : RAIN_MAX;
+    if (f.coinRain && f.settings.quality === 'high' && !f.reduced && this.nRain < max) {
       for (let i = 0; i < 2; i++) {
-        this.rain.push({
-          x: f.rand() * cam.w,
-          y: -30,
-          v: 160 + f.rand() * 220,
-          r: 6 + f.rand() * 9,
-          rot: f.rand() * 6,
-          vr: (f.rand() - 0.5) * 8,
-          ink: f.rand() < 0.8 ? ELYSIUM.sun : ELYSIUM.cream,
-        });
+        const c = this.nRainPool > 0 ? this.rainPool[--this.nRainPool] : { x: 0, y: 0, v: 0, r: 0, rot: 0, vr: 0, ink: '' };
+        c.x = f.rand() * cam.w;
+        c.y = -30;
+        c.v = 160 + f.rand() * 220;
+        c.r = 6 + f.rand() * 9;
+        c.rot = f.rand() * 6;
+        c.vr = (f.rand() - 0.5) * 8;
+        c.ink = f.rand() < 0.8 ? ELYSIUM.sun : ELYSIUM.cream;
+        this.rain[this.nRain++] = c;
       }
     }
-    if (this.rain.length === 0) return;
+    if (this.nRain === 0) return;
     let w = 0;
-    for (const c of this.rain) {
+    for (let i = 0; i < this.nRain; i++) {
+      const c = this.rain[i];
       c.y += c.v * f.dt;
       c.rot += c.vr * f.dt;
-      if (c.y > cam.h + 30) continue;
+      if (c.y > cam.h + 30) {
+        this.rainPool[this.nRainPool++] = c;
+        continue;
+      }
       this.rain[w++] = c;
       ctx.save();
       ctx.translate(c.x, c.y);
@@ -759,18 +849,18 @@ export class Renderer {
       ctx.stroke();
       ctx.restore();
     }
-    this.rain.length = w;
+    this.nRain = w;
   }
 
-  private sheet: { canvas: HTMLCanvasElement; key: string } | null = null;
+  private sheet: { canvas: HTMLCanvasElement; px: number; size: number; dpr: number; theme: WorldTheme } | null = null;
 
   /**
    * The minimap's static layer: a night porthole (the arena seen from above)
    * with an ink edge, the floor's contour rings and the dotted wall lights.
    */
   private minimapSheet(px: number, size: number, dpr: number, wt: WorldTheme): HTMLCanvasElement {
-    const key = `${px}|${size}|${dpr}|${wt.mapDisc}|${wt.mapRing}`;
-    if (this.sheet?.key === key) return this.sheet.canvas;
+    const sh = this.sheet;
+    if (sh && sh.px === px && sh.size === size && sh.dpr === dpr && sh.theme === wt) return sh.canvas;
     const canvas = this.sheet?.canvas ?? document.createElement('canvas');
     canvas.width = canvas.height = px;
     const ctx = canvas.getContext('2d')!;
@@ -799,7 +889,7 @@ export class Renderer {
     ctx.beginPath();
     ctx.arc(c, c, R, 0, TAU);
     ctx.stroke();
-    this.sheet = { canvas, key };
+    this.sheet = { canvas, px, size, dpr, theme: wt };
     return canvas;
   }
 
@@ -830,8 +920,6 @@ export class Renderer {
     const inner = (size / 2 - 2) * Math.SQRT2 * 0.9;
     const o = (size - inner) / 2;
     const s = inner / Math.max(f.world.width, f.world.height);
-    const px = (x: number) => o + x * s;
-    const py = (y: number) => o + y * s;
 
     // the arena's edge
     ctx.strokeStyle = wt.mapRing;
@@ -841,11 +929,11 @@ export class Renderer {
     ctx.stroke();
 
     // camera view: a cream frame (clamped to the arena)
-    const v = f.camera.visibleRect();
-    const x0 = px(Math.max(0, v.x0));
-    const y0 = py(Math.max(0, v.y0));
-    const x1 = px(Math.min(f.world.width, v.x1));
-    const y1 = py(Math.min(f.world.height, v.y1));
+    const v = f.camera.visibleRectInto(this.view, 0);
+    const x0 = o + Math.max(0, v.x0) * s;
+    const y0 = o + Math.max(0, v.y0) * s;
+    const x1 = o + Math.min(f.world.width, v.x1) * s;
+    const y1 = o + Math.min(f.world.height, v.y1) * s;
     ctx.strokeStyle = ELYSIUM.cream;
     ctx.lineWidth = 1.6;
     ctx.beginPath();
@@ -858,7 +946,7 @@ export class Renderer {
     ctx.lineWidth = 1.4;
     for (const l of f.leaders) {
       ctx.beginPath();
-      ctx.arc(px(l.x), py(l.y), 3.6, 0, TAU);
+      ctx.arc(o + l.x * s, o + l.y * s, 3.6, 0, TAU);
       ctx.fill();
       ctx.stroke();
     }
@@ -866,8 +954,8 @@ export class Renderer {
     // me: a cyan dot with a ring that pulses outward
     const me = f.world.myStats();
     if (me) {
-      const x = px(me.x);
-      const y = py(me.y);
+      const x = o + me.x * s;
+      const y = o + me.y * s;
       if (!f.reduced) {
         const p = (f.now / 1400) % 1;
         ctx.strokeStyle = ELYSIUM.cyan;

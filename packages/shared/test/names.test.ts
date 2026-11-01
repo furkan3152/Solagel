@@ -42,7 +42,7 @@ describe('bot names', () => {
   });
 
   it('the style rules reject what bots must not be called', () => {
-    for (const n of ['gm_gummy', 'hodl_hamster', 'moon_mochi', 'şeyma', 'a', '_lead', 'trail.', 'two__marks', 'x'.repeat(17), 'has space']) {
+    for (const n of ['gm_gummy', 'hodl_hamster', 'moon_mochi', '\u015feyma', 'a', '_lead', 'trail.', 'two__marks', 'x'.repeat(17), 'has space']) {
       expect(isNaturalBotName(n)).toBe(false);
     }
     expect(isNaturalBotName('emre.dmr')).toBe(true);

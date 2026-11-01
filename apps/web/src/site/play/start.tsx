@@ -1,11 +1,15 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import type { SiteSession } from '../session';
+import type { SiteSession } from '../storedSession';
 import { PlayGate } from './PlayGate';
+
+/** The game's chunks, requested once (as soon as the gate opens, while its barrier swings up). */
+let game: Promise<[typeof import('../../app-entry'), typeof import('../../store')]> | null = null;
+const loadGame = () => (game ??= Promise.all([import('../../app-entry'), import('../../store')]));
 
 /** Loads the game (lobby, engine, wallet flow) into `root`, signed in as `session` when given. */
 async function launchGame(root: HTMLElement, session: SiteSession | null): Promise<void> {
-  const [{ mount }, { useUi }] = await Promise.all([import('../../app-entry'), import('../../store')]);
+  const [{ mount }, { useUi }] = await loadGame();
   // the engine sends this token on `welcome`, before its first room entry (the gate checks the session)
   if (session && !useUi.getState().auth) useUi.setState({ auth: { address: session.address, token: session.token, profile: null } });
   mount(root);
@@ -24,6 +28,7 @@ export function startPlay(root: HTMLElement): void {
   gate.render(
     <StrictMode>
       <PlayGate
+        onOpening={() => void loadGame().catch(() => (game = null))}
         onAllowed={(session) => {
           setTimeout(() => {
             gate.unmount();

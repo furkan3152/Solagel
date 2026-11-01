@@ -1,6 +1,6 @@
 import { CellFlag } from '@elymum/shared';
 import { drawAccessoryBack, drawAccessoryFront, symbolAnchor, type AccessoryColors } from './accessories';
-import { drawFace, type Expression } from './faces';
+import { drawFace, type Expression, type FaceOpts } from './faces';
 import type { CoinLook } from './looks';
 import { CARD_PAPER, ELYSIUM, INK, shadeOf } from './palette';
 import { drawSymbol } from './symbols';
@@ -19,6 +19,12 @@ export interface JellyLike {
    * fraction of r (optional; without it a cached interior is never used).
    */
   extent?(): { min: number; max: number };
+  /**
+   * Optional: adds the shade region without a clip, as two closed sub-paths whose even-odd fill is
+   * the outline for radius r minus the disc at (lx, ly) of radius lr (no beginPath). Without it the
+   * shade is clipped to `trace` (an anti-aliased clip: the most expensive step of a wobbly coin).
+   */
+  traceShade?(ctx: CanvasRenderingContext2D, r: number, lx: number, ly: number, lr: number): void;
 }
 
 /** A cached coin interior (see `CoinState.interior` and `drawCoinInterior`). */
@@ -126,10 +132,18 @@ function drawRimDetails(ctx: CanvasRenderingContext2D, look: CoinLook, r: number
   ctx.restore();
 }
 
+/** Scratch option objects (drawing is synchronous and never re-enters: no per-coin garbage). */
+const EMBOSS = { fill: '', ink: INK, overprint: INK, lineW: 0, emboss: true };
+const STAMP = { fill: CARD_PAPER, ink: INK, overprint: INK, lineW: 0, offX: 0, offY: 0 };
+const ANCHOR = { x: 0, y: 0, s: 0, onTop: false };
+const ACC: AccessoryColors = { body: '', accent: '', lineW: 0 };
+const FACE: FaceOpts = { expression: 'happy', eyes: 'round', mouth: 'smile', lookX: 0, lookY: 0, time: 0, seed: 0, detail: 0, blush: '', body: '', lineW: 0 };
+
 function drawEmbossedSymbol(ctx: CanvasRenderingContext2D, look: CoinLook, anchor: { x: number; y: number; s: number }): void {
   ctx.save();
   ctx.translate(anchor.x, anchor.y);
-  drawSymbol(ctx, look.symbol, anchor.s, { fill: shadeFor(look), ink: INK, overprint: INK, lineW: 0, emboss: true });
+  EMBOSS.fill = shadeFor(look);
+  drawSymbol(ctx, look.symbol, anchor.s, EMBOSS);
   ctx.restore();
 }
 
@@ -150,7 +164,7 @@ export function drawCoinInterior(ctx: CanvasRenderingContext2D, look: CoinLook, 
   ctx.fillStyle = shadeFor(look);
   ctx.fill();
   drawRimDetails(ctx, look, r);
-  const anchor = symbolAnchor(look.accessory, r);
+  const anchor = symbolAnchor(look.accessory, r, ANCHOR);
   if (!anchor.onTop) drawEmbossedSymbol(ctx, look, anchor);
   ctx.restore();
 }
@@ -158,14 +172,10 @@ export function drawCoinInterior(ctx: CanvasRenderingContext2D, look: CoinLook, 
 function drawCoinSymbol(ctx: CanvasRenderingContext2D, look: CoinLook, anchor: { x: number; y: number; s: number }, lineW: number): void {
   ctx.save();
   ctx.translate(anchor.x, anchor.y);
-  drawSymbol(ctx, look.symbol, anchor.s, {
-    fill: CARD_PAPER,
-    ink: INK,
-    overprint: INK,
-    lineW: Math.min(lineW * 0.5, anchor.s * 0.2),
-    offX: anchor.s * 0.14,
-    offY: anchor.s * 0.14,
-  });
+  STAMP.lineW = Math.min(lineW * 0.5, anchor.s * 0.2);
+  STAMP.offX = anchor.s * 0.14;
+  STAMP.offY = anchor.s * 0.14;
+  drawSymbol(ctx, look.symbol, anchor.s, STAMP);
   ctx.restore();
 }
 
@@ -175,10 +185,16 @@ function bodyPath(ctx: CanvasRenderingContext2D, r: number, jelly: JellyLike | n
   else ctx.arc(0, 0, r, 0, TAU);
 }
 
-/** Cheek colour that reads on the body paint. */
+/** Cheek colour that reads on the body paint (memoised: no string work per coin per frame). */
+const BLUSH = new Map<string, string>();
 function blushFor(body: string): string {
-  const b = body.toUpperCase();
-  return b === ELYSIUM.blush || b === ELYSIUM.down ? ELYSIUM.coral : ELYSIUM.blush;
+  let c = BLUSH.get(body);
+  if (c === undefined) {
+    const b = body.toUpperCase();
+    c = b === ELYSIUM.blush || b === ELYSIUM.down ? ELYSIUM.coral : ELYSIUM.blush;
+    BLUSH.set(body, c);
+  }
+  return c;
 }
 
 /**
@@ -227,11 +243,14 @@ export function drawRisoCoin(ctx: CanvasRenderingContext2D, look: CoinLook, r: n
 
   const time = state.time;
   if (flags & CellFlag.Pump) drawSpeedLines(ctx, r, state, look.overprint, W);
-  const acc = { body: look.body, accent: look.overprint, lineW: W };
+  const acc = ACC;
+  acc.body = look.body;
+  acc.accent = look.overprint;
+  acc.lineW = W;
   if (detail > 14) drawAccessoryBack(ctx, look.accessory, r, acc, time);
 
   const small = detail < (state.minPrintPx ?? 0);
-  const anchor = symbolAnchor(look.accessory, r);
+  const anchor = symbolAnchor(look.accessory, r, ANCHOR);
   const cached = !small && detail > 22 && ctx.globalAlpha >= 0.999 && jellyCalm(state.jelly, Math.max(0.003, W / (2 * r) - (1 - INTERIOR_DISC))) ? (state.interior?.(look, r) ?? null) : null;
   if (cached) {
     const k = r / cached.radius;
@@ -245,7 +264,12 @@ export function drawRisoCoin(ctx: CanvasRenderingContext2D, look: CoinLook, r: n
     ctx.fill();
     if (detail > 7) {
       ctx.fillStyle = shadeFor(look);
-      if (wobbly) {
+      if (wobbly && state.jelly!.traceShade) {
+        // the outline minus the lit disc as one even-odd fill (no clip)
+        ctx.beginPath();
+        state.jelly!.traceShade(ctx, r, LIT_DX * r * 1.05, LIT_DY * r * 1.05, r * 1.05);
+        ctx.fill('evenodd');
+      } else if (wobbly) {
         ctx.save();
         ctx.clip();
         crescentPath(ctx, r * 1.05);
@@ -296,19 +320,19 @@ function drawFront(
   const afk = (flags & CellFlag.Afk) !== 0;
   const time = state.time;
   if (detail > 8) {
-    drawFace(ctx, r, {
-      expression: afk ? 'sleep' : state.expression,
-      eyes: look.eyes,
-      mouth: look.mouth,
-      lookX: state.lookX,
-      lookY: state.lookY,
-      time,
-      seed: state.seed ?? 0,
-      detail,
-      blush: blushFor(look.body),
-      body: look.body,
-      lineW: W * 0.95,
-    });
+    const f = FACE;
+    f.expression = afk ? 'sleep' : state.expression;
+    f.eyes = look.eyes;
+    f.mouth = look.mouth;
+    f.lookX = state.lookX;
+    f.lookY = state.lookY;
+    f.time = time;
+    f.seed = state.seed ?? 0;
+    f.detail = detail;
+    f.blush = blushFor(look.body);
+    f.body = look.body;
+    f.lineW = W * 0.95;
+    drawFace(ctx, r, f);
   }
 
   if (detail > 14) drawAccessoryFront(ctx, look.accessory, r, acc, time);
@@ -398,7 +422,7 @@ function drawMagnet(ctx: CanvasRenderingContext2D, r: number, time: number, W: n
 
 /** Pump: three ink speed lines with a sun core streaming behind the coin. */
 function drawSpeedLines(ctx: CanvasRenderingContext2D, r: number, s: CoinState, color: string, W: number): void {
-  const len = Math.hypot(s.lookX, s.lookY);
+  const len = Math.sqrt(s.lookX * s.lookX + s.lookY * s.lookY);
   if (len < 0.1) return;
   const bx = -s.lookX / len;
   const by = -s.lookY / len;

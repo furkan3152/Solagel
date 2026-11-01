@@ -38,6 +38,10 @@ export interface FaceOpts {
  * at (±27, 9). Everything below is in those units (`u` = r / 46).
  */
 
+/** Loop constants (an array literal in a draw call is garbage every frame). */
+const SIDES = [-1, 1] as const;
+const TEARS = [-14, 6] as const;
+
 const isBlinking = (time: number, seed: number): boolean => time > 0 && (time + seed * 977) % 4600 < 140;
 
 function pen(ctx: CanvasRenderingContext2D, w: number, color: string = INK): void {
@@ -61,6 +65,8 @@ interface Ctx {
   /** Small on screen: no sparkles, no fine detail. */
   coarse: boolean;
 }
+
+const SCRATCH: Ctx = { ctx: null as unknown as CanvasRenderingContext2D, u: 1, w: 1, wf: 1, o: null as unknown as FaceOpts, lx: 0, ly: 0, coarse: false };
 
 /* ───────────────────────────── eyes ───────────────────────────── */
 
@@ -231,7 +237,7 @@ function sunglasses(c: Ctx): void {
   const { ctx, u } = c;
   const lx = c.lx * 0.4 * u;
   ctx.beginPath();
-  for (const s of [-1, 1]) {
+  for (const s of SIDES) {
     const x0 = s * 4 * u + lx;
     const x1 = s * 27 * u + lx;
     ctx.moveTo(x0, -16 * u);
@@ -250,7 +256,7 @@ function sunglasses(c: Ctx): void {
   if (!c.coarse) {
     pen(ctx, c.wf * 0.9, ELYSIUM.mist);
     ctx.beginPath();
-    for (const s of [-1, 1]) {
+    for (const s of SIDES) {
       ctx.moveTo(s * 15 * u + lx - 6 * u, -8 * u);
       ctx.lineTo(s * 15 * u + lx - 2 * u, -12 * u);
     }
@@ -380,7 +386,7 @@ function chompMouth(c: Ctx, open: number): void {
   if (c.coarse) return;
   ctx.fillStyle = WHITE;
   ctx.beginPath();
-  for (const x of [-14, 6]) {
+  for (const x of TEARS) {
     ctx.moveTo(x * u, 8.6 * u);
     ctx.lineTo((x + 4) * u, (8.6 + 6 * Math.min(1, open * 1.4)) * u);
     ctx.lineTo((x + 8) * u, 8.2 * u);
@@ -534,7 +540,7 @@ function cheeks(c: Ctx): void {
   ctx.globalAlpha *= 0.75;
   ctx.fillStyle = c.o.blush;
   ctx.beginPath();
-  for (const s of [-1, 1]) {
+  for (const s of SIDES) {
     ctx.moveTo(s * 27 * u + 6 * u, 9 * u);
     ctx.ellipse(s * 27 * u, 9 * u, 6 * u, 3.6 * u, 0, 0, TAU);
   }
@@ -546,7 +552,7 @@ function cheeks(c: Ctx): void {
 function dotEyes(ctx: CanvasRenderingContext2D, u: number, o: FaceOpts): void {
   ctx.fillStyle = INK;
   ctx.beginPath();
-  for (const s of [-1, 1]) {
+  for (const s of SIDES) {
     const x = (s * 15 + o.lookX * 3) * u;
     const y = (-5 + o.lookY * 2) * u;
     ctx.moveTo(x + 6.5 * u, y);
@@ -565,16 +571,16 @@ export function drawFace(ctx: CanvasRenderingContext2D, r: number, o: FaceOpts):
     return;
   }
   const w = Math.min(o.lineW ?? r * 0.065, r * 0.11);
-  const c: Ctx = {
-    ctx,
-    u,
-    w,
-    wf: w * 0.87,
-    o,
-    lx: Math.max(-1, Math.min(1, o.lookX)) * 4,
-    ly: Math.max(-1, Math.min(1, o.lookY)) * 3,
-    coarse: o.detail < 22,
-  };
+  // one scratch context (drawing is synchronous and never re-enters): no garbage per coin
+  const c = SCRATCH;
+  c.ctx = ctx;
+  c.u = u;
+  c.w = w;
+  c.wf = w * 0.87;
+  c.o = o;
+  c.lx = Math.max(-1, Math.min(1, o.lookX)) * 4;
+  c.ly = Math.max(-1, Math.min(1, o.lookY)) * 3;
+  c.coarse = o.detail < 22;
   if (o.eyes !== 'sunglasses' || o.expression === 'scared') cheeks(c);
   drawEyes(c);
   drawMouth(c);

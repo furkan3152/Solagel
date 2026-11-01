@@ -98,23 +98,15 @@ function silhouette(ctx: CanvasRenderingContext2D, kind: SymbolKind, s: number):
       // transforming mid-path is not portable to every canvas backend)
       ctx.beginPath();
       const k = s * 0.55;
-      const heart: [number, number][] = [
-        [0, k * 0.85],
-        [-k * 1.25, k * 0.05],
-        [-k * 0.85, -k * 0.95],
-        [0, -k * 0.38],
-        [k * 0.85, -k * 0.95],
-        [k * 1.25, k * 0.05],
-        [0, k * 0.85],
-      ];
       for (let i = 0; i < 4; i++) {
         const a = Math.PI / 4 + (i * TAU) / 4;
         const ca = Math.cos(a);
         const sa = Math.sin(a);
-        const p = heart.map(([x, y]) => [x * ca - (y - s * 0.5) * sa, x * sa + (y - s * 0.5) * ca] as const);
-        ctx.moveTo(p[0][0], p[0][1]);
-        ctx.bezierCurveTo(p[1][0], p[1][1], p[2][0], p[2][1], p[3][0], p[3][1]);
-        ctx.bezierCurveTo(p[4][0], p[4][1], p[5][0], p[5][1], p[6][0], p[6][1]);
+        // the heart leaf's 7 points, rotated (no arrays: this runs per coin per frame)
+        const o = s * 0.5;
+        ctx.moveTo(hx(0, k, o, ca, sa), hy(0, k, o, ca, sa));
+        ctx.bezierCurveTo(hx(1, k, o, ca, sa), hy(1, k, o, ca, sa), hx(2, k, o, ca, sa), hy(2, k, o, ca, sa), hx(3, k, o, ca, sa), hy(3, k, o, ca, sa));
+        ctx.bezierCurveTo(hx(4, k, o, ca, sa), hy(4, k, o, ca, sa), hx(5, k, o, ca, sa), hy(5, k, o, ca, sa), hx(6, k, o, ca, sa), hy(6, k, o, ca, sa));
         ctx.closePath();
       }
       return true;
@@ -122,6 +114,24 @@ function silhouette(ctx: CanvasRenderingContext2D, kind: SymbolKind, s: number):
     case 'dollar':
       return false;
   }
+}
+
+/** The clover's heart leaf, in units of the leaf size (x, y pairs). */
+const HEART = [0, 0.85, -1.25, 0.05, -0.85, -0.95, 0, -0.38, 0.85, -0.95, 1.25, 0.05, 0, 0.85] as const;
+const CROWN_DOTS = [-0.5, 0, 0.5] as const;
+/** Heart leaf point j scaled by k, shifted out by o and rotated (cos ca, sin sa). */
+const hx = (j: number, k: number, o: number, ca: number, sa: number): number => HEART[j * 2] * k * ca - (HEART[j * 2 + 1] * k - o) * sa;
+const hy = (j: number, k: number, o: number, ca: number, sa: number): number => HEART[j * 2] * k * sa + (HEART[j * 2 + 1] * k - o) * ca;
+
+function strokeDollar(ctx: CanvasRenderingContext2D, s: number, color: string, width: number): void {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  sPath(ctx, s);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(0, -s);
+  ctx.lineTo(0, s);
+  ctx.stroke();
 }
 
 /**
@@ -144,27 +154,17 @@ export function drawSymbol(
 
   if (kind === 'dollar') {
     const w = s * 0.34;
-    const strokeS = (color: string, width: number) => {
-      ctx.strokeStyle = color;
-      ctx.lineWidth = width;
-      sPath(ctx, s);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(0, -s);
-      ctx.lineTo(0, s);
-      ctx.stroke();
-    };
     if (o.emboss) {
-      strokeS(o.fill, w);
+      strokeDollar(ctx, s, o.fill, w);
       ctx.restore();
       return;
     }
     ctx.save();
     ctx.translate(offX, offY);
-    strokeS(o.overprint, w + o.lineW * 2);
+    strokeDollar(ctx, s, o.overprint, w + o.lineW * 2);
     ctx.restore();
-    strokeS(o.ink, w + o.lineW * 2);
-    strokeS(o.fill, w);
+    strokeDollar(ctx, s, o.ink, w + o.lineW * 2);
+    strokeDollar(ctx, s, o.fill, w);
     ctx.restore();
     return;
   }
@@ -234,9 +234,9 @@ export function drawSymbol(
       ctx.stroke();
       break;
     case 'crown':
-      for (const x of [-s * 0.5, 0, s * 0.5]) {
+      for (const kx of CROWN_DOTS) {
         ctx.beginPath();
-        ctx.arc(x, s * 0.32, s * 0.11, 0, TAU);
+        ctx.arc(kx * s, s * 0.32, s * 0.11, 0, TAU);
         ctx.fill();
       }
       break;

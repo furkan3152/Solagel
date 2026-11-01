@@ -12,6 +12,10 @@
 //          --gpu  SwiftShader GL (accelerated canvas, emulated on the CPU)  --raf  time rAF intervals
 //          --world dump.json[,dump2.json]  adds scenes replaying worlds dumped by `perf.mjs --dump`
 //                                          (real game content, drawn at the same fixed time)
+//          --throttle N   CDP CPU throttling (a weak phone's main thread: 4 or 6)
+//          --profile      the draw's JS self time by function
+//          --budget phone-busy-d3=110,world-practice=90   fail (exit 1) when a scene's draw+raster p50 (ms) is over
+//          --alloc-budget 40   fail when a scene allocates more JS than this many KB per frame (sampled)
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { chromium } from 'playwright';
@@ -35,14 +39,20 @@ const SCENES = {
   'desktop-reduced': { w: 1920, h: 1080, dsf: 1, zoom: 0.7, food: 900, cells: 30, theme: 'light', quality: 'high', reduced: true },
   'desktop-edge': { w: 1920, h: 1080, dsf: 1, zoom: 0.6, food: 500, cells: 20, theme: 'light', quality: 'high', cx: 300, cy: 400 },
   'phone-play': { w: 390, h: 844, dsf: 3, mobile: true, zoom: 0.55, food: 700, cells: 26, theme: 'light', quality: 'high' },
+  // a busy arena on a low-end phone: 40 coins, lots of food, DPR 2 and 3 (the canvas caps itself)
+  'phone-busy-d2': { w: 390, h: 844, dsf: 2, mobile: true, zoom: 0.42, food: 900, cells: 40, theme: 'light', quality: 'high' },
+  'phone-busy-d3': { w: 390, h: 844, dsf: 3, mobile: true, zoom: 0.42, food: 900, cells: 40, theme: 'light', quality: 'high' },
+  'phone-busy-fx': { w: 390, h: 844, dsf: 3, mobile: true, zoom: 0.42, food: 900, cells: 40, theme: 'light', quality: 'high', fx: true },
 };
+/** --throttle N: CDP CPU throttling (a weak phone's main thread); --budget scene=ms,...: fail when a scene's p50 is over. */
+const THROTTLE = Number(opt('--throttle', '1'));
 
 // --scene-json '{"name":{...}}' replaces the scene list (for experiments)
 if (opt('--scene-json', null)) Object.assign(SCENES, Object.fromEntries(Object.keys(SCENES).map((k) => [k, undefined])), JSON.parse(opt('--scene-json')));
 
 for (const f of opt('--world', '').split(',').filter(Boolean)) {
   const d = JSON.parse(readFileSync(f, 'utf8'));
-  const name = `world-${f.replace(/^.*world-/, '').replace(/\.json$/, '')}`;
+  const name = `world-${f.replace(/^.*world-/, '').replace(/^.*\//, '').replace(/\.json$/, '')}`;
   const mobile = d.camera.w < 700;
   // --kinds 1,2: only these entity kinds (cost bisection)
   const kinds = opt('--kinds', null)?.split(',').map(Number) ?? null;
@@ -111,17 +121,36 @@ async function renderScene(page, name, s) {
       document.body.appendChild(canvas);
       const renderer = new Renderer(canvas);
       renderer.resize(s.w, s.h);
+      // `level`: an automatic quality level (governor.ts `qualityLevels`) to draw at
+      if (s.level) renderer.setLevel(s.level);
       const camera = new Camera();
       camera.resize(s.w, s.h);
       camera.x = cx;
       camera.y = cy;
       camera.zoom = s.zoom;
       const particles = new Particles();
-      const settings = { name: 'x', skin: 0, theme: s.theme, quality: s.quality, showNames: true, showMass: true, showFps: false, showMinimap: true, showChat: true };
+      const settings = { name: 'x', skin: 0, theme: s.theme, quality: s.quality, showNames: !s.noNames, showMass: true, showFps: false, showMinimap: true, showChat: true };
       let rs = 42;
       const rand = () => ((rs = (rs * 16807) % 2147483647), rs / 2147483647);
-      const frame = (now, dt) =>
-        renderer.draw({ now, dt, world, camera, particles, settings, reduced: !!s.reduced, aim: { x: cx + 300, y: cy - 100 }, coinRain: false, rand, drop: null });
+      if (s.fx) {
+        // a busy moment: eat pops, confetti, coin bursts, rings and value stickers on screen
+        for (let i = 0; i < 12; i++) {
+          const [x, y] = [cx + (rand() - 0.5) * spanX * 0.8, cy + (rand() - 0.5) * spanY * 0.8];
+          particles.splat(x, y, '#F2B8C6', 7);
+          particles.scraps(x, y, 40, 16);
+          if (i % 3 === 0) particles.coinBurst(x, y, 40, 14);
+          if (i % 4 === 0) particles.ring(x, y, 50, '#F7C948');
+          if (i % 4 === 1) particles.text(x, y, '+' + (i * 37), undefined, 24);
+        }
+      }
+      // one frame input reused (the engine reuses its own too)
+      const input = { now: 0, dt: 1 / 60, world, camera, particles, settings, reduced: !!s.reduced, aim: { x: cx + 300, y: cy - 100 }, coinRain: !!s.fx, rand, drop: null };
+      const frame = (now, dt) => {
+        input.now = now;
+        input.dt = dt;
+        if (s.fx) particles.update(0);
+        renderer.draw(input);
+      };
       const ctx = canvas.getContext('2d');
       // warm the caches, then a fixed still frame for the screenshot
       for (let i = 0; i < 5; i++) frame(10000 + i * 16, 1 / 60);
@@ -131,7 +160,13 @@ async function renderScene(page, name, s) {
       const png = canvas.toDataURL('image/png');
       // timing: draw + flush (1 px readback forces the raster); with `raf`, the interval
       // between animation frames while drawing one frame per rAF (GPU pipelines)
+      // frames for the allocation sampler (driven from Node through CDP: see `allocPerFrame`)
+      window.__sceneFrames = (n) => {
+        for (let i = 0; i < n; i++) frame(40000 + i * 16.7, 1 / 60);
+      };
+      const allocPerFrame = null;
       const times = [];
+      const jsTimes = [];
       if (raf) {
         await new Promise((done) => {
           let i = 0;
@@ -149,13 +184,16 @@ async function renderScene(page, name, s) {
         for (let i = 0; i < frames; i++) {
           const t0 = performance.now();
           frame(30000 + i * 16.7, 1 / 60);
+          const t1 = performance.now();
           ctx.getImageData(0, 0, 1, 1);
           times.push(performance.now() - t0);
+          jsTimes.push(t1 - t0);
         }
       }
       times.sort((x, y) => x - y);
+      jsTimes.sort((x, y) => x - y);
       const accel = (() => { try { return canvas.getContext('2d').getContextAttributes?.().willReadFrequently === false && !!document.createElement('canvas').getContext('webgl'); } catch { return false; } })();
-      return { accel, png, mean: times.reduce((x, y) => x + y, 0) / times.length, p50: times[Math.floor(times.length / 2)], p95: times[Math.floor(times.length * 0.95)], dpr: canvas.width / s.w };
+      return { accel, png, mean: times.reduce((x, y) => x + y, 0) / times.length, p50: times[Math.floor(times.length / 2)], p95: times[Math.floor(times.length * 0.95)], js50: jsTimes.length ? jsTimes[Math.floor(jsTimes.length / 2)] : null, allocPerFrame, dpr: canvas.width / s.w };
     },
     { name, s, frames: FRAMES, raf: argv.includes('--raf') },
   );
@@ -165,7 +203,10 @@ async function shots(outDir) {
   mkdirSync(outDir, { recursive: true });
   const only = opt('--scenes', null)?.split(',');
   // --gpu: SwiftShader GL (accelerated canvas, emulated on the CPU); default: CPU raster
-  const browser = await chromium.launch({ executablePath: CHROME, args: argv.includes('--gpu') ? ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] : ['--disable-gpu'] });
+  const browser = await chromium.launch({
+    executablePath: CHROME,
+    args: [...(argv.includes('--gpu') ? ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] : ['--disable-gpu']), '--enable-precise-memory-info', '--js-flags=--expose-gc'],
+  });
   const timings = {};
   try {
     for (const [name, s] of Object.entries(SCENES)) {
@@ -173,14 +214,52 @@ async function shots(outDir) {
       if (only && !only.includes(name)) continue;
       const ctx = await browser.newContext({ viewport: { width: s.w, height: s.h }, deviceScaleFactor: s.dsf, isMobile: !!s.mobile, hasTouch: !!s.mobile });
       const page = await ctx.newPage();
+      if (THROTTLE > 1) await (await ctx.newCDPSession(page)).send('Emulation.setCPUThrottlingRate', { rate: THROTTLE });
       const errs = [];
       page.on('pageerror', (e) => errs.push(e.message));
       // a same-origin document that is not the app (no engine, no second render loop)
       await page.goto(`${BASE}/src/render/looks.ts`, { waitUntil: 'load' });
       const r = await renderScene(page, name, s);
+      // JS allocation per frame: the sampling heap profiler over 120 more frames (every allocation,
+      // collected or not, sampled every 256 bytes on average); a warm-up first so compilation is done
+      {
+        const cdp = await ctx.newCDPSession(page);
+        await page.evaluate(() => window.__sceneFrames(60));
+        await cdp.send('HeapProfiler.enable');
+        await cdp.send('HeapProfiler.startSampling', { samplingInterval: 256, includeObjectsCollectedByMinorGC: true, includeObjectsCollectedByMajorGC: true });
+        await page.evaluate(() => window.__sceneFrames(120));
+        const { profile } = await cdp.send('HeapProfiler.stopSampling');
+        let bytes = 0;
+        const walk = (n) => {
+          const f = n.callFrame;
+          // the page's own frames only (not the profiler, the compiler or the idle loop)
+          if (f.url || f.functionName === 'hypot' || f.functionName === 'random') bytes += n.selfSize;
+          for (const c of n.children) walk(c);
+        };
+        walk(profile.head);
+        r.allocPerFrame = bytes / 120;
+        // --profile: the draw's JS self time by function (CDP CPU profile over 200 frames)
+        if (argv.includes('--profile')) {
+          await cdp.send('Profiler.enable');
+          await cdp.send('Profiler.setSamplingInterval', { interval: 100 });
+          await cdp.send('Profiler.start');
+          await page.evaluate(() => window.__sceneFrames(200));
+          const { profile: prof } = await cdp.send('Profiler.stop');
+          const self = new Map();
+          const byId = new Map(prof.nodes.map((n) => [n.id, n]));
+          for (let i = 0; i < prof.samples.length; i++) {
+            const n = byId.get(prof.samples[i]);
+            const k = `${n.callFrame.functionName || '(anon)'} ${n.callFrame.url.replace(/^.*\/(src)\//, '$1/').replace(/\?.*$/, '')}:${n.callFrame.lineNumber + 1}`;
+            self.set(k, (self.get(k) ?? 0) + (prof.timeDeltas[i + 1] ?? 0));
+          }
+          const tot = [...self.values()].reduce((a, b) => a + b, 0);
+          r.hot = [...self].sort((a, b) => b[1] - a[1]).slice(0, 22).map(([k, us]) => `${((100 * us) / tot).toFixed(1).padStart(5)}%  ${k}`);
+        }
+      }
       writeFileSync(join(outDir, `${name}.png`), Buffer.from(r.png.split(',')[1], 'base64'));
-      timings[name] = { mean: +r.mean.toFixed(2), p50: +r.p50.toFixed(2), p95: +r.p95.toFixed(2), dpr: r.dpr };
-      console.log(`${name.padEnd(16)} draw+raster mean ${r.mean.toFixed(2)} ms  p50 ${r.p50.toFixed(2)}  p95 ${r.p95.toFixed(2)}  (canvas dpr ${r.dpr}, webgl ${r.accel})${errs.length ? '  errors: ' + errs.join(' | ') : ''}`);
+      if (r.hot) console.log(r.hot.join('\n'));
+      timings[name] = { mean: +r.mean.toFixed(2), p50: +r.p50.toFixed(2), p95: +r.p95.toFixed(2), jsP50: r.js50 == null ? null : +r.js50.toFixed(2), allocKBPerFrame: r.allocPerFrame == null ? null : +(r.allocPerFrame / 1024).toFixed(1), dpr: r.dpr, throttle: THROTTLE };
+      console.log(`${name.padEnd(16)} draw+raster mean ${r.mean.toFixed(2)} ms  p50 ${r.p50.toFixed(2)}  p95 ${r.p95.toFixed(2)}  draw JS p50 ${r.js50?.toFixed(2)}  alloc ${r.allocPerFrame == null ? '-' : (r.allocPerFrame / 1024).toFixed(1) + ' KB'}/frame  (canvas dpr ${r.dpr}, webgl ${r.accel})${errs.length ? '  errors: ' + errs.join(' | ') : ''}`);
       await ctx.close();
     }
   } finally {
@@ -234,7 +313,29 @@ async function diff(dirA, dirB, diffDir) {
   return worst;
 }
 
-if (cmd === 'shots' && a) await shots(resolve(a));
+/** Budgets (perf regression check): exit 1 when a scene is over its p50 or the allocation budget. */
+function checkBudgets(dir) {
+  const timings = JSON.parse(readFileSync(join(dir, 'timings.json'), 'utf8'));
+  const over = [];
+  for (const kv of opt('--budget', '').split(',').filter(Boolean)) {
+    const [name, ms] = kv.split('=');
+    const t = timings[name];
+    if (!t) over.push(`${name}: not measured`);
+    else if (t.p50 > Number(ms)) over.push(`${name}: p50 ${t.p50} ms > budget ${ms} ms`);
+  }
+  const kb = opt('--alloc-budget', null);
+  if (kb !== null) for (const [name, t] of Object.entries(timings)) if (t.allocKBPerFrame != null && t.allocKBPerFrame > Number(kb)) over.push(`${name}: ${t.allocKBPerFrame} KB/frame > budget ${kb} KB`);
+  if (over.length) {
+    console.error(`over budget:\n  ${over.join('\n  ')}`);
+    process.exit(1);
+  }
+  if (opt('--budget', null) || kb !== null) console.log('within budget');
+}
+
+if (cmd === 'shots' && a) {
+  await shots(resolve(a));
+  checkBudgets(resolve(a));
+}
 else if (cmd === 'diff' && a && b) await diff(resolve(a), resolve(b), c && resolve(c));
 else {
   console.log('usage: perf-scene.mjs shots <outDir> | diff <dirA> <dirB> [diffDir]');

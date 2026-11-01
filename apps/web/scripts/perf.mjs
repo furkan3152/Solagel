@@ -54,9 +54,16 @@ const CHROME = process.env.CHROME_PATH || chromium.executablePath();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (...a) => console.error('[perf]', ...a);
 
+const SERVER_PORT = Number(opt('--server-port', '8787'));
+const phone = (dpr, throttle) => ({ viewport: { width: 390, height: 844 }, deviceScaleFactor: dpr, isMobile: true, hasTouch: true, throttle });
 const DEVICE = {
   desktop: { viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1, isMobile: false, hasTouch: false, throttle: 1 },
-  phone: { viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true, throttle: 4 },
+  phone: phone(3, 4),
+  // low-end phone profiles: 390x844, touch, DPR 2 / 3, CPU throttled 4x / 6x (CDP Emulation.setCPUThrottlingRate)
+  'phone-d2-x4': phone(2, 4),
+  'phone-d3-x4': phone(3, 4),
+  'phone-d2-x6': phone(2, 6),
+  'phone-d3-x6': phone(3, 6),
 };
 
 // ───────────────────────────── demo (optional) ─────────────────────────────
@@ -108,7 +115,7 @@ process.on('SIGINT', () => {
 
 // ───────────────────────────── server CPU (/proc) ─────────────────────────────
 function serverPid() {
-  const r = spawnSync('lsof', ['-t', '-iTCP:8787', '-sTCP:LISTEN'], { encoding: 'utf8' });
+  const r = spawnSync('lsof', ['-t', `-iTCP:${SERVER_PORT}`, '-sTCP:LISTEN'], { encoding: 'utf8' });
   const pid = Number((r.stdout ?? '').trim().split('\n')[0]);
   return pid > 0 ? pid : null;
 }
@@ -125,7 +132,17 @@ function cpuMs(pid) {
 
 // ───────────────────────────── in-page instrumentation ─────────────────────────────
 function instrument() {
-  const P = (window.__perf = { on: false, deltas: [], frameMs: [], drawMs: [], longTasks: [], heap: [], commits: 0, calls: null });
+  const P = (window.__perf = { on: false, deltas: [], frameMs: [], drawMs: [], longTasks: [], heap: [], commits: 0, calls: null, countRenders: false, renders: {} });
+  P.countRendersFor = (ms) =>
+    new Promise((res) => {
+      P.renders = {};
+      P.countRenders = true;
+      setTimeout(() => {
+        P.countRenders = false;
+        const secs = ms / 1000;
+        res(Object.fromEntries(Object.entries(P.renders).sort((a, b) => b[1] - a[1]).slice(0, 25).map(([k, v]) => [k, Math.round((v / secs) * 10) / 10])));
+      }, ms);
+    });
   // a minimal React DevTools hook: counts commits (HUD re-renders)
   window.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {
     isDisabled: false,
@@ -136,8 +153,31 @@ function instrument() {
       this.renderers.set(id, r);
       return id;
     },
-    onCommitFiberRoot() {
+    onCommitFiberRoot(_id, root) {
       if (P.on) P.commits++;
+      // per-component renders, only inside the short counted window (walking the tree costs)
+      if (P.countRenders && root?.current) {
+        // DevTools-style: walk only the subtrees this commit touched (a bailed-out subtree keeps the
+        // previous fibers, child === alternate.child); a component rendered when it carries PerformedWork
+        const isComp = (x) => x.tag === 0 || x.tag === 1 || x.tag === 11 || x.tag === 15;
+        const nm = (x) => {
+          const t = x.type?.type ?? x.type?.render ?? x.type;
+          return t?.displayName || t?.name || 'anon';
+        };
+        const walk = (f, parentRendered) => {
+          for (let c = f; c; c = c.sibling) {
+            const mounted = !c.alternate;
+            const rendered = isComp(c) && (mounted || (c.flags & 1) === 1);
+            if (rendered) {
+              const name = nm(c);
+              P.renders[name] = (P.renders[name] ?? 0) + 1;
+              if (!parentRendered) P.renders[`(origin) ${name}`] = (P.renders[`(origin) ${name}`] ?? 0) + 1;
+            }
+            if (c.child && (mounted || c.child !== c.alternate.child)) walk(c.child, rendered || (parentRendered && !isComp(c)));
+          }
+        };
+        walk(root.current.child, false);
+      }
     },
     onCommitFiberUnmount() {},
     onPostCommitFiberRoot() {},
@@ -318,8 +358,8 @@ async function joinPractice(page) {
 
 async function joinArena(page) {
   await page.locator('.kl-wallet').first().click();
-  await page.waitForSelector('.wl-sheet', { timeout: 8000 });
-  await page.locator('.wl-item').first().click();
+  await page.waitForSelector('.wl-sheet, .kb-wallets', { timeout: 8000 });
+  await page.locator('.wl-item, .kb-wallets .kb-wallet').first().click();
   await page.waitForFunction(() => !!window.__elymum.useUi.getState().auth, null, { timeout: 20000 });
   await page.waitForFunction(() => window.__elymumChain?.useChainData.getState().tokenBalance != null, null, { timeout: 20000 });
   await page.locator('[role="radio"][data-kb-value="arena:1"]').first().click();
@@ -329,7 +369,7 @@ async function joinArena(page) {
   await page.evaluate(() => {
     if (window.__elymumChain?.fakeWallet) window.__elymumChain.fakeWallet.delayMs = 50;
   });
-  await page.locator('.tf-sheet .kb-btn--pink').first().click();
+  await page.locator('.tf-sheet .tf-pay, .tf-sheet .kb-btn--pink').first().click();
   const ok = await page.waitForFunction(() => window.__elymum.useUi.getState().screen === 'playing', null, { timeout: 20000 }).then(() => true, () => false);
   if (!ok) {
     await page.locator('.kl-cta').first().click();
@@ -401,6 +441,8 @@ async function run(browser, scene, device) {
   const pid = serverPid();
   const c0 = pid ? cpuMs(pid) : null;
   const w0 = Date.now();
+  await cdp.send('Performance.enable');
+  const m0 = Object.fromEntries((await cdp.send('Performance.getMetrics')).metrics.map((m) => [m.name, m.value]));
   await page.evaluate(() => (window.__perf.on = true));
   if (PROFILE) {
     await cdp.send('Profiler.enable');
@@ -412,6 +454,11 @@ async function run(browser, scene, device) {
   const deaths = await drive(page, SECS * 1000, scene);
   await page.evaluate(() => (window.__perf.on = false));
   const wall = Date.now() - w0;
+  const m1 = Object.fromEntries((await cdp.send('Performance.getMetrics')).metrics.map((m) => [m.name, m.value]));
+  // main-thread breakdown over the window, ms per second of wall time (CDP Performance.getMetrics; the
+  // throttled CPU is what these durations measure)
+  const per = (k) => r1(((m1[k] - m0[k]) * 1000) / (wall / 1000));
+  const mainThread = { taskMsPerSec: per('TaskDuration'), scriptMsPerSec: per('ScriptDuration'), layoutMsPerSec: per('LayoutDuration'), styleMsPerSec: per('RecalcStyleDuration'), layoutsPerSec: r1((m1.LayoutCount - m0.LayoutCount) / (wall / 1000)), styleRecalcsPerSec: r1((m1.RecalcStyleCount - m0.RecalcStyleCount) / (wall / 1000)), jsHeapMB: r1(m1.JSHeapUsedSize / 1e6), nodes: m1.Nodes };
   const c1 = pid ? cpuMs(pid) : null;
   let hot = null;
   if (PROFILE) {
@@ -432,14 +479,25 @@ async function run(browser, scene, device) {
       if (chunk.eof) break;
     }
     await cdp.send('IO.close', { handle: stream });
+    mkdirSync(OUT, { recursive: true });
     writeFileSync(join(OUT, `${LABEL}-${scene}-${device}.trace.json`), data);
     const ev = JSON.parse(data).traceEvents ?? [];
     let n = 0;
     let us = 0;
-    for (const e of ev) if ((e.name === 'MinorGC' || e.name === 'MajorGC') && e.ph === 'X') (n++, (us += e.dur ?? 0));
-    gc = { count: n, ms: r1(us / 1000), perSec: r1(n / (wall / 1000)) };
+    let maxUs = 0;
+    let major = 0;
+    for (const e of ev) {
+      if ((e.name === 'MinorGC' || e.name === 'MajorGC' || e.name === 'V8.GCScavenger' || e.name === 'V8.GCFinalizeMC') && e.ph === 'X') {
+        n++;
+        us += e.dur ?? 0;
+        maxUs = Math.max(maxUs, e.dur ?? 0);
+        if (e.name === 'MajorGC' || e.name === 'V8.GCFinalizeMC') major++;
+      }
+    }
+    gc = { count: n, major, ms: r1(us / 1000), perSec: r1(n / (wall / 1000)), msPerSec: r1(us / 1000 / (wall / 1000)), maxPauseMs: r1(maxUs / 1000) };
   }
   const calls = await page.evaluate(() => window.__perf.countCalls(2000));
+  const renders = await page.evaluate(() => window.__perf.countRendersFor(3000));
   const P = await page.evaluate(() => {
     const p = window.__perf;
     return { deltas: p.deltas, frameMs: p.frameMs, drawMs: p.drawMs, longTasks: p.longTasks, heap: p.heap, commits: p.commits };
@@ -487,6 +545,8 @@ async function run(browser, scene, device) {
     longTasks: { count: P.longTasks.length, ms: r1(P.longTasks.reduce((a, b) => a + b, 0)) },
     heapMB: { min: r1(Math.min(...P.heap) / 1e6), max: r1(Math.max(...P.heap) / 1e6), allocMBs: r1(grow / 1e6 / secs) },
     reactCommitsPerSec: r1(P.commits / secs),
+    reactRendersPerSec: renders,
+    mainThread,
     calls,
     serverMsPerTick: c0 != null && c1 != null ? Math.round(((c1 - c0) / (secs * 30)) * 100) / 100 : null,
     entities,
@@ -501,8 +561,8 @@ async function run(browser, scene, device) {
 
 function table(results) {
   const rows = [
-    '| scene | device | fps | p50 ms | p95 ms | p99 ms | >33ms % | frame JS ms (mean/p95) | draw ms (mean/p95) | long tasks (n/ms) | heap MB (max) | alloc MB/s | draws/frame | React commits/s | server ms/tick | auto level / dpr |',
-    '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|',
+    '| scene | device | fps | p50 ms | p95 ms | p99 ms | >33ms % | frame JS ms (mean/p95) | draw ms (mean/p95) | long tasks (n/ms) | heap MB (max) | alloc MB/s | GC ms/s (max pause) | script ms/s | draws/frame | React commits/s | server ms/tick | auto level / dpr |',
+    '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|',
   ];
   for (const r of results) {
     if (r.error) {
@@ -510,7 +570,7 @@ function table(results) {
       continue;
     }
     rows.push(
-      `| ${r.scene} | ${r.device} | ${r.fps} | ${r.p50} | ${r.p95} | ${r.p99} | ${r.over33} | ${r.frameJs.mean}/${r.frameJs.p95} | ${r.draw.mean}/${r.draw.p95} | ${r.longTasks.count}/${r.longTasks.ms} | ${r.heapMB.max} | ${r.heapMB.allocMBs} | ${r.calls.draws} | ${r.reactCommitsPerSec} | ${r.serverMsPerTick} | ${r.auto ? `${r.auto.level} / ${r.auto.dpr}` : '-'} |`,
+      `| ${r.scene} | ${r.device} | ${r.fps} | ${r.p50} | ${r.p95} | ${r.p99} | ${r.over33} | ${r.frameJs.mean}/${r.frameJs.p95} | ${r.draw.mean}/${r.draw.p95} | ${r.longTasks.count}/${r.longTasks.ms} | ${r.heapMB.max} | ${r.heapMB.allocMBs} | ${r.gc ? `${r.gc.msPerSec} (${r.gc.maxPauseMs})` : '-'} | ${r.mainThread?.scriptMsPerSec ?? '-'} | ${r.calls.draws} | ${r.reactCommitsPerSec} | ${r.serverMsPerTick} | ${r.auto ? `${r.auto.level} / ${r.auto.dpr}` : '-'} |`,
     );
   }
   return rows.join('\n');

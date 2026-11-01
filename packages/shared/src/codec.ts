@@ -249,6 +249,89 @@ export function decodeSnapshot(buf: ArrayBuffer | ArrayBufferView): SnapshotData
   return { tick, view, players, upserts, removals };
 }
 
+/**
+ * Receives a snapshot record by record (`readSnapshot`): no intermediate objects. Cells always carry
+ * `playerId` and `flags`; food, ejects, power-ups and loot a `variant`; thorn bushes neither (the
+ * unused arguments are 0, `has` says which are set: `HAS_PLAYER` | `HAS_VARIANT`).
+ */
+export interface SnapshotSink {
+  snapshotBegin(tick: number, viewX: number, viewY: number, viewH: number): void;
+  /** `name` is the snapshot's bytes: the name is UTF-8 at `[nameAt, nameAt + nameLen)` (`decodeUtf8`). */
+  snapshotPlayer(id: number, skin: number, flags: number, name: Uint8Array, nameAt: number, nameLen: number): void;
+  snapshotUpsert(id: number, kind: EntityKind, x: number, y: number, r: number, has: number, playerId: number, flags: number, variant: number): void;
+  snapshotRemoval(id: number, eaterId: number): void;
+}
+export const HAS_PLAYER = 1;
+export const HAS_VARIANT = 2;
+
+/** UTF-8 text inside a byte array. */
+export function decodeUtf8(bytes: Uint8Array, at: number, len: number): string {
+  return decoder.decode(bytes.subarray(at, at + len));
+}
+
+/**
+ * Streaming `decodeSnapshot`: hands each record to `sink` as numbers, so a client applying 30
+ * snapshots a second builds no garbage per record. Same wire format and the same errors.
+ */
+export function readSnapshot(buf: ArrayBuffer, sink: SnapshotSink): void {
+  const v = new DataView(buf);
+  const bytes = new Uint8Array(buf);
+  let o = 0;
+  const op = v.getUint8(o++);
+  if (op !== ServerOp.Snapshot) throw new Error(`not a snapshot (op ${op})`);
+  const tick = v.getUint32(o, true);
+  o += 4;
+  sink.snapshotBegin(tick, v.getFloat32(o, true), v.getFloat32(o + 4, true), v.getFloat32(o + 8, true));
+  o += 12;
+  const nPlayers = v.getUint8(o++);
+  for (let i = 0; i < nPlayers; i++) {
+    const id = v.getUint16(o, true);
+    const skin = v.getUint8(o + 2);
+    const flags = v.getUint8(o + 3);
+    const len = v.getUint8(o + 4);
+    o += 5;
+    if (o + len > bytes.length) throw new RangeError('snapshot truncated');
+    sink.snapshotPlayer(id, skin, flags, bytes, o, len);
+    o += len;
+  }
+  const nUpserts = v.getUint16(o, true);
+  o += 2;
+  for (let i = 0; i < nUpserts; i++) {
+    const id = v.getUint32(o, true);
+    const kind = v.getUint8(o + 4) as EntityKind;
+    const x = v.getFloat32(o + 5, true);
+    const y = v.getFloat32(o + 9, true);
+    const r = v.getFloat32(o + 13, true);
+    o += 17;
+    switch (kind) {
+      case EntityKind.Cell: {
+        const pid = v.getUint16(o, true);
+        const flags = v.getUint8(o + 2);
+        o += 3;
+        sink.snapshotUpsert(id, kind, x, y, r, HAS_PLAYER, pid, flags, 0);
+        break;
+      }
+      case EntityKind.Food:
+      case EntityKind.Eject:
+      case EntityKind.PowerUp:
+      case EntityKind.Loot:
+        sink.snapshotUpsert(id, kind, x, y, r, HAS_VARIANT, 0, 0, v.getUint8(o++));
+        break;
+      case EntityKind.Virus:
+        sink.snapshotUpsert(id, kind, x, y, r, 0, 0, 0, 0);
+        break;
+      default:
+        throw new Error(`unknown entity kind ${kind}`);
+    }
+  }
+  const nRemovals = v.getUint16(o, true);
+  o += 2;
+  for (let i = 0; i < nRemovals; i++) {
+    sink.snapshotRemoval(v.getUint32(o, true), v.getUint32(o + 4, true));
+    o += 8;
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* Client input                                                        */
 /* ------------------------------------------------------------------ */
@@ -258,8 +341,9 @@ export type ClientInput =
   | { op: typeof ClientOp.Split }
   | { op: typeof ClientOp.Eject };
 
-export function encodeTarget(x: number, y: number): ArrayBuffer {
-  const buf = new ArrayBuffer(9);
+/** `out`: a 9-byte buffer to reuse (a WebSocket send copies it), sent 30 times a second. */
+export function encodeTarget(x: number, y: number, out?: ArrayBuffer): ArrayBuffer {
+  const buf = out ?? new ArrayBuffer(9);
   const v = new DataView(buf);
   v.setUint8(0, ClientOp.Target);
   v.setFloat32(1, x, true);

@@ -15,6 +15,9 @@ for (const [k, v] of Object.entries(ELYSIUM)) if (!shadeByHex.has(v)) shadeByHex
  * paint, otherwise the colour darkened by about a quarter (cached).
  */
 export function shadeOf(fill: string): string {
+  // as given first (no case folding, so no string garbage, on the common hit)
+  const hit = shadeByHex.get(fill);
+  if (hit) return hit;
   const key = fill.toUpperCase();
   let s = shadeByHex.get(key);
   if (!s) {

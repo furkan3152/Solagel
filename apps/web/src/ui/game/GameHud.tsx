@@ -1,7 +1,7 @@
 import { lookForSkin as lookForBasicSkin } from '../../render/looks';
 import { PowerUpType, RULES } from '@elymum/shared';
 import { AnimatePresence, motion } from 'motion/react';
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { Counter, DUR, Icon, Stamp, springs, useReducedMotion } from '../../design';
 import { engine } from '../../game/instance';
 import { BotTag } from './BotTag';
@@ -26,11 +26,16 @@ import { SpectateBar } from './SpectateBar';
 function WorthSticker() {
   const t = useT();
   const tf = useTokenFormat();
-  const hud = useUi((s) => s.hud);
-  const room = useUi((s) => s.room);
+  // field selectors: the `hud` object is replaced on every mass change (8 a second while eating)
+  const value = useUi((s) => s.hud.value);
+  const isArena = useUi((s) => s.room?.mode === 'arena');
+  // mass is printed outside arenas only (in an arena its changes must not re-render the till)
+  const mass = useUi((s) => (s.room?.mode === 'arena' ? 0 : s.hud.mass));
+  const rankNow = useUi((s) => s.hud.rank);
+  const players = useUi((s) => s.hud.players);
   const delta = useUi((s) => s.valueDelta);
   const reduced = useReducedMotion();
-  const arena = room?.mode === 'arena' && hud.value !== null;
+  const arena = isArena && value !== null;
   const [shown, setShown] = useState<typeof delta>(null);
   /** The last bite stays printed under the value until the next one. */
   const [bite, setBite] = useState<typeof delta>(null);
@@ -45,8 +50,8 @@ function WorthSticker() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [delta]);
 
-  const frac = arena ? counterFrac(hud.value!, tf.decimals) : 0;
-  const rank = hud.rank > 0 ? t('g.rankOf', { rank: hud.rank, n: hud.players }) : null;
+  const frac = arena ? counterFrac(value!, tf.decimals) : 0;
+  const rank = rankNow > 0 ? t('g.rankOf', { rank: rankNow, n: players }) : null;
   const sub = arena && bite ? t(bite.delta > 0 ? 'g.lastBite' : 'g.lastLoss', { d: tf.signed(bite.delta, { compact: true, maxFrac: 2 }) }) : rank;
   return (
     <section className="g-till" aria-label={arena ? t('g.till') : t('g.mass')}>
@@ -67,9 +72,9 @@ function WorthSticker() {
       <span className="g-till__label mono">{arena ? t('g.till') : t('g.mass')}</span>
       <span className="g-till__value num" aria-live="off">
         {arena ? (
-          <Counter value={hud.value!} format={(n) => tf.fmt(n, { maxFrac: frac })} unit={tf.symbol} />
+          <Counter value={value!} format={(n) => tf.fmt(n, { maxFrac: frac })} unit={tf.symbol} />
         ) : (
-          <Counter value={hud.mass} format={(n) => Math.floor(n).toLocaleString('en-US')} />
+          <Counter value={mass} format={(n) => Math.floor(n).toLocaleString('en-US')} />
         )}
         {arena && <span className="g-till__sym mono">{tf.symbol}</span>}
       </span>
@@ -112,71 +117,112 @@ function PondTag() {
 
 /* ───────────────────────── top of the food chain (top right) ───────────────────────── */
 
-function Standings({ compact }: { compact: boolean }) {
+type LbEntry = ReturnType<typeof useUi.getState>['lb'][number];
+
+/** One standings row (memoised: a leaderboard message re-renders only the rows that changed). */
+interface RowProps {
+  e: LbEntry;
+  i: number;
+  mine: boolean;
+  climb: number;
+  arena: boolean;
+  reduced: boolean;
+}
+const StandingsRow = memo(function StandingsRow({ e, i, mine, climb, arena, reduced }: RowProps) {
   const t = useT();
   const tf = useTokenFormat();
+  return (
+    <motion.li key={e.pid} layout={reduced ? false : 'position'} transition={springs.press} className={`g-standings__row${mine ? ' is-me' : ''}`}>
+      {mine && climb > 0 && !reduced && <span key={climb} className="g-standings__flash" aria-hidden="true" />}
+      <span className="g-standings__rank mono">
+        {i === 0 && (
+          <svg className="g-standings__crown" viewBox="0 0 24 16" aria-hidden="true">
+            <path d="M2 14 L1 4 L7 8 L12 1 L17 8 L23 4 L22 14Z" />
+          </svg>
+        )}
+        {i + 1}
+      </span>
+      <span className="g-standings__sw" aria-hidden="true" style={{ background: lookForBasicSkin(e.skin).body }} />
+      <span className="g-standings__name">
+        <span className="g-standings__nm">{mine ? t('g.youName') : e.name}</span>
+        {(e.isBot ?? e.bot) && <BotTag />}
+        {e.verified && <Icon name="check" size={12} className="g-standings__ver" />}
+      </span>
+      <span className="g-standings__score num">{arena && e.value !== undefined ? tf.fmt(e.value, { compact: true, maxFrac: 1 }) : Math.floor(e.score).toLocaleString('en-US')}</span>
+    </motion.li>
+  );
+}, sameRow);
+
+/** Leaderboard messages bring new entry objects: rows compare by what they print. */
+function sameRow(a: RowProps, b: RowProps): boolean {
+  const x = a.e;
+  const y = b.e;
+  return (
+    a.i === b.i &&
+    a.mine === b.mine &&
+    a.climb === b.climb &&
+    a.arena === b.arena &&
+    a.reduced === b.reduced &&
+    x.pid === y.pid &&
+    x.name === y.name &&
+    x.skin === y.skin &&
+    x.score === y.score &&
+    x.value === y.value &&
+    x.verified === y.verified &&
+    (x.isBot ?? x.bot) === (y.isBot ?? y.bot)
+  );
+}
+
+/** My row under the top rows when I am not in them: the only part that follows my mass. */
+function MyDetachedRow({ rank, arena }: { rank: number; arena: boolean }) {
+  const t = useT();
+  const tf = useTokenFormat();
+  const skin = useUi((s) => s.me?.skin ?? 0);
+  const value = useUi((s) => s.hud.value);
+  const mass = useUi((s) => (arena ? 0 : s.hud.mass));
+  return (
+    <li className="g-standings__row is-me is-detached">
+      <span className="g-standings__rank mono">{rank}</span>
+      <span className="g-standings__sw" aria-hidden="true" style={{ background: lookForBasicSkin(skin).body }} />
+      <span className="g-standings__name">
+        <span className="g-standings__nm">{t('g.youName')}</span>
+      </span>
+      <span className="g-standings__score num">{arena && value !== null ? tf.fmt(value, { compact: true, maxFrac: 1 }) : Math.floor(mass).toLocaleString('en-US')}</span>
+    </li>
+  );
+}
+
+function Standings({ compact }: { compact: boolean }) {
+  const t = useT();
   const lb = useUi((s) => s.lb);
-  const me = useUi((s) => s.me);
-  const screen = useUi((s) => s.screen);
-  const hud = useUi((s) => s.hud);
-  const room = useUi((s) => s.room);
+  const myPid = useUi((s) => s.me?.pid ?? null);
+  const playing = useUi((s) => s.screen === 'playing');
+  // field selectors: my mass changes many times a second and is not printed in the top rows
+  const rank = useUi((s) => s.hud.rank);
+  const players = useUi((s) => s.hud.players);
+  const arena = useUi((s) => s.room?.mode === 'arena');
   const reduced = useReducedMotion();
-  const arena = room?.mode === 'arena';
   const rows = lb.slice(0, compact ? 3 : 5);
-  const playing = screen === 'playing';
-  const inTop = rows.some((e) => e.pid === me?.pid);
+  const inTop = rows.some((e) => e.pid === myPid);
   // climbing a place: my row flashes sun once (a new key restarts the flash)
   const prevRank = useRef(0);
   const [climb, setClimb] = useState(0);
   useEffect(() => {
-    const r = hud.rank;
-    if (playing && r > 0 && prevRank.current > 0 && r < prevRank.current) setClimb((n) => n + 1);
-    prevRank.current = playing ? r : 0;
-  }, [hud.rank, playing]);
-  const score = (value: number | undefined, mass: number) =>
-    arena && value !== undefined ? tf.fmt(value, { compact: true, maxFrac: 1 }) : Math.floor(mass).toLocaleString('en-US');
+    if (playing && rank > 0 && prevRank.current > 0 && rank < prevRank.current) setClimb((n) => n + 1);
+    prevRank.current = playing ? rank : 0;
+  }, [rank, playing]);
   return (
     <section className={`g-standings${compact ? ' is-compact' : ''}`} aria-label={t('g.standings')}>
       <header className="g-standings__head">
         <h2 className="g-standings__title">{t('g.standings')}</h2>
-        <span className="mono g-standings__count">{t('g.inRoom', { n: hud.players })}</span>
+        <span className="mono g-standings__count">{t('g.inRoom', { n: players })}</span>
       </header>
       <ol className="g-standings__list">
-        {rows.map((e, i) => (
-          <motion.li
-            key={e.pid}
-            layout={reduced ? false : 'position'}
-            transition={springs.press}
-            className={`g-standings__row${playing && e.pid === me?.pid ? ' is-me' : ''}`}
-          >
-            {playing && e.pid === me?.pid && climb > 0 && !reduced && <span key={climb} className="g-standings__flash" aria-hidden="true" />}
-            <span className="g-standings__rank mono">
-              {i === 0 && (
-                <svg className="g-standings__crown" viewBox="0 0 24 16" aria-hidden="true">
-                  <path d="M2 14 L1 4 L7 8 L12 1 L17 8 L23 4 L22 14Z" />
-                </svg>
-              )}
-              {i + 1}
-            </span>
-            <span className="g-standings__sw" aria-hidden="true" style={{ background: lookForBasicSkin(e.skin).body }} />
-            <span className="g-standings__name">
-              <span className="g-standings__nm">{playing && e.pid === me?.pid ? t('g.youName') : e.name}</span>
-              {(e.isBot ?? e.bot) && <BotTag />}
-              {e.verified && <Icon name="check" size={12} className="g-standings__ver" />}
-            </span>
-            <span className="g-standings__score num">{score(e.value, e.score)}</span>
-          </motion.li>
-        ))}
-        {playing && !inTop && hud.rank > 0 && (
-          <li className="g-standings__row is-me is-detached">
-            <span className="g-standings__rank mono">{hud.rank}</span>
-            <span className="g-standings__sw" aria-hidden="true" style={{ background: lookForBasicSkin(me?.skin ?? 0).body }} />
-            <span className="g-standings__name">
-              <span className="g-standings__nm">{t('g.youName')}</span>
-            </span>
-            <span className="g-standings__score num">{score(hud.value ?? undefined, hud.mass)}</span>
-          </li>
-        )}
+        {rows.map((e, i) => {
+          const mine = playing && e.pid === myPid;
+          return <StandingsRow key={e.pid} e={e} i={i} mine={mine} climb={mine ? climb : 0} arena={arena} reduced={reduced} />;
+        })}
+        {playing && !inTop && rank > 0 && <MyDetachedRow rank={rank} arena={arena} />}
       </ol>
     </section>
   );
@@ -231,33 +277,47 @@ const PU_MS: Record<PowerUpType, number> = {
   [PowerUpType.Bag]: 1,
 };
 
+/**
+ * One power-up chip: the ring drains every frame through a ref (no React render per frame); the
+ * seconds label re-renders once a second.
+ */
+function PowerUpChip({ type, until }: { type: PowerUpType; until: number }) {
+  const t = useT();
+  const ring = useRef<SVGCircleElement>(null);
+  const [secs, setSecs] = useState(() => Math.ceil(Math.max(0, until - Date.now()) / 1000));
+  useTicker(() => {
+    const left = Math.max(0, until - Date.now());
+    const frac = Math.min(1, left / PU_MS[type]);
+    ring.current?.setAttribute('stroke-dasharray', `${(frac * 100).toFixed(1)} 100`);
+    const s = Math.ceil(left / 1000);
+    setSecs((prev) => (prev === s ? prev : s));
+  });
+  const frac0 = Math.min(1, Math.max(0, until - Date.now()) / PU_MS[type]);
+  return (
+    <li className={`g-pu__chip g-pu--${type}`}>
+      <svg className="g-pu__ring" viewBox="0 0 40 40" aria-hidden="true">
+        <circle ref={ring} cx="20" cy="20" r="16" pathLength="100" strokeDasharray={`${(frac0 * 100).toFixed(1)} 100`} />
+      </svg>
+      <svg className="g-pu__icon" viewBox="0 0 24 24" width={16} height={16} aria-hidden="true">
+        <path d={PU_PATH[type]} />
+      </svg>
+      <span className="mono">
+        {t(`pu.${type}` as 'pu.1')} · {t('g.secondsLeft', { s: secs })}
+      </span>
+    </li>
+  );
+}
+
 function PowerUps() {
   const t = useT();
   const powerups = useUi((s) => s.powerups);
-  const [, force] = useState(0);
-  useTicker(() => force((x) => (x + 1) % 1000), powerups.length > 0);
   const list = powerups.filter((p) => p.type !== PowerUpType.Bag);
   if (list.length === 0) return null;
-  const now = Date.now();
   return (
     <ul className="g-pu" aria-label={t('g.powerups')}>
-      {list.map((p) => {
-        const left = Math.max(0, p.until - now);
-        const frac = Math.min(1, left / PU_MS[p.type]);
-        return (
-          <li key={p.type} className={`g-pu__chip g-pu--${p.type}`}>
-            <svg className="g-pu__ring" viewBox="0 0 40 40" aria-hidden="true">
-              <circle cx="20" cy="20" r="16" pathLength="100" strokeDasharray={`${(frac * 100).toFixed(1)} 100`} />
-            </svg>
-            <svg className="g-pu__icon" viewBox="0 0 24 24" width={16} height={16} aria-hidden="true">
-              <path d={PU_PATH[p.type]} />
-            </svg>
-            <span className="mono">
-              {t(`pu.${p.type}` as 'pu.1')} · {t('g.secondsLeft', { s: Math.ceil(left / 1000) })}
-            </span>
-          </li>
-        );
-      })}
+      {list.map((p) => (
+        <PowerUpChip key={p.type} type={p.type} until={p.until} />
+      ))}
     </ul>
   );
 }
@@ -336,11 +396,15 @@ function KeyHints() {
 }
 
 function NetStats() {
-  const t = useT();
   const show = useUi((s) => s.settings.showFps);
+  // the readout subscribes to fps and ping only while it is on screen
+  return show ? <NetReadout /> : null;
+}
+
+function NetReadout() {
+  const t = useT();
   const fps = useUi((s) => s.fps);
   const ping = useUi((s) => s.ping);
-  if (!show) return null;
   return <div className="g-net mono">{t('g.netstats', { fps, ping })}</div>;
 }
 
