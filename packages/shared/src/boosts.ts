@@ -41,7 +41,7 @@ export const BOOST_RULES = {
     rangeFactor: 1.4,
     rangeBase: 240,
     /** Launch speed (units/s) of a pushed coin at the user's edge; falls to 40 % at the rim. Decays like a split. */
-    pushSpeed: 950,
+    pushSpeed: 1090, // 950 x 1.15: scales with the 15 % faster movement, like split and eject
     /** Coins up to this many times the pushing cell's mass are pushed; bigger ones are not moved. */
     massRatio: 1.15,
     /** A pushed coin can neither eat nor be eaten by another coin this long (no eating through the push). */
