@@ -22,7 +22,7 @@ import { ChainCache } from './chain-cache';
 import { hasMulticall3, readChainId, viemEvmClient, withTimeout, type ArenaEvent, type EvmClient } from './evm-client';
 import { isRateLimited, isTransientRpcError, withRpcPriority } from './rpc-budget';
 import { loadServerKey } from './server-key';
-import { ChainBusyError, sessionKey, type ChainArena, type ChainGateway, type ChainSession, type ServerKeyInfo, type SettledEvent } from './types';
+import { ChainBusyError, sessionKey, type ChainArena, type ChainGateway, type ChainSession, type ServerKeyInfo, type SettledEvent, type TokenReceipt } from './types';
 
 /* ------------------------------------------------------------------ */
 /* Tunables                                                            */
@@ -605,6 +605,21 @@ export class EvmChain implements ChainGateway {
   async verifyMessage(address: string, message: string, signature: string): Promise<boolean> {
     if (!this.client || !isEvm(address) || !/^0x[0-9a-fA-F]*$/.test(signature)) return false;
     return this.client.verifyMessage(getAddress(address), message, signature as Hex);
+  }
+
+  /**
+   * A power-up purchase's receipt (one `eth_getTransactionReceipt` at `normal` priority through the
+   * RPC budget: a player waits on it, but never ahead of a paid join or a settlement).
+   */
+  async tokenReceipt(hash: string): Promise<TokenReceipt | null> {
+    const client = this.client;
+    if (!client?.tokenReceipt || !/^0x[0-9a-fA-F]{64}$/.test(hash)) return null;
+    try {
+      return await withRpcPriority('normal', () => client.tokenReceipt!(hash as Hash));
+    } catch (err) {
+      this.warn('shop-receipt', `chain: purchase receipt read failed (${firstLine(err)})`);
+      throw new ChainBusyError('purchase receipt', err);
+    }
   }
 
   /* ---------------------------------------------------------------- */

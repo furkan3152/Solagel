@@ -7,11 +7,14 @@ import {
   clamp,
   VIEW,
   WORLD_PRESETS,
+  boostDurationMs,
+  isBoostKind,
   sanitizeChat,
   viewSize,
   writeSnapshot,
   xpForGame,
   type ClientInput,
+  type CustomRoomSummary,
   type DeathStats,
   type LbEntry,
   type League,
@@ -30,6 +33,7 @@ import type { Player } from '../game/entities';
 import { mulberry32 } from '../game/rng';
 import { World, type CellEatenEvent } from '../game/world';
 import type { IntegrityService } from '../integrity/service';
+import type { ShopService, UseContext } from '../shop/service';
 import type { Leaderboards } from '../leaderboards';
 import type { Conn } from '../net/conn';
 import { sweepKey, type Journal, type JournalItem, type LiveStake, type SettleReason, type SettlementItem } from '../stake/journal';
@@ -74,6 +78,8 @@ export interface RoomDeps {
   stakedBots?: StakedBotSource;
   /** How often an arena room asks the staked-bot source for another ticket (default 3 s; tests: 0). */
   stakedAskMs?: number;
+  /** Bought power-ups (charges, cooldowns, the arena cap); absent: the `boost` message is ignored. */
+  shop?: ShopService;
 }
 
 /** An AFK staker's ticket settled at a round's bell (see `RoomDeps.onBellSettled`). */
@@ -111,6 +117,24 @@ export interface RoomOptions {
   bots: BotManagerOptions | null;
   stake?: { arenaId: number; buyIn: number };
   seed?: number;
+  /** The world size and population (default `WORLD_PRESETS[mode]`; custom rooms bring their own). */
+  world?: WorldShape;
+  /** Power-up airdrops (default on). */
+  powerUps?: boolean;
+  /**
+   * Custom rooms (a paid private room with its own rules): shown to clients as `RoomInfo.custom`.
+   * Their games stay off the global leaderboards (the rules differ); the room keeps its own.
+   */
+  custom?: CustomRoomSummary;
+}
+
+/** A world's size and population targets (`WORLD_PRESETS` shape). */
+export interface WorldShape {
+  width: number;
+  height: number;
+  foodTarget: number;
+  virusTarget: number;
+  maxPowerUps: number;
 }
 
 interface ChatLine {
@@ -159,9 +183,9 @@ export class Room {
     readonly opts: RoomOptions,
     private readonly deps: RoomDeps,
   ) {
-    const preset = WORLD_PRESETS[opts.mode];
+    const preset = opts.world ?? WORLD_PRESETS[opts.mode];
     const seed = opts.seed ?? (Math.random() * 2 ** 32) >>> 0;
-    this.world = new World({ ...preset, powerUps: true, coinRain: opts.mode !== 'arena', seed });
+    this.world = new World({ ...preset, powerUps: opts.powerUps ?? true, coinRain: opts.mode !== 'arena', seed });
     this.bots = opts.bots ? new BotManager(this.world, opts.bots, mulberry32(seed ^ 0xb07)) : null;
     this.ledger = opts.mode === 'arena' ? new ArenaLedger() : null;
     this.clock = deps.clock ?? new RoundClock(deps.now, deps.round);
@@ -222,6 +246,7 @@ export class Room {
       loot: this.ledger ? this.lootValue() : undefined,
       code: this.opts.code,
       round: this.round(),
+      ...(this.opts.custom ? { custom: this.opts.custom } : {}),
     };
   }
 
@@ -320,6 +345,7 @@ export class Room {
       round: this.round(),
     });
     conn.send({ t: 'history', chat: this.chatLog });
+    this.sendBoosts(conn);
     return player;
   }
 
@@ -365,6 +391,7 @@ export class Room {
       round: this.round(),
     });
     conn.send({ t: 'history', chat: this.chatLog });
+    this.sendBoosts(conn);
     return true;
   }
 
@@ -447,10 +474,48 @@ export class Room {
     this.pushChat(line);
   }
 
+  /** A system line in the room's chat (e.g. "1 minute left"). */
+  announce(text: string): void {
+    this.pushChat({ pid: 0, from: 'Elymum', skin: 1, text, system: true });
+  }
+
   private pushChat(line: ChatLine): void {
     this.chatLog.push(line);
     if (this.chatLog.length > CHAT_HISTORY) this.chatLog.shift();
     this.broadcast({ t: 'chat', ...line });
+  }
+
+  /** The boost context of a living human (null for bots, spectators and the dead). */
+  private boostContext(conn: Conn): UseContext | null {
+    const p = conn.player;
+    if (!p || conn.room !== this || !this.humans.has(p.id)) return null;
+    return {
+      wallet: this.walletOf.get(p.id) ?? null,
+      isBot: p.isBot,
+      arena: this.opts.mode === 'arena',
+      round: this.ledger ? this.roundN : null,
+      holder: (p.flags & PlayerFlag.Holder) !== 0,
+    };
+  }
+
+  /** Sends the player their power-up charges, cooldowns and arena allowance. */
+  sendBoosts(conn: Conn): void {
+    const shop = this.deps.shop;
+    const ctx = shop ? this.boostContext(conn) : null;
+    if (shop && ctx) conn.send({ t: 'boosts', state: shop.state(ctx) });
+  }
+
+  /** A bought power-up key: the shop checks the rules, the world applies the effect (bots never get here). */
+  boost(conn: Conn, kind: unknown): void {
+    const shop = this.deps.shop;
+    const p = conn.player;
+    if (!shop || !isBoostKind(kind) || !p || p.afk) return;
+    const ctx = this.boostContext(conn);
+    if (!ctx) return;
+    const res = shop.use(ctx, kind, () => this.world.useBoost(p.id, kind));
+    if (res.ok) conn.send({ t: 'boost', kind, ok: true, ms: boostDurationMs(kind) });
+    else conn.send({ t: 'boost', kind, ok: false, reason: res.reason });
+    conn.send({ t: 'boosts', state: shop.state(ctx) });
   }
 
   emote(conn: Conn, id: unknown): void {
@@ -589,7 +654,8 @@ export class Room {
     const now = Date.now();
     const score = stats.maxMass;
 
-    this.deps.leaderboards.submit({ name: p.name, score, skin: p.skin, wallet, kills: stats.playersEaten, at: now });
+    // custom rooms play by their own rules: they keep their own board (see `RoomManager`), not the global one
+    if (!this.opts.custom) this.deps.leaderboards.submit({ name: p.name, score, skin: p.skin, wallet, kills: stats.playersEaten, at: now });
 
     const enqueue: SettlementItem[] = [];
     const loss = this.losses.get(p.id);
@@ -915,6 +981,30 @@ export class Room {
           : null;
       conn.send({ t: 'lb', top, me, leaders, players: ranking.length });
     }
+  }
+
+  /**
+   * Closes a free room for good (a custom room's time ran out, or it was closed early): every game
+   * ends (counted like leaving), and every connection, players and spectators alike, hears
+   * `room_closed` and is detached. The caller drops the room from the manager. Never for arenas.
+   */
+  evict(message: string): number {
+    if (this.ledger) throw new Error('arena rooms are never evicted');
+    let n = 0;
+    for (const [pid, c] of [...this.humans]) {
+      const p = this.world.players.get(pid);
+      if (p?.alive) {
+        this.finishHuman(p, c, 'left');
+        n++;
+      }
+    }
+    for (const c of [...this.conns]) {
+      c.player = null;
+      c.spectating = false;
+      c.send({ t: 'error', code: 'room_closed', message });
+      this.detach(c);
+    }
+    return n;
   }
 
   /** Server shutdown: settle every stake player at their current value (an operator exit). */

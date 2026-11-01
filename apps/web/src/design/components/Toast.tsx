@@ -65,6 +65,7 @@ export function ToastViewport({
   closeLabel,
   label,
   theme: themeProp,
+  inGame = false,
 }: {
   toasts: ToastItem[];
   onDismiss: (id: ToastItem['id']) => void;
@@ -73,13 +74,15 @@ export function ToastViewport({
   label: string;
   /** Override the stock; defaults to the `<Kb>` theme. */
   theme?: KbTheme;
+  /** In a game: the slips hang top-centre, under the weight sticker, clear of the leaderboard. */
+  inGame?: boolean;
 }) {
   const ctxTheme = useKbTheme();
   const theme = themeProp ?? ctxTheme;
   const reduced = useReducedMotion();
   const spring = usePreset('sheet', { fade: true });
   return createPortal(
-    <section className="kb kb-toasts" data-theme={theme} aria-label={label}>
+    <section className={inGame ? 'kb kb-toasts kb-toasts--game' : 'kb kb-toasts'} data-theme={theme} aria-label={label}>
       <AnimatePresence initial={false}>
         {toasts.map((t, i) => (
           <motion.div

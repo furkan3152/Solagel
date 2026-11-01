@@ -318,6 +318,9 @@ export class Gateway {
       case 'cashout':
         conn.room?.cashout(conn);
         return;
+      case 'boost':
+        conn.room?.boost(conn, msg.kind);
+        return;
       case 'ping':
         conn.send({ t: 'pong', ts: Number(msg.ts) || 0, serverTime: Date.now(), serverNow: this.rooms.now() });
         return;
@@ -390,7 +393,8 @@ export class Gateway {
       if (target.mode === 'private') {
         const room = this.rooms.privateRoom(target.code);
         if (!room) {
-          this.error(conn, 'room_not_found', 'No private room with that code.');
+          if (target.code && this.rooms.customClosedLately(target.code)) this.error(conn, 'room_closed', 'This room has closed.');
+          else this.error(conn, 'room_not_found', 'No private room with that code.');
           return;
         }
         if (conn.player?.alive && conn.room === room) return;

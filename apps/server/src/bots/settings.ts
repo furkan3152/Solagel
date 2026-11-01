@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { RoomMode, League } from '@elymum/shared';
+import { RULES, type RoomMode, type League } from '@elymum/shared';
 import type { BotManagerOptions } from './manager';
 import { mixWeights, type BotMixWeights } from './personality';
 
@@ -20,6 +20,11 @@ export interface BotKindSettings {
   target: number;
   /** Difficulty mix, as weights (percent by convention). */
   mix: BotMixWeights;
+  /**
+   * Most mass one bot keeps in this kind of room (0: no cap). Bots never spawn above it and shed
+   * what they eat past it within a second or two. Defaults: `DEFAULT_BOT_MASS_CAPS`.
+   */
+  massCap: number;
 }
 
 /** Testnet staked bots of one arena (overrides `BotTestnetSettings` defaults). */
@@ -51,7 +56,7 @@ export interface BotSettings {
 }
 
 /** Bounds of the admin values. */
-export const BOT_LIMITS = { cap: 64, target: 200, stakedPerArena: 32, arenaIds: 64 } as const;
+export const BOT_LIMITS = { cap: 64, target: 200, stakedPerArena: 32, arenaIds: 64, massCap: 200_000 } as const;
 
 export const BOT_TESTNET_DEFAULT: BotTestnetSettings = { stakedPerArena: 6, bankroll: '1000000', gasHype: '0.05', arenas: {} };
 
@@ -64,37 +69,50 @@ export function botKindOf(mode: RoomMode, league?: League): BotRoomKind {
 
 /**
  * Rookie league (newcomers): no bot keeps more mass than this (about 4x the start radius), so a
- * fresh player never meets a whale there. Pro ponds, arenas and private rooms have no cap.
+ * fresh player never meets a whale there.
  */
 export const ROOKIE_BOT_MASS_CAP = 300;
 
-/** Room-manager options of a kind's settings (`kind` adds the rookie league's mass cap). */
-export function managerOptions(k: BotKindSettings, kind?: BotRoomKind): BotManagerOptions {
+/** Pro ponds and arenas: bots stop growing here, so no bot turns into an absurd whale. */
+export const BOT_MASS_CAP = 2500;
+
+/** Default bot mass cap per room kind (0: none; private rooms are the host's own business). */
+export const DEFAULT_BOT_MASS_CAPS: Record<BotRoomKind, number> = {
+  practiceRookie: ROOKIE_BOT_MASS_CAP,
+  practicePro: BOT_MASS_CAP,
+  arena: BOT_MASS_CAP,
+  private: 0,
+};
+
+/** Room-manager options of a kind's settings (a `massCap` of 0 means no cap). */
+export function managerOptions(k: BotKindSettings): BotManagerOptions {
   return {
     enabled: k.enabled,
     target: k.target,
     min: Math.min(k.min, k.cap),
     max: k.cap,
     mix: { ...k.mix },
-    ...(kind === 'practiceRookie' ? { massCap: ROOKIE_BOT_MASS_CAP } : {}),
+    ...(k.massCap > 0 ? { massCap: k.massCap } : {}),
   };
 }
 
-/** Settings of a kind from the env defaults (`ServerConfig.bots`). */
-export function kindFromOptions(o: BotManagerOptions): BotKindSettings {
+/** Settings of a kind from the env defaults (`ServerConfig.bots`); the mass cap defaults per `kind`. */
+export function kindFromOptions(o: BotManagerOptions, kind?: BotRoomKind): BotKindSettings {
   const cap = Math.max(0, Math.min(BOT_LIMITS.cap, Math.floor(o.max)));
+  const massCap = o.massCap ?? (kind ? DEFAULT_BOT_MASS_CAPS[kind] : 0);
   return {
     enabled: o.enabled !== false,
     cap,
     min: Math.max(0, Math.min(cap, Math.floor(o.min))),
     target: Math.max(0, Math.min(BOT_LIMITS.target, Math.floor(o.target))),
     mix: { ...mixWeights(o.mix) },
+    massCap: Math.max(0, Math.min(BOT_LIMITS.massCap, Math.floor(massCap))),
   };
 }
 
 export function defaultBotSettings(defaults: Record<BotRoomKind, BotManagerOptions>): BotSettings {
   const kinds = {} as Record<BotRoomKind, BotKindSettings>;
-  for (const k of BOT_ROOM_KINDS) kinds[k] = kindFromOptions(defaults[k]);
+  for (const k of BOT_ROOM_KINDS) kinds[k] = kindFromOptions(defaults[k], k);
   return { kinds, testnet: { ...BOT_TESTNET_DEFAULT, arenas: {} } };
 }
 
@@ -153,7 +171,7 @@ function applyInner(cur: BotSettings, body: Record<string, unknown>): BotSetting
       if (patch === undefined) continue;
       const at = `kinds.${kind}`;
       if (!isObj(patch)) throw new BotSettingsError(`${at} must be an object`, at);
-      onlyKeys(patch, ['enabled', 'cap', 'min', 'target', 'mix'], `${at}.`);
+      onlyKeys(patch, ['enabled', 'cap', 'min', 'target', 'mix', 'massCap'], `${at}.`);
       const k = next.kinds[kind];
       if (patch.enabled !== undefined) {
         if (typeof patch.enabled !== 'boolean') throw new BotSettingsError(`${at}.enabled must be true or false`, `${at}.enabled`);
@@ -162,6 +180,11 @@ function applyInner(cur: BotSettings, body: Record<string, unknown>): BotSetting
       if (patch.cap !== undefined) k.cap = int(patch.cap, `${at}.cap`, 0, BOT_LIMITS.cap);
       if (patch.target !== undefined) k.target = int(patch.target, `${at}.target`, 0, BOT_LIMITS.target);
       if (patch.min !== undefined) k.min = int(patch.min, `${at}.min`, 0, BOT_LIMITS.cap);
+      if (patch.massCap !== undefined) {
+        const m = int(patch.massCap, `${at}.massCap`, 0, BOT_LIMITS.massCap);
+        if (m > 0 && m < RULES.startMass * 2) throw new BotSettingsError(`${at}.massCap must be 0 (no cap) or at least ${RULES.startMass * 2}`, `${at}.massCap`);
+        k.massCap = m;
+      }
       if (patch.mix !== undefined) {
         if (!isObj(patch.mix)) throw new BotSettingsError(`${at}.mix must be an object`, `${at}.mix`);
         onlyKeys(patch.mix, ['easy', 'medium', 'hard'], `${at}.mix.`);
@@ -261,7 +284,7 @@ export class BotSettingsStore {
 
   /** Bot-manager options of a room kind (what rooms run with). */
   options(kind: BotRoomKind): BotManagerOptions {
-    return managerOptions(this.cur.kinds[kind], kind);
+    return managerOptions(this.cur.kinds[kind]);
   }
 
   /** Testnet: staked bots the admin wants in this arena (0 when arena bots are off). */

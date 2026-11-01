@@ -1,12 +1,13 @@
 import { useUi, type Screen, type UiState } from '../store';
 import { Announcer, type LineId } from './announcer';
+import { Caller, type PowerUpKind } from './caller';
 import { Mixer, prefsFromSettings } from './mixer';
 import { Music, type Mood } from './music';
 import { Sfx } from './sfx';
 
 /**
- * The game's sound: one mixer, the effects kit, the music generator and the
- * announcer. `startAudio()` (once, from the app root) connects them to the
+ * The game's sound: one mixer, the effects kit, the music loops, the announcer
+ * and the play-by-play caller (game moments → effects and lines). `startAudio()` (once, from the app root) connects them to the
  * store: settings → levels, screens → music mood and the whoosh back to the lobby, lobby pages →
  * page turns, toasts → pins, sheets → paper lifts, and every button, link,
  * tab, ticket and switch → a small paper sound (hover ticks rate-limited).
@@ -16,13 +17,22 @@ export const mixer = new Mixer();
 export const sound = new Sfx(mixer);
 export const music = new Music(mixer);
 export const announcer = new Announcer(mixer);
+/** Game moments → effects and announcer lines (the engine reports, this decides; caller.ts). */
+export const caller = new Caller((id) => announcer.say(id), sound);
 
 export type { LineId } from './announcer';
+export type { PowerUpKind } from './caller';
 export type { StampKind, PinKind } from './sfx';
 
-/** Speaks an announcer line if its cooldowns allow (see announcer.ts). */
-export function announce(id: LineId, vars?: Record<string, string>): boolean {
-  return announcer.say(id, vars);
+/** Plays an announcer line if its cooldowns allow (see announcer.ts). */
+export function announce(id: LineId): boolean {
+  return announcer.say(id);
+}
+
+/** The power-up names the announcer has lines for (others get the generic line). */
+export function powerUpKind(name: string): PowerUpKind {
+  const n = name.toLowerCase();
+  return n === 'magnet' ? 'magnet' : n === 'push' ? 'push' : 'other';
 }
 
 /** From any user gesture: creates / resumes the audio context. */
@@ -136,7 +146,7 @@ export function startAudio(): () => void {
     const w = window as unknown as { __elymumAudioTap?: () => MediaStream | null; __elymumAudio?: unknown };
     // recording (scripts/record-walkthrough.mjs): the master output, after the limiter
     w.__elymumAudioTap = () => mixer.tap();
-    w.__elymumAudio = { mixer, sound, music, announcer };
+    w.__elymumAudio = { mixer, sound, music, announcer, caller };
   }
 
   return () => {

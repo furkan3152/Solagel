@@ -69,8 +69,12 @@ export class FakeSource extends FakeNode {
   type = 'sine';
   buffer: unknown = null;
   loop = false;
-  start(t = 0) {
+  loopStart = 0;
+  loopEnd = 0;
+  offset = 0;
+  start(t = 0, offset = 0) {
     this.startedAt = t;
+    this.offset = offset;
   }
   stop(t = 0) {
     this.stoppedAt = t;
@@ -127,7 +131,16 @@ export class FakeAudioContext {
   }
   createBuffer(_ch: number, length: number, sampleRate: number) {
     const data = new Float32Array(length);
-    return { duration: length / sampleRate, length, sampleRate, getChannelData: () => data };
+    return { duration: length / sampleRate, length, sampleRate, numberOfChannels: 1, getChannelData: () => data };
+  }
+  /** Fake files are text: "<anything>:<seconds>" decodes to a buffer that long; "bad…" fails. */
+  decoded: string[] = [];
+  decodeAudioData(data: ArrayBuffer): Promise<{ duration: number; tag: string }> {
+    const text = new TextDecoder().decode(data);
+    this.decoded.push(text);
+    if (text.startsWith('bad')) return Promise.reject(new Error('EncodingError'));
+    const duration = Number(text.split(':')[1] ?? 1);
+    return Promise.resolve({ duration, tag: text });
   }
   sources(): FakeSource[] {
     return this.nodes.filter((n): n is FakeSource => n instanceof FakeSource);
@@ -142,3 +155,6 @@ export function fakeCtor(): { ctx: FakeAudioContext; create: () => AudioContext 
 
 /** Lets pending promise callbacks (resume / suspend) run. */
 export const flush = () => new Promise<void>((r) => setTimeout(r, 0));
+
+/** A fake file body for the asset loader (see `decodeAudioData`). */
+export const fakeFile = (text: string): ArrayBuffer => new TextEncoder().encode(text).buffer as ArrayBuffer;

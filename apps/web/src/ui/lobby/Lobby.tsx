@@ -28,6 +28,7 @@ import { signInWithWallet } from '../../wallet/signIn';
 import { TicketFlow, type FlowMode } from '../../wallet/TicketFlow';
 import { bpsPercent, feeBps, sessionsToCollect, type TicketKey } from '../../wallet/ticket';
 import { WalletButton } from '../../wallet/WalletButton';
+import { BOOST_PATH } from '../game/BoostBar';
 import { goPage, openModal, updateSettings, useUi, type LobbyPage } from '../../store';
 import { DocsPage } from '../docs/DocsPage';
 import { Leaderboards } from '../news/Leaderboards';
@@ -40,6 +41,7 @@ import { QuickPlay } from './QuickPlay';
 import { SplitFlap } from './SplitFlap';
 import { TicketList } from './TicketList';
 import { useLobbyModel, useMedia } from './useLobby';
+import { RoomCard } from '../../rooms/RoomCard';
 
 /**
  * The lobby, a page of the picture book: the masthead (mark, page tabs, wallet), a plate
@@ -218,6 +220,8 @@ export function Lobby() {
           </div>
         )}
       </div>
+      {/* a private room with your own rules, for a small HYPE fee; join one by code */}
+      <RoomCard />
     </section>
   );
 
@@ -468,6 +472,11 @@ function Masthead({ full, wide, page, onPage }: { full: boolean; wide: boolean; 
             <Icon name="settings" size={20} />
           </button>
         )}
+        <button type="button" className="kb-iconbtn kl-mast__shop" aria-label={t('boost.openShop')} title={t('boost.openShop')} onClick={() => openModal('shop')} data-testid="lobby-shop">
+          <svg viewBox="0 0 24 24" width={20} height={20} aria-hidden="true" className="kl-mast__shopicon">
+            <path d={BOOST_PATH.speed} />
+          </svg>
+        </button>
         <WalletButton />
       </div>
     </header>

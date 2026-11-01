@@ -91,6 +91,23 @@ function json(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body));
 }
 
+/** A small JSON body (dev routes); null when it is not JSON or larger than 4 KiB. */
+async function readSmallJson(req: IncomingMessage): Promise<Record<string, unknown> | null> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const c of req) {
+    size += (c as Buffer).length;
+    if (size > 4096) return null;
+    chunks.push(c as Buffer);
+  }
+  try {
+    const v: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    return v && typeof v === 'object' ? (v as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
 function serveStatic(root: string, req: IncomingMessage, res: ServerResponse, pathname: string): boolean {
   let rel: string;
   try {
@@ -188,6 +205,16 @@ export function createHttpServer(cfg: ServerConfig, ctx: Ctx): Server {
             if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' });
             const changed = dev.devSetToken();
             return json(res, 200, { changed, chain: ctx.chain.status() });
+          }
+          case '/api/dev/transfer': {
+            // DEV ONLY: the web's fake wallet "sends" a game-token transfer (a power-up purchase); answers its fake hash
+            const dev = cfg.devFakeChain ? (ctx.chain as Partial<DevFakeChainActions>) : null;
+            if (!dev?.devTransfer) return json(res, 404, { error: 'not found' });
+            if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' });
+            const body = await readSmallJson(req);
+            const value = typeof body?.value === 'string' && /^\d{1,40}$/.test(body.value) ? BigInt(body.value) : 0n;
+            const hash = dev.devTransfer(String(body?.from ?? ''), String(body?.to ?? ''), value);
+            return hash ? json(res, 200, { hash }) : json(res, 400, { error: 'bad_request' });
           }
           default:
             return json(res, 404, { error: 'not found' });

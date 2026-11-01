@@ -6,6 +6,7 @@ import { useUi } from '../store';
 export function Toasts() {
   const t = useT();
   const toasts = useUi((s) => s.toasts);
+  const inGame = useUi((s) => s.screen === 'playing');
   const items: ToastItem[] = toasts.map((x) => ({
     id: x.id,
     tone: x.kind === 'success' ? 'success' : x.kind === 'error' ? 'error' : 'info',
@@ -22,6 +23,7 @@ export function Toasts() {
       onDismiss={(id) => useUi.setState((s) => ({ toasts: s.toasts.filter((x) => x.id !== id) }))}
       closeLabel={t('lo.close')}
       label={t('lo.toasts')}
+      inGame={inGame}
     />
   );
 }

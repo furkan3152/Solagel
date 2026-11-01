@@ -1,5 +1,9 @@
 import type {
+  CustomRoomSettings,
+  CustomRoomView,
   AdminAvatarEntry,
+  BoostKind,
+  ShopSettings,
   IntegrityBan,
   IntegrityFlag,
   IntegrityFlagKind,
@@ -42,6 +46,14 @@ import { SERVER } from '../config';
  * The site API (`/api/site/*`, `/api/admin/*`, `/api/auth/*`). Every error is a
  * `SiteApiError` with the server's code, its short English message and the offending field.
  */
+/** `GET /api/admin/custom-rooms`. */
+export interface CustomRoomsAdminView {
+  settings: CustomRoomSettings;
+  /** Where fees go now: the setting, else the owner wallet (first ADMIN_WALLETS entry). */
+  treasury: string | null;
+  rooms: CustomRoomView[];
+}
+
 export class SiteApiError extends Error {
   constructor(
     readonly status: number,
@@ -241,6 +253,16 @@ export function adminApi(token: string) {
     bots: () => request<BotAdminView>('/api/admin/bots', { token }),
     /** `PUT /api/admin/bots`: a partial settings update; answers like the GET. */
     saveBots: (patch: BotSettingsPatch) => request<BotAdminView>('/api/admin/bots', { method: 'PUT', token, body: patch }),
+    /** `GET /api/admin/custom-rooms`: the custom room settings, the effective treasury and the live rooms. */
+    customRooms: () => request<CustomRoomsAdminView>('/api/admin/custom-rooms', { token }),
+    /** `PUT /api/admin/custom-rooms`: a partial settings update; answers like the GET. */
+    saveCustomRooms: (patch: Partial<CustomRoomSettings>) => request<CustomRoomsAdminView>('/api/admin/custom-rooms', { method: 'PUT', token, body: patch }),
+    /** `DELETE /api/admin/custom-rooms/<CODE>`: closes a live room (everyone in it goes back to the lobby). */
+    closeCustomRoom: (code: string) => request<{ closed: CustomRoomView; rooms: CustomRoomView[] }>(`/api/admin/custom-rooms/${id(code)}`, { method: 'DELETE', token }),
+    /** `GET /api/admin/shop`: power-up prices, sink, limits and the recent purchases. */
+    shop: () => request<ShopAdminView>('/api/admin/shop', { token }),
+    /** `PUT /api/admin/shop`: a partial settings update; answers like the GET. */
+    saveShop: (patch: Partial<ShopSettings>) => request<ShopAdminView>('/api/admin/shop', { method: 'PUT', token, body: patch }),
     /**
      * `POST /api/admin/mint/import-holders` (`{ fromChainId? }`, default the testnet): adds every
      * testnet emblem holder to the mainnet allowlist, recorded per wallet with the source.
@@ -309,6 +331,31 @@ function integrityApi(token: string) {
 }
 export type IntegrityApi = ReturnType<typeof integrityApi>;
 
+/* ── power-up shop (`/api/admin/shop`) ─────────────────────────────── */
+
+/** One credited power-up purchase. */
+export interface ShopPurchase {
+  tx: string;
+  wallet: string;
+  kind: BoostKind;
+  charges: number;
+  /** Raw base units (decimal string). */
+  paid: string;
+  at: number;
+}
+
+/** `GET /api/admin/shop`. */
+export interface ShopAdminView {
+  settings: ShopSettings;
+  defaults: ShopSettings;
+  /** Where payments go now (null: treasury chosen but no owner wallet). */
+  sink: string | null;
+  /** The first `ADMIN_WALLETS` entry (the treasury when none is set). */
+  owner: string | null;
+  purchases: ShopPurchase[];
+  purchaseCount: number;
+}
+
 /* ── bots (`/api/admin/bots`) ─────────────────────────────────────── */
 
 /** One kind of room's bot settings (`practiceRookie`, `practicePro`, `arena`, `private`). */
@@ -322,6 +369,8 @@ export interface BotKindSettings {
   target: number;
   /** Difficulty mix, as weights. */
   mix: Record<string, number>;
+  /** Most mass one bot keeps (0: no cap; older servers leave it out). */
+  massCap?: number;
 }
 
 export interface BotSettings {

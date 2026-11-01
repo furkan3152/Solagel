@@ -691,6 +691,10 @@
   left: 50%;
   bottom: calc(var(--hud-gap) + env(safe-area-inset-bottom, 0px));
   transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
   pointer-events: auto;
 }
 .g-emotes {
@@ -743,7 +747,8 @@
   color: #04181c;
 }
 @media (max-width: 860px) {
-  .g-hud:not(.is-touch) .g-dock {
+  /* the sticker row makes way on narrow desktops; the power-up buttons stay */
+  .g-hud:not(.is-touch) .g-dock .g-emotes {
     display: none;
   }
 }
@@ -1557,12 +1562,3 @@
   vertical-align: 1px;
 }
 
-/* the tape on the sheet's top-left corner sits over the kicker's first letters: nudge it clear */
-.g-death .kb-sheet__kicker {
-  padding-left: 46px;
-}
-@media (max-width: 640px) {
-  .g-death .kb-sheet__kicker {
-    padding-left: 0;
-  }
-}

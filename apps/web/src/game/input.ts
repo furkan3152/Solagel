@@ -1,5 +1,9 @@
+import { BOOST_KEYS, BOOST_KINDS, type BoostKind } from '@elymum/shared';
+
 export interface InputActions {
   split(): void;
+  /** A bought power-up key (R magnet, F shockwave, G speed). Optional: tests may leave it out. */
+  boost?(kind: BoostKind): void;
   eject(): void;
   emote(id: number): void;
   openChat(): void;
@@ -43,6 +47,12 @@ export function keyVector(codes: Iterable<string>): { x: number; y: number } {
   const y = (down ? 1 : 0) - (up ? 1 : 0);
   if (x !== 0 && y !== 0) return { x: x * Math.SQRT1_2, y: y * Math.SQRT1_2 };
   return { x, y };
+}
+
+/** The bought power-up a key fires (`BOOST_KEYS`), or null. */
+export function boostForCode(code: string): BoostKind | null {
+  for (const k of BOOST_KINDS) if (BOOST_KEYS[k] === code) return k;
+  return null;
 }
 
 /** How far (CSS px) the mouse must travel while move keys are held to take the steering back. */
@@ -194,7 +204,12 @@ export class Input {
         this.actions.openChat();
         return;
     }
-    if (/^Digit[1-8]$/.test(e.code) && !e.repeat) this.actions.emote(Number(e.code.slice(5)) - 1);
+    if (/^Digit[1-8]$/.test(e.code) && !e.repeat) {
+      this.actions.emote(Number(e.code.slice(5)) - 1);
+      return;
+    }
+    const boost = boostForCode(e.code);
+    if (boost && !e.repeat) this.actions.boost?.(boost);
   }
 
   private keyUp(e: KeyboardEvent): void {

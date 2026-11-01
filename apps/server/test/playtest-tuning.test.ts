@@ -1,7 +1,8 @@
 import { RULES, TICK_MS, WORLD_PRESETS, massToRadius, speedForRadius } from '@elymum/shared';
 import { describe, expect, it } from 'vitest';
+import { SPLIT_REACH } from '../src/bots/brain';
 import { BotManager } from '../src/bots/manager';
-import { BotSettingsStore, ROOKIE_BOT_MASS_CAP, defaultBotSettings } from '../src/bots/settings';
+import { BOT_MASS_CAP, BotSettingsError, BotSettingsStore, ROOKIE_BOT_MASS_CAP, applyBotSettings, defaultBotSettings } from '../src/bots/settings';
 import { loadConfig } from '../src/config';
 import { mulberry32 } from '../src/game/rng';
 import { World, type WorldConfig } from '../src/game/world';
@@ -32,12 +33,26 @@ function runRoom(world: World, bots: BotManager, ms: number, each?: () => void):
 }
 
 describe('playtest tuning: rookie pond bots', () => {
-  it('the rookie league caps bot mass; the pro league does not', () => {
+  it('bot mass caps: rookie 300, pro ponds and arenas 2500, private rooms none; the admin can change them', () => {
     const store = new BotSettingsStore(null, defaultBotSettings(loadConfig({}).bots));
     expect(store.options('practiceRookie').massCap).toBe(ROOKIE_BOT_MASS_CAP);
-    expect(store.options('practicePro').massCap).toBeUndefined();
-    expect(store.options('arena').massCap).toBeUndefined();
+    expect(store.options('practicePro').massCap).toBe(BOT_MASS_CAP);
+    expect(store.options('arena').massCap).toBe(BOT_MASS_CAP);
     expect(store.options('private').massCap).toBeUndefined();
+    expect(BOT_MASS_CAP).toBe(2500);
+    // per room kind, 0 = no cap; nonsense is refused
+    store.update({ kinds: { arena: { massCap: 4000 }, practicePro: { massCap: 0 }, private: { massCap: 1200 } } });
+    expect(store.options('arena').massCap).toBe(4000);
+    expect(store.options('practicePro').massCap).toBeUndefined();
+    expect(store.options('private').massCap).toBe(1200);
+    expect(store.kind('practiceRookie').massCap).toBe(ROOKIE_BOT_MASS_CAP);
+    expect(() => store.update({ kinds: { arena: { massCap: 10 } } })).toThrow(BotSettingsError);
+    expect(() => store.update({ kinds: { arena: { massCap: -1 } } })).toThrow(BotSettingsError);
+    expect(() => store.update({ kinds: { arena: { massCap: 1.5 } } })).toThrow(BotSettingsError);
+    expect(store.options('arena').massCap).toBe(4000);
+    // a settings file from before the cap keeps the defaults
+    const old = applyBotSettings(defaultBotSettings(loadConfig({}).bots), { kinds: { arena: { cap: 10 } } }, { strict: false });
+    expect(old.kinds.arena.massCap).toBe(BOT_MASS_CAP);
     // a cap a few times the start size: about 4x the start radius
     expect(massToRadius(ROOKIE_BOT_MASS_CAP) / massToRadius(RULES.startMass)).toBeLessThan(4.5);
   });
@@ -65,6 +80,28 @@ describe('playtest tuning: rookie pond bots', () => {
     expect(heaviest).toBeGreaterThan(ROOKIE_BOT_MASS_CAP * 0.9);
     expect(longestOver).toBeLessThan(3000);
   });
+
+  it('pro / arena bots stop growing at 2500 (no more absurd whales)', () => {
+    const world = new World({ ...WORLD_PRESETS.practice, powerUps: true, coinRain: true, seed: 41 });
+    const bots = new BotManager(world, { target: 12, min: 4, max: 12, mix: 'standard', massCap: BOT_MASS_CAP }, mulberry32(42));
+    const over = new Map<number, number>();
+    let longestOver = 0;
+    let heaviest = 0;
+    runRoom(world, bots, 300_000, () => {
+      for (const b of bots.bots.values()) {
+        const m = b.player.totalMass();
+        heaviest = Math.max(heaviest, m);
+        const t = m > BOT_MASS_CAP * 1.05 ? (over.get(b.player.id) ?? 0) + TICK_MS : 0;
+        over.set(b.player.id, t);
+        longestOver = Math.max(longestOver, t);
+      }
+    });
+    expect(heaviest).toBeGreaterThan(BOT_MASS_CAP * 0.6);
+    expect(longestOver).toBeLessThan(3000);
+    // live settings reach the brains too (they stop grazing near the cap)
+    bots.setOptions({ target: 12, min: 4, max: 12, mix: 'standard' }, 0);
+    for (const b of bots.bots.values()) expect(b.brain.massCap).toBe(Infinity);
+  }, 30_000);
 
   it('shedMass keeps the shape (every cell in proportion) and only touches the excess', () => {
     const world = new World(cfg());
@@ -102,8 +139,8 @@ describe('playtest tuning: spawns and thorn bushes', () => {
       for (const w of whales) {
         const c = w.cells[0];
         const gap = Math.hypot(c.x - spot.x, c.y - spot.y) - c.r - r;
-        // the split lunge (~390) plus half the shield time at its speed
-        expect(gap).toBeGreaterThan(390 + speedForRadius(c.r) * (RULES.spawnShieldMs / 1000) * 0.5);
+        // the split lunge (~450) plus half the shield time at its speed
+        expect(gap).toBeGreaterThan(SPLIT_REACH + speedForRadius(c.r) * (RULES.spawnShieldMs / 1000) * 0.5);
       }
     }
   });

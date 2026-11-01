@@ -38,8 +38,9 @@ describe('DEV_FAKE_CHAIN', () => {
       journal: 'journal.dev-fake.json',
       leaderboards: 'leaderboards.dev-fake.json',
       profiles: 'profiles.dev-fake.json',
+      boosts: 'boosts.dev-fake.json',
     });
-    expect(dataFileNames(loadConfig(env({})))).toEqual({ journal: 'journal.json', leaderboards: 'leaderboards.json', profiles: 'profiles.json' });
+    expect(dataFileNames(loadConfig(env({})))).toEqual({ journal: 'journal.json', leaderboards: 'leaderboards.json', profiles: 'profiles.json', boosts: 'boosts.json' });
   });
 
   it('creates the fake chain outside production, with the token unset unless DEV_FAKE_TOKEN=1', async () => {

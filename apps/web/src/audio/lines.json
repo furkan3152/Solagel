@@ -1,0 +1,83 @@
+{
+  "voice": "am_fenrir",
+  "note": "The announcer's script. scripts/audio/voice.py reads it and writes assets/voice/<id>-<n>.{ogg,m4a}; announcer.ts plays them. Keep lines short; no line at a join or a death.",
+  "lines": {
+    "firstBite": {
+      "crowd": 0,
+      "variants": ["First bite! We're underway!", "And there's the first bite!", "Opening bite. Lovely!"]
+    },
+    "double": {
+      "crowd": 0,
+      "variants": ["Double bite!", "Two in a row!", "Back to back!"]
+    },
+    "triple": {
+      "crowd": 1,
+      "variants": ["Triple! Somebody stop this coin!", "Three for three!", "That's a triple! Unreal!"]
+    },
+    "multi": {
+      "crowd": 2,
+      "variants": ["Unstoppable!", "It's a feeding frenzy!", "Rampage! Absolute rampage!"]
+    },
+    "bigEat": {
+      "crowd": 2,
+      "variants": ["Oh, what a swallow!", "Huge bite! Did you see that?", "Gulp! That one was massive!"]
+    },
+    "whale": {
+      "crowd": 1,
+      "variants": ["We've got a whale!", "Look at the size of that coin!", "That coin is enormous!"]
+    },
+    "comeback": {
+      "crowd": 2,
+      "variants": ["What a comeback!", "Down, but not out!", "Back from the brink!"]
+    },
+    "leader": {
+      "crowd": 2,
+      "variants": ["New king of the ring!", "There's a new number one!", "Top of the board! Take a bow!"]
+    },
+    "chased": {
+      "crowd": 0,
+      "variants": ["Watch your back!", "Something big is coming!", "Run! Run!"]
+    },
+    "escape": {
+      "crowd": 1,
+      "variants": ["What an escape!", "Slipped away! Brilliant!", "Oh, not today!"]
+    },
+    "coinRain": {
+      "crowd": 1,
+      "variants": ["It's raining coins!", "Coin rain! Grab everything!", "Make it rain!"]
+    },
+    "powerUp": {
+      "crowd": 0,
+      "variants": ["Power up!", "Ooh, nice pickup!", "Powered up! Go, go!"]
+    },
+    "magnet": {
+      "crowd": 0,
+      "variants": ["Magnet on! Pull it all in!", "Magnet! Everything's coming your way!"]
+    },
+    "push": {
+      "crowd": 0,
+      "variants": ["Big push! Clear the floor!", "Shove! Out of the way!"]
+    },
+    "oneMinute": {
+      "crowd": 0,
+      "variants": ["One minute left! Make it count!", "Sixty seconds on the clock!", "Final minute! Here we go!"]
+    },
+    "tenSeconds": {
+      "crowd": 1,
+      "variants": ["Ten seconds! Hold on!", "Ten seconds left! Stay alive!", "Ten seconds! Here comes the bell!"]
+    },
+    "countdown": {
+      "crowd": 1,
+      "beat": 1.0,
+      "variants": ["Three! | Two! | One!"]
+    },
+    "roundOver": {
+      "crowd": 2,
+      "variants": ["And that's the bell!", "Round over! What a game!", "That's time! Round over!"]
+    },
+    "paid": {
+      "crowd": 1,
+      "variants": ["Payday!", "Cash in the bank!", "The till is yours! Paid out!"]
+    }
+  }
+}

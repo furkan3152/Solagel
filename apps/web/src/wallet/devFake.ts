@@ -1,6 +1,7 @@
 import { DEFAULT_FEE_BPS, type ArenaConfig, type SessionInfo } from '@elymum/sdk';
 import type { ChainStatus } from '@elymum/shared';
 import type { Address, Hash } from 'viem';
+import { SERVER } from '../config';
 import { DEV_FAKE_ARENA_ADDRESS } from './devFakeLoader';
 import type { TicketStep } from './ticket';
 import type { TxPhase } from './tx';
@@ -145,4 +146,46 @@ export async function fakeFaucetClaim(onPhase: (p: TxPhase, hash?: Hash) => void
   fakeWallet.tokenBalance += fakeFaucet.holder ? fakeFaucet.holderAmount : fakeFaucet.amount;
   fakeFaucet.nextAt = Math.floor(Date.now() / 1000) + fakeFaucet.cooldownSecs;
   return h;
+}
+
+/** "Sends" a native HYPE transfer (the custom room fee): the server's fake chain accepts this hash as the payment. */
+export async function fakeHypePayment(wei: bigint, onPhase: (p: TxPhase, hash?: Hash) => void): Promise<{ ok: true; hash: Hash } | { ok: false; name: string }> {
+  onPhase('signing');
+  await sleep(fakeWallet.delayMs);
+  if (fakeWallet.failNext) {
+    const name = fakeWallet.failNext;
+    fakeWallet.failNext = null;
+    return { ok: false, name };
+  }
+  if (fakeWallet.wei < wei) return { ok: false, name: 'InsufficientFunds' };
+  const h = fakeHash();
+  onPhase('confirming', h);
+  await sleep(fakeWallet.delayMs);
+  fakeWallet.wei -= wei;
+  return { ok: true, hash: h };
+}
+
+/**
+ * "Pays" a power-up pack: the game server's fake chain records the token transfer
+ * (`POST /api/dev/transfer`) and answers its hash, which the shop then claims like a real one.
+ */
+export async function fakeShopTransfer(from: string, to: string, value: bigint, onPhase: (p: TxPhase) => void): Promise<Hash> {
+  onPhase('signing');
+  await sleep(fakeWallet.delayMs);
+  if (fakeWallet.failNext) {
+    const name = fakeWallet.failNext;
+    fakeWallet.failNext = null;
+    throw Object.assign(new Error(name), { name });
+  }
+  const res = await fetch(`${SERVER.http}/api/dev/transfer`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from, to, value: value.toString() }),
+  });
+  const body = (await res.json().catch(() => null)) as { hash?: Hash } | null;
+  if (!res.ok || !body?.hash) throw new Error('The fake chain refused the transfer.');
+  onPhase('confirming');
+  await sleep(fakeWallet.delayMs);
+  fakeWallet.tokenBalance -= value;
+  return body.hash;
 }

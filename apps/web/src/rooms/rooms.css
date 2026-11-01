@@ -1,0 +1,258 @@
+/* Custom rooms: the creator sheet, the lobby card and the in-room tag. */
+
+.cr-sheet {
+  max-width: 560px;
+}
+.cr-form,
+.cr-pay,
+.cr-done {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.cr-lede {
+  margin: 0;
+  color: var(--ink-2);
+  line-height: 1.45;
+}
+.cr-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cr-row__label {
+  font-size: var(--t-label);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.cr-row__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.cr-row .kb-qty {
+  align-self: flex-start;
+  width: auto;
+}
+.cr-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.cr-price {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 12px;
+  padding: 12px 14px;
+  border: var(--stroke-sm) dashed var(--outline);
+  border-radius: var(--r-card);
+  background: var(--linen);
+}
+.cr-price .cr-row__label {
+  flex-basis: 100%;
+}
+.cr-price__free {
+  font-family: var(--font-display);
+  font-size: 22px;
+  color: var(--up-ink);
+}
+.cr-price__was {
+  color: var(--ink-3);
+}
+.cr-price__note {
+  flex-basis: 100%;
+  font-size: var(--t-small);
+  color: var(--ink-2);
+}
+.cr-slots {
+  margin: 0;
+  font-size: var(--t-label);
+  color: var(--ink-3);
+}
+.cr-note {
+  margin: 0;
+  font-size: var(--t-small);
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+.cr-error {
+  margin: 0;
+  padding: 10px 12px;
+  border: var(--stroke-sm) solid var(--down-ink);
+  border-radius: var(--r-card);
+  color: var(--down-ink);
+  font-weight: 600;
+  line-height: 1.4;
+}
+.cr-foot {
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+.cr-to {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.cr-phase {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-weight: 600;
+}
+.cr-phase__link {
+  margin-left: auto;
+  font-size: var(--t-label);
+}
+.cr-done__art {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 8px 0;
+}
+.cr-code {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.cr-code__value {
+  padding: 10px 22px;
+  border: var(--stroke) solid var(--outline);
+  border-radius: var(--r-card);
+  background: var(--sun);
+  color: var(--ink-fixed);
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  box-shadow: var(--sticker);
+  cursor: copy;
+}
+.cr-link {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.cr-link__input {
+  flex: 1 1 220px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: var(--r-card);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: var(--t-small);
+}
+
+/* the lobby card (under the departures board) */
+.cr-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  padding: 16px 18px;
+  border: var(--stroke) solid var(--outline);
+  border-radius: var(--r-panel, 18px);
+  background: var(--cream);
+  color: var(--ink-fixed);
+  box-shadow: var(--sticker);
+}
+.cr-card__kicker {
+  font-size: var(--t-label);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--teal-ink);
+}
+.cr-card__title {
+  margin: 2px 0 4px;
+  font-family: var(--font-display);
+  font-size: 22px;
+  line-height: 1.1;
+}
+.cr-card__body {
+  margin: 0 0 10px;
+  font-size: var(--t-small);
+  line-height: 1.4;
+}
+.cr-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.cr-card__join {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.cr-card__code {
+  width: 7.5em;
+  padding: 8px 10px;
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: var(--r-pill);
+  background: var(--paper);
+  color: var(--ink-fixed);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 15px;
+}
+.cr-card__err {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: var(--t-small);
+  color: var(--down-ink);
+}
+.cr-card__mine {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+/* in the room: the time left, the invite link and the creator's close button */
+.g-pond__custom {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+.g-pond__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: var(--r-pill);
+  background: var(--cream);
+  color: var(--ink-fixed);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.g-pond__btn.is-danger {
+  background: var(--down);
+  color: #fff;
+}
+
+@media (max-width: 639px) {
+  .cr-row .kb-qty {
+  align-self: flex-start;
+  width: auto;
+}
+.cr-pair {
+    grid-template-columns: 1fr;
+  }
+  .cr-code__value {
+    font-size: 28px;
+  }
+}

@@ -7,6 +7,7 @@ import {
   encodeSplit,
   encodeTarget,
   levelFromXp,
+  type BoostKind,
   type DeathStats,
   type RoundStanding,
   type ServerMessage,
@@ -29,7 +30,7 @@ import { HeldTicket } from './held';
 import { Input } from './input';
 import { Net } from './net';
 import { Particles } from './particles';
-import { announce, sound, unlockAudio } from '../audio';
+import { announce, caller, music, powerUpKind, sound, unlockAudio } from '../audio';
 import { VALUE_FLY_EVENT } from './moments';
 import { currentRound } from './round';
 import { RoundCues } from './roundCues';
@@ -85,8 +86,6 @@ export class GameEngine {
   private reduced = false;
   /** My coin dropping onto the paper after a join / respawn (performance.now() start). */
   private drop: { at: number; rung: boolean } | null = null;
-  /** This life's bites, for the announcer (first bite, double, triple, whale). */
-  private life = { bites: 0, streak: 0, streakAt: -Infinity, whale: false };
   /** Death slow motion start (performance.now()), renderer time only. */
   private slowmoAt = -Infinity;
   /** The bell rang on my game: the world stands still until then (performance.now()). */
@@ -118,6 +117,7 @@ export class GameEngine {
     tick: (s) => sound.roundTick(s),
     bell: () => sound.bell(),
     say: (line) => announce(line),
+    tension: (on) => music.setTension(on),
   });
   private readonly unsub: () => void;
   private readonly reducedQuery: MediaQueryList | null;
@@ -137,6 +137,7 @@ export class GameEngine {
       canvas,
       {
         split: () => this.split(),
+        boost: (kind) => this.boost(kind),
         eject: () => this.eject(),
         emote: (id) => this.emote(id),
         openChat: () => {
@@ -281,6 +282,7 @@ export class GameEngine {
       roundResult: null,
       chatOpen: false,
       powerups: [],
+      boosts: null,
       ticket: null,
       valueDelta: null,
     });
@@ -313,6 +315,21 @@ export class GameEngine {
     this.net.send({ t: 'emote', id });
   }
 
+  /** Fires a bought power-up (the server checks the charge, the cooldown and the arena's round cap). */
+  boost(kind: BoostKind): void {
+    const s = useUi.getState();
+    if (s.screen !== 'playing' || s.chatOpen) return;
+    if (!s.boosts?.signedIn) {
+      toast('info', t('boost.err.guest'));
+      return;
+    }
+    if (s.boosts.charges[kind] <= 0) {
+      useUi.setState({ modal: 'shop' });
+      return;
+    }
+    this.net.send({ t: 'boost', kind });
+  }
+
   /* ---------------------------------------------------------------- */
   /* Rounds                                                           */
   /* ---------------------------------------------------------------- */
@@ -342,6 +359,7 @@ export class GameEngine {
       screen: 'roundover',
       roundResult: { kind, round, payout, stats, standings },
       powerups: [],
+      boosts: null,
       chatOpen: false,
     });
   }
@@ -463,7 +481,7 @@ export class GameEngine {
         // (anything kept from another room, or from before a reconnect, would never be removed)
         this.world.reset();
         this.clearHeld();
-        this.life = { bites: 0, streak: 0, streakAt: -Infinity, whale: false };
+        caller.life();
         // no join sound or welcome line: the owner turned the start sounds off
         this.world.myPid = m.playerId;
         this.world.width = m.room.width;
@@ -478,6 +496,7 @@ export class GameEngine {
           death: null,
           roundResult: null,
           powerups: [],
+          boosts: null,
           hud: { ...useUi.getState().hud, value: m.value ?? null },
           valueDelta: null,
           // a new ticket: any earlier settlement belongs to an earlier ticket (the server only lets us
@@ -514,6 +533,8 @@ export class GameEngine {
           leaders: m.leaders,
           hud: { ...s.hud, rank: m.me?.rank ?? 0, value: s.room?.mode === 'arena' ? (m.me?.value ?? s.hud.value) : null, players: m.players },
         });
+        // up the board: a mallet, "new king of the ring" at the top
+        if (s.screen === 'playing') caller.ranked(m.me?.rank ?? 0, m.players);
         return;
       }
       case 'kf':
@@ -547,12 +568,14 @@ export class GameEngine {
           if (m.stats.byBot && (m.stats.lootSpilled ?? 0) > 0) this.particles.coinBurst(me.x, me.y, Math.max(60, me.maxR), 22);
         }
         // no death sound or announcer line (turned off on purpose): the ink splash says it
+        caller.end();
         this.world.myPid = null;
         this.wasArena = null;
         useUi.setState({
           screen: 'dead',
           death: { stats: m.stats, killer: m.killer, killerSkin: m.killerSkin },
           powerups: [],
+          boosts: null,
           chatOpen: false,
         });
         return;
@@ -592,7 +615,7 @@ export class GameEngine {
         if (m.kind === 'coinrain') {
           if (m.state === 'start') {
             useUi.setState({ banner: { kind: 'coinrain', until: Date.now() + (m.ms ?? 25_000) } });
-            sound.coinRain();
+            caller.coinRain();
           } else useUi.setState({ banner: null });
         } else if (m.kind === 'airdrop') {
           const s = useUi.getState();
@@ -600,8 +623,36 @@ export class GameEngine {
         }
         return;
       }
+      case 'boosts': {
+        const now = Date.now();
+        const c = m.state.cooldownMs;
+        useUi.setState({ boosts: m.state, boostReady: { magnet: now + c.magnet, shock: now + c.shock, speed: now + c.speed } });
+        return;
+      }
+      case 'boost': {
+        if (!m.ok) {
+          if (m.reason === 'no_charges') useUi.setState({ modal: 'shop' });
+          else toast(m.reason === 'cooldown' ? 'info' : 'warn', t(`boost.err.${m.reason}` as 'boost.err.guest'));
+          return;
+        }
+        // the pickup chime plus the caster's magnet / push / generic line (caller.ts)
+        caller.powerUp(m.kind === 'magnet' ? 'magnet' : m.kind === 'shock' ? 'push' : 'other');
+        // magnet and speed show as the map power-up chips they share an effect with
+        const type = m.kind === 'magnet' ? PowerUpType.Magnet : m.kind === 'speed' ? PowerUpType.Pump : null;
+        if (type !== null && m.ms > 0) {
+          useUi.setState((s) => {
+            const cur = s.powerups.find((p) => p.type === type);
+            const until = Math.max(cur?.until ?? 0, Date.now()) + m.ms;
+            return { powerups: [...s.powerups.filter((p) => p.type !== type), { type, until }] };
+          });
+        }
+        const me = this.world.myStats();
+        if (me) this.particles.text(me.x, me.y - me.maxR, `${t(`boost.${m.kind}` as 'boost.magnet')}!`, undefined, 24, RISO.mustard);
+        return;
+      }
       case 'powerup': {
-        sound.powerup();
+        // the pickup sound and a line: magnet / push have their own, the rest the generic one
+        caller.powerUp(powerUpKind((Object.keys(PowerUpType) as (keyof typeof PowerUpType)[]).find((k) => PowerUpType[k] === m.type) ?? ''));
         useUi.setState((s) => ({ powerups: [...s.powerups.filter((p) => p.type !== m.type), { type: m.type, until: Date.now() + m.ms }] }));
         const me = this.world.myStats();
         if (me) this.particles.text(me.x, me.y - me.maxR, `${t(`pu.${m.type}` as 'pu.1')}!`, undefined, 24, RISO.mustard);
@@ -637,6 +688,13 @@ export class GameEngine {
           return;
         }
         this.ticketRetry = null;
+        if (m.code === 'room_closed') {
+          // a custom room closed (time up, or closed by its creator): back to the lobby with the reason
+          if (useUi.getState().screen !== 'lobby') this.backToLobby();
+          else this.net.send({ t: 'spectate' });
+          toast('info', m.message || t('err.room_closed'), undefined, 8000);
+          return;
+        }
         if (m.code === 'game_closed') {
           // the game is admin-only for now: no toast loop, one friendly "opens soon" sheet
           this.heldTicket.refused();
@@ -696,31 +754,20 @@ export class GameEngine {
     this.net.sendBinary(encodeTarget(aim.x, aim.y, this.targetBuf));
   }
 
-  /** A cell of mine ate a coin: first bite of this life, then doubles and triples within 4 s. */
-  private bite(now: number): void {
-    const l = this.life;
-    l.streak = now - l.streakAt < 4000 ? l.streak + 1 : 1;
-    l.streakAt = now;
-    l.bites++;
-    if (l.bites === 1) announce('firstBite');
-    else if (l.streak === 2) announce('double');
-    else if (l.streak === 3) announce('triple');
-  }
-
   private handleEats(): void {
     const arena = useUi.getState().room?.mode === 'arena';
     for (const ev of this.world.drainEats()) {
       switch (ev.type) {
         case 'food':
           if (ev.mine) {
-            sound.blip(ev.variant === 7);
+            sound.eat(ev.variant === 7);
             const ink = ev.variant < 6 ? FOOD_COLORS[ev.variant][0] : ev.variant === 7 ? RISO.mustard : RISO.aqua;
             this.particles.splat(ev.x, ev.y, ink, ev.variant === 7 ? 15 : ev.variant === 6 ? 10 : 7);
             if (ev.variant === 7) this.particles.text(ev.x, ev.y, '+8', undefined, 18, RISO.mustard);
           }
           break;
         case 'eject':
-          if (ev.mine) sound.blip();
+          if (ev.mine) sound.eat();
           break;
         case 'loot':
           // the value message that follows floats the amount; here the pickup itself
@@ -730,8 +777,8 @@ export class GameEngine {
           const victim = this.world.players.get(ev.victimPid);
           const look = this.renderer.lookFor(victim?.skin ?? 0);
           if (ev.mine) {
-            sound.chomp();
-            this.bite(performance.now());
+            // the chomp, first bite / streak / big-eat lines (caller.ts)
+            caller.bite(ev.r, this.world.myStats()?.maxR ?? 0);
             this.particles.scraps(ev.x, ev.y, ev.r, 16, [look.body, look.overprint, CARD_PAPER]);
             if (!arena) this.particles.text(ev.x, ev.y, `+${Math.floor((ev.r * ev.r) / 100)}`, undefined, 24);
           } else if (ev.me) {
@@ -747,7 +794,7 @@ export class GameEngine {
         case 'virus':
           this.particles.scraps(ev.x, ev.y, 70, ev.mine ? 26 : 10, [RISO.green, RISO.teal, CARD_PAPER, RISO.fluoPink]);
           if (ev.mine) {
-            sound.boing();
+            sound.virus();
             this.particles.text(ev.x, ev.y, t('fx.rugged'), RISO.green, 26, RISO.fluoPink);
           }
           break;
@@ -797,6 +844,7 @@ export class GameEngine {
     const n = this.nearMiss;
     if (scared) {
       if (n.since === 0) n.since = now;
+      caller.threat(true);
       n.x = scared.x;
       n.y = scared.y;
       n.r = scared.r;
@@ -805,10 +853,12 @@ export class GameEngine {
     if (n.since !== 0 && now - n.since >= NEAR_MISS_MS && now - n.at > PHEW_COOLDOWN_MS && cells.length > 0) {
       const c = cells.reduce((a, b) => (b.r > a.r ? b : a));
       n.at = now;
+      caller.escaped();
       this.particles.sweat(c.x + c.r * 0.62, c.y - c.r * 0.78, c.r);
       this.particles.text(c.x - c.r * 0.2, c.y - c.r * 1.25, t('g.phew'), undefined, 18, ELYSIUM.mist);
     }
     n.since = 0;
+    caller.threat(false);
   }
 
   private frame = (): void => {
@@ -903,11 +953,8 @@ export class GameEngine {
       this.lastHud = now;
       const mass = me ? Math.floor(me.mass) : 0;
       if (ui.hud.mass !== mass || ui.hud.cells !== (me?.count ?? 0)) useUi.setState({ hud: { ...ui.hud, mass, cells: me?.count ?? 0 } });
-      // a big coin now: once per life
-      if (mass >= WHALE_MASS && !this.life.whale && ui.screen === 'playing') {
-        this.life.whale = true;
-        announce('whale');
-      }
+      // a big coin now (once per life), a comeback (caller.ts)
+      if (me && ui.screen === 'playing') caller.mass(mass, WHALE_MASS);
       // expire power-up timers, banners and kill feed
       const wall = Date.now();
       if (ui.powerups.some((p) => p.until <= wall)) useUi.setState({ powerups: ui.powerups.filter((p) => p.until > wall) });

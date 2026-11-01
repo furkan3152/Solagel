@@ -1,5 +1,9 @@
 import {
+  BOOST_RULES,
   CellFlag,
+  boostDurationMs,
+  shockRange,
+  type BoostKind,
   EntityKind,
   FOOD_GEM,
   FOOD_GOLD,
@@ -206,6 +210,85 @@ export class World {
   queueEject(pid: number): void {
     const p = this.players.get(pid);
     if (p) p.ejectQueued = true;
+  }
+
+  /**
+   * Applies a bought power-up (the room checked charges, cooldowns and limits). Magnet and Speed
+   * start now (they add to a running map power-up of the same kind); the Shockwave fires at the
+   * start of the next tick. False when the player is not alive (nothing happened).
+   */
+  useBoost(pid: number, kind: BoostKind): boolean {
+    const p = this.players.get(pid);
+    if (!p || !p.alive || p.cells.length === 0) return false;
+    switch (kind) {
+      case 'magnet':
+        p.magnetUntil = Math.max(p.magnetUntil, this.now) + boostDurationMs('magnet');
+        return true;
+      case 'speed':
+        p.pumpUntil = Math.max(p.pumpUntil, this.now) + boostDurationMs('speed');
+        return true;
+      case 'shock':
+        p.shockQueued = true;
+        return true;
+    }
+    return false;
+  }
+
+  /**
+   * Shockwave: every coin of another player within `shockRange` of one of `p`'s cells and at most
+   * `massRatio` times that cell's mass is launched straight away from it (a split-like boost that
+   * decays), and food and ejected mass in reach are pushed out too. Thorn bushes, loot and bigger
+   * coins do not move. Pushed coins get `graceMs` in which they neither eat nor are eaten by any
+   * coin, so the push never feeds the user (or a third player) a kill. No mass changes hands.
+   */
+  private fireShock(p: Player): void {
+    const s = BOOST_RULES.shock;
+    p.shockFxUntil = this.now + s.fxMs;
+    const graceUntil = this.now + s.graceMs;
+    for (const c of p.cells) {
+      if (c.removed) continue;
+      const R = shockRange(c.r);
+      // the grid was built last tick: a little slack for what moved since
+      const pad = R + this.maxCellRadius + 64;
+      this.dynGrid.forEachIn(c.x - pad, c.y - pad, c.x + pad, c.y + pad, (e) => {
+        if (e.removed) return;
+        const dx = e.x - c.x;
+        const dy = e.y - c.y;
+        const d = Math.hypot(dx, dy);
+        if (e.kind === EntityKind.Cell) {
+          if (e.player === p || d - e.r >= R || e.mass > c.mass * s.massRatio) return;
+        } else if (d >= R) return;
+        let ux = 1;
+        let uy = 0;
+        if (d > 1e-6) {
+          ux = dx / d;
+          uy = dy / d;
+        } else {
+          const a = this.rng() * Math.PI * 2;
+          ux = Math.cos(a);
+          uy = Math.sin(a);
+        }
+        const speed = s.pushSpeed * (0.4 + 0.6 * clamp(1 - d / R, 0, 1));
+        e.vx += ux * speed;
+        e.vy += uy * speed;
+        if (e.kind === EntityKind.Cell) e.pushedUntil = Math.max(e.pushedUntil, graceUntil);
+        e.version = this.tickCount;
+      });
+      this.staticGrid.forEachIn(c.x - R, c.y - R, c.x + R, c.y + R, (f) => {
+        if (f.kind !== EntityKind.Food || f.removed) return;
+        const dx = f.x - c.x;
+        const dy = f.y - c.y;
+        const d = Math.hypot(dx, dy);
+        if (d >= R) return;
+        const ux = d > 1e-6 ? dx / d : 1;
+        const uy = d > 1e-6 ? dy / d : 0;
+        const nd = d + (R - d) * s.foodPush;
+        f.x = clamp(c.x + ux * nd, f.r, this.cfg.width - f.r);
+        f.y = clamp(c.y + uy * nd, f.r, this.cfg.height - f.r);
+        f.version = this.tickCount;
+        this.staticGrid.update(f);
+      });
+    }
   }
 
   /**
@@ -471,6 +554,10 @@ export class World {
       let passes = Math.min(p.splitQueued, 2);
       p.splitQueued -= passes;
       while (passes-- > 0) this.splitPlayer(p);
+      if (p.shockQueued) {
+        p.shockQueued = false;
+        this.fireShock(p);
+      }
       if (p.ejectQueued) {
         p.ejectQueued = false;
         if (this.now - p.lastEjectAt >= RULES.ejectCooldownMs) {
@@ -855,6 +942,8 @@ export class World {
         const bp = b.player;
         if (bp === ap) return;
         if (aShield || bp.shieldUntil > this.now) return;
+        // a shockwave's push never feeds anyone: pushed coins neither eat nor are eaten for a moment
+        if (a.pushedUntil > this.now || b.pushedUntil > this.now) return;
         if (!canEat(a.mass, b.mass) || !coversVictim(a.r, b.r, d)) return;
         const victimTotalBefore = bp.totalMass();
         const last = bp.cells.length === 1;
@@ -960,6 +1049,7 @@ export class World {
       if (p.shieldUntil > this.now) flags |= CellFlag.Shield;
       if (p.magnetUntil > this.now) flags |= CellFlag.Magnet;
       if (p.pumpUntil > this.now) flags |= CellFlag.Pump;
+      if (p.shockFxUntil > this.now) flags |= CellFlag.Shock;
       if (p.afk) flags |= CellFlag.Afk;
       let total = 0;
       for (const c of p.cells) {
