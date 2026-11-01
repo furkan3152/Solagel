@@ -72,6 +72,8 @@ export interface RoomDeps {
   integrity?: IntegrityService;
   /** Testnet staked bots (wallet + real ticket); absent: arenas field zero-value bots only. */
   stakedBots?: StakedBotSource;
+  /** How often an arena room asks the staked-bot source for another ticket (default 3 s; tests: 0). */
+  stakedAskMs?: number;
 }
 
 /** An AFK staker's ticket settled at a round's bell (see `RoomDeps.onBellSettled`). */
@@ -687,7 +689,13 @@ export class Room {
   /* Tick                                                             */
   /* ---------------------------------------------------------------- */
 
+  /**
+   * An idle room stops simulating (no conns, no humans for a minute). Arena rooms with bots never
+   * sleep: their bots keep playing (and buying tickets) every round, so an arena is never empty.
+   * A sleeping room still rings its bell (`syncRound`).
+   */
   get sleeping(): boolean {
+    if (this.ledger && this.bots && this.bots.cap > 0) return false;
     return this.conns.size === 0 && this.humans.size === 0 && Date.now() - this.lastActivity > SLEEP_AFTER_MS;
   }
 
@@ -931,16 +939,34 @@ export class Room {
     return bot.player;
   }
 
-  /** Arena rooms with a staked-bot source: buys one more ticket when the room fields fewer than wanted. */
+  /**
+   * Staked bots this room fields now: the arena's staked target, capped by the room's bot cap and
+   * by the humans present (the make-room rule, `BotManager.desired`). Only an arena's first
+   * instance fields staked bots (extra instances open for humans and close once empty).
+   */
+  stakedTarget(): number {
+    const src = this.deps.stakedBots;
+    const bots = this.bots;
+    if (!src || !bots || !this.ledger || !this.opts.stake || !bots.enabled) return 0;
+    if ((this.opts.instance ?? 1) !== 1) return 0;
+    return Math.max(0, Math.min(src.wanted(this.opts.stake.arenaId), bots.desired(this.humans.size)));
+  }
+
+  /**
+   * Arena rooms with a staked-bot source: buys one more ticket when the room fields fewer than
+   * wanted. Runs every tick (asks at most every 3 s, one purchase at a time), so after a bell, a
+   * bot's death, a failed purchase (the source backs off) or closed joins the room gets back up to
+   * its target on its own. Zero-value bots hold the seats meanwhile.
+   */
   private askStakedBot(): void {
     const src = this.deps.stakedBots;
     const bots = this.bots;
     if (!src || !bots || !this.ledger || !this.opts.stake || this.stakedPending > 0 || !bots.enabled) return;
     const now = Date.now();
-    if (now - this.lastStakedAskAt < STAKED_BOT_ASK_MS) return;
+    if (now - this.lastStakedAskAt < (this.deps.stakedAskMs ?? STAKED_BOT_ASK_MS)) return;
     this.lastStakedAskAt = now;
     const arenaId = this.opts.stake.arenaId;
-    const want = Math.min(src.wanted(arenaId), bots.cap);
+    const want = this.stakedTarget();
     if (bots.stakedCount >= want) return;
     this.stakedPending++;
     void src

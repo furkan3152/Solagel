@@ -204,6 +204,8 @@ export async function createApp(
           const now = roomsRef.now();
           return now < roomsRef.roundWindow(now).joinsCloseAt;
         },
+        // reconciles in-use flags with the rooms and adopts open sessions no room plays
+        liveSessions: () => roomsRef?.liveSessions() ?? new Set<string>(),
         log,
       });
       log(`bots: testnet staked bots on (chain ${botChainId}; ${stakedBots.addresses().length} bot wallet(s) known; the server key must be a TestToken minter and hold HYPE)`);
@@ -269,6 +271,10 @@ export async function createApp(
   // arenas created (or a chain / token that came online) after startup show up in the lobby without a restart
   const arenaTimer = setInterval(() => void rooms.ensureArenaRooms(), 30_000);
   arenaTimer.unref();
+  // staked bots: in-use flags are reconciled with the rooms at boot and every minute
+  stakedBots?.reconcile();
+  const botTimer = stakedBots ? setInterval(() => stakedBots!.reconcile(), 60_000) : null;
+  botTimer?.unref();
 
   let closed = false;
   return {
@@ -300,6 +306,7 @@ export async function createApp(
       closed = true;
       clearInterval(flushTimer);
       clearInterval(arenaTimer);
+      if (botTimer) clearInterval(botTimer);
       rooms.shutdown();
       integrity.close();
       priceKeeper?.stop();
