@@ -456,12 +456,13 @@ export class Journal {
    * Records a failed attempt with exponential backoff (max 5 minutes), or after
    * `opts.delayMs` when given.
    */
-  retryLater(key: string, error: string, now = Date.now(), opts: { delayMs?: number } = {}): void {
+  retryLater(key: string, error: string, now = Date.now(), opts: { delayMs?: number; maxDelayMs?: number } = {}): void {
     const item = this.pendingItems.find((p) => p.key === key);
     if (!item) return;
     item.attempts++;
     item.lastError = error.slice(0, 300);
-    item.nextAttemptAt = now + (opts.delayMs ?? Math.min(300_000, 2000 * 2 ** Math.min(item.attempts, 8)));
+    // `maxDelayMs`: a transient RPC failure (rate limit, timeout) never waits the full 5 minutes
+    item.nextAttemptAt = now + (opts.delayMs ?? Math.min(opts.maxDelayMs ?? 300_000, 300_000, 2000 * 2 ** Math.min(item.attempts, 8)));
     this.persist();
   }
 

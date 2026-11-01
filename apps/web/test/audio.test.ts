@@ -192,13 +192,10 @@ describe('sfx', () => {
       () => sfx.punch(),
       () => sfx.stamp('valid'),
       () => sfx.stamp('paid'),
-      () => sfx.stamp('eaten'),
       () => sfx.tear(),
       () => sfx.whoosh('in'),
       () => sfx.pin('error'),
-      () => sfx.drop(),
       () => sfx.chomp(),
-      () => sfx.death(),
       () => sfx.cashout(),
       () => sfx.roundTick(3),
       () => sfx.bell(),
@@ -357,8 +354,8 @@ describe('announcer', () => {
 
   it('speaks the spec lines in English with a calm voice at the voice bus level', async () => {
     const { a } = await make();
-    expect(a.say('joined', { room: 'Penny Pond' })).toBe(true);
-    expect(spoken[0].text).toBe('Welcome to Penny Pond.');
+    expect(a.say('whale')).toBe(true);
+    expect(spoken[0].text).toBe('Whale alert.');
     expect(spoken[0].voice?.name).toBe('Samantha');
     expect(spoken[0].rate).toBe(1);
     // voice 0.5 × master 0.6

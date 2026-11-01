@@ -3,7 +3,7 @@ import type { ChainStatus, MintContractState, MintProofResponse, MintState, WlEn
 import { motion } from 'motion/react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Address, Hash, Hex } from 'viem';
-import { AddressChip, ArcGauge, Button, CoinCharacter, FoodBit, HypeAmount, Icon, Kb, PlateLabel, QuantityStepper, Seigaiha, StampSpinner, useMoves, useReducedMotion } from '../../design';
+import { AddressChip, ArcGauge, Button, CoinCharacter, FoodBit, HypeAmount, Icon, QuantityStepper, useMoves, useReducedMotion } from '../../design';
 import { SERVER } from '../../config';
 import { explorerTx } from '../../wallet/links';
 import { fetchServerChain, publicClientFor } from '../../wallet/network';
@@ -16,7 +16,10 @@ import { X_URL } from '../settings';
 import { isTestnetChain } from '../serverChain';
 import { SitePage } from '../Shell';
 import { SiteWalletProvider, WalletConnect, WalletSignIn, useSiteSession } from '../wallet/SiteWallet';
-import { EmblemPanel, FoodConfetti, LinkButton, Starburst, MintSky, MintTrack, type TrackStage } from './MintArt';
+import { EmblemPanel, FoodConfetti, LinkButton, Starburst, MintTrack, type TrackStage } from './MintArt';
+import { MintHeadline } from './MintHeadline';
+import { MintSkeleton, NightPlate } from './MintShell';
+import { fetchMintState, readCachedMint, takeEarlyMint } from './mintState';
 import { EmblemHand, Flap, FlipCard, SealBreak } from './MintRitual';
 import { EmblemPerks } from './Perks';
 import {
@@ -33,9 +36,7 @@ import {
   remaining,
   usdText,
   type MintView,
-  type PriceStory,
 } from './logic';
-import './mint.css';
 
 /** The NFT emblem image the server draws for a token id. */
 export const nftImageUrl = (id: bigint | number | string): string => `${SERVER.http}/api/nft/${id.toString()}.svg`;
@@ -140,25 +141,13 @@ function Age({ since }: { since: number }) {
   return <>{s < 60 ? `${s}s ago` : `${Math.floor(s / 60)} min ago`}</>;
 }
 
-/** The night plate every state of the page sits on. */
-function NightPlate({ children, className }: { children: ReactNode; className?: string }) {
-  return (
-    <>
-      <PlateLabel numeral="II" title="The mint, after dark" aside="/mint" className="mt-platelabel" />
-      <Kb theme="night" className={`mt-night${className ? ` ${className}` : ''}`}>
-        <MintSky />
-        {children}
-        <div className="mt-band" aria-hidden="true">
-          <Seigaiha rows={3} r={40} tone="night" />
-        </div>
-      </Kb>
-    </>
-  );
-}
-
 export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
-  const [state, setState] = useState<MintState | null>(null);
-  const [loadedAt, setLoadedAt] = useState(0);
+  // the last state this browser saw paints the card at once; the server's answer replaces it
+  const [cached] = useState(() => readCachedMint());
+  const [state, setState] = useState<MintState | null>(cached?.state ?? null);
+  const [loadedAt, setLoadedAt] = useState(cached?.at ?? 0);
+  /** True once the server answered on this visit (until then the card shows the kept state). */
+  const [fresh, setFresh] = useState(false);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [chain, setChain] = useState<ChainStatus | null>(null);
   const address = useWallet((s) => (s.status === 'connected' ? s.address : null));
@@ -189,16 +178,22 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
   // the server's mint state (and the chain it is on), refreshed while the page is open
   useEffect(() => {
     let live = true;
-    const load = () =>
-      site.mint().then(
+    // the first load takes the request the site entry started with the page's code (no waterfall)
+    let first = true;
+    const load = () => {
+      const p = (first && takeEarlyMint()) || fetchMintState();
+      first = false;
+      return p.then(
         (s) => {
           if (!live) return;
           setState(s);
           setLoadedAt(Date.now());
+          setFresh(true);
           setLoadErr(null);
         },
         (e: Error) => live && setLoadErr(e.message),
       );
+    };
     // the server's chain: asked again on every refresh until it answers (a slow or failed first
     // answer must not leave the mint button disabled for the rest of the visit)
     let retry: number | undefined;
@@ -288,14 +283,8 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
         </div>
       </NightPlate>
     );
-  if (!state)
-    return (
-      <NightPlate className="mt-night--quiet">
-        <div className="mt-wrap mt-wrap--quiet mt-wrap--loading">
-          <StampSpinner label="Loading" />
-        </div>
-      </NightPlate>
-    );
+  // nothing to show yet: the card's layout with stand-in values, not a spinner on an empty plate
+  if (!state) return <MintSkeleton />;
 
   const view = mintView(state);
   const c = state.contract;
@@ -642,7 +631,7 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
 
   return (
     <NightPlate>
-      <div className="mt-wrap mt-page" data-view={view}>
+      <div className="mt-wrap mt-page" data-view={view} data-stale={fresh ? undefined : ''}>
         <div className="mt-copy">
           <span className="kicker mt-kicker">{kicker}</span>
           <MintHeadline story={story} price={c ? hypeText(priceWei) : null} />
@@ -661,77 +650,6 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
         <EmblemPerks perks={emblemPerks(isTestnetChain(chain), { feeBps: chain?.feeBps ?? null })} />
       </div>
     </NightPlate>
-  );
-}
-
-/**
- * The headline and lede, honest about the price: on a testnet the fixed test price (and that
- * mainnet is much cheaper); the "one dollar" story only while the price really tracks a dollar;
- * otherwise the HYPE price as it stands.
- */
-export function MintHeadline({ story, price }: { story: PriceStory; price: string | null }) {
-  if (story === 'testnet')
-    return (
-      <>
-        <h1 className="mt-h display" data-story="testnet">
-          One emblem.
-          <br />
-          {price ? (
-            <>
-              <em>{price} HYPE</em> on testnet.
-            </>
-          ) : (
-            <>
-              A <em>testnet</em> mint.
-            </>
-          )}
-          <br />
-          Many snacks.
-        </h1>
-        <p className="mt-lede">
-          Your emblem is your ticket to the ring. {price ? <>Testnet mint: {price} HYPE, a fixed test price paid in test HYPE.</> : 'The testnet mint is paid in test HYPE.'} We do the arithmetic;
-          you do the eating.
-        </p>
-        <p className="mt-note" data-testid="mt-mainnet-note">
-          The mainnet mint will be much cheaper.
-        </p>
-      </>
-    );
-  if (story === 'dollar')
-    return (
-      <>
-        <h1 className="mt-h display" data-story="dollar">
-          One emblem.
-          <br />
-          One <em>dollar.</em>
-          <br />
-          Many snacks.
-        </h1>
-        <p className="mt-lede">
-          Your emblem is your ticket to the ring. The price is pinned to a dollar and paid in HYPE, so the number on the button wiggles with the market. We do the arithmetic; you do the
-          eating.
-        </p>
-      </>
-    );
-  return (
-    <>
-      <h1 className="mt-h display" data-story="plain">
-        One emblem.
-        <br />
-        {price ? (
-          <>
-            <em>{price} HYPE.</em>
-          </>
-        ) : (
-          <>
-            Paid in <em>HYPE.</em>
-          </>
-        )}
-        <br />
-        Many snacks.
-      </h1>
-      <p className="mt-lede">Your emblem is your ticket to the ring. The price is set on the contract and paid in HYPE. We do the arithmetic; you do the eating.</p>
-    </>
   );
 }
 

@@ -21,7 +21,9 @@ import type {
   MintState,
 } from '@elymum/shared';
 import { getAddress, type Address, type Hash } from 'viem';
+import { ChainCache } from '../chain/chain-cache';
 import type { EvmClient } from '../chain/evm-client';
+import { isRateLimited, withRpcPriority } from '../chain/rpc-budget';
 import { emblemTraits } from './emblem';
 import type { SiteStore } from './store';
 import { SiteFail, userWallet } from './validate';
@@ -32,7 +34,14 @@ const PRICE_TTL_MS = 60_000;
 const PRICE_RETRY_MS = 15_000;
 /** A HYPE/USD reading older than this is not shown (the feed is down). */
 const PRICE_MAX_AGE_MS = 10 * 60_000;
-const STATE_TTL_MS = 15_000;
+/** `mintState()` is re-read in the background when older than this (the page is answered from the cache). */
+const STATE_TTL_MS = 30_000;
+/** After a failed `mintState()` read the next one waits this long (the cached state is served meanwhile). */
+const STATE_RETRY_MS = 15_000;
+/** With nothing cached yet, a page request waits at most this long for the first read (then answers without it). */
+export const FIRST_READ_WAIT_MS = 2_500;
+/** The mint page's last good reads (`DATA_DIR/chains/<id>/mint-cache.json`): served at once after a restart. */
+export const MINT_CACHE_FILE = 'mint-cache.json';
 /** A holder check (`balanceOf`) is reused this long: the game gate re-checks at every arena ticket and round. */
 export const HOLDER_TTL_MS = 15_000;
 /** A negative holder check is reused only this long (a fresh mint must open /play at once). */
@@ -40,7 +49,14 @@ export const HOLDER_MISS_TTL_MS = 2_000;
 /** `royaltyInfo` of the collection (`/api/nft/contract`, an unauthenticated route) is read at most this often. */
 export const ROYALTY_TTL_MS = 5 * 60_000;
 const ROYALTY_RETRY_MS = 30_000;
-const HOLDERS_INDEX_TTL_MS = 30_000;
+/** The holder index polls new `Transfer` logs at most this often (it is only a count on the mint page). */
+export const HOLDERS_INDEX_TTL_MS = 2 * 60_000;
+/** After a failed scan: 1 min, doubling up to 15 min (rate limits must not be hammered). */
+export const HOLDERS_RETRY_MS = 60_000;
+export const HOLDERS_RETRY_MAX_MS = 15 * 60_000;
+/** `Transfer` log requests: blocks per request between these (doubles after a full-width success, halves on a refused range). */
+const HOLDERS_CHUNK_MIN = 100n;
+const HOLDERS_CHUNK_MAX = 500_000n;
 const HOLDERS_LOOKBACK_BLOCKS = 1_000_000n;
 const MAX_HOLDER_CACHE = 20_000;
 const ZERO = '0x0000000000000000000000000000000000000000';
@@ -88,6 +104,12 @@ export class MintService {
   private readonly holderCache = new Map<string, { at: number; value: boolean }>();
   private holders: { nft: string; next: bigint | null; balances: Map<string, number>; at: number } | null = null;
   private holdersScan: Promise<number> | null = null;
+  /** Holder scans failed in a row, and when the next may run. */
+  private holdersFail = { n: 0, until: -Infinity };
+  private holdersChunk: bigint;
+  private stateFailedAt = -Infinity;
+  /** Last good reads on disk (mint state, holder index), so a restart answers the page at once. */
+  private readonly cache: ChainCache;
   private royaltyV: { nft: string; at: number; ttl: number; value: { bps: number; receiver: string } | null } | null = null;
   private royaltyFetch: Promise<{ bps: number; receiver: string } | null> | null = null;
   private snapshotV: AllowlistSnapshot | null = null;
@@ -98,7 +120,25 @@ export class MintService {
   constructor(private readonly deps: MintServiceDeps) {
     this.now = deps.now ?? Date.now;
     this.log = deps.log ?? (() => {});
+    this.holdersChunk = BigInt(Math.max(Number(HOLDERS_CHUNK_MIN), deps.logChunkBlocks));
+    this.cache = ChainCache.in(deps.stateDir, MINT_CACHE_FILE, this.log);
     this.loadSnapshot();
+    this.loadCached();
+  }
+
+  /** The mint state and the holder index kept from before a restart (stale: refreshed in the background). */
+  private loadCached(): void {
+    const st = this.cache.get<{ nft: string; value: ChainMintState }>('state');
+    if (st && typeof st.nft === 'string' && st.value && typeof st.value.totalSupply === 'number') this.state = { nft: st.nft, at: -Infinity, value: st.value };
+    const h = this.cache.get<{ nft: string; next: bigint | null; balances: Record<string, number> }>('holders');
+    if (h && typeof h.nft === 'string' && h.balances && typeof h.balances === 'object') {
+      this.holders = { nft: h.nft, next: typeof h.next === 'bigint' ? h.next : null, balances: new Map(Object.entries(h.balances)), at: -Infinity };
+    }
+  }
+
+  /** Writes the cached reads now (server stop). */
+  flush(): void {
+    this.cache.flush();
   }
 
   /* ---------------------------------------------------------------- */
@@ -208,6 +248,7 @@ export class MintService {
     const now = this.now();
     // a failing feed is asked again at most every 15 s (requests never pile onto it)
     if ((!this.price || now - this.price.at >= PRICE_TTL_MS) && now - this.priceFailedAt >= PRICE_RETRY_MS) {
+      const hadPrice = this.price !== null;
       this.priceFetch ??= this.deps
         .fetchPrice()
         .then((p) => {
@@ -218,7 +259,9 @@ export class MintService {
           this.log(`mint: HYPE/USD feed failed (${(err as Error).message})`);
         })
         .finally(() => (this.priceFetch = null));
-      await this.priceFetch;
+      // stale-while-revalidate: a known price is answered now (re-read in the background)
+      if (hadPrice) void this.priceFetch;
+      else await atMost(this.priceFetch, FIRST_READ_WAIT_MS, undefined);
     }
     return this.price && this.now() - this.price.at < PRICE_MAX_AGE_MS ? { ...this.price } : null;
   }
@@ -238,22 +281,40 @@ export class MintService {
   /* Contract state, holders                                          */
   /* ---------------------------------------------------------------- */
 
-  /** `mintState()` of the registered NFT, cached 15 s (`fresh` re-reads); null without an NFT or a chain. */
+  /**
+   * `mintState()` of the registered NFT; null without an NFT or a chain. Stale-while-revalidate: a cached
+   * state (also one kept from before a restart) is answered at once and re-read in the background when
+   * older than 30 s, so the mint page never waits on a slow or rate-limited RPC. With nothing cached the
+   * first read is awaited at most `FIRST_READ_WAIT_MS`. `fresh` waits for a new read (the mint's own
+   * checks after a transaction).
+   */
   async chainState(fresh = false): Promise<ChainMintState | null> {
     const nft = this.deps.nft();
     const client = this.deps.client();
     if (!nft || !client) return null;
-    const cached = this.state;
-    if (!fresh && cached && cached.nft === nft.address && this.now() - cached.at < STATE_TTL_MS) return cached.value;
-    this.stateFetch ??= client
-      .mintState(nft.address as Address)
+    const cached = this.state && this.state.nft === nft.address ? this.state : null;
+    if (fresh) return this.readState(nft.address, client);
+    if (cached) {
+      if (this.now() - cached.at >= STATE_TTL_MS && this.now() - this.stateFailedAt >= STATE_RETRY_MS) void this.readState(nft.address, client);
+      return cached.value;
+    }
+    if (this.now() - this.stateFailedAt < STATE_RETRY_MS) return null;
+    return atMost(this.readState(nft.address, client), FIRST_READ_WAIT_MS, null);
+  }
+
+  /** One `mintState()` read at a time; resolves with the new state, else the cached one (or null). */
+  private readState(nftAddress: string, client: EvmClient): Promise<ChainMintState | null> {
+    this.stateFetch ??= withRpcPriority('normal', () => client.mintState(nftAddress as Address))
       .then((value) => {
-        this.state = { nft: nft.address, at: this.now(), value };
+        this.state = { nft: nftAddress, at: this.now(), value };
+        this.stateFailedAt = -Infinity;
+        this.cache.set('state', { nft: nftAddress, value });
         return value;
       })
       .catch((err) => {
-        this.log(`mint: mintState of ${nft.address} failed (${(err as Error).message})`);
-        return cached && cached.nft === nft.address ? cached.value : null;
+        this.stateFailedAt = this.now();
+        this.log(`mint: mintState of ${nftAddress} failed (${firstLine(err)})${this.state?.nft === nftAddress ? ' — serving the last good state' : ''}`);
+        return this.state && this.state.nft === nftAddress ? this.state.value : null;
       })
       .finally(() => (this.stateFetch = null));
     return this.stateFetch;
@@ -271,7 +332,7 @@ export class MintService {
     if (!fresh && hit && this.now() - hit.at < (hit.value ? HOLDER_TTL_MS : HOLDER_MISS_TTL_MS)) return hit.value;
     let value: boolean;
     try {
-      value = (await client.nftBalance(nft.address as Address, getAddress(wallet))) > 0n;
+      value = (await withRpcPriority('normal', () => client.nftBalance(nft.address as Address, getAddress(wallet)))) > 0n;
     } catch (err) {
       this.log(`mint: balanceOf failed (${(err as Error).message})`);
       return hit?.value ?? false;
@@ -281,40 +342,69 @@ export class MintService {
     return value;
   }
 
-  /** Distinct holders, from the NFT's `Transfer` logs (indexed incrementally, at most every 30 s). */
+  /**
+   * Distinct holders, from the NFT's `Transfer` logs: indexed incrementally (low RPC priority) at most
+   * every 2 minutes, in adaptive ranges (up to 500k blocks per request while catching up), stopping
+   * when caught up; a failure backs off 1 → 15 min. The index is kept on disk, so a restart resumes
+   * where it stopped. Stale-while-revalidate: the current count is answered at once; only the very
+   * first scan (nothing indexed yet) is awaited, at most `FIRST_READ_WAIT_MS`.
+   */
   async holdersCount(): Promise<number> {
     const nft = this.deps.nft();
     const client = this.deps.client();
     if (!nft || !client) return 0;
-    if (this.holders?.nft !== nft.address) this.holders = { nft: nft.address, next: null, balances: new Map(), at: 0 };
+    if (this.holders?.nft !== nft.address) this.holders = { nft: nft.address, next: null, balances: new Map(), at: -Infinity };
     const h = this.holders;
-    if (this.now() - h.at < HOLDERS_INDEX_TTL_MS) return countHolders(h.balances);
-    this.holdersScan ??= (async () => {
-      try {
-        const latest = await client.blockNumber();
-        if (h.next === null) {
-          let start: bigint | null = null;
-          if (nft.txHash) start = await client.txBlock(nft.txHash as Hash);
-          start ??= await client.deployBlock(nft.address as Address);
-          h.next = start ?? (latest > HOLDERS_LOOKBACK_BLOCKS ? latest - HOLDERS_LOOKBACK_BLOCKS : 0n);
-        }
-        const chunk = BigInt(this.deps.logChunkBlocks);
-        while (h.next! <= latest) {
-          const from: bigint = h.next!;
-          const to: bigint = from + chunk - 1n < latest ? from + chunk - 1n : latest;
-          for (const t of await client.transferLogs(nft.address as Address, from, to)) {
-            if (t.from !== ZERO) h.balances.set(t.from.toLowerCase(), (h.balances.get(t.from.toLowerCase()) ?? 0) - 1);
-            if (t.to !== ZERO) h.balances.set(t.to.toLowerCase(), (h.balances.get(t.to.toLowerCase()) ?? 0) + 1);
-          }
-          h.next = to + 1n;
-        }
-        h.at = this.now();
-      } catch (err) {
-        this.log(`mint: holder index failed (${(err as Error).message})`);
+    const due = this.now() - h.at >= HOLDERS_INDEX_TTL_MS && this.now() >= this.holdersFail.until;
+    if (!due) return countHolders(h.balances);
+    const scan = (this.holdersScan ??= withRpcPriority('low', () => this.scanHolders(nft, client, h)).finally(() => (this.holdersScan = null)));
+    // a first-ever scan is worth a short wait; afterwards the page never waits for the index
+    return h.next === null ? atMost(scan, FIRST_READ_WAIT_MS, countHolders(h.balances)) : countHolders(h.balances);
+  }
+
+  private async scanHolders(
+    nft: { address: string; txHash: string | null },
+    client: EvmClient,
+    h: { nft: string; next: bigint | null; balances: Map<string, number>; at: number },
+  ): Promise<number> {
+    try {
+      const latest = await client.blockNumber();
+      if (h.next === null) {
+        let start: bigint | null = null;
+        if (nft.txHash) start = await client.txBlock(nft.txHash as Hash);
+        start ??= await client.deployBlock(nft.address as Address);
+        h.next = start ?? (latest > HOLDERS_LOOKBACK_BLOCKS ? latest - HOLDERS_LOOKBACK_BLOCKS : 0n);
       }
-      return countHolders(h.balances);
-    })().finally(() => (this.holdersScan = null));
-    return this.holdersScan;
+      while (h.next! <= latest) {
+        const chunk = this.holdersChunk;
+        const from: bigint = h.next!;
+        const to: bigint = from + chunk - 1n < latest ? from + chunk - 1n : latest;
+        let logs;
+        try {
+          logs = await client.transferLogs(nft.address as Address, from, to);
+        } catch (err) {
+          // a refused range (too wide / too many results) is halved; a rate limit is not the range's fault
+          if (!isRateLimited(err) && chunk > HOLDERS_CHUNK_MIN) this.holdersChunk = chunk / 2n > HOLDERS_CHUNK_MIN ? chunk / 2n : HOLDERS_CHUNK_MIN;
+          throw err;
+        }
+        for (const t of logs) {
+          if (t.from !== ZERO) h.balances.set(t.from.toLowerCase(), (h.balances.get(t.from.toLowerCase()) ?? 0) - 1);
+          if (t.to !== ZERO) h.balances.set(t.to.toLowerCase(), (h.balances.get(t.to.toLowerCase()) ?? 0) + 1);
+        }
+        if (to - from + 1n === chunk && chunk < HOLDERS_CHUNK_MAX) this.holdersChunk = chunk * 2n < HOLDERS_CHUNK_MAX ? chunk * 2n : HOLDERS_CHUNK_MAX;
+        h.next = to + 1n;
+      }
+      h.at = this.now();
+      this.holdersFail = { n: 0, until: -Infinity };
+    } catch (err) {
+      const n = this.holdersFail.n + 1;
+      const wait = Math.min(HOLDERS_RETRY_MAX_MS, HOLDERS_RETRY_MS * 2 ** (n - 1));
+      this.holdersFail = { n, until: this.now() + wait };
+      this.log(`mint: holder index failed (${firstLine(err)}); next try in ${Math.round(wait / 1000)} s`);
+    }
+    // what is indexed so far is kept, also across restarts
+    if (h.next !== null) this.cache.set('holders', { nft: h.nft, next: h.next, balances: Object.fromEntries(h.balances) });
+    return countHolders(h.balances);
   }
 
   /** `GET /api/site/mint`. */
@@ -424,6 +514,20 @@ export class MintService {
       ...(royalty && royalty.bps > 0 ? { seller_fee_basis_points: royalty.bps, fee_recipient: royalty.receiver } : {}),
     };
   }
+}
+
+const firstLine = (err: unknown): string => String((err as Error)?.message ?? err).split('\n')[0].slice(0, 240);
+
+/** `p`, or `fallback` when it takes longer than `ms` (p keeps running). */
+function atMost<T, F>(p: Promise<T>, ms: number, fallback: F): Promise<T | F> {
+  let timer: NodeJS.Timeout | undefined;
+  return Promise.race([
+    p,
+    new Promise<F>((resolve) => {
+      timer = setTimeout(() => resolve(fallback), ms);
+      timer.unref();
+    }),
+  ]).finally(() => clearTimeout(timer));
 }
 
 function countHolders(balances: Map<string, number>): number {

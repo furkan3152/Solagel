@@ -1034,7 +1034,7 @@
   flex: 1 1 auto;
 }
 
-/* ── Eaten. ───────────────────────────────────────────────────────────── */
+/* ── Game over ───────────────────────────────────────────────────────────── */
 .g-death__title,
 .g-roundover__title {
   display: inline-block;
@@ -1047,22 +1047,24 @@
 }
 .g-death__title {
   color: var(--down-ink);
+  font-size: clamp(52px, 9vw, 72px);
+  text-transform: uppercase;
 }
 .g-death__body {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 12px;
 }
 .g-death__who {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 18px;
+  gap: 14px;
 }
 .g-death__scene {
   position: relative;
-  width: 168px;
-  height: 112px;
+  width: 108px;
+  height: 72px;
 }
 .g-death__killer {
   position: absolute;
@@ -1084,29 +1086,20 @@
   border-top: var(--stroke) solid var(--outline);
   border-radius: 2px;
 }
-.g-death__said {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
 .g-death__line {
   font-family: var(--font-display);
   font-variation-settings: var(--fv-display);
-  font-weight: 800;
-  font-size: 23px;
-  line-height: 1.1;
-  letter-spacing: -0.01em;
-}
-.g-death__quip {
+  font-weight: 700;
+  font-size: 17px;
+  line-height: 1.2;
   color: var(--ink-2);
-  font-size: 15px;
 }
 .g-death__loss {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
-  gap: 8px 22px;
-  padding: 12px 16px;
+  gap: 6px 22px;
+  padding: 8px 12px;
   border: var(--stroke-sm) solid var(--outline);
   border-radius: var(--r-card);
   background: #ffe1dc;
@@ -1126,7 +1119,7 @@
   gap: 6px;
 }
 .g-death__amount {
-  font-size: 30px;
+  font-size: 22px;
   line-height: 1.05;
   color: var(--down-ink);
 }
@@ -1159,6 +1152,16 @@
   font-variant-numeric: tabular-nums;
   font-size: 22px;
   line-height: 1.2;
+}
+
+.g-stats--small > div {
+  padding: 6px 10px 5px 0;
+}
+.g-stats--small dt {
+  font-size: 10px;
+}
+.g-stats--small dd {
+  font-size: 15px;
 }
 
 .g-link {
@@ -1552,4 +1555,14 @@
   line-height: 15px;
   letter-spacing: 0.06em;
   vertical-align: 1px;
+}
+
+/* the tape on the sheet's top-left corner sits over the kicker's first letters: nudge it clear */
+.g-death .kb-sheet__kicker {
+  padding-left: 46px;
+}
+@media (max-width: 640px) {
+  .g-death .kb-sheet__kicker {
+    padding-left: 0;
+  }
 }

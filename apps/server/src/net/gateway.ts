@@ -16,7 +16,7 @@ import {
 } from '@elymum/shared';
 import { WebSocketServer, type RawData, type WebSocket } from 'ws';
 import type { Auth } from '../auth';
-import type { ChainGateway, SettledEvent } from '../chain/types';
+import { ChainBusyError, type ChainGateway, type ChainSession, type SettledEvent } from '../chain/types';
 import type { ServerConfig } from '../config';
 import type { ProfileStore } from '../profiles';
 import type { RoomManager } from '../rooms/manager';
@@ -52,6 +52,14 @@ export function clientIp(req: IncomingMessage, hops: number | boolean): string {
   }
   return req.socket.remoteAddress ?? 'unknown';
 }
+
+/**
+ * A paid join whose ticket read fails because the RPC is busy is retried after these delays (on top of
+ * the RPC budget's own 429 retries); the player hears "network busy, retrying" once.
+ */
+export const JOIN_CHAIN_RETRY_MS = [2_000, 4_000, 8_000];
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms).unref());
 
 function toBytes(data: RawData): Uint8Array {
   if (Array.isArray(data)) return new Uint8Array(Buffer.concat(data));
@@ -280,8 +288,9 @@ export class Gateway {
         return;
       case 'spectate': {
         if (await this.gameClosed(conn)) return;
+        // an arena instance not (or no longer) open here resolves to its arena's first instance
         const room =
-          typeof msg.room === 'string' ? this.rooms.rooms.get(msg.room) : (conn.room ?? this.rooms.lobbyRoom());
+          typeof msg.room === 'string' ? await this.rooms.spectateRoom(msg.room) : (conn.room ?? this.rooms.lobbyRoom());
         if (!room) {
           this.error(conn, 'room_not_found', 'Room not found');
           return;
@@ -414,12 +423,48 @@ export class Gateway {
         this.error(conn, 'banned', 'This wallet is banned from paid arenas after an integrity review. Practice is open.');
         return;
       }
-      let room = await this.rooms.arenaRoom(target.arenaId);
-      if (!room) {
-        this.error(conn, 'room_not_found', 'Arena not available.');
-        return;
+      try {
+        await this.joinArena(conn, target.arenaId, { name, skin, flags, avatar });
+      } catch (err) {
+        if (!(err instanceof ChainBusyError)) throw err;
+        // the RPC refused us even after the retries: the ticket is untouched on chain, the player tries again
+        this.log(`join: arena #${target.arenaId} for ${conn.wallet} — ${err.message}`);
+        this.error(conn, 'chain_busy', 'The network is busy. Your ticket is safe on chain: press Resume again in a moment.');
       }
-      // a ticket lives in exactly one instance of its arena
+    } finally {
+      conn.joining = false;
+    }
+  }
+
+  /**
+   * The ticket read of a paid join: on `ChainBusyError` (RPC rate-limited) it is retried after
+   * `JOIN_CHAIN_RETRY_MS`, and the player is told once that the network is busy. Throws
+   * `ChainBusyError` when every try failed (or the connection closed meanwhile).
+   */
+  private async sessionWithRetry(conn: Conn, arenaId: number, wallet: string): Promise<ChainSession | null> {
+    let told = false;
+    for (let i = 0; ; i++) {
+      try {
+        return await this.chain.getSession(arenaId, wallet);
+      } catch (err) {
+        if (!(err instanceof ChainBusyError) || i >= JOIN_CHAIN_RETRY_MS.length || conn.ws.readyState > 1) throw err;
+        if (!told) {
+          told = true;
+          this.error(conn, 'chain_busy', 'The network is busy, retrying your ticket…');
+        }
+        await sleep(JOIN_CHAIN_RETRY_MS[i]);
+      }
+    }
+  }
+
+  /** The arena part of a join (the caller checked the wallet, the gate and the ban). Throws `ChainBusyError`. */
+  private async joinArena(conn: Conn, arenaId: number, look: { name: string; skin: number; flags: number; avatar: string | null }): Promise<void> {
+    if (!conn.wallet) return;
+    const wallet = conn.wallet;
+    const target = { arenaId };
+    const { name, skin, flags, avatar } = look;
+    {
+      // a live ticket comes back first, with no chain read at all: its coin is in this process already
       const existing = this.rooms.findArenaStake(target.arenaId, conn.wallet);
       if (existing) {
         if (conn.player === null && existing.room.reattach(conn, existing.entry.pid)) return;
@@ -431,6 +476,12 @@ export class Gateway {
         this.error(conn, 'session_busy', 'You are already playing in this arena.');
         return;
       }
+      let room = await this.rooms.arenaRoom(target.arenaId);
+      if (!room) {
+        this.error(conn, 'room_not_found', 'Arena not available.');
+        return;
+      }
+      if (!conn.wallet) return; // signed out during the await
       // a player back after a bell that settled their ticket while they were away (AFK)
       const bell = this.rooms.bellSettled(target.arenaId, conn.wallet);
       if (bell) {
@@ -451,7 +502,8 @@ export class Gateway {
         this.error(conn, 'rate_limited', 'Too many join attempts — wait a moment.');
         return;
       }
-      const session = await this.chain.getSession(target.arenaId, conn.wallet);
+      const session = await this.sessionWithRetry(conn, target.arenaId, conn.wallet);
+      if (!conn.wallet || conn.wallet !== wallet) return; // signed out (or in as another wallet) during the retries
       if (!session) {
         this.error(conn, 'no_session', 'No open arena ticket found for your wallet.');
         return;
@@ -511,8 +563,6 @@ export class Gateway {
           openedAt: session.openedAt,
         },
       });
-    } finally {
-      conn.joining = false;
     }
   }
 }

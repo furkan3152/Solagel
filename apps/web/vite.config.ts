@@ -38,9 +38,19 @@ export default defineConfig({
     sourcemap: false,
     chunkSizeWarningLimit: 1200,
     rollupOptions: {
+      // The workspace SDK's modules have no import-time side effects (ABIs, constants, functions):
+      // marked so, a page that only needs its constants (the landing quotes fee and refund numbers)
+      // does not pull in its viem-based clients. The SDK's package.json has no `sideEffects` field.
+      treeshake: {
+        moduleSideEffects: (id: string) => !/[\\/]packages[\\/](sdk|contracts)[\\/]/.test(id),
+      },
       output: {
         // long-term cacheable vendor chunks
         manualChunks(id: string) {
+          // Vite's dynamic-import preload helper: its own tiny chunk. Left alone, the bundler can
+          // place it inside the viem chunk, and then the entry (which needs the helper for every
+          // page's `import()`) downloads all of viem before any page starts.
+          if (id.includes('vite/preload-helper') || id.includes('vite/modulepreload-polyfill')) return 'preload';
           if (!id.includes('node_modules')) return undefined;
           // package roots only (`node_modules/<pkg>/`): viem and its crypto / ABI dependencies in one cacheable chunk
           if (/node_modules[\\/](viem|ox|abitype|@noble|@scure|isows)[\\/]/.test(id)) return 'viem';

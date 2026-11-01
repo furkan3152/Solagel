@@ -1,7 +1,6 @@
 import { CARD_PAPER, ELYSIUM, INK, RISO } from '@elymum/art';
 import {
   PowerUpType,
-  arenaMeta,
   clamp,
   formatToken,
   encodeEject,
@@ -465,10 +464,7 @@ export class GameEngine {
         this.world.reset();
         this.clearHeld();
         this.life = { bites: 0, streak: 0, streakAt: -Infinity, whale: false };
-        if (prevPid !== m.playerId) {
-          const where = m.room.mode === 'arena' && m.room.arenaId !== undefined ? arenaMeta(m.room.arenaId).name : t('an.practice');
-          announce('joined', { room: where });
-        }
+        // no join sound or welcome line: the owner turned the start sounds off
         this.world.myPid = m.playerId;
         this.world.width = m.room.width;
         this.world.height = m.room.height;
@@ -550,8 +546,7 @@ export class GameEngine {
           // a bot ate a staker: the tokens spill onto the map
           if (m.stats.byBot && (m.stats.lootSpilled ?? 0) > 0) this.particles.coinBurst(me.x, me.y, Math.max(60, me.maxR), 22);
         }
-        sound.death();
-        announce('eaten');
+        // no death sound or announcer line (turned off on purpose): the ink splash says it
         this.world.myPid = null;
         this.wasArena = null;
         useUi.setState({
@@ -857,9 +852,8 @@ export class GameEngine {
       this.camera.follow(me.x, me.y, short, dt, this.snapNext);
       this.snapNext = false;
       if (this.drop && !this.drop.rung && (now - this.drop.at) / (DUR.drop * 1000) >= DROP_LAND) {
-        // the coin lands: an ink ring goes off on the paper
+        // the coin lands: an ink ring goes off on the paper (silently: the start sounds are off)
         this.drop.rung = true;
-        sound.drop();
         this.particles.ring(me.x, me.y, Math.max(40, me.maxR * 1.25), INK);
         this.particles.dots(me.x, me.y, Math.max(40, me.maxR), RISO.fluoPink, 8);
       }

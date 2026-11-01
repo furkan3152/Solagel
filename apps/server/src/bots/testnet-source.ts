@@ -5,6 +5,7 @@ import { concat, getAddress, keccak256, numberToHex, parseEther, parseUnits, toH
 import { privateKeyToAccount } from 'viem/accounts';
 import type { EvmClient } from '../chain/evm-client';
 import { LOW_BALANCE_WEI } from '../chain/evm';
+import { withRpcPriority } from '../chain/rpc-budget';
 import { CHAIN_FILES, isTestChain } from '../chain/state-dir';
 import { sessionKey } from '../chain/types';
 import type { Journal, SettleReason, SettlementItem } from '../stake/journal';
@@ -19,8 +20,11 @@ export const MAX_BOT_WALLETS = 256;
 export const SPARE_BOT_WALLETS = 4;
 /** Ticket purchases running at once (each is a few transactions). */
 const MAX_CONCURRENT = 3;
-const ARENA_TTL_MS = 30_000;
-const CHECK_TTL_MS = 60_000;
+const ARENA_TTL_MS = 60_000;
+/** The server key's minter right is re-read this often (it changes only by an admin action). */
+const CHECK_TTL_MS = 10 * 60_000;
+/** Ticket purchases per minute over every arena, unless the deps say otherwise (`BOT_TICKETS_PER_MIN`). */
+export const BOT_TICKETS_PER_MIN = 4;
 const HOLDER_TTL_MS = 5 * 60_000;
 const WARN_EVERY_MS = 10 * 60_000;
 const RECEIPT_TIMEOUT_MS = 60_000;
@@ -92,6 +96,14 @@ export interface TestnetBotDeps {
   now?: () => number;
   receiptTimeoutMs?: number;
   maxWallets?: number;
+  /**
+   * The current arena round (a number that changes at every bell). With it each arena buys at most
+   * its staked target of tickets per round: a bot that dies is not replaced before the next round
+   * (zero-value bots hold the seat), so bots no longer re-buy after every death.
+   */
+  round?: () => number;
+  /** Purchases per minute over every arena (default `BOT_TICKETS_PER_MIN`; 0 stops purchases). */
+  maxTicketsPerMinute?: number;
 }
 
 /** What `/api/admin/bots` shows of the staked bots. */
@@ -107,6 +119,9 @@ export interface StakedBotStatus {
 }
 
 class Blocked extends Error {}
+
+/** The chain and contracts a purchase works with. */
+type BotCtx = { client: EvmClient; arena: Address; token: Address; decimals: number; chainId: number };
 
 /**
  * Testnet staked bots (2026-10-31 spec, section 2): implements `StakedBotSource` on the Elysium
@@ -146,6 +161,10 @@ export class TestnetBotSource implements StakedBotSource {
   /** Wallets a purchase is running for (one at a time per wallet). */
   private readonly locked = new Set<string>();
   private running = 0;
+  /** Per arena: tickets bought in the current round. */
+  private readonly roundBuys = new Map<number, { round: number; n: number }>();
+  /** When the purchases of the last minute were made (the global per-minute cap). */
+  private readonly buyTimes: number[] = [];
   private readonly arenaCache = new Map<number, { at: number; value: ArenaInfo }>();
   private readonly holderCache = new Map<string, { at: number; value: boolean }>();
   private minter: { at: number; token: string; value: boolean } | null = null;
@@ -248,7 +267,7 @@ export class TestnetBotSource implements StakedBotSource {
   /* ---------------------------------------------------------------- */
 
   /** The chain and contracts when staked bots may play now; null otherwise. */
-  private context(): { client: EvmClient; arena: Address; token: Address; decimals: number; chainId: number } | null {
+  private context(): BotCtx | null {
     const c = this.deps.chain();
     const client = this.deps.client();
     if (!client || !isTestChain(c.chainId) || !c.stakeEnabled || !c.arena || !c.token) return null;
@@ -274,6 +293,37 @@ export class TestnetBotSource implements StakedBotSource {
     return this.deps.settings.stakedWanted(arenaId);
   }
 
+  /**
+   * The purchase caps (no RPC): at most `maxTicketsPerMinute` over every arena, and per arena at most
+   * its staked target per round (`deps.round`). A bot that dies mid-round is replaced at the next round.
+   */
+  private purchaseAllowed(arenaId: number): boolean {
+    const now = this.now();
+    while (this.buyTimes.length > 0 && now - this.buyTimes[0] >= 60_000) this.buyTimes.shift();
+    const perMin = this.deps.maxTicketsPerMinute ?? BOT_TICKETS_PER_MIN;
+    if (this.buyTimes.length >= perMin) return false;
+    if (this.deps.round) {
+      const r = this.deps.round();
+      const e = this.roundBuys.get(arenaId);
+      if (e && e.round === r && e.n >= this.deps.settings.stakedWanted(arenaId)) return false;
+    }
+    return true;
+  }
+
+  private noteBuy(arenaId: number): void {
+    this.buyTimes.push(this.now());
+    if (!this.deps.round) return;
+    const r = this.deps.round();
+    const e = this.roundBuys.get(arenaId);
+    this.roundBuys.set(arenaId, e && e.round === r ? { round: r, n: e.n + 1 } : { round: r, n: 1 });
+  }
+
+  /** Tickets bought in the last minute (status, tests). */
+  purchasesLastMinute(): number {
+    const now = this.now();
+    return this.buyTimes.filter((t) => now - t < 60_000).length;
+  }
+
   async acquire(arenaId: number, roomId: string): Promise<StakedBotTicket | null> {
     const ctx = this.context();
     if (!ctx || this.running >= MAX_CONCURRENT) return null;
@@ -281,7 +331,15 @@ export class TestnetBotSource implements StakedBotSource {
     const now = this.now();
     const b = this.backoff.get(arenaId);
     if (b && now < b.until) return null;
-    if (now - this.lastReconcileAt >= RECONCILE_EVERY_MS) this.reconcile();
+    if (!this.purchaseAllowed(arenaId)) return null;
+    // bot purchases are the lowest priority on the RPC: joins, settlements and sweeps go first
+    return withRpcPriority('low', () => this.acquireNow(ctx, arenaId, roomId));
+  }
+
+  private async acquireNow(ctx: BotCtx, arenaId: number, roomId: string): Promise<StakedBotTicket | null> {
+    const b = this.backoff.get(arenaId);
+    if (this.now() - this.lastReconcileAt >= RECONCILE_EVERY_MS) this.reconcile();
+    // counted before the first await: `acquire` checks it synchronously
     this.running++;
     let wallet: BotWallet | null = null;
     try {
@@ -301,6 +359,7 @@ export class TestnetBotSource implements StakedBotSource {
       }
       wallet = pick.wallet;
       const ticket = pick.adopt ? this.ticketOf(ctx, wallet, pick.adopt) : await this.buy(ctx, wallet, arena);
+      if (!pick.adopt) this.noteBuy(arenaId);
       this.problemV = null;
       this.backoff.delete(arenaId);
       this.playing.set(`${wallet.address.toLowerCase()}:${arenaId}`, { session: ticket.stake.session, at: this.now() });
@@ -478,7 +537,12 @@ export class TestnetBotSource implements StakedBotSource {
     const testnet = this.deps.settings.settings.testnet;
     // gas: top up to `gasHype` when below half of it, from the server key
     const gasWant = parseEther(testnet.gasHype);
-    const gas = await client.balance(w.address);
+    // the three reads at once (the token reads merge into one multicall)
+    const [gas, balance, allowance] = await Promise.all([
+      client.balance(w.address),
+      client.tokenBalance(ctx.token, w.address),
+      client.allowance(ctx.token, w.address, ctx.arena),
+    ]);
     if (gas < gasWant / 2n) {
       const top = gasWant - gas;
       const server = await client.balance(this.serverAddress);
@@ -492,14 +556,13 @@ export class TestnetBotSource implements StakedBotSource {
     // bankroll: mint up to the arena's bankroll when below half of it (or below one ticket)
     const bankroll = parseUnits(this.deps.settings.bankroll(arena.id), ctx.decimals);
     if (bankroll < arena.entryFee) throw new Blocked(`the bot bankroll of arena #${arena.id} is below its entry fee: raise it in /admin → Bots`);
-    const balance = await client.tokenBalance(ctx.token, w.address);
     if (balance < arena.entryFee || balance < bankroll / 2n) {
       const server = await client.balance(this.serverAddress);
       if (server < LOW_BALANCE_WEI) throw new Blocked(`the server key ${this.serverAddress} is out of HYPE (${formatHypeAmount(server)} HYPE): fund it to run staked bots`);
       if (bankroll > balance) await this.wait(client, await client.send(testTokenMintCall(ctx.token, w.address, bankroll - balance)));
     }
     const bot = client.signer(w.key);
-    if ((await client.allowance(ctx.token, w.address, ctx.arena)) < arena.entryFee) {
+    if (allowance < arena.entryFee) {
       await this.wait(client, await bot.send(approveCall(ctx.token, ctx.arena, MAX_UINT256)));
     }
     await this.wait(client, await bot.send(joinCall(ctx.arena, arena.id)));
