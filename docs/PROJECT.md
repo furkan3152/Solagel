@@ -37,9 +37,9 @@ the code is laid out and how it is run. The source of truth for everything is
 | Simulation and snapshot rate | 30 ticks per second, authoritative server |
 | Start mass | 20 |
 | Eating | needs at least 1.25 × the victim's mass and enough overlap (the victim must be mostly covered) |
-| Speed | `1900 · r^-0.44`, so bigger coins are slower |
-| Split (`Space`) | needs at least 35 mass; up to 16 cells; launch speed 1250; halves merge back after 12 s + 15 ms per unit of mass |
-| Eject mass (`W`) | needs at least 35 mass; costs 18 and throws a 14-mass blob |
+| Speed | `2185 · r^-0.44` up to radius 100 (mass 100), then a gentler `r^-0.3` falloff, so bigger coins are slower (about 410 u/s at start size) |
+| Split (`Space`) | needs at least 35 mass; up to 16 cells; launch speed 1440 (about 450 units of flight); halves merge back after 12 s + 15 ms per unit of mass |
+| Eject mass (`W`) | needs at least 35 mass; costs 18 and throws a 14-mass blob at 1150 u/s |
 | Viruses (spiky cacti) | mass 100. A coin at least 1.33 × that size pops into as many as 15 pieces. Feeding a virus 198 mass makes it shoot a new one. |
 | Decay | above 150 mass you lose 0.15 %/s, plus an extra term that grows with total mass, so giants melt faster |
 | Maximum cell mass | 12,000 |
@@ -57,6 +57,19 @@ the code is laid out and how it is run. The source of truth for everything is
 | Drop mass | `W` (can be held) | tip button |
 | Chat / sticker | `Enter` / `1`–`8` | chat / sticker buttons |
 | Next player while spectating | `Q` | |
+
+### 2.2.1 Bots
+
+- Three difficulties (easy, medium, hard), mixed per room kind by the admin (rookie league: 70 % easy, 30 % medium).
+  Bots react with a delay (about 450 / 260 / 150 ms), slip now and then, and treat bots and people alike; people who
+  joined less than 25 s ago are spared.
+- They judge threats by observed speed and split reach (hard bots also expect double splits), flee along walls
+  instead of into corners, hide behind thorn bushes when small, split-kill when the landing is safe (hard bots
+  double-split), regroup before merging, ignore bait, and head for dense coin fields.
+- Mass cap per room kind (admin, `/api/admin/bots` `massCap`, 0 = none): rookie league 300, pro league and arenas
+  2,500, private rooms none. A bot sheds what it eats past the cap within a second or two.
+- `pnpm -F @elymum/server bot-bench <room|rookie|duel> [minutes] [seeds]` measures tick cost, newcomer survival,
+  virus deaths, stuck time and new-vs-old duels headlessly.
 
 ### 2.3 Value inside an arena (off-chain ledger)
 

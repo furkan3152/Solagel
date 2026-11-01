@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit",
     "sim": "tsx scripts/sim.ts",
     "integrity-sim": "tsx scripts/integrity-sim.ts",
+    "bot-bench": "tsx scripts/bench/bot-bench.ts",
     "e2e": "tsx scripts/e2e.ts"
   },
   "dependencies": {

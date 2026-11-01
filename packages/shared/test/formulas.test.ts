@@ -54,6 +54,20 @@ describe('formulas', () => {
     expect(speedForRadius(r(10_000))).toBeGreaterThan(old(10_000) * 1.3);
   });
 
+  it('movement is 15 % faster than the 1900 base at every size; split, eject and virus shots scale with it', () => {
+    const r = (mass: number) => massToRadius(mass);
+    // the previous curve: 1900 · r^-0.44 up to the knee, r^-0.3 past it
+    const knee = 1900 * Math.pow(RULES.speedKneeR, -0.44);
+    const prev = (rr: number) => (rr <= RULES.speedKneeR ? 1900 * Math.pow(rr, -0.44) : knee * Math.pow(rr / RULES.speedKneeR, -0.3));
+    for (const m of [10, 20, 50, 100, 300, 1000, 2500, 10_000]) expect(speedForRadius(r(m)) / prev(r(m))).toBeCloseTo(1.15, 2);
+    // start-size coin: about 410 u/s (was ~357)
+    expect(speedForRadius(r(RULES.startMass))).toBeGreaterThan(400);
+    expect(speedForRadius(r(RULES.startMass))).toBeLessThan(420);
+    expect(RULES.splitSpeed / 1250).toBeCloseTo(1.15, 2);
+    expect(RULES.ejectSpeed / 1000).toBeCloseTo(1.15, 2);
+    expect(RULES.virusShootSpeed / 1100).toBeCloseTo(1.15, 2);
+  });
+
   it('eat rules', () => {
     expect(canEat(125, 100)).toBe(true);
     expect(canEat(124.9, 100)).toBe(false);
