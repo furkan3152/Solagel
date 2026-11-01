@@ -5,6 +5,7 @@ import { memo, useEffect, useRef, useState } from 'react';
 import { Counter, DUR, Icon, Stamp, springs, useReducedMotion } from '../../design';
 import { engine } from '../../game/instance';
 import { BotTag } from './BotTag';
+import { BoostBar } from './BoostBar';
 import { useT } from '../../i18n';
 import { openModal, useUi } from '../../store';
 import { useTicker } from '../ticker';
@@ -373,6 +374,7 @@ function KeyHints() {
   const t = useT();
   const showChat = useUi((s) => s.settings.showChat);
   const chatOpen = useUi((s) => s.chatOpen);
+  const hasBoosts = useUi((s) => !!s.boosts?.signedIn);
   return (
     <div className="g-keys mono" aria-label={t('g.keysLabel')}>
       <span className="g-keys__item">
@@ -387,6 +389,13 @@ function KeyHints() {
       <span className="g-keys__item">
         <kbd className="kb-key">1–8</kbd> {t('g.emotes').toLowerCase()}
       </span>
+      {hasBoosts && (
+        <span className="g-keys__item">
+          <kbd className="kb-key">R</kbd>
+          <kbd className="kb-key">F</kbd>
+          <kbd className="kb-key">G</kbd> {t('boost.label').toLowerCase()}
+        </span>
+      )}
       {showChat && !chatOpen && (
         <button type="button" className="g-keys__item g-keys__chat" onClick={() => useUi.setState({ chatOpen: true })}>
           <kbd className="kb-key">{t('g.key.enter')}</kbd> {t('g.chat').toLowerCase()}
@@ -475,6 +484,7 @@ export function GameHud() {
       {playing && !touch && (
         <>
           <div className="g-dock">
+            <BoostBar />
             <EmoteBar />
           </div>
           {!narrow && <KeyHints />}

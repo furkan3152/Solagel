@@ -4,6 +4,7 @@ import { Icon, usePreset } from '../../design';
 import { engine } from '../../game/instance';
 import { useT } from '../../i18n';
 import { useUi } from '../../store';
+import { BoostBar } from './BoostBar';
 import { EmoteBar } from './EmoteBar';
 
 const TOUCH_QUERY = '(hover: none) and (pointer: coarse)';
@@ -70,6 +71,7 @@ export function MobileControls() {
           </svg>
         </div>
       </div>
+      <BoostBar touch />
       <div className="g-touch">
         <button type="button" className="g-touch__btn is-split" onPointerDown={() => engine()?.split()} aria-label={t('hud.split')}>
           <Icon name="split" size={26} />

@@ -10,6 +10,9 @@ import { Limiter } from '../net/limiter';
 import { ProfileError, type ProfileStore } from '../profiles';
 import type { Journal } from '../stake/journal';
 import type { HolderReader } from '../chain/evm-client';
+import { ShopFail, type ShopService } from '../shop/service';
+import { ShopSettingsError, type ShopSettingsStore } from '../shop/settings';
+import type { BoostInventory } from '../shop/inventory';
 import { botRoutes, type BotAdmin } from './bots';
 import { customRoomAdminRoutes, customRoomRoutes } from './custom-rooms';
 import type { CustomRoomService } from '../rooms/custom';
@@ -140,6 +143,9 @@ export class SiteApi {
   private bots: BotAdmin | null = null;
   /** Custom rooms (`/api/rooms/custom/*`, `/api/admin/custom-rooms`); absent in bare unit tests. */
   private customRooms: CustomRoomService | null = null;
+  /** The power-up shop (`/api/shop`, `/api/shop/buy`, `/api/admin/shop`); absent in bare unit tests. */
+  private shop: { service: ShopService; settings: ShopSettingsStore; inventory: BoostInventory } | null = null;
+  private readonly shopBuys = new Limiter(30, 60_000);
   /** Told when a wallet's picture is removed or replaced (live rooms drop it from the coin). */
   private avatarChanged: ((wallet: string) => void) | null = null;
   private readonly avatarIp: Limiter;
@@ -172,6 +178,10 @@ export class SiteApi {
 
   setCustomRooms(svc: CustomRoomService | null): void {
     this.customRooms = svc;
+  }
+
+  setShop(shop: { service: ShopService; settings: ShopSettingsStore; inventory: BoostInventory } | null): void {
+    this.shop = shop;
   }
 
   /** Admin wallets compare case-insensitively (stored checksummed). */
@@ -226,12 +236,15 @@ export class SiteApi {
       path === '/api/profile' ||
       path === '/api/profile/avatar' ||
       path === '/api/rooms/custom' ||
-      path.startsWith('/api/rooms/custom/');
+      path.startsWith('/api/rooms/custom/') ||
+      path === '/api/shop' ||
+      path === '/api/shop/buy';
     if (!mine) return false;
     try {
       if (path === '/api/auth/login' || path === '/api/auth/me') await this.authRoutes(req, res, path, ip);
       else if (path === '/api/profile') await this.profileRoutes(req, res, ip);
       else if (path === '/api/profile/avatar') await this.uploadRoutes(req, res, ip);
+      else if (path === '/api/shop' || path === '/api/shop/buy') await this.shopRoutes(req, res, path, ip);
       else if (path.startsWith('/api/avatar/')) this.serveAvatar(req, res, path.slice('/api/avatar/'.length));
       else if (path.startsWith('/api/nft/')) await this.nftRoutes(req, res, url);
       else if (path.startsWith('/api/site/')) await this.siteRoutes(req, res, url, ip);
@@ -272,6 +285,30 @@ export class SiteApi {
       typeof address === 'string' && typeof message === 'string' && typeof signature === 'string' ? await this.auth.verifySignature(address, message, signature) : null;
     if (!wallet) throw new SiteFail(401, 'auth_failed', 'Wallet sign-in failed. Please sign again.');
     send(res, 200, { address: wallet, token: this.auth.issueToken(wallet), admin: this.isAdmin(wallet) });
+  }
+
+  /**
+   * `GET /api/shop` (the packs priced for the signed-in wallet, public prices without a session) and
+   * `POST /api/shop/buy {kind, txHash}` (signed-in): verifies the game-token payment on chain and
+   * credits the pack. Refusals answer `{ error: ShopBuyError, message }`.
+   */
+  private async shopRoutes(req: IncomingMessage, res: ServerResponse, path: string, ip: string): Promise<void> {
+    const shop = this.shop;
+    if (!shop) throw new SiteFail(404, 'not_found', 'Not found');
+    if (path === '/api/shop') {
+      this.method(req, 'GET');
+      return send(res, 200, await shop.service.view(bearerWallet(this.auth, req)));
+    }
+    this.method(req, 'POST');
+    const wallet = this.session(req);
+    if (!this.shopBuys.allow(wallet) || !this.shopBuys.allow(`ip:${ip}`)) throw new SiteFail(429, 'rate_limited', 'Too many purchases at once. Wait a moment.');
+    const body = await readJson(req);
+    try {
+      return send(res, 200, await shop.service.buy(wallet, body));
+    } catch (err) {
+      if (err instanceof ShopFail) return send(res, err.status, { error: err.code, message: err.message });
+      throw err;
+    }
   }
 
   /** Skin ids a wallet may pick: the basic skins, plus the emblem skin for holders. */
@@ -602,6 +639,28 @@ export class SiteApi {
       case 'bots':
         if (seg.length !== 1 || !this.bots) break;
         return botRoutes(this.bots, { send, method: (r, ...m) => this.method(r, ...m), readJson: (r) => readJson(r) }, req, res, wallet);
+      case 'shop': {
+        // power-up prices, the sink (burn or treasury), on/off per power-up and the arena limits; plus recent purchases
+        const shop = this.shop;
+        if (seg.length !== 1 || !shop) break;
+        if (this.method(req, 'GET', 'PUT') === 'PUT') {
+          try {
+            shop.settings.update(await readJson(req));
+          } catch (err) {
+            if (err instanceof ShopSettingsError) throw new SiteFail(400, 'bad_request', err.message, err.field);
+            throw err;
+          }
+          this.ext.log?.(`shop: settings updated by ${wallet}`);
+        }
+        return send(res, 200, {
+          settings: shop.settings.settings,
+          defaults: shop.settings.defaults,
+          sink: shop.service.sink(),
+          owner: this.cfg.adminWallets[0] ?? null,
+          purchases: shop.inventory.recent(Number(q.get('limit') ?? 30) || 30),
+          purchaseCount: shop.inventory.purchaseCount,
+        });
+      }
       case 'settings':
         if (seg.length !== 1) break;
         if (this.method(req, 'GET', 'PUT') === 'PUT') s.updateSettings(await readJson(req));

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { SiteApiError, type BotAdminView, type BotKindSettings, type BotSettingsPatch } from '../site/api';
 import { ArenaTab } from './ArenaTab';
 import { CustomRoomsCard } from './CustomRoomsCard';
+import { ShopCard } from './ShopCard';
 import { GAME_ACCESS_LABEL } from './site/SettingsTab';
 import { Btn, Card, FormError, NeedsSession, type ChainCtx } from './ui';
 
@@ -427,6 +428,7 @@ export function GameTab({ ctx }: { ctx: ChainCtx }) {
       <StartStopCard ctx={ctx} />
       <BotsCard ctx={ctx} arenaIds={arenaIds.length ? arenaIds : [1, 2, 3, 4]} />
       <CustomRoomsCard ctx={ctx} />
+      <ShopCard ctx={ctx} />
       <h2 className="ad-h3 ad-section-h">The arena contract</h2>
       <ArenaTab ctx={ctx} />
     </div>

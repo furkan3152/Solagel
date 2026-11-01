@@ -318,6 +318,9 @@ export class Gateway {
       case 'cashout':
         conn.room?.cashout(conn);
         return;
+      case 'boost':
+        conn.room?.boost(conn, msg.kind);
+        return;
       case 'ping':
         conn.send({ t: 'pong', ts: Number(msg.ts) || 0, serverTime: Date.now(), serverNow: this.rooms.now() });
         return;

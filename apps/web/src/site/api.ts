@@ -2,6 +2,8 @@ import type {
   CustomRoomSettings,
   CustomRoomView,
   AdminAvatarEntry,
+  BoostKind,
+  ShopSettings,
   IntegrityBan,
   IntegrityFlag,
   IntegrityFlagKind,
@@ -257,6 +259,10 @@ export function adminApi(token: string) {
     saveCustomRooms: (patch: Partial<CustomRoomSettings>) => request<CustomRoomsAdminView>('/api/admin/custom-rooms', { method: 'PUT', token, body: patch }),
     /** `DELETE /api/admin/custom-rooms/<CODE>`: closes a live room (everyone in it goes back to the lobby). */
     closeCustomRoom: (code: string) => request<{ closed: CustomRoomView; rooms: CustomRoomView[] }>(`/api/admin/custom-rooms/${id(code)}`, { method: 'DELETE', token }),
+    /** `GET /api/admin/shop`: power-up prices, sink, limits and the recent purchases. */
+    shop: () => request<ShopAdminView>('/api/admin/shop', { token }),
+    /** `PUT /api/admin/shop`: a partial settings update; answers like the GET. */
+    saveShop: (patch: Partial<ShopSettings>) => request<ShopAdminView>('/api/admin/shop', { method: 'PUT', token, body: patch }),
     /**
      * `POST /api/admin/mint/import-holders` (`{ fromChainId? }`, default the testnet): adds every
      * testnet emblem holder to the mainnet allowlist, recorded per wallet with the source.
@@ -324,6 +330,31 @@ function integrityApi(token: string) {
   };
 }
 export type IntegrityApi = ReturnType<typeof integrityApi>;
+
+/* ── power-up shop (`/api/admin/shop`) ─────────────────────────────── */
+
+/** One credited power-up purchase. */
+export interface ShopPurchase {
+  tx: string;
+  wallet: string;
+  kind: BoostKind;
+  charges: number;
+  /** Raw base units (decimal string). */
+  paid: string;
+  at: number;
+}
+
+/** `GET /api/admin/shop`. */
+export interface ShopAdminView {
+  settings: ShopSettings;
+  defaults: ShopSettings;
+  /** Where payments go now (null: treasury chosen but no owner wallet). */
+  sink: string | null;
+  /** The first `ADMIN_WALLETS` entry (the treasury when none is set). */
+  owner: string | null;
+  purchases: ShopPurchase[];
+  purchaseCount: number;
+}
 
 /* ── bots (`/api/admin/bots`) ─────────────────────────────────────── */
 

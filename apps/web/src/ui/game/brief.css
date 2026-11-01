@@ -156,3 +156,10 @@
 .g-howto__brief {
   margin-top: 10px;
 }
+
+.g-brief__boosts {
+  margin: 8px 0 0;
+  color: var(--ink-3);
+  font-size: 12px;
+  line-height: 1.4;
+}

@@ -96,6 +96,23 @@ export interface ServerKeyInfo {
   low: boolean;
 }
 
+/** An ERC-20 `Transfer` log of a receipt. */
+export interface TokenTransfer {
+  /** The token contract that emitted the log (EIP-55). */
+  token: string;
+  from: string;
+  to: string;
+  /** Raw base units. */
+  value: bigint;
+}
+
+/** What a power-up purchase is checked against: a mined transaction's status and its ERC-20 transfers. */
+export interface TokenReceipt {
+  status: 'success' | 'reverted';
+  blockNumber: bigint;
+  transfers: TokenTransfer[];
+}
+
 /** Everything the rooms need from the chain. `NullChain` is used when it is off. */
 export interface ChainGateway {
   /** The server talks to an EVM RPC (`EVM_RPC_URL` reachable). */
@@ -139,6 +156,12 @@ export interface ChainGateway {
   evm?(): EvmClient | null;
   /** Re-reads the registry and the arena config now (after a registry change). */
   refresh?(): Promise<void>;
+  /**
+   * The ERC-20 transfers of a mined transaction (power-up purchases); null when it is not mined (or
+   * unknown). One receipt read at `normal` priority through the RPC budget. Throws `ChainBusyError`
+   * when the RPC refuses the read. Absent when the chain is off.
+   */
+  tokenReceipt?(hash: string): Promise<TokenReceipt | null>;
   start(): Promise<void>;
   stop(): Promise<void>;
 }

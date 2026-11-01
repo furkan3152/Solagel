@@ -1,0 +1,160 @@
+/* ── power-up shop (ShopSheet.tsx): three die-cut pack stickers ── */
+.kb-sheet.sh-sheet:not(.is-bottom) {
+  width: min(620px, 100%);
+}
+.sh-lede {
+  margin: 0 0 10px;
+  color: var(--ink-2);
+  font-size: 15px;
+  line-height: 1.45;
+}
+.sh-hint {
+  margin: 0 0 14px;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+.sh-holder {
+  margin: 0 0 14px;
+}
+.sh-closed {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border: var(--stroke-sm) dashed var(--outline);
+  border-radius: 12px;
+  background: var(--mist);
+  color: var(--ink);
+  font-size: 14px;
+}
+.sh-packs {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sh-pack {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px 10px 10px;
+  border: var(--stroke) solid var(--outline);
+  border-radius: 18px;
+  background: var(--sticker);
+  color: var(--on-sticker, var(--ink));
+  box-shadow: var(--sh-2);
+}
+.sh-pack:nth-child(2) {
+  transform: rotate(-0.4deg);
+}
+.sh-pack:nth-child(3) {
+  transform: rotate(0.35deg);
+}
+.sh-pack.is-off {
+  opacity: 0.55;
+}
+.sh-pack__glyph {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border: var(--stroke) solid var(--outline);
+  border-radius: 50%;
+  background: #fbe3dc;
+}
+.sh-pack--shock .sh-pack__glyph {
+  background: #dff3f9;
+}
+.sh-pack--speed .sh-pack__glyph {
+  background: #fdf0c8;
+}
+.sh-pack__glyph svg {
+  width: 28px;
+  height: 28px;
+  fill: none;
+  stroke: #04181c;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.sh-pack__key {
+  position: absolute;
+  right: -6px;
+  bottom: -4px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 4px;
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: 6px;
+  background: var(--sticker);
+  color: #04181c;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+.sh-pack__name {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 19px;
+  line-height: 1.1;
+}
+.sh-pack__note {
+  margin: 2px 0 4px;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.35;
+}
+.sh-pack__meta {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 11px;
+}
+.sh-pack__buy {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+}
+.sh-pack__was {
+  color: var(--ink-3);
+  font-size: 11px;
+}
+.sh-signin {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  margin-top: 16px;
+}
+.sh-signin p {
+  margin: 0;
+}
+.sh-foot {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 11px;
+  line-height: 1.4;
+}
+@media (max-width: 520px) {
+  .sh-pack {
+    grid-template-columns: 52px minmax(0, 1fr);
+  }
+  .sh-pack__glyph {
+    width: 48px;
+    height: 48px;
+  }
+  .sh-pack__buy {
+    grid-column: 1 / -1;
+    justify-items: stretch;
+  }
+}
+
+/* the lobby masthead's shop button (a bolt, like the HUD's speed glyph) */
+.kl-mast__shopicon {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}

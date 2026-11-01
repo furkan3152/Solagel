@@ -12,6 +12,7 @@ import { Lobby } from './ui/lobby/Lobby';
 import { Toasts } from './ui/Toasts';
 import { WalletModal } from './wallet/WalletModal';
 import { BellMoment, DeathMoment, DeathSheet, FirstPlayBrief, GameHud, HowToSheet, RoundOverSheet, SettingsSheet } from './ui/game';
+import { ShopSheet } from './ui/shop/ShopSheet';
 import { GameClosedSheet } from './ui/gate/GameClosedSheet';
 
 function GameCanvas() {
@@ -62,6 +63,7 @@ function Screens() {
         <SettingsSheet />
         <HowToSheet />
         <FirstPlayBrief />
+        <ShopSheet />
         <WalletModal />
         <GameClosedSheet />
         <Toasts />

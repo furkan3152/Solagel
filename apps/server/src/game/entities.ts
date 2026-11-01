@@ -37,6 +37,8 @@ export class Cell extends Entity {
   mergeAt: number;
   /** Own-cell collisions are skipped until this time. */
   noCollideUntil = 0;
+  /** Pushed by a shockwave: it neither eats nor is eaten by another coin until this time. */
+  pushedUntil = 0;
   flags = 0;
 
   constructor(
@@ -171,6 +173,10 @@ export class Player {
   magnetUntil = 0;
   pumpUntil = 0;
   shieldUntil = 0;
+  /** A bought Shockwave fires at the start of the next tick. */
+  shockQueued = false;
+  /** The shockwave ring shows (`CellFlag.Shock`) until this time. */
+  shockFxUntil = 0;
   /** Stake rooms: disconnected and waiting for a reconnect. */
   afk = false;
 

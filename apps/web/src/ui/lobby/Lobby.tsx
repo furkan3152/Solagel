@@ -28,6 +28,7 @@ import { signInWithWallet } from '../../wallet/signIn';
 import { TicketFlow, type FlowMode } from '../../wallet/TicketFlow';
 import { bpsPercent, feeBps, sessionsToCollect, type TicketKey } from '../../wallet/ticket';
 import { WalletButton } from '../../wallet/WalletButton';
+import { BOOST_PATH } from '../game/BoostBar';
 import { goPage, openModal, updateSettings, useUi, type LobbyPage } from '../../store';
 import { DocsPage } from '../docs/DocsPage';
 import { Leaderboards } from '../news/Leaderboards';
@@ -471,6 +472,11 @@ function Masthead({ full, wide, page, onPage }: { full: boolean; wide: boolean; 
             <Icon name="settings" size={20} />
           </button>
         )}
+        <button type="button" className="kb-iconbtn kl-mast__shop" aria-label={t('boost.openShop')} title={t('boost.openShop')} onClick={() => openModal('shop')} data-testid="lobby-shop">
+          <svg viewBox="0 0 24 24" width={20} height={20} aria-hidden="true" className="kl-mast__shopicon">
+            <path d={BOOST_PATH.speed} />
+          </svg>
+        </button>
         <WalletButton />
       </div>
     </header>

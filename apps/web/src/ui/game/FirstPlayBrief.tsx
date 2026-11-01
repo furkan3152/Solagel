@@ -115,6 +115,7 @@ export function FirstPlayBrief() {
         </Step>
       </ol>
       <p className={`g-brief__note${arena ? ' is-arena' : ''}`}>{arena ? t('brief.arena') : t('brief.practice')}</p>
+      <p className="g-brief__boosts mono">{touch ? t('brief.boosts.touch') : t('brief.boosts.keys')}</p>
     </Sheet>
   );
 }

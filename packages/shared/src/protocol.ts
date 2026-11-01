@@ -1,3 +1,4 @@
+import type { BoostKind, BoostRefusal, BoostState } from './boosts';
 import type { League, RoomMode } from './constants';
 import type { CustomRoomSummary } from './custom-rooms';
 
@@ -31,6 +32,11 @@ export const CellFlag = {
   Magnet: 4,
   Pump: 8,
   Afk: 16,
+  /**
+   * The player just fired a bought Shockwave (`BOOST_RULES.shock.fxMs`): viewers draw a ring out to
+   * `shockRange(r)` from the flag's rising edge. Old clients ignore the bit.
+   */
+  Shock: 32,
 } as const;
 
 /** Per-player flags carried in snapshots. */
@@ -248,6 +254,8 @@ export type ClientMessage =
   | { t: 'chat'; text: string }
   | { t: 'emote'; id: number }
   | { t: 'cashout' }
+  /** Use one charge of a bought power-up (signed-in players; the server checks charges, cooldown and the arena's round cap). */
+  | { t: 'boost'; kind: BoostKind }
   | { t: 'ping'; ts: number };
 
 export interface LbEntry {
@@ -383,6 +391,11 @@ export type ServerMessage =
   | { t: 'event'; kind: 'coinrain'; state: 'start' | 'end'; ms?: number }
   | { t: 'event'; kind: 'airdrop'; state: 'start'; x: number; y: number; powerUp: PowerUpType }
   | { t: 'powerup'; type: PowerUpType; ms: number }
+  // Bought power-ups: the player's charges, cooldowns and arena allowance (on join, after a use or a purchase).
+  | { t: 'boosts'; state: BoostState }
+  // The answer to `boost`: used (`ms`: how long the effect lasts, 0 for the instant shockwave) or refused.
+  | { t: 'boost'; kind: BoostKind; ok: true; ms: number }
+  | { t: 'boost'; kind: BoostKind; ok: false; reason: BoostRefusal }
   | { t: 'xp'; xp: number; level: number }
   | { t: 'history'; chat: { pid: number; from: string; skin: number; text: string; system?: boolean }[] }
   | { t: 'rooms'; rooms: RoomInfo[]; online: number; blocked?: BlockedArena[] }
