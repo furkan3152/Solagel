@@ -231,7 +231,7 @@ const PANELS: Record<string, [Panel, Panel, Panel]> = {
     () => (
       <g>
         <Ground />
-        {/* the till at the bell: the entry back, the profit on top; a thin slice of profit goes to the fee wallet */}
+        {/* the till at the bell: the stake (the entry minus its fee) and what was eaten on top, all paid; the fee slice left at the entry */}
         <rect x={40} y={64} width={64} height={44} rx={4} fill={ELYSIUM.sand2} {...ln} strokeWidth={2} />
         <rect x={40} y={26} width={64} height={38} rx={4} fill={ELYSIUM.sun} {...ln} strokeWidth={2} />
         <g className="cs-slice">
@@ -239,10 +239,10 @@ const PANELS: Record<string, [Panel, Panel, Panel]> = {
         </g>
         <path d="M112 86 h12 M112 45 h12" stroke={INK} strokeWidth={1.4} strokeDasharray="2 3" />
         <text x={128} y={90} className="cs-note">
-          entry
+          stake
         </text>
         <text x={128} y={49} className="cs-note">
-          profit
+          eaten
         </text>
         <rect x={118} y={6} width={42} height={20} rx={5} fill={ELYSIUM.cream} {...ln} strokeWidth={2} />
         <text x={139} y={20} textAnchor="middle" className="cs-note">
@@ -335,7 +335,7 @@ const PANELS: Record<string, [Panel, Panel, Panel]> = {
 
 /**
  * The comic strip that opens a handbook section: three small panels of coins acting out the
- * rule (eat smaller, the ticket, the bell, the fee on profit...). Each panel loops a short
+ * rule (eat smaller, the ticket, the bell, the fee on the entry...). Each panel loops a short
  * scene while it is on screen; under reduced motion the panels stand still. The captions are
  * real text (content.en.ts), the drawings are decoration.
  */

@@ -179,7 +179,7 @@ describe('EvmChain on a hardhat node', () => {
     chain.onStatusChange(() => changes++);
     await chain.refresh();
     expect(changes).toBe(1);
-    expect(chain.status()).toMatchObject({ tokenReady: true, arenasEnabled: true, token: { address: token, decimals: 18 }, feeBps: 500 });
+    expect(chain.status()).toMatchObject({ tokenReady: true, arenasEnabled: true, token: { address: token, decimals: 18 }, feeBps: 500, feeModel: 'entry' });
     expect((await chain.listArenas(true)).map((a) => [a.id, a.entryFee])).toEqual([
       [1, K],
       [2, 10 * K],
@@ -198,7 +198,8 @@ describe('EvmChain on a hardhat node', () => {
     }
     const s1 = (await chain.getSession(1, p1.address))!;
     const s2 = (await chain.getSession(1, p2.address.toLowerCase()))!;
-    expect(s1).toMatchObject({ key: sessionKey(1, p1.address, s1.id), player: p1.address, entryFee: K, finalized: false });
+    // the bundled (v2) arena reserves the 5 % fee at the entry: the ticket plays 950
+    expect(s1).toMatchObject({ key: sessionKey(1, p1.address, s1.id), player: p1.address, entryFee: K, value: 950 * 1e6, feeBps: 500, finalized: false });
     expect(s2.id).toBe(s1.id + 1);
     const before1 = await getTokenBalance(client, token, p1.address);
     const item = (s: typeof s1, payout: number, createdAt: number): SettlementItem => ({
@@ -217,17 +218,18 @@ describe('EvmChain on a hardhat node', () => {
       nextAttemptAt: 0,
       createdAt,
     });
-    // p1 ate half of p2: 1,500 / 500 tokens
-    journal.commit({ enqueue: [item(s1, 1.5 * K, 1), item(s2, 0.5 * K, 2)] });
+    // p1 ate half of p2: 1,425 / 475 tokens (the two tickets played 950 each)
+    journal.commit({ enqueue: [item(s1, 1_425 * 1e6, 1), item(s2, 475 * 1e6, 2)] });
     await chain.processPending();
     expect(journal.pending).toHaveLength(0);
+    // both paid 5 % of their entry; nothing is deducted from a payout
     expect(settled.map((e) => [e.player, e.payout, e.fee])).toEqual([
-      [p1.address, 1.5 * K, 25 * 1e6],
-      [p2.address, 0.5 * K, 0],
+      [p1.address, 1_425 * 1e6, 50 * 1e6],
+      [p2.address, 475 * 1e6, 50 * 1e6],
     ]);
     expect(settled[0].txHash).toBe(settled[1].txHash); // one batch
-    expect(await getTokenBalance(client, token, p1.address)).toBe(before1 + 1_475n * T);
-    expect(await getTokenBalance(client, token, feeWallet.address)).toBe(25n * T);
+    expect(await getTokenBalance(client, token, p1.address)).toBe(before1 + 1_425n * T);
+    expect(await getTokenBalance(client, token, feeWallet.address)).toBe(100n * T);
     expect((await getSession(client, arena, 1, p1.address)).id).toBe(0n);
     expect((await getArena(client, arena, 1)).vault).toBe(0n);
   }, 60_000);
@@ -236,10 +238,10 @@ describe('EvmChain on a hardhat node', () => {
     if (!up) return ctx.skip();
     for (const call of (await planJoin(client, { arena, arenaId: 1, player: p1.address, token })).calls) await send(p1.address, call);
     const s = (await chain.getSession(1, p1.address))!;
-    // p1 lost 100 tokens to a bot (spilled as loot nobody picked up): paid 900, the loot is burned
+    // p1 lost 100 of its 950 to a bot (spilled as loot nobody picked up): paid 850, the loot is burned
     journal.commit({
       enqueue: [
-        { kind: 'settle', key: s.key, player: s.player, arenaId: 1, session: s.key, sessionId: s.id, payout: 0.9 * K, score: 1, kills: 0, xp: 1, reason: 'round', attempts: 0, nextAttemptAt: 0, createdAt: 3 },
+        { kind: 'settle', key: s.key, player: s.player, arenaId: 1, session: s.key, sessionId: s.id, payout: 850 * 1e6, score: 1, kills: 0, xp: 1, reason: 'round', attempts: 0, nextAttemptAt: 0, createdAt: 3 },
         { kind: 'sweep', key: sweepKey('arena-1-1', 9), arenaId: 1, roomId: 'arena-1-1', round: 9, amount: 100 * 1e6, attempts: 0, nextAttemptAt: 0, createdAt: 4 },
       ],
     });
@@ -252,20 +254,23 @@ describe('EvmChain on a hardhat node', () => {
     expect(logs.join('\n')).toMatch(/burned 100 \$ELYMUM loot of arena-1-1 \(round 9\) · sweep #1/);
   }, 60_000);
 
-  it('the stale sweeper finds unplayed tickets in the Joined logs and settles them at the entry fee', async (ctx) => {
+  it('the stale sweeper finds unplayed tickets in the Joined logs and cancels them: the full entry fee back', async (ctx) => {
     if (!up) return ctx.skip();
     for (const call of (await planJoin(client, { arena, arenaId: 2, player: p2.address, token })).calls) await send(p2.address, call);
     expect(await chain.sweepStale()).toBe(0); // fresh tickets are not stale
     skewMs = 3_600_000;
     const before2 = await getTokenBalance(client, token, p2.address);
     expect(await chain.sweepStale()).toBe(1); // every arena-1 ticket was settled: only p2's in arena 2
-    expect(journal.settlements().map((s) => [s.player, s.arenaId, s.payout, s.reason])).toEqual([[p2.address, 2, 10 * K, 'stale']]);
+    // the journal counts what leaves the vault (the ticket's 9,500 value); `cancel` returns the reserved fee too
+    expect(journal.settlements().map((s) => [s.player, s.arenaId, s.payout, s.reason])).toEqual([[p2.address, 2, 9_500 * 1e6, 'stale']]);
+    const fees2 = await getTokenBalance(client, token, feeWallet.address);
     await chain.processPending();
     expect(journal.pending).toHaveLength(0);
     expect(await getTokenBalance(client, token, p2.address)).toBe(before2 + 10_000n * T);
     expect((await getSession(client, arena, 2, p2.address)).id).toBe(0n);
-    expect(settled.at(-1)).toMatchObject({ player: p2.address, arenaId: 2, payout: 10 * K, fee: 0 });
+    expect(settled.at(-1)).toMatchObject({ player: p2.address, arenaId: 2, payout: 10 * K, fee: 0, refund: true });
     expect((await getArena(client, arena, 2)).vault).toBe(0n);
+    expect(await getTokenBalance(client, token, feeWallet.address)).toBe(fees2); // no fee for an unplayed ticket
     expect(await chain.sweepStale()).toBe(0);
     await chain.stop();
   }, 60_000);
@@ -352,10 +357,11 @@ describe('testnet staked bots on a hardhat node', () => {
       name: 'human',
       skin: 1,
       flags: PlayerFlag.Staker,
-      stake: { player: p1.address, session: s.key, sessionId: s.id, arenaId: 1, entryFee: s.entryFee, value: s.entryFee, openedAt: s.openedAt },
+      stake: { player: p1.address, session: s.key, sessionId: s.id, arenaId: 1, entryFee: s.entryFee, value: s.value, openedAt: s.openedAt },
     });
     eat(room, human, staked[0].player);
-    expect(room.ledger!.value(human.id)).toBe(2 * K);
+    // both tickets played 950 (bots pay the 5 % fee like players)
+    expect(room.ledger!.value(human.id)).toBe(1_900 * 1e6);
     expect(journal.settlements().find((i) => i.player === bot1)).toMatchObject({ reason: 'death', payout: 0 });
 
     // the bell settles the human and bot 2 with everyone; the chain worker pays out in one pass
@@ -364,15 +370,15 @@ describe('testnet staked bots on a hardhat node', () => {
     room.tick(TICK_MS);
     expect(journal.settlements().filter((i) => i.reason === 'round').map((i) => [i.player, i.payout]).sort()).toEqual(
       [
-        [p1.address, 2 * K],
-        [bot2, K],
+        [p1.address, 1_900 * 1e6],
+        [bot2, 950 * 1e6],
       ].sort(),
     );
     await chain.processPending();
     expect(journal.pending).toHaveLength(0);
-    expect(await getTokenBalance(client, token, p1.address)).toBe(before1 + 1_950n * T);
+    expect(await getTokenBalance(client, token, p1.address)).toBe(before1 + 1_900n * T);
     expect(await getTokenBalance(client, token, bot1)).toBe(4_000n * T);
-    expect(await getTokenBalance(client, token, bot2)).toBe(5_000n * T);
+    expect(await getTokenBalance(client, token, bot2)).toBe(4_950n * T);
     for (const b of [bot1, bot2, p1.address]) expect((await getSession(client, arena, 1, b)).id).toBe(0n);
     expect((await getArena(client, arena, 1)).vault).toBe(0n);
     await chain.stop();

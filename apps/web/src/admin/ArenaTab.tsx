@@ -1,4 +1,4 @@
-import { createArenaCall, formatHypeAmount, rescueCall, setFeeBpsCall, setFeeWalletCall, setServerAuthorityCall, sweepArenaCall, updateArenaFrom } from '@elymum/sdk';
+import { createArenaCall, deployArenaParams, formatHypeAmount, rescueCall, setFeeBpsCall, setFeeWalletCall, setServerAuthorityCall, sweepArenaCall, updateArenaFrom } from '@elymum/sdk';
 import {
   SWEEP_WARNING,
   arenaName,
@@ -17,6 +17,7 @@ import { sameAddress } from '@elymum/sdk';
 import { useState } from 'react';
 import type { Address } from 'viem';
 import { DefaultArenas, SetTokenForm } from './DeployTab';
+import { arenaDeployArgs, saveLocalDeploy } from './deploy';
 import type { Plan } from './plan';
 import { Addr, Advanced, Btn, Card, FormError, Input, Row, useFormError, type ChainCtx } from './ui';
 
@@ -76,6 +77,8 @@ export function ArenaTab({ ctx }: { ctx: ChainCtx }) {
         <dl className="ad-kv">
           <Row label="Contract">
             <Addr value={arena} net={ctx.net} /> <span className={`ad-code mono${a.code === 'ok' ? ' is-ok' : ' is-bad'}`}>{a.code === 'ok' ? 'code hash ok' : `code ${a.code}`}</span>
+            {a.version === 1 && <span className="ad-code mono is-bad">legacy v1 · fee on profit</span>}
+            {a.version === 2 && <span className="ad-code mono is-ok">v2 · fee on entry</span>}
           </Row>
           <Row label="Owner">
             <Addr value={cfg.admin} net={ctx.net} />
@@ -102,7 +105,8 @@ export function ArenaTab({ ctx }: { ctx: ChainCtx }) {
             )}
           </Row>
           <Row label="Fee">
-            <span className="num">{cfg.feeBps} bps</span> <span className="ad-role">{fmtPct(cfg.feeBps)} of profit</span>
+            <span className="num">{cfg.feeBps} bps</span>{' '}
+            <span className="ad-role">{a.version === 1 ? `${fmtPct(cfg.feeBps)} of profit (legacy v1 arena)` : `${fmtPct(cfg.feeBps)} of every played entry fee`}</span>
           </Row>
           <Row label="Paused">{cfg.paused ? <strong className="ad-bad">PAUSED: joins blocked</strong> : 'no'}</Row>
           <Row label="Token">{cfg.token ? <><Addr value={cfg.token} net={ctx.net} /> <span className="ad-role num">{d} decimals{sym}</span></> : <span className="ad-none">not set</span>}</Row>
@@ -144,6 +148,7 @@ export function ArenaTab({ ctx }: { ctx: ChainCtx }) {
           </div>
         )}
       </Card>
+      {a.version === 1 && <LegacyArenaCard ctx={ctx} />}
       {serverMismatch && <SwitchCard ctx={ctx} open={open} serverMismatch={serverMismatch} />}
       <Advanced title="Advanced: arena contract controls" testId="arena-advanced" section>
         <div className="ad-mint__forms">
@@ -163,6 +168,66 @@ export function ArenaTab({ ctx }: { ctx: ChainCtx }) {
 }
 
 type OpenFn = (title: string, call: Plan['call'], extra?: Partial<Plan>) => void;
+
+/**
+ * The registered arena is the legacy v1 build (fee on profit). The fee rule lives in the contract's code, so the
+ * only way to the fee-on-entry rule is a new arena: what a redeploy means, step by step.
+ */
+function LegacyArenaCard({ ctx }: { ctx: ChainCtx }) {
+  const [err, guard, setErr] = useFormError();
+  const [done, setDone] = useState<string | null>(null);
+  const deploy = () =>
+    guard(() => {
+      const params = deployArenaParams(arenaDeployArgs(ctx.me, ctx.net.serverKey));
+      ctx.open({
+        title: 'Deploy the new ElymumArena (v2: fee on entry)',
+        contract: 'ElymumArena',
+        deploy: { name: 'ElymumArena', params },
+        onDone: async ({ address, hash }) => {
+          if (!address || !ctx.net.info) return;
+          saveLocalDeploy(ctx.net.info.id, 'arena', { address, txHash: hash });
+          if (!ctx.api) {
+            setDone(`Deployed at ${address}. Sign in as the admin, then register it (Setup → Register a contract that is already deployed).`);
+            return;
+          }
+          try {
+            await ctx.api.registerContract({ kind: 'arena', address, txHash: hash });
+            setDone(`New arena ${address} registered: set the game token and create the arenas (Setup).`);
+            await ctx.reloadNet();
+            await ctx.refresh();
+          } catch (e) {
+            setErr(`Deployed at ${address}, but the server did not switch yet: ${(e as Error).message} Register it later (Setup → Register a contract that is already deployed).`);
+          }
+        },
+      });
+    });
+  return (
+    <Card
+      title="This arena takes the fee on profit (legacy v1)"
+      id="arena-legacy"
+      tone="danger"
+      lede="The new fee rule (the fee comes off every played entry fee, win or lose; unplayed tickets are refunded in full) needs the new ElymumArena contract. It cannot be switched on this one: redeploy the arena to migrate."
+    >
+      <ol className="ad-steps">
+        <li>Close every arena here (Start / stop) and wait until every open ticket is settled (the open-ticket column at 0; unplayed tickets are refunded by the server within about 15 minutes).</li>
+        <li>Still on this (old) arena: sweep each disabled arena's vault to the fee wallet (Advanced → sweep). What is left there is loot dust and rounding; payouts waiting to be collected stay reserved for their players and remain collectable on the old address.</li>
+        <li>Deploy the new arena (the button below, the bundled v2 contract; it gets a NEW address). It registers with the server by itself: the server switches only when its journal owes nothing on the old arena (step 1) and reads the new fee rule by itself.</li>
+        <li>Setup: set the same game token on the new arena, create the four arenas, set the holder perks (and holders-only #4) and, if wanted, the fee wallet again.</li>
+        <li>On testnet, the staked bots buy their tickets on the new arena by themselves: no re-funding needed (their wallets keep their tokens; the bankroll is minted again when low).</li>
+        <li>If the server has ARENA_ADDRESS set (Render), it overrides the registry: change it to the new address instead.</li>
+      </ol>
+      <Btn sun icon="arrow" onClick={deploy} testId="redeploy-arena">
+        Preview the new arena deploy
+      </Btn>
+      {done && (
+        <p className="ad-ok" role="status">
+          {done}
+        </p>
+      )}
+      <FormError error={err} />
+    </Card>
+  );
+}
 
 function ArenaEdit({ ctx, open }: { ctx: ChainCtx; open: OpenFn }) {
   const a = ctx.status!.arena!;
@@ -224,14 +289,30 @@ function ArenaEdit({ ctx, open }: { ctx: ChainCtx; open: OpenFn }) {
 
 function FeeCard({ ctx, open }: { ctx: ChainCtx; open: OpenFn }) {
   const cfg = ctx.status!.arena!.config!;
+  const legacy = ctx.status!.arena!.version === 1;
   const arena = ctx.net.arenaAddress!;
   const [bps, setBps] = useState(String(cfg.feeBps));
   const [wallet, setWallet] = useState<string>(cfg.feeWallet);
   const [err, guard] = useFormError();
   return (
-    <Card title="Fee" id="arena-config" kicker={`Now ${cfg.feeBps} bps`} lede="Taken from profit only, never from a stake. At most 1000 bps (10 %).">
+    <Card
+      title="Fee"
+      id="arena-config"
+      kicker={`Now ${cfg.feeBps} bps`}
+      lede={
+        legacy
+          ? 'This legacy (v1) arena takes the fee from profit only. Redeploy the arena to take it from every entry. At most 1000 bps (10 %).'
+          : 'Taken from the entry fee of every played ticket, win or lose (an unplayed ticket is refunded in full). New tickets only; open ones keep their rate. At most 1000 bps (10 %).'
+      }
+    >
       <div className="ad-inlineform">
-        <Input label="Fee on profit" suffix="bps" value={bps} onChange={setBps} hint={`${(Number(bps) / 100 || 0).toFixed(2)} % of profit`} />
+        <Input
+          label={legacy ? 'Fee on profit' : 'Fee on each entry'}
+          suffix="bps"
+          value={bps}
+          onChange={setBps}
+          hint={`${(Number(bps) / 100 || 0).toFixed(2)} % of ${legacy ? 'profit' : 'the entry fee'}`}
+        />
         <Btn onClick={() => guard(() => open('Set the fee', setFeeBpsCall(arena, parseIntInput('Fee (bps)', bps, 0, 1000))))}>Preview fee</Btn>
       </div>
       <div className="ad-inlineform">

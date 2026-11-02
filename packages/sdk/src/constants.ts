@@ -8,7 +8,7 @@
 export const BPS = 10_000;
 /** Upper bound of the arena's `feeBps` (10 %). */
 export const MAX_FEE_BPS = 1_000;
-/** Fee on profit a freshly deployed arena starts with (5 %). */
+/** Fee (of every ticket's entry fee) a freshly deployed arena starts with (5 %). */
 export const DEFAULT_FEE_BPS = 500;
 /** Bounds of `maxSessions` (open tickets per arena). */
 export const MIN_ARENA_SESSIONS = 2;

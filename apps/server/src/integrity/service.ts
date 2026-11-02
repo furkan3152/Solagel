@@ -200,13 +200,19 @@ export class IntegrityService {
   }
 
   /** A staker joined an arena instance. */
-  join(room: MonitorRoom, pid: number, conn: { ip: string; fp: string | null }, t: { player: string; session: string; sessionId: number; arenaId: number; entryFee: number }): void {
+  join(
+    room: MonitorRoom,
+    pid: number,
+    conn: { ip: string; fp: string | null },
+    t: { player: string; session: string; sessionId: number; arenaId: number; entryFee: number; value?: number },
+  ): void {
     this.monitor.onJoin(room, pid, {
       wallet: t.player,
       session: t.session,
       sessionId: t.sessionId,
       arenaId: t.arenaId,
-      entryFee: t.entryFee,
+      // the stake the ticket plays with (a fee-on-entry arena plays entry − fee): a payout above it is a profit
+      entryFee: t.value ?? t.entryFee,
       ipHash: this.hashIp(conn.ip),
       fpHash: this.hashFp(conn.fp),
     });

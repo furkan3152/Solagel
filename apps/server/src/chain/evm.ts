@@ -1,16 +1,21 @@
 import {
   SETTLE_CHUNK,
   SettleSkipReason,
+  cancelCall,
   chunkSettlements,
-  computeFee,
+  computeEntryFee,
+  computeProfitFee,
   describeError,
   fromLedger,
   ledgerDecimals,
   settleCall,
   settleSkipReasonText,
   sweepLootCall,
+  ticketValue,
   toLedger,
   type ArenaConfig,
+  type ArenaVersion,
+  type SessionRef,
   type Settlement,
 } from '@elymum/sdk';
 import { TOKEN_SYMBOL_DEFAULT, chainInfo, formatHype, formatToken, type ChainStatus } from '@elymum/shared';
@@ -31,7 +36,10 @@ import { ChainBusyError, sessionKey, type ChainArena, type ChainGateway, type Ch
 const WORKER_INTERVAL_MS = 1_000;
 const REFRESH_INTERVAL_MS = 30_000;
 const SWEEP_INTERVAL_MS = 5 * 60_000;
-/** Sessions nobody plays for this long are settled at their entry fee; `STALE_SESSION_AFTER_S` overrides it. */
+/**
+ * Sessions nobody plays for this long get their entry fee back (v2: `cancel`, the full entry fee and no fee;
+ * v1: settled at the entry fee); `STALE_SESSION_AFTER_S` overrides it.
+ */
 export const STALE_SESSION_AFTER_S = 15 * 60;
 /** The arena list is re-read at most this often (settlements mark it stale; RPC errors serve the last good one). */
 export const ARENA_TTL_MS = 60_000;
@@ -100,6 +108,9 @@ export interface EvmChainDeps {
   cacheDir?: string | null;
 }
 
+/** A receipt event that closes a ticket: `settle`'s `Settled` or v2 `cancel`'s `Cancelled`. */
+type SettledLike = Extract<ArenaEvent, { name: 'Settled' | 'Cancelled' }>;
+
 /** One item of a settle batch, with the on-chain session it was checked against. */
 interface Checked {
   item: SettlementItem;
@@ -133,8 +144,14 @@ export class EvmChain implements ChainGateway {
   /** The arena contract in use (checksummed); null while none is registered. */
   private arena: Address | null = null;
   private arenaTx: string | null = null;
-  /** `ok` once the code at `arena` matched the bundled artifact. */
+  /** `ok` once the code at `arena` matched the bundled artifact (or the legacy v1 build). */
   private arenaCode: 'ok' | 'missing' | 'mismatch' | null = null;
+  /**
+   * The arena's fee rule, from its code hash (known once `arenaCode` is `ok`): 2 takes the fee from every
+   * played ticket's entry fee (the ticket plays `entry − fee`, unplayed tickets are cancelled in full);
+   * 1 is the legacy fee-on-profit build still live on the testnet until it is redeployed.
+   */
+  private arenaVersion: ArenaVersion | null = null;
   private config: ArenaConfig | null = null;
   private configAt = 0;
   /** Server key == config.serverAuthority (null until the config was read once). */
@@ -324,6 +341,7 @@ export class EvmChain implements ChainGateway {
       this.arena = next;
       this.arenaTx = view.arenaTx ?? null;
       this.arenaCode = null;
+      this.arenaVersion = null;
       this.config = null;
       this.configAt = 0;
       this.authorized = null;
@@ -337,10 +355,27 @@ export class EvmChain implements ChainGateway {
     }
     if (this.arenaCode !== 'ok') {
       const codeKey = `code:${this.arena.toLowerCase()}`;
+      const versionKey = `version:${this.arena.toLowerCase()}`;
       try {
         // a positive check is kept on disk (the code at an address does not change): no read after a restart
-        this.arenaCode = this.cache.get<string>(codeKey) === 'ok' ? 'ok' : await this.client!.codeCheck(this.arena, 'arena');
-        if (this.arenaCode === 'ok') this.cache.set(codeKey, 'ok');
+        let code = this.cache.get<string>(codeKey) === 'ok' ? 'ok' : await this.client!.codeCheck(this.arena, 'arena');
+        let version: ArenaVersion | null = null;
+        if (code === 'ok') {
+          const kept = this.cache.get<number>(versionKey);
+          version = kept === 1 || kept === 2 ? kept : await this.client!.arenaVersion(this.arena);
+          if (version === null) code = 'mismatch';
+        }
+        this.arenaCode = code;
+        this.arenaVersion = version;
+        if (code === 'ok') {
+          this.cache.set(codeKey, 'ok');
+          this.cache.set(versionKey, version);
+          this.log(
+            version === 1
+              ? `chain: arena ${this.arena} is the legacy v1 build — fee on PROFIT. Redeploy the arena (/admin → Deploy) to take the fee from every entry.`
+              : `chain: arena ${this.arena} is v2 — the fee is taken from every played ticket's entry fee`,
+          );
+        }
       } catch (err) {
         this.warn('code', `chain: code check of ${this.arena} failed (${firstLine(err)})`);
         return;
@@ -502,6 +537,7 @@ export class EvmChain implements ChainGateway {
         tokenReady: false,
         token: null,
         feeBps: null,
+        feeModel: null,
         serverKey: this.serverAddress,
       };
     }
@@ -519,8 +555,24 @@ export class EvmChain implements ChainGateway {
       tokenReady: token !== null,
       token: token ? { address: token.address, symbol: this.cfg.chain.tokenSymbol || TOKEN_SYMBOL_DEFAULT, decimals: token.decimals } : null,
       feeBps: this.config?.feeBps ?? null,
+      feeModel: this.feeModel(),
       serverKey: this.serverAddress,
     };
+  }
+
+  /** What the fee of the registered arena is taken from; null while its version is unknown. */
+  feeModel(): 'entry' | 'profit' | null {
+    return this.arenaVersion === 2 ? 'entry' : this.arenaVersion === 1 ? 'profit' : null;
+  }
+
+  /** The registered arena's version (1 legacy fee on profit, 2 fee on entry); null while unknown. */
+  get version(): ArenaVersion | null {
+    return this.arenaVersion;
+  }
+
+  /** What a ticket plays with, ledger units (rounded down): v2 `entry − fee`, v1 the whole entry fee. */
+  private ledgerValue(entryFee: bigint, feeBps: number, decimals: number): number {
+    return toLedger(ticketValue(entryFee, feeBps, this.arenaVersion === 1 ? 1 : 2), decimals, 'floor');
   }
 
   /**
@@ -541,6 +593,8 @@ export class EvmChain implements ChainGateway {
         player: getAddress(player),
         arenaId,
         entryFee: toLedger(s.entryFee, t.decimals, 'floor'),
+        feeBps: s.feeBps,
+        value: this.ledgerValue(s.entryFee, s.feeBps, t.decimals),
         openedAt: s.openedAt,
         finalized: s.finalized,
         owed: toLedger(s.owed, t.decimals, 'floor'),
@@ -705,18 +759,22 @@ export class EvmChain implements ChainGateway {
       for (const item of due) if (this.isPending(item.key)) this.journal.retryLater(item.key, blocked, this.now(), transient ? { maxDelayMs: TRANSIENT_RETRY_MAX_MS } : {});
       return;
     }
-    const byArena = new Map<number, SettlementItem[]>();
+    // per arena, and on a v2 arena the unplayed (stale) tickets apart: they go out as `cancel` (full entry fee back)
+    const cancels = this.arenaVersion === 2;
+    const byArena = new Map<string, { mode: 'settle' | 'cancel'; items: SettlementItem[] }>();
     for (const item of due) {
       if (item.kind !== 'settle') continue;
       if (!this.validSettlement(item)) continue;
-      const list = byArena.get(item.arenaId!) ?? [];
-      list.push(item);
-      byArena.set(item.arenaId!, list);
+      const mode = cancels && item.reason === 'stale' ? 'cancel' : 'settle';
+      const group = `${item.arenaId}:${mode}`;
+      const entry = byArena.get(group) ?? { mode, items: [] };
+      entry.items.push(item);
+      byArena.set(group, entry);
     }
-    for (const items of byArena.values()) {
+    for (const { mode, items } of byArena.values()) {
       for (const chunk of chunkSettlements(items, SETTLE_CHUNK)) {
         if (this.stopped) return;
-        await this.settleBatch(chunk);
+        await this.settleBatch(chunk, mode);
       }
     }
     // one sweep per arena at a time, oldest first: a later sweep id must never land before an earlier one
@@ -783,12 +841,12 @@ export class EvmChain implements ChainGateway {
   }
 
   /**
-   * One `settle` transaction for up to 40 items of one arena. Each item is checked against its session
-   * first (gone or re-opened → settled elsewhere; finalized → the player collects), then reconciled
-   * after the receipt: its `Settled` event (or a read of the session) decides, a skipped or reverted
-   * item is retried with backoff.
+   * One `settle` (or, `mode: 'cancel'`, one v2 `cancel` of unplayed tickets) transaction for up to 40 items of
+   * one arena. Each item is checked against its session first (gone or re-opened → settled elsewhere;
+   * finalized → the player collects), then reconciled after the receipt: its `Settled` / `Cancelled` event
+   * (or a read of the session) decides, a skipped or reverted item is retried with backoff.
    */
-  private async settleBatch(items: SettlementItem[]): Promise<void> {
+  private async settleBatch(items: SettlementItem[], mode: 'settle' | 'cancel' = 'settle'): Promise<void> {
     const client = this.client!;
     const arena = this.arena!;
     const t = this.token()!;
@@ -834,15 +892,22 @@ export class EvmChain implements ChainGateway {
     });
     if (send.length === 0) return;
     send.sort((a, b) => a.item.createdAt - b.item.createdAt);
-    const settlements: Settlement[] = send.map((c) => ({
-      arenaId: c.item.arenaId!,
-      player: getAddress(c.item.player),
-      sessionId: c.sessionId,
-      payout: fromLedger(c.item.payout!, t.decimals),
-    }));
+    let call;
+    if (mode === 'cancel') {
+      const refs: SessionRef[] = send.map((c) => ({ arenaId: c.item.arenaId!, player: getAddress(c.item.player), sessionId: c.sessionId }));
+      call = cancelCall(arena, refs);
+    } else {
+      const settlements: Settlement[] = send.map((c) => ({
+        arenaId: c.item.arenaId!,
+        player: getAddress(c.item.player),
+        sessionId: c.sessionId,
+        payout: fromLedger(c.item.payout!, t.decimals),
+      }));
+      call = settleCall(arena, settlements);
+    }
     let hash: Hash;
     try {
-      hash = await client.send(settleCall(arena, settlements));
+      hash = await client.send(call);
     } catch (err) {
       await this.onBatchError(send.map((c) => c.item), err);
       return;
@@ -867,7 +932,7 @@ export class EvmChain implements ChainGateway {
     for (const c of send) {
       if (await this.reconcile(c, hash, receipt.events)) settledCount++;
     }
-    this.log(`chain: settle batch ${hash} · arena #${send[0].item.arenaId} · ${settledCount}/${send.length} settled`);
+    this.log(`chain: ${mode} batch ${hash} · arena #${send[0].item.arenaId} · ${settledCount}/${send.length} ${mode === 'cancel' ? 'refunded' : 'settled'}`);
   }
 
   /** After a mined batch: true when the item is settled (removed and reported). */
@@ -875,7 +940,7 @@ export class EvmChain implements ChainGateway {
     const { item } = c;
     const same = (e: { arenaId: number; player: string; sessionId: bigint }) =>
       e.arenaId === item.arenaId && e.player.toLowerCase() === item.player.toLowerCase() && e.sessionId === c.sessionId;
-    const settled = events.find((e): e is Extract<ArenaEvent, { name: 'Settled' }> => e.name === 'Settled' && same(e));
+    const settled = events.find((e): e is SettledLike => (e.name === 'Settled' || e.name === 'Cancelled') && same(e));
     if (settled) {
       this.settledNow(item, hash, settled);
       return true;
@@ -905,17 +970,27 @@ export class EvmChain implements ChainGateway {
     return false;
   }
 
-  private settledNow(item: SettlementItem, hash: Hash, ev: Extract<ArenaEvent, { name: 'Settled' }>): void {
+  private settledNow(item: SettlementItem, hash: Hash, ev: SettledLike): void {
     const t = this.token()!;
-    const fee = toLedger(ev.fee, t.decimals, 'floor');
-    const payout = item.payout ?? 0;
-    const collect = !ev.collected && ev.payout > ev.fee;
     this.journal.remove(item.key);
     this.sentTx.delete(item.key);
+    if (ev.name === 'Cancelled') {
+      // an unplayed ticket: its full entry fee went back, no fee
+      const amount = toLedger(ev.amount, t.decimals, 'floor');
+      const collect = !ev.collected && ev.amount > 0n;
+      this.log(`chain: ${collect ? 'finalized' : 'cancelled'} ${short(item.key)} (${item.reason ?? 'stale'}) · full entry fee ${this.units(amount)} → ${short(item.player)}${collect ? ' (to collect)' : ''} · ${hash}`);
+      this.emit({ key: item.key, player: getAddress(item.player), arenaId: item.arenaId, txHash: hash, payout: amount, fee: 0, feeOnEntry: true, refund: true, ...(collect ? { collect: true } : {}) });
+      return;
+    }
+    const fee = toLedger(ev.fee, t.decimals, 'floor');
+    const payout = item.payout ?? 0;
+    // v2: the fee was the ticket's cut of its entry fee (reserved at join); the whole payout is the player's
+    const onEntry = this.arenaVersion === 2;
+    const collect = !ev.collected && (onEntry ? ev.payout > 0n : ev.payout > ev.fee);
     this.log(
-      `chain: ${collect ? 'finalized' : 'settled'} ${short(item.key)} (${item.reason ?? 'settle'}) · ${this.units(payout)}${fee ? ` (fee ${this.units(fee)})` : ''} → ${short(item.player)}${collect ? ' (to collect)' : ''} · ${hash}`,
+      `chain: ${collect ? 'finalized' : 'settled'} ${short(item.key)} (${item.reason ?? 'settle'}) · ${this.units(payout)}${fee ? ` (fee ${this.units(fee)}${onEntry ? ' of the entry' : ''})` : ''} → ${short(item.player)}${collect ? ' (to collect)' : ''} · ${hash}`,
     );
-    this.emit({ key: item.key, player: getAddress(item.player), arenaId: item.arenaId, txHash: hash, payout, fee, ...(collect ? { collect: true } : {}) });
+    this.emit({ key: item.key, player: getAddress(item.player), arenaId: item.arenaId, txHash: hash, payout, fee, ...(onEntry ? { feeOnEntry: true } : {}), ...(collect ? { collect: true } : {}) });
   }
 
   /** The session is gone (or re-opened, or finalized): drop the item, reporting our own earlier transaction if it settled it. */
@@ -924,8 +999,11 @@ export class EvmChain implements ChainGateway {
     if (hash) {
       const receipt = await this.client!.receipt(hash, this.arena, LATE_RECEIPT_TIMEOUT_MS).catch(() => null);
       const ev = receipt?.events.find(
-        (e): e is Extract<ArenaEvent, { name: 'Settled' }> =>
-          e.name === 'Settled' && e.arenaId === item.arenaId && e.player.toLowerCase() === item.player.toLowerCase() && e.sessionId === BigInt(item.sessionId ?? 0),
+        (e): e is SettledLike =>
+          (e.name === 'Settled' || e.name === 'Cancelled') &&
+          e.arenaId === item.arenaId &&
+          e.player.toLowerCase() === item.player.toLowerCase() &&
+          e.sessionId === BigInt(item.sessionId ?? 0),
       );
       if (receipt?.status === 'success' && ev) {
         this.log(`chain: settled ${short(item.key)} (confirmation arrived late) · ${hash}`);
@@ -946,7 +1024,8 @@ export class EvmChain implements ChainGateway {
       // our key may have been rotated out: re-read the config to tell
       await this.freshConfig();
     } else if (d.name === 'SafeERC20FailedOperation') {
-      // a failing fee transfer reverts the whole batch: the fee wallet cannot receive the token
+      // a failing fee transfer reverts the whole batch: the fee wallet cannot receive the token (on a v2 arena
+      // every settle batch pays fees; a `cancel` pays none and still goes through)
       this.feeHeld = true;
       this.warn(
         'fee-wallet',
@@ -1103,10 +1182,12 @@ export class EvmChain implements ChainGateway {
   }
 
   /**
-   * Queues a settlement at the entry fee (no profit, so no fee) for every open session that is not in a
-   * room, not already queued and older than `STALE_SESSION_AFTER_S` (15 minutes by default): the player
-   * paid but never played. Open sessions come from the arena's `Joined` logs, checked with `getSession`.
-   * Returns the number of sessions queued.
+   * Queues a refund for every open session that is not in a room, not already queued and older than
+   * `STALE_SESSION_AFTER_S` (15 minutes by default): the player paid but never played, so no fee is taken.
+   * v2 arena: a `cancel` (the full entry fee back; the journal item's payout is the ticket's value, what
+   * leaves the vault; the reserved fee comes back with it). v1: a settlement at the entry fee (no profit, no
+   * fee). Open sessions come from the arena's `Joined` logs, checked with `getSession`. Returns the number of
+   * sessions queued.
    */
   sweepStale(): Promise<number> {
     // background work: after joins, settlements and the arena list
@@ -1155,7 +1236,7 @@ export class EvmChain implements ChainGateway {
             arenaId: c.arenaId,
             session: key,
             sessionId: Number(s.id),
-            payout: toLedger(s.entryFee, t.decimals, 'floor'),
+            payout: this.ledgerValue(s.entryFee, s.feeBps, t.decimals),
             score: 0,
             kills: 0,
             xp: 0,
@@ -1177,7 +1258,9 @@ export class EvmChain implements ChainGateway {
     enqueue.push(...fresh);
     if (enqueue.length === 0) return 0;
     this.journal.commit({ enqueue });
-    this.log(`chain: ${enqueue.length} unplayed session(s) older than ${staleAfterS >= 120 ? `${Math.round(staleAfterS / 60)} min` : `${staleAfterS} s`} → settlement at the entry fee queued`);
+    this.log(
+      `chain: ${enqueue.length} unplayed session(s) older than ${staleAfterS >= 120 ? `${Math.round(staleAfterS / 60)} min` : `${staleAfterS} s`} → ${this.arenaVersion === 2 ? 'full entry-fee refund (cancel)' : 'settlement at the entry fee'} queued`,
+    );
     this.kick();
     return enqueue.length;
   }
@@ -1187,10 +1270,11 @@ export class EvmChain implements ChainGateway {
     return this.journal.pending;
   }
 
-  /** Expected fee of a payout for a session (ledger units), as `settle` computes it. */
+  /** Expected fee of a settled session (ledger units), as `settle` computes it: v2 the entry fee's cut, v1 on profit. */
   feeFor(payoutLedger: number, entryFee: bigint, feeBps: number): number {
     const t = this.token();
     if (!t) return 0;
-    return toLedger(computeFee(fromLedger(payoutLedger, t.decimals), entryFee, feeBps), t.decimals, 'floor');
+    const fee = this.arenaVersion === 1 ? computeProfitFee(fromLedger(payoutLedger, t.decimals), entryFee, feeBps) : computeEntryFee(entryFee, feeBps);
+    return toLedger(fee, t.decimals, 'floor');
   }
 }

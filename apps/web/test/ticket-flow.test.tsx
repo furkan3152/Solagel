@@ -104,13 +104,24 @@ describe('ticket confirm sheet', () => {
     open(PENNY);
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getAllByText('1,000 $ELYMUM').length).toBeGreaterThan(0);
-    expect(within(dialog).getByText('5% · on profit only · fixed for this ticket')).toBeTruthy();
+    expect(within(dialog).getByText('5% of the entry fee · fixed for this ticket')).toBeTruthy();
+    // the coin starts at the entry minus the fee
+    expect(within(dialog).getByText('950 $ELYMUM')).toBeTruthy();
     expect(within(dialog).getByText(/paid in HYPE on Elysium Testnet · you have 0.42 HYPE/)).toBeTruthy();
     expect(within(dialog).getByText('12,450 → 11,450 $ELYMUM')).toBeTruthy();
     const steps = within(within(dialog).getByRole('region', { name: 'Your wallet signs' })).getAllByRole('listitem');
     // no allowance yet: an exact approval first, then the ticket
     expect(steps.map((s) => s.textContent)).toEqual(['1Allow the arena to take exactly 1,000 $ELYMUM', '2Buy the ticket · Asphodel Meadow']);
     expect((within(dialog).getByRole('button', { name: /Pay 1,000 \$ELYMUM/ }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('the legacy fee-on-profit arena (v1, still on testnet until redeployed) keeps its own copy', () => {
+    act(() => useUi.setState({ chain: { ...useUi.getState().chain!, feeModel: 'profit' } }));
+    open(PENNY);
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText('5% · on profit only · fixed for this ticket')).toBeTruthy();
+    expect(within(dialog).queryByText('Your coin starts at')).toBeNull();
+    expect(within(dialog).getByText(/No profit, no fee/)).toBeTruthy();
   });
 
   it('one call only when the allowance already covers the entry fee', () => {

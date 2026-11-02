@@ -20,9 +20,9 @@ the code is laid out and how it is run. The source of truth for everything is
 - You are a coin. Eat food and smaller coins to grow, and run from bigger ones.
 - Practice rooms have bots, two leagues (Rookie and Pro) and touch nothing on chain.
 - Arenas are paid rooms with a fixed entry fee in `$ELYMUM` (the game token the owner sets after deploy).
-  - Your value starts at the entry fee; eat a player and their value moves to you.
+  - Your value starts at the entry fee minus the fee; eat a player and their value moves to you.
 - Rounds: 5 minutes on the wall clock, the same for every arena. No cash-out: at the bell everyone still alive is
-  paid their value on chain, minus a fee on profit only.
+  paid their whole value on chain; the fee is a share of each played entry fee.
 - Re-entry: eaten? Buy back in at the same fee while joins are open (they close in the final minute).
 - The NFT: the Elymum NFT (an emblem) mints for $1 in HYPE, allowlist first, then public. The owner decides who
   may play: admins only, NFT holders, or everyone.
@@ -121,31 +121,36 @@ to everyone, 300 open tickets each. A new 50-player instance opens on the same v
 
 ### 3.1 Fees
 
-The fee is charged on profit only, at the rate fixed when the ticket was bought: a flat 5 % by default (500 bps; at
-most 10 %), and **all of it goes to the fee wallet** (the owner's choice at deploy).
+The fee is a share of the entry fee of every played ticket, whatever the result, at the rate fixed when the ticket
+was bought: a flat 5 % by default (500 bps; at most 10 %), and **all of it goes to the fee wallet** (the owner's
+choice at deploy). A ticket that is never played gets its full entry fee back.
 
 ```
-profit = max(0, payout - entryFee)
-fee    = floor(profit x feeBps / 10 000)
-player = payout - fee
+fee    = floor(entryFee x feeBps / 10 000)   reserved at join
+value  = entryFee - fee                       the coin's starting value (in the vault)
+player = payout                               nothing is deducted at settle
 ```
 
-Example: a 1,000 ticket worth 2,000 at the bell: profit 1,000, fee 50, the player gets 1,950.
+Example: a 1,000 ticket pays a 50 fee and plays 950; doubled to 1,900 at the bell, the player gets 1,900.
 
 ### 3.2 Where tokens live
 
 ```mermaid
 flowchart LR
-  P["Player wallet"] -- "join: entry fee" --> V["Arena vault (ElymumArena)"]
-  V -- "settle at the bell: payout - fee" --> P
-  V -- "settle: the whole fee" --> F["Fee wallet"]
+  P["Player wallet"] -- "join: entry fee - fee" --> V["Arena vault (ElymumArena)"]
+  P -- "join: the fee (reserved)" --> R["Reserved fees"]
+  V -- "settle at the bell: the payout, in full" --> P
+  R -- "settle: the ticket's fee" --> F["Fee wallet"]
+  R -- "cancel / refund: back with the entry" --> P
   V -- "sweepLoot: floor loot (server key)" --> B(("Burned"))
   V -- "sweepArena: disabled, idle arena (owner)" --> F
 ```
 
 - Two-phase settle: if the payout transfer to a player fails, the session is finalized with what is `owed`, and the
   player collects it with `refund` at any time.
-- Refund: a ticket the server never settled can be refunded by its player after 24 h (`min(entryFee, vault)`).
+- Unplayed tickets: the server cancels them (`cancel`): the full entry fee back, no fee.
+- Refund: a ticket the server never settled can be refunded by its player after 24 h (the reserved fee +
+  `min(entryFee - fee, vault)`).
 - Off-chain conservation: per arena, live values + floor loot + pending payouts = entry fees − payouts, kept in a
   crash-safe journal.
 
@@ -291,3 +296,4 @@ lands** ([media/README.md](../media/README.md)).
 | 2026-10-16 | One simple model: flat 5 % fee on profit to the fee wallet; floor loot burned; the token set after deploy |
 | 2026-10-17 | Browser-wallet admin panel; the site becomes a landing page with WL and collab applications |
 | 2026-10-29 | The project becomes **Elymum on Elysium**: two Solidity contracts, EIP-6963 + viem wallets, SIWE, the Elymum NFT at $1 in HYPE, WL → Mint → Play, everything deployed from `/admin`, the Ring Storybook design |
+| 2026-11-02 | The fee moves from profit to the entry: every played ticket pays 5 % of its entry fee (holders 3 %), win or lose; unplayed tickets are refunded in full. ElymumArena v2 (`version()` 2); the server handles the legacy v1 testnet arena until it is redeployed. The leaderboards are reset once (epoch 2) |

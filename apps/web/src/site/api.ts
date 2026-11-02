@@ -259,6 +259,11 @@ export function adminApi(token: string) {
     saveCustomRooms: (patch: Partial<CustomRoomSettings>) => request<CustomRoomsAdminView>('/api/admin/custom-rooms', { method: 'PUT', token, body: patch }),
     /** `DELETE /api/admin/custom-rooms/<CODE>`: closes a live room (everyone in it goes back to the lobby). */
     closeCustomRoom: (code: string) => request<{ closed: CustomRoomView; rooms: CustomRoomView[] }>(`/api/admin/custom-rooms/${id(code)}`, { method: 'DELETE', token }),
+    /** `GET /api/admin/leaderboards`: how many records the daily / all-time boards hold, and the last reset. */
+    leaderboards: () => request<{ info: LeaderboardAdminInfo }>('/api/admin/leaderboards', { token }).then((r) => r.info),
+    /** `POST /api/admin/leaderboards/reset`: clears both boards (the server backs the file up). Profiles stay. */
+    resetLeaderboards: () =>
+      request<{ cleared: { daily: number; allTime: number }; backedUp: boolean; info: LeaderboardAdminInfo }>('/api/admin/leaderboards/reset', { method: 'POST', token, body: { confirm: 'RESET' } }),
     /** `GET /api/admin/shop`: power-up prices, sink, limits and the recent purchases. */
     shop: () => request<ShopAdminView>('/api/admin/shop', { token }),
     /** `PUT /api/admin/shop`: a partial settings update; answers like the GET. */
@@ -330,6 +335,20 @@ function integrityApi(token: string) {
   };
 }
 export type IntegrityApi = ReturnType<typeof integrityApi>;
+
+/* ── leaderboards (`/api/admin/leaderboards`) ─────────────────────────── */
+
+/** What the daily and all-time boards hold (`GET /api/admin/leaderboards`). */
+export interface LeaderboardAdminInfo {
+  /** The server's leaderboard epoch (a deploy that raises it starts the boards fresh once). */
+  epoch: number;
+  day: string;
+  daily: number;
+  allTime: number;
+  resetAt: number | null;
+  /** The admin wallet that reset them, or `epoch` for the automatic reset of a deploy. */
+  resetBy: string | null;
+}
 
 /* ── power-up shop (`/api/admin/shop`) ─────────────────────────────── */
 

@@ -55,7 +55,7 @@ export function HolderPerksCard({ ctx }: { ctx: ChainCtx }) {
       title="Holder perks"
       id="holder-perks"
       kicker={cfg.holderNft ? `On · ${cfg.holderFeeBps} bps` : 'Off'}
-      lede={`Emblem holders pay a lower fee on profit (fixed into each ticket at join) and may enter holders-only arenas. Normal fee: ${cfg.feeBps} bps.`}
+      lede={`Emblem holders pay a lower fee (of each entry fee; fixed into each ticket at join) and may enter holders-only arenas. Normal fee: ${cfg.feeBps} bps.`}
     >
       <dl className="ad-kv">
         <Row label="Holder NFT">{cfg.holderNft ? <Addr value={cfg.holderNft} net={ctx.net} /> : <span className="ad-none">none (perks off)</span>}</Row>

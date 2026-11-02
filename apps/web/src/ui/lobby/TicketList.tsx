@@ -6,7 +6,7 @@ import { useChainData } from '../../wallet/chain';
 import { formatCountdown, useRound } from '../../game/round';
 import { useT } from '../../i18n';
 import { useUi } from '../../store';
-import { bpsPercent, feeBps, ticketFeeBps, type TicketGate, type TicketKey, type TicketModel } from '../../wallet/ticket';
+import { bpsPercent, feeBps, feeModelOf, ticketFeeBps, type TicketGate, type TicketKey, type TicketModel } from '../../wallet/ticket';
 import { ArenaVignette } from './ArenaVignette';
 import { ticketName, useTokenText } from './useLobby';
 
@@ -66,6 +66,7 @@ export function TicketList({
 }) {
   const t = useT();
   const serverBps = useUi((s) => s.chain?.feeBps ?? null);
+  const onProfit = useUi((s) => feeModelOf(s.chain) === 'profit');
   const tok = useTokenText();
   const reduced = useReducedMotion();
   const held = useUi((s) => s.held);
@@ -74,7 +75,9 @@ export function TicketList({
   const normalBps = feeBps(serverBps, config);
   const mine = ticketFeeBps(normalBps, config, holder);
   // emblem holders see the rate their ticket gets (fixed at join)
-  const feeLine = mine.discount ? t('lo.feeLineHolder', { fee: bpsPercent(mine.bps), std: bpsPercent(normalBps) }) : t('lo.feeLine', { fee: bpsPercent(normalBps) });
+  const feeLine = mine.discount
+    ? t('lo.feeLineHolder', { fee: bpsPercent(mine.bps), std: bpsPercent(normalBps) })
+    : t(onProfit ? 'lo.feeLine.profit' : 'lo.feeLine', { fee: bpsPercent(normalBps) });
 
   const count = (n: number, one: 'lo.humans1' | 'lo.bots1', many: 'lo.humans' | 'lo.bots') => (n === 1 ? t(one) : t(many, { n }));
 

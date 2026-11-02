@@ -197,9 +197,33 @@ describe('Round over sheet', () => {
     { name: 'Sixth', value: 900 * M },
   ];
 
-  it('prints till, fee and paid; my place and the top 5; then the PAID transaction', () => {
+  it('fee on entry (arena v2): the till is paid in full, the fee line says it was paid at the entry', () => {
     setReducedMotion(true);
     clockAt(R.endsAt + 500);
+    useUi.setState({
+      screen: 'roundover',
+      room: ARENA,
+      ticket: { entryFee: 1000 * M, arenaId: 1, session: 'SessV2' },
+      roundResult: { kind: 'round', round: N, payout: 3000 * M, stats: STATS, standings },
+      lastSettlement: null,
+    });
+    render(
+      <Kb>
+        <RoundOverSheet />
+      </Kb>,
+    );
+    expect(screen.getByText('Fee 5% · paid at entry')).toBeTruthy();
+    expect(screen.getByText('≈ 50')).toBeTruthy();
+    expect(document.querySelector('.g-receipt__net')?.textContent).toBe('≈ 3,000$ELYMUM');
+    expect(screen.getByText(/the whole till is yours/)).toBeTruthy();
+    act(() => useUi.setState({ lastSettlement: { session: 'SessV2', arenaId: 1, txHash: `0x${'5b'.repeat(32)}`, payout: 3000 * M, fee: 50 * M, net: 3000 * M, feeOnEntry: true, at: Date.now() } }));
+    expect(document.querySelector('.g-receipt__net')?.textContent).toBe('3,000$ELYMUM');
+  });
+
+  it('legacy fee on profit (v1 arena): prints till, fee and paid; my place and the top 5; then the PAID transaction', () => {
+    setReducedMotion(true);
+    clockAt(R.endsAt + 500);
+    useUi.setState({ chain: { ...CHAIN, feeModel: 'profit' } });
     useUi.setState({
       screen: 'roundover',
       room: ARENA,
@@ -254,8 +278,8 @@ describe('Round over sheet', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     await screen.findByRole('dialog', { name: 'Round over' }, { timeout: 2000 });
     expect(screen.getByText('Your place').nextElementSibling?.textContent).toBe('Outside the top 6');
-    // a loss: no fee (the rate shown is the program default while the server's is unknown)
-    expect(screen.getByText('Fee 5%')).toBeTruthy();
+    // a loss still paid its fee at the entry (the rate shown is the program default while the server's is unknown)
+    expect(screen.getByText('Fee 5% · paid at entry')).toBeTruthy();
   });
 
   it("estimates the fee at the server's live rate (feeBps)", () => {
@@ -274,8 +298,8 @@ describe('Round over sheet', () => {
         <RoundOverSheet />
       </Kb>,
     );
-    expect(screen.getByText('Fee 3%')).toBeTruthy();
-    expect(screen.getByText('≈ −60')).toBeTruthy();
+    expect(screen.getByText('Fee 3% · paid at entry')).toBeTruthy();
+    expect(screen.getByText('≈ 30')).toBeTruthy();
     useChainData.setState({ config: null });
   });
 });

@@ -161,7 +161,7 @@ describe('lobby while the game token is not set', () => {
       expect(el.textContent).not.toContain('Opening soon');
       expect(disabled(el)).toBe(false);
       // the fee line uses the server's rate
-      expect(el.textContent).toContain('Fee 5% of profit only');
+      expect(el.textContent).toContain('Fee 5% of the entry');
     }
     // an arena can now be picked; without a wallet its button asks to connect (the path to buying)
     act(() => arenas[0].click());

@@ -171,11 +171,41 @@ the flags honest players raise (none at the defaults) and those two scripted bot
 
 ## The fee wallet
 
-Every fee (5 % of profit by default, at most 10 %, fixed per ticket at join) is transferred to the fee wallet in
-the same `settle` batch. A swept arena's vault also goes there. It is an ordinary address: what it holds is yours.
+Every fee (5 % of each played entry fee by default, at most 10 %, fixed per ticket at join; reserved at the join)
+is transferred to the fee wallet with the `settle` batch that settles the ticket (one transfer per batch). Tickets
+that were never played are cancelled with their full entry fee back and pay no fee. (The legacy v1 testnet arena
+took the fee from profit; redeploying the arena from `/admin` switches to the new rule.) A swept arena's vault also goes there. It is an ordinary address: what it holds is yours.
 If the fee transfer fails (a token that refuses that address), the whole batch reverts and the server logs
 `!!! chain: settle batches revert on the fee transfer`: change the fee wallet (Arena tab, `setFeeWallet`) and the
 pending settlements go out by themselves.
+
+## Moving the testnet to the fee-on-entry arena (v2)
+
+The fee rule is in the arena contract's code: ElymumArena v2 (`version()` = 2, the bundled build) takes the fee
+from every played entry fee; the v1 arena live on the Elysium testnet (`0x9bdC7dCbB3Ea173E3111093A64cBe547E2f82A68`)
+takes it from profit. The server reads the version from the code hash and handles both, so nothing breaks before
+the switch. To switch (`/admin` → Game → the arena contract shows a "legacy v1" card with the same steps):
+
+1. Close every arena (Start / stop) and wait for the open-ticket counts to reach 0 (rooms settle at the bell,
+   unplayed tickets are refunded by the server within about 15 minutes).
+2. Sweep each disabled arena's vault of the OLD arena to the fee wallet (Advanced → sweep) while it is still the
+   registered one. Owed payouts of finalized sessions stay collectable on the old address.
+3. Deploy the new arena (the legacy card's button, or Setup → Deploy); it registers by itself. The server refuses
+   the switch while its journal still owes money on the old arena. If `ARENA_ADDRESS` is set on the server it
+   overrides the registry: change it instead.
+4. Setup: set the same game token, create the four arenas, the holder perks (3 %) and holders-only #4, and the fee
+   wallet if it is not the deployer.
+5. Staked testnet bots follow by themselves (their wallets keep their tokens; the bankroll is re-minted when low).
+
+Mainnet deploys the v2 arena from the start.
+
+## Resetting the leaderboards
+
+`/admin` → Game → Leaderboards → "Reset both leaderboards" (`POST /api/admin/leaderboards/reset` with
+`{"confirm":"RESET"}`, admin session) clears the Today and All-time boards and keeps the old file as
+`leaderboards.json.reset-<ms>.bak`. Raising `LEADERBOARD_EPOCH` in `apps/server/src/leaderboards.ts` resets them once
+on the next deploy (the old file is kept as `leaderboards.json.epoch-<n>-<ms>.bak`). Profiles (XP, levels, games,
+kills, best score) are never touched.
 
 ## Arena rounds and the loot burn
 

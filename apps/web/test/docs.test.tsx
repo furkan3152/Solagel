@@ -20,11 +20,11 @@ afterEach(() => {
 const SECTION_IDS = ['play', 'rooms', 'value', 'payout', 'fair', 'wallet', 'faq'];
 
 describe('player guide facts', () => {
-  it('works the fee example through splitPayout: entry 1,000, till 2,000 at the bell → fee 50, player 1,950', () => {
-    expect(FACTS.example).toEqual({ entry: 1000, cashout: 2000 });
-    expect(feeExample(500)).toEqual({ fee: 50n, player: 1950n });
+  it('works the fee example through splitPayout: entry 1,000 → fee 50 at the entry, coin 950, till 1,900 at the bell all paid', () => {
+    expect(FACTS.example).toEqual({ entry: 1000, cashout: 1900 });
+    expect(feeExample(500)).toEqual({ fee: 50n, value: 950n, player: 1900n });
     // the server's own rate when it differs
-    expect(feeExample(450)).toEqual({ fee: 45n, player: 1955n });
+    expect(feeExample(450)).toEqual({ fee: 45n, value: 955n, player: 1900n });
   });
 
   it('quotes the contract defaults', () => {
@@ -63,12 +63,13 @@ describe('player guide content', () => {
 
   it("quotes the server's fee rate and uses it in the worked example", () => {
     const text = (c: typeof en) => JSON.stringify([c.dateline, c.sections]);
-    expect(text(en)).toContain('fee 50, you get 1,950');
-    expect(text(en)).toContain('Fee 5% of profit');
+    expect(text(en)).toContain('fee 50, your coin starts at 950');
+    expect(text(en)).toContain('Fee 5% of each entry');
+    expect(text(en)).not.toMatch(/of profit/);
     const live = docsEn('$ELYMUM', 300);
     expect(live.feeBps).toBe(300);
-    expect(text(live)).toContain('fee 30, you get 1,970');
-    expect(text(live)).toContain('Fee 3% of profit');
+    expect(text(live)).toContain('fee 30, your coin starts at 970');
+    expect(text(live)).toContain('Fee 3% of each entry');
   });
 
   it("says the fee goes to the operator's wallet, floor loot is burned, and arenas open soon until the token is set", () => {
@@ -137,8 +138,9 @@ describe('player guide page', () => {
     expect(within(toc).getAllByRole('button')).toHaveLength(7);
     for (const s of en0.sections) expect(screen.getByRole('heading', { level: 3, name: s.title })).toBeTruthy();
     expect(screen.getByRole('heading', { level: 3, name: 'Rounds, payout and fees' })).toBeTruthy();
-    // the receipt: fee 50, 1,950 to the player
-    expect(screen.getByText('1,950')).toBeTruthy();
+    // the receipt: fee 50 off the entry, the coin starts at 950, the 1,900 till goes to the player in full
+    expect(screen.getByText('950')).toBeTruthy();
+    expect(screen.getAllByText('1,900')).toHaveLength(2);
     expect(screen.getByText('−50')).toBeTruthy();
     expect(screen.getByText("The fee goes to the operator's wallet")).toBeTruthy();
     // every chapter but the FAQ opens with a three-panel comic strip; the value flow has its moving diagram
@@ -160,7 +162,7 @@ describe('player guide page', () => {
         <DocsPage />
       </Kb>,
     );
-    expect(screen.getByText('1,960')).toBeTruthy();
+    expect(screen.getByText('960')).toBeTruthy();
     expect(screen.getByText('−40')).toBeTruthy();
   }, 20_000);
 });

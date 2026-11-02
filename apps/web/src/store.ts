@@ -147,7 +147,18 @@ export interface UiState {
   held: { arenaId: number; opensAt: number } | null;
   /** Last `settled` message; `session` matches it to a ticket. */
   /** `collect`: the token transfer to the player failed; the net waits in the arena vault for "Collect payout". Amounts are ledger units. */
-  lastSettlement: { session: string | null; arenaId: number | null; txHash: string; payout: number; fee?: number; net?: number; collect?: boolean; at: number } | null;
+  lastSettlement: {
+    session: string | null;
+    arenaId: number | null;
+    txHash: string;
+    payout: number;
+    fee?: number;
+    net?: number;
+    /** The fee was taken from the entry fee (arena v2): the whole payout reached the wallet. */
+    feeOnEntry?: boolean;
+    collect?: boolean;
+    at: number;
+  } | null;
   spectateTarget: number | null;
   toasts: Toast[];
   modal: Modal;

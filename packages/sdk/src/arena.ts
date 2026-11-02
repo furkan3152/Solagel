@@ -1,4 +1,4 @@
-import { elymumArenaAbi, elymumArenaArtifact, testTokenAbi, testTokenArtifact } from '@elymum/contracts';
+import { arenaVersionOfCodeHash, elymumArenaAbi, elymumArenaArtifact, testTokenAbi, testTokenArtifact, type ArenaVersion } from '@elymum/contracts';
 import { DEFAULT_ARENAS } from '@elymum/shared';
 import { erc20Abi, getAddress, isAddress, type Account, type Address, type Chain, type Hash, type PublicClient, type WalletClient } from 'viem';
 import type { ContractCall } from './call';
@@ -14,6 +14,7 @@ import {
   SETTLE_CHUNK,
 } from './constants';
 import { isZeroAddress } from './format';
+import { getCodeHash } from './chain';
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as const;
 const MAX_UINT256 = (1n << 256n) - 1n;
@@ -50,7 +51,7 @@ export interface ArenaConfig {
   paused: boolean;
   /** ERC-721 whose holders get the holder perks (lower fee, holders-only arenas); null when the perks are off. */
   holderNft: Address | null;
-  /** Fee on profit for holders, in bps (a ticket gets `min(feeBps, holderFeeBps)`); only used while `holderNft` is set. */
+  /** Holder fee rate, in bps (a ticket gets `min(feeBps, holderFeeBps)`); only used while `holderNft` is set. */
   holderFeeBps: number;
   totals: {
     sessions: bigint;
@@ -65,7 +66,7 @@ export interface ArenaConfig {
 export interface ArenaInfo {
   id: number;
   entryFee: bigint;
-  /** Spendable by settle / refund / sweepLoot / sweepArena. */
+  /** Spendable by settle / cancel / refund / sweepLoot / sweepArena (v2: the tickets' values; their fees are reserved apart, see `getArenaFees`). */
   vault: bigint;
   /** Reserved for finalized sessions (collected with `refund`). */
   owed: bigint;
@@ -185,9 +186,23 @@ export function effectiveFeeBps(config: Pick<ArenaConfig, 'feeBps' | 'holderNft'
   return holder && config.holderNft && config.holderFeeBps < config.feeBps ? config.holderFeeBps : config.feeBps;
 }
 
-/** `ElymumArena.computeFee` on chain (the off-chain twin is `computeFee` in math.ts). */
-export async function computeFeeOnChain(client: ReadClient, arena: Address, payout: bigint, entryFee: bigint, feeBps: number): Promise<bigint> {
-  return client.readContract({ address: arena, abi: elymumArenaAbi, functionName: 'computeFee', args: [payout, entryFee, feeBps] });
+/** `ElymumArena.computeFee(entryFee, feeBps)` on chain, v2 only (the off-chain twin is `computeEntryFee` in math.ts). */
+export async function computeFeeOnChain(client: ReadClient, arena: Address, entryFee: bigint, feeBps: number): Promise<bigint> {
+  return client.readContract({ address: arena, abi: elymumArenaAbi, functionName: 'computeFee', args: [entryFee, feeBps] });
+}
+
+/** Fees reserved for the open tickets of an arena (v2 only; a v1 arena has no such view). */
+export async function getArenaFees(client: ReadClient, arena: Address, id: number): Promise<bigint> {
+  checkArenaId(id);
+  return client.readContract({ address: arena, abi: elymumArenaAbi, functionName: 'arenaFees', args: [id] });
+}
+
+/**
+ * The fee rule of a deployed arena, from its code hash: 2 (fee on the entry fee: the bundled build), 1 (fee on
+ * profit: the legacy build), null (no code, or not an ElymumArena build this SDK knows).
+ */
+export async function getArenaVersion(client: Pick<PublicClient, 'getCode'>, arena: Address): Promise<ArenaVersion | null> {
+  return arenaVersionOfCodeHash(await getCodeHash(client, arena));
 }
 
 /** What a session can do now: nothing, collect `owed` (finalized), or refund after the 24 h delay. */
@@ -254,7 +269,7 @@ export function refundCall(arena: Address, arenaId: number): ArenaCall {
 export interface JoinPlan {
   entryFee: bigint;
   /**
-   * Fee on profit (bps) this ticket will be fixed at: the holder rate when the player holds the emblem.
+   * Fee rate (bps) this ticket will be fixed at: the holder rate when the player holds the emblem (v2: of the entry fee).
    * null only when the arena contract could not be read for it.
    */
   feeBps: number | null;
@@ -319,8 +334,33 @@ export interface Settlement {
   arenaId: number;
   player: Address;
   sessionId: bigint;
-  /** Base units (fee included); see `fromLedger`. */
+  /** Base units; see `fromLedger`. v2: what the player gets (the fee was reserved at join). v1: fee included. */
   payout: bigint;
+}
+
+/** One ticket of a `cancel` batch (v2): a ticket that was never played gets its full entry fee back. */
+export interface SessionRef {
+  arenaId: number;
+  player: Address;
+  sessionId: bigint;
+}
+
+function checkSessionRef(s: SessionRef): void {
+  checkArenaId(s.arenaId);
+  checkAddress('player', s.player);
+  if (typeof s.sessionId !== 'bigint' || s.sessionId <= 0n || s.sessionId > MAX_UINT64) throw new RangeError(`sessionId must be a uint64 > 0, got ${s.sessionId}`);
+}
+
+/** One `cancel` call (v2 arenas only): full entry-fee refunds of unplayed tickets, signed by the server. */
+export function cancelCall(arena: Address, items: readonly SessionRef[]): ArenaCall {
+  if (items.length === 0) throw new RangeError('cancel needs at least one item');
+  for (const s of items) checkSessionRef(s);
+  return {
+    address: arena,
+    abi: elymumArenaAbi,
+    functionName: 'cancel',
+    args: [items.map((s) => ({ arenaId: s.arenaId, player: getAddress(s.player), sessionId: s.sessionId }))],
+  };
 }
 
 function checkSettlement(s: Settlement): void {

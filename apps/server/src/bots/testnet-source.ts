@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { approveCall, formatHypeAmount, joinCall, refundCall, testTokenMintCall, toLedger, type ArenaInfo, type SessionInfo } from '@elymum/sdk';
+import { approveCall, formatHypeAmount, joinCall, refundCall, testTokenMintCall, ticketValue, toLedger, type ArenaInfo, type SessionInfo } from '@elymum/sdk';
 import { concat, getAddress, keccak256, numberToHex, parseEther, parseUnits, toHex, type Address, type Hash, type Hex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import type { EvmClient } from '../chain/evm-client';
@@ -72,6 +72,8 @@ export interface StakedChainView {
   stakeEnabled: boolean;
   arena: string | null;
   token: { address: string; decimals: number } | null;
+  /** What the arena's fee is taken from (`ChainStatus.feeModel`): a bot's ticket plays `entry − fee` on `entry`. */
+  feeModel?: 'entry' | 'profit' | null;
 }
 
 export interface TestnetBotDeps {
@@ -121,7 +123,7 @@ export interface StakedBotStatus {
 class Blocked extends Error {}
 
 /** The chain and contracts a purchase works with. */
-type BotCtx = { client: EvmClient; arena: Address; token: Address; decimals: number; chainId: number };
+type BotCtx = { client: EvmClient; arena: Address; token: Address; decimals: number; chainId: number; feeModel: 'entry' | 'profit' };
 
 /**
  * Testnet staked bots (2026-10-31 spec, section 2): implements `StakedBotSource` on the Elysium
@@ -271,7 +273,7 @@ export class TestnetBotSource implements StakedBotSource {
     const c = this.deps.chain();
     const client = this.deps.client();
     if (!client || !isTestChain(c.chainId) || !c.stakeEnabled || !c.arena || !c.token) return null;
-    return { client, arena: getAddress(c.arena), token: getAddress(c.token.address), decimals: c.token.decimals, chainId: c.chainId! };
+    return { client, arena: getAddress(c.arena), token: getAddress(c.token.address), decimals: c.token.decimals, chainId: c.chainId!, feeModel: c.feeModel === 'profit' ? 'profit' : 'entry' };
   }
 
   /** True while staked bots may play (a test chain with the arenas on). */
@@ -532,7 +534,7 @@ export class TestnetBotSource implements StakedBotSource {
   }
 
   /** Gas and bankroll top-up, approve (once), join; resolves with the ticket. */
-  private async buy(ctx: { client: EvmClient; arena: Address; token: Address; decimals: number }, w: BotWallet, arena: ArenaInfo): Promise<StakedBotTicket> {
+  private async buy(ctx: BotCtx, w: BotWallet, arena: ArenaInfo): Promise<StakedBotTicket> {
     const { client } = ctx;
     const testnet = this.deps.settings.settings.testnet;
     // gas: top up to `gasHype` when below half of it, from the server key
@@ -573,8 +575,10 @@ export class TestnetBotSource implements StakedBotSource {
   }
 
   /** The ticket of an open session of a bot wallet. */
-  private ticketOf(ctx: { decimals: number }, w: BotWallet, s: SessionInfo): StakedBotTicket {
+  private ticketOf(ctx: { decimals: number; feeModel: 'entry' | 'profit' }, w: BotWallet, s: SessionInfo): StakedBotTicket {
     const entryFee = toLedger(s.entryFee, ctx.decimals, 'floor');
+    // bots pay the fee like players: on a fee-on-entry arena the ticket plays entry − fee
+    const value = toLedger(ticketValue(s.entryFee, s.feeBps, ctx.feeModel === 'profit' ? 1 : 2), ctx.decimals, 'floor');
     return {
       stake: {
         player: w.address,
@@ -582,7 +586,7 @@ export class TestnetBotSource implements StakedBotSource {
         sessionId: Number(s.id),
         arenaId: s.arenaId,
         entryFee,
-        value: entryFee,
+        value,
         openedAt: s.openedAt,
       },
     };

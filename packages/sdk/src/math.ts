@@ -15,11 +15,18 @@ export function mulBps(amount: IntLike, bps: number): bigint {
   return (toBigInt(amount) * BigInt(bps)) / BigInt(BPS);
 }
 
-/** How a settled payout is split (base units of the game token). */
+/**
+ * The arena contract's fee rule. `2` (the bundled ElymumArena): the fee is `feeBps` of the ENTRY FEE of every
+ * played ticket, whatever the result; the ticket plays `entryFee − fee` and a payout is paid in full. `1`
+ * (legacy, still live on the testnet until it is redeployed): the fee is `feeBps` of the profit at `settle`.
+ */
+export type ArenaFeeVersion = 1 | 2;
+
+/** How a settled ticket's money is split (base units of the game token). */
 export interface PayoutSplit {
-  /** Fee on profit, paid in full to the fee wallet. */
+  /** The fee, paid in full to the fee wallet (v2: the entry fee's cut; v1: the cut of the profit). */
   fee: bigint;
-  /** What the player receives: `payout - fee`. */
+  /** What the player receives (v2: the whole payout; v1: `payout - fee`). */
   player: bigint;
 }
 
@@ -32,10 +39,30 @@ function checkFeeBps(feeBps: number): void {
 }
 
 /**
- * `ElymumArena.computeFee` exactly: `floor((payout − entryFee)⁺ × feeBps / 10 000)`.
+ * `ElymumArena.computeFee` (v2) exactly: the fee of a ticket, `floor(entryFee × feeBps / 10 000)`.
  * Throws `RangeError` where the contract could not run (a value outside uint128, `feeBps` not a uint16).
  */
-export function computeFee(payout: IntLike, entryFee: IntLike, feeBps: number): bigint {
+export function computeEntryFee(entryFee: IntLike, feeBps: number): bigint {
+  const e = toBigInt(entryFee);
+  checkU128('entryFee', e);
+  checkFeeBps(feeBps);
+  return (e * BigInt(feeBps)) / BigInt(BPS);
+}
+
+/**
+ * What a ticket plays with (base units): `entryFee − computeEntryFee(entryFee, feeBps)` on a v2 arena, the
+ * whole entry fee on a v1 arena (which took its fee from the profit instead).
+ */
+export function ticketValue(entryFee: IntLike, feeBps: number, version: ArenaFeeVersion = 2): bigint {
+  const e = toBigInt(entryFee);
+  return version === 1 ? e : e - computeEntryFee(e, feeBps);
+}
+
+/**
+ * Legacy v1 arena (`computeFee(payout, entryFee, feeBps)` there): `floor((payout − entryFee)⁺ × feeBps / 10 000)`.
+ * Throws `RangeError` where the contract could not run.
+ */
+export function computeProfitFee(payout: IntLike, entryFee: IntLike, feeBps: number): bigint {
   const p = toBigInt(payout);
   const e = toBigInt(entryFee);
   checkU128('payout', p);
@@ -46,14 +73,20 @@ export function computeFee(payout: IntLike, entryFee: IntLike, feeBps: number): 
 }
 
 /**
- * Mirrors `settle` exactly: `fee = computeFee(payout, entryFee, feeBps)`, `player = payout − fee`.
+ * Mirrors `settle` exactly. v2 (default): `fee = computeEntryFee(entryFee, feeBps)` (reserved at join),
+ * `player = payout`. v1: `fee = computeProfitFee(payout, entryFee, feeBps)`, `player = payout − fee`.
  *
  * For a settlement pass the session's own `feeBps` (fixed at join), not the config's current
  * rate; for a preview of a ticket not bought yet pass the config's `feeBps`.
  */
-export function splitPayout(payout: IntLike, entryFee: IntLike, feeBps: number): PayoutSplit {
-  const fee = computeFee(payout, entryFee, feeBps);
-  return { fee, player: toBigInt(payout) - fee };
+export function splitPayout(payout: IntLike, entryFee: IntLike, feeBps: number, version: ArenaFeeVersion = 2): PayoutSplit {
+  const p = toBigInt(payout);
+  checkU128('payout', p);
+  if (version === 1) {
+    const fee = computeProfitFee(p, entryFee, feeBps);
+    return { fee, player: p - fee };
+  }
+  return { fee: computeEntryFee(entryFee, feeBps), player: p };
 }
 
 /* -------------------------------------------------------------------- */

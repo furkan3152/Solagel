@@ -39,12 +39,12 @@ Setup (in this order)
 
 Arena
   update-arena --id N [--fee <tokens>] [--max N] [--enabled true|false]
-  fee --bps N                            fee on profit for new tickets (0..${MAX_FEE_BPS}, default ${DEFAULT_FEE_BPS})
+  fee --bps N                            fee on the entry fee of new tickets (0..${MAX_FEE_BPS}, default ${DEFAULT_FEE_BPS})
   pause | unpause                        block / allow arena joins (settlements and refunds keep working)
   server-key --address <addr>            set the server authority (settle / sweepLoot)
   sweep-arena --id N --force             move a disabled, idle arena's vault to the fee wallet
   holder-perks --nft <addr|none> [--bps ${DEFAULT_HOLDER_FEE_BPS}]
-                                         emblem holders pay --bps on profit and may enter holders-only arenas
+                                         emblem holders pay --bps of the entry fee and may enter holders-only arenas
   holders-only --id N --on true|false    admit only emblem holders to an arena
 
 TestToken (localnet / testnet)
@@ -233,7 +233,7 @@ export function formatStatus(s: StatusSnapshot, rpcUrl: string): string[] {
       out.push(row('server authority', `${c.serverAuthority}${a.serverBalance !== null ? `  (${formatHypeAmount(a.serverBalance, 4)})` : ''}`));
       out.push(row('fee wallet', `${c.feeWallet}${a.token ? `  (${formatTokenAmount(a.token.feeWalletBalance, d)}${sym})` : ''}`));
       out.push(row('token', c.token ? `${c.token}  (${a.token?.name ?? '?'}${sym ? `,${sym}` : ''}, ${d} decimals)` : 'not set (run `pnpm admin set-token --token <addr> --confirm <addr>`)'));
-      out.push(row('fee', `${formatBps(c.feeBps)} of profit, 100 % to the fee wallet`));
+      out.push(row('fee', a.version === 1 ? `${formatBps(c.feeBps)} of profit, 100 % to the fee wallet (legacy v1 arena: redeploy to take the fee from every entry)` : `${formatBps(c.feeBps)} of every entry fee, 100 % to the fee wallet`));
       out.push(row('holder perks', c.holderNft ? `${c.holderNft}  (holders pay ${formatBps(Math.min(c.holderFeeBps, c.feeBps))})` : 'off'));
       out.push(row('paused', c.paused ? 'YES (arena joins blocked)' : 'no'));
       const t = c.totals;

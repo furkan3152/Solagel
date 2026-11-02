@@ -235,7 +235,7 @@ function useAutoRegister(ctx: ChainCtx): string | null {
 function ArenaStep({ ctx, onLocal, kicker }: { ctx: ChainCtx; onLocal: (l: LocalDeploys) => void; kicker: string }) {
   const [err, guard] = useFormError();
   return (
-    <Card title="Deploy ElymumArena" id="deploy-arena" kicker={kicker} lede="The arena holds the tickets, settles rounds with the server's key and keeps the fee. Its constructor takes three addresses:">
+    <Card title="Deploy ElymumArena" id="deploy-arena" kicker={kicker} lede="The arena holds the tickets, settles rounds with the server's key and keeps the fee (v2: a share of every played entry fee; unplayed tickets are refunded in full). Its constructor takes three addresses:">
       <dl className="ad-kv ad-kv--args">
         <div>
           <dt className="mono">admin</dt>

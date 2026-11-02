@@ -73,25 +73,34 @@ flowchart LR
 5. **Refund.** A finalized session: `refund` pays `owed`. An unsettled session older than 24 h: `refund`
    pays `min(entryFee, vault)`.
 
-### Fees
+### Fees (arena v2: fee on entry)
 
 ```
-profit = max(0, payout - entryFee)
-fee    = floor(profit * feeBps / 10 000)     feeBps fixed at join; 500 (5 %) by default, at most 1 000 (10 %)
-player = payout - fee
+fee    = floor(entryFee * feeBps / 10 000)   feeBps fixed at join; 500 (5 %) by default, at most 1 000 (10 %)
+value  = entryFee - fee                       what the ticket plays with (the coin's starting value, in the vault)
+player = payout                               nothing is deducted at settle; the reserved fee goes to the fee wallet
 ```
 
-Example: entry 1,000, value at the bell 2,000 → profit 1,000 → fee 50 to the fee wallet → the player gets
-1,950. A loss or break-even pays no fee.
+Example: entry 1,000 → fee 50 reserved, the coin starts at 950; it doubles to 1,900 by the bell → the player gets
+1,900, the fee wallet 50. A loss or break-even pays the same 50. A ticket that is never played (never seated) is
+cancelled by the server (`cancel`) with its full 1,000 back and no fee; the 24 h self-refund also returns the
+full entry (the value part capped by the vault).
+
+The legacy v1 arena (still live on the Elysium testnet until it is redeployed, told apart by its code hash)
+took `floor(max(0, payout - entryFee) * feeBps / 10 000)` from the payout instead; the server reads the version
+and handles both (`ChainStatus.feeModel`).
 
 ## Invariants
 
 On chain (`ElymumArena`, custom errors, forge-std unit and fuzz tests):
 
-1. A payout never exceeds the arena's vault (`InsufficientVault`, or `SettleSkipped` reason 4 inside a batch).
+1. A payout never exceeds the arena's vault (`InsufficientVault`, or `SettleSkipped` reason 4 inside a batch). The
+   vault holds the tickets' values; their fees are reserved apart (`Arena.fees`, `arenaFees(id)`) and never spent by
+   a settlement or a loot burn. Balance = Σ vault + Σ fees + Σ owed.
 2. One open session per player per arena (`SessionExists`).
 3. No replayed settlement: the item's `sessionId` must match the open session (`SettleSkipped` reason 2).
-4. Fees only on profit, at the rate fixed at join, capped at 10 % (`InvalidFee`).
+4. The fee is a share of the entry fee of every played ticket, at the rate fixed at join, capped at 10 %
+   (`InvalidFee`); `cancel` and the 24 h refund return it.
 5. The whole fee goes to the fee wallet; a failing fee transfer reverts the batch.
 6. Floor loot is only burned: `sweepLoot(arenaId, sweepId, amount)` sends to `0x...dEaD`, needs a strictly
    increasing `sweepId` (`SweepIdNotIncreasing`) and is capped by the vault.

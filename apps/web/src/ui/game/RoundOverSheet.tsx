@@ -6,7 +6,7 @@ import { engine } from '../../game/instance';
 import { roundStartLabel } from '../../game/round';
 import { useChainData } from '../../wallet/chain';
 import { isFakeHash } from '../../wallet/devFake';
-import { feeBps } from '../../wallet/ticket';
+import { feeBps, feeModelOf } from '../../wallet/ticket';
 import { announce, sound } from '../../audio';
 import { BotTag } from './BotTag';
 import { useT } from '../../i18n';
@@ -23,16 +23,23 @@ const TOP = 5;
 /**
  * Receipt numbers: the settlement's own `fee` / `net` once it arrives, an
  * estimate at `bps` (the live config's rate for this ticket: `feeBps`) before.
- * After settlement the fee % label is derived from the real fee and the gain.
+ * `entry` model (arena v2): the fee was `bps` of the entry fee, taken at the entry; the whole till is
+ * paid (`onEntry`). `profit` (the legacy v1 arena): the fee comes out of the gain, and after settlement
+ * its % label is derived from the real fee and the gain.
  */
-export function receiptNumbers(payout: number, entryFee: number, bps: number, settled: { fee?: number; net?: number } | null) {
+export function receiptNumbers(payout: number, entryFee: number, bps: number, settled: { fee?: number; net?: number; feeOnEntry?: boolean } | null, model: 'entry' | 'profit' = 'entry') {
   const gain = payout - entryFee;
-  const estFee = Math.floor((Math.max(0, gain) * bps) / 10_000);
   const final = settled?.fee !== undefined;
+  const onEntry = settled ? settled.feeOnEntry === true || (settled.fee === undefined && model === 'entry') : model === 'entry';
+  if (onEntry) {
+    const fee = settled?.fee ?? Math.floor((entryFee * bps) / 10_000);
+    return { gain, fee, net: settled?.net ?? payout, pct: final && entryFee > 0 ? Math.round((fee / entryFee) * 1000) / 10 : bps / 100, final, onEntry };
+  }
+  const estFee = Math.floor((Math.max(0, gain) * bps) / 10_000);
   const fee = settled?.fee ?? estFee;
   const net = settled?.net ?? payout - fee;
   const pct = final && gain > 0 ? Math.round((fee / gain) * 1000) / 10 : bps / 100;
-  return { gain, fee, net, pct, final };
+  return { gain, fee, net, pct, final, onEntry };
 }
 
 /** The settlement for this ticket: matched by its session key only. */
@@ -43,7 +50,7 @@ export function settlementFor<T extends { session: string | null }>(settled: T |
 /**
  * "Round over", the landing report: the bell rang while my coin was alive, so the till is paid.
  * After a beat (the bell wave over the frozen world) the report flies out of the worth sticker: the
- * till, the fee on profit and what was paid (an estimate until `settled` arrives, then a PAID
+ * till, the fee (paid at the entry; on profit on the legacy arena) and what was paid (an estimate until `settled` arrives, then a PAID
  * stamp and the transaction link), my place and the room's top 5 at the bell. "Next round"
  * goes back to the lobby with this arena's ticket ready to buy.
  *
@@ -112,14 +119,15 @@ export function RoundOverSheet() {
 
   const payout = res?.payout ?? 0;
   const entry = ticket?.entryFee ?? room?.entryFee ?? 0;
-  const n = receiptNumbers(payout, entry, sessionBps ?? feeBps(serverBps, config), settled);
+  const n = receiptNumbers(payout, entry, sessionBps ?? feeBps(serverBps, config), settled, feeModelOf(chain));
   const roundTime = res?.round != null ? roundStartLabel(res.round, room?.round) : '';
   const approx = n.final ? '' : `${t('gr.estimate')} `;
   const lines: ReceiptLine[] = [
     { label: t('gr.till'), value: tf.fmt(payout) },
     {
-      label: <>{t('gr.fee', { pct: n.pct.toLocaleString('en-US', { maximumFractionDigits: 1 }) })}</>,
-      value: n.fee > 0 ? `${approx}−${tf.fmt(n.fee)}` : tf.fmt(0),
+      label: <>{t(n.onEntry ? 'gr.feeEntry' : 'gr.fee', { pct: n.pct.toLocaleString('en-US', { maximumFractionDigits: 1 }) })}</>,
+      // fee on entry: already paid out of the entry fee, nothing comes off this till
+      value: n.onEntry ? `${approx}${tf.fmt(n.fee)}` : n.fee > 0 ? `${approx}−${tf.fmt(n.fee)}` : tf.fmt(0),
       muted: true,
     },
     {
@@ -206,7 +214,7 @@ export function RoundOverSheet() {
             {t('gr.collect')}
           </p>
         )}
-        <p className="g-roundover__note mono">{exit ? t('gr.exitNote') : t('gr.feeNote')}</p>
+        <p className="g-roundover__note mono">{exit ? t('gr.exitNote') : t(n.onEntry ? 'gr.feeNote' : 'gr.feeNote.profit')}</p>
 
         {!exit && (
           <section className="g-board" aria-label={t('gr.top')}>

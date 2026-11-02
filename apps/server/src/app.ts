@@ -120,7 +120,8 @@ export async function createApp(
   if (recovered > 0) log(`journal: ${recovered} stake player(s) were alive at last shutdown → queued automatic payout`);
   if (journal.pending.length > 0) log(`journal: ${journal.pending.length} settlement(s) pending`);
 
-  const leaderboards = new Leaderboards(persist ? join(cfg.dataDir, files.leaderboards) : null);
+  // a deploy that raises LEADERBOARD_EPOCH starts the boards fresh once (the old file is backed up next to it)
+  const leaderboards = new Leaderboards(persist ? join(cfg.dataDir, files.leaderboards) : null, Date.now(), { log });
   if (cfg.adminWallets.length === 0) {
     log('!!! ADMIN_WALLETS is not set: NOBODY is admin (/admin and /api/admin/* refuse everyone). Set it to the owner\'s 0x address.');
   }
@@ -178,6 +179,7 @@ export async function createApp(
     holderReaderFor,
     faucet: new FaucetInfo({ chain, contracts, hypeFaucetUrl: cfg.chain.hypeFaucetUrl }),
     avatars,
+    leaderboards,
     log,
   });
   const priceKeeper = chain.evm
@@ -214,7 +216,13 @@ export async function createApp(
       stakedBots = new TestnetBotSource({
         chain: () => {
           const st = chain.status();
-          return { chainId: st.chainId, stakeEnabled: chain.stakeEnabled, arena: st.arenaAddress, token: st.token ? { address: st.token.address, decimals: st.token.decimals } : null };
+          return {
+            chainId: st.chainId,
+            stakeEnabled: chain.stakeEnabled,
+            arena: st.arenaAddress,
+            token: st.token ? { address: st.token.address, decimals: st.token.decimals } : null,
+            feeModel: st.feeModel ?? null,
+          };
         },
         client: () => chain.evm?.() ?? null,
         serverKey: key,

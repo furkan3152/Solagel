@@ -1,5 +1,5 @@
 import { CAPACITY, DEFAULT_ARENAS, RULES, arenaMeta } from '@elymum/shared';
-import { DEFAULT_FEE_BPS, MAX_FEE_BPS, REFUND_DELAY_SECS, splitPayout, type PayoutSplit } from '@elymum/sdk';
+import { DEFAULT_FEE_BPS, MAX_FEE_BPS, REFUND_DELAY_SECS, splitPayout, ticketValue, type PayoutSplit } from '@elymum/sdk';
 
 /**
  * Every number the player guide quotes, taken from the code that enforces it, so the
@@ -21,18 +21,22 @@ export const SERVER = {
   promotionHours: 24,
   /** `MAX_STAKE_SESSION_AGE_S` (rooms/room.ts): a safety cap; rounds end every 5 minutes, so tickets close far sooner. */
   maxTicketHours: 6,
-  /** `STALE_SESSION_AFTER_S` (chain/evm.ts): a ticket nobody plays is settled at its entry fee after 15 min. */
+  /** `STALE_SESSION_AFTER_S` (chain/evm.ts): a ticket nobody plays gets its full entry fee back after 15 min. */
   staleTicketMinutes: 15,
   /** `PRIVATE_ROOM_CAPACITY` default (shared CAPACITY.private) and the 5-character room code (rooms/manager.ts). */
   privateCodeLength: 5,
 } as const;
 
-/** The worked fee example of the guide: a 1,000-token ticket with 2,000 tokens in the till at the bell. */
-export const EXAMPLE = { entry: 1000, cashout: 2000 } as const;
+/** The worked fee example of the guide: a 1,000-token ticket with 1,900 tokens in the till at the bell (its 950 doubled). */
+export const EXAMPLE = { entry: 1000, cashout: 1900 } as const;
 
-/** The worked example at `bps` (the server's `feeBps`; 5 % → fee 50, player 1,950), exactly as `settle` splits it. */
-export function feeExample(bps: number): PayoutSplit {
-  return splitPayout(EXAMPLE.cashout, EXAMPLE.entry, bps);
+/**
+ * The worked example at `bps` (the server's `feeBps`), exactly as the arena splits it: the fee comes off the
+ * entry fee at the entry (5 % → fee 50, the coin starts at 950) and the whole till is paid (player 1,900).
+ */
+export function feeExample(bps: number): PayoutSplit & { value: bigint } {
+  const split = splitPayout(EXAMPLE.cashout, EXAMPLE.entry, bps);
+  return { ...split, value: ticketValue(EXAMPLE.entry, bps) };
 }
 
 export interface DocsFacts {
@@ -126,7 +130,8 @@ export interface DocsContent {
     meta: string;
     entry: string;
     cashout: string;
-    profit: string;
+    /** What the coin starts at (the entry fee minus the fee). */
+    starts: string;
     fee: (pct: string) => string;
     net: string;
     /** Where the fee goes (the receipt's footer). */

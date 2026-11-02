@@ -1,8 +1,8 @@
 /**
  * End to end against a real EVM: spawns `hardhat node` (from @elymum/contracts) on a free port,
  * deploys the TestToken, the arena and the NFT with the SDK's helpers, and runs the money paths:
- * set the token, create the default arenas, join (approve-if-needed), settle a batch (fee checked
- * against math.ts and the contract's computeFee), burn loot, then the allowlist mint with a proof
+ * set the token, create the default arenas, join (approve-if-needed), settle a batch (the entry-fee cut
+ * checked against math.ts and the contract's computeFee), cancel an unplayed ticket, burn loot, then the allowlist mint with a proof
  * built in TypeScript (excess refunded) and the treasury withdrawal, then the emblem utilities: the
  * holder fee and a holders-only arena on the arena, and the TestToken's minters and holder faucet.
  *
@@ -21,8 +21,11 @@ import {
   DEFAULT_FEE_BPS,
   MintPhase,
   buildMerkleTree,
-  computeFee,
+  cancelCall,
+  computeEntryFee,
   computeFeeOnChain,
+  getArenaFees,
+  getArenaVersion,
   createDefaultArenaCalls,
   createElymumPublicClient,
   createElymumWalletClient,
@@ -177,6 +180,8 @@ describe('e2e on a hardhat node', () => {
     );
     expect(await checkDeployedCode(client, token, 'token')).toBe('ok');
     expect(await checkDeployedCode(client, arena, 'arena')).toBe('ok');
+    expect(await getArenaVersion(client, arena)).toBe(2);
+    expect(await getArenaVersion(client, token)).toBeNull();
     expect(await checkDeployedCode(client, token, 'arena')).toBe('mismatch');
     const c = await getArenaConfig(client, arena);
     expect(c).toMatchObject({ admin: admin.address, serverAuthority: server.address, feeWallet: feeWallet.address, token: null, feeBps: DEFAULT_FEE_BPS, paused: false });
@@ -213,7 +218,9 @@ describe('e2e on a hardhat node', () => {
     const s2 = await getSession(client, arena, 1, p2.address);
     expect(s1).toMatchObject({ id: 1n, entryFee: 1000n * T, feeBps: 500, finalized: false });
     expect(s2.id).toBe(2n);
-    expect((await getArena(client, arena, 1)).vault).toBe(2000n * T);
+    // the 5 % fee of each 1,000 ticket is reserved; the vault holds the tickets' values
+    expect((await getArena(client, arena, 1)).vault).toBe(1900n * T);
+    expect(await getArenaFees(client, arena, 1)).toBe(100n * T);
 
     // the joining player cannot join twice
     const twice = await simulateCall(client, (await planJoin(client, { arena, arenaId: 1, player: p1.address, token })).join, p1).catch((e) => e);
@@ -223,7 +230,7 @@ describe('e2e on a hardhat node', () => {
     const entryLedger = toLedger(s1.entryFee, 18);
     expect(entryLedger).toBe(1_000_000_000);
     const payout1 = fromLedger(1_512_345_678, 18); // 1512.345678 tokens
-    const payout2 = 2000n * T - payout1;
+    const payout2 = 1900n * T - payout1;
     const before1 = await getTokenBalance(client, token, p1.address);
     const before2 = await getTokenBalance(client, token, p2.address);
     const calls = settleCalls(arena, [
@@ -233,22 +240,33 @@ describe('e2e on a hardhat node', () => {
     expect(calls).toHaveLength(1);
     await send(server.address, calls[0]);
 
-    const fee1 = computeFee(payout1, s1.entryFee, s1.feeBps);
-    expect(fee1).toBe(await computeFeeOnChain(client, arena, payout1, s1.entryFee, s1.feeBps));
-    expect(fee1).toBe(25_617_283_900_000_000_000n); // 5 % of 512.345678
-    expect(computeFee(payout2, s2.entryFee, s2.feeBps)).toBe(0n);
+    const fee1 = computeEntryFee(s1.entryFee, s1.feeBps);
+    expect(fee1).toBe(await computeFeeOnChain(client, arena, s1.entryFee, s1.feeBps));
+    expect(fee1).toBe(50n * T); // 5 % of the 1,000 entry, whatever the result
+    expect(computeEntryFee(s2.entryFee, s2.feeBps)).toBe(50n * T); // p2 lost value and still paid it
     expect((await getTokenBalance(client, token, p1.address)) - before1).toBe(splitPayout(payout1, s1.entryFee, 500).player);
+    expect(splitPayout(payout1, s1.entryFee, 500).player).toBe(payout1); // nothing deducted at settle
     expect((await getTokenBalance(client, token, p2.address)) - before2).toBe(payout2);
-    expect(await getTokenBalance(client, token, feeWallet.address)).toBe(fee1);
+    expect(await getTokenBalance(client, token, feeWallet.address)).toBe(2n * fee1);
     expect((await getSession(client, arena, 1, p1.address)).id).toBe(0n);
     const a1 = await getArena(client, arena, 1);
     expect(a1).toMatchObject({ vault: 0n, openSessions: 0 });
+    expect(await getArenaFees(client, arena, 1)).toBe(0n);
     const c = await getArenaConfig(client, arena);
-    expect(c.totals).toMatchObject({ games: 2n, fees: fee1, staked: 2000n * T });
+    expect(c.totals).toMatchObject({ games: 2n, fees: 2n * fee1, staked: 2000n * T });
 
     // a replayed settlement is skipped, not paid twice
     await send(server.address, settleCalls(arena, [{ arenaId: 1, player: p1.address, sessionId: s1.id, payout: payout1 }])[0]);
-    expect(await getTokenBalance(client, token, feeWallet.address)).toBe(fee1);
+    expect(await getTokenBalance(client, token, feeWallet.address)).toBe(2n * fee1);
+
+    // a ticket that is never played is cancelled by the server: the full entry fee comes back, no fee
+    for (const call of (await planJoin(client, { arena, arenaId: 1, player: p2.address, token })).calls) await send(p2.address, call);
+    const s3 = await getSession(client, arena, 1, p2.address);
+    const before3 = await getTokenBalance(client, token, p2.address);
+    await send(server.address, cancelCall(arena, [{ arenaId: 1, player: p2.address, sessionId: s3.id }]));
+    expect((await getTokenBalance(client, token, p2.address)) - before3).toBe(1000n * T);
+    expect(await getTokenBalance(client, token, feeWallet.address)).toBe(2n * fee1);
+    expect((await getSession(client, arena, 1, p2.address)).id).toBe(0n);
 
     // only the server may settle
     const notServer = await simulateCall(client, calls[0], p1).catch((e) => e);
@@ -260,9 +278,10 @@ describe('e2e on a hardhat node', () => {
     for (const call of (await planJoin(client, { arena, arenaId: 1, player: p1.address, token })).calls) await send(p1.address, call);
     const s = await getSession(client, arena, 1, p1.address);
     await send(server.address, settleCalls(arena, [{ arenaId: 1, player: p1.address, sessionId: s.id, payout: 400n * T }])[0]);
-    await send(server.address, sweepLootCall(arena, 1, 1n, 600n * T));
-    expect(await getTokenBalance(client, token, BURN_ADDRESS)).toBe(600n * T);
-    expect(await getArena(client, arena, 1)).toMatchObject({ vault: 0n, totalBurned: 600n * T, lastSweepId: 1n });
+    // the ticket played 950 (1,000 minus the 5 % fee): 550 is left as loot
+    await send(server.address, sweepLootCall(arena, 1, 1n, 550n * T));
+    expect(await getTokenBalance(client, token, BURN_ADDRESS)).toBe(550n * T);
+    expect(await getArena(client, arena, 1)).toMatchObject({ vault: 0n, totalBurned: 550n * T, lastSweepId: 1n });
     const replay = await simulateCall(client, sweepLootCall(arena, 1, 1n, 0n), server).catch((e) => e);
     expect(describeError(replay).name).toBe('SweepIdNotIncreasing');
 
@@ -359,17 +378,19 @@ describe('e2e on a hardhat node', () => {
     const so = await getSession(client, arena, 2, outsider.address);
     expect([s1.feeBps, so.feeBps]).toEqual([300, 500]);
     const fees0 = await getTokenBalance(client, token, feeWallet.address);
+    // 10k tickets: the holder plays 9,700 (3 % fee), the outsider 9,500 (5 %)
+    expect((await getArena(client, arena, 2)).vault).toBe(19_200n * T);
     await send(
       server.address,
       settleCalls(arena, [
         { arenaId: 2, player: p1.address, sessionId: s1.id, payout: 15_000n * T },
-        { arenaId: 2, player: outsider.address, sessionId: so.id, payout: 5_000n * T },
+        { arenaId: 2, player: outsider.address, sessionId: so.id, payout: 4_200n * T },
       ])[0],
     );
-    const fee = computeFee(15_000n * T, s1.entryFee, s1.feeBps);
-    expect(fee).toBe(150n * T); // 3 % of a 5k profit (5 % would be 250)
-    expect(fee).toBe(await computeFeeOnChain(client, arena, 15_000n * T, s1.entryFee, s1.feeBps));
-    expect((await getTokenBalance(client, token, feeWallet.address)) - fees0).toBe(fee);
+    const fee = computeEntryFee(s1.entryFee, s1.feeBps);
+    expect(fee).toBe(300n * T); // 3 % of the 10k entry (5 % would be 500)
+    expect(fee).toBe(await computeFeeOnChain(client, arena, s1.entryFee, s1.feeBps));
+    expect((await getTokenBalance(client, token, feeWallet.address)) - fees0).toBe(fee + 500n * T);
 
     // holders-only: refused early by planJoin, and by the contract
     await expect(planJoin(client, { arena, arenaId: 4, player: outsider.address, token })).rejects.toThrow(/holders only/);

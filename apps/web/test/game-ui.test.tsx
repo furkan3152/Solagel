@@ -23,13 +23,22 @@ afterEach(() => {
 });
 
 describe('round receipt numbers', () => {
-  it('estimates the fee on profit only at the ticket\'s rate until the settlement arrives', () => {
-    expect(receiptNumbers(3000 * M, 1000 * M, 500, null)).toEqual({ gain: 2000 * M, fee: 100 * M, net: 2900 * M, pct: 5, final: false });
-    expect(receiptNumbers(3000 * M, 1000 * M, 200, null)).toMatchObject({ fee: 40 * M, net: 2960 * M, pct: 2 });
+  it('fee on entry (arena v2): the fee is the entry\'s cut, the whole till is paid', () => {
+    expect(receiptNumbers(3000 * M, 1000 * M, 500, null)).toEqual({ gain: 2000 * M, fee: 50 * M, net: 3000 * M, pct: 5, final: false, onEntry: true });
+    // a loss still paid its fee at the entry; nothing comes off the till
+    expect(receiptNumbers(400 * M, 1000 * M, 500, null)).toMatchObject({ fee: 50 * M, net: 400 * M, onEntry: true });
+    expect(receiptNumbers(400 * M, 1000 * M, 300, null, 'entry')).toMatchObject({ fee: 30 * M, pct: 3 });
+    // the settlement's own numbers win
+    expect(receiptNumbers(3000 * M, 1000 * M, 500, { fee: 30 * M, net: 3000 * M, feeOnEntry: true })).toMatchObject({ fee: 30 * M, net: 3000 * M, final: true, pct: 3, onEntry: true });
+  });
+
+  it('legacy fee on profit (arena v1): estimates at the ticket\'s rate until the settlement arrives', () => {
+    expect(receiptNumbers(3000 * M, 1000 * M, 500, null, 'profit')).toEqual({ gain: 2000 * M, fee: 100 * M, net: 2900 * M, pct: 5, final: false, onEntry: false });
+    expect(receiptNumbers(3000 * M, 1000 * M, 200, null, 'profit')).toMatchObject({ fee: 40 * M, net: 2960 * M, pct: 2 });
     // a loss pays no fee
-    expect(receiptNumbers(400 * M, 1000 * M, 500, null)).toMatchObject({ gain: -600 * M, fee: 0, net: 400 * M });
-    // the settlement's own numbers win, and the fee % label follows the real fee
-    expect(receiptNumbers(3000 * M, 1000 * M, 500, { fee: 99 * M, net: 2901 * M })).toMatchObject({ fee: 99 * M, net: 2901 * M, final: true, pct: 5 });
+    expect(receiptNumbers(400 * M, 1000 * M, 500, null, 'profit')).toMatchObject({ gain: -600 * M, fee: 0, net: 400 * M });
+    // the settlement's own numbers win (a settlement without `feeOnEntry` is a v1 one), and the fee % label follows the real fee
+    expect(receiptNumbers(3000 * M, 1000 * M, 500, { fee: 99 * M, net: 2901 * M })).toMatchObject({ fee: 99 * M, net: 2901 * M, final: true, pct: 5, onEntry: false });
     expect(receiptNumbers(3000 * M, 1000 * M, 500, { fee: 30 * M, net: 2970 * M })).toMatchObject({ pct: 1.5 });
   });
 

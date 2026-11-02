@@ -8,7 +8,7 @@ import { sessionKey, type ChainArena, type ChainGateway, type ChainSession, type
 const DECIMALS = 18;
 /** Ledger decimals (`ledgerDecimals(18)`): what the rooms and the wire count in. */
 const LEDGER_DECIMALS = 6;
-/** Fee on profit, basis points (the contract default: 5 %). */
+/** Fee on every played ticket's entry fee, basis points (the contract default: 5 %; the dev fake models arena v2). */
 const FEE_BPS = 500;
 const FAKE_TOKEN = '0x00000000000000000000000000000000DE7f4CE1';
 const FAKE_ARENA = '0x000000000000000000000000000000000000fA4E';
@@ -89,6 +89,7 @@ export class DevFakeChain implements ChainGateway, DevFakeChainActions {
       tokenReady: this.tokenSet,
       token: this.tokenSet ? { address: FAKE_TOKEN, symbol: TOKEN_SYMBOL_DEFAULT, decimals: DECIMALS } : null,
       feeBps: FEE_BPS,
+      feeModel: 'entry',
       serverKey: FAKE_SERVER,
     };
   }
@@ -151,6 +152,9 @@ export class DevFakeChain implements ChainGateway, DevFakeChainActions {
         player: wallet,
         arenaId,
         entryFee: arena.entryFee,
+        feeBps: FEE_BPS,
+        // the ticket plays its entry fee minus the fee (arena v2)
+        value: arena.entryFee - Math.floor((arena.entryFee * FEE_BPS) / 10_000),
         openedAt: Math.floor(Date.now() / 1000),
         finalized: false,
         owed: 0,
@@ -207,14 +211,14 @@ export class DevFakeChain implements ChainGateway, DevFakeChainActions {
     const session = this.byKey.get(key);
     if (!session) return;
     const payout = item.payout ?? 0;
-    const profit = Math.max(0, payout - session.entryFee);
-    const fee = Math.floor((profit * FEE_BPS) / 10_000);
+    // arena v2: the fee is the entry fee's cut (reserved at join), the whole payout is the player's
+    const fee = Math.floor((session.entryFee * FEE_BPS) / 10_000);
     this.journal.remove(key);
     this.sessions.delete(`${session.arenaId}:${session.player.toLowerCase()}`);
     this.byKey.delete(key);
     const txHash = fakeTxHash();
     this.log(`chain(dev-fake): settled ${key} payout=${payout} fee=${fee}`);
-    for (const fn of this.listeners) fn({ key, player: session.player, arenaId: session.arenaId, txHash, payout, fee });
+    for (const fn of this.listeners) fn({ key, player: session.player, arenaId: session.arenaId, txHash, payout, fee, feeOnEntry: true });
   }
 
   setLiveSessionProvider(): void {}

@@ -15,7 +15,7 @@ import { loadDevFake } from './devFakeLoader';
 import { explorerTx } from './links';
 import { serverChainInfo } from './network';
 import { useAddress } from './store';
-import { bpsPercent, feeBps, planErrorName, ticketFeeBps, ticketSteps, type TicketModel, type TicketStep } from './ticket';
+import { bpsPercent, feeBps, feeModelOf, planErrorName, ticketFeeBps, ticketPlays, ticketSteps, type TicketModel, type TicketStep } from './ticket';
 import { sendWalletCall, txErrorText, type TxPhase } from './tx';
 
 /** `collect`: a finalized session's payout; `refund`: an unsettled ticket after 24 h. */
@@ -55,6 +55,7 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
   const tok = useTokenText();
   const reduced = useReducedMotion();
   const serverBps = useUi((s) => s.chain?.feeBps ?? null);
+  const model = useUi((s) => feeModelOf(s.chain));
   const tokenReady = useUi((s) => s.chain?.tokenReady === true);
 
   const [phase, setPhase] = useState<Phase>('review');
@@ -398,16 +399,21 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
           {mode === 'buy' && (
             <Line
               label={t('tf.fee')}
-              value={holderRate.discount ? `${t('tf.feeV', { n: bpsPercent(v.bps) })} · ${t('tf.feeHolder', { std: bpsPercent(normalBps) })}` : t('tf.feeV', { n: bpsPercent(v.bps) })}
+              value={
+                holderRate.discount
+                  ? `${t(model === 'profit' ? 'tf.feeV.profit' : 'tf.feeV', { n: bpsPercent(v.bps) })} · ${t('tf.feeHolder', { std: bpsPercent(normalBps) })}`
+                  : t(model === 'profit' ? 'tf.feeV.profit' : 'tf.feeV', { n: bpsPercent(v.bps) })
+              }
             />
           )}
+          {mode === 'buy' && model === 'entry' && <Line label={t('tf.plays')} value={`${tok.exact(ticketPlays(v.fee, v.bps, model))} ${tok.symbol}`} />}
           <Line label={t('tf.gas')} value={t('tf.gasV', { chain: chainName, hype: v.wei === null ? '…' : formatHypeAmount(v.wei, 4) })} />
           {mode === 'buy' && v.balance !== null && (
             <Line label={t('tf.balance')} value={`${tok.fee(v.balance)} → ${tok.fee(v.balance - v.fee)} ${tok.symbol}`} />
           )}
         </dl>
 
-        {mode === 'buy' && <p className="tf-note">{t('tf.feeNote')}</p>}
+        {mode === 'buy' && <p className="tf-note">{t(model === 'profit' ? 'tf.feeNote.profit' : 'tf.feeNote')}</p>}
         {maintenance && <p className="tf-warn">{t('tf.err.Maintenance')}</p>}
         {lowGas && !busy && <p className="tf-warn">{t('tf.lowGas', { chain: chainName })}</p>}
 

@@ -42,6 +42,13 @@ export interface ChainSession {
   arenaId: number;
   /** Ticket price, ledger units. */
   entryFee: number;
+  /** Fee rate fixed at join (basis points). */
+  feeBps?: number;
+  /**
+   * What the ticket plays with, ledger units (rounded down): `entryFee − fee` on a fee-on-entry arena (v2),
+   * the whole `entryFee` on the legacy fee-on-profit arena (v1). The coin's starting value in the room.
+   */
+  value: number;
   /** Unix seconds. */
   openedAt: number;
   /**
@@ -78,10 +85,14 @@ export interface SettledEvent {
   arenaId?: number;
   /** The settlement transaction (0x hash). */
   txHash: string;
-  /** Ledger units paid out of the vault (before the fee). */
+  /** Ledger units paid out (v2: all of it reaches the player; v1: before the fee on profit). */
   payout: number;
-  /** Fee on profit, ledger units (absent when unknown, e.g. a late confirmation). */
+  /** The fee, ledger units (v2: the entry fee's cut; v1: on profit; absent when unknown, e.g. a late confirmation). */
   fee?: number;
+  /** The fee was taken from the entry fee (arena v2): the whole payout reaches the player. */
+  feeOnEntry?: boolean;
+  /** An unplayed ticket was cancelled (v2): `payout` is its full entry fee, no fee. */
+  refund?: boolean;
   /** The transfer to the player failed; the session is finalized and the player collects the net payout. */
   collect?: boolean;
 }
@@ -184,6 +195,7 @@ export class NullChain implements ChainGateway {
       tokenReady: false,
       token: null,
       feeBps: null,
+      feeModel: null,
       serverKey: null,
     };
   }

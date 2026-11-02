@@ -247,7 +247,7 @@ function KeysFig({ caption, rows }: { caption: string; rows: { key: string; acti
   );
 }
 
-/** The worked example: a 1,000-token ticket with 2,000 in the till at the bell, at the server's fee rate. */
+/** The worked example: a 1,000-token ticket whose coin doubles by the bell, at the server's fee rate. */
 function FeeExample({ c }: { c: DocsContent }) {
   const { entry, cashout } = EXAMPLE;
   const split = feeExample(c.feeBps);
@@ -255,9 +255,9 @@ function FeeExample({ c }: { c: DocsContent }) {
   const n = (v: bigint | number) => c.num(Number(v));
   const lines: ReceiptLine[] = [
     { label: r.entry, value: n(entry) },
-    { label: r.cashout, value: n(cashout) },
-    { label: r.profit, value: n(cashout - entry) },
     { label: r.fee(c.pct(c.feeBps)), value: `−${n(split.fee)}`, muted: true },
+    { label: r.starts, value: n(split.value) },
+    { label: r.cashout, value: n(cashout) },
     { label: r.net, value: n(split.player), strong: true },
   ];
   return (

@@ -660,7 +660,7 @@ export function Gallery() {
               <TabPanel idBase="galtabs" id={tab} className="gal-tabpanel">
                 {tab === 'feast' ? 'Five minutes. Eat or be eaten.' : tab === 'ring' ? 'Four arenas on the ring.' : 'Every bite, on the books.'}
               </TabPanel>
-              <Dateline items={['Arenas open', 'Fee 5% of profit', '42 online']} label="Today" />
+              <Dateline items={['Arenas open', 'Fee 5% of each entry', '42 online']} label="Today" />
               <Rule label="or" />
               <Rule variant="thick" />
               <Rule variant="cut" />

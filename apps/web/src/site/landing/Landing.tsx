@@ -161,7 +161,7 @@ function Feast() {
             </li>
             <li>
               <b className="num">{pct(FACTS.fee.bps)}</b>
-              <span className="mono">of profit, no more</span>
+              <span className="mono">of each entry, no more</span>
             </li>
           </ul>
         </motion.div>
@@ -195,7 +195,7 @@ const STATIONS: { no: string; title: string; body: string }[] = [
   { no: '01', title: 'Ticket', body: `Pick an arena and buy a ticket in ${SYMBOL}. Two signatures at most: an exact approval, then the ticket.` },
   { no: '02', title: 'Eat', body: 'Food makes you bigger. Smaller coins make you richer: their whole till moves into yours.' },
   { no: '03', title: 'Bell', body: `Every five minutes, in every arena at once. Joins close ${FACTS.rules.joinCloseS} seconds before it rings.` },
-  { no: '04', title: 'Paid', body: `Alive at the bell? Your till goes to your wallet, minus ${pct(FACTS.fee.bps)} of the profit. Eaten? Someone else says thanks.` },
+  { no: '04', title: 'Paid', body: `Alive at the bell? Your whole till goes to your wallet; the only fee was ${pct(FACTS.fee.bps)} of your entry. Eaten? Someone else says thanks.` },
 ];
 
 function Round() {

@@ -9,6 +9,7 @@ import type { ServerConfig } from '../config';
 import { Limiter } from '../net/limiter';
 import { ProfileError, type ProfileStore } from '../profiles';
 import type { Journal } from '../stake/journal';
+import type { Leaderboards } from '../leaderboards';
 import type { HolderReader } from '../chain/evm-client';
 import { ShopFail, type ShopService } from '../shop/service';
 import { ShopSettingsError, type ShopSettingsStore } from '../shop/settings';
@@ -45,6 +46,8 @@ export interface SiteExtras {
   faucet?: FaucetInfo;
   /** Profile pictures (`/api/profile/avatar`, `/api/avatar/<id>`, `/api/admin/avatars`). */
   avatars?: AvatarStore;
+  /** The daily / all-time boards (`/api/admin/leaderboards`: info and reset). */
+  leaderboards?: Leaderboards;
   log?: (m: string) => void;
 }
 
@@ -605,6 +608,24 @@ export class SiteApi {
       case 'counts':
         this.method(req, 'GET');
         return send(res, 200, s.counts());
+      case 'leaderboards': {
+        // the daily and all-time boards: what they hold, and a reset (profiles, XP and levels are not touched)
+        const lb = this.ext.leaderboards;
+        if (!lb) break;
+        if (seg.length === 1) {
+          this.method(req, 'GET');
+          return send(res, 200, { info: lb.info() });
+        }
+        if (seg.length === 2 && seg[1] === 'reset') {
+          this.method(req, 'POST');
+          const body = await readJson(req);
+          if (body.confirm !== 'RESET') throw new SiteFail(400, 'bad_request', 'Send {"confirm":"RESET"} to clear both leaderboards.', 'confirm');
+          const cleared = lb.reset(wallet!);
+          this.ext.log?.(`leaderboards: reset by ${wallet} (${cleared.daily} daily and ${cleared.allTime} all-time records cleared${cleared.backup ? `, backup ${cleared.backup}` : ''})`);
+          return send(res, 200, { cleared: { daily: cleared.daily, allTime: cleared.allTime }, backedUp: cleared.backup !== null, info: lb.info() });
+        }
+        break;
+      }
       case 'avatars': {
         // moderation of profile pictures: the list, newest first, and removal (the coin falls back to its basic skin)
         const profiles = this.ext.profiles;

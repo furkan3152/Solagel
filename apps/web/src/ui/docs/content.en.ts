@@ -24,7 +24,7 @@ export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps): DocsCo
   deck: `How Elymum plays, where your money goes and what lives on-chain: short and plain. Numbers are the defaults in the game's code; the admin can change some of them. The amounts on the ticket confirmation are the ones that count.`,
   feeBps,
   dateline: [
-    `Fee ${pct(feeBps)} of profit`,
+    `Fee ${pct(feeBps)} of each entry`,
     `Rounds ${R.roundMin} min · joins close ${R.joinCloseS} s before the bell`,
     `${F.capacity.arena} players per room`,
     'Floor loot burned at the bell',
@@ -32,14 +32,14 @@ export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps): DocsCo
   tocLabel: 'Contents',
   receipt: {
     title: 'Round over',
-    meta: `Example · fee ${pct(feeBps)} of profit`,
+    meta: `Example · fee ${pct(feeBps)} of the entry`,
     entry: 'Entry fee',
     cashout: 'Till at the bell',
-    profit: 'Profit',
-    fee: (p) => `Fee (${p} of profit)`,
+    starts: 'Your coin starts at',
+    fee: (p) => `Fee (${p} of the entry)`,
     net: 'To your wallet',
     footer: "The fee goes to the operator's wallet",
-    caption: `A ${num(F.example.entry)} ${symbol} ticket with ${num(F.example.cashout)} ${symbol} in the till at the bell`,
+    caption: `A ${num(F.example.entry)} ${symbol} ticket whose coin doubles to ${num(F.example.cashout)} ${symbol} by the bell`,
   },
   colophon: `This page uses the values in the game's code. The smart contract has not been independently audited; only play with what you can afford to lose.`,
   backToTop: 'Back to top',
@@ -139,9 +139,9 @@ export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps): DocsCo
           label: 'How value moves',
           diagram: { ticket: 'Your ticket', vault: 'Arena vault', wallet: 'Your wallet', fee: 'Fee wallet' },
           steps: [
-            { title: 'Entry', text: 'Your value starts at the entry fee.' },
+            { title: 'Entry', text: `The fee (${pct(feeBps)}) comes off the entry fee; your value starts at the rest.` },
             { title: 'Eating', text: "An eaten cell moves its share of the victim's value to the eater: ⌊V · m / M⌋. The last cell moves everything left." },
-            { title: 'The bell', text: 'When the round ends, your value, minus the fee on profit, goes to your wallet.' },
+            { title: 'The bell', text: 'When the round ends, your whole value goes to your wallet.' },
           ],
         },
         {
@@ -172,7 +172,7 @@ export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps): DocsCo
       id: 'payout',
       title: 'Rounds, payout and fees',
       lede: `Arenas play ${R.roundMin}-minute rounds. Stay alive until the bell and you are paid your value.`,
-      strip: { label: 'Five minutes, then lunch', panels: [`${R.roundMin} minutes on the clock.`, 'The bell rings. Everyone alive is paid.', `The fee is ${pct(feeBps)} of the profit, never of the entry.`] },
+      strip: { label: 'Five minutes, then lunch', panels: [`${R.roundMin} minutes on the clock.`, 'The bell rings. Everyone alive is paid.', `The fee is ${pct(feeBps)} of the entry, win or lose.`] },
       blocks: [
         {
           kind: 'p',
@@ -184,18 +184,18 @@ export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps): DocsCo
         },
         {
           kind: 'p',
-          text: `The fee is charged on profit only: profit = till at the bell − entry fee. At a loss or break-even there is no fee. The rate is ${pct(feeBps)} of profit; the contract caps it at ${pct(F.fee.maxBps)}. The rate is written into your ticket when you buy it, and the payout uses that rate even if the admin changes the setting meanwhile. Example: entry ${num(F.example.entry)}, till at the bell ${num(F.example.cashout)}, fee ${num(Number(ex.fee))}, you get ${num(Number(ex.player))}.`,
+          text: `The fee is taken from the entry fee of every ticket you play, whatever happens in the round: win, lose or break even. The rate is ${pct(feeBps)} of the entry fee; the contract caps it at ${pct(F.fee.maxBps)}. Your coin starts at the rest, and nothing is taken from your payout: at the bell your whole value is yours. The rate is written into your ticket when you buy it and stays even if the admin changes the setting meanwhile. Example: entry ${num(F.example.entry)}, fee ${num(Number(ex.fee))}, your coin starts at ${num(Number(ex.value))}; you double it and the till at the bell is ${num(F.example.cashout)}: you get ${num(Number(ex.player))}.`,
         },
         { kind: 'fee-example' },
         {
           kind: 'p',
-          text: "The whole fee goes to the operator's wallet (the fee wallet set in the arena contract); it is the team's income. Nothing else is taken from your payout.",
+          text: "The whole fee goes to the operator's wallet (the fee wallet set in the arena contract) when your game is settled; it is the team's income. Nothing is taken from your payout.",
         },
         {
           kind: 'list',
           items: [
             { term: 'Network fees:', text: 'You pay the HYPE network fee of your own transactions (buying, refunding, collecting). The server pays the network fee of every payout.' },
-            { term: 'Unplayed ticket:', text: `If you buy a ticket and never enter the room, the server closes it at its entry fee after about ${S.staleTicketMinutes} minutes (no profit, so no fee).` },
+            { term: 'Unplayed ticket:', text: `If you buy a ticket and never enter the room, the server refunds the full entry fee after about ${S.staleTicketMinutes} minutes, fee included: a ticket you never play costs nothing but gas.` },
           ],
         },
         {
@@ -203,7 +203,7 @@ export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps): DocsCo
           tone: 'warn',
           stamp: 'Collect',
           title: 'Transfer refused? Your game still settles',
-          text: `If the ${symbol} transfer to your wallet fails when your game ends, the server settles the game anyway: the fee is taken from the profit and your payout stays in the arena vault, recorded on your ticket. The lobby then shows "Collect payout": one transaction pays you the exact amount. There is no waiting time, and nobody else can take it. Only a ticket the server never settled at all can be refunded, ${F.refundHours} hours after it opened: your entry fee comes back (if the vault holds it).`,
+          text: `If the ${symbol} transfer to your wallet fails when your game ends, the server settles the game anyway: your payout stays in the arena vault, recorded on your ticket. The lobby then shows "Collect payout": one transaction pays you the exact amount. There is no waiting time, and nobody else can take it. Only a ticket the server never settled at all can be refunded, ${F.refundHours} hours after it opened: your entry fee comes back, fee included (the part in play only if the vault still holds it).`,
         },
       ],
     },
@@ -219,7 +219,7 @@ export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps): DocsCo
             title: 'On-chain: contract rules anyone can verify',
             items: [
               "Entry fees sit in the arena's vault; a payout can never exceed it.",
-              `Fees only on profit, capped at ${pct(F.fee.maxBps)}, paid to the fee wallet.`,
+              `The fee: a share of each played entry fee, capped at ${pct(F.fee.maxBps)}, paid to the fee wallet; an unplayed ticket pays none.`,
               'Floor loot swept at the bell is burned.',
               'Every ticket has a unique id, so an old payout cannot be applied to a new ticket.',
               `Collecting a settled payout at any time; a self-refund of an unsettled ticket after ${F.refundHours} hours.`,
@@ -292,12 +292,12 @@ export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps): DocsCo
             { q: 'Do I earn tokens by eating bots?', a: 'No. Bots are always worth 0; you only gain mass.' },
             { q: 'I lost my connection or closed the tab.', a: `Your coin stays in the arena and can still be eaten. Come back and you carry on; if it is still alive at the bell, you are paid as usual.` },
             { q: 'Can I cash out early?', a: `No. Arenas have no cash-out: you are paid your value when the ${R.roundMin}-minute round ends.` },
-            { q: 'I bought a ticket but never played.', a: `The server closes it at its entry fee after about ${S.staleTicketMinutes} minutes. If it does not, refund it yourself after ${F.refundHours} hours.` },
+            { q: 'I bought a ticket but never played.', a: `The server refunds the full entry fee (no fee) after about ${S.staleTicketMinutes} minutes. If it does not, refund it yourself after ${F.refundHours} hours.` },
             {
               q: 'My payout has not arrived.',
               a: `Check the payout banner in the lobby. If it says "Collect payout", your game is settled and the payout waits in the vault: collect it with one transaction, right away. If it says the payout is on the way, the server is still sending it and retries by itself on network trouble.`,
             },
-            { q: 'Who gets the fee?', a: `The operator's wallet gets the whole fee (${pct(feeBps)} of profit). Floor loot left at the bell is burned.` },
+            { q: 'Who gets the fee?', a: `The operator's wallet gets the whole fee (${pct(feeBps)} of each played entry fee). Floor loot left at the bell is burned.` },
             { q: 'Are there prizes for the Standings?', a: 'No. The Today and All-time standings are kept by the game server for fun; they pay nothing.' },
             {
               q: 'Is this gambling?',

@@ -72,7 +72,7 @@ function toBytes(data: RawData): Uint8Array {
  * matches it to the ticket it paid out, and the settlement transaction (`txHash`).
  */
 export function settledMessage(e: SettledEvent): Extract<ServerMessage, { t: 'settled' }> {
-  const kind = e.payout > 0 ? 'payout' : 'death';
+  const kind = e.refund ? 'refund' : e.payout > 0 ? 'payout' : 'death';
   return {
     t: 'settled',
     kind,
@@ -80,7 +80,9 @@ export function settledMessage(e: SettledEvent): Extract<ServerMessage, { t: 'se
     ...(e.arenaId === undefined ? {} : { arenaId: e.arenaId }),
     txHash: e.txHash,
     payout: e.payout,
-    ...(e.fee === undefined ? {} : { fee: e.fee, net: e.payout - e.fee }),
+    // v2: the fee was taken from the entry fee, the whole payout reaches the wallet
+    ...(e.fee === undefined ? {} : { fee: e.fee, net: e.feeOnEntry ? e.payout : e.payout - e.fee }),
+    ...(e.feeOnEntry ? { feeOnEntry: true } : {}),
     ...(e.collect ? { collect: true } : {}),
   };
 }
@@ -571,7 +573,8 @@ export class Gateway {
           sessionId: session.id,
           arenaId: target.arenaId,
           entryFee: session.entryFee,
-          value: session.entryFee,
+          // the coin starts at the ticket's value: entry − fee on a fee-on-entry arena (v2), the entry fee on v1
+          value: session.value,
           openedAt: session.openedAt,
         },
       });

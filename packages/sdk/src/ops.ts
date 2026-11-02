@@ -27,7 +27,7 @@ import { getCodeHash } from './chain';
 import { MAX_ARENA_SESSIONS, MAX_FEE_BPS, MIN_ARENA_SESSIONS } from './constants';
 import { formatBps, formatTokenAmount, isZeroAddress, parseHypeAmount, parseTokenAmount, sameAddress } from './format';
 import { getMintState, type MintState } from './nft';
-import { elymumArenaArtifact, elymumNFTArtifact, testTokenArtifact } from '@elymum/contracts';
+import { arenaVersionOfCodeHash, elymumNFTArtifact, testTokenArtifact, type ArenaVersion } from '@elymum/contracts';
 
 export { describeCall, describeCallLine, type DescribedCall, type DescribedArg } from './call';
 
@@ -211,6 +211,8 @@ export interface StatusSnapshot {
   arena: {
     address: Address;
     code: CodeCheck;
+    /** 2: fee on the entry fee (the bundled build). 1: the legacy fee-on-profit build. null: not ours / no code. */
+    version?: ArenaVersion | null;
     config: ArenaConfig | null;
     token: (TokenInfo & { feeWalletBalance: bigint }) | null;
     arenas: ArenaInfo[];
@@ -237,10 +239,22 @@ async function codeCheck(client: PublicClient, address: Address, expected: `0x${
   return h === null ? 'missing' : h === expected ? 'ok' : 'mismatch';
 }
 
-/** Checks a deployed address against a bundled artifact (`ElymumArena`, `ElymumNFT`, `TestToken`). */
-export function checkDeployedCode(client: PublicClient, address: Address, kind: 'arena' | 'nft' | 'token'): Promise<CodeCheck> {
-  const artifact = kind === 'arena' ? elymumArenaArtifact : kind === 'nft' ? elymumNFTArtifact : testTokenArtifact;
-  return codeCheck(client, address, artifact.runtimeCodeHash);
+/** The arena's code check and fee-rule version: both the bundled (v2) and the legacy (v1) build are `ok`. */
+async function arenaCodeCheck(client: PublicClient, address: Address): Promise<{ code: CodeCheck; version: ArenaVersion | null }> {
+  const h = await getCodeHash(client, address);
+  if (h === null) return { code: 'missing', version: null };
+  const version = arenaVersionOfCodeHash(h);
+  return { code: version === null ? 'mismatch' : 'ok', version };
+}
+
+/**
+ * Checks a deployed address against a bundled artifact (`ElymumArena`, `ElymumNFT`, `TestToken`). An arena is
+ * `ok` for the bundled build and for the legacy v1 build (fee on profit) that is still live on the testnet;
+ * `getArenaVersion` tells them apart.
+ */
+export async function checkDeployedCode(client: PublicClient, address: Address, kind: 'arena' | 'nft' | 'token'): Promise<CodeCheck> {
+  if (kind === 'arena') return (await arenaCodeCheck(client, address)).code;
+  return codeCheck(client, address, kind === 'nft' ? elymumNFTArtifact.runtimeCodeHash : testTokenArtifact.runtimeCodeHash);
 }
 
 /** Everything `status` shows: chain, the signer, the arena (config, token, arenas) and the NFT. */
@@ -256,7 +270,7 @@ export async function fetchStatus(
   ]);
   let arena: StatusSnapshot['arena'] = null;
   if (where.arena) {
-    const code = await codeCheck(client, where.arena, elymumArenaArtifact.runtimeCodeHash);
+    const { code, version } = await arenaCodeCheck(client, where.arena);
     let config: ArenaConfig | null = null;
     let token: (TokenInfo & { feeWalletBalance: bigint }) | null = null;
     let arenas: ArenaInfo[] = [];
@@ -269,7 +283,7 @@ export async function fetchStatus(
         token = { ...info, feeWalletBalance: await getTokenBalance(client, config.token, config.feeWallet) };
       }
     }
-    arena = { address: getAddress(where.arena), code, config, token, arenas, serverBalance };
+    arena = { address: getAddress(where.arena), code, version, config, token, arenas, serverBalance };
   }
   let nft: StatusSnapshot['nft'] = null;
   if (where.nft) {

@@ -88,7 +88,8 @@ describe('testnet staked bots: funding and tickets', () => {
     expect(t.source.wanted(1)).toBe(6);
     const ticket = (await t.source.acquire(1, 'arena-1-1'))!;
     const bot = ticket.stake.player as Address;
-    expect(ticket.stake).toMatchObject({ arenaId: 1, entryFee: 1000 * 1e6, value: 1000 * 1e6, sessionId: 1, session: `1:${bot.toLowerCase()}:1` });
+    // bots pay the fee like players: the 1,000 ticket plays 950 (5 % taken at the entry)
+    expect(ticket.stake).toMatchObject({ arenaId: 1, entryFee: 1000 * 1e6, value: 950 * 1e6, sessionId: 1, session: `1:${bot.toLowerCase()}:1` });
     expect(t.evm.valueSent).toEqual([{ to: bot, wei: 5n * 10n ** 16n }]);
     // bankroll 1,000,000 minted, the 1,000 ticket paid out of it
     expect(t.evm.tokenOf(bot)).toBe(999_000n * E18);
@@ -292,7 +293,7 @@ describe('testnet staked bots: retries, wallets in use, holders-only arenas', ()
     // … and the next pick adopts the open session instead of buying a new ticket
     const joins = t.evm.sentBy.filter((s) => s.call.functionName === 'join').length;
     const b = (await t.source.acquire(1, 'r'))!;
-    expect(b.stake).toMatchObject({ player: a.stake.player, session: a.stake.session, sessionId: a.stake.sessionId, value: a.stake.entryFee });
+    expect(b.stake).toMatchObject({ player: a.stake.player, session: a.stake.session, sessionId: a.stake.sessionId, value: a.stake.value });
     expect(t.evm.sentBy.filter((s) => s.call.functionName === 'join')).toHaveLength(joins);
     expect(t.logs.join('\n')).toMatch(/adopted its open session/);
     // a ticket a room plays is never touched

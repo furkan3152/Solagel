@@ -115,6 +115,27 @@ describe('site API', () => {
     await h.app.close();
   });
 
+  describe('leaderboard reset', () => {
+    it('the admin clears the daily and all-time boards (backed up), profiles stay; others cannot', async () => {
+      h.app.leaderboards.submit({ name: 'Top', score: 900, skin: 0, wallet: wallet(), kills: 3, at: Date.now() });
+      expect(h.app.leaderboards.snapshot().allTime.length).toBeGreaterThan(0);
+      expect((await h.call('POST', '/api/admin/leaderboards/reset', { body: { confirm: 'RESET' } })).status).toBe(401);
+      expect((await h.call('POST', '/api/admin/leaderboards/reset', { wallet: wallet(), body: { confirm: 'RESET' } })).status).toBe(403);
+      const unconfirmed = await h.call('POST', '/api/admin/leaderboards/reset', { wallet: h.admin, body: {} });
+      expect(unconfirmed.status).toBe(400);
+      expect(h.app.leaderboards.snapshot().allTime.length).toBeGreaterThan(0);
+      const r = await h.call('POST', '/api/admin/leaderboards/reset', { wallet: h.admin, body: { confirm: 'RESET' } });
+      expect(r.status).toBe(200);
+      expect(r.body.cleared.allTime).toBeGreaterThan(0);
+      expect(r.body.backedUp).toBe(true);
+      expect(r.body.info).toMatchObject({ daily: 0, allTime: 0, resetBy: h.admin });
+      expect((await h.call('GET', '/api/leaderboard')).body).toMatchObject({ daily: [], allTime: [] });
+      expect(readdirSync(h.dir).some((f) => /^leaderboards\.json\.reset-\d+\.bak$/.test(f))).toBe(true);
+      const info = await h.call('GET', '/api/admin/leaderboards', { wallet: h.admin });
+      expect(info.body.info).toMatchObject({ daily: 0, allTime: 0 });
+    });
+  });
+
   describe('auth', () => {
     it('admin routes: 401 without a session, 403 for a non-admin, 200 for the admin', async () => {
       for (const path of [
@@ -127,6 +148,7 @@ describe('site API', () => {
         '/api/admin/tasks',
         '/api/admin/contracts',
         '/api/admin/mint/allowlist',
+        '/api/admin/leaderboards',
       ]) {
         expect((await h.call('GET', path)).status).toBe(401);
         const r = await h.call('GET', path, { wallet: wallet() });

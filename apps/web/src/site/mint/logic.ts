@@ -91,7 +91,7 @@ export function emblemPerks(testnet: boolean | null, fee: { holderBps?: number |
     testnet
       ? { id: 'access', title: 'Game access', note: 'On testnet the ring is open to everyone. On mainnet the emblem is the key.' }
       : { id: 'access', title: 'Game access', note: 'The emblem is your key to the ring when the doors are for holders.' },
-    { id: 'fee', title: `${holder} fee instead of ${normal}`, note: 'On profit only, fixed into your ticket when you join.' },
+    { id: 'fee', title: `${holder} fee instead of ${normal}`, note: 'Of every entry fee, fixed into your ticket when you join.' },
     { id: 'isles', title: 'The Isles of the Blessed', note: 'The top arena is for holders only.' },
   ];
   if (testnet) out.push({ id: 'wl', title: 'Testnet emblem, mainnet WL', note: 'Holders are carried onto the mainnet allowlist.' });

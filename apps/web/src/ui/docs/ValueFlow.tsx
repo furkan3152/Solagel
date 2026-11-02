@@ -23,7 +23,7 @@ function Tok({ className, delay }: { className: string; delay: number }) {
 /**
  * The value flow as a moving diagram: tokens leave the ticket for the arena's vault, change
  * hands inside it when a coin is eaten, and at the bell travel on to the player's wallet while
- * a thin slice of the profit drops to the fee wallet. One 7 s loop while on screen; a still
+ * the thin slice each entry fee left as the fee drops to the fee wallet. One 7 s loop while on screen; a still
  * picture under reduced motion. The numbered steps under it carry the words.
  */
 export function ValueFlow({ labels }: { labels: ValueFlowLabels }) {

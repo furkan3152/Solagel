@@ -141,12 +141,16 @@ let sessionSeq = 100;
 function session(player: string, opts: Partial<ChainSession> = {}): ChainSession {
   const id = opts.id ?? ++sessionSeq;
   const arenaId = opts.arenaId ?? 1;
+  const entryFee = opts.entryFee ?? 10_000_000;
   return {
     key: `${arenaId}:${player.toLowerCase()}:${id}`,
     id,
     player,
     arenaId: 1,
-    entryFee: 10_000_000,
+    entryFee,
+    feeBps: 500,
+    // a fee-on-entry arena (v2): the ticket plays its entry fee minus the 5 % fee
+    value: entryFee - Math.floor((entryFee * 500) / 10_000),
     openedAt: Math.floor(Date.now() / 1000),
     finalized: false,
     owed: 0,
@@ -391,7 +395,8 @@ describe('server over websocket', () => {
     c.send({ t: 'join', room: 'arena:1', name: 'Whale', skin: 0 });
     const joined = await c.wait('joined');
     expect(joined.room.mode).toBe('arena');
-    expect(joined.value).toBe(10_000_000);
+    // the coin starts at the ticket's value: the 10.0 entry minus the 5 % fee taken at the entry
+    expect(joined.value).toBe(9_500_000);
     const r = roundAt(serverNow());
     expect(joined.round).toEqual({ n: r.n, endsAt: r.endsAt, joinsCloseAt: r.joinsCloseAt });
     expect(app.journal.live().map((l) => l.session)).toContain(ticket.key);
@@ -407,11 +412,11 @@ describe('server over websocket', () => {
     jumpTo(r.endsAt);
     const over = await c.wait('roundOver', 3000);
     expect(over.round).toBe(r.n);
-    expect(over.payout).toBe(10_000_000);
-    expect(over.stats.payout).toBe(10_000_000);
-    expect(over.standings.find((s) => s.you)).toEqual({ name: 'Whale', value: 10_000_000, you: true });
+    expect(over.payout).toBe(9_500_000);
+    expect(over.stats.payout).toBe(9_500_000);
+    expect(over.standings.find((s) => s.you)).toEqual({ name: 'Whale', value: 9_500_000, you: true });
     const item = app.journal.pending.find((p) => p.key === ticket.key);
-    expect(item).toMatchObject({ kind: 'settle', payout: 10_000_000, reason: 'round', player: player });
+    expect(item).toMatchObject({ kind: 'settle', payout: 9_500_000, reason: 'round', player: player });
     expect(chain.kicked).toBeGreaterThan(0);
     expect(app.journal.live().map((l) => l.session)).not.toContain(ticket.key);
 
@@ -593,7 +598,7 @@ describe('server over websocket', () => {
     b.send({ t: 'join', room: 'arena:1', name: 'Afk', skin: 0 });
     const j2 = await b.wait('joined');
     expect(j2.playerId).toBe(j1.playerId);
-    expect(j2.value).toBe(20_000_000);
+    expect(j2.value).toBe(19_000_000);
     expect(room.world.players.get(j1.playerId)?.afk).toBe(false);
     b.close();
   });
@@ -668,7 +673,7 @@ describe('server over websocket', () => {
     c.send({ t: 'join', room: 'arena:2', name: 'Gold', skin: 2 });
     const joined = await c.wait('joined');
     expect(joined.room.arenaId).toBe(2);
-    expect(joined.value).toBe(50_000_000);
+    expect(joined.value).toBe(47_500_000);
     expect('hasPass' in joined).toBe(false);
     const p = app.rooms.rooms.get(joined.room.id)!.world.players.get(joined.playerId)!;
     // no Pass power: everyone starts at the same mass (a Pass used to add 15 %)
@@ -700,7 +705,7 @@ describe('server over websocket', () => {
     const c = await signedIn(player);
     c.send({ t: 'join', room: 'arena:1', name: 'Back', skin: 0 });
     const joined = await c.wait('joined');
-    expect(joined.value).toBe(30_000_000);
+    expect(joined.value).toBe(28_500_000);
     expect(joined.entryFee).toBe(30_000_000);
     expect(app.rooms.liveSessions().has(s.key)).toBe(true);
     // nothing was settled or charged: the same on-chain ticket simply resumes

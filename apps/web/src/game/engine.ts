@@ -623,7 +623,8 @@ export class GameEngine {
         return;
       }
       case 'settled':
-        // `fee` is taken from the profit; `net` is what reached the wallet
+        // `net` is what reached the wallet: the whole payout when the fee was taken at the entry (`feeOnEntry`, arena
+        // v2), the payout minus the fee on profit otherwise (the legacy v1 arena)
         useUi.setState({
           lastSettlement: {
             session: m.session ?? null,
@@ -632,6 +633,7 @@ export class GameEngine {
             payout: m.payout,
             fee: m.fee,
             net: m.net,
+            ...(m.feeOnEntry ? { feeOnEntry: true } : {}),
             ...(m.collect ? { collect: true } : {}),
             at: Date.now(),
           },

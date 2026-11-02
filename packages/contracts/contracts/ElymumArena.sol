@@ -10,14 +10,20 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {HolderCheck} from "./HolderCheck.sol";
 
 /// @title ElymumArena
-/// @notice Ticket escrow for the Elymum arenas on Elysium. Players pay an entry fee into an arena vault with
-///         `join`; at the bell the game server pays every ticket its value with `settle` (fee on profit only) and
-///         burns floor loot with `sweepLoot`. A ticket the server never settles can be refunded after 24 h.
+/// @notice Ticket escrow for the Elymum arenas on Elysium. Players pay an entry fee into an arena with `join`.
+///         Version 2 ("fee on entry"): the platform fee is `feeBps` of the ENTRY FEE of every ticket that is
+///         played, whatever the result; there is no fee on profit. At join the fee part is reserved (`Arena.fees`)
+///         and only the rest, the ticket's value `entryFee - fee`, goes into the arena vault and is played. At the
+///         bell the game server pays every ticket its in-game value with `settle` (the reserved fee goes to the fee
+///         wallet, nothing is taken from the payout) and burns floor loot with `sweepLoot`. A ticket that was never
+///         played is cancelled by the server with `cancel` (the full entry fee comes back, no fee), and a ticket
+///         the server never settles can be refunded in full by its player after 24 h.
 ///         Holders of the Elymum emblem (`setHolderPerks`) pay a lower fee and may enter holders-only arenas.
-/// @dev    Accounting is internal: `Arena.vault` is what settlements and refunds may spend and `Arena.owed` is held
-///         for players whose transfer failed (two-phase settle). The contract's token balance is always
-///         `sum(vault) + sum(owed)` plus anything sent to it directly (which stays locked: `rescue` never touches the
-///         game token). No `immutable` variables, so the runtime bytecode is identical for every deployment.
+/// @dev    Accounting is internal: `Arena.vault` is what settlements, cancels, refunds and loot burns may spend,
+///         `Arena.fees` is the fee reserved for open tickets and `Arena.owed` is held for players whose transfer
+///         failed (two-phase settle). The contract's token balance is always `sum(vault) + sum(fees) + sum(owed)`
+///         plus anything sent to it directly (which stays locked: `rescue` never touches the game token). No
+///         `immutable` variables, so the runtime bytecode is identical for every deployment.
 contract ElymumArena is Ownable2Step, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
@@ -29,8 +35,10 @@ contract ElymumArena is Ownable2Step, ReentrancyGuard {
     uint16 public constant BPS = 10_000;
     /// @notice Upper bound of `feeBps` (10 %).
     uint16 public constant MAX_FEE_BPS = 1_000;
-    /// @notice Fee on profit at deploy (5 %).
+    /// @notice Fee on the entry fee at deploy (5 %).
     uint16 public constant DEFAULT_FEE_BPS = 500;
+    /// @notice Contract version: 2 = fee on entry (version 1, which has no `version()` view, took the fee on profit).
+    uint16 public constant VERSION = 2;
     /// @notice Bounds of `Arena.maxSessions`.
     uint16 public constant MIN_ARENA_SESSIONS = 2;
     uint16 public constant MAX_ARENA_SESSIONS = 2_000;
@@ -64,8 +72,9 @@ contract ElymumArena is Ownable2Step, ReentrancyGuard {
         bool exists; //      slot 1
         bool holdersOnly; // slot 1: `join` needs the holder NFT
         uint128 totalDeposited; // slot 2
-        uint128 totalPaidOut; //   slot 2: settled payouts (fee included) + refunds of unsettled tickets
+        uint128 totalPaidOut; //   slot 2: settled payouts + cancels and refunds of unsettled tickets
         uint128 totalBurned; //    slot 3
+        uint128 fees; //           slot 3: fees reserved for open tickets (paid at settle, returned by cancel / refund)
     }
 
     /// @dev 2 slots. `id == 0` means no session.
@@ -76,6 +85,13 @@ contract ElymumArena is Ownable2Step, ReentrancyGuard {
         bool finalized; //   slot 0: settled, the player's share is `owed`
         uint128 entryFee; // slot 0
         uint128 owed; //     slot 1
+    }
+
+    /// @notice One ticket of a `cancel` batch.
+    struct SessionRef {
+        uint16 arenaId;
+        address player;
+        uint64 sessionId;
     }
 
     /// @notice One settlement of a `settle` batch.
@@ -174,8 +190,11 @@ contract ElymumArena is Ownable2Step, ReentrancyGuard {
     event ArenaUpdated(uint16 indexed arenaId, uint128 entryFee, uint16 maxSessions, bool enabled);
     event HolderPerksSet(address indexed nft, uint16 holderFeeBps);
     event ArenaHoldersOnlySet(uint16 indexed arenaId, bool holdersOnly);
+    /// @dev The ticket's fee is `computeFee(entryFee, feeBps)` and its value `entryFee - fee` (same signature as v1).
     event Joined(uint16 indexed arenaId, address indexed player, uint64 indexed sessionId, uint128 entryFee, uint16 feeBps);
-    /// @param collected true when the player's share was transferred now; false when it is held as `owed`.
+    /// @param payout    what the player gets (the ticket's in-game value; nothing is deducted from it).
+    /// @param fee       the ticket's fee (its share of the entry fee), sent to the fee wallet with the batch.
+    /// @param collected true when the payout was transferred now; false when it is held as `owed`.
     event Settled(
         uint16 indexed arenaId,
         address indexed player,
@@ -184,6 +203,9 @@ contract ElymumArena is Ownable2Step, ReentrancyGuard {
         uint128 fee,
         bool collected
     );
+    /// @notice A ticket that was never played, closed by the server: the full entry fee goes back (no fee).
+    /// @param collected true when the amount was transferred now; false when it is held as `owed`.
+    event Cancelled(uint16 indexed arenaId, address indexed player, uint64 indexed sessionId, uint128 amount, bool collected);
     event SettleSkipped(uint16 indexed arenaId, address indexed player, uint64 indexed sessionId, uint8 reason);
     event Refunded(uint16 indexed arenaId, address indexed player, uint64 indexed sessionId, uint128 amount);
     event Collected(uint16 indexed arenaId, address indexed player, uint64 indexed sessionId, uint128 amount);
@@ -229,7 +251,7 @@ contract ElymumArena is Ownable2Step, ReentrancyGuard {
 
     /// @param admin           Owner (Ownable2Step): configures the contract, creates and sweeps arenas.
     /// @param serverAuthority Game server key: calls `settle` and `sweepLoot`.
-    /// @param feeWallet       Receives every fee and every swept arena vault.
+    /// @param feeWallet       Receives every fee (at settle) and every swept arena vault.
     constructor(address admin, address serverAuthority, address feeWallet) Ownable(admin) {
         if (serverAuthority == address(0) || feeWallet == address(0)) revert ZeroAddress();
         _serverAuthority = serverAuthority;
@@ -265,7 +287,7 @@ contract ElymumArena is Ownable2Step, ReentrancyGuard {
         emit TokenSet(token, dec);
     }
 
-    /// @notice Fee on profit for new tickets, in bps (<= 1000). Open tickets keep the rate they joined with.
+    /// @notice Fee on the entry fee of new tickets, in bps (<= 1000). Open tickets keep the rate they joined with.
     function setFeeBps(uint16 bps) external onlyOwner {
         if (bps > MAX_FEE_BPS) revert InvalidFee();
         _feeBps = bps;
@@ -339,7 +361,8 @@ contract ElymumArena is Ownable2Step, ReentrancyGuard {
     }
 
     /// @notice Sends the whole vault of a disabled arena with no open ticket to the fee wallet.
-    ///         Owed payouts of finalized sessions stay reserved for their players.
+    ///         Owed payouts of finalized sessions stay reserved for their players (with no open ticket no fee is
+    ///         reserved: `Arena.fees` is 0).
     function sweepArena(uint16 id) external onlyOwner nonReentrant {
         Arena storage a = _arenas[id];
         if (!a.exists) revert UnknownArena();
@@ -376,7 +399,8 @@ contract ElymumArena is Ownable2Step, ReentrancyGuard {
 
     /// @notice Buys a ticket: pulls the arena's entry fee (exact amount must arrive, so fee-on-transfer tokens are
     ///         refused) and opens a session with the current fee rate (the holder rate for holders of the holder NFT).
-    ///         Holders-only arenas refuse other wallets (`HoldersOnly`).
+    ///         The fee `computeFee(entryFee, feeBps)` is reserved for the fee wallet; the ticket's value
+    ///         `entryFee - fee` goes into the vault. Holders-only arenas refuse other wallets (`HoldersOnly`).
     function join(uint16 arenaId) external nonReentrant {
         if (_paused) revert Paused();
         IERC20 token = _token;
@@ -406,7 +430,9 @@ contract ElymumArena is Ownable2Step, ReentrancyGuard {
         s.entryFee = entryFee;
         s.owed = 0;
 
-        a.vault += entryFee;
+        uint128 fee = computeFee(entryFee, feeBps);
+        a.vault += entryFee - fee;
+        a.fees += fee;
         a.openSessions += 1;
         a.totalDeposited += entryFee;
         _totalStaked += entryFee;
@@ -414,8 +440,9 @@ contract ElymumArena is Ownable2Step, ReentrancyGuard {
         emit Joined(arenaId, msg.sender, sessionId, entryFee, feeBps);
     }
 
-    /// @notice Finalized session: collects `owed` at once. Otherwise, 24 h after joining: refunds
-    ///         `min(entryFee, vault)` and closes the ticket.
+    /// @notice Finalized session: collects `owed` at once. Otherwise, 24 h after joining (the server never settled
+    ///         it): refunds the reserved fee plus `min(entryFee - fee, vault)` (the full entry fee unless loot burns
+    ///         emptied the vault) and closes the ticket.
     function refund(uint16 arenaId) external nonReentrant {
         Session storage s = _sessions[arenaId][msg.sender];
         uint64 sessionId = s.id;
@@ -432,9 +459,13 @@ contract ElymumArena is Ownable2Step, ReentrancyGuard {
         }
 
         if (block.timestamp < uint256(s.openedAt) + REFUND_DELAY) revert RefundTooEarly();
-        uint128 amount = s.entryFee < a.vault ? s.entryFee : a.vault;
+        uint128 fee = computeFee(s.entryFee, s.feeBps);
+        uint128 value = s.entryFee - fee;
+        if (value > a.vault) value = a.vault;
+        uint128 amount = value + fee;
         delete _sessions[arenaId][msg.sender];
-        a.vault -= amount;
+        a.vault -= value;
+        a.fees -= fee;
         a.openSessions -= 1;
         a.totalPaidOut += amount;
         _totalPaidOut += amount;
@@ -446,15 +477,29 @@ contract ElymumArena is Ownable2Step, ReentrancyGuard {
     // Server
     // ------------------------------------------------------------------------------------------------------------
 
-    /// @notice Settles a batch. An item that cannot be settled is skipped with `SettleSkipped(reason)`; a failing fee
-    ///         transfer reverts the whole batch. When the player's transfer fails the session is finalized and the
-    ///         player's share is held as `owed` (collected with `refund`).
+    /// @notice Settles a batch: each ticket is paid `payout` (its in-game value, nothing deducted) out of the vault
+    ///         and its reserved fee goes to the fee wallet (one transfer for the whole batch). An item that cannot be
+    ///         settled is skipped with `SettleSkipped(reason)`; a failing fee transfer reverts the whole batch. When
+    ///         the player's transfer fails the session is finalized and the payout is held as `owed` (collected
+    ///         with `refund`).
     function settle(Settlement[] calldata items) external onlyServer nonReentrant {
         IERC20 token = _token;
-        address feeWallet = _feeWallet;
+        uint256 n = items.length;
+        uint128 fees;
+        for (uint256 i; i < n; ++i) {
+            fees += _settleOne(token, items[i]);
+        }
+        if (fees != 0) token.safeTransfer(_feeWallet, fees);
+    }
+
+    /// @notice Cancels tickets that were never played (bought, never seated in a room): each gets its full entry
+    ///         fee back (the reserved fee is returned, no fee is taken). Skips like `settle` (`SettleSkipped`); a
+    ///         failed transfer finalizes the session with the amount held as `owed`.
+    function cancel(SessionRef[] calldata items) external onlyServer nonReentrant {
+        IERC20 token = _token;
         uint256 n = items.length;
         for (uint256 i; i < n; ++i) {
-            _settleOne(token, feeWallet, items[i]);
+            _cancelOne(token, items[i]);
         }
     }
 
@@ -539,60 +584,123 @@ contract ElymumArena is Ownable2Step, ReentrancyGuard {
         v.owed = s.owed;
     }
 
-    /// @notice `floor((payout - entryFee)+ * feeBps / 10 000)`.
-    function computeFee(uint128 payout, uint128 entryFee, uint16 feeBps) public pure returns (uint128) {
-        if (payout <= entryFee) return 0;
-        return uint128((uint256(payout - entryFee) * feeBps) / BPS);
+    /// @notice The fee of a ticket: `floor(entryFee * feeBps / 10 000)`. Its value is `entryFee - fee`.
+    function computeFee(uint128 entryFee, uint16 feeBps) public pure returns (uint128) {
+        return uint128((uint256(entryFee) * feeBps) / BPS);
+    }
+
+    /// @notice 2: fee on entry (an arena without this view is version 1, fee on profit).
+    function version() external pure returns (uint16) {
+        return VERSION;
+    }
+
+    /// @notice True: the fee is taken from every played ticket's entry fee, never from profit.
+    function feeOnEntry() external pure returns (bool) {
+        return true;
+    }
+
+    /// @notice Fees reserved for the open tickets of an arena (not spendable by settlements or loot burns).
+    function arenaFees(uint16 id) external view returns (uint128) {
+        return _arenas[id].fees;
     }
 
     // ------------------------------------------------------------------------------------------------------------
     // Internal
     // ------------------------------------------------------------------------------------------------------------
 
-    function _settleOne(IERC20 token, address feeWallet, Settlement calldata it) private {
+    /// @return fee the ticket's fee, owed to the fee wallet (0 when skipped).
+    function _settleOne(IERC20 token, Settlement calldata it) private returns (uint128 fee) {
         Arena storage a = _arenas[it.arenaId];
-        if (!a.exists) return _skip(it, SKIP_UNKNOWN_ARENA);
+        if (!a.exists) return _skip(it.arenaId, it.player, it.sessionId, SKIP_UNKNOWN_ARENA);
         Session storage s = _sessions[it.arenaId][it.player];
-        if (s.id == 0 || s.id != it.sessionId) return _skip(it, SKIP_SESSION_MISMATCH);
-        if (s.finalized) return _skip(it, SKIP_FINALIZED);
+        if (s.id == 0 || s.id != it.sessionId) return _skip(it.arenaId, it.player, it.sessionId, SKIP_SESSION_MISMATCH);
+        if (s.finalized) return _skip(it.arenaId, it.player, it.sessionId, SKIP_FINALIZED);
         uint128 payout = it.payout;
-        if (payout > a.vault) return _skip(it, SKIP_INSUFFICIENT_VAULT);
+        if (payout > a.vault) return _skip(it.arenaId, it.player, it.sessionId, SKIP_INSUFFICIENT_VAULT);
 
         uint128 entryFee = s.entryFee;
         uint16 feeBps = s.feeBps;
         uint40 openedAt = s.openedAt;
-        uint128 fee = computeFee(payout, entryFee, feeBps);
-        uint128 toPlayer = payout - fee;
+        fee = computeFee(entryFee, feeBps);
 
         // Effects first: the ticket is closed before any transfer.
         delete _sessions[it.arenaId][it.player];
         a.vault -= payout;
+        a.fees -= fee;
         a.openSessions -= 1;
         a.totalPaidOut += payout;
         _totalPaidOut += payout;
         _totalFees += fee;
         _totalGames += 1;
 
-        if (fee != 0) token.safeTransfer(feeWallet, fee);
-
-        bool collected = true;
-        if (toPlayer != 0 && !token.trySafeTransfer(it.player, toPlayer)) {
-            collected = false;
-            // Two-phase settle: the result is final, the player's share stays reserved until `refund`.
-            Session storage f = _sessions[it.arenaId][it.player];
-            f.id = it.sessionId;
-            f.openedAt = openedAt;
-            f.feeBps = feeBps;
-            f.finalized = true;
-            f.entryFee = entryFee;
-            f.owed = toPlayer;
-            a.owed += toPlayer;
-        }
+        bool collected = _payOrHold(token, a, it.arenaId, it.player, it.sessionId, openedAt, feeBps, entryFee, payout);
         emit Settled(it.arenaId, it.player, it.sessionId, payout, fee, collected);
     }
 
-    function _skip(Settlement calldata it, uint8 reason) private {
-        emit SettleSkipped(it.arenaId, it.player, it.sessionId, reason);
+    function _cancelOne(IERC20 token, SessionRef calldata it) private {
+        Arena storage a = _arenas[it.arenaId];
+        if (!a.exists) {
+            _skip(it.arenaId, it.player, it.sessionId, SKIP_UNKNOWN_ARENA);
+            return;
+        }
+        Session storage s = _sessions[it.arenaId][it.player];
+        if (s.id == 0 || s.id != it.sessionId) {
+            _skip(it.arenaId, it.player, it.sessionId, SKIP_SESSION_MISMATCH);
+            return;
+        }
+        if (s.finalized) {
+            _skip(it.arenaId, it.player, it.sessionId, SKIP_FINALIZED);
+            return;
+        }
+        uint128 entryFee = s.entryFee;
+        uint16 feeBps = s.feeBps;
+        uint40 openedAt = s.openedAt;
+        uint128 fee = computeFee(entryFee, feeBps);
+        uint128 value = entryFee - fee;
+        if (value > a.vault) {
+            _skip(it.arenaId, it.player, it.sessionId, SKIP_INSUFFICIENT_VAULT);
+            return;
+        }
+
+        delete _sessions[it.arenaId][it.player];
+        a.vault -= value;
+        a.fees -= fee;
+        a.openSessions -= 1;
+        a.totalPaidOut += entryFee;
+        _totalPaidOut += entryFee;
+
+        bool collected = _payOrHold(token, a, it.arenaId, it.player, it.sessionId, openedAt, feeBps, entryFee, entryFee);
+        emit Cancelled(it.arenaId, it.player, it.sessionId, entryFee, collected);
+    }
+
+    /// @dev Transfers `amount` to the player. When that fails the session is re-opened as finalized and the amount is
+    ///      held as `owed` (two-phase settle: the result is final, the player collects it with `refund`).
+    function _payOrHold(
+        IERC20 token,
+        Arena storage a,
+        uint16 arenaId,
+        address player,
+        uint64 sessionId,
+        uint40 openedAt,
+        uint16 feeBps,
+        uint128 entryFee,
+        uint128 amount
+    ) private returns (bool) {
+        if (amount == 0 || token.trySafeTransfer(player, amount)) return true;
+        Session storage f = _sessions[arenaId][player];
+        f.id = sessionId;
+        f.openedAt = openedAt;
+        f.feeBps = feeBps;
+        f.finalized = true;
+        f.entryFee = entryFee;
+        f.owed = amount;
+        a.owed += amount;
+        return false;
+    }
+
+    function _skip(uint16 arenaId, address player, uint64 sessionId, uint8 reason) private returns (uint128) {
+        emit SettleSkipped(arenaId, player, sessionId, reason);
+        return 0;
     }
 
     function _checkArenaParams(uint128 entryFee, uint16 maxSessions) private pure {

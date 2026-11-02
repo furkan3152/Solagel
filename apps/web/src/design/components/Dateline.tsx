@@ -1,7 +1,7 @@
 import type { HTMLAttributes, ReactNode } from 'react';
 
 export interface DatelineProps extends Omit<HTMLAttributes<HTMLUListElement>, 'children'> {
-  /** Short mono facts, e.g. ["Arenas open", "Fee 5% of profit", "42 online"]. */
+  /** Short mono facts, e.g. ["Arenas open", "Fee 5% of each entry", "42 online"]. */
   items: ReactNode[];
   /** Accessible name for the strip. */
   label?: string;

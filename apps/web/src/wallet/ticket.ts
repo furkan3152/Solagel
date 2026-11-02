@@ -7,8 +7,8 @@
  * **ledger units** (at most 6 decimals, see `fromLedger` / `ledgerDecimals` in the SDK); they
  * are converted with `fromLedger` before they meet a chain amount.
  */
-import { DEFAULT_ARENAS, type RoomInfo } from '@elymum/shared';
-import { DEFAULT_FEE_BPS, REFUND_DELAY_SECS, fromLedger } from '@elymum/sdk';
+import { DEFAULT_ARENAS, type FeeModel, type RoomInfo } from '@elymum/shared';
+import { DEFAULT_FEE_BPS, REFUND_DELAY_SECS, fromLedger, ticketValue } from '@elymum/sdk';
 
 /* ── the ticket calls ───────────────────────────────────────────────── */
 
@@ -293,9 +293,10 @@ export function ticketGate(g: GateInput): TicketGate {
 export { DEFAULT_FEE_BPS };
 
 /**
- * The fee on profit for a new ticket, basis points: the server's `ChainStatus.feeBps` (the
+ * The fee rate of a new ticket, basis points: the server's `ChainStatus.feeBps` (the
  * arena's `config().feeBps` it reads), else the loaded config, else the contract default (5 %).
- * The ticket sheet re-reads the config before signing and refuses a change.
+ * What it is taken from is `feeModelOf`. The ticket sheet re-reads the config before signing and
+ * refuses a change.
  */
 export function feeBps(server: number | null | undefined, config: { feeBps: number } | null = null): number {
   return server ?? config?.feeBps ?? DEFAULT_FEE_BPS;
@@ -312,6 +313,20 @@ export function ticketFeeBps(
 ): { bps: number; discount: boolean } {
   if (holder === true && config?.holderNft && config.holderFeeBps < normal) return { bps: config.holderFeeBps, discount: true };
   return { bps: normal, discount: false };
+}
+
+/**
+ * What the fee is taken from: `entry` (the arena contract v2 and every new deployment: each played
+ * ticket pays it from its entry fee, win or lose, and plays the rest) or `profit` (the legacy v1
+ * contract still live on the testnet until it is redeployed). Unknown → `entry`.
+ */
+export function feeModelOf(chain: { feeModel?: FeeModel | null } | null | undefined): FeeModel {
+  return chain?.feeModel === 'profit' ? 'profit' : 'entry';
+}
+
+/** What a ticket plays with (base units): `entry − fee` on a fee-on-entry arena, the whole entry on the legacy one. */
+export function ticketPlays(entryFee: bigint, bps: number, model: FeeModel): bigint {
+  return ticketValue(entryFee, bps, model === 'profit' ? 1 : 2);
 }
 
 /** `500` → `5`, `250` → `2.5`. */

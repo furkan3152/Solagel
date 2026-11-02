@@ -32,7 +32,7 @@ added back under `docs/images/` once the Ring Storybook UI has landed. Until the
 - Real-time arena game: a 30 Hz authoritative server (physics, bots, rounds) and a canvas client with
   split, eject, viruses, power-ups and floor loot.
 - Rounds, not cash-outs: paid arenas play 5-minute wall-clock rounds. Join late or buy back in;
-  everyone alive at the bell is paid their value, minus a flat 5 % fee on profit only.
+  everyone alive at the bell is paid their whole value; the only fee is a flat 5 % of each played entry fee.
 - Four arenas on the ring: Asphodel Meadow (1,000), Lethe Shore (10,000), Golden Bough (50,000) and
   Isles of the Blessed (250,000 `$ELYMUM`), all open to everyone.
 - On-chain money in one contract: `ElymumArena` holds the entry fees in per-arena vaults; a payout
@@ -61,11 +61,13 @@ flowchart LR
 ```
 
 1. A player signs in with SIWE (free, no transaction), approves the game token and calls `join` on the
-   arena: the entry fee moves into that arena's vault and a session opens.
+   arena: the fee part (5 % by default) is reserved, the rest (the ticket's value) moves into that arena's vault
+   and a session opens.
 2. The server seats the ticket. Value moves between players off chain as they eat each other; a
    crash-safe journal keeps the books (live values + floor loot + pending payouts = entry fees − payouts).
-3. At the bell the server settles every live ticket of the arena in one `settle` batch. The fee
-   (5 % of profit by default, at most 10 %) goes to the fee wallet; floor loot is burned with `sweepLoot`.
+3. At the bell the server settles every live ticket of the arena in one `settle` batch: each is paid its value in
+   full and the reserved fees (5 % of each entry by default, at most 10 %) go to the fee wallet; floor loot is
+   burned with `sweepLoot`. A ticket that was never played is cancelled with its full entry fee back (`cancel`).
 4. If the server never settles a ticket, the player calls `refund` after 24 h. If a payout transfer
    fails, the session is finalized with what is `owed` and the player collects it with `refund`.
 

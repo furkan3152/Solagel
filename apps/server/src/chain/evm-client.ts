@@ -4,6 +4,7 @@ import {
   getAllowance,
   getArena,
   getArenaConfig,
+  getArenaVersion,
   getTestTokenFaucet,
   getTokenBalance,
   isArenaHolder,
@@ -17,6 +18,7 @@ import {
   toViemChain,
   type ArenaConfig,
   type ArenaInfo,
+  type ArenaVersion,
   type ContractCall,
   type MintState,
   type SessionInfo,
@@ -48,6 +50,8 @@ export type ContractKindCode = 'arena' | 'nft' | 'token';
 /** An `ElymumArena` event the settlement worker reads from a receipt. */
 export type ArenaEvent =
   | { name: 'Settled'; arenaId: number; player: Address; sessionId: bigint; payout: bigint; fee: bigint; collected: boolean }
+  /** v2 `cancel`: an unplayed ticket's full entry fee went back (no fee). */
+  | { name: 'Cancelled'; arenaId: number; player: Address; sessionId: bigint; amount: bigint; collected: boolean }
   | { name: 'SettleSkipped'; arenaId: number; player: Address; sessionId: bigint; reason: number }
   | { name: 'LootBurned'; arenaId: number; sweepId: bigint; amount: bigint };
 
@@ -84,6 +88,8 @@ export interface EvmClient {
   blockNumber(): Promise<bigint>;
   /** Code at `address` vs the bundled artifact of `kind`. */
   codeCheck(address: Address, kind: ContractKindCode): Promise<CodeCheck>;
+  /** The fee rule of the arena at `address` (from its code hash): 2 fee on entry, 1 legacy fee on profit, null unknown. */
+  arenaVersion(address: Address): Promise<ArenaVersion | null>;
   /** Whether there is any code at `address`. */
   hasCode(address: Address): Promise<boolean>;
   arenaConfig(arena: Address): Promise<ArenaConfig>;
@@ -210,6 +216,15 @@ export function decodeArenaEvents(logs: readonly { address: string; data: Hex; t
         fee: a.fee as bigint,
         collected: a.collected as boolean,
       });
+    } else if (e.eventName === 'Cancelled') {
+      out.push({
+        name: 'Cancelled',
+        arenaId: Number(a.arenaId),
+        player: getAddress(a.player as string),
+        sessionId: a.sessionId as bigint,
+        amount: a.amount as bigint,
+        collected: a.collected as boolean,
+      });
     } else if (e.eventName === 'SettleSkipped') {
       out.push({ name: 'SettleSkipped', arenaId: Number(a.arenaId), player: getAddress(a.player as string), sessionId: a.sessionId as bigint, reason: Number(a.reason) });
     } else if (e.eventName === 'LootBurned') {
@@ -292,6 +307,7 @@ export function viemEvmClient(
     ...viemReads(publicClient),
     address: account.address,
     codeCheck: (address, kind) => checkDeployedCode(publicClient, address, kind),
+    arenaVersion: (address) => getArenaVersion(publicClient, address),
     hasCode: async (address) => {
       const code = await publicClient.getCode({ address });
       return !!code && code !== '0x';

@@ -142,7 +142,7 @@ describe('DEV_FAKE_CHAIN', () => {
     await chain.stop();
   });
 
-  it('settles journal items after a delay with the fee on profit', async () => {
+  it('settles journal items after a delay with the fee taken from the entry fee', async () => {
     const journal = new Journal(null);
     const chain = new DevFakeChain(journal, () => {}, 20, { tokenSet: true });
     const events: SettledEvent[] = [];
@@ -177,7 +177,10 @@ describe('DEV_FAKE_CHAIN', () => {
     expect(events[0].payout).toBe(payout);
     expect(events[0].txHash).toMatch(/^0x[0-9a-f]{64}$/);
     expect(events[0].player).toBe(w);
-    expect(events[0].fee).toBe(Math.floor((s.entryFee * 2 * 500) / 10_000));
+    // arena v2: the fee is 5 % of the entry fee (taken at the entry), the whole payout is the player's
+    expect(events[0].fee).toBe(Math.floor((s.entryFee * 500) / 10_000));
+    expect(events[0].feeOnEntry).toBe(true);
+    expect(s.value).toBe(s.entryFee - Math.floor((s.entryFee * 500) / 10_000));
     expect(journal.pending).toHaveLength(0);
     // the ticket closed: a new one is issued next time
     expect((await chain.getSession(1, w))!.id).not.toBe(s.id);
@@ -201,6 +204,10 @@ describe('settled message', () => {
     // late confirmations without fee / arena stay well-formed
     expect(settledMessage({ key: 'k2', player: 'P', txHash: tx, payout: 0 })).toEqual({ t: 'settled', kind: 'death', session: 'k2', txHash: tx, payout: 0 });
     expect(settledMessage({ key: 'k3', player: 'P', txHash: tx, payout: 50, fee: 0, collect: true })).toMatchObject({ collect: true, net: 50 });
+    // arena v2: the fee was the entry's, the whole payout reaches the wallet
+    expect(settledMessage({ key: 'k4', player: 'P', txHash: tx, payout: 300, fee: 10, feeOnEntry: true })).toMatchObject({ kind: 'payout', fee: 10, net: 300, feeOnEntry: true });
+    // a cancelled unplayed ticket: the full entry fee back
+    expect(settledMessage({ key: 'k5', player: 'P', txHash: tx, payout: 1000, fee: 0, feeOnEntry: true, refund: true })).toMatchObject({ kind: 'refund', net: 1000 });
   });
 });
 

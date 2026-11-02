@@ -32,6 +32,9 @@ contract ElymumArenaTest is Test {
 
     uint16 internal constant ID = 1;
     uint128 internal constant FEE = 1_000 ether;
+    /// @dev The 5 % fee of a FEE ticket and the ticket's value (what goes into the vault and is played).
+    uint128 internal constant CUT = 50 ether;
+    uint128 internal constant VAL = FEE - CUT;
     address internal constant DEAD = 0x000000000000000000000000000000000000dEaD;
 
     event TokenSet(address indexed token, uint8 decimals);
@@ -46,6 +49,7 @@ contract ElymumArenaTest is Test {
         uint16 indexed arenaId, address indexed player, uint64 indexed sessionId, uint128 payout, uint128 fee, bool collected
     );
     event SettleSkipped(uint16 indexed arenaId, address indexed player, uint64 indexed sessionId, uint8 reason);
+    event Cancelled(uint16 indexed arenaId, address indexed player, uint64 indexed sessionId, uint128 amount, bool collected);
     event Refunded(uint16 indexed arenaId, address indexed player, uint64 indexed sessionId, uint128 amount);
     event Collected(uint16 indexed arenaId, address indexed player, uint64 indexed sessionId, uint128 amount);
     event LootBurned(uint16 indexed arenaId, uint64 indexed sweepId, uint128 amount);
@@ -93,6 +97,16 @@ contract ElymumArenaTest is Test {
     function _settle(ElymumArena.Settlement[] memory items) internal {
         vm.prank(server);
         arena.settle(items);
+    }
+
+    function _ref(uint16 id, address player, uint64 sid) internal pure returns (ElymumArena.SessionRef[] memory items) {
+        items = new ElymumArena.SessionRef[](1);
+        items[0] = ElymumArena.SessionRef(id, player, sid);
+    }
+
+    function _cancel(ElymumArena.SessionRef[] memory items) internal {
+        vm.prank(server);
+        arena.cancel(items);
     }
 
     function _unauthorized(address who) internal pure returns (bytes memory) {
@@ -340,13 +354,14 @@ contract ElymumArenaTest is Test {
         _settle(_one(ID, alice, sid, FEE / 2));
         vm.warp(block.timestamp + 1 days);
         vm.prank(bob);
-        arena.refund(ID); // takes FEE back, FEE/2 remains
+        arena.refund(ID); // takes FEE back (value + reserved fee), VAL - FEE/2 remains
+        assertEq(arena.arenaFees(ID), 0);
         uint256 before = token.balanceOf(feeWallet);
         vm.expectEmit(address(arena));
-        emit ArenaSwept(ID, feeWallet, FEE / 2);
+        emit ArenaSwept(ID, feeWallet, VAL - FEE / 2);
         vm.prank(admin);
         arena.sweepArena(ID);
-        assertEq(token.balanceOf(feeWallet) - before, FEE / 2);
+        assertEq(token.balanceOf(feeWallet) - before, VAL - FEE / 2);
         assertEq(arena.getArena(ID).vault, 0);
         assertEq(token.balanceOf(address(arena)), 0);
 
@@ -376,8 +391,9 @@ contract ElymumArenaTest is Test {
 
         vm.warp(block.timestamp + 1 days);
         vm.prank(bob);
-        a.refund(ID); // min(1000, 500)
+        a.refund(ID); // min(950, 400) + the reserved fee 50
         assertEq(a.getArena(ID).vault, 0);
+        assertEq(a.arenaFees(ID), 0);
 
         // A finalized (blocked) player does not keep the arena busy, and the owed amount is not swept.
         vm.prank(admin);
@@ -489,7 +505,8 @@ contract ElymumArenaTest is Test {
         assertEq(s.owed, 0);
 
         ElymumArena.ArenaView memory v = arena.getArena(ID);
-        assertEq(v.vault, FEE);
+        assertEq(v.vault, VAL); // the fee is reserved, only the ticket's value is played
+        assertEq(arena.arenaFees(ID), CUT);
         assertEq(v.openSessions, 1);
         assertEq(v.totalDeposited, FEE);
         assertEq(token.balanceOf(address(arena)), FEE);
@@ -567,51 +584,78 @@ contract ElymumArenaTest is Test {
         fot.setFeeBps(0);
         vm.prank(alice);
         a.join(ID);
-        assertEq(a.getArena(ID).vault, FEE);
+        assertEq(a.getArena(ID).vault, VAL);
     }
 
     // ---------------------------------------------------------------- settle
 
-    function test_settle_feeOnProfitOnly() public {
+    function test_settle_feeOnEntryNotOnProfit() public {
         uint64 sid = _join(alice);
         _join(bob); // fills the vault so a 2x payout fits
         uint256 a0 = token.balanceOf(alice);
         vm.expectEmit(address(arena));
-        emit Settled(ID, alice, sid, 2 * FEE, 50 ether, true);
-        _settle(_one(ID, alice, sid, 2 * FEE));
-        // 1000 ticket, 2000 payout, 5 %: fee 50, player 1950.
-        assertEq(token.balanceOf(alice) - a0, 1_950 ether);
-        assertEq(token.balanceOf(feeWallet), 50 ether);
+        emit Settled(ID, alice, sid, 2 * VAL, CUT, true);
+        _settle(_one(ID, alice, sid, 2 * VAL));
+        // 1000 ticket = fee 50 + value 950; the player doubled the value: paid 1900, nothing deducted.
+        assertEq(token.balanceOf(alice) - a0, 2 * VAL);
+        assertEq(token.balanceOf(feeWallet), CUT);
         ElymumArena.ArenaView memory v = arena.getArena(ID);
         assertEq(v.vault, 0);
+        assertEq(arena.arenaFees(ID), CUT); // bob's, still open
         assertEq(v.openSessions, 1);
-        assertEq(v.totalPaidOut, 2 * FEE);
+        assertEq(v.totalPaidOut, 2 * VAL);
         assertEq(arena.getSession(ID, alice).id, 0);
         ElymumArena.ConfigView memory c = arena.config();
         assertEq(c.totalGames, 1);
-        assertEq(c.totalFees, 50 ether);
-        assertEq(c.totalPaidOut, 2 * FEE);
+        assertEq(c.totalFees, CUT);
+        assertEq(c.totalPaidOut, 2 * VAL);
     }
 
-    function test_settle_lossPaysNoFee() public {
+    function test_settle_lossStillPaysTheFee() public {
         uint64 sid = _join(alice);
         uint256 a0 = token.balanceOf(alice);
         _settle(_one(ID, alice, sid, 400 ether));
         assertEq(token.balanceOf(alice) - a0, 400 ether);
-        assertEq(token.balanceOf(feeWallet), 0);
-        assertEq(arena.getArena(ID).vault, 600 ether);
+        assertEq(token.balanceOf(feeWallet), CUT);
+        assertEq(arena.getArena(ID).vault, VAL - 400 ether);
+        assertEq(arena.arenaFees(ID), 0);
     }
 
     function test_settle_zeroPayoutClosesTicket() public {
         uint64 sid = _join(alice);
         uint256 a0 = token.balanceOf(alice);
         vm.expectEmit(address(arena));
-        emit Settled(ID, alice, sid, 0, 0, true);
+        emit Settled(ID, alice, sid, 0, CUT, true);
         _settle(_one(ID, alice, sid, 0));
         assertEq(token.balanceOf(alice), a0);
+        assertEq(token.balanceOf(feeWallet), CUT);
         assertEq(arena.getSession(ID, alice).id, 0);
         assertEq(arena.getArena(ID).openSessions, 0);
-        assertEq(arena.getArena(ID).vault, FEE);
+        assertEq(arena.getArena(ID).vault, VAL);
+    }
+
+    function test_settle_breakEvenPaysTheValue() public {
+        uint64 sid = _join(alice);
+        uint256 a0 = token.balanceOf(alice);
+        _settle(_one(ID, alice, sid, VAL)); // ate nothing, lost nothing
+        assertEq(token.balanceOf(alice) - a0, VAL);
+        assertEq(token.balanceOf(feeWallet), CUT);
+        assertEq(token.balanceOf(address(arena)), 0);
+    }
+
+    function test_settle_oneFeeTransferPerBatch() public {
+        uint64 sa = _join(alice);
+        uint64 sb = _join(bob);
+        uint64 sc = _join(carol);
+        ElymumArena.Settlement[] memory items = new ElymumArena.Settlement[](3);
+        items[0] = ElymumArena.Settlement(ID, alice, sa, 100 ether);
+        items[1] = ElymumArena.Settlement(ID, bob, sb, 0);
+        items[2] = ElymumArena.Settlement(ID, carol, sc, 2_000 ether);
+        _settle(items);
+        assertEq(token.balanceOf(feeWallet), 3 * CUT);
+        assertEq(arena.config().totalFees, 3 * CUT);
+        assertEq(token.balanceOf(address(arena)), 3 * VAL - 2_100 ether);
+        assertEq(arena.getArena(ID).vault, 3 * VAL - 2_100 ether);
     }
 
     function test_settle_feeRateFixedAtJoin() public {
@@ -619,11 +663,21 @@ contract ElymumArenaTest is Test {
         _join(bob);
         vm.prank(admin);
         arena.setFeeBps(1_000);
-        _settle(_one(ID, alice, sid, 2 * FEE));
+        _settle(_one(ID, alice, sid, 2 * VAL));
         assertEq(token.balanceOf(feeWallet), 50 ether); // 5 %, not 10 %
         assertEq(arena.getSession(ID, bob).feeBps, 500);
         _join(alice);
         assertEq(arena.getSession(ID, alice).feeBps, 1_000);
+        assertEq(arena.arenaFees(ID), CUT + FEE / 10); // bob 5 %, alice's new ticket 10 %
+    }
+
+    function test_setFeeBps_zeroTakesNothing() public {
+        vm.prank(admin);
+        arena.setFeeBps(0);
+        uint64 sid = _join(alice);
+        assertEq(arena.getArena(ID).vault, FEE);
+        _settle(_one(ID, alice, sid, FEE));
+        assertEq(token.balanceOf(feeWallet), 0);
     }
 
     function test_settle_onlyServer() public {
@@ -651,8 +705,10 @@ contract ElymumArenaTest is Test {
         vm.expectEmit(address(arena));
         emit SettleSkipped(ID, bob, sb, 4);
         vm.expectEmit(address(arena));
-        emit Settled(ID, alice, sa, FEE, 0, true);
+        emit Settled(ID, alice, sa, FEE, CUT, true);
         _settle(items);
+        assertEq(token.balanceOf(feeWallet), CUT); // only the settled ticket's fee
+        assertEq(arena.arenaFees(ID), CUT); // bob's stays reserved
         assertEq(arena.getSession(ID, bob).id, sb); // skipped, still open
         assertEq(arena.getSession(ID, alice).id, 0);
     }
@@ -679,11 +735,12 @@ contract ElymumArenaTest is Test {
         items[1] = ElymumArena.Settlement(ID, alice, sid, FEE); // duplicate inside the batch
         uint256 a0 = token.balanceOf(alice);
         vm.expectEmit(address(arena));
-        emit Settled(ID, alice, sid, FEE, 0, true);
+        emit Settled(ID, alice, sid, FEE, CUT, true);
         vm.expectEmit(address(arena));
         emit SettleSkipped(ID, alice, sid, 2);
         _settle(items);
         assertEq(token.balanceOf(alice) - a0, FEE);
+        assertEq(token.balanceOf(feeWallet), CUT); // the fee is taken once
 
         // Replaying in a later batch, and after the player re-joined, still cannot pay the old ticket.
         _settle(_one(ID, alice, sid, FEE));
@@ -707,12 +764,17 @@ contract ElymumArenaTest is Test {
         a.join(ID);
         blk.setBlocked(feeWallet, true);
         ElymumArena.Settlement[] memory items = new ElymumArena.Settlement[](2);
-        items[0] = ElymumArena.Settlement(ID, bob, a.getSession(ID, bob).id, 100 ether); // no fee: fine alone
-        items[1] = ElymumArena.Settlement(ID, alice, a.getSession(ID, alice).id, 1_500 ether); // fee leg fails
+        items[0] = ElymumArena.Settlement(ID, bob, a.getSession(ID, bob).id, 100 ether);
+        items[1] = ElymumArena.Settlement(ID, alice, a.getSession(ID, alice).id, 1_500 ether);
         vm.prank(server);
-        vm.expectRevert("blocked");
+        vm.expectRevert("blocked"); // the batch's fee transfer fails
         a.settle(items);
         assertEq(a.getSession(ID, bob).id, 2); // nothing happened
+        // A cancel sends nothing to the fee wallet: it still works.
+        vm.prank(server);
+        a.cancel(_ref(ID, bob, 2));
+        assertEq(a.getSession(ID, bob).id, 0);
+        assertEq(blk.balanceOf(bob), 10 * FEE);
     }
 
     function test_settle_twoPhase_revertingPlayer() public {
@@ -737,27 +799,27 @@ contract ElymumArenaTest is Test {
         blk.setBlocked(alice, true);
 
         ElymumArena.Settlement[] memory items = new ElymumArena.Settlement[](2);
-        items[0] = ElymumArena.Settlement(ID, alice, sa, 2 * FEE); // fee 50, owed 1950
+        items[0] = ElymumArena.Settlement(ID, alice, sa, 2 * FEE); // owed 2000 (the fee was reserved at join)
         items[1] = ElymumArena.Settlement(ID, bob, sb, 500 ether); // the batch is not griefed
         uint256 b0 = blk.balanceOf(bob);
         vm.expectEmit(address(a));
-        emit Settled(ID, alice, sa, 2 * FEE, 50 ether, false);
+        emit Settled(ID, alice, sa, 2 * FEE, CUT, false);
         vm.prank(server);
         a.settle(items);
         assertEq(blk.balanceOf(bob) - b0, 500 ether);
-        assertEq(blk.balanceOf(feeWallet), 50 ether);
+        assertEq(blk.balanceOf(feeWallet), 2 * CUT);
 
         ElymumArena.SessionView memory s = a.getSession(ID, alice);
         assertEq(s.id, sa);
         assertTrue(s.finalized);
-        assertEq(s.owed, 1_950 ether);
+        assertEq(s.owed, 2 * FEE);
         assertEq(s.entryFee, FEE);
         assertEq(s.feeBps, 500);
         ElymumArena.ArenaView memory v = a.getArena(ID);
-        assertEq(v.owed, 1_950 ether);
-        assertEq(v.vault, 3 * FEE - 2 * FEE - 500 ether);
+        assertEq(v.owed, 2 * FEE);
+        assertEq(v.vault, 3 * VAL - 2 * FEE - 500 ether);
         assertEq(v.openSessions, 1); // only carol
-        assertEq(blk.balanceOf(address(a)), uint256(v.vault) + v.owed);
+        assertEq(blk.balanceOf(address(a)), uint256(v.vault) + v.owed + a.arenaFees(ID));
 
         // A finalized player cannot open a second ticket before collecting.
         vm.prank(alice);
@@ -774,14 +836,14 @@ contract ElymumArenaTest is Test {
         blk.setBlocked(alice, false);
         uint256 a0 = blk.balanceOf(alice);
         vm.expectEmit(address(a));
-        emit Collected(ID, alice, sa, 1_950 ether);
+        emit Collected(ID, alice, sa, 2 * FEE);
         vm.prank(alice);
         a.refund(ID);
-        assertEq(blk.balanceOf(alice) - a0, 1_950 ether);
+        assertEq(blk.balanceOf(alice) - a0, 2 * FEE);
         assertEq(a.getArena(ID).owed, 0);
         assertEq(a.getSession(ID, alice).id, 0);
         // The owed amount was never spendable by others.
-        assertEq(blk.balanceOf(address(a)), a.getArena(ID).vault);
+        assertEq(blk.balanceOf(address(a)), uint256(a.getArena(ID).vault) + a.arenaFees(ID));
     }
 
     /// Regression: the share reserved for a finalized player is never spendable by other settlements,
@@ -797,24 +859,33 @@ contract ElymumArenaTest is Test {
         blk.setBlocked(alice, true);
         ElymumArena.Settlement[] memory items = _one(ID, alice, a.getSession(ID, alice).id, 2 * FEE);
         vm.prank(server);
-        a.settle(items); // owed 1950, vault 1000
-        assertEq(a.getArena(ID).vault, FEE);
+        a.settle(items); // owed 2000, vault 850
+        uint128 vault = a.getArena(ID).vault;
+        assertEq(vault, 3 * VAL - 2 * FEE);
         uint64 sb = a.getSession(ID, bob).id;
-        items = _one(ID, bob, sb, FEE + 1);
+        items = _one(ID, bob, sb, vault + 1);
         vm.expectEmit(address(a));
         emit SettleSkipped(ID, bob, sb, 4);
         vm.prank(server);
         a.settle(items);
         vm.prank(server);
         vm.expectRevert(ElymumArena.InsufficientVault.selector);
-        a.sweepLoot(ID, 1, FEE + 1);
+        a.sweepLoot(ID, 1, vault + 1);
+        // The reserved fees are not spendable either.
+        vm.prank(server);
+        vm.expectRevert(ElymumArena.InsufficientVault.selector);
+        a.sweepLoot(ID, 1, vault + CUT);
         vm.warp(block.timestamp + 1 days);
+        uint256 b0 = blk.balanceOf(bob);
         vm.prank(bob);
-        a.refund(ID); // takes the whole vault (1000), not the owed amount
+        a.refund(ID); // the whole vault (850) + its fee, never the owed amount
+        assertEq(blk.balanceOf(bob) - b0, vault + CUT);
+        uint256 c0 = blk.balanceOf(carol);
         vm.prank(carol);
-        a.refund(ID); // vault is empty: 0
-        assertEq(blk.balanceOf(address(a)), 1_950 ether);
-        assertEq(a.getArena(ID).owed, 1_950 ether);
+        a.refund(ID); // vault is empty: only the reserved fee
+        assertEq(blk.balanceOf(carol) - c0, CUT);
+        assertEq(blk.balanceOf(address(a)), 2 * FEE);
+        assertEq(a.getArena(ID).owed, 2 * FEE);
     }
 
     /// Regression: lowering capacity below the open count blocks joins but never strands open tickets.
@@ -864,13 +935,14 @@ contract ElymumArenaTest is Test {
     function test_refund_cappedByVault() public {
         uint64 sa = _join(alice);
         _join(bob);
-        _settle(_one(ID, alice, sa, 1_700 ether)); // vault left: 300
+        _settle(_one(ID, alice, sa, 1_700 ether)); // vault left: 200
         vm.warp(block.timestamp + 1 days);
         uint256 b0 = token.balanceOf(bob);
         vm.prank(bob);
         arena.refund(ID);
-        assertEq(token.balanceOf(bob) - b0, 300 ether);
+        assertEq(token.balanceOf(bob) - b0, 200 ether + CUT); // what the vault holds + the reserved fee
         assertEq(arena.getArena(ID).vault, 0);
+        assertEq(token.balanceOf(address(arena)), 0);
     }
 
     function test_refund_noSession() public {
@@ -886,7 +958,7 @@ contract ElymumArenaTest is Test {
         uint64 sid = _join(alice);
         vm.warp(block.timestamp + 1 days);
         // The server wins the race: the refund finds nothing.
-        _settle(_one(ID, alice, sid, FEE));
+        _settle(_one(ID, alice, sid, VAL));
         vm.prank(alice);
         vm.expectRevert(ElymumArena.NoSession.selector);
         arena.refund(ID);
@@ -911,7 +983,8 @@ contract ElymumArenaTest is Test {
         arena.sweepLoot(ID, 5, 300 ether);
         assertEq(token.balanceOf(DEAD), 300 ether);
         ElymumArena.ArenaView memory v = arena.getArena(ID);
-        assertEq(v.vault, 2 * FEE - 300 ether);
+        assertEq(v.vault, 2 * VAL - 300 ether);
+        assertEq(arena.arenaFees(ID), 2 * CUT); // never burned
         assertEq(v.lastSweepId, 5);
         assertEq(v.totalBurned, 300 ether);
         assertEq(arena.config().totalBurned, 300 ether);
@@ -954,10 +1027,99 @@ contract ElymumArenaTest is Test {
         assertFalse(v.exists);
         assertEq(v.id, 77);
         assertEq(arena.BURN_ADDRESS(), DEAD);
-        assertEq(arena.computeFee(2_000, 1_000, 500), 50);
-        assertEq(arena.computeFee(1_199, 1_000, 500), 9);
-        assertEq(arena.computeFee(119, 100, 500), 0);
-        assertEq(arena.computeFee(50, 100, 1_000), 0);
+        assertEq(arena.computeFee(1_000, 500), 50);
+        assertEq(arena.computeFee(1_199, 500), 59);
+        assertEq(arena.computeFee(19, 500), 0); // 0.95 → 0
+        assertEq(arena.computeFee(20, 500), 1);
+        assertEq(arena.computeFee(1_000, 300), 30);
+        assertEq(arena.computeFee(1_000, 0), 0);
+        assertEq(arena.version(), 2);
+        assertEq(arena.VERSION(), 2);
+        assertTrue(arena.feeOnEntry());
+        assertEq(arena.arenaFees(77), 0);
+    }
+
+    // ---------------------------------------------------------------- cancel
+
+    function test_cancel_refundsTheFullEntryFee() public {
+        uint64 sid = _join(alice);
+        _join(bob);
+        uint256 a0 = token.balanceOf(alice);
+        vm.expectEmit(address(arena));
+        emit Cancelled(ID, alice, sid, FEE, true);
+        _cancel(_ref(ID, alice, sid));
+        assertEq(token.balanceOf(alice) - a0, FEE); // value + reserved fee, no fee taken
+        assertEq(token.balanceOf(feeWallet), 0);
+        ElymumArena.ArenaView memory v = arena.getArena(ID);
+        assertEq(v.vault, VAL);
+        assertEq(arena.arenaFees(ID), CUT);
+        assertEq(v.openSessions, 1);
+        assertEq(v.totalPaidOut, FEE);
+        assertEq(arena.config().totalGames, 0); // not a game
+        assertEq(arena.config().totalFees, 0);
+        assertEq(arena.getSession(ID, alice).id, 0);
+        // The ticket is gone: settle and cancel replays are skipped.
+        vm.expectEmit(address(arena));
+        emit SettleSkipped(ID, alice, sid, 2);
+        _settle(_one(ID, alice, sid, 1));
+        vm.expectEmit(address(arena));
+        emit SettleSkipped(ID, alice, sid, 2);
+        _cancel(_ref(ID, alice, sid));
+    }
+
+    function test_cancel_skipReasonsAndOnlyServer() public {
+        uint64 sa = _join(alice);
+        uint64 sb = _join(bob);
+        _settle(_one(ID, bob, sb, VAL + 900 ether)); // vault left: 50 < alice's value
+        ElymumArena.SessionRef[] memory items = new ElymumArena.SessionRef[](3);
+        items[0] = ElymumArena.SessionRef(9, alice, sa);
+        items[1] = ElymumArena.SessionRef(ID, carol, 5);
+        items[2] = ElymumArena.SessionRef(ID, alice, sa);
+        vm.expectEmit(address(arena));
+        emit SettleSkipped(9, alice, sa, 1);
+        vm.expectEmit(address(arena));
+        emit SettleSkipped(ID, carol, 5, 2);
+        vm.expectEmit(address(arena));
+        emit SettleSkipped(ID, alice, sa, 4);
+        _cancel(items);
+        assertEq(arena.getSession(ID, alice).id, sa);
+        vm.prank(admin);
+        vm.expectRevert(ElymumArena.NotServer.selector);
+        arena.cancel(_ref(ID, alice, sa));
+        // The 24 h refund still gives what is left + the fee.
+        vm.warp(block.timestamp + 1 days);
+        uint256 a0 = token.balanceOf(alice);
+        vm.prank(alice);
+        arena.refund(ID);
+        assertEq(token.balanceOf(alice) - a0, 50 ether + CUT);
+    }
+
+    function test_cancel_twoPhase() public {
+        (ElymumArena a, BlockingToken blk) = _blockingArena();
+        vm.prank(alice);
+        a.join(ID);
+        uint64 sa = a.getSession(ID, alice).id;
+        blk.setBlocked(alice, true);
+        vm.expectEmit(address(a));
+        emit Cancelled(ID, alice, sa, FEE, false);
+        vm.prank(server);
+        a.cancel(_ref(ID, alice, sa));
+        ElymumArena.SessionView memory s = a.getSession(ID, alice);
+        assertTrue(s.finalized);
+        assertEq(s.owed, FEE);
+        assertEq(a.getArena(ID).owed, FEE);
+        assertEq(a.getArena(ID).openSessions, 0);
+        assertEq(a.arenaFees(ID), 0);
+        assertEq(blk.balanceOf(address(a)), FEE);
+        vm.expectEmit(address(a));
+        emit SettleSkipped(ID, alice, sa, 3);
+        vm.prank(server);
+        a.cancel(_ref(ID, alice, sa));
+        blk.setBlocked(alice, false);
+        vm.prank(alice);
+        a.refund(ID);
+        assertEq(blk.balanceOf(alice), 10 * FEE);
+        assertEq(blk.balanceOf(address(a)), 0);
     }
 
     // ---------------------------------------------------------------- reentrancy
@@ -980,7 +1142,7 @@ contract ElymumArenaTest is Test {
         re.approve(address(a), type(uint256).max);
         re.arm(address(a), abi.encodeCall(ElymumArena.join, (ID)));
         vm.prank(server);
-        a.settle(_one(ID, alice, 1, FEE));
+        a.settle(_one(ID, alice, 1, VAL));
         assertFalse(re.lastCallOk());
         assertEq(bytes4(re.lastRevert()), ReentrancyGuard.ReentrancyGuardReentrantCall.selector);
         assertEq(a.getSession(ID, address(re)).id, 0);
@@ -988,14 +1150,12 @@ contract ElymumArenaTest is Test {
 
     // ---------------------------------------------------------------- fuzz
 
-    function testFuzz_feeMath(uint128 payout, uint128 entryFee, uint16 bps) public view {
+    function testFuzz_feeMath(uint128 entryFee, uint16 bps) public view {
         bps = uint16(bound(bps, 0, 1_000));
-        uint128 fee = arena.computeFee(payout, entryFee, bps);
-        uint256 profit = payout > entryFee ? payout - entryFee : 0;
-        assertEq(fee, (profit * bps) / 10_000);
-        assertLe(fee, profit / 10);
-        assertLe(fee, payout);
-        assertEq(uint256(payout - fee) + fee, payout);
+        uint128 fee = arena.computeFee(entryFee, bps);
+        assertEq(fee, (uint256(entryFee) * bps) / 10_000);
+        assertLe(fee, entryFee / 10);
+        assertEq(uint256(entryFee - fee) + fee, entryFee);
     }
 
     function testFuzz_settleConservation(uint128[6] memory payouts, uint16 bps, uint8 blockMask) public {
@@ -1015,21 +1175,34 @@ contract ElymumArenaTest is Test {
         }
         supply = blk.totalSupply();
 
-        ElymumArena.Settlement[] memory items = new ElymumArena.Settlement[](6);
-        for (uint256 i; i < 6; ++i) {
+        ElymumArena.Settlement[] memory items = new ElymumArena.Settlement[](5);
+        for (uint256 i; i < 5; ++i) {
             items[i] = ElymumArena.Settlement(
                 ID, players[i], a.getSession(ID, players[i]).id, uint128(bound(payouts[i], 0, 4 * FEE))
             );
         }
         vm.prank(server);
         a.settle(items);
+        // The sixth never played: cancelled (full entry back unless the vault cannot cover its value).
+        ElymumArena.SessionRef[] memory unplayed = _ref(ID, players[5], a.getSession(ID, players[5]).id);
+        vm.prank(server);
+        a.cancel(unplayed);
         uint128 loot = a.getArena(ID).vault / 3;
         vm.prank(server);
         a.sweepLoot(ID, 1, loot);
 
         ElymumArena.ArenaView memory v = a.getArena(ID);
+        uint128 reserved = a.arenaFees(ID);
         // Internal accounting equals the real balance.
-        assertEq(blk.balanceOf(address(a)), uint256(v.vault) + v.owed);
+        assertEq(blk.balanceOf(address(a)), uint256(v.vault) + v.owed + reserved);
+        // Reserved fees are exactly those of the tickets still open.
+        uint256 openFees;
+        for (uint256 i; i < 6; ++i) {
+            ElymumArena.SessionView memory s = a.getSession(ID, players[i]);
+            if (s.id != 0 && !s.finalized) openFees += a.computeFee(s.entryFee, s.feeBps);
+        }
+        assertEq(openFees, reserved);
+        assertEq(blk.balanceOf(feeWallet), a.config().totalFees);
         // Nothing is created or lost.
         uint256 total = blk.balanceOf(address(a)) + blk.balanceOf(feeWallet) + blk.balanceOf(DEAD);
         uint256 owedSum;
@@ -1041,7 +1214,9 @@ contract ElymumArenaTest is Test {
         assertEq(total, supply);
         assertEq(owedSum, v.owed);
         assertEq(v.totalDeposited, 6 * uint256(FEE));
-        assertEq(uint256(v.vault) + v.totalPaidOut + v.totalBurned, v.totalDeposited);
+        assertEq(
+            uint256(v.vault) + reserved + v.totalPaidOut + v.totalBurned + a.config().totalFees, v.totalDeposited
+        );
     }
 
     function testFuzz_refundNeverExceedsVault(uint128 first) public {
@@ -1055,8 +1230,8 @@ contract ElymumArenaTest is Test {
         vm.prank(bob);
         arena.refund(ID);
         uint256 got = token.balanceOf(bob) - b0;
-        assertEq(got, vault < FEE ? vault : FEE);
-        assertEq(token.balanceOf(address(arena)), arena.getArena(ID).vault);
+        assertEq(got, (vault < VAL ? vault : VAL) + CUT);
+        assertEq(token.balanceOf(address(arena)), uint256(arena.getArena(ID).vault) + arena.arenaFees(ID));
     }
 
     // ---------------------------------------------------------------- gas
@@ -1075,6 +1250,16 @@ contract ElymumArenaTest is Test {
         g = gasleft();
         arena.settle(one);
         emit log_named_uint("gas settle(1)", g - gasleft());
+
+        address p2 = makeAddr("gas-player-2");
+        _fund(p2);
+        vm.prank(p2);
+        arena.join(ID);
+        ElymumArena.SessionRef[] memory c1 = _ref(ID, p2, arena.getSession(ID, p2).id);
+        vm.prank(server);
+        g = gasleft();
+        arena.cancel(c1);
+        emit log_named_uint("gas cancel(1)", g - gasleft());
 
         vm.prank(admin);
         arena.updateArena(ID, FEE, 2_000, true);
@@ -1156,12 +1341,15 @@ contract ElymumArenaTest is Test {
         _perks(address(0), 0);
         ElymumArena.Settlement[] memory items = new ElymumArena.Settlement[](2);
         items[0] = ElymumArena.Settlement(ID, alice, sa, 1_500 ether);
-        items[1] = ElymumArena.Settlement(ID, bob, sb, 500 ether);
+        items[1] = ElymumArena.Settlement(ID, bob, sb, 400 ether);
+        assertEq(arena.getArena(ID).vault, 970 ether + VAL); // 3 % and 5 % of the entry reserved
         uint256 f0 = token.balanceOf(feeWallet);
         vm.expectEmit(address(arena));
-        emit Settled(ID, alice, sa, 1_500 ether, 15 ether, true); // 3 % of 500 profit
+        emit Settled(ID, alice, sa, 1_500 ether, 30 ether, true); // 3 % of the 1000 entry
+        vm.expectEmit(address(arena));
+        emit Settled(ID, bob, sb, 400 ether, CUT, true);
         _settle(items);
-        assertEq(token.balanceOf(feeWallet) - f0, 15 ether);
+        assertEq(token.balanceOf(feeWallet) - f0, 30 ether + CUT);
     }
 
     function test_join_holderFeeNeverAboveNormalFee() public {
