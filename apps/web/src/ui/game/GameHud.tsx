@@ -215,9 +215,22 @@ function Standings({ compact }: { compact: boolean }) {
   }, [rank, playing]);
   return (
     <section className={`g-standings${compact ? ' is-compact' : ''}`} aria-label={t('g.standings')}>
+      {/* the whole card opens everyone in the room (a cover button: the card keeps its list semantics) */}
+      <button
+        type="button"
+        className="g-standings__open"
+        onClick={() => openModal('standings')}
+        aria-label={t('g.seeAllLabel')}
+        title={t('g.seeAllLabel')}
+        data-testid="standings-open"
+      />
       <header className="g-standings__head">
         <h2 className="g-standings__title">{t('g.standings')}</h2>
-        <span className="mono g-standings__count">{t('g.inRoom', { n: players })}</span>
+        {/* "12 in ->": the count doubles as the way into the full list */}
+        <span className="mono g-standings__count g-standings__all" aria-hidden="true">
+          {!compact && t('g.inRoom', { n: players })}
+          <Icon name="arrow" size={11} />
+        </span>
       </header>
       <ol className="g-standings__list">
         {rows.map((e, i) => {
@@ -232,7 +245,7 @@ function Standings({ compact }: { compact: boolean }) {
 
 /* ───────────────────────── the round minimap (bottom right) ───────────────────────── */
 
-function MapSheet({ size }: { size: number }) {
+function MapSheet({ size, inline = false }: { size: number; inline?: boolean }) {
   const t = useT();
   const ref = useRef<HTMLCanvasElement>(null);
   const show = useUi((s) => s.settings.showMinimap);
@@ -254,7 +267,7 @@ function MapSheet({ size }: { size: number }) {
   }, [show]);
   if (!show) return null;
   return (
-    <section className="g-map" aria-label={t('g.mapLabel')}>
+    <section className={`g-map${inline ? ' is-inline' : ''}`} aria-label={t('g.mapLabel')} style={{ ['--map' as string]: `${size}px` }}>
       <div className="g-map__disc" style={{ width: size, height: size }}>
         <canvas ref={ref} className="g-map__canvas" style={{ width: size, height: size }} />
       </div>
@@ -374,7 +387,7 @@ function KeyHints() {
   const t = useT();
   const showChat = useUi((s) => s.settings.showChat);
   const chatOpen = useUi((s) => s.chatOpen);
-  const hasBoosts = useUi((s) => !!s.boosts?.signedIn);
+  const hasBoosts = useUi((s) => !!s.boosts?.signedIn && (s.boosts.charges.magnet > 0 || s.boosts.charges.shock > 0 || s.boosts.charges.speed > 0));
   return (
     <div className="g-keys mono" aria-label={t('g.keysLabel')}>
       <span className="g-keys__item">
@@ -420,15 +433,47 @@ function NetReadout() {
 
 /* ───────────────────────── layout ───────────────────────── */
 
-/** The in-game HUD: cream instrument stickers pressed onto the night floor of the ring. */
+/**
+ * The HUD's size class. Touch vs mouse comes from the pointer (`(hover: none) and (pointer: coarse)`),
+ * not the width; `narrow` is a portrait phone (or a thin window), `short` a landscape phone (or a
+ * low window). Everything else is a tablet (touch) or a desktop (mouse).
+ */
+export type HudClass = 'phone' | 'phone-land' | 'tablet' | 'desktop' | 'desktop-small';
+
+export function hudClass(touch: boolean, narrow: boolean, short: boolean): HudClass {
+  if (touch) return narrow ? 'phone' : short ? 'phone-land' : 'tablet';
+  return narrow || short ? 'desktop-small' : 'desktop';
+}
+
+/** Minimap diameter per size class (px). */
+export const MAP_SIZE: Record<HudClass, number> = { phone: 84, 'phone-land': 76, tablet: 116, desktop: 140, 'desktop-small': 96 };
+
+/**
+ * The in-game HUD: cream instrument stickers pressed onto the night floor of the ring.
+ *
+ * Layout per size class (nothing sits under the thumb stick or the Split / Tip cluster):
+ * - desktop (mouse): timer top left with the kill feed and chat under it; worth top centre; menu,
+ *   settings and the standings top right; minimap bottom right with the power-up rail above it; key
+ *   hints bottom left; emote stickers bottom centre.
+ * - tablet (touch): as desktop, but the minimap moves under the standings (the bottom right is the
+ *   Split / Tip cluster, which also holds the power-ups) and there are no key hints.
+ * - phone portrait: timer, compact standings and the feed top left; menu and settings top right with
+ *   the worth sticker and a small minimap under them; chat folds into its button.
+ * - phone landscape: timer, compact standings and the feed top left; worth top centre; menu,
+ *   settings and a small minimap top right; chat folds into its button.
+ */
 export function GameHud() {
   const screen = useUi((s) => s.screen);
   const touch = useIsTouch();
   const narrow = useNarrow();
+  const short = useShort();
+  const cls = hudClass(touch, narrow, short);
+  const compact = narrow || short;
   const playing = screen === 'playing';
   // the round's report flies out of the worth sticker: it stays on the frozen world under the sheet
   const roundOver = screen === 'roundover';
   const reduced = useReducedMotion();
+  const mapSize = MAP_SIZE[cls];
   const drop = (tilt: number, delay: number) =>
     reduced
       ? { initial: { opacity: 0 }, animate: { opacity: 1, transition: { duration: DUR.fade } } }
@@ -439,7 +484,8 @@ export function GameHud() {
   return (
     // the stickers drop on once the page has opened onto the world, and lift off before it closes
     <motion.div
-      className={`g-hud${touch ? ' is-touch' : ''}${narrow ? ' is-narrow' : ''}`}
+      className={`g-hud is-${cls}${touch ? ' is-touch' : ''}${narrow ? ' is-narrow' : ''}${short ? ' is-short' : ''}`}
+      data-hud={cls}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1, transition: reduced ? { duration: DUR.fade } : { delay: HUD_IN_DELAY, duration: 0.12 } }}
       exit={{ opacity: 0, transition: { duration: reduced ? DUR.fade : 0.14 } }}
@@ -450,10 +496,9 @@ export function GameHud() {
         <div className="g-corner__row">
           {!roundOver && <RoundChip />}
           <PondTag />
-          {!narrow && <TopButtons />}
         </div>
-        {narrow && <Standings compact />}
-        <Feed narrow={narrow} />
+        {compact && <Standings compact />}
+        <Feed narrow={compact} fold={compact && touch} />
       </motion.div>
 
       <div className="g-center">
@@ -462,6 +507,8 @@ export function GameHud() {
             <WorthSticker />
           </motion.div>
         )}
+        {/* portrait phones: the minimap hangs under the worth sticker in the right column */}
+        {narrow && <MapSheet inline size={mapSize} />}
         {/* in the column's flow, so it never covers a banner or my coin */}
         {!roundOver && <RoundCountdown />}
         <Banner />
@@ -469,25 +516,21 @@ export function GameHud() {
         <NetStats />
       </div>
 
-      {!narrow && (
-        <motion.div className="g-corner g-corner--tr" {...drop(0.8, 0.1)}>
-          <Standings compact={false} />
-        </motion.div>
-      )}
-      {narrow && (
-        <div className="g-corner g-corner--tr">
-          <TopButtons />
-        </div>
-      )}
+      <motion.div className="g-corner g-corner--tr" {...drop(0.8, 0.1)}>
+        <TopButtons />
+        {!compact && <Standings compact={false} />}
+        {/* touch: the bottom right is the thumb cluster, so the minimap lives up here */}
+        {!narrow && (touch || short) && <MapSheet inline size={mapSize} />}
+      </motion.div>
 
-      {!narrow && <MapSheet size={140} />}
+      {!narrow && !touch && !short && <MapSheet size={mapSize} />}
       {playing && !touch && (
         <>
+          <BoostBar />
           <div className="g-dock">
-            <BoostBar />
             <EmoteBar />
           </div>
-          {!narrow && <KeyHints />}
+          {!compact && <KeyHints />}
         </>
       )}
       {playing && touch && <MobileControls />}
@@ -502,14 +545,23 @@ export function GameHud() {
 const HUD_IN_DELAY = 0.34;
 
 function useNarrow(): boolean {
-  const q = '(max-width: 720px)';
+  return useMedia('(max-width: 720px)');
+}
+
+/** A landscape phone (or a low window): the HUD folds like a phone's. */
+function useShort(): boolean {
+  return useMedia('(max-height: 500px)');
+}
+
+function useMedia(q: string): boolean {
   const [narrow, setNarrow] = useState(() => typeof window !== 'undefined' && window.matchMedia?.(q).matches === true);
   useEffect(() => {
     const m = window.matchMedia?.(q);
     if (!m) return;
     const on = () => setNarrow(m.matches);
+    on();
     m.addEventListener('change', on);
     return () => m.removeEventListener('change', on);
-  }, []);
+  }, [q]);
   return narrow;
 }

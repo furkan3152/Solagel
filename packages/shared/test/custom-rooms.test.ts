@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CUSTOM_DEFAULTS, CUSTOM_SETTINGS_DEFAULT, customRoomPrice, inviteUrl, parseInviteCode, parseJoinTarget, validateCustomConfig } from '../src';
+import { CUSTOM_DEFAULTS, CUSTOM_MAP_SIZES, CUSTOM_MAP_WIDTH, CUSTOM_SETTINGS_DEFAULT, CUSTOM_TRAPS, CUSTOM_TRAP_MUL, customRoomPrice, inviteUrl, parseInviteCode, parseJoinTarget, validateCustomConfig } from '../src';
 
 const ok = (o: Record<string, unknown> = {}) => validateCustomConfig({ ...CUSTOM_DEFAULTS, name: 'Friday Pond', ...o });
 
@@ -14,7 +14,9 @@ describe('custom room config', () => {
     expect(ok({ name: 'a'.repeat(25) })).toMatchObject({ ok: false, field: 'name' });
     expect(ok({ name: '<script>' })).toMatchObject({ ok: false, field: 'name' });
     expect(ok({ durationMin: 45 })).toMatchObject({ ok: false, field: 'durationMin' });
-    expect(ok({ mapSize: 'XL' })).toMatchObject({ ok: false, field: 'mapSize' });
+    expect(ok({ mapSize: 'XXL' })).toMatchObject({ ok: false, field: 'mapSize' });
+    expect(ok({ mapSize: 5000 })).toMatchObject({ ok: false, field: 'mapSize' });
+    expect(ok({ traps: 'lots' })).toMatchObject({ ok: false, field: 'traps' });
     expect(ok({ difficulty: 'insane' })).toMatchObject({ ok: false, field: 'difficulty' });
     expect(ok({ food: 'none' })).toMatchObject({ ok: false, field: 'food' });
     expect(ok({ bots: 13 })).toMatchObject({ ok: false, field: 'bots' });
@@ -25,9 +27,20 @@ describe('custom room config', () => {
     expect(validateCustomConfig(null)).toMatchObject({ ok: false, field: 'config' });
   });
 
-  it('food and power-ups are optional (normal, on)', () => {
-    const { food: _f, powerUps: _p, ...rest } = CUSTOM_DEFAULTS;
-    expect(validateCustomConfig({ ...rest, name: 'Pond' })).toMatchObject({ ok: true, config: { food: 'normal', powerUps: true } });
+  it('food, traps and power-ups are optional (normal, normal, on)', () => {
+    const { food: _f, powerUps: _p, traps: _t, ...rest } = CUSTOM_DEFAULTS;
+    expect(validateCustomConfig({ ...rest, name: 'Pond' })).toMatchObject({ ok: true, config: { food: 'normal', traps: 'normal', powerUps: true } });
+  });
+
+  it('five map sizes from 3,000 to 9,000 units, smallest first; four trap levels', () => {
+    expect(CUSTOM_MAP_SIZES).toEqual(['XS', 'S', 'M', 'L', 'XL']);
+    const widths = CUSTOM_MAP_SIZES.map((m) => CUSTOM_MAP_WIDTH[m]);
+    expect(widths[0]).toBe(3000);
+    expect(widths.at(-1)).toBe(9000);
+    for (let i = 1; i < widths.length; i++) expect(widths[i]).toBeGreaterThan(widths[i - 1]);
+    for (const m of CUSTOM_MAP_SIZES) expect(ok({ mapSize: m })).toMatchObject({ ok: true, config: { mapSize: m } });
+    for (const tr of CUSTOM_TRAPS) expect(ok({ traps: tr })).toMatchObject({ ok: true, config: { traps: tr } });
+    expect(CUSTOM_TRAP_MUL.none).toBe(0);
   });
 });
 

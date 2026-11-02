@@ -5,6 +5,8 @@ import {
   CUSTOM_MAP_WIDTH,
   CUSTOM_SETTINGS_DEFAULT,
   CUSTOM_SETTINGS_LIMITS,
+  CUSTOM_TRAP_MUL,
+  CUSTOM_WORLD_CAPS,
   WORLD_PRESETS,
   customRoomPrice,
   validateCustomConfig,
@@ -68,18 +70,24 @@ export const CUSTOM_BOT_MIX: Record<CustomRoomConfig['difficulty'], BotMixWeight
 };
 
 const FOOD_MUL: Record<CustomRoomConfig['food'], number> = { low: 0.6, normal: 1, high: 1.6 };
-const POWERUPS: Record<CustomRoomConfig['mapSize'], number> = { S: 2, M: 3, L: 4 };
+const POWERUPS: Record<CustomRoomConfig['mapSize'], number> = { XS: 2, S: 2, M: 3, L: 4, XL: 5 };
 
-/** The world of a config: food and thorn bushes scale with the area like a practice pond's. */
+/**
+ * The world of a config: food and rug cacti scale with the area like a practice pond's, food by the
+ * food choice and cacti by the traps choice, both capped (`CUSTOM_WORLD_CAPS`) so an XL map with
+ * plenty of everything stays cheap to simulate.
+ */
 export function customWorld(c: CustomRoomConfig): WorldShape {
   const ref = WORLD_PRESETS.practice;
-  const w = CUSTOM_MAP_WIDTH[c.mapSize];
+  const w = CUSTOM_MAP_WIDTH[c.mapSize] ?? CUSTOM_MAP_WIDTH.M;
   const ratio = (w * w) / (ref.width * ref.height);
+  // rooms saved before traps existed read as `normal`
+  const traps = CUSTOM_TRAP_MUL[c.traps ?? 'normal'];
   return {
     width: w,
     height: w,
-    foodTarget: Math.round(ref.foodTarget * ratio * FOOD_MUL[c.food]),
-    virusTarget: Math.max(3, Math.round(ref.virusTarget * ratio)),
+    foodTarget: Math.min(CUSTOM_WORLD_CAPS.food, Math.round(ref.foodTarget * ratio * FOOD_MUL[c.food])),
+    virusTarget: traps === 0 ? 0 : Math.min(CUSTOM_WORLD_CAPS.viruses, Math.max(2, Math.round(ref.virusTarget * ratio * traps))),
     maxPowerUps: c.powerUps ? POWERUPS[c.mapSize] : 0,
   };
 }
@@ -308,6 +316,7 @@ export class CustomRoomService implements CustomRoomHooks {
       bots: c.bots,
       difficulty: c.difficulty,
       food: c.food,
+      traps: c.traps ?? 'normal',
       powerUps: c.powerUps,
       creator: r.creator,
       createdAt: r.createdAt,

@@ -241,30 +241,30 @@ describe('boosts: buying', () => {
 
   it('credits a pack for an exact payment to the burn address', async () => {
     const { chain, shop } = shopFixture();
-    pay(chain, hash(1), 300n * ONE);
+    pay(chain, hash(1), 1500n * ONE);
     const r = await shop.buy(WALLET, { kind: 'magnet', txHash: hash(1) });
     expect(r).toMatchObject({ ok: true, kind: 'magnet', added: 3, charges: { magnet: 3, shock: 0, speed: 0 } });
   });
 
   it('refuses a duplicate hash (also in another case), a forged one, wrong amount and wrong sender', async () => {
     const { chain, shop, inventory } = shopFixture();
-    pay(chain, hash(1), 300n * ONE);
+    pay(chain, hash(1), 1500n * ONE);
     await shop.buy(WALLET, { kind: 'magnet', txHash: hash(1) });
     expect(await buyFails(shop.buy(WALLET, { kind: 'magnet', txHash: hash(1) }))).toBe('tx_used');
     expect(await buyFails(shop.buy(WALLET, { kind: 'magnet', txHash: hash(1).toUpperCase().replace('0X', '0x') }))).toBe('tx_used');
     // forged: no such transaction on chain
     expect(await buyFails(shop.buy(WALLET, { kind: 'speed', txHash: hash(2) }))).toBe('tx_pending');
-    pay(chain, hash(3), 299n * ONE);
+    pay(chain, hash(3), 1499n * ONE);
     expect(await buyFails(shop.buy(WALLET, { kind: 'magnet', txHash: hash(3) }))).toBe('wrong_amount');
     // the shock pack costs more: a magnet price is the wrong amount for it
-    pay(chain, hash(4), 300n * ONE);
+    pay(chain, hash(4), 1500n * ONE);
     expect(await buyFails(shop.buy(WALLET, { kind: 'shock', txHash: hash(4) }))).toBe('wrong_amount');
     // someone else's payment cannot be claimed
-    pay(chain, hash(5), 300n * ONE, { from: OTHER });
+    pay(chain, hash(5), 1500n * ONE, { from: OTHER });
     expect(await buyFails(shop.buy(WALLET, { kind: 'magnet', txHash: hash(5) }))).toBe('wrong_sender');
-    pay(chain, hash(6), 300n * ONE, { to: OTHER });
+    pay(chain, hash(6), 1500n * ONE, { to: OTHER });
     expect(await buyFails(shop.buy(WALLET, { kind: 'magnet', txHash: hash(6) }))).toBe('wrong_recipient');
-    pay(chain, hash(7), 300n * ONE, { token: OTHER });
+    pay(chain, hash(7), 1500n * ONE, { token: OTHER });
     expect(await buyFails(shop.buy(WALLET, { kind: 'magnet', txHash: hash(7) }))).toBe('wrong_token');
     chain.receipts.set(hash(8), { status: 'reverted', blockNumber: 1n, transfers: [] });
     expect(await buyFails(shop.buy(WALLET, { kind: 'magnet', txHash: hash(8) }))).toBe('tx_failed');
@@ -275,7 +275,7 @@ describe('boosts: buying', () => {
 
   it('two requests for the same hash at once credit it once', async () => {
     const { chain, shop, inventory } = shopFixture();
-    pay(chain, hash(1), 300n * ONE);
+    pay(chain, hash(1), 1500n * ONE);
     const [a, b] = await Promise.allSettled([shop.buy(WALLET, { kind: 'magnet', txHash: hash(1) }), shop.buy(WALLET, { kind: 'magnet', txHash: hash(1) })]);
     expect([a.status, b.status].sort()).toEqual(['fulfilled', 'rejected']);
     expect(inventory.get(WALLET).magnet).toBe(3);
@@ -298,24 +298,24 @@ describe('boosts: buying', () => {
     const { chain, shop, holders } = shopFixture({ holder: true });
     const view = await shop.view(WALLET);
     expect(view.holder).toBe(true);
-    expect(view.packs.find((p) => p.kind === 'magnet')).toMatchObject({ priceRaw: (210n * ONE).toString(), fullPriceRaw: (300n * ONE).toString(), charges: 3 });
+    expect(view.packs.find((p) => p.kind === 'magnet')).toMatchObject({ priceRaw: (1050n * ONE).toString(), fullPriceRaw: (1500n * ONE).toString(), charges: 3 });
     expect(view.arenaUsesPerRound).toBe(3);
-    pay(chain, hash(1), 210n * ONE);
+    pay(chain, hash(1), 1050n * ONE);
     expect((await shop.buy(WALLET, { kind: 'magnet', txHash: hash(1) })).charges.magnet).toBe(3);
     // a holder who pays the full price is still served
-    pay(chain, hash(2), 300n * ONE);
+    pay(chain, hash(2), 1500n * ONE);
     expect((await shop.buy(WALLET, { kind: 'magnet', txHash: hash(2) })).charges.magnet).toBe(6);
     holders.clear();
-    pay(chain, hash(3), 210n * ONE);
+    pay(chain, hash(3), 1050n * ONE);
     expect(await buyFails(shop.buy(WALLET, { kind: 'magnet', txHash: hash(3) }))).toBe('wrong_amount');
   });
 
   it('the treasury sink pays the owner wallet (or the admin-set treasury)', async () => {
     const { chain, shop, settings } = shopFixture({ settings: { sink: 'treasury' } });
     expect(shop.sink()).toBe(OTHER);
-    pay(chain, hash(1), 300n * ONE);
+    pay(chain, hash(1), 1500n * ONE);
     expect(await buyFails(shop.buy(WALLET, { kind: 'magnet', txHash: hash(1) }))).toBe('wrong_recipient');
-    pay(chain, hash(2), 300n * ONE, { to: OTHER });
+    pay(chain, hash(2), 1500n * ONE, { to: OTHER });
     expect((await shop.buy(WALLET, { kind: 'magnet', txHash: hash(2) })).ok).toBe(true);
     settings.update({ treasury: '0x3333333333333333333333333333333333333333' });
     expect(shop.sink()).toBe('0x3333333333333333333333333333333333333333');
@@ -325,17 +325,21 @@ describe('boosts: buying', () => {
     const dir = mkdtempSync(join(tmpdir(), 'boosts-'));
     dirs.push(dir);
     const a = shopFixture({ dir });
-    pay(a.chain, hash(9), 450n * ONE);
+    pay(a.chain, hash(9), 2500n * ONE);
     await a.shop.buy(WALLET, { kind: 'shock', txHash: hash(9) });
     const b = shopFixture({ dir });
     expect(b.inventory.get(WALLET).shock).toBe(3);
-    pay(b.chain, hash(9), 450n * ONE);
+    pay(b.chain, hash(9), 2500n * ONE);
     expect(await buyFails(b.shop.buy(WALLET, { kind: 'shock', txHash: hash(9) }))).toBe('tx_used');
   });
 
-  it('the default prices are a fraction of the cheapest arena ticket', () => {
-    expect(packPriceRaw(SHOP_DEFAULTS.prices.magnet, 18, 0)).toBe(300n * ONE);
-    expect(packPriceRaw(SHOP_DEFAULTS.prices.shock, 18, SHOP_DEFAULTS.holderDiscountPct)).toBe(315n * ONE);
+  it('the default prices: Magnet 1,500, Shockwave 2,500, Speed 1,500 per pack of 3; holders pay 30% less', () => {
+    expect(SHOP_DEFAULTS.packSize).toBe(3);
+    expect(packPriceRaw(SHOP_DEFAULTS.prices.magnet, 18, 0)).toBe(1500n * ONE);
+    expect(packPriceRaw(SHOP_DEFAULTS.prices.shock, 18, 0)).toBe(2500n * ONE);
+    expect(packPriceRaw(SHOP_DEFAULTS.prices.speed, 18, 0)).toBe(1500n * ONE);
+    expect(packPriceRaw(SHOP_DEFAULTS.prices.shock, 18, SHOP_DEFAULTS.holderDiscountPct)).toBe(1750n * ONE);
+    expect(packPriceRaw(SHOP_DEFAULTS.prices.magnet, 18, SHOP_DEFAULTS.holderDiscountPct)).toBe(1050n * ONE);
     expect(SHOP_DEFAULTS.sink).toBe('burn');
   });
 
@@ -347,7 +351,7 @@ describe('boosts: buying', () => {
     expect(() => applyShopSettings(SHOP_DEFAULTS, { arenaUsesPerRound: 99 })).toThrow(ShopSettingsError);
     expect(() => applyShopSettings(SHOP_DEFAULTS, { surprise: 1 })).toThrow(ShopSettingsError);
     expect(applyShopSettings(SHOP_DEFAULTS, { prices: { speed: '12.5' }, arenaUsesPerRound: 1, kinds: { magnet: false } })).toMatchObject({
-      prices: { speed: '12.5', magnet: '300' },
+      prices: { speed: '12.5', magnet: SHOP_DEFAULTS.prices.magnet },
       arenaUsesPerRound: 1,
       kinds: { magnet: false, shock: true },
     });
@@ -363,9 +367,9 @@ describe('boosts: use limits', () => {
   async function stocked(holder = false) {
     const f = shopFixture({ holder, settings: { packSize: 10 } });
     for (const [i, kind, price] of [
-      [1, 'magnet', 300n],
-      [2, 'shock', 450n],
-      [3, 'speed', 300n],
+      [1, 'magnet', 1500n],
+      [2, 'shock', 2500n],
+      [3, 'speed', 1500n],
     ] as const) {
       pay(f.chain, hash(i), price * ONE);
       await f.shop.buy(WALLET, { kind, txHash: hash(i) });
@@ -431,7 +435,7 @@ describe('boosts: use limits', () => {
 describe('boosts: rooms', () => {
   async function roomWith(mode: 'practice' | 'arena') {
     const f = shopFixture();
-    pay(f.chain, hash(1), 450n * ONE);
+    pay(f.chain, hash(1), 2500n * ONE);
     await f.shop.buy(WALLET, { kind: 'shock', txHash: hash(1) });
     const room = new Room(
       { id: `${mode}-1`, mode, name: 'Test', maxPlayers: 10, bots: null, ...(mode === 'arena' ? { stake: { arenaId: 1, buyIn: 1000 } } : {}) },

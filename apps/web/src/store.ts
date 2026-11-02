@@ -4,6 +4,7 @@ import type {
   ChainStatus,
   DeathStats,
   LbEntry,
+  StandingRow,
   PowerUpType,
   ProfileSummary,
   RoomInfo,
@@ -86,7 +87,7 @@ export interface Toast {
   at: number;
 }
 
-export type Modal = 'settings' | 'howto' | 'wallet' | 'shop' | null;
+export type Modal = 'settings' | 'howto' | 'wallet' | 'shop' | 'standings' | null;
 
 /** Lobby pages: the ticket front page, the newspaper leaderboard, the profile, the player guide. */
 export type LobbyPage = 'play' | 'ranks' | 'profile' | 'docs';
@@ -120,6 +121,8 @@ export interface UiState {
   /** The arena ticket being played: its own price, arena and session. */
   ticket: { entryFee: number; arenaId: number | null; session: string | null } | null;
   lb: LbEntry[];
+  /** The full room standings (`standings`), while the standings sheet is open; null otherwise. */
+  standings: { rows: StandingRow[]; players: number; watching: number; at: number } | null;
   leaders: { x: number; y: number }[];
   killfeed: KillItem[];
   chat: ChatItem[];
@@ -211,6 +214,7 @@ export const useUi = create<UiState>(() => ({
   valueDelta: null,
   ticket: null,
   lb: [],
+  standings: null,
   leaders: [],
   killfeed: [],
   chat: [],

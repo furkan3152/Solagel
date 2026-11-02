@@ -321,6 +321,14 @@ export class Gateway {
       case 'boost':
         conn.room?.boost(conn, msg.kind);
         return;
+      case 'standings': {
+        const on = msg.on === true;
+        const was = conn.standings;
+        conn.standings = on;
+        // the sheet fills at once instead of waiting for the next second
+        if (on && !was) conn.room?.sendStandings(conn);
+        return;
+      }
       case 'ping':
         conn.send({ t: 'pong', ts: Number(msg.ts) || 0, serverTime: Date.now(), serverNow: this.rooms.now() });
         return;

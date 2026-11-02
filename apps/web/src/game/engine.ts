@@ -324,10 +324,30 @@ export class GameEngine {
       return;
     }
     if (s.boosts.charges[kind] <= 0) {
-      useUi.setState({ modal: 'shop' });
+      // nothing is sold during a game: a small hint, never the shop over the floor
+      this.buyHint();
       return;
     }
     this.net.send({ t: 'boost', kind });
+  }
+
+  /**
+   * The full standings sheet opened (`on`) or closed: the server sends every coin in play once a
+   * second while it is open (`standings`), and nothing when it is closed.
+   */
+  watchStandings(on: boolean): void {
+    this.net.send({ t: 'standings', on });
+    if (!on) useUi.setState({ standings: null });
+  }
+
+  private lastBuyHintAt = 0;
+
+  /** "Buy power-ups in the lobby" (at most every few seconds, so a held key does not stack slips). */
+  private buyHint(): void {
+    const now = Date.now();
+    if (now - this.lastBuyHintAt < 4000) return;
+    this.lastBuyHintAt = now;
+    toast('info', t('boost.buyInLobby'));
   }
 
   /* ---------------------------------------------------------------- */
@@ -432,6 +452,8 @@ export class GameEngine {
         useUi.setState({ connected: true, connecting: false, rooms: m.rooms, chain: m.chain, online: m.online, blockedArenas: (m.blocked ?? []).map((b) => b.arenaId) });
         const auth = useUi.getState().auth;
         if (auth) this.authToken(auth.token);
+        // the standings sheet stays live across a reconnect
+        if (useUi.getState().modal === 'standings') this.net.send({ t: 'standings', on: true });
         this.resize();
         const screen = useUi.getState().screen;
         if (this.wasArena !== null && (screen === 'playing' || screen === 'lobby')) {
@@ -537,6 +559,10 @@ export class GameEngine {
         if (s.screen === 'playing') caller.ranked(m.me?.rank ?? 0, m.players);
         return;
       }
+      case 'standings':
+        // a late answer after the sheet closed is dropped
+        if (useUi.getState().modal === 'standings') useUi.setState({ standings: { rows: m.rows, players: m.players, watching: m.watching, at: Date.now() } });
+        return;
       case 'kf':
         useUi.setState((s) => ({ killfeed: [...s.killfeed.slice(-4), { id: killId++, ...m, at: Date.now() }] }));
         return;
@@ -631,7 +657,7 @@ export class GameEngine {
       }
       case 'boost': {
         if (!m.ok) {
-          if (m.reason === 'no_charges') useUi.setState({ modal: 'shop' });
+          if (m.reason === 'no_charges') this.buyHint();
           else toast(m.reason === 'cooldown' ? 'info' : 'warn', t(`boost.err.${m.reason}` as 'boost.err.guest'));
           return;
         }

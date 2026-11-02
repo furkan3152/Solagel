@@ -28,6 +28,8 @@ export class Conn {
   lastSkin = 0;
   lastChatAt = 0;
   lastEmoteAt = 0;
+  /** The client has the full standings sheet open (`standings` on): it gets `standings` with the leaderboard. */
+  standings = false;
   readonly view = new ViewState();
 
   private tokens = 120;

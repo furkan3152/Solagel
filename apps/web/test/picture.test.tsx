@@ -1,4 +1,4 @@
-import { EntityKind, PlayerFlag, encodeSnapshot, type ProfileView } from '@elymum/shared';
+import { EMBLEM_SKIN_ID, EntityKind, PlayerFlag, encodeSnapshot, type ProfileView } from '@elymum/shared';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ClientWorld } from '../src/game/state';
@@ -6,6 +6,7 @@ import { AVATAR_BUCKETS, AvatarCache, bucketFor } from '../src/render/avatars';
 import { useUi, updateSettings } from '../src/store';
 import { PicturePanel, PictureTile, usePicture } from '../src/ui/profile/PicturePicker';
 import { centerCrop, clampCrop, coverScale, pictureStatus, sourceRect, wearsPicture, zoomCrop } from '../src/ui/profile/picture';
+import { NameAndCoin } from '../src/ui/profile/ProfilePage';
 import { useChainData } from '../src/wallet/chain';
 import { useWallet } from '../src/wallet/store';
 import { ALICE } from './evm-helpers';
@@ -155,5 +156,39 @@ describe('PicturePicker', () => {
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer tok');
     expect(useChainData.getState().profile?.avatar).toBeNull();
     expect(useUi.getState().settings.picture).toBe(false);
+  });
+});
+
+describe('emblem holders keep their picture', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    useWallet.setState({ status: 'disconnected', address: null });
+    useUi.setState({ auth: null });
+    useChainData.setState({ profile: null, holder: null });
+    updateSettings({ picture: false, skin: 0 });
+  });
+
+  it('the Emblem frames the picture: both stay on (a holder wears the picture on the emblem skin)', () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })));
+    useWallet.setState({ status: 'connected', address: ALICE });
+    useUi.setState({ auth: { address: ALICE, token: 'tok', profile: null } });
+    useChainData.setState({ profile: profile(PIC), holder: true });
+    updateSettings({ picture: true, skin: 1 });
+    render(<NameAndCoin />);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Emblem' }));
+    expect(useUi.getState().settings).toMatchObject({ skin: EMBLEM_SKIN_ID, picture: true });
+    expect(screen.getByRole('radio', { name: 'Your picture' })).toHaveProperty('checked', true);
+    expect(screen.getByRole('checkbox', { name: 'Emblem' })).toHaveProperty('checked', true);
+    // the Emblem off again: a basic coin's rim around the picture
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Emblem' }));
+    expect(useUi.getState().settings).toMatchObject({ skin: 0, picture: true });
+  });
+
+  it('a holder on the emblem skin keeps the picture in the world', () => {
+    const w = new ClientWorld();
+    const snap = (players: Parameters<typeof encodeSnapshot>[0]['players']) =>
+      encodeSnapshot({ tick: 1, view: { x: 0, y: 0, h: 1000 }, players, upserts: [{ id: 1, kind: EntityKind.Cell, x: 0, y: 0, r: 30, playerId: 4, flags: 0 }], removals: [] });
+    w.applyBinary(snap([{ id: 4, skin: EMBLEM_SKIN_ID, flags: PlayerFlag.Holder | PlayerFlag.Verified, name: 'gold', avatar: PIC }]), 1);
+    expect(w.players.get(4)).toMatchObject({ skin: EMBLEM_SKIN_ID, holder: true, avatar: PIC });
   });
 });

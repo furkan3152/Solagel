@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { CUSTOM_DEFAULTS, CUSTOM_MAP_WIDTH, CUSTOM_PAYMENT_MAX_AGE_MS, type CustomRoomConfig, type ServerMessage } from '@elymum/shared';
+import { CUSTOM_DEFAULTS, CUSTOM_MAP_WIDTH, CUSTOM_WORLD_CAPS, CUSTOM_PAYMENT_MAX_AGE_MS, type CustomRoomConfig, type ServerMessage } from '@elymum/shared';
 import { parseEther } from 'viem';
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
@@ -343,6 +343,26 @@ describe('custom rooms: lifecycle', () => {
     expect(s.foodTarget).toBeLessThan(l.foodTarget);
     expect(lHigh.foodTarget).toBeGreaterThan(l.foodTarget);
     expect(customWorld(cfgOf({ powerUps: false })).maxPowerUps).toBe(0);
+  });
+
+  it('traps set the cacti; XS..XL stay within the CPU caps; old rooms without traps read as normal', () => {
+    const none = customWorld(cfgOf({ traps: 'none' }));
+    const few = customWorld(cfgOf({ traps: 'few' }));
+    const normal = customWorld(cfgOf({ traps: 'normal' }));
+    const many = customWorld(cfgOf({ traps: 'many' }));
+    expect(none.virusTarget).toBe(0);
+    expect(few.virusTarget).toBeGreaterThan(0);
+    expect(few.virusTarget).toBeLessThan(normal.virusTarget);
+    expect(many.virusTarget).toBeGreaterThan(normal.virusTarget);
+    const xs = customWorld(cfgOf({ mapSize: 'XS' }));
+    const xl = customWorld(cfgOf({ mapSize: 'XL', food: 'high', traps: 'many' }));
+    expect(xs.width).toBe(CUSTOM_MAP_WIDTH.XS);
+    expect(xl.width).toBe(CUSTOM_MAP_WIDTH.XL);
+    expect(xl.foodTarget).toBeLessThanOrEqual(CUSTOM_WORLD_CAPS.food);
+    expect(xl.virusTarget).toBeLessThanOrEqual(CUSTOM_WORLD_CAPS.viruses);
+    expect(xs.foodTarget).toBeGreaterThan(100);
+    const { traps: _t, ...old } = cfgOf({});
+    expect(customWorld(old as CustomRoomConfig).virusTarget).toBe(normal.virusTarget);
   });
 });
 

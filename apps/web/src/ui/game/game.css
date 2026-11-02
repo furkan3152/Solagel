@@ -72,6 +72,7 @@
   right: calc(var(--hud-gap) + env(safe-area-inset-right, 0px));
   top: calc(var(--hud-gap) + env(safe-area-inset-top, 0px));
   align-items: flex-end;
+  gap: 10px;
 }
 .g-corner__row {
   display: flex;
@@ -502,6 +503,7 @@
 
 /* ── top of the food chain (top right) ────────────────────────────────── */
 .g-standings {
+  position: relative;
   width: 270px;
   padding: 10px 12px 8px;
   border: var(--stroke) solid var(--outline);
@@ -511,20 +513,60 @@
 }
 .g-standings__head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 4px;
 }
 .g-standings__title {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   font-size: 17px;
   line-height: 1.1;
   font-variation-settings: var(--fv-wonk);
 }
 .g-standings__count {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-size: 11px;
   color: var(--ink-3);
+}
+/* the cover button: tap anywhere on the card for everyone in the room */
+.g-standings__open {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: inherit;
+  background: none;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.g-standings__open:hover {
+  background: rgba(45, 115, 136, 0.06);
+}
+.g-standings__open:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+.g-standings__all {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 6px;
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: var(--r-pill);
+  background: var(--mist);
+  color: #04181c;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 .g-standings__row {
   display: grid;
@@ -592,8 +634,8 @@
 .g-standings.is-compact .g-standings__title {
   font-size: 14px;
 }
-.g-standings.is-compact .g-standings__count {
-  display: none;
+.g-standings.is-compact .g-standings__all {
+  padding: 1px 4px;
 }
 .g-standings.is-compact .g-standings__row {
   grid-template-columns: minmax(12px, auto) 13px minmax(0, 1fr) auto;
@@ -627,6 +669,15 @@
 }
 .g-map__canvas {
   display: block;
+}
+.g-map.is-inline {
+  position: relative;
+  right: auto;
+  bottom: auto;
+  margin: 4px 4px 0 0;
+}
+.g-map.is-inline .g-map__tag {
+  font-size: 10px;
 }
 .g-map__tag {
   position: absolute;
@@ -860,12 +911,25 @@
   right: calc(16px + env(safe-area-inset-right, 0px));
   bottom: calc(20px + env(safe-area-inset-bottom, 0px));
   display: grid;
+  /* portrait: the power-ups are a row above the buttons */
+  grid-template-areas:
+    'pu pu'
+    'emo chat'
+    'tip split';
   grid-template-columns: auto auto;
-  grid-template-rows: auto auto;
   align-items: end;
   justify-items: center;
   gap: 10px 12px;
   pointer-events: auto;
+}
+/* landscape: a column beside them (the height is short, the width is not) */
+@media (orientation: landscape) {
+  .g-touch {
+    grid-template-areas:
+      'pu emo chat'
+      'pu tip split';
+    grid-template-columns: auto auto auto;
+  }
 }
 .g-touch__btn {
   display: grid;
@@ -894,8 +958,7 @@
   box-shadow: var(--sh-press);
 }
 .g-touch__btn.is-split {
-  grid-column: 2;
-  grid-row: 2;
+  grid-area: split;
   width: 80px;
   height: 80px;
   background: var(--sun);
@@ -905,8 +968,7 @@
   box-shadow: inset -5px -5px 0 var(--sun-s), var(--sh-press);
 }
 .g-touch__btn.is-eject {
-  grid-column: 1;
-  grid-row: 2;
+  grid-area: tip;
   background: var(--mist);
 }
 .g-touch__btn.is-small,
@@ -916,20 +978,31 @@
   box-shadow: var(--sh-2);
 }
 .g-touch__btn.is-small {
-  grid-column: 1;
-  grid-row: 1;
+  grid-area: emo;
 }
 .g-touch__btn.is-alt {
-  grid-column: 2;
-  grid-row: 1;
+  position: relative;
+  grid-area: chat;
+}
+/* new chat lines while the chat is folded */
+.g-touch__dot {
+  position: absolute;
+  right: 1px;
+  top: 1px;
+  width: 13px;
+  height: 13px;
+  border: 2.5px solid #04181c;
+  border-radius: 50%;
+  background: var(--coral, #d9714f);
 }
 .g-touch__btn.is-small.is-on {
   background: var(--sun);
 }
 .g-touch__emotes {
+  /* hangs over the thumb cluster it opens from */
   position: absolute;
-  right: calc(16px + env(safe-area-inset-right, 0px));
-  bottom: calc(196px + env(safe-area-inset-bottom, 0px));
+  right: 0;
+  bottom: calc(100% + 10px);
   pointer-events: auto;
 }
 .g-touch__emotes .g-emotes {
@@ -1562,3 +1635,396 @@
   vertical-align: 1px;
 }
 
+
+/* ── bought power-ups ─────────────────────────────────────────────────────
+ * Desktop: a compact vertical rail on the right edge above the minimap (key caps on the left).
+ * Touch: a group inside the thumb cluster (`.g-touch`, area `pu`). Hidden when nothing is owned.
+ * ------------------------------------------------------------------------- */
+.g-boosts {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  pointer-events: auto;
+}
+.g-boosts.is-rail {
+  position: absolute;
+  /* centred over the 140 px minimap */
+  right: calc(var(--hud-gap) + 47px + env(safe-area-inset-right, 0px));
+  bottom: calc(var(--hud-gap) + 182px + env(safe-area-inset-bottom, 0px));
+  flex-direction: column-reverse;
+  gap: 12px;
+}
+.g-hud.is-desktop-small .g-boosts.is-rail {
+  right: calc(var(--hud-gap) + env(safe-area-inset-right, 0px));
+  bottom: calc(var(--hud-gap) + env(safe-area-inset-bottom, 0px));
+}
+.g-boosts.is-touch {
+  grid-area: pu;
+  justify-self: end;
+  gap: 8px;
+}
+@media (orientation: landscape) {
+  .g-boosts.is-touch {
+    flex-direction: column;
+    align-self: end;
+  }
+}
+.g-boost {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  padding: 0;
+  border: var(--stroke) solid var(--outline);
+  border-radius: 50%;
+  background: var(--sticker);
+  color: #04181c;
+  box-shadow: var(--sh-2);
+  cursor: pointer;
+  touch-action: none;
+  transition: transform 90ms var(--ease-press), box-shadow 90ms var(--ease-press);
+}
+.g-boost.is-touch {
+  width: 50px;
+  height: 50px;
+}
+.g-boost:active {
+  transform: translate(2px, 2px);
+  box-shadow: var(--sh-press);
+}
+.g-boost:focus-visible {
+  outline: 3px solid var(--focus, #2d7388);
+  outline-offset: 3px;
+}
+.g-boost--magnet {
+  background: #fbe3dc;
+}
+.g-boost--shock {
+  background: #dff3f9;
+}
+.g-boost--speed {
+  background: #fdf0c8;
+}
+.g-boost__ring {
+  position: absolute;
+  inset: 3px;
+  width: calc(100% - 6px);
+  height: calc(100% - 6px);
+  transform: rotate(-90deg);
+  pointer-events: none;
+}
+.g-boost__ring circle {
+  fill: none;
+  stroke: var(--teal);
+  stroke-width: 5;
+  stroke-linecap: round;
+  opacity: 0;
+}
+.g-boost.is-cooling .g-boost__ring circle {
+  opacity: 0.85;
+}
+.g-boost.is-cooling .g-boost__icon,
+.g-boost.is-empty .g-boost__icon {
+  opacity: 0.45;
+}
+.g-boost__icon {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: #04181c;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.g-boost__key {
+  position: absolute;
+  left: -8px;
+  top: 50%;
+  min-width: 20px;
+  height: 20px;
+  margin-top: -10px;
+  padding: 0 4px;
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: 6px;
+  background: var(--sticker);
+  color: #04181c;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 16px;
+  box-shadow: var(--sh-1);
+}
+.g-boost__n {
+  position: absolute;
+  right: -6px;
+  bottom: -5px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: var(--r-pill);
+  background: var(--sun);
+  color: #04181c;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+}
+.g-boost.is-empty .g-boost__n {
+  background: var(--mist);
+}
+.g-boosts__arena {
+  padding: 3px 9px;
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: var(--r-pill);
+  background: var(--sticker);
+  color: #04181c;
+  font-size: 11px;
+  white-space: nowrap;
+  box-shadow: var(--sh-1);
+}
+.g-boosts__arena.is-out {
+  background: var(--mist);
+  color: #6b655a;
+}
+.g-boosts.is-touch .g-boosts__arena {
+  display: none;
+}
+
+/* ── size classes ─────────────────────────────────────────────────────────
+ * phone (touch, portrait), phone-land (touch, landscape: max-height 500), tablet (touch), desktop
+ * and desktop-small (mouse in a thin or low window). Safe-area insets are added on every edge.
+ * ------------------------------------------------------------------------- */
+
+/* tablets and small desktops: the standings narrow so the worth sticker keeps the middle */
+@media (max-width: 900px) {
+  .g-hud:not(.is-narrow) .g-standings:not(.is-compact) {
+    width: 240px;
+  }
+}
+
+/* landscape phones: everything a size down, the column tight above the thumb stick */
+.g-hud.is-short {
+  --hud-gap: 10px;
+}
+.g-hud.is-short .g-corner {
+  gap: 7px;
+}
+.g-hud.is-short .g-corner--tl {
+  max-width: min(300px, 36vw);
+}
+.g-hud.is-short .g-round,
+.g-hud.is-short .g-pond {
+  gap: 7px;
+  padding: 3px 11px 3px 3px;
+}
+.g-hud.is-short .g-round__dial,
+.g-hud.is-short .g-pond__coin {
+  width: 30px;
+  height: 30px;
+}
+.g-hud.is-short .g-round__time {
+  font-size: 18px;
+}
+.g-hud.is-short .g-pond__name {
+  font-size: 14px;
+}
+.g-hud.is-short .g-round__label,
+.g-hud.is-short .g-pond__label {
+  font-size: 10px;
+}
+.g-hud.is-short .g-till {
+  min-width: 0;
+  padding: 3px 12px 5px;
+}
+.g-hud.is-short .g-till__value {
+  font-size: 20px;
+}
+.g-hud.is-short .g-till__label,
+.g-hud.is-short .g-till__bite {
+  font-size: 10px;
+}
+.g-hud.is-short .g-kill {
+  padding: 2px 8px;
+  font-size: 11px;
+}
+.g-hud.is-short .kb-iconbtn {
+  width: 40px;
+  height: 40px;
+}
+.g-hud.is-short .g-stick {
+  left: calc(12px + env(safe-area-inset-left, 0px));
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  width: 112px;
+  height: 112px;
+}
+.g-hud.is-short .g-stick::after {
+  inset: 14px;
+}
+.g-hud.is-short .g-stick__knob {
+  width: 52px;
+  height: 52px;
+  margin: -26px 0 0 -26px;
+}
+.g-hud.is-short .g-touch {
+  right: calc(12px + env(safe-area-inset-right, 0px));
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  gap: 8px 10px;
+}
+.g-hud.is-short .g-touch__btn {
+  width: 56px;
+  height: 56px;
+}
+.g-hud.is-short .g-touch__btn.is-split {
+  width: 68px;
+  height: 68px;
+}
+.g-hud.is-short .g-touch__btn.is-small,
+.g-hud.is-short .g-touch__btn.is-alt {
+  width: 44px;
+  height: 44px;
+}
+.g-hud.is-short .g-boost.is-touch {
+  width: 46px;
+  height: 46px;
+}
+.g-hud.is-short .g-boosts.is-touch {
+  gap: 6px;
+}
+
+/* portrait phones: the thumb buttons a touch smaller on the narrowest screens */
+@media (max-width: 380px) {
+  .g-hud.is-touch .g-stick {
+    left: calc(12px + env(safe-area-inset-left, 0px));
+    width: 124px;
+    height: 124px;
+  }
+  .g-hud.is-touch .g-touch {
+    right: calc(12px + env(safe-area-inset-right, 0px));
+    gap: 8px 10px;
+  }
+  .g-hud.is-touch .g-boost.is-touch {
+    width: 46px;
+    height: 46px;
+  }
+}
+
+/* tablets: the cluster and the stick keep clear of the home indicator and the rounded corners */
+.g-hud.is-tablet .g-stick {
+  left: calc(28px + env(safe-area-inset-left, 0px));
+  bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+}
+.g-hud.is-tablet .g-touch {
+  right: calc(24px + env(safe-area-inset-right, 0px));
+  bottom: calc(26px + env(safe-area-inset-bottom, 0px));
+}
+
+/* ── everyone in the room (the standings sheet) ────────────────────────── */
+.g-full__sum {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.g-full__head,
+.g-full__row {
+  display: grid;
+  grid-template-columns: 30px 28px minmax(0, 1fr) 64px;
+  align-items: center;
+  gap: 8px;
+}
+.g-full__head.is-arena,
+.g-full__list.is-arena .g-full__row {
+  grid-template-columns: 30px 28px minmax(0, 1fr) 56px 64px;
+}
+.g-full__head {
+  padding: 0 8px 4px;
+  border-bottom: 2px solid var(--outline);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.g-full__head > :nth-child(n + 4) {
+  text-align: right;
+}
+.g-full__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.g-full__row {
+  min-height: 42px;
+  padding: 4px 8px;
+  border-bottom: 1.5px dashed var(--rule);
+  font-size: 14px;
+}
+.g-full__row.is-me {
+  border-radius: var(--r-tag);
+  border-bottom-color: transparent;
+  background: #fbe7b0;
+}
+.g-full__row.is-away {
+  opacity: 0.6;
+}
+.g-full__rank {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.g-full__coin {
+  position: relative;
+  display: block;
+  width: 26px;
+  height: 26px;
+  border: 2.5px solid #04181c;
+  border-radius: 50%;
+  background: var(--coin, #34b7dd);
+  overflow: hidden;
+}
+.g-full__coin img {
+  position: absolute;
+  inset: 2px;
+  width: calc(100% - 4px);
+  height: calc(100% - 4px);
+  border-radius: 50%;
+  object-fit: cover;
+}
+.g-full__name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.g-full__nm {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.g-full__row.is-me .g-full__nm {
+  font-weight: 700;
+}
+.g-full__laurel {
+  display: inline-flex;
+  flex: none;
+  color: #8a5f0e;
+}
+.g-full__away {
+  flex: none;
+  padding: 0 5px;
+  border: var(--stroke-sm) solid var(--outline);
+  border-radius: var(--r-pill);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+.g-full__mass,
+.g-full__value {
+  font-size: 13.5px;
+  text-align: right;
+}
+.g-full__empty {
+  margin: 16px 0 0;
+  color: var(--ink-3);
+}

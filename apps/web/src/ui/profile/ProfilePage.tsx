@@ -135,7 +135,7 @@ function MemberCard() {
   );
 }
 
-function NameAndCoin() {
+export function NameAndCoin() {
   const t = useT();
   const settings = useUi((s) => s.settings);
   const owner = useAddress();
@@ -217,15 +217,22 @@ function NameAndCoin() {
         <div className="pf-grid">
           <PictureTile pic={pic} skin={skin} group={groupId} />
           {skins.map((s) => {
-            const on = skin === s.id && !pic.wearing;
+            // the emblem is a frame, not a face: a holder's picture stays on it (gold rim and laurel around the picture)
+            const emblem = s.id === EMBLEM_SKIN_ID;
+            const on = skin === s.id && (emblem || !pic.wearing);
             return (
               <label key={s.id} className={`pf-look${on ? ' is-on' : ''}`}>
                 <input
-                  type="radio"
-                  name={groupId}
+                  type={emblem ? 'checkbox' : 'radio'}
+                  name={emblem ? undefined : groupId}
                   checked={on}
                   onChange={() => {
                     sound.click();
+                    if (emblem) {
+                      // on: the emblem around whatever the face is (the picture stays); off: back to a basic coin
+                      updateSettings(on ? { skin: 0 } : { skin: s.id });
+                      return;
+                    }
                     updateSettings({ skin: s.id, picture: false });
                   }}
                   aria-label={s.name}
@@ -236,7 +243,7 @@ function NameAndCoin() {
             );
           })}
         </div>
-        <p className="kl-note">{t('pf.coinNote')}</p>
+        <p className="kl-note">{holder ? t('pf.coinNoteHolder') : t('pf.coinNote')}</p>
         <PicturePanel pic={pic} skin={skin} />
       </fieldset>
 

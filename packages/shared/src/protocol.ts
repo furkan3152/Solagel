@@ -256,7 +256,34 @@ export type ClientMessage =
   | { t: 'cashout' }
   /** Use one charge of a bought power-up (signed-in players; the server checks charges, cooldown and the arena's round cap). */
   | { t: 'boost'; kind: BoostKind }
+  /**
+   * Full room standings on (`on: true`) or off: while on, the server sends `standings` with the
+   * leaderboard (once a second) and once right away. Additive: older servers ignore it.
+   */
+  | { t: 'standings'; on: boolean }
   | { t: 'ping'; ts: number };
+
+/** Most rows a `standings` message carries (rooms are far smaller; a guard, not a page size). */
+export const STANDINGS_MAX_ROWS = 200;
+
+/** A row of the full room standings (`standings`): every coin in play, best first. */
+export interface StandingRow {
+  pid: number;
+  name: string;
+  skin: number;
+  /** Total mass (floored). */
+  score: number;
+  /** Arena rooms: in-game value, raw token units. */
+  value?: number;
+  isBot?: boolean;
+  verified?: boolean;
+  /** Holds an Elymum emblem (laurel). */
+  holder?: boolean;
+  /** Profile picture id (`avatarPath(id)`); humans only. */
+  avatar?: string;
+  /** Arena rooms: the player's connection dropped; the coin stays in play until the bell. */
+  away?: boolean;
+}
 
 export interface LbEntry {
   pid: number;
@@ -337,6 +364,12 @@ export type ServerMessage =
       leaders: { x: number; y: number }[];
       players: number;
     }
+  /**
+   * Every coin in play, ranked (the full standings sheet), while the client asked for them with
+   * `standings` `on: true`. `watching`: connections in the room that have no coin in play
+   * (spectators, players between games). Additive: older clients never ask for it.
+   */
+  | { t: 'standings'; rows: StandingRow[]; players: number; watching: number }
   | {
       t: 'kf';
       killer: string;

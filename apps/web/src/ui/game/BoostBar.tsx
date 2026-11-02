@@ -2,7 +2,7 @@ import { BOOST_KEY_LABELS, BOOST_KINDS, boostCooldownMs, type BoostKind } from '
 import { useRef, useState } from 'react';
 import { engine } from '../../game/instance';
 import { useT } from '../../i18n';
-import { openModal, useUi } from '../../store';
+import { useUi } from '../../store';
 import { useTicker } from '../ticker';
 
 /** Bought power-up glyphs in the icon set's hand (24 grid, round 2.2 px strokes). */
@@ -17,9 +17,12 @@ export function cooldownFrac(readyAt: number, now: number, kind: BoostKind): num
   return Math.min(1, Math.max(0, (readyAt - now) / boostCooldownMs(kind)));
 }
 
-/** The kinds the HUD shows: every power-up with a charge (or still recharging). */
-export function shownKinds(charges: Record<BoostKind, number>, readyAt: Record<BoostKind, number>, now: number, disabled: readonly BoostKind[] = []): BoostKind[] {
-  return BOOST_KINDS.filter((k) => !disabled.includes(k) && (charges[k] > 0 || readyAt[k] > now));
+/**
+ * The kinds the HUD shows: every power-up the player still owns a charge of (and the admin has not
+ * switched off). Nothing is sold during a game, so a power-up with no charge left is not shown.
+ */
+export function shownKinds(charges: Record<BoostKind, number>, disabled: readonly BoostKind[] = []): BoostKind[] {
+  return BOOST_KINDS.filter((k) => !disabled.includes(k) && charges[k] > 0);
 }
 
 /**
@@ -73,29 +76,24 @@ function BoostButton({ kind, touch }: { kind: BoostKind; touch: boolean }) {
 }
 
 /**
- * The bought power-ups on the HUD: one button per owned power-up (R / F / G on desktop, thumbs on
- * phones), the arena's "uses left this round", and a small shop button. Guests see nothing (they
- * cannot buy); signed-in players with no charges see only the shop button.
+ * The bought power-ups on the HUD: one button per owned power-up and the arena's "uses left this
+ * round". Desktop: a compact vertical rail on the right edge above the minimap (key caps R / F / G);
+ * touch: a group inside the Split / Tip cluster (`MobileControls`). Nothing at all when the player
+ * owns no charge (guests included): power-ups are bought in the lobby, never during a game.
  */
 export function BoostBar({ touch = false }: { touch?: boolean }) {
   const t = useT();
   const state = useUi((s) => s.boosts);
   const charges = useUi((s) => s.boosts?.charges);
-  const ready = useUi((s) => s.boostReady);
   if (!state || !state.signedIn || !charges) return null;
-  const kinds = shownKinds(charges, ready, Date.now(), state.disabled);
+  const kinds = shownKinds(charges, state.disabled);
+  if (kinds.length === 0) return null;
   return (
-    <div className={`g-boosts${touch ? ' is-touch' : ''}`} role="group" aria-label={t('boost.label')}>
+    <div className={`g-boosts${touch ? ' is-touch' : ' is-rail'}`} role="group" aria-label={t('boost.label')} data-testid="boost-bar">
+      {state.arena && <span className={`g-boosts__arena mono${state.arena.left === 0 ? ' is-out' : ''}`}>{t('boost.arenaLeft', { left: state.arena.left, max: state.arena.max })}</span>}
       {kinds.map((k) => (
         <BoostButton key={k} kind={k} touch={touch} />
       ))}
-      {state.arena && kinds.length > 0 && (
-        <span className={`g-boosts__arena mono${state.arena.left === 0 ? ' is-out' : ''}`}>{t('boost.arenaLeft', { left: state.arena.left, max: state.arena.max })}</span>
-      )}
-      <button type="button" className="g-boosts__shop mono" onClick={() => openModal('shop')} aria-label={t('boost.openShop')} title={t('boost.openShop')}>
-        <span aria-hidden="true">+</span>
-        {kinds.length === 0 && <span>{t('boost.label')}</span>}
-      </button>
     </div>
   );
 }

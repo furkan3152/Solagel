@@ -256,3 +256,10 @@
     font-size: 28px;
   }
 }
+
+/* the map size in world units, under its chips */
+.cr-hint {
+  margin: -6px 0 0;
+  font-size: 11px;
+  color: var(--ink-3);
+}

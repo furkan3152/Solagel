@@ -50,6 +50,7 @@ const roomView = (o: Partial<CustomRoomView> = {}): CustomRoomView => ({
   bots: 6,
   difficulty: 'mixed',
   food: 'normal',
+  traps: 'normal',
   powerUps: true,
   creator: ALICE,
   createdAt: 1,
@@ -105,12 +106,16 @@ describe('the room creator', () => {
     expect(screen.getByText(/Give the room a name/)).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Room name'), { target: { value: 'Friday Pond' } });
     fireEvent.click(screen.getByRole('button', { name: '60 min' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Huge' }));
+    expect(screen.getByTestId('cr-map-hint').textContent).toContain('9,000 x 9,000');
     fireEvent.click(screen.getByRole('button', { name: 'Large' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Many' }));
     fireEvent.click(screen.getByRole('button', { name: 'Hard' }));
     fireEvent.click(screen.getByTestId('cr-continue'));
     await settle();
     const payment = screen.getByTestId('cr-payment');
     expect(payment.textContent).toMatch(/60 min/);
+    expect(payment.textContent).toMatch(/Large · many cacti/);
     expect(payment.textContent).toMatch(/none, pure fun/);
     expect(payment.textContent).toMatch(/0\.05 HYPE/);
     fireEvent.click(screen.getByTestId('cr-pay'));
@@ -119,7 +124,7 @@ describe('the room creator', () => {
     expect(spies.pay).toHaveBeenCalledTimes(1);
     expect(spies.pay.mock.calls[0][1]).toBe(TREASURY);
     expect(spies.pay.mock.calls[0][2]).toBe(PRICE);
-    expect(spies.create).toHaveBeenCalledWith('tok', expect.objectContaining({ name: 'Friday Pond', durationMin: 60, mapSize: 'L', difficulty: 'hard' }), HASH);
+    expect(spies.create).toHaveBeenCalledWith('tok', expect.objectContaining({ name: 'Friday Pond', durationMin: 60, mapSize: 'L', difficulty: 'hard', traps: 'many' }), HASH);
     expect(screen.getByTestId('cr-code').textContent).toBe('AB2CD');
     expect((screen.getByLabelText('Invite link') as HTMLInputElement).value).toMatch(/\/play\?room=AB2CD$/);
     expect(loadPendingPayment(ALICE)).toBeNull();

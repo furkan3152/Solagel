@@ -63,9 +63,10 @@ describe('boost HUD helpers', () => {
     expect(cooldownFrac(0, 1000, 'magnet')).toBe(0);
     expect(cooldownFrac(1000 + BOOST_RULES.magnet.cooldownMs / 2, 1000, 'magnet')).toBeCloseTo(0.5);
     expect(cooldownFrac(1e12, 0, 'shock')).toBe(1);
-    const ready = { magnet: 0, shock: 5000, speed: 0 };
-    expect(shownKinds({ magnet: 1, shock: 0, speed: 0 }, ready, 1000)).toEqual(['magnet', 'shock']);
-    expect(shownKinds({ magnet: 1, shock: 0, speed: 3 }, ready, 9000, ['speed'])).toEqual(['magnet']);
+    // only owned power-ups show (a recharging one with no charge left is gone: nothing is sold in a game)
+    expect(shownKinds({ magnet: 1, shock: 0, speed: 0 })).toEqual(['magnet']);
+    expect(shownKinds({ magnet: 1, shock: 0, speed: 3 }, ['speed'])).toEqual(['magnet']);
+    expect(shownKinds({ magnet: 0, shock: 0, speed: 0 })).toEqual([]);
     expect(totalCharges({ magnet: 1, shock: 2, speed: 3 })).toBe(6);
     expect(totalCharges(null)).toBe(0);
   });
@@ -90,9 +91,30 @@ describe('BoostBar', () => {
     expect(screen.queryByRole('button', { name: /Shockwave/ })).toBeNull();
     fireEvent.pointerDown(magnet);
     expect(boost).toHaveBeenCalledWith('magnet');
-    // the shop button opens the sheet
-    fireEvent.click(screen.getByRole('button', { name: /Open the power-up shop/ }));
-    expect(useUi.getState().modal).toBe('shop');
+    // nothing is sold during a game: no shop entry on the HUD
+    expect(screen.queryByRole('button', { name: /Open the power-up shop/ })).toBeNull();
+    expect(screen.queryByText('+')).toBeNull();
+  });
+
+  it('no charges: no power-up buttons at all', () => {
+    act(() => useUi.setState({ boosts: state({ charges: { magnet: 0, shock: 0, speed: 0 } }), boostReady: { magnet: Date.now() + 5000, shock: 0, speed: 0 } }));
+    const { container } = render(<BoostBar />);
+    expect(container.innerHTML).toBe('');
+  });
+
+  it('a power-up key with no charge left shows the lobby hint instead of the shop', async () => {
+    const { GameEngine } = await import('../src/game/engine');
+    const send = vi.fn();
+    const fake = Object.create(GameEngine.prototype) as GameEngine;
+    Object.assign(fake, { net: { send }, lastBuyHintAt: 0 });
+    act(() => useUi.setState({ screen: 'playing', chatOpen: false, boosts: state({ charges: { magnet: 0, shock: 0, speed: 0 } }), toasts: [] }));
+    act(() => fake.boost('magnet'));
+    expect(useUi.getState().modal).toBeNull();
+    expect(send).not.toHaveBeenCalled();
+    expect(useUi.getState().toasts.map((x) => x.text)).toContain('Buy power-ups in the lobby');
+    // a held key does not stack slips
+    act(() => fake.boost('shock'));
+    expect(useUi.getState().toasts).toHaveLength(1);
   });
 
   it('arena rooms print the round allowance; guests see nothing', () => {
@@ -118,9 +140,9 @@ const VIEW: ShopView = {
   sink: '0x000000000000000000000000000000000000dEaD',
   sinkKind: 'burn',
   packs: [
-    { kind: 'magnet', charges: 3, priceRaw: (210n * ONE).toString(), fullPriceRaw: (300n * ONE).toString(), enabled: true },
-    { kind: 'shock', charges: 3, priceRaw: (315n * ONE).toString(), fullPriceRaw: (450n * ONE).toString(), enabled: true },
-    { kind: 'speed', charges: 3, priceRaw: (210n * ONE).toString(), fullPriceRaw: (300n * ONE).toString(), enabled: false },
+    { kind: 'magnet', charges: 3, priceRaw: (1050n * ONE).toString(), fullPriceRaw: (1500n * ONE).toString(), enabled: true },
+    { kind: 'shock', charges: 3, priceRaw: (1750n * ONE).toString(), fullPriceRaw: (2500n * ONE).toString(), enabled: true },
+    { kind: 'speed', charges: 3, priceRaw: (1050n * ONE).toString(), fullPriceRaw: (1500n * ONE).toString(), enabled: false },
   ],
   holder: true,
   holderDiscountPct: 30,
@@ -139,8 +161,8 @@ describe('ShopSheet', () => {
       </Kb>,
     );
     await waitFor(() => expect(screen.getByTestId('shop-buy-magnet')).toBeTruthy());
-    expect(screen.getByTestId('shop-buy-magnet').textContent).toContain('Buy 3 for 210 tELYMUM');
-    expect(screen.getAllByText('300 tELYMUM')).toHaveLength(2);
+    expect(screen.getByTestId('shop-buy-magnet').textContent).toContain('Buy 3 for 1,050 tELYMUM');
+    expect(screen.getAllByText('1,500 tELYMUM')).toHaveLength(2);
     expect(screen.getByText(/You have 4/)).toBeTruthy();
     expect(screen.getByText(/30% off and \+1 arena use per round/)).toBeTruthy();
     expect(screen.getByText(/Payments are burned/)).toBeTruthy();

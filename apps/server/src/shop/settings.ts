@@ -97,6 +97,9 @@ export class ShopSettingsStore {
     try {
       const raw: unknown = JSON.parse(readFileSync(p, 'utf8'));
       if (!isObj(raw)) throw new Error('not an object');
+      // the launch prices (300 / 450 / 300) were raised: a file still holding them untouched takes the new defaults
+      const pr = (raw as { prices?: Record<string, unknown> }).prices;
+      if (pr && String(pr.magnet) === '300' && String(pr.shock) === '450' && String(pr.speed) === '300') delete (raw as { prices?: unknown }).prices;
       this.cur = applyShopSettings(this.defaults, raw, { strict: false });
     } catch (err) {
       const backup = `${p}.corrupt-${Date.now()}`;

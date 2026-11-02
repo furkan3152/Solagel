@@ -49,9 +49,10 @@ function KillLine({ k, myName }: { k: KillItem; myName: string | null }) {
 
 /**
  * The feed under the timer: kills as small ink strips with a wry verb, and the chat slip.
- * Enter opens the chat line; Esc closes it.
+ * Enter opens the chat line; Esc closes it. `narrow` keeps fewer lines; `fold` (phones) hides the
+ * slip until the chat button opens it.
  */
-export function Feed({ narrow }: { narrow: boolean }) {
+export function Feed({ narrow, fold = narrow }: { narrow: boolean; fold?: boolean }) {
   const t = useT();
   const killfeed = useUi((s) => s.killfeed);
   const chat = useUi((s) => s.chat);
@@ -79,7 +80,8 @@ export function Feed({ narrow }: { narrow: boolean }) {
 
   const kills = narrow ? killfeed.slice(-2) : killfeed.slice(-5);
   const lines = chat.slice(narrow ? -3 : -30);
-  const showSlip = showChat && (chatOpen || (!narrow && lines.length > 0));
+  // folded (phones): the chat is its button in the thumb cluster until it is opened
+  const showSlip = showChat && (chatOpen || (!fold && lines.length > 0));
   return (
     <div className="g-feed" aria-label={t('g.feed')} role="log" aria-live="polite">
       <ul className="g-kills">

@@ -21,10 +21,28 @@ export function useIsTouch(): boolean {
   return touch;
 }
 
+/** The chat button: the folded chat slip, with a dot while there are lines I have not seen. */
+function ChatButton() {
+  const t = useT();
+  const lastId = useUi((s) => s.chat.at(-1)?.id ?? 0);
+  const chatOpen = useUi((s) => s.chatOpen);
+  const showChat = useUi((s) => s.settings.showChat);
+  const seen = useRef(lastId);
+  if (chatOpen) seen.current = lastId;
+  const unread = showChat && !chatOpen && lastId > seen.current;
+  return (
+    <button type="button" className="g-touch__btn is-alt" onClick={() => useUi.setState({ chatOpen: true })} aria-label={unread ? t('g.chatUnread') : t('g.chat')} data-testid="touch-chat">
+      <Icon name="chat" size={22} />
+      {unread && <span className="g-touch__dot" aria-hidden="true" />}
+    </button>
+  );
+}
+
 /**
  * Phone controls: a joystick (a coin knob with a face on a dotted orbit disc) on the left,
- * chunky sticker buttons on the right. Every target is at least 44 px (most 56+). Paid rooms have
- * no cash-out (everyone alive is paid at the round's bell), so every room gets the chat button.
+ * chunky sticker buttons on the right with the bought power-ups. Every target is at least 44 px
+ * (most 56+). Paid rooms have no cash-out (everyone alive is paid at the round's bell), so every room
+ * gets the chat button.
  */
 export function MobileControls() {
   const t = useT();
@@ -71,8 +89,9 @@ export function MobileControls() {
           </svg>
         </div>
       </div>
-      <BoostBar touch />
       <div className="g-touch">
+        {/* bought power-ups ride with the thumb buttons (a row above them in portrait, a column beside them in landscape) */}
+        <BoostBar touch />
         <button type="button" className="g-touch__btn is-split" onPointerDown={() => engine()?.split()} aria-label={t('hud.split')}>
           <Icon name="split" size={26} />
           <span className="mono">{t('hud.split')}</span>
@@ -98,9 +117,7 @@ export function MobileControls() {
         >
           <Icon name="emote" size={22} />
         </button>
-        <button type="button" className="g-touch__btn is-alt" onClick={() => useUi.setState({ chatOpen: true })} aria-label={t('g.chat')}>
-          <Icon name="chat" size={22} />
-        </button>
+        <ChatButton />
       </div>
       <AnimatePresence>
         {emotes && (

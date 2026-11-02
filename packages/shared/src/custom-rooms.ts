@@ -12,7 +12,8 @@ import { CAPACITY } from './constants';
 export const CUSTOM_DURATIONS_MIN = [15, 30, 60] as const;
 export type CustomDuration = (typeof CUSTOM_DURATIONS_MIN)[number];
 
-export const CUSTOM_MAP_SIZES = ['S', 'M', 'L'] as const;
+/** Map sizes, smallest first (S / M / L keep the sizes rooms were made with before XS and XL). */
+export const CUSTOM_MAP_SIZES = ['XS', 'S', 'M', 'L', 'XL'] as const;
 export type CustomMapSize = (typeof CUSTOM_MAP_SIZES)[number];
 
 export const CUSTOM_DIFFICULTIES = ['easy', 'mixed', 'hard'] as const;
@@ -20,6 +21,13 @@ export type CustomDifficulty = (typeof CUSTOM_DIFFICULTIES)[number];
 
 export const CUSTOM_FOOD = ['low', 'normal', 'high'] as const;
 export type CustomFood = (typeof CUSTOM_FOOD)[number];
+
+/** The map's danger: how many rug cacti (thorn bushes) grow on it. */
+export const CUSTOM_TRAPS = ['none', 'few', 'normal', 'many'] as const;
+export type CustomTraps = (typeof CUSTOM_TRAPS)[number];
+
+/** Cacti per area against a practice pond's (`none` grows none). */
+export const CUSTOM_TRAP_MUL: Record<CustomTraps, number> = { none: 0, few: 0.5, normal: 1, many: 2 };
 
 /** How NFT holders are rewarded: a discount on the price, one free room a day (UTC), or nothing. */
 export const CUSTOM_HOLDER_PERKS = ['discount', 'free_daily', 'none'] as const;
@@ -34,8 +42,15 @@ export const CUSTOM_LIMITS = {
   playersMax: CAPACITY.private,
 } as const;
 
-/** World sizes (square) per map size: S is smaller than a private room, L about a practice pond. */
-export const CUSTOM_MAP_WIDTH: Record<CustomMapSize, number> = { S: 3600, M: 5200, L: 7000 };
+/**
+ * World sizes (square) per map size: XS is a quick brawl, S smaller than a private room, L about a
+ * practice pond, XL bigger than an arena. Food and cacti scale with the area (capped for the CPU:
+ * `CUSTOM_WORLD_CAPS`).
+ */
+export const CUSTOM_MAP_WIDTH: Record<CustomMapSize, number> = { XS: 3000, S: 3600, M: 5200, L: 7000, XL: 9000 };
+
+/** Upper bounds of a custom world's food and cacti whatever the choices (the server is small). */
+export const CUSTOM_WORLD_CAPS = { food: 3000, viruses: 36 } as const;
 
 /** What the creator picks in the room creator sheet. */
 export interface CustomRoomConfig {
@@ -49,6 +64,8 @@ export interface CustomRoomConfig {
   /** Most humans at once, 2..20. */
   maxPlayers: number;
   food: CustomFood;
+  /** Rug cacti on the map (absent in rooms made before it existed: `normal`). */
+  traps: CustomTraps;
   powerUps: boolean;
 }
 
@@ -60,6 +77,7 @@ export const CUSTOM_DEFAULTS: CustomRoomConfig = {
   difficulty: 'mixed',
   maxPlayers: 10,
   food: 'normal',
+  traps: 'normal',
   powerUps: true,
 };
 
@@ -70,6 +88,8 @@ export interface CustomRoomSummary {
   bots: number;
   difficulty: CustomDifficulty;
   food: CustomFood;
+  /** Rug cacti on the map. Old servers leave it out (read it as `normal`). */
+  traps?: CustomTraps;
   powerUps: boolean;
   /** Creator wallet (EIP-55). */
   creator: string;
@@ -193,7 +213,8 @@ export function validateCustomConfig(x: unknown): { ok: true; config: CustomRoom
   const mapSize = pick(o.mapSize, CUSTOM_MAP_SIZES, 'mapSize');
   const difficulty = pick(o.difficulty, CUSTOM_DIFFICULTIES, 'difficulty');
   const food = o.food === undefined ? CUSTOM_DEFAULTS.food : pick(o.food, CUSTOM_FOOD, 'food');
-  for (const v of [durationMin, mapSize, difficulty, food]) if (typeof v === 'object') return { ok: false, field: v.field, message: `${v.field} is not one of the choices` };
+  const traps = o.traps === undefined ? CUSTOM_DEFAULTS.traps : pick(o.traps, CUSTOM_TRAPS, 'traps');
+  for (const v of [durationMin, mapSize, difficulty, food, traps]) if (typeof v === 'object') return { ok: false, field: v.field, message: `${v.field} is not one of the choices` };
   const int = (v: unknown, min: number, max: number) => (typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max ? v : null);
   const bots = int(o.bots, 0, CUSTOM_LIMITS.botsMax);
   if (bots === null) return { ok: false, field: 'bots', message: `bots must be a whole number from 0 to ${CUSTOM_LIMITS.botsMax}` };
@@ -211,6 +232,7 @@ export function validateCustomConfig(x: unknown): { ok: true; config: CustomRoom
       difficulty: difficulty as CustomDifficulty,
       maxPlayers,
       food: food as CustomFood,
+      traps: traps as CustomTraps,
       powerUps,
     },
   };

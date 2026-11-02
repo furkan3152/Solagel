@@ -62,10 +62,7 @@ async function buy(page, kind) {
   await page.screenshot({ path: join(out, 'shockwave-desktop.png') });
   await page.waitForTimeout(900);
   await page.screenshot({ path: join(out, 'hud-cooldowns-desktop.png') });
-  // the shop over the game (HUD + button)
-  await page.locator('.g-boosts__shop').click();
-  await page.waitForTimeout(700);
-  await page.screenshot({ path: join(out, 'shop-hud-desktop.png') });
+  // nothing is sold during a game: a power-up key with no charge left only hints at the lobby shop
   await ctx.close();
 }
 

@@ -97,13 +97,16 @@ export interface ShopSettings {
   holderExtraArenaUses: number;
 }
 
-/** Testnet defaults: a pack of 3 costs a fraction of the cheapest arena ticket (1,000 tELYMUM). */
+/**
+ * Testnet defaults: a pack of 3 costs about one and a half to two and a half of the cheapest arena
+ * tickets (1,000 tELYMUM), so a pack is a real decision, not pocket change.
+ */
 export const SHOP_DEFAULTS: ShopSettings = {
   enabled: true,
   sink: 'burn',
   treasury: null,
   packSize: 3,
-  prices: { magnet: '300', shock: '450', speed: '300' },
+  prices: { magnet: '1500', shock: '2500', speed: '1500' },
   kinds: { magnet: true, shock: true, speed: true },
   holderDiscountPct: 30,
   arenaUsesPerRound: 2,

@@ -4,6 +4,7 @@ import {
   EMOTES,
   PlayerFlag,
   RULES,
+  STANDINGS_MAX_ROWS,
   clamp,
   VIEW,
   WORLD_PRESETS,
@@ -23,6 +24,7 @@ import {
   type RoundInfo,
   type RoundStanding,
   type ServerMessage,
+  type StandingRow,
 } from '@elymum/shared';
 import type { BotManagerOptions } from '../bots/manager';
 import { BotManager } from '../bots/manager';
@@ -949,11 +951,7 @@ export class Room {
   }
 
   private sendLeaderboard(): void {
-    let ranking = this.world.ranking();
-    if (this.ledger) {
-      const ledger = this.ledger;
-      ranking = ranking.sort((a, b) => ledger.value(b.id) - ledger.value(a.id) || b.totalMass() - a.totalMass());
-    }
+    const ranking = this.rankedPlayers();
     const top: LbEntry[] = ranking.slice(0, 10).map((p) => ({
       pid: p.id,
       name: p.name,
@@ -981,6 +979,43 @@ export class Room {
           : null;
       conn.send({ t: 'lb', top, me, leaders, players: ranking.length });
     }
+    // the full standings ride the same second, built once for every open sheet
+    let full: ServerMessage | null = null;
+    for (const conn of this.conns) {
+      if (!conn.standings || !conn.open) continue;
+      full ??= this.standingsMessage(ranking);
+      conn.send(full);
+    }
+  }
+
+  /** The full standings to one connection right now (its sheet just opened). */
+  sendStandings(conn: Conn): void {
+    if (conn.room !== this || !conn.open) return;
+    conn.send(this.standingsMessage(this.rankedPlayers()));
+  }
+
+  private rankedPlayers(): Player[] {
+    const ranking = this.world.ranking();
+    const ledger = this.ledger;
+    return ledger ? ranking.sort((a, b) => ledger.value(b.id) - ledger.value(a.id) || b.totalMass() - a.totalMass()) : ranking;
+  }
+
+  /** Every coin in play, ranked like the leaderboard (`standings`). */
+  private standingsMessage(ranking: Player[]): ServerMessage {
+    const rows: StandingRow[] = ranking.slice(0, STANDINGS_MAX_ROWS).map((p) => {
+      const row: StandingRow = { pid: p.id, name: p.name, skin: p.skin, score: Math.floor(p.totalMass()) };
+      if (this.ledger) row.value = this.ledger.value(p.id);
+      if (p.isBot) row.isBot = true;
+      if ((p.flags & PlayerFlag.Verified) !== 0) row.verified = true;
+      if ((p.flags & PlayerFlag.Holder) !== 0) row.holder = true;
+      const avatar = p.isBot ? undefined : this.avatarOf.get(p.id);
+      if (avatar) row.avatar = avatar;
+      if (!p.isBot && this.humans.has(p.id) && this.humans.get(p.id) === null) row.away = true;
+      return row;
+    });
+    let watching = 0;
+    for (const c of this.conns) if (!c.player?.alive) watching++;
+    return { t: 'standings', rows, players: ranking.length, watching };
   }
 
   /**
