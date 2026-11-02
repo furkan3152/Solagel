@@ -127,7 +127,7 @@ function Detail({ entry, onClose, onChanged, api }: { entry: WlEntryAdmin; onClo
 }
 
 /** WL applications: filters, search, detail, single and bulk status, notes, CSV, counts. */
-export function WlTab({ api }: TabProps) {
+export function WlTab({ api, onSiteChange }: TabProps) {
   const [status, setStatus] = useState<WlStatus | ''>('pending');
   const [q, setQ] = useState('');
   const [query, setQuery] = useState('');
@@ -168,6 +168,7 @@ export function WlTab({ api }: TabProps) {
       flash('ok', `${r.updated} ${r.updated === 1 ? 'entry' : 'entries'} set to ${s}.`);
       setPicked(new Set());
       await load();
+      onSiteChange?.();
     } catch (e) {
       flash('err', errText(e));
     } finally {
@@ -336,6 +337,7 @@ export function WlTab({ api }: TabProps) {
             setOpen(e);
             setData((d) => (d ? { ...d, items: d.items.map((x) => (x.id === e.id ? e : x)) } : d));
             void api.counts().then(setCounts, () => {});
+            onSiteChange?.();
           }}
         />
       )}

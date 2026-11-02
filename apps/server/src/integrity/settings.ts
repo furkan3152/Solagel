@@ -51,7 +51,8 @@ export function applySettingsPatch(cur: IntegritySettings, body: Record<string, 
   if (body.thresholds !== undefined) {
     if (!body.thresholds || typeof body.thresholds !== 'object' || Array.isArray(body.thresholds)) throw new SettingsError('thresholds must be an object', 'thresholds');
     for (const [k, v] of Object.entries(body.thresholds as Record<string, unknown>)) {
-      const range = INTEGRITY_THRESHOLD_RANGES[k as keyof IntegrityThresholds];
+      // own keys only: `constructor`, `toString` or `__proto__` must not pass as a threshold
+      const range = Object.hasOwn(INTEGRITY_THRESHOLD_RANGES, k) ? INTEGRITY_THRESHOLD_RANGES[k as keyof IntegrityThresholds] : undefined;
       if (!range) throw new SettingsError(`Unknown threshold ${k}`, `thresholds.${k}`);
       if (typeof v !== 'number' || !Number.isFinite(v) || v < range[0] || v > range[1]) {
         throw new SettingsError(`${k} must be a number from ${range[0]} to ${range[1]}`, `thresholds.${k}`);

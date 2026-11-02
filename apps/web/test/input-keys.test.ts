@@ -161,6 +161,46 @@ describe('Input keys', () => {
     field.remove();
   });
 
+  it('Enter and Space on a focused control outside a game are left to the browser (they activate it)', () => {
+    const { actions } = make(false);
+    const btn = document.createElement('button');
+    document.body.append(btn);
+    const enter = new KeyboardEvent('keydown', { code: 'Enter', key: 'Enter', bubbles: true, cancelable: true });
+    btn.dispatchEvent(enter);
+    const space = new KeyboardEvent('keydown', { code: 'Space', key: ' ', bubbles: true, cancelable: true });
+    btn.dispatchEvent(space);
+    expect(enter.defaultPrevented).toBe(false);
+    expect(space.defaultPrevented).toBe(false);
+    expect(actions.split).not.toHaveBeenCalled();
+    expect(actions.openChat).not.toHaveBeenCalled();
+    // with nothing focused, Space still scrolls the page outside a game
+    expect(key('keydown', 'Space').defaultPrevented).toBe(false);
+    btn.remove();
+  });
+
+  it('in a game Space splits even over a clicked HUD button, but a dialog keeps its keys', () => {
+    const { actions } = make(true);
+    const hud = document.createElement('button');
+    document.body.append(hud);
+    const space = new KeyboardEvent('keydown', { code: 'Space', key: ' ', bubbles: true, cancelable: true });
+    hud.dispatchEvent(space);
+    expect(space.defaultPrevented).toBe(true);
+    expect(actions.split).toHaveBeenCalledTimes(1);
+    const dialog = document.createElement('div');
+    dialog.setAttribute('role', 'dialog');
+    const inSheet = document.createElement('button');
+    dialog.append(inSheet);
+    document.body.append(dialog);
+    const enter = new KeyboardEvent('keydown', { code: 'Enter', key: 'Enter', bubbles: true, cancelable: true });
+    inSheet.dispatchEvent(enter);
+    expect(enter.defaultPrevented).toBe(false);
+    expect(actions.openChat).not.toHaveBeenCalled();
+    expect(key('keydown', 'Enter').defaultPrevented).toBe(true);
+    expect(actions.openChat).toHaveBeenCalledTimes(1);
+    hud.remove();
+    dialog.remove();
+  });
+
   it('a window blur lets go of held keys', () => {
     const { input } = make();
     key('keydown', 'KeyA');

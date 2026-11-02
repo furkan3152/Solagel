@@ -53,6 +53,9 @@ describe('errors', () => {
     expect(describeError({ code: 4902, message: 'Unrecognized chain ID' }, { chainName: 'Elysium Testnet' }).message).toMatch(/Elysium Testnet/);
     expect(describeError(new ChainMismatchError({ chain: { id: 99801, name: 'Elysium Testnet' } as never, currentChainId: 1 })).kind).toBe('wrong-chain');
     expect(describeError(new InsufficientFundsError({ cause: new BaseError('insufficient funds for gas * price + value') })).kind).toBe('insufficient-funds');
+    // a dev node's and viem's own wording, through a wallet that passes only the message on
+    expect(describeError(new Error("Sender doesn't have enough funds to send tx. The max upfront cost is: 1 and the sender's account only has: 0")).kind).toBe('insufficient-funds');
+    expect(describeError(new Error('The total cost (gas * gas fee + value) of executing this transaction exceeds the balance of the account.')).kind).toBe('insufficient-funds');
     expect(describeError({ code: -32002, message: 'Request already pending' }).kind).toBe('pending');
     expect(describeError(new Error('fetch failed')).kind).toBe('network');
     expect(describeError(new Error('execution reverted')).kind).toBe('revert');

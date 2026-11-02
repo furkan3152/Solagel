@@ -128,6 +128,10 @@ function serveStatic(root: string, req: IncomingMessage, res: ServerResponse, pa
   res.writeHead(200, {
     'Content-Type': MIME[ext] ?? 'application/octet-stream',
     'Cache-Control': immutable ? 'public, max-age=31536000, immutable' : 'no-cache',
+    // the web app is never framed (clickjacking of wallet actions); same rule as vercel.json
+    'X-Frame-Options': 'DENY',
+    'Content-Security-Policy': "frame-ancestors 'none'; object-src 'none'; base-uri 'self'",
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
   });
   if (req.method === 'HEAD') res.end();
   else createReadStream(file).pipe(res);

@@ -2,7 +2,9 @@ import { MAX_CHAT_LENGTH, MAX_NAME_LENGTH } from './constants';
 
 // Control chars, zero-width / bidi overrides and other invisible troublemakers.
 // eslint-disable-next-line no-control-regex
-const INVISIBLE = /[\u0000-\u001F\u007F-\u009F​-‏‪-‮⁠-⁯﻿]/g;
+// controls, zero-width / bidi marks, plus the blank "letters" that render as nothing (Hangul fillers,
+// the combining grapheme joiner, the Mongolian vowel separator, the Arabic letter mark, the braille blank)
+const INVISIBLE = /[\u0000-\u001F\u007F-\u009F͏؜ᅟᅠ᠎⠀ㅤﾠ​-‏‪-‮⁠-⁯﻿]/g;
 
 /** Take at most `max` user-perceived characters (code points). */
 function takeCodePoints(s: string, max: number): string {

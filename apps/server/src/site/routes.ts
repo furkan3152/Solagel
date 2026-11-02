@@ -597,6 +597,13 @@ export class SiteApi {
           );
           return send(res, 201, store.view(onList()));
         }
+        if (seg.length === 2 && seg[1] === 'refresh') {
+          // after an owner transaction on the NFT (phase, root, price, limits): the mint page's cached
+          // state is re-read now, so visitors do not see the old phase for the next half minute
+          this.method(req, 'POST');
+          const state = await mint.chainState(true);
+          return send(res, 200, { refreshed: state !== null });
+        }
         if (seg.length === 2 && seg[1] === 'price') {
           this.method(req, 'GET');
           const quote = await mint.priceQuote();

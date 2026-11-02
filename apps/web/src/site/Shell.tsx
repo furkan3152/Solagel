@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import { CoinMark, Icon, Kb, RingScene, Wordmark as InkWordmark, type IconName } from '../design';
 import { FooterLife } from './FooterLife';
 import { usePeelLetters } from './peel';
@@ -113,11 +113,27 @@ export function SiteHeader({ cta: _cta = true, children }: { cta?: boolean; /** 
   const testnet = isTestnetChain(useServerChain());
   const [menu, setMenu] = useState(false);
   useEffect(() => setMenu(false), [path]);
+  const menuBtn = useRef<HTMLButtonElement>(null);
+  const sheet = useRef<HTMLElement>(null);
   useEffect(() => {
     if (!menu) return;
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setMenu(false);
-    window.addEventListener('keydown', esc);
-    return () => window.removeEventListener('keydown', esc);
+    // the open menu is modal (a scrim covers the page): Tab cycles between the close button and its
+    // links, and Escape hands focus back to the menu button instead of leaving it on the page behind
+    const key = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setMenu(false);
+        menuBtn.current?.focus();
+        return;
+      }
+      if (e.key !== 'Tab' || !sheet.current || !menuBtn.current) return;
+      const stops = [menuBtn.current, ...sheet.current.querySelectorAll<HTMLElement>('a[href], button:not([disabled])')];
+      const at = stops.indexOf(document.activeElement as HTMLElement);
+      const next = at === -1 ? 0 : (at + (e.shiftKey ? -1 : 1) + stops.length) % stops.length;
+      e.preventDefault();
+      stops[next].focus();
+    };
+    window.addEventListener('keydown', key);
+    return () => window.removeEventListener('keydown', key);
   }, [menu]);
   const links = navFor(testnet).map((n) => {
     const on = path === n.href;
@@ -150,6 +166,7 @@ export function SiteHeader({ cta: _cta = true, children }: { cta?: boolean; /** 
             <HeaderConnect />
           </Suspense>
           <button
+            ref={menuBtn}
             type="button"
             className="st-menu-btn"
             aria-expanded={menu}
@@ -165,7 +182,7 @@ export function SiteHeader({ cta: _cta = true, children }: { cta?: boolean; /** 
         <>
           <button type="button" className="st-menu__scrim" aria-label="Close the menu" tabIndex={-1} onClick={() => setMenu(false)} />
           {/* phones: a sheet from the bottom edge, so every link and the Play button sit under the thumb */}
-          <nav id="st-menu" className="st-menu kb-sticker kb-sticker--cream" aria-label="Site menu">
+          <nav ref={sheet} id="st-menu" className="st-menu kb-sticker kb-sticker--cream" aria-label="Site menu">
             {links.filter((l) => l.key !== '/play')}
             <SiteLinkButton href="/play" variant="primary" size="lg" icon="arrow" className="st-menu__play" onClick={() => setMenu(false)}>
               Play now

@@ -576,6 +576,11 @@ export class SiteStore {
       throw new SiteFail(403, 'collab_closed', 'Collab applications are closed.');
     }
     const form = v.collabApply(body);
+    // the same application sent twice (a double click, a retry after a lost answer): the first one stands
+    const same = this.collabs.find(
+      (c) => c.status === 'pending' && wkey(c.wallet) === wkey(wallet) && c.contactX === form.contactX && c.community.toLowerCase() === form.community.toLowerCase(),
+    );
+    if (same) return this.collabPublic(same);
     if (this.collabs.filter((c) => c.contactX === form.contactX).length >= SITE_LIMITS.collabsPerHandle) {
       throw new SiteFail(409, 'collab_limit', `An X account can apply at most ${SITE_LIMITS.collabsPerHandle} times.`, 'contactX');
     }

@@ -46,6 +46,7 @@ export const en = {
   'err.round_closed': 'Joins are closed for the last minute of the round. Your ticket waits for the next one.',
   'err.no_cashout': 'Ticket rooms have no cash-out: everyone alive is paid when the round ends.',
   'err.round_ended': 'The round ended while you were away — your till was paid.',
+  'err.reclaim_lost': 'Your arena game ended while you were away, and its ticket was settled.',
   'err.game_closed': 'The arena is not open to this wallet yet. Follow @elymumio for the launch.',
   'err.banned': 'This wallet is banned from paid arenas after an integrity review. Practice is open.',
   'err.chain_busy': 'The network is busy. Your ticket is safe: retrying, or press Resume again in a moment.',

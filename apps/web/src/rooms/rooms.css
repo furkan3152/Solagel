@@ -163,7 +163,8 @@
   border-radius: var(--r-panel, 18px);
   background: var(--cream);
   color: var(--ink-fixed);
-  box-shadow: var(--sticker);
+  /* --sticker is a colour, not a shadow: the card had none */
+  box-shadow: var(--sh-3);
 }
 .cr-card__kicker {
   font-size: var(--t-label);
@@ -198,7 +199,8 @@
   padding: 8px 10px;
   border: var(--stroke-sm) solid var(--outline);
   border-radius: var(--r-pill);
-  background: var(--paper);
+  /* the card stays cream at night: a fixed light field (--paper went dark, the typed code was dark on dark) */
+  background: var(--paper-fixed);
   color: var(--ink-fixed);
   text-transform: uppercase;
   letter-spacing: 0.16em;

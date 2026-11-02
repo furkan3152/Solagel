@@ -83,6 +83,8 @@ export class GameEngine {
   private rngState = 7;
   /** Arena id of the stake room we were in (reclaimed after a reconnect). */
   private wasArena: number | null = null;
+  /** The join that reclaims our arena coin after a reconnect is out (cleared by its answer). */
+  private reclaiming = false;
   private reduced = false;
   /** My coin dropping onto the paper after a join / respawn (performance.now() start). */
   private drop: { at: number; rung: boolean } | null = null;
@@ -447,6 +449,7 @@ export class GameEngine {
         // a new socket has a new (empty) view on the server: nothing it sent before will be removed
         this.snapQueue = [];
         this.world.reset();
+        this.reclaiming = false;
         // a held ticket whose join was lost with the old socket (or still waits) goes again
         this.heldTicket.rearm();
         useUi.setState({ connected: true, connecting: false, rooms: m.rooms, chain: m.chain, online: m.online, blockedArenas: (m.blocked ?? []).map((b) => b.arenaId) });
@@ -458,6 +461,7 @@ export class GameEngine {
         const screen = useUi.getState().screen;
         if (this.wasArena !== null && (screen === 'playing' || screen === 'lobby')) {
           // reconnect: our stake cells are still in the arena (AFK), reclaim them
+          this.reclaiming = true;
           this.play(`arena:${this.wasArena}`);
         } else {
           if (screen === 'playing') useUi.setState({ screen: 'lobby' });
@@ -509,8 +513,13 @@ export class GameEngine {
         this.world.width = m.room.width;
         this.world.height = m.room.height;
         this.ticketRetry = null;
+        this.reclaiming = false;
         this.wasArena = m.room.mode === 'arena' ? (m.room.arenaId ?? null) : null;
         this.world.value = m.value ?? null;
+        useUi.setState((s) => ({
+          // lobby notes (a purchase, a copied link) would hang over the HUD: only warnings and errors come along
+          toasts: s.toasts.filter((x) => x.kind === 'error' || x.kind === 'warn'),
+        }));
         useUi.setState({
           screen: 'playing',
           room: m.room,
@@ -688,6 +697,17 @@ export class GameEngine {
         return;
       }
       case 'error': {
+        if (this.reclaiming && m.code !== 'rate_limited' && m.code !== 'round_ended' && m.code !== 'game_closed') {
+          // the coin we came back for is gone (eaten while the socket was down, or settled when the
+          // server restarted): nothing is left to hold or retry; leave the empty game for the lobby
+          this.reclaiming = false;
+          this.wasArena = null;
+          this.ticketRetry = null;
+          this.clearHeld();
+          if (useUi.getState().screen !== 'lobby') this.backToLobby();
+          toast('info', m.code === 'round_closed' || m.code === 'no_session' ? t('err.reclaim_lost') : t(`err.${m.code}` as 'err.bad_request') || m.message, undefined, 9000);
+          return;
+        }
         if (m.code === 'round_closed') {
           // joins are closed until the next round: hold the ticket and join when it opens
           const join = this.lastJoin;
@@ -700,6 +720,7 @@ export class GameEngine {
         }
         if (m.code === 'round_ended') {
           // back after a bell that settled our ticket while we were away: the till was paid
+          this.reclaiming = false;
           this.ticketRetry = null;
           this.wasArena = null;
           this.clearHeld();
@@ -727,6 +748,7 @@ export class GameEngine {
           // the game is admin-only for now: no toast loop, one friendly "opens soon" sheet
           this.heldTicket.refused();
           this.wasArena = null;
+          this.reclaiming = false;
           if (useUi.getState().screen !== 'lobby') this.backToLobby();
           useUi.setState({ gameClosed: true });
           return;

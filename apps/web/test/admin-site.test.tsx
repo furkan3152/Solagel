@@ -1,7 +1,7 @@
 import type { CollabAdmin, SiteCounts, WlEntryAdmin, WlTask } from '@elymum/shared';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CollabsTab } from '../src/admin/site/CollabsTab';
 import { PlayTab } from '../src/admin/site/PlayTab';
 import { SettingsTab } from '../src/admin/site/SettingsTab';
@@ -74,12 +74,15 @@ describe('admin: site tabs (Bearer session, mocked fetch)', { timeout: 30_000 },
       'POST /api/admin/wl/status': { updated: 2 },
       'PUT /api/admin/wl/w1/status': { entry: { ...wl('w1', 'alice'), status: 'rejected' } },
     }));
-    ui(<WlTab api={api} />);
+    const onSiteChange = vi.fn();
+    ui(<WlTab api={api} onSiteChange={onSiteChange} />);
     await screen.findByText('@alice');
     expect(within(screen.getByLabelText('Counts')).getByText('3')).toBeTruthy();
     fireEvent.click(screen.getByLabelText('Select all on this page'));
     fireEvent.click(screen.getByRole('button', { name: 'Approve selected' }));
     await screen.findByText('2 entries set to approved.');
+    // the drawer's summary line ("N approved · M waiting") is re-read
+    await waitFor(() => expect(onSiteChange).toHaveBeenCalledTimes(1));
     expect(sent('POST', '/api/admin/wl/status')?.body).toEqual({ ids: ['w1', 'w2'], status: 'approved' });
     expect(sent('POST', '/api/admin/wl/status')?.auth).toBe('Bearer admin-token');
     // the list is filtered and searched on the server
@@ -121,13 +124,15 @@ describe('admin: site tabs (Bearer session, mocked fetch)', { timeout: 30_000 },
       'GET /api/admin/counts': COUNTS,
       'POST /api/admin/collabs/c1/approve': (c: Call) => ({ collab: cb({ status: 'approved', phase: 'approved', ...(c.body as object) }) }),
     }));
-    ui(<CollabsTab api={api} />);
+    const onSiteChange = vi.fn();
+    ui(<CollabsTab api={api} onSiteChange={onSiteChange} />);
     await screen.findByText('Riso Guild');
     expect(screen.getByText('· 1 dup')).toBeTruthy();
     fireEvent.click(screen.getAllByRole('button', { name: 'Open' })[0]);
     fireEvent.change(await screen.findByLabelText('Spots'), { target: { value: '25' } });
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
     await screen.findByText('Approved.');
+    expect(onSiteChange).toHaveBeenCalled();
     const body = sent('POST', '/api/admin/collabs/c1/approve')?.body as { spots: number; deadline: number };
     expect(body.spots).toBe(25);
     expect(body.deadline).toBeGreaterThan(Date.now());
@@ -138,10 +143,13 @@ describe('admin: site tabs (Bearer session, mocked fetch)', { timeout: 30_000 },
       'GET /api/admin/settings': { settings: { ...SETTINGS, collabOpen: false }, gameAccessEnv: null },
       'PUT /api/admin/settings': (c: Call) => ({ settings: { ...SETTINGS, ...(c.body as object) }, gameAccessEnv: null }),
     }));
-    ui(<SettingsTab api={api} />);
+    const onSiteChange = vi.fn();
+    ui(<SettingsTab api={api} onSiteChange={onSiteChange} />);
     fireEvent.click(await screen.findByLabelText(/Collab applications open/));
     fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
     await screen.findByText('Settings saved.');
+    // the drawer's summary line ("collabs closed") is re-read
+    expect(onSiteChange).toHaveBeenCalledTimes(1);
     expect(sent('PUT', '/api/admin/settings')?.body).toEqual({ collabOpen: true });
   });
 

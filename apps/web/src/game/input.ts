@@ -173,12 +173,27 @@ export class Input {
     return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
   }
 
+  /**
+   * Space / Enter on a focused control (a lobby button, a sheet's "Start over") belong to that
+   * control: the browser activates it. Only a HUD control outside any dialog during a game is
+   * overridden (a clicked sticker button must not swallow the next split).
+   */
+  private controlOwnsKey(e: KeyboardEvent): boolean {
+    const el = e.target as HTMLElement | null;
+    if (!el || typeof el.closest !== 'function') return false;
+    const control = el.closest('button, a[href], select, summary, [role="button"], [role="link"], [role="menuitem"], [role="tab"], [role="checkbox"], [role="switch"], [role="option"], [role="radio"]');
+    if (!control) return false;
+    return !this.actions.steering() || !!control.closest('[role="dialog"]');
+  }
+
   private keyDown(e: KeyboardEvent): void {
     if (e.key === 'Escape') {
       this.actions.escape();
       return;
     }
     if (this.typing(e)) return;
+    // outside a game Space scrolls the page and Enter / Space activate the focused control
+    if ((e.code === 'Space' || e.code === 'Enter' || e.code === 'NumpadEnter') && (this.controlOwnsKey(e) || !this.actions.steering())) return;
     if (e.code in MOVE_KEYS) {
       if (!this.actions.steering()) return;
       // arrows would scroll the page under the game

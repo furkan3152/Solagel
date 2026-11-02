@@ -11,7 +11,7 @@ import { sendWalletCall, txErrorText, type TxPhase } from '../../wallet/tx';
 import { site } from '../api';
 import { isTestnetChain, useServerChain } from '../serverChain';
 import { SiteLinkButton, SitePage } from '../Shell';
-import { faucetTokenAddress, servedConfig, faucetView, formatWait, HYPE_FAUCET_URL, holderMultiple, TEST_SYMBOL_DEFAULT, watchAssetParams, wholeTokens } from './logic';
+import { claimErrorText, faucetTokenAddress, servedConfig, faucetView, formatWait, HYPE_FAUCET_URL, holderMultiple, TEST_SYMBOL_DEFAULT, watchAssetParams, wholeTokens } from './logic';
 import '../wallet/wallet.css';
 import './faucet.css';
 
@@ -233,7 +233,7 @@ function Faucet() {
           if (h) setHash(h);
         },
       });
-      if (!res.ok) return fail(txErrorText(res.error));
+      if (!res.ok) return fail(claimErrorText(res.error, noGas, txErrorText(res.error)));
       setHash(res.hash);
     }
     inFlight.current = false;
@@ -327,7 +327,7 @@ function Faucet() {
                   {error}
                 </p>
               )}
-              {noGas && (
+              {noGas && !error && (
                 <p className="fc-gas" role="note">
                   You need a little HYPE for gas first. Grab some from Kinetiq&rsquo;s faucet below.
                 </p>

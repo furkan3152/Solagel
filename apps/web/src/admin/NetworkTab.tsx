@@ -11,6 +11,15 @@ import { Addr, Btn, Card, Input, Mark, Row, type ChainCtx } from './ui';
 /** Below this the server key gets a "fund it" hint (a settlement costs a little gas). */
 export const LOW_SERVER_HYPE = 10n ** 16n; // 0.01 HYPE
 
+/**
+ * The server key's balance to show: this page's own chain read first (it follows a funding at once),
+ * else the server's figure (the server re-reads its balance only now and then). Pure, tested.
+ */
+export function serverKeyBalance(info: { serverBalanceWei: string | null; low: boolean } | null, keyWei: bigint | null): { wei: bigint | null; low: boolean } {
+  const wei = keyWei ?? (info?.serverBalanceWei != null ? BigInt(info.serverBalanceWei) : null);
+  return { wei, low: wei !== null ? wei < LOW_SERVER_HYPE : !!info?.low };
+}
+
 export interface MainnetStep {
   id: string;
   label: string;
@@ -111,8 +120,7 @@ export function NetworkTab({ ctx, registry }: { ctx: ChainCtx; registry: Contrac
   }, [client, registry]);
 
   const steps = mainnetChecklist(net, status);
-  const serverWei = info?.serverBalanceWei != null ? BigInt(info.serverBalanceWei) : keyWei;
-  const low = info ? info.low : keyWei !== null && keyWei < LOW_SERVER_HYPE;
+  const { wei: serverWei, low } = serverKeyBalance(info, keyWei);
   const health: RpcHealth | null = info ? { ok: info.rpcOk, block: info.block !== null ? BigInt(info.block) : null, ms: info.rpcLatencyMs, error: info.rpcOk ? null : 'the server cannot reach its RPC' } : rpc;
   const codeOf = (kind: ContractKind) => {
     const c = info?.contracts.find((x) => x.kind === kind);

@@ -13,7 +13,7 @@ import type { ChainCtx } from '../src/admin/ui';
 import { Kb } from '../src/design';
 import { adminApi, type BotAdminView } from '../src/site/api';
 import { FaucetPage } from '../src/site/faucet/FaucetPage';
-import { faucetTokenAddress, servedConfig, faucetView, formatWait, holderMultiple, watchAssetParams, wholeTokens } from '../src/site/faucet/logic';
+import { claimErrorText, faucetTokenAddress, servedConfig, faucetView, formatWait, holderMultiple, watchAssetParams, wholeTokens } from '../src/site/faucet/logic';
 import { emblemPerks } from '../src/site/mint/logic';
 import { isLazyPage, loadedPage, resetPages, warmPage } from '../src/site/pages';
 import { navigate } from '../src/site/router';
@@ -103,6 +103,13 @@ describe('the faucet', () => {
     expect(watchAssetParams('0xabc', 'AVERYLONGSYMBOL', 18).options.symbol).toHaveLength(11);
   });
 
+  it('a failed claim from a wallet with no HYPE says it is the gas, not the contract', () => {
+    expect(claimErrorText({ kind: 'revert' }, true, 'The contract refused the transaction.')).toMatch(/no HYPE for the network fee/);
+    expect(claimErrorText({ kind: 'insufficient-funds' }, false, 'x')).toMatch(/no HYPE/);
+    expect(claimErrorText({ kind: 'revert' }, false, 'The contract refused the transaction.')).toBe('The contract refused the transaction.');
+    expect(claimErrorText({ kind: 'rejected' }, true, 'You cancelled.')).toBe('You cancelled.');
+  });
+
   it("takes the server's faucet settings (GET /api/site/faucet)", () => {
     const f = { enabled: true, chainId: 99801, token: '0x00000000000000000000000000000000000007e5', decimals: 18, amount: (1_000_000n * ONE).toString(), holderAmount: (2_000_000n * ONE).toString(), cooldownSecs: 3600, holderNft: '0x0000000000000000000000000000000000000f7e', hypeFaucetUrl: 'https://x' };
     expect(servedConfig(f, f.token)).toMatchObject({ amount: 1_000_000n * ONE, holderAmount: 2_000_000n * ONE, cooldownSecs: 3600, holderNft: f.holderNft });
@@ -146,9 +153,17 @@ describe('what the emblem does', () => {
     expect(t[0].note).toMatch(/testnet the ring is open to everyone/);
     expect(t[1].title).toBe('3% fee instead of 5%');
   });
+  it('on testnet: says "open to everyone" only while the server lets everyone in', () => {
+    expect(emblemPerks(true, { gameAccess: 'public' })[0].note).toMatch(/open to everyone/);
+    expect(emblemPerks(true, { gameAccess: 'holders' })[0].note).toMatch(/open to holders only/);
+    expect(emblemPerks(true, { gameAccess: 'admins' })[0].note).not.toMatch(/open to everyone/);
+  });
   it('on mainnet: no testnet lines', () => {
     expect(emblemPerks(false).map((p) => p.id)).toEqual(['access', 'fee', 'isles', 'skin']);
     expect(emblemPerks(false, { holderBps: 250, feeBps: 500 })[1].title).toBe('2.5% fee instead of 5%');
+    expect(emblemPerks(true)[1].note).toMatch(/every entry fee/);
+    expect(emblemPerks(true, { feeModel: 'profit' })[1].note).toMatch(/profit only/);
+    expect(emblemPerks(true, { feeModel: 'profit' })[1].note).not.toMatch(/entry fee/);
   });
 });
 

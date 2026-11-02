@@ -170,7 +170,7 @@ describe('integrity admin API', () => {
     expect(o.body.defaults.thresholds.flagMinScore).toBe(40);
     expect(o.body.counts).toMatchObject({ open: 0, held: 0, bans: 0 });
 
-    for (const bad of [{ autoHold: 'yes' }, { holdScore: 10 }, { thresholds: { flagMinScore: 500 } }, { thresholds: { nope: 1 } }, { other: 1 }]) {
+    for (const bad of [{ autoHold: 'yes' }, { holdScore: 10 }, { thresholds: { flagMinScore: 500 } }, { thresholds: { nope: 1 } }, { thresholds: { constructor: 1 } }, { thresholds: { toString: 1 } }, { other: 1 }]) {
       const r = await h.call('PUT', '/api/admin/integrity/settings', { wallet: h.admin, body: bad });
       expect(r.status, JSON.stringify(bad)).toBe(400);
       expect(r.body.error).toBe('bad_request');

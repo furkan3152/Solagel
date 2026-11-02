@@ -1,5 +1,5 @@
 import { parseInviteCode, type CustomRoomView } from '@elymum/shared';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button, Chip, CoinCharacter } from '../design';
 import { engine } from '../game/instance';
 import { useT } from '../i18n';
@@ -9,14 +9,24 @@ import { RoomCreator } from './RoomCreator';
 import './rooms.css';
 
 /**
+ * The invite in this page's URL was used. Module state, not a ref: the lobby (and this card) unmount
+ * while a game runs, and a fresh ref sent the player straight back into the room they had just left.
+ */
+let inviteUsed = false;
+
+/** For tests. */
+export function resetInviteLink(): void {
+  inviteUsed = false;
+}
+
+/**
  * Opens an invite link (`/play?room=CODE`) straight into its room, once per page load, as soon as
  * the game server says hello. Guests and wallets alike.
  */
 export function useInviteLink(): void {
   const connected = useUi((s) => s.connected);
-  const done = useRef(false);
   useEffect(() => {
-    if (!connected || done.current) return;
+    if (!connected || inviteUsed) return;
     let code: string | null = null;
     try {
       code = parseInviteCode(new URLSearchParams(location.search).get('room'));
@@ -24,7 +34,7 @@ export function useInviteLink(): void {
       code = null;
     }
     if (!code) return;
-    done.current = true;
+    inviteUsed = true;
     engine()?.play(`private:${code}`);
   }, [connected]);
 }
@@ -58,7 +68,7 @@ export function RoomCard() {
   };
 
   return (
-    <section className="cr-card" aria-labelledby="cr-card-h" data-testid="room-card">
+    <section className="cr-card kb-island" aria-labelledby="cr-card-h" data-testid="room-card">
       <CoinCharacter paint="foam" mood="happy" size={56} bob />
       <div>
         <span className="cr-card__kicker mono">{t('cr.card.kicker')}</span>

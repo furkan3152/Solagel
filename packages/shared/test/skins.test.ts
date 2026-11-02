@@ -54,6 +54,12 @@ describe('text sanitizing', () => {
     expect(sanitizeName('🚀'.repeat(20))).toBe('🚀'.repeat(16));
   });
 
+  it('blank-looking names fall back (Hangul fillers, braille blank, joiners)', () => {
+    expect(sanitizeName('ㅤㅤㅤ')).toBe('Coinie');
+    expect(sanitizeName('⠀ᅟᅠﾠ͏᠎؜')).toBe('Coinie');
+    expect(sanitizeName('aㅤb')).toBe('ab');
+  });
+
   it('cleans chat', () => {
     expect(sanitizeChat('  gm \n frens ')).toBe('gm frens');
     expect(sanitizeChat('x'.repeat(500))).toHaveLength(100);

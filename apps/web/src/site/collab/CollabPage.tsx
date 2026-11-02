@@ -361,6 +361,8 @@ export function ApplyForm({ d, setD, onApplied, onCancel }: { d: ApplyDraft; set
   const [errors, setErrors] = useState<ApplyErrors>({});
   const [website, setWebsite] = useState('');
   const [sending, setSending] = useState(false);
+  // a double click or Enter while sending must not send a second application
+  const inFlight = useRef(false);
   const [formErr, setFormErr] = useState<string | null>(null);
   const form = useRef<HTMLFormElement>(null);
   const set = (k: keyof ApplyDraft) => (v: string) => {
@@ -369,6 +371,7 @@ export function ApplyForm({ d, setD, onApplied, onCancel }: { d: ApplyDraft; set
   };
 
   const submit = async () => {
+    if (inFlight.current) return;
     setFormErr(null);
     const e = applyErrors(d);
     setErrors(e);
@@ -381,6 +384,7 @@ export function ApplyForm({ d, setD, onApplied, onCancel }: { d: ApplyDraft; set
       return;
     }
     setSending(true);
+    inFlight.current = true;
     try {
       onApplied(await site.applyCollab(session.token, applyBody(d, website)));
     } catch (err) {
@@ -393,6 +397,7 @@ export function ApplyForm({ d, setD, onApplied, onCancel }: { d: ApplyDraft; set
       if (k) setErrors((x) => ({ ...x, [k]: se.code === 'collab_limit' ? 'This X account has already applied twice.' : se.message }));
       else setFormErr(se.message);
     } finally {
+      inFlight.current = false;
       setSending(false);
     }
   };

@@ -1,6 +1,7 @@
 import { StrictMode, useCallback, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Kb, StampSpinner } from '../design';
+import { setPageHead } from '../site/seo';
 import { initWallets } from '../wallet/store';
 import { AdminHome } from './site/AdminHome';
 import { fetchServerChain, resolveNetwork, type AdminNetwork } from './net';
@@ -33,6 +34,7 @@ function AdminApp() {
 /** `/admin`: the operator's panel (contracts + site tabs), a separate lazily loaded entry (main.tsx). */
 export function mount(root: HTMLElement): void {
   document.title = 'Elymum admin';
+  setPageHead('/admin', false);
   createRoot(root).render(
     <StrictMode>
       <AdminApp />

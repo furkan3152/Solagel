@@ -6,6 +6,7 @@ import { prefetchMintState } from './mint/mintState';
 import { isLazyPage, loadPage, loadedPage, warmPage } from './pages';
 import { installChunkRecovery, PageBoundary } from './recover';
 import { isSitePath, usePath } from './router';
+import { setPageHead } from './seo';
 import { SiteLoader } from './SiteLoader';
 
 // the form pages carry the wallet adapter; the landing does not. A page that was warmed (link
@@ -62,6 +63,7 @@ export function SiteApp() {
   const path = usePath();
   useEffect(() => {
     document.title = TITLES[path] ?? (isSitePath(path) ? TITLES['/'] : 'Off the map · Elymum');
+    setPageHead(path, path === '/' || isLazyPage(path));
   }, [path]);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => (path === '/' ? warmFromLanding() : undefined), [path]);

@@ -303,6 +303,8 @@
   line-height: 1.15;
 }
 .kl-wallet__top {
+  /* a checksummed address keeps its case (the mono style capitalises) */
+  text-transform: none;
   font-size: 11px;
   color: #6b655a;
 }
@@ -342,7 +344,8 @@
   padding: 18px var(--gutter) 56px;
 }
 .kl-root.is-mid .kl-front {
-  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  /* tablets: the board full width, the side column under it (see the tablet block below) */
+  grid-template-columns: minmax(0, 1fr);
   gap: 28px;
 }
 .kl-col {
@@ -961,6 +964,58 @@
   height: 52px;
 }
 
+/* ── tablets (760–1099 px) ────────────────────────────────────────────────
+   The full masthead (wordmark, four section tabs, four icon buttons and the wallet) is ~940 px
+   wide: on a 768 px tablet the wallet button sat off screen, and at 1024 px the tabs covered the
+   wordmark. The board at 3/5 of the width cut every arena name ("Asp..."). Here: the coin mark
+   alone, no wallet sub-line, icon-only tabs and wallet below 960 px (their labels stay for screen
+   readers), and the board takes the full width with the side column under it. */
+.kl-root.is-mid .kl-mast {
+  gap: 12px;
+}
+.kl-root.is-mid .kl-mast__word {
+  display: none;
+}
+.kl-root.is-mid .kl-sections {
+  margin-left: 0;
+}
+.kl-root.is-mid .kl-wallet.is-off .kl-wallet__top {
+  display: none;
+}
+/* small desktops: the kicker ("The arena · on Elysium") was cut to "The arena ·" by the tabs */
+@media (max-width: 1439px) {
+  .kl-root.is-wide .kl-mast__kicker {
+    display: none;
+  }
+}
+/* the plate's status line ("arenas open · fee · N online") wraps instead of running off a 768 px screen */
+.kl-root.is-mid .kl-plate .kb-plate__aside {
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: normal;
+}
+.kl-root.is-mid .kl-plate .kb-plate__aside .kl-status {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+@media (max-width: 959px) {
+  .kl-root.is-mid .kl-sections__item {
+    padding: 0 11px;
+  }
+  .kl-root.is-mid .kl-sections__label,
+  .kl-root.is-mid .kl-wallet.is-off .kl-wallet__text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .kl-root.is-mid .kl-wallet.is-off {
+    padding: 6px 12px;
+  }
+}
+
 /* ── phones ───────────────────────────────────────────────────────────── */
 .kl-root.is-phone .kl-mast {
   gap: 8px;
@@ -968,6 +1023,13 @@
 }
 .kl-root.is-phone .kl-mast__brand {
   gap: 7px;
+}
+/* the narrowest phones (360 px): coin + wordmark + shop + "Connect wallet" do not fit in one row
+   and the wordmark slid under the shop button. The coin mark alone stays the home link. */
+@media (max-width: 379px) {
+  .kl-root.is-phone .kl-mast__word {
+    display: none;
+  }
 }
 .kl-root.is-phone .kl-mast__right {
   gap: 8px;
@@ -1003,7 +1065,11 @@
   box-shadow: var(--sh-3);
 }
 .kl-root.is-phone .kl-board__title {
-  font-size: 36px;
+  /* 36 px pushed the bell badge ("joins closed") past the board and the screen on 360 px phones */
+  font-size: clamp(26px, 8.4vw, 36px);
+}
+.kl-board__titles {
+  min-width: 0;
 }
 .kl-root.is-phone .kl-bell {
   padding: 7px 10px 6px;

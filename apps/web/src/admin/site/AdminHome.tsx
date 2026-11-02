@@ -1,5 +1,5 @@
 import type { SiteCounts, SiteSettings } from '@elymum/shared';
-import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { CoinCharacter, CoinMark, StatusPill, Tabs, TabPanel, tabId, type TabItem } from '../../design';
 import { adminApi } from '../../site/api';
 import { AdminPanel, type ChainTab } from '../AdminPanel';
@@ -72,6 +72,9 @@ export function AdminHome({ net, reloadNet }: { net: AdminNetwork; reloadNet: ()
   };
   // the site drawers' opening lines read the server's counts and settings
   const [siteInfo, setSiteInfo] = useState<{ counts: SiteCounts | null; settings: SiteSettings | null }>({ counts: null, settings: null });
+  // bumped by a drawer that saved something (an approval, the settings): the summary is re-read
+  const [siteRev, setSiteRev] = useState(0);
+  const onSiteChange = useCallback(() => setSiteRev((n) => n + 1), []);
   useEffect(() => {
     if (!api || CHAIN_GROUPS.includes(tab)) return;
     let live = true;
@@ -79,7 +82,7 @@ export function AdminHome({ net, reloadNet }: { net: AdminNetwork; reloadNet: ()
     return () => {
       live = false;
     };
-  }, [api, tab]);
+  }, [api, tab, siteRev]);
   // the rail is vertical on wide screens: Up / Down move too
   const onRailKey = (e: KeyboardEvent<HTMLElement>) => {
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
@@ -108,7 +111,7 @@ export function AdminHome({ net, reloadNet }: { net: AdminNetwork; reloadNet: ()
         <SummaryBar summary={groupSummary('community', { net, status: null, counts: siteInfo.counts })} />
         <Tabs items={COMMUNITY_ITEMS} value={sub} onChange={(s) => go('community', s)} label="Community" idBase="ad-com" className="ad-subtabs" />
         <TabPanel idBase="ad-com" id={sub} className="ad-subpanel">
-          {sub === 'wl' ? <WlTab api={api} /> : sub === 'tasks' ? <TasksTab api={api} /> : <CollabsTab api={api} />}
+          {sub === 'wl' ? <WlTab api={api} onSiteChange={onSiteChange} /> : sub === 'tasks' ? <TasksTab api={api} /> : <CollabsTab api={api} onSiteChange={onSiteChange} />}
         </TabPanel>
       </>
     );
@@ -124,7 +127,7 @@ export function AdminHome({ net, reloadNet }: { net: AdminNetwork; reloadNet: ()
     panel = (
       <>
         <SummaryBar summary={groupSummary('settings', { net, status: null, settings: siteInfo.settings })} />
-        <SettingsTab api={api} />
+        <SettingsTab api={api} onSiteChange={onSiteChange} />
       </>
     );
 

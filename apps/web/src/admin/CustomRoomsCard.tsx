@@ -2,7 +2,7 @@ import { CUSTOM_HOLDER_PERKS, CUSTOM_SETTINGS_LIMITS, type CustomHolderPerk, typ
 import { useCallback, useEffect, useState } from 'react';
 import { SiteApiError, type CustomRoomsAdminView } from '../site/api';
 import { SwitchRow } from './GameTab';
-import { Btn, Card, FormError, type ChainCtx } from './ui';
+import { Btn, Card, FormError, saveErrorText, type ChainCtx } from './ui';
 
 const PERK_LABEL: Record<CustomHolderPerk, { label: string; note: string }> = {
   discount: { label: 'Discount', note: 'NFT holders pay less (the percent below).' },
@@ -69,8 +69,7 @@ export function CustomRoomsCard({ ctx }: { ctx: ChainCtx }) {
       setDraft({ ...v.settings });
       setMsg('Saved: new rooms use it at once.');
     } catch (e) {
-      const f = e instanceof SiteApiError && e.field ? ` (${e.field})` : '';
-      setErr(`${(e as Error).message}${f}`);
+      setErr(saveErrorText(e));
     } finally {
       setBusy(false);
     }
@@ -123,7 +122,7 @@ export function CustomRoomsCard({ ctx }: { ctx: ChainCtx }) {
         <label className="ad-field">
           <span className="ad-field__label mono">Treasury (empty: owner)</span>
           <input
-            className="ad-input mono"
+            className="ad-input mono ad-hex"
             value={draft.treasury ?? ''}
             placeholder={view.treasury ?? '0x…'}
             onChange={(e) => setDraft({ ...draft, treasury: e.target.value.trim() || null })}
@@ -133,7 +132,7 @@ export function CustomRoomsCard({ ctx }: { ctx: ChainCtx }) {
         </label>
       </div>
       <p className="ad-note">
-        Fees go to <span className="mono">{view.treasury ?? 'nobody yet (set ADMIN_WALLETS or a treasury)'}</span>.
+        Fees go to <span className="mono ad-hex">{view.treasury ?? 'nobody yet (set ADMIN_WALLETS or a treasury)'}</span>.
       </p>
       <SwitchRow
         label="NFT holder perk"
@@ -183,7 +182,7 @@ export function CustomRoomsCard({ ctx }: { ctx: ChainCtx }) {
                 <tr key={r.code}>
                   <td className="mono">{r.code}</td>
                   <td>{r.name}</td>
-                  <td className="mono">{`${r.creator.slice(0, 6)}…${r.creator.slice(-4)}`}</td>
+                  <td className="mono ad-hex">{`${r.creator.slice(0, 6)}…${r.creator.slice(-4)}`}</td>
                   <td className="num">
                     {r.players}/{r.maxPlayers} · {r.bots} bots
                   </td>

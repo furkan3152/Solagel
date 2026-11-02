@@ -167,3 +167,46 @@ describe('held ticket in the engine', () => {
     expect(joins()).toHaveLength(1);
   });
 });
+
+describe('reclaiming the arena coin after a reconnect', () => {
+  /** Playing an arena ticket, then the socket comes back (a new `welcome`): the engine asks for the coin again. */
+  function reconnectInArena() {
+    vi.setSystemTime(OPENS - 120_000); // joins open
+    recv({ t: 'joined', room: { ...ARENA }, playerId: 7, name: 'Daphne', skin: 0, value: 950, entryFee: 1000, session: 'S' });
+    expect(useUi.getState().screen).toBe('playing');
+    vi.setSystemTime(OPENS - 40_000); // the server came back in the closed window
+    net.sent = [];
+    recv({ t: 'welcome', v: 1, serverTime: Date.now(), serverNow: Date.now(), rooms: [ARENA], chain: initial.chain as never, online: 1 });
+    expect(joins()).toEqual([expect.objectContaining({ room: 'arena:1' })]);
+  }
+
+  it('the coin is gone (round_closed: no live ticket here): back to the lobby, no held ticket, no empty game', () => {
+    reconnectInArena();
+    recv({ t: 'error', code: 'round_closed', message: 'closed', opensAt: OPENS });
+    expect(useUi.getState().screen).toBe('lobby');
+    expect(useUi.getState().held).toBeNull();
+    expect(useUi.getState().toasts.at(-1)).toMatchObject({ text: expect.stringContaining('ended while you were away') });
+    // nothing goes out at the opening, and the next welcome does not ask again
+    vi.advanceTimersByTime(60_000);
+    expect(joins()).toHaveLength(1);
+    recv({ t: 'welcome', v: 1, serverTime: Date.now(), serverNow: Date.now(), rooms: [ARENA], chain: initial.chain as never, online: 1 });
+    expect(joins()).toHaveLength(1);
+  });
+
+  it('any other refusal of the reclaim also leaves the empty game', () => {
+    reconnectInArena();
+    recv({ t: 'error', code: 'session_busy', message: 'busy' });
+    expect(useUi.getState().screen).toBe('lobby');
+    expect(useUi.getState().toasts.at(-1)?.text).toContain('already playing');
+  });
+
+  it('the coin comes back: playing again; a later round_closed of a new ticket still holds it', () => {
+    reconnectInArena();
+    recv({ t: 'joined', room: { ...ARENA }, playerId: 7, name: 'Daphne', skin: 0, value: 950, entryFee: 1000, session: 'S' });
+    expect(useUi.getState().screen).toBe('playing');
+    engine.backToLobby();
+    engine.play('arena:2');
+    recv({ t: 'error', code: 'round_closed', message: 'closed', opensAt: OPENS });
+    expect(useUi.getState().held).toEqual({ arenaId: 2, opensAt: OPENS });
+  });
+});

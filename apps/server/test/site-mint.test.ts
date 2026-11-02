@@ -270,6 +270,19 @@ describe('mint: allowlist, proofs, state, price', () => {
     expect(q.fetchedAt).toBeGreaterThan(0);
   });
 
+  it('POST /api/admin/mint/refresh re-reads the NFT at once (a phase switch shows on the mint page now)', async () => {
+    await h.app.mint.chainState(true);
+    const before = (await h.call('GET', '/api/site/mint')).body.contract.phase;
+    h.evm.mint.phase = before === 'public' ? 1 : 2;
+    // cached: the page still shows the old phase
+    expect((await h.call('GET', '/api/site/mint')).body.contract.phase).toBe(before);
+    expect((await h.call('POST', '/api/admin/mint/refresh', { wallet: wallet() })).status).toBe(403);
+    const r = await h.call('POST', '/api/admin/mint/refresh', { wallet: ADMIN, body: {} });
+    expect(r.status).toBe(200);
+    expect(r.body).toEqual({ refreshed: true });
+    expect((await h.call('GET', '/api/site/mint')).body.contract.phase).toBe(before === 'public' ? 'allowlist' : 'public');
+  });
+
   it('NFT metadata and the emblem SVG exist for minted ids only', async () => {
     const meta = await h.call('GET', '/api/nft/2');
     expect(meta.status).toBe(200);

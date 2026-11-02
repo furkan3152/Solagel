@@ -200,7 +200,7 @@ function Detail({ collab: c, onClose, onChanged, api }: { collab: CollabAdmin; o
 }
 
 /** Collab applications: list, detail, approve with spots + deadline, reject, extend, unlock, wallets, CSV, duplicates. */
-export function CollabsTab({ api }: TabProps) {
+export function CollabsTab({ api, onSiteChange }: TabProps) {
   const [status, setStatus] = useState<Filter>('');
   const [q, setQ] = useState('');
   const [query, setQuery] = useState('');
@@ -331,6 +331,7 @@ export function CollabsTab({ api }: TabProps) {
             setOpen(c);
             setItems((list) => (list ? list.map((x) => (x.id === c.id ? c : x)) : list));
             void api.counts().then(setCounts, () => {});
+            onSiteChange?.();
           }}
         />
       )}

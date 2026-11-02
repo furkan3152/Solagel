@@ -58,7 +58,7 @@ export function AvatarsTab({ api }: TabProps) {
               <img src={`${SERVER.http}${avatarPath(e.avatar)}`} alt="" width={64} height={64} loading="lazy" className="ad-avatars__img" />
               <span className="ad-avatars__who">
                 <strong>{e.name ?? 'No name'}</strong>
-                <span className="mono ad-note">{shortAddress(e.wallet, 6, 4)}</span>
+                <span className="mono ad-hex ad-note">{shortAddress(e.wallet, 6, 4)}</span>
                 <span className="ad-note">{fmtDate(e.at)}</span>
               </span>
               <Button variant="secondary" size="sm" disabled={busy === e.wallet} onClick={() => void remove(e)} aria-label={`Remove the picture of ${e.name ?? e.wallet}`}>

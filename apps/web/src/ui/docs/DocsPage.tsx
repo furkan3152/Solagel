@@ -1,6 +1,6 @@
 import { useMemo, useRef } from 'react';
 import { CoinCharacter, Dateline, Icon, Receipt, Rule, Stamp, useOffscreenPause, useReducedMotion, type ReceiptLine } from '../../design';
-import { feeBps } from '../../wallet/ticket';
+import { feeBps, feeModelOf } from '../../wallet/ticket';
 import { useUi } from '../../store';
 import { useTokenText } from '../lobby/useLobby';
 import { PageHead } from '../PageHead';
@@ -20,7 +20,8 @@ export function DocsPage() {
   const tok = useTokenText();
   const serverBps = useUi((s) => s.chain?.feeBps ?? null);
   const bps = feeBps(serverBps);
-  const c = useMemo(() => docsEn(tok.symbol, bps), [tok.symbol, bps]);
+  const model = useUi((s) => feeModelOf(s.chain));
+  const c = useMemo(() => docsEn(tok.symbol, bps, model), [tok.symbol, bps, model]);
   const reduced = useReducedMotion();
   const top = useRef<HTMLDivElement>(null);
 

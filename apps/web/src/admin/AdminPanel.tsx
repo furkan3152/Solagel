@@ -76,6 +76,8 @@ export function AdminPanel({
   const { status, error, loading, refresh } = useAdminStatus(client, net, me, testToken);
   // the server's game switches, for the drawer's opening lines
   const [access, setAccess] = useState<{ settings: SiteSettings; env: GameAccess | null } | null>(null);
+  // bumped by a card that saved a setting (who may play), so the summary line is not stale
+  const [settingsRev, setSettingsRev] = useState(0);
   useEffect(() => {
     if (!api) return;
     let live = true;
@@ -86,7 +88,7 @@ export function AdminPanel({
     return () => {
       live = false;
     };
-  }, [api, tab]);
+  }, [api, tab, settingsRev]);
   const summary = groupSummary(tab, { net, status, registry, settings: access?.settings ?? null, gameAccessEnv: access?.env ?? null });
   const [plan, setPlan] = useState<Plan | null>(null);
   const [log, setLog] = useState<SignedEntry[]>([]);
@@ -114,7 +116,7 @@ export function AdminPanel({
   const nftRole = !me || !net.nftAddress || !nftOwner ? null : sameAddress(nftOwner, me);
   useEffect(() => onRole?.({ arena: arenaRole, nft: nftRole }), [onRole, arenaRole, nftRole]);
 
-  const ctx: ChainCtx = { net, status, refresh, reloadNet, me, walletChainId, client, api, open: setPlan, registry };
+  const ctx: ChainCtx = { net, status, refresh, reloadNet, me, walletChainId, client, api, open: setPlan, registry, settingsChanged: () => setSettingsRev((n) => n + 1) };
 
   return (
     <div className="ad-chain" aria-busy={loading}>

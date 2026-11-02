@@ -71,6 +71,8 @@ describe('the deploy wizard steps', () => {
     expect(activeStep(deploySteps({ ...base, net: none, status: null, local: { arena: { address: ARENA, txHash: null }, nft: { address: NFT, txHash: null } } }))).toBe('register');
     const both = resolveNetwork(chainStatus({ arenaAddress: ARENA, nftAddress: NFT }));
     expect(activeStep(deploySteps({ ...base, net: both, status: status({ nft: true }) }))).toBe('token');
+    // the wizard never asks to type an address, the token step included
+    expect(deploySteps({ ...base, net: both, status: status({ nft: true }) }).find((x) => x.id === 'token')?.detail).not.toMatch(/typed twice/i);
     expect(activeStep(deploySteps({ ...base, net: both, status: status({ nft: true, token: BOB, arenas: [1, 2] }) }))).toBe('arenas');
     const done = deploySteps({ ...base, net: both, status: status({ nft: true, token: BOB, arenas: [1, 2, 3, 4] }) });
     expect(activeStep(done)).toBeNull();

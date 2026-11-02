@@ -1,5 +1,5 @@
 import { BOOST_RULES, SHOP_DEFAULTS } from '@elymum/shared';
-import { FACTS as F, feeExample, type DocsContent } from './facts';
+import { FACTS as F, feeExample, type DocBlock, type DocsContent } from './facts';
 
 const nf = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
 const num = (n: number): string => nf.format(n);
@@ -14,8 +14,18 @@ const sym = '$ELYMUM';
  * The player guide in English. Every number comes from `FACTS` (see facts.ts); the fee rate is
  * the server's `feeBps` (the arena contract's `config().feeBps`) when known, else the contract default.
  */
-export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps): DocsContent => {
+export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps, feeModel: 'entry' | 'profit' = 'entry'): DocsContent => {
   const ex = feeExample(feeBps);
+  // The guide describes the fee-on-entry arena (v2, every new deployment). While the server reports the
+  // legacy v1 arena (`ChainStatus.feeModel` = 'profit'), the fee lines say what the live arena really takes.
+  const legacy = feeModel === 'profit';
+  const legacyNote: DocBlock = {
+    kind: 'note',
+    tone: 'info',
+    stamp: 'Live now',
+    title: 'The live arena takes its fee from the profit',
+    text: `The arena contract live right now is the legacy one: its fee is ${pct(feeBps)} of your profit only, taken at the payout. Your coin starts at the whole entry fee, and a game that ends at or below its entry pays no fee. The fee-on-entry rules below apply once the arena moves to the new contract; the ticket sheet in the lobby always shows the model that applies to your ticket.`,
+  };
   return {
   pct,
   num,
@@ -24,7 +34,7 @@ export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps): DocsCo
   deck: `How Elymum plays, where your money goes and what lives on-chain: short and plain. Numbers are the defaults in the game's code; the admin can change some of them. The amounts on the ticket confirmation are the ones that count.`,
   feeBps,
   dateline: [
-    `Fee ${pct(feeBps)} of each entry`,
+    legacy ? `Fee ${pct(feeBps)} of profit only` : `Fee ${pct(feeBps)} of each entry`,
     `Rounds ${R.roundMin} min · joins close ${R.joinCloseS} s before the bell`,
     `${F.capacity.arena} players per room`,
     'Floor loot burned at the bell',
@@ -172,8 +182,12 @@ export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps): DocsCo
       id: 'payout',
       title: 'Rounds, payout and fees',
       lede: `Arenas play ${R.roundMin}-minute rounds. Stay alive until the bell and you are paid your value.`,
-      strip: { label: 'Five minutes, then lunch', panels: [`${R.roundMin} minutes on the clock.`, 'The bell rings. Everyone alive is paid.', `The fee is ${pct(feeBps)} of the entry, win or lose.`] },
+      strip: {
+        label: 'Five minutes, then lunch',
+        panels: [`${R.roundMin} minutes on the clock.`, 'The bell rings. Everyone alive is paid.', legacy ? `The fee is ${pct(feeBps)} of the profit only.` : `The fee is ${pct(feeBps)} of the entry, win or lose.`],
+      },
       blocks: [
+        ...(legacy ? [legacyNote] : []),
         {
           kind: 'p',
           text: `Rounds follow the clock: a new one starts every ${R.roundMin} minutes, at the same moment in every arena. There is no cash-out in an arena and no way to leave early with money. When the bell rings, everyone still alive is paid their current value, the server sends the payout on-chain and the "Round over" receipt shows the transaction link. If you are eaten completely, you lose your value; whoever ate you keeps it.`,
@@ -297,7 +311,10 @@ export const docsEn = (symbol: string = sym, feeBps: number = F.fee.bps): DocsCo
               q: 'My payout has not arrived.',
               a: `Check the payout banner in the lobby. If it says "Collect payout", your game is settled and the payout waits in the vault: collect it with one transaction, right away. If it says the payout is on the way, the server is still sending it and retries by itself on network trouble.`,
             },
-            { q: 'Who gets the fee?', a: `The operator's wallet gets the whole fee (${pct(feeBps)} of each played entry fee). Floor loot left at the bell is burned.` },
+            {
+              q: 'Who gets the fee?',
+              a: `The operator's wallet gets the whole fee (${pct(feeBps)} of ${legacy ? 'the profit of each game on the live legacy arena' : 'each played entry fee'}). Floor loot left at the bell is burned.`,
+            },
             { q: 'Are there prizes for the Standings?', a: 'No. The Today and All-time standings are kept by the game server for fun; they pay nothing.' },
             {
               q: 'Is this gambling?',

@@ -8,7 +8,7 @@ import { CustomRoomsCard } from './CustomRoomsCard';
 import { LeaderboardCard } from './LeaderboardCard';
 import { ShopCard } from './ShopCard';
 import { GAME_ACCESS_LABEL } from './site/SettingsTab';
-import { Btn, Card, FormError, NeedsSession, type ChainCtx } from './ui';
+import { Btn, Card, FormError, NeedsSession, saveErrorText, type ChainCtx } from './ui';
 
 /** One row of segments: the live one is marked, a click asks to switch. */
 export function SwitchRow<T extends string>({
@@ -83,6 +83,7 @@ function StartStopCard({ ctx }: { ctx: ChainCtx }) {
       const r = await ctx.api.saveSettings({ gameAccess: m });
       setAccess(r.settings.gameAccess);
       setEnv(r.gameAccessEnv ?? null);
+      ctx.settingsChanged?.();
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -256,8 +257,7 @@ export function BotsCard({ ctx, arenaIds }: { ctx: ChainCtx; arenaIds: number[] 
       setDraft(structuredClone(v.settings));
       setMsg('Bots saved: every room follows at once.');
     } catch (e) {
-      const f = e instanceof SiteApiError && e.field ? ` (${e.field})` : '';
-      setErr(`${(e as Error).message}${f}`);
+      setErr(saveErrorText(e));
     } finally {
       setBusy(false);
     }

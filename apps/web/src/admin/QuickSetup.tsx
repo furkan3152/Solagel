@@ -51,6 +51,8 @@ export function QuickSetup({ ctx }: { ctx: ChainCtx }) {
     r.at = list.length;
     setRun({ ...r });
     inFlight.current = false;
+    // the public mint page reads a cached NFT state on the server: have it re-read the phase now
+    void ctx.api?.mintRefresh?.().catch(() => {});
     await ctx.refresh();
     await ctx.reloadNet();
   };

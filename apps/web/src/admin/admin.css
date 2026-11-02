@@ -602,6 +602,13 @@ body {
 .ad-input::placeholder {
   color: var(--ink-3);
 }
+/* addresses and hashes keep their case inside the capitalised mono style: "0XF39FD6…" is not the
+   checksummed address the owner has to compare */
+.ad-hex,
+.ad-hex::placeholder {
+  text-transform: none;
+  letter-spacing: 0;
+}
 .ad-field__suffix {
   display: flex;
   align-items: center;

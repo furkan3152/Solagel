@@ -1,6 +1,6 @@
 import { SIWE_STATEMENT, siweMessage } from '@elymum/shared';
 import { describe, expect, it } from 'vitest';
-import { Auth, MAX_NONCES, NONCE_TTL_MS, checksumAddress, loginMessage, type SiweOrigin } from '../src/auth';
+import { Auth, MAX_NONCES, MAX_NONCE_FAILURES, NONCE_TTL_MS, checksumAddress, loginMessage, type SiweOrigin } from '../src/auth';
 import { assertPublicUrl, loadConfig } from '../src/config';
 import { siweOrigin } from '../src/http';
 import { testSigner } from './signers';
@@ -80,6 +80,24 @@ describe('SIWE login message (EIP-4361)', () => {
     const m = auth.issueNonce(eoa.address, origin, 1_000);
     expect(await auth.verifySignature(eoa.address, m.message, await eoa.sign(m.message), 1_001)).toBe(eoa.address);
     expect(calls).toHaveLength(2);
+  });
+
+  it('a nonce survives only a few wrong signatures (each may cost an on-chain check)', async () => {
+    let calls = 0;
+    const auth = new Auth(Buffer.alloc(32, 1), {
+      onChain: async () => {
+        calls++;
+        return false;
+      },
+    });
+    const me = testSigner();
+    const n = auth.issueNonce(me.address, origin, 1_000);
+    for (let i = 0; i < 10; i++) expect(await auth.verifySignature(me.address, n.message, '0xdeadbeef', 1_001)).toBeNull();
+    expect(calls).toBe(MAX_NONCE_FAILURES);
+    // the nonce is gone: even the right signature needs a new one now
+    expect(await auth.verifySignature(me.address, n.message, await me.sign(n.message), 1_002)).toBeNull();
+    const again = auth.issueNonce(me.address, origin, 1_003);
+    expect(await auth.verifySignature(me.address, again.message, await me.sign(again.message), 1_004)).toBe(me.address);
   });
 
   it('tokens carry the checksummed address and are tamper-proof', () => {

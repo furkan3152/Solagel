@@ -10,7 +10,7 @@ export const GAME_ACCESS_LABEL: Record<GameAccess, { label: string; note: string
 };
 
 /** Site switches: who may play (gameAccess), WL open, collab open, the X handle. */
-export function SettingsTab({ api }: TabProps) {
+export function SettingsTab({ api, onSiteChange }: TabProps) {
   const [saved, setSaved] = useState<SiteSettings | null>(null);
   const [draft, setDraft] = useState<SiteSettings | null>(null);
   const [env, setEnv] = useState<GameAccess | null>(null);
@@ -51,6 +51,7 @@ export function SettingsTab({ api }: TabProps) {
       setDraft(r.settings);
       setEnv(r.gameAccessEnv ?? null);
       flash('ok', 'Settings saved.');
+      onSiteChange?.();
     } catch (e) {
       flash('err', errText(e));
     } finally {

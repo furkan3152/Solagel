@@ -83,15 +83,27 @@ export interface EmblemPerk {
  * mainnet WL; on mainnet the testnet-only lines (the WL import, the faucet bonus) are left out.
  * `testnet` null (unknown): the mainnet copy without the testnet lines.
  */
-export function emblemPerks(testnet: boolean | null, fee: { holderBps?: number | null; feeBps?: number | null } = {}): EmblemPerk[] {
+export function emblemPerks(
+  testnet: boolean | null,
+  fee: { holderBps?: number | null; feeBps?: number | null; feeModel?: 'entry' | 'profit' | null; gameAccess?: GameAccess | null } = {},
+): EmblemPerk[] {
   const pct = (bps: number) => `${(bps / 100).toFixed(2).replace(/\.?0+$/, '')}%`;
   const holder = pct(fee.holderBps ?? 300);
   const normal = pct(fee.feeBps ?? 500);
+  // "open to everyone" only while the server really lets everyone in (the admin may have closed it to holders)
+  const openToAll = fee.gameAccess == null || fee.gameAccess === 'public';
   const out: EmblemPerk[] = [
-    testnet
+    testnet && openToAll
       ? { id: 'access', title: 'Game access', note: 'On testnet the ring is open to everyone. On mainnet the emblem is the key.' }
+      : testnet && fee.gameAccess === 'holders'
+        ? { id: 'access', title: 'Game access', note: 'Right now the ring is open to holders only: the emblem is your key.' }
       : { id: 'access', title: 'Game access', note: 'The emblem is your key to the ring when the doors are for holders.' },
-    { id: 'fee', title: `${holder} fee instead of ${normal}`, note: 'Of every entry fee, fixed into your ticket when you join.' },
+    {
+      id: 'fee',
+      title: `${holder} fee instead of ${normal}`,
+      // the base follows the live arena (`ChainStatus.feeModel`): the legacy v1 arena takes it from the profit only
+      note: fee.feeModel === 'profit' ? 'Of your profit only, fixed into your ticket when you join.' : 'Of every entry fee, fixed into your ticket when you join.',
+    },
     { id: 'isles', title: 'The Isles of the Blessed', note: 'The top arena is for holders only.' },
   ];
   if (testnet) out.push({ id: 'wl', title: 'Testnet emblem, mainnet WL', note: 'Holders are carried onto the mainnet allowlist.' });

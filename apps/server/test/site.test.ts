@@ -756,3 +756,17 @@ describe('game gate', () => {
     expect(((await res.json()) as { chain: { enabled: boolean } }).chain.enabled).toBe(true);
   });
 });
+
+describe('collab applications sent twice', () => {
+  it('the same application from one wallet (a double click) is stored once; another community is new', () => {
+    const store = new SiteStore(null);
+    store.updateSettings({ collabOpen: true });
+    const w = wallet();
+    const a = store.applyCollab(w, collabBody('erin', { community: 'Twice DAO' }));
+    const b = store.applyCollab(w.toLowerCase(), collabBody('erin', { community: 'twice dao' }));
+    expect(b.id).toBe(a.id);
+    expect(store.myCollabs(w)).toHaveLength(1);
+    expect(store.applyCollab(w, collabBody('erin', { community: 'Other DAO' })).id).not.toBe(a.id);
+    expect(store.counts().collab.pending).toBe(2);
+  });
+});

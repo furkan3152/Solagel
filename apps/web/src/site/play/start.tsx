@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { SiteSession } from '../storedSession';
+import { setPageHead } from '../seo';
 import { PlayGate } from './PlayGate';
 
 /** The game's chunks, requested once (as soon as the gate opens, while its barrier swings up). */
@@ -18,6 +19,7 @@ async function launchGame(root: HTMLElement, session: SiteSession | null): Promi
 /** `/play`: the arena, behind the game gate. */
 export function startPlay(root: HTMLElement): void {
   document.title = 'Elymum · Arena';
+  setPageHead('/play');
   // the arena handles its own pinch and drag: no page zoom there (the site pages keep zoom)
   document.querySelector('meta[name="viewport"]')?.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
   // the static boot loader from index.html (the other entries replace it by rendering into root)

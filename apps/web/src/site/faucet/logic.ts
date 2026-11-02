@@ -80,3 +80,10 @@ export function servedConfig(f: FaucetConfig | null | undefined, token: string):
     return null;
   }
 }
+
+/** What a failed claim says. A wallet with no HYPE gets the gas reason, whatever the wallet or RPC reported (often a vague revert). */
+export function claimErrorText(error: { kind: string }, noGas: boolean, generic: string): string {
+  if (error.kind === 'rejected') return generic;
+  if (noGas || error.kind === 'insufficient-funds') return 'This wallet has no HYPE for the network fee. The claim is free, the gas is not: get test HYPE from Kinetiq’s faucet below, then claim.';
+  return generic;
+}

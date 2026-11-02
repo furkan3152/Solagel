@@ -200,7 +200,7 @@ export function describeError(err: unknown, ctx: DescribeContext = {}): Describe
   const decoded = data ? decodeRevertData(data) : null;
   if (decoded) return out('contract', errorMessage(decoded.name), decoded.name, decoded.args);
 
-  if (has('InsufficientFundsError') || /insufficient funds/i.test(text)) {
+  if (has('InsufficientFundsError') || /insufficient funds|doesn't have enough funds|exceeds the balance of the account/i.test(text)) {
     return out('insufficient-funds', `Not enough ${gas} for this transaction and its gas.`, 'InsufficientFundsError');
   }
   if (has('ContractFunctionRevertedError') || /execution reverted|reverted/i.test(text)) {

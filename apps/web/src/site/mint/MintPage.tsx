@@ -501,7 +501,7 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
           Join the WL
         </LinkButton>
         <WlNote tone="idle" glyph="info">
-          Three small chores get you on the list. <b>About a minute, all told.</b>
+          A few small chores get you on the list. <b>About a minute, all told.</b>
         </WlNote>
       </>
     );
@@ -647,7 +647,7 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
           <div className="mt-card__right">{right}</div>
         </motion.div>
         {/* under the lede on wide screens, under the mint card on phones (the card comes first there) */}
-        <EmblemPerks perks={emblemPerks(isTestnetChain(chain), { feeBps: chain?.feeBps ?? null })} />
+        <EmblemPerks perks={emblemPerks(isTestnetChain(chain), { feeBps: chain?.feeBps ?? null, feeModel: chain?.feeModel ?? null, gameAccess: state.gameAccess })} />
       </div>
     </NightPlate>
   );

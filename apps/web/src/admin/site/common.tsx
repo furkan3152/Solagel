@@ -5,6 +5,8 @@ import type { AdminApi } from '../../site/api';
 
 export interface TabProps {
   api: AdminApi;
+  /** A save changed the site's counts or settings: the drawer's summary line re-reads them. */
+  onSiteChange?: () => void;
 }
 
 /** A one-line result of the last action (aria-live). */

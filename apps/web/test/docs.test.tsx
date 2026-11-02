@@ -72,6 +72,15 @@ describe('player guide content', () => {
     expect(text(live)).toContain('Fee 3% of each entry');
   });
 
+  it('says what the live legacy arena takes when the server reports feeModel profit', () => {
+    const legacy = docsEn('$ELYMUM', 500, 'profit');
+    expect(legacy.dateline[0]).toBe('Fee 5% of profit only');
+    const payout = legacy.sections.find((s) => s.id === 'payout')!;
+    expect(payout.blocks[0]).toMatchObject({ kind: 'note', title: 'The live arena takes its fee from the profit' });
+    expect(JSON.stringify(payout.strip)).toContain('of the profit only');
+    expect(JSON.stringify(docsEn('$ELYMUM').sections)).not.toContain('The live arena takes its fee from the profit');
+  });
+
   it("says the fee goes to the operator's wallet, floor loot is burned, and arenas open soon until the token is set", () => {
     const t = JSON.stringify([en.receipt, en.sections]);
     expect(t).toContain("The whole fee goes to the operator's wallet");

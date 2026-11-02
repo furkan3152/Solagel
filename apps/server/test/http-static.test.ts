@@ -34,6 +34,8 @@ describe('static web client', () => {
       expect(res.status, path).toBe(200);
       expect(res.headers.get('content-type'), path).toMatch(/text\/html/);
       expect(res.headers.get('cache-control'), path).toBe('no-cache');
+      expect(res.headers.get('x-frame-options'), path).toBe('DENY');
+      expect(res.headers.get('content-security-policy'), path).toContain("frame-ancestors 'none'");
       expect(await res.text(), path).toContain('<title>Elymum</title>');
     }
   });

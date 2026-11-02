@@ -41,6 +41,8 @@ function Wl() {
   const { settings, loaded } = useSiteSettings();
   const [tasks, setTasks] = useState<PublicWlTask[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  /** Bumped by "Try again" after the tasks failed to load (the server was down or waking up). */
+  const [attempt, setAttempt] = useState(0);
   const session = useSiteSession();
   /** undefined: not looked up yet (or no session). */
   const [entry, setEntry] = useState<WlEntryPublic | null | undefined>(undefined);
@@ -50,6 +52,7 @@ function Wl() {
 
   useEffect(() => {
     let live = true;
+    setLoadError(null);
     site.tasks().then(
       (t) => live && setTasks(t),
       (e: SiteApiError) => live && setLoadError(e.message),
@@ -57,7 +60,7 @@ function Wl() {
     return () => {
       live = false;
     };
-  }, []);
+  }, [attempt]);
 
   useEffect(() => {
     if (!session) {
@@ -87,17 +90,20 @@ function Wl() {
   if (entry) return <WlStatus entry={entry} fresh={fresh} />;
   if (loadError)
     return (
-      <WlPlate title="Three small chores">
+      <WlPlate title="A few small chores">
         <Sticker className="wl-error" tone="white" tilt={-1}>
           <p className="st-err" role="alert">
             {loadError}
           </p>
+          <Button variant="secondary" size="sm" onClick={() => setAttempt((n) => n + 1)}>
+            Try again
+          </Button>
         </Sticker>
       </WlPlate>
     );
   if (!tasks || !loaded || (booting && session))
     return (
-      <WlPlate title="Three small chores">
+      <WlPlate title="A few small chores">
         <div className="wl-loading">
           <StampSpinner label="Loading" />
         </div>

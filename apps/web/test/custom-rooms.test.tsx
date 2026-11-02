@@ -5,6 +5,12 @@ import { customRoomsPatch } from '../src/admin/CustomRoomsCard';
 import { Kb } from '../src/design';
 import { RoomApiError, loadPendingPayment, roomLink, savePendingPayment } from '../src/rooms/api';
 import { RoomCreator, hypeText } from '../src/rooms/RoomCreator';
+import { resetInviteLink, useInviteLink } from '../src/rooms/RoomCard';
+
+function Probe() {
+  useInviteLink();
+  return null;
+}
 import { useUi } from '../src/store';
 import { resetWallets, useWallet } from '../src/wallet/store';
 import { ALICE, chainStatus, detail, fakeProvider } from './evm-helpers';
@@ -195,5 +201,19 @@ describe('room helpers', () => {
     expect(loadPendingPayment('0x2222222222222222222222222222222222222222')).toBeNull();
     savePendingPayment({ hash: HASH, wallet: ALICE, wei: '1', at: Date.now() - 3 * 3600_000 });
     expect(loadPendingPayment(ALICE)).toBeNull();
+  });
+});
+
+describe('invite links', () => {
+  it('opens ?room=CODE once per page load, not again when the lobby mounts after the game', () => {
+    resetInviteLink();
+    window.history.replaceState(null, '', '/play?room=ab2cd');
+    act(() => useUi.setState({ connected: true }));
+    const first = render(<Probe />);
+    expect(spies.play).toHaveBeenCalledWith('private:AB2CD');
+    first.unmount();
+    render(<Probe />);
+    expect(spies.play).toHaveBeenCalledTimes(1);
+    window.history.replaceState(null, '', '/');
   });
 });

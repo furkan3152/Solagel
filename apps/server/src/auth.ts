@@ -8,6 +8,8 @@ export const NONCE_TTL_MS = 10 * 60_000;
 const TOKEN_TTL_MS = 24 * 60 * 60_000;
 /** Hard cap on outstanding nonces: the oldest are evicted beyond it. */
 export const MAX_NONCES = 10_000;
+/** Wrong signatures a nonce survives; at this many it is gone (ask for a new one). */
+export const MAX_NONCE_FAILURES = 3;
 
 /** Where a login message says the player signs in (SIWE `domain`, `URI`, `Chain ID`). */
 export interface SiweOrigin {
@@ -61,7 +63,7 @@ export type OnChainVerifier = (address: string, message: string, signature: stri
 
 /** Wallet login: one-time SIWE nonces signed by the wallet, then stateless HMAC tokens. */
 export class Auth {
-  private readonly nonces = new Map<string, { address: string; message: string; expires: number; origin: SiweOrigin }>();
+  private readonly nonces = new Map<string, { address: string; message: string; expires: number; origin: SiweOrigin; failures?: number }>();
   private onChain: OnChainVerifier | null;
 
   constructor(
@@ -116,7 +118,12 @@ export class Auth {
     this.nonces.delete(fields.nonce);
     let ok = await verifyEoa(checksummed, message, signature as Hex);
     if (!ok && this.onChain) ok = await this.onChain(checksummed, message, signature).catch(() => false);
-    if (!ok && entry.expires >= now) this.nonces.set(fields.nonce, entry);
+    // a wrong signature gives the nonce back a few times only: each failure may cost an on-chain check
+    // (ERC-1271 / ERC-6492 call), so one nonce must not let a client hammer the RPC with garbage signatures
+    if (!ok && entry.expires >= now) {
+      const failures = (entry.failures ?? 0) + 1;
+      if (failures < MAX_NONCE_FAILURES) this.nonces.set(fields.nonce, { ...entry, failures });
+    }
     return ok ? checksummed : null;
   }
 
