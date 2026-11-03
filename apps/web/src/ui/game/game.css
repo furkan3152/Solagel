@@ -1727,8 +1727,56 @@
   /* centred over the 140 px minimap */
   right: calc(var(--hud-gap) + 47px + env(safe-area-inset-right, 0px));
   bottom: calc(var(--hud-gap) + 182px + env(safe-area-inset-bottom, 0px));
-  flex-direction: column-reverse;
-  gap: 12px;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+/* desktop rail: a small row of 40 px buttons above the minimap, so it never reaches the standings */
+.g-boosts.is-rail {
+  right: calc(var(--hud-gap) + env(safe-area-inset-right, 0px));
+}
+.g-boosts.is-rail .g-boost {
+  width: 40px;
+  height: 40px;
+}
+.g-boosts.is-rail .g-boost__icon {
+  width: 19px;
+  height: 19px;
+}
+.g-boosts.is-rail .g-boost__key {
+  left: auto;
+  right: -4px;
+  top: -7px;
+  margin-top: 0;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  font-size: 10px;
+}
+.g-boosts.is-rail .g-boost__n {
+  right: -5px;
+  bottom: -6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  font-size: 10px;
+}
+.g-boosts.is-rail .g-boosts__arena {
+  padding: 2px 7px;
+  font-size: 10px;
+}
+.g-boosts__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.g-boosts.is-touch .g-boosts__row {
+  gap: 8px;
+}
+@media (orientation: landscape) {
+  .g-boosts.is-touch .g-boosts__row {
+    flex-direction: column;
+  }
 }
 .g-hud.is-desktop-small .g-boosts.is-rail {
   right: calc(var(--hud-gap) + env(safe-area-inset-right, 0px));

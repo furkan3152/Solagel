@@ -515,6 +515,28 @@ const SCENES = [
     },
   },
   {
+    id: 'hud-boosts',
+    app: 'play',
+    auth: 'signed',
+    run: async (page, h) => {
+      await openPlay(page, h, { token: 'huge' });
+      await pickTicket(page, 'arena:1');
+      await page.locator('.kl-cta').first().click();
+      await page.waitForSelector('.tf-sheet', { timeout: 8000 });
+      await page.evaluate(() => (window.__elymumChain.fakeWallet.delayMs = 50));
+      await page.locator('.tf-sheet .tf-pay').first().click();
+      await page.waitForFunction(() => window.__elymum.useUi.getState().screen === 'playing', null, { timeout: 20000 });
+      await settle(page, 1500);
+      await hudExtras(page);
+      // every power-up owned, the arena allowance shown: the bar at its largest
+      await page.evaluate(() => {
+        const s = window.__elymum.useUi.getState();
+        window.__elymum.useUi.setState({ boosts: { ...(s.boosts ?? {}), usable: true, signedIn: true, disabled: [], cooldownMs: { magnet: 0, shock: 0, speed: 0 }, charges: { magnet: 3, shock: 3, speed: 3 }, arena: { left: 3, max: 3 } } });
+      });
+      await settle(page, 600);
+    },
+  },
+  {
     id: 'standings-sheet',
     app: 'play',
     auth: 'signed',

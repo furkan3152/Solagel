@@ -77,7 +77,7 @@ function BoostButton({ kind, touch }: { kind: BoostKind; touch: boolean }) {
 
 /**
  * The bought power-ups on the HUD: one button per owned power-up and the arena's "uses left this
- * round". Desktop: a compact vertical rail on the right edge above the minimap (key caps R / F / G);
+ * round". Desktop: a compact row tucked in the right corner just above the minimap (key caps R / F / G);
  * touch: a group inside the Split / Tip cluster (`MobileControls`). Nothing at all when the player
  * owns no charge (guests included): power-ups are bought in the lobby, never during a game.
  */
@@ -91,9 +91,11 @@ export function BoostBar({ touch = false }: { touch?: boolean }) {
   return (
     <div className={`g-boosts${touch ? ' is-touch' : ' is-rail'}`} role="group" aria-label={t('boost.label')} data-testid="boost-bar">
       {state.arena && <span className={`g-boosts__arena mono${state.arena.left === 0 ? ' is-out' : ''}`}>{t('boost.arenaLeft', { left: state.arena.left, max: state.arena.max })}</span>}
-      {kinds.map((k) => (
-        <BoostButton key={k} kind={k} touch={touch} />
-      ))}
+      <span className="g-boosts__row">
+        {kinds.map((k) => (
+          <BoostButton key={k} kind={k} touch={touch} />
+        ))}
+      </span>
     </div>
   );
 }

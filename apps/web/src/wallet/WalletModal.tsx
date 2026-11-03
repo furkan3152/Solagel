@@ -135,7 +135,7 @@ export function WalletModal() {
           </div>
         </div>
         <dl className="wl-bal">
-          <div>
+          <div className="wl-bal__tok">
             <dt className="mono wl-cap">{t('wl.tokens')}</dt>
             <dd>
               {soon ? (

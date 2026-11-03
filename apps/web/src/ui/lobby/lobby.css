@@ -1248,9 +1248,23 @@
   font-size: 11px;
   text-transform: none;
 }
+/* the token balance gets a row of its own and always reads on one line */
+.wl-bal > .wl-bal__tok {
+  grid-column: 1 / -1;
+}
+.wl-bal__tok dd {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
+  min-width: 0;
+}
 .wl-bal__big {
-  font-size: clamp(18px, 5.4vw, 26px);
-  overflow-wrap: anywhere;
+  font-size: clamp(20px, 6.4vw, 28px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 .wl-bal__mid {
   font-size: 18px;
