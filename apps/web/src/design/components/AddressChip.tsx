@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type HTMLAttributes } from 'react';
+import { t } from '../../i18n';
 import { Icon } from '../icons';
 
 export interface AddressChipProps extends Omit<HTMLAttributes<HTMLSpanElement>, 'children'> {
@@ -30,7 +31,7 @@ export function shortAddress(address: string, chars = 4): string {
  * An address as a little sticker tag: Geist Mono, the middle elided, the full
  * value in the title, a copy button that says "Copied" for a moment.
  */
-export function AddressChip({ address, chars = 4, copy = true, href, label, copyLabel = 'Copy address', copiedLabel = 'Copied', size = 'md', className, ...rest }: AddressChipProps) {
+export function AddressChip({ address, chars = 4, copy = true, href, label, copyLabel = t('wl.copy'), copiedLabel = t('ui.copied'), size = 'md', className, ...rest }: AddressChipProps) {
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => {

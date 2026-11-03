@@ -40,7 +40,7 @@ describe('boosts: wire', () => {
   });
 
   it('the messages are additive (protocol v7 unchanged)', () => {
-    expect(PROTOCOL_VERSION).toBe(7);
+    expect(PROTOCOL_VERSION).toBe(9);
     const c: ClientMessage = { t: 'boost', kind: 'shock' };
     const s: ServerMessage[] = [
       { t: 'boost', kind: 'magnet', ok: true, ms: 8000 },

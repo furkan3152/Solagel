@@ -4,6 +4,7 @@ import type { Address, Chain, PublicClient, WalletClient } from 'viem';
 import { CHAIN_OVERRIDES } from '../config';
 import type { Eip1193Provider } from './eip6963';
 import { parseChainId, useWallet } from './store';
+import { t } from '../i18n';
 
 /**
  * The chain the game server is on (its RPC is the source of truth): a wallet is asked to switch
@@ -55,7 +56,7 @@ async function walletChainId(p: Eip1193Provider): Promise<number | null> {
  */
 export async function ensureChain(provider: Eip1193Provider, chain: ServerChain): Promise<void> {
   const info = serverChainInfo(chain);
-  if (!info) throw new WrongChainError('The game server reports no chain yet.');
+  if (!info) throw new WrongChainError(t('api.noChain'));
   const target = info.id;
   if ((await walletChainId(provider)) === target) return;
   const hex = toHexChainId(target);
@@ -64,14 +65,14 @@ export async function ensureChain(provider: Eip1193Provider, chain: ServerChain)
   } catch (err) {
     if (describeError(err).kind !== 'chain-not-added') throw err;
     const params = addEthereumChainParams(info);
-    if (!params) throw new WrongChainError(`Your wallet does not know ${info.name} and the server publishes no public RPC for it. Add the network in your wallet by hand.`, err);
+    if (!params) throw new WrongChainError(t('api.unknownChain', { chain: info.name }), err);
     await provider.request({ method: 'wallet_addEthereumChain', params: [params] });
     if ((await walletChainId(provider)) !== target) {
       await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: hex }] });
     }
   }
   const now = await walletChainId(provider);
-  if (now !== target) throw new WrongChainError(`Your wallet is still on another network. Switch to ${info.name} and try again.`);
+  if (now !== target) throw new WrongChainError(t('api.stillWrong', { chain: info.name }));
   if (useWallet.getState().current?.provider === provider) useWallet.setState({ chainId: now });
 }
 
@@ -99,7 +100,7 @@ export function publicClientFor(chain: ServerChain | null | undefined, provider?
 /** A signing client on the wallet's provider for `address` on the server's chain. */
 export function walletClientFor(provider: Eip1193Provider, address: Address, chain: ServerChain): WalletClient {
   const viemChain = serverViemChain(chain);
-  if (!viemChain) throw new WrongChainError('The game server reports no chain yet.');
+  if (!viemChain) throw new WrongChainError(t('api.noChain'));
   return createElymumWalletClient(provider, { account: address, chain: viemChain, pollingInterval: 1_000 });
 }
 

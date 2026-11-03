@@ -1,6 +1,7 @@
 import { useMemo, useRef } from 'react';
 import { CoinCharacter, Dateline, Icon, Receipt, Rule, Stamp, useOffscreenPause, useReducedMotion, type ReceiptLine } from '../../design';
 import { feeBps, feeModelOf } from '../../wallet/ticket';
+import { getLocale, LOCALES, useLocale, useT } from '../../i18n';
 import { useUi } from '../../store';
 import { useTokenText } from '../lobby/useLobby';
 import { PageHead } from '../PageHead';
@@ -24,6 +25,10 @@ export function DocsPage() {
   const c = useMemo(() => docsEn(tok.symbol, bps, model), [tok.symbol, bps, model]);
   const reduced = useReducedMotion();
   const top = useRef<HTMLDivElement>(null);
+  const t = useT();
+  // the guide itself is English for now: say so in the reader's language, and mark the text as English
+  const locale = useLocale();
+  const tag = LOCALES.find((l) => l.code === getLocale())?.tag;
 
   const jump = (id: string) => {
     const el = document.getElementById(`docs-${id}`);
@@ -33,7 +38,7 @@ export function DocsPage() {
   };
 
   return (
-    <div className="dc-page" ref={top}>
+    <div className="dc-page" ref={top} lang={locale === 'en' ? undefined : 'en'}>
       <PageHead
         kicker={c.kicker}
         title={c.title}
@@ -46,6 +51,11 @@ export function DocsPage() {
           </span>
         }
       />
+      {locale !== 'en' && (
+        <p className="dc-langnote" lang={tag} data-testid="dc-langnote">
+          {t('dc.englishOnly')}
+        </p>
+      )}
       <Dateline items={c.dateline} label={c.tocLabel} className="dc-dateline" />
 
       <div className="dc-layout">

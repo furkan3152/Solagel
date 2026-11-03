@@ -1,6 +1,7 @@
 import { useUi, type Screen, type UiState } from '../store';
 import { Announcer, type LineId } from './announcer';
 import { Caller, type PowerUpKind } from './caller';
+import { restoreCustomMusic } from './custom';
 import { Mixer, prefsFromSettings } from './mixer';
 import { Music, type Mood } from './music';
 import { Sfx } from './sfx';
@@ -15,7 +16,10 @@ import { Sfx } from './sfx';
 
 export const mixer = new Mixer();
 export const sound = new Sfx(mixer);
-export const music = new Music(mixer);
+export const music = new Music(mixer, {
+  // the player's own file would not play: say so in the settings (the default soundtrack takes over)
+  onCustomError: () => useUi.setState((s) => (s.customMusic ? { customMusic: { ...s.customMusic, error: true } } : {})),
+});
 export const announcer = new Announcer(mixer);
 /** Game moments → effects and announcer lines (the engine reports, this decides; caller.ts). */
 export const caller = new Caller((id) => announcer.say(id), sound);
@@ -88,6 +92,10 @@ export function startAudio(): () => void {
   // levels from the persisted settings
   mixer.apply(prefsFromSettings(useUi.getState().settings));
   music.mood = moodFor(useUi.getState().screen);
+  music.choice = useUi.getState().settings.musicTrack;
+  music.setCustom(useUi.getState().customMusic?.url ?? null);
+  // a file the player picked on an earlier visit (kept in this browser only)
+  void restoreCustomMusic();
 
   // nothing sounds before the first gesture
   const gesture = () => mixer.unlock();
@@ -126,7 +134,14 @@ export function startAudio(): () => void {
 
   offs.push(
     useUi.subscribe((s: UiState, prev: UiState) => {
-      if (s.settings !== prev.settings) mixer.apply(prefsFromSettings(s.settings));
+      if (s.settings !== prev.settings) {
+        music.setChoice(s.settings.musicTrack);
+        mixer.apply(prefsFromSettings(s.settings));
+      }
+      if (s.customMusic !== prev.customMusic) {
+        // a playback error marks the file; it falls back to the default soundtrack
+        music.setCustom(s.customMusic && !s.customMusic.error ? s.customMusic.url : null);
+      }
       if (s.screen !== prev.screen) {
         music.setMood(moodFor(s.screen));
         // into a room is silent (the start whoosh was turned off); back to the lobby still whooshes out

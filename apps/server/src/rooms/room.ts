@@ -2,6 +2,9 @@ import {
   BinaryWriter,
   ClientOp,
   EMOTES,
+  MAP_GROW,
+  MAP_SIDE_STEP,
+  MAP_SPACE,
   PlayerFlag,
   RULES,
   STANDINGS_MAX_ROWS,
@@ -10,11 +13,15 @@ import {
   WORLD_PRESETS,
   boostDurationMs,
   isBoostKind,
+  mapSideFor,
   sanitizeChat,
   viewSize,
+  worldForSide,
   writeSnapshot,
   xpForGame,
   type ClientInput,
+  type MapScaleSettings,
+  type WorldShape,
   type CustomRoomSummary,
   type DeathStats,
   type LbEntry,
@@ -102,6 +109,8 @@ export interface JoinOptions {
   flags: number;
   /** The wallet's profile picture (`isAvatarId`), worn on the coin; null / absent: none. */
   avatar?: string | null;
+  /** The country the player plays for (`isCountryCode`, the gateway checked it); null / absent: no flag. */
+  country?: string | null;
   /** Arena ticket. */
   stake?: Omit<ArenaEntry, 'pid'>;
 }
@@ -121,6 +130,12 @@ export interface RoomOptions {
   seed?: number;
   /** The world size and population (default `WORLD_PRESETS[mode]`; custom rooms bring their own). */
   world?: WorldShape;
+  /**
+   * Adaptive map size (`map-scale.ts`): with it the world is resizable (it sits centred in
+   * `MAP_SPACE`) and, while `auto` is on, sized for the expected player count; with `auto` off it
+   * keeps `world` (the preset). Absent: a fixed world (custom rooms with a chosen size).
+   */
+  map?: RoomMapOptions;
   /** Power-up airdrops (default on). */
   powerUps?: boolean;
   /**
@@ -130,14 +145,21 @@ export interface RoomOptions {
   custom?: CustomRoomSummary;
 }
 
-/** A world's size and population targets (`WORLD_PRESETS` shape). */
-export interface WorldShape {
-  width: number;
-  height: number;
-  foodTarget: number;
-  virusTarget: number;
-  maxPowerUps: number;
+export type { WorldShape };
+
+/** How a resizable room sizes its world. */
+export interface RoomMapOptions {
+  scale: MapScaleSettings;
+  /** The population of a world of `side` (default `worldForSide(side)`; custom rooms apply their food and traps choices). */
+  shape?: (side: number) => WorldShape;
 }
+
+/**
+ * Free rooms (no rounds) shrink only over empty floor: no human cell within this of the band that
+ * goes, and only once the target is this far below the current side (no flip-flop on one leave).
+ */
+const SHRINK_CLEARANCE = 300;
+const SHRINK_HYSTERESIS = 3 * MAP_SIDE_STEP;
 
 interface ChatLine {
   pid: number;
@@ -180,14 +202,24 @@ export class Room {
   private stakedPending = 0;
   private lastStakedAskAt = 0;
   lastActivity = Date.now();
+  /** Adaptive map (null: a fixed world). */
+  private map: RoomMapOptions | null;
+  private readonly preset: WorldShape;
+  /** World clock (ms) of the next growth check and of the last resize. */
+  private nextMapCheckAt = 0;
+  private lastResizeAt = -Infinity;
 
   constructor(
     readonly opts: RoomOptions,
     private readonly deps: RoomDeps,
   ) {
     const preset = opts.world ?? WORLD_PRESETS[opts.mode];
+    this.preset = { ...preset };
+    this.map = opts.map ? { ...opts.map, scale: { ...opts.map.scale } } : null;
     const seed = opts.seed ?? (Math.random() * 2 ** 32) >>> 0;
-    this.world = new World({ ...preset, powerUps: opts.powerUps ?? true, coinRain: opts.mode !== 'arena', seed });
+    // a resizable room opens at the size its bots alone call for (the first joins grow it)
+    const first = this.map ? this.shapeFor(this.wantedSide(0, opts.bots ? BotManager.desiredOf(opts.bots, 0) : 0)) : preset;
+    this.world = new World({ ...first, powerUps: opts.powerUps ?? true, coinRain: opts.mode !== 'arena', seed, ...(this.map ? { space: MAP_SPACE } : {}) });
     this.bots = opts.bots ? new BotManager(this.world, opts.bots, mulberry32(seed ^ 0xb07)) : null;
     this.ledger = opts.mode === 'arena' ? new ArenaLedger() : null;
     this.clock = deps.clock ?? new RoundClock(deps.now, deps.round);
@@ -238,6 +270,7 @@ export class Room {
       name: this.opts.name,
       width: this.world.cfg.width,
       height: this.world.cfg.height,
+      ...(this.world.x0 !== 0 || this.world.y0 !== 0 ? { x0: this.world.x0, y0: this.world.y0 } : {}),
       players: this.humans.size,
       bots: this.bots?.bots.size ?? 0,
       maxPlayers: this.opts.maxPlayers,
@@ -314,7 +347,7 @@ export class Room {
     this.attach(conn);
     // `joined` starts the client's world mirror afresh: the view starts afresh with it (see `freshView`)
     this.freshView(conn);
-    const player = this.world.addPlayer({ name: opts.name, skin: opts.skin, flags: opts.flags, mass: RULES.startMass });
+    const player = this.world.addPlayer({ name: opts.name, skin: opts.skin, flags: opts.flags, country: opts.country ?? null, mass: RULES.startMass });
     this.humans.set(player.id, conn);
     // the human always gets in: a bot over the target goes home at once ("<name> went home")
     if (this.bots) {
@@ -641,7 +674,7 @@ export class Room {
       return;
     }
     const p = this.world.players.get(pid);
-    const c = p?.center() ?? { x: this.world.cfg.width / 2, y: this.world.cfg.height / 2 };
+    const c = p?.center() ?? this.world.center();
     this.world.restoreLoot([{ x: c.x, y: c.y, value }]);
   }
 
@@ -657,7 +690,7 @@ export class Room {
     const score = stats.maxMass;
 
     // custom rooms play by their own rules: they keep their own board (see `RoomManager`), not the global one
-    if (!this.opts.custom) this.deps.leaderboards.submit({ name: p.name, score, skin: p.skin, wallet, kills: stats.playersEaten, at: now });
+    if (!this.opts.custom) this.deps.leaderboards.submit({ name: p.name, score, skin: p.skin, wallet, kills: stats.playersEaten, at: now, ...(p.country ? { country: p.country } : {}) });
 
     const enqueue: SettlementItem[] = [];
     const loss = this.losses.get(p.id);
@@ -678,6 +711,11 @@ export class Room {
       this.integrity?.settle(this, p.id, item, { reason, payout: entry.value, killer, killerIsBot: !!killer && this.bots?.isBot(killer.id) === true });
       enqueue.push(item);
     }
+    // the countries board: this game's mass (and an alive arena game's payout) for the player's flag
+    if (!this.opts.custom && p.country) {
+      this.deps.leaderboards.countryGame({ country: p.country, mass: score, paid: cause === 'death' ? 0 : (stats.payout ?? 0), at: now });
+    }
+
     if (batch) batch.push(...enqueue);
     else if (enqueue.length > 0 || this.ledger) {
       this.commitJournal(enqueue);
@@ -731,6 +769,8 @@ export class Room {
     const batch: JournalItem[] = [];
     const results: { conn: Conn; pid: number; payout: number; stats: DeathStats }[] = [];
     const away: BellSettled[] = [];
+    // the next round's map is sized for the people at this bell (they are likely to play on)
+    const humansAtBell = this.humans.size;
     for (const [pid, conn] of [...this.humans]) {
       const p = this.world.players.get(pid);
       if (!p?.alive) continue;
@@ -788,6 +828,88 @@ export class Room {
     this.world.clearEjects();
     const gone = this.bots?.resetRound() ?? [];
     for (const c of this.conns) for (const pid of gone) c.view.forgetPlayer(pid);
+    // round start: the one moment the map may shrink (every coin was just settled or sent home)
+    if (this.map) this.applySide(this.wantedSide(humansAtBell));
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* Adaptive map size                                                */
+  /* ---------------------------------------------------------------- */
+
+  /** Players this room expects with `humans` people in it: them plus the bots that fill it. */
+  expectedPlayers(humans = this.humans.size): number {
+    return humans + (this.bots ? this.bots.desired(humans) : 0);
+  }
+
+  /** The side the room wants now: auto from the expected count, else its preset. */
+  private wantedSide(humans: number, bots?: number): number {
+    const m = this.map!;
+    if (!m.scale.auto) return Math.min(MAP_SPACE, this.preset.width);
+    const n = bots !== undefined ? humans + bots : this.expectedPlayers(humans);
+    return mapSideFor(n, m.scale);
+  }
+
+  private shapeFor(side: number): WorldShape {
+    // auto off: the preset as it is (its own food and cacti)
+    if (this.map && !this.map.scale.auto && side === this.preset.width) return { ...this.preset };
+    return this.map?.shape ? this.map.shape(side) : worldForSide(side);
+  }
+
+  private applySide(side: number): boolean {
+    const shape = this.shapeFor(side);
+    const changed = this.world.resize(shape.width, shape.height, shape);
+    if (changed) {
+      this.lastResizeAt = this.world.now;
+      this.deps.log(`room ${this.id}: map ${shape.width} x ${shape.height} (${this.expectedPlayers()} players expected; ${shape.foodTarget} food, ${shape.virusTarget} cacti)`);
+    }
+    return changed;
+  }
+
+  /** New map settings from the admin: the room follows from its next check (and shrinks only when it may). */
+  setMapScale(scale: MapScaleSettings): void {
+    if (!this.map) return;
+    this.map = { ...this.map, scale: { ...scale } };
+    this.nextMapCheckAt = 0;
+  }
+
+  /** The map settings this room runs with (null: a fixed world). */
+  mapScale(): MapScaleSettings | null {
+    return this.map ? { ...this.map.scale } : null;
+  }
+
+  /**
+   * Runs every tick, checks every `MAP_GROW.checkMs`. In play the map only grows, by at most
+   * `MAP_GROW.maxStep` every `MAP_GROW.stepMs`. Arena rooms shrink at the round start only
+   * (`endRound`); free rooms (no rounds) shrink step by step, and only when no human coin is near
+   * the floor that would go.
+   */
+  private updateMapSize(): void {
+    if (!this.map) return;
+    const now = this.world.now;
+    if (now < this.nextMapCheckAt) return;
+    this.nextMapCheckAt = now + MAP_GROW.checkMs;
+    if (now - this.lastResizeAt < MAP_GROW.stepMs) return;
+    const want = this.wantedSide(this.humans.size);
+    const cur = this.world.cfg.width;
+    if (want > cur) this.applySide(Math.min(want, cur + MAP_GROW.maxStep));
+    else if (!this.ledger && want <= cur - SHRINK_HYSTERESIS) {
+      const next = Math.max(want, cur - MAP_GROW.maxStep);
+      if (this.humansClearOf(next)) this.applySide(next);
+    }
+  }
+
+  /** No human cell reaches within `SHRINK_CLEARANCE` of the border of a world of `side`. */
+  private humansClearOf(side: number): boolean {
+    const lo = (this.world.spaceW - side) / 2 + SHRINK_CLEARANCE;
+    const hi = lo + side - 2 * SHRINK_CLEARANCE;
+    const loY = (this.world.spaceH - side) / 2 + SHRINK_CLEARANCE;
+    const hiY = loY + side - 2 * SHRINK_CLEARANCE;
+    for (const pid of this.humans.keys()) {
+      const p = this.world.players.get(pid);
+      if (!p) continue;
+      for (const c of p.cells) if (c.x - c.r < lo || c.x + c.r > hi || c.y - c.r < loY || c.y + c.r > hiY) return false;
+    }
+    return true;
   }
 
   /* ---------------------------------------------------------------- */
@@ -867,6 +989,8 @@ export class Room {
 
     if (this.ledger) this.stakeHousekeeping();
 
+    this.updateMapSize();
+
     this.sendSnapshots();
 
     const now = Date.now();
@@ -924,8 +1048,7 @@ export class Room {
         cy = c.y;
         conn.lastCenter = c;
       } else if (conn.spectating && conn.lastCenter.x === 0 && conn.lastCenter.y === 0) {
-        cx = this.world.cfg.width / 2;
-        cy = this.world.cfg.height / 2;
+        ({ x: cx, y: cy } = this.world.center());
       } else {
         cx = conn.lastCenter.x;
         cy = conn.lastCenter.y;
@@ -961,6 +1084,7 @@ export class Room {
       bot: p.isBot || undefined,
       isBot: p.isBot || undefined,
       verified: (p.flags & PlayerFlag.Verified) !== 0 || undefined,
+      country: p.country ?? undefined,
     }));
     const leaders = ranking.slice(0, 3).map((p) => {
       const c = p.center();
@@ -1010,6 +1134,7 @@ export class Room {
       if ((p.flags & PlayerFlag.Holder) !== 0) row.holder = true;
       const avatar = p.isBot ? undefined : this.avatarOf.get(p.id);
       if (avatar) row.avatar = avatar;
+      if (p.country) row.country = p.country;
       if (!p.isBot && this.humans.has(p.id) && this.humans.get(p.id) === null) row.away = true;
       return row;
     });

@@ -4,8 +4,9 @@ import {
   CUSTOM_DURATIONS_MIN,
   CUSTOM_FOOD,
   CUSTOM_LIMITS,
-  CUSTOM_MAP_SIZES,
+  CUSTOM_MAP_CHOICES,
   CUSTOM_MAP_WIDTH,
+  MAP_SCALE_DEFAULT,
   CUSTOM_TRAPS,
   validateCustomConfig,
   type CustomRoomConfig,
@@ -47,7 +48,7 @@ function Choice<T extends string | number>({ label, options, value, onPick, text
   );
 }
 
-const MAP_KEY: Record<CustomRoomConfig['mapSize'], TKey> = { XS: 'cr.map.XS', S: 'cr.map.S', M: 'cr.map.M', L: 'cr.map.L', XL: 'cr.map.XL' };
+const MAP_KEY: Record<CustomRoomConfig['mapSize'], TKey> = { auto: 'cr.map.auto', XS: 'cr.map.XS', S: 'cr.map.S', M: 'cr.map.M', L: 'cr.map.L', XL: 'cr.map.XL' };
 const TRAPS_KEY: Record<CustomRoomConfig['traps'], TKey> = { none: 'cr.traps.none', few: 'cr.traps.few', normal: 'cr.traps.normal', many: 'cr.traps.many' };
 const DIFF_KEY: Record<CustomRoomConfig['difficulty'], TKey> = { easy: 'cr.diff.easy', mixed: 'cr.diff.mixed', hard: 'cr.diff.hard' };
 const FOOD_KEY: Record<CustomRoomConfig['food'], TKey> = { low: 'cr.food.low', normal: 'cr.food.normal', high: 'cr.food.high' };
@@ -280,9 +281,11 @@ export function RoomCreator({ open, onClose }: { open: boolean; onClose: () => v
             data-autofocus
           />
           <Choice label={t('cr.duration')} options={CUSTOM_DURATIONS_MIN} value={cfg.durationMin} onPick={(v) => set('durationMin', v)} text={(v) => t('cr.minutes', { n: v })} />
-          <Choice label={t('cr.map')} options={CUSTOM_MAP_SIZES} value={cfg.mapSize} onPick={(v) => set('mapSize', v)} text={(v) => t(MAP_KEY[v])} />
+          <Choice label={t('cr.map')} options={CUSTOM_MAP_CHOICES} value={cfg.mapSize} onPick={(v) => set('mapSize', v)} text={(v) => t(MAP_KEY[v])} />
           <p className="cr-hint mono" data-testid="cr-map-hint">
-            {t('cr.mapHint', { w: CUSTOM_MAP_WIDTH[cfg.mapSize].toLocaleString('en-US') })}
+            {cfg.mapSize === 'auto'
+              ? t('cr.mapHintAuto', { min: MAP_SCALE_DEFAULT.min.toLocaleString('en-US'), max: MAP_SCALE_DEFAULT.max.toLocaleString('en-US') })
+              : t('cr.mapHint', { w: CUSTOM_MAP_WIDTH[cfg.mapSize].toLocaleString('en-US') })}
           </p>
           <Choice label={t('cr.traps')} options={CUSTOM_TRAPS} value={cfg.traps} onPick={(v) => set('traps', v)} text={(v) => t(TRAPS_KEY[v])} />
           <div className="cr-pair">

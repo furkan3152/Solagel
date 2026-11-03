@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { RULES, type RoomMode, type League } from '@elymum/shared';
+import { MAP_SCALE_DEFAULT, RULES, mapScaleFieldError, type MapScaleSettings, type RoomMode, type League } from '@elymum/shared';
 import type { BotManagerOptions } from './manager';
 import { mixWeights, type BotMixWeights } from './personality';
 
@@ -53,6 +53,12 @@ export interface BotTestnetSettings {
 export interface BotSettings {
   kinds: Record<BotRoomKind, BotKindSettings>;
   testnet: BotTestnetSettings;
+  /**
+   * Adaptive map size per room kind (`map-scale.ts`): on/off and the curve. Stored with the bot
+   * settings because the expected player count it sizes for is humans plus these bots. Custom rooms
+   * whose creator picked "Auto" follow the `private` curve (always on); a chosen size is kept.
+   */
+  maps: Record<BotRoomKind, MapScaleSettings>;
 }
 
 /** Bounds of the admin values. */
@@ -113,7 +119,14 @@ export function kindFromOptions(o: BotManagerOptions, kind?: BotRoomKind): BotKi
 export function defaultBotSettings(defaults: Record<BotRoomKind, BotManagerOptions>): BotSettings {
   const kinds = {} as Record<BotRoomKind, BotKindSettings>;
   for (const k of BOT_ROOM_KINDS) kinds[k] = kindFromOptions(defaults[k], k);
-  return { kinds, testnet: { ...BOT_TESTNET_DEFAULT, arenas: {} } };
+  return { kinds, testnet: { ...BOT_TESTNET_DEFAULT, arenas: {} }, maps: defaultMapSettings() };
+}
+
+/** Every kind starts on the default curve (auto on). */
+export function defaultMapSettings(): Record<BotRoomKind, MapScaleSettings> {
+  const maps = {} as Record<BotRoomKind, MapScaleSettings>;
+  for (const k of BOT_ROOM_KINDS) maps[k] = { ...MAP_SCALE_DEFAULT };
+  return maps;
 }
 
 /** A bad admin value: `field` names it (`kinds.arena.cap`, `testnet.bankroll`, …). */
@@ -161,8 +174,31 @@ export function applyBotSettings(cur: BotSettings, body: Record<string, unknown>
 }
 
 function applyInner(cur: BotSettings, body: Record<string, unknown>): BotSettings {
-  onlyKeys(body, ['kinds', 'testnet'], '');
+  onlyKeys(body, ['kinds', 'testnet', 'maps'], '');
   const next: BotSettings = structuredClone(cur);
+  // settings written before the map curve existed
+  next.maps ??= defaultMapSettings();
+  for (const k of BOT_ROOM_KINDS) next.maps[k] ??= { ...MAP_SCALE_DEFAULT };
+  if (body.maps !== undefined) {
+    if (!isObj(body.maps)) throw new BotSettingsError('maps must be an object', 'maps');
+    onlyKeys(body.maps, BOT_ROOM_KINDS, 'maps.');
+    for (const kind of BOT_ROOM_KINDS) {
+      const patch = (body.maps as Record<string, unknown>)[kind];
+      if (patch === undefined) continue;
+      const at = `maps.${kind}`;
+      if (!isObj(patch)) throw new BotSettingsError(`${at} must be an object`, at);
+      onlyKeys(patch, ['auto', 'perPlayer', 'min', 'max'], `${at}.`);
+      const m = next.maps[kind];
+      for (const f of ['auto', 'perPlayer', 'min', 'max'] as const) {
+        if (patch[f] === undefined) continue;
+        const err = mapScaleFieldError(f, patch[f]);
+        if (err) throw new BotSettingsError(`${at}.${f} ${err}`, `${at}.${f}`);
+        (m as unknown as Record<string, unknown>)[f] = patch[f];
+      }
+      // like a bot minimum above the cap: the smallest map never exceeds the largest
+      if (m.min > m.max) m.min = m.max;
+    }
+  }
   if (body.kinds !== undefined) {
     if (!isObj(body.kinds)) throw new BotSettingsError('kinds must be an object', 'kinds');
     onlyKeys(body.kinds, BOT_ROOM_KINDS, 'kinds.');
@@ -285,6 +321,11 @@ export class BotSettingsStore {
   /** Bot-manager options of a room kind (what rooms run with). */
   options(kind: BotRoomKind): BotManagerOptions {
     return managerOptions(this.cur.kinds[kind]);
+  }
+
+  /** Adaptive map settings of a room kind. */
+  mapScale(kind: BotRoomKind): MapScaleSettings {
+    return { ...(this.cur.maps?.[kind] ?? MAP_SCALE_DEFAULT) };
   }
 
   /** Testnet: staked bots the admin wants in this arena (0 when arena bots are off). */

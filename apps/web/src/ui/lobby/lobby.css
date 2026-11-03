@@ -581,6 +581,9 @@
   font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .kl-ticket__laurel .kb-laurel {
   color: var(--up-s);
@@ -1575,6 +1578,13 @@
 }
 .tf-sheet .kb-sheet__foot .kb-btn {
   white-space: nowrap;
+  max-width: 100%;
+}
+/* phones: the pay label never leaves the sheet; at worst it wraps inside its full-width row */
+@media (max-width: 479px) {
+  .tf-sheet .kb-sheet__foot .kb-btn {
+    white-space: normal;
+  }
 }
 .tf-sheet:not(.is-bottom) .tf-pay {
   flex: 1 1 auto;

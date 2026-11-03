@@ -553,11 +553,16 @@ def render(song, reps=3):
         g *= 0.38 / 0.55 if k == 1 else 0.38
     mix += wet
     # plate-ish reverb send
-    irL = dsp.reverb_ir(2.2, 0.5, seed=11, bright=6500, predelay=0.018)
-    irR = dsp.reverb_ir(2.2, 0.5, seed=12, bright=6500, predelay=0.021)
+    # (a song may ask for its own room: rev_dur / rev_decay / rev_mix; and a `post` over the mix)
+    rd, rdec, rmix = getattr(song, "rev_dur", 2.2), getattr(song, "rev_decay", 0.5), getattr(song, "rev_mix", 0.6)
+    irL = dsp.reverb_ir(rd, rdec, seed=11, bright=6500, predelay=0.018)
+    irR = dsp.reverb_ir(rd, rdec, seed=12, bright=6500, predelay=0.021)
     rsend = dsp.hp(rev, 220)
-    mix[0] += dsp.fftconv(rsend[0], irL)[:n] * 0.6
-    mix[1] += dsp.fftconv(rsend[1], irR)[:n] * 0.6
+    mix[0] += dsp.fftconv(rsend[0], irL)[:n] * rmix
+    mix[1] += dsp.fftconv(rsend[1], irR)[:n] * rmix
+    post = getattr(song, "post", None)
+    if post:
+        mix = post(mix)
     return mix, L
 
 

@@ -1,4 +1,5 @@
 import { CARD_PAPER, ELYSIUM, INK, TEXT_INKS } from '@elymum/art';
+import { FlagCache } from './flags';
 
 const MONO_FONT = '"Geist Mono Variable", "Geist Mono", ui-monospace, monospace';
 
@@ -28,6 +29,8 @@ export interface StickerLabel {
   bot?: boolean;
   /** An Elymum emblem holder: a small laurel before the name. */
   holder?: boolean;
+  /** The country the player plays for (ISO 3166-1 alpha-2): a small flag before the name. */
+  country?: string | null;
   /** My coin: a sun sticker instead of cream. */
   mine: boolean;
   /** Sticker centre, world units. */
@@ -49,6 +52,7 @@ interface StickerSprite {
   name: string | null;
   value: string | null;
   flags: number;
+  country: string | null;
   /** Font size bucket (device px) and device px per CSS px it was drawn at. */
   px: number;
   dpr: number;
@@ -65,7 +69,11 @@ interface StickerSprite {
 }
 
 /** Scratch label for drawing into a sprite (no per-sticker garbage). */
-const SPRITE_LABEL: StickerLabel = { name: null, value: null, verified: false, bot: false, holder: false, mine: false, x: 0, y: 0, fs: 1, devicePx: 1, zoom: 1 };
+const SPRITE_LABEL: StickerLabel = { name: null, value: null, verified: false, bot: false, holder: false, country: null, mine: false, x: 0, y: 0, fs: 1, devicePx: 1, zoom: 1 };
+
+/** Flag height in font sizes, and the gap after it. */
+const FLAG_FS = 0.95;
+const FLAG_GAP = 0.4;
 const LAYOUT = { w: 0, h: 0 };
 
 /**
@@ -82,6 +90,7 @@ export class LabelCache {
   private readonly map = new Map<string, TextSprite>();
   private bytes = 0;
   private readonly sprites = new WeakMap<object, StickerSprite>();
+  private readonly flags = new FlagCache();
   private gen = 0;
 
   constructor() {
@@ -96,6 +105,7 @@ export class LabelCache {
   clear(): void {
     this.map.clear();
     this.bytes = 0;
+    this.flags.clear();
     this.gen++;
   }
 
@@ -144,7 +154,8 @@ export class LabelCache {
     const dpr = Math.round((o.devicePx / o.zoom) * 100) / 100;
     const flags = (o.verified ? 1 : 0) | (o.bot ? 2 : 0) | (o.holder ? 4 : 0) | (o.mine ? 8 : 0);
     let sp = this.sprites.get(owner);
-    if (!sp || sp.name !== o.name || sp.value !== o.value || sp.flags !== flags || sp.px !== px || sp.dpr !== dpr || sp.gen !== this.gen) {
+    const country = o.name ? (o.country ?? null) : null;
+    if (!sp || sp.name !== o.name || sp.value !== o.value || sp.flags !== flags || sp.country !== country || sp.px !== px || sp.dpr !== dpr || sp.gen !== this.gen) {
       sp = this.renderSprite(sp, o, px, dpr, flags);
       this.sprites.set(owner, sp);
     }
@@ -165,12 +176,13 @@ export class LabelCache {
     l.verified = o.verified;
     l.bot = o.bot;
     l.holder = o.holder;
+    l.country = o.name ? (o.country ?? null) : null;
     l.mine = o.mine;
     l.fs = px;
     l.devicePx = 1;
     l.zoom = 1 / dpr;
     l.alpha = undefined;
-    this.layout(o.name, o.value, o.verified, !!o.bot, !!o.holder, o.mine, px, px);
+    this.layout(o.name, o.value, o.verified, !!o.bot, !!o.holder, !!l.country, o.mine, px, px);
     const edge = 2.5 * dpr;
     const sh = 2 * dpr;
     const ox = Math.ceil(edge / 2 + 1);
@@ -198,6 +210,7 @@ export class LabelCache {
     sp.name = o.name;
     sp.value = o.value;
     sp.flags = flags;
+    sp.country = l.country ?? null;
     sp.px = px;
     sp.dpr = dpr;
     sp.gen = this.gen;
@@ -211,7 +224,7 @@ export class LabelCache {
   }
 
   /** Sticker size (into LAYOUT) for font size `fs` in the units it is drawn in; texts measured at `want` device px. */
-  private layout(name: string | null, value: string | null, verified: boolean, isBot: boolean, holder: boolean, mine: boolean, want: number, fs: number): void {
+  private layout(name: string | null, value: string | null, verified: boolean, isBot: boolean, holder: boolean, flag: boolean, mine: boolean, want: number, fs: number): void {
     const k = (sp: TextSprite) => fs / sp.px;
     const n = name ? this.text(name, INK, want) : null;
     const v = value ? this.text(value, mine ? INK : TEXT_INKS.day.teal, want) : null;
@@ -223,7 +236,8 @@ export class LabelCache {
     const botGap = bot ? fs * 0.4 : 0;
     const gap = name && value ? fs * 0.62 : 0;
     const laurel = name && holder ? fs * 1.15 : 0;
-    const textW = laurel + (n ? n.tw * k(n) : 0) + tick + botGap + botBox + gap + (v ? v.tw * k(v) : 0);
+    const flagW = name && flag ? fs * FLAG_FS * 1.5 + fs * FLAG_GAP : 0;
+    const textW = flagW + laurel + (n ? n.tw * k(n) : 0) + tick + botGap + botBox + gap + (v ? v.tw * k(v) : 0);
     LAYOUT.w = textW + fs * 0.62 * 2;
     LAYOUT.h = fs * 1.78;
   }
@@ -245,7 +259,12 @@ export class LabelCache {
     const botGap = bot ? fs * 0.4 : 0;
     const gap = name && value ? fs * 0.62 : 0;
     const laurel = o.name && o.holder ? fs * 1.15 : 0;
-    const textW = laurel + (name ? name.tw * k(name) : 0) + tick + botGap + botBox + gap + (value ? value.tw * k(value) : 0);
+    // the flag: one cached bitmap per (code, device px height)
+    const flag = o.name && o.country ? this.flags.get(o.country, fs * FLAG_FS * o.devicePx) : null;
+    const flagH = fs * FLAG_FS;
+    const flagW = flag ? flagH * 1.5 : 0;
+    const flagBox = flag ? flagW + fs * FLAG_GAP : 0;
+    const textW = flagBox + laurel + (name ? name.tw * k(name) : 0) + tick + botGap + botBox + gap + (value ? value.tw * k(value) : 0);
     const padX = fs * 0.62;
     const w = textW + padX * 2;
     const h = fs * 1.78;
@@ -268,6 +287,10 @@ export class LabelCache {
     ctx.strokeStyle = INK;
     ctx.stroke();
     let x = x0 + padX;
+    if (flag) {
+      ctx.drawImage(flag.canvas, 0, 0, flag.w, flag.h, x, o.y - flagH / 2, (flagH * flag.w) / flag.h, flagH);
+      x += flagBox;
+    }
     if (laurel) {
       drawLaurel(ctx, x + fs * 0.45, o.y, fs * 0.5, edge * 0.5);
       x += laurel;

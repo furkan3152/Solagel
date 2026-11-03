@@ -45,7 +45,7 @@ export async function sendWithWallet(send: (wallet: WalletClient, from: Address)
     if (!reader) throw new Error('No RPC to read the receipt from.');
     const receipt = await reader.waitForTransactionReceipt({ hash, timeout: 180_000 });
     if (receipt.status !== 'success') {
-      return { ok: false, hash, error: { kind: 'revert', name: 'Reverted', args: [], code: null, message: 'The transaction was refused by the contract.' } };
+      return { ok: false, hash, error: { kind: 'revert', name: 'Reverted', args: [], code: null, message: t('api.reverted') } };
     }
     return { ok: true, hash, receipt };
   } catch (err) {

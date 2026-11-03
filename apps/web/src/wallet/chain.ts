@@ -14,7 +14,7 @@ import type { Address, PublicClient } from 'viem';
 import { useCallback, useEffect, useMemo } from 'react';
 import { create } from 'zustand';
 import { SERVER } from '../config';
-import { useUi } from '../store';
+import { adoptProfileCountry, useUi } from '../store';
 import { isDevFake, loadDevFake } from './devFakeLoader';
 import { publicClientFor } from './network';
 import { useAddress, useWallet } from './store';
@@ -172,6 +172,7 @@ export function useChainSync(): void {
       if (!stale()) useChainData.setState(patch);
     };
     const [pending, profile] = owner ? await Promise.all([loadPending(owner), loadProfile(token)]) : [[] as PendingPayout[], null];
+    if (!stale()) adoptProfileCountry(profile);
     if (fake && chain) {
       const dev = await loadDevFake();
       if (!dev) return;

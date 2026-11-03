@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { CoinCharacter, FoodBit, useOffscreenPause, type CoinMood, type CoinPaint } from '../../design';
+import { useT } from '../../i18n';
 import { useGaze } from './gaze';
 
 /**
@@ -54,6 +55,7 @@ const BITE_AT = 0.57;
 const FULL = 3;
 
 function PondResident({ r, still, onEat }: { r: Resident; still: boolean; onEat: () => void }) {
+  const t = useT();
   const ref = useRef<HTMLSpanElement>(null);
   const gaze = useGaze(ref, { enabled: !still, rest: r.look });
   const [fed, setFed] = useState(0);
@@ -122,10 +124,10 @@ function PondResident({ r, still, onEat }: { r: Resident; still: boolean; onEat:
               <i key={i} style={{ ['--a' as string]: `${-150 + i * 30}deg` } as CSSProperties} />
             ))}
           </span>
-          <span className="ld-pond__tag num">{fed >= FULL ? 'Full.' : '+a bite'}</span>
+          <span className="ld-pond__tag num">{fed >= FULL ? t('ld.pondFed') : t('ld.pondBite')}</span>
         </>
       )}
-      {phase === 'full' && <span className="ld-pond__tag num">No more. Full.</span>}
+      {phase === 'full' && <span className="ld-pond__tag num">{t('ld.pondFull')}</span>}
     </span>
   );
 }

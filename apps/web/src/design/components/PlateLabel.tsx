@@ -1,4 +1,5 @@
 import type { HTMLAttributes, ReactNode } from 'react';
+import { useT } from '../../i18n';
 
 export interface PlateLabelProps extends Omit<HTMLAttributes<HTMLElement>, 'title'> {
   /** The plate number, as a roman numeral or a number ("II" or 2). */
@@ -25,9 +26,10 @@ function roman(n: number): string {
 export function PlateLabel({ numeral, title, aside, level, className, ...rest }: PlateLabelProps) {
   const n = typeof numeral === 'number' ? roman(numeral) : numeral;
   const T = level ? (`h${level}` as const) : 'b';
+  const t = useT();
   return (
     <div {...rest} className={`kb-plate${className ? ` ${className}` : ''}`}>
-      <span className="kb-plate__no">Plate {n}</span>
+      <span className="kb-plate__no">{t('ui.plate', { n })}</span>
       <T className="kb-plate__title">{title}</T>
       <span className="kb-plate__rule" aria-hidden="true" />
       {aside != null && <span className="kb-plate__aside">{aside}</span>}

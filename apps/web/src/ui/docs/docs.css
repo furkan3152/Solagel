@@ -74,6 +74,16 @@
 .dc-dateline {
   margin-top: 18px;
 }
+.dc-langnote {
+  margin: 14px 0 0;
+  padding: 8px 12px;
+  border: var(--stroke-sm) dashed var(--outline);
+  border-radius: 10px;
+  background: var(--sticker);
+  color: var(--ink-fixed);
+  font-size: 14px;
+  line-height: 1.4;
+}
 
 .dc-layout {
   display: grid;

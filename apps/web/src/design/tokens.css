@@ -157,9 +157,12 @@
   --off-press: 1px;
 
   /* ── type ── */
-  --font-display: 'Fraunces Variable', 'Fraunces', Georgia, 'Times New Roman', serif;
-  --font-body: 'DM Sans Variable', 'DM Sans', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'Geist Mono Variable', 'Geist Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  /* the bundled faces cover Latin (Geist Mono also Cyrillic); Cyrillic display and body text fall
+     back to Georgia / the system UI face, Chinese to the platform's CJK faces (nothing downloaded) */
+  --font-cjk: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Source Han Sans SC', 'WenQuanYi Zen Hei';
+  --font-display: 'Fraunces Variable', 'Fraunces', Georgia, 'Times New Roman', var(--font-cjk), serif;
+  --font-body: 'DM Sans Variable', 'DM Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, var(--font-cjk), sans-serif;
+  --font-mono: 'Geist Mono Variable', 'Geist Mono', ui-monospace, 'SFMono-Regular', Menlo, var(--font-cjk), monospace;
   /* Fraunces axes: SOFT 100 always; WONK only on the wordmark and one word per page */
   --fv-display: 'SOFT' 100, 'WONK' 0;
   --fv-wonk: 'SOFT' 100, 'WONK' 1;

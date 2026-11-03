@@ -16,6 +16,13 @@ export type CustomDuration = (typeof CUSTOM_DURATIONS_MIN)[number];
 export const CUSTOM_MAP_SIZES = ['XS', 'S', 'M', 'L', 'XL'] as const;
 export type CustomMapSize = (typeof CUSTOM_MAP_SIZES)[number];
 
+/**
+ * What the creator picks: `auto` (the default) sizes the map for the players in the room (the bots
+ * plus the people in it) and grows it as people join (`map-scale.ts`); a fixed size is kept as is.
+ */
+export const CUSTOM_MAP_CHOICES = ['auto', ...CUSTOM_MAP_SIZES] as const;
+export type CustomMapChoice = (typeof CUSTOM_MAP_CHOICES)[number];
+
 export const CUSTOM_DIFFICULTIES = ['easy', 'mixed', 'hard'] as const;
 export type CustomDifficulty = (typeof CUSTOM_DIFFICULTIES)[number];
 
@@ -57,7 +64,8 @@ export interface CustomRoomConfig {
   /** Room name (2..24 printable characters). */
   name: string;
   durationMin: CustomDuration;
-  mapSize: CustomMapSize;
+  /** `auto` or a fixed size (rooms made before `auto` existed always carry a size). */
+  mapSize: CustomMapChoice;
   /** Bots in the room, 0..12 (they stay at this count whatever the humans do). */
   bots: number;
   difficulty: CustomDifficulty;
@@ -72,7 +80,7 @@ export interface CustomRoomConfig {
 export const CUSTOM_DEFAULTS: CustomRoomConfig = {
   name: '',
   durationMin: 30,
-  mapSize: 'M',
+  mapSize: 'auto',
   bots: 6,
   difficulty: 'mixed',
   maxPlayers: 10,
@@ -84,7 +92,7 @@ export const CUSTOM_DEFAULTS: CustomRoomConfig = {
 /** The rules of a live custom room as clients see them (`RoomInfo.custom`). */
 export interface CustomRoomSummary {
   durationMin: CustomDuration;
-  mapSize: CustomMapSize;
+  mapSize: CustomMapChoice;
   bots: number;
   difficulty: CustomDifficulty;
   food: CustomFood;
@@ -210,7 +218,7 @@ export function validateCustomConfig(x: unknown): { ok: true; config: CustomRoom
   const pick = <T extends string | number>(v: unknown, list: readonly T[], field: string): T | { field: string } =>
     (list as readonly unknown[]).includes(v) ? (v as T) : { field };
   const durationMin = pick(o.durationMin, CUSTOM_DURATIONS_MIN, 'durationMin');
-  const mapSize = pick(o.mapSize, CUSTOM_MAP_SIZES, 'mapSize');
+  const mapSize = pick(o.mapSize, CUSTOM_MAP_CHOICES, 'mapSize');
   const difficulty = pick(o.difficulty, CUSTOM_DIFFICULTIES, 'difficulty');
   const food = o.food === undefined ? CUSTOM_DEFAULTS.food : pick(o.food, CUSTOM_FOOD, 'food');
   const traps = o.traps === undefined ? CUSTOM_DEFAULTS.traps : pick(o.traps, CUSTOM_TRAPS, 'traps');
@@ -227,7 +235,7 @@ export function validateCustomConfig(x: unknown): { ok: true; config: CustomRoom
     config: {
       name,
       durationMin: durationMin as CustomDuration,
-      mapSize: mapSize as CustomMapSize,
+      mapSize: mapSize as CustomMapChoice,
       bots,
       difficulty: difficulty as CustomDifficulty,
       maxPlayers,

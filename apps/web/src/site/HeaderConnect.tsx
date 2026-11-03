@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Icon, Modal, shortAddress } from '../design';
+import { useT } from '../i18n';
 import { useWallet } from '../wallet/store';
 import { useSession } from './session';
 import { WalletSignIn } from './wallet/SiteWallet';
@@ -10,6 +11,7 @@ import { WalletSignIn } from './wallet/SiteWallet';
  * switch wallets. Lives in its own chunk so the landing paints before viem loads.
  */
 export function HeaderConnect() {
+  const t = useT();
   const session = useSession((s) => s.session);
   // a wallet connected for a page that needs no sign-in (the faucet) shows too, with a hollow dot
   const wallet = useWallet((s) => (s.status === 'connected' ? s.address : null));
@@ -22,24 +24,24 @@ export function HeaderConnect() {
         className={`kb-btn kb-btn--secondary kb-btn--md st-connect${shown ? ' is-signed' : ''}`}
         onClick={() => setOpen(true)}
         aria-haspopup="dialog"
-        aria-label={session ? `Wallet ${shortAddress(session.address)}, signed in` : shown ? `Wallet ${shortAddress(shown)}, connected` : 'Connect a wallet'}
+        aria-label={session ? t('site.hc.signedIn', { addr: shortAddress(session.address) }) : shown ? t('site.hc.connected', { addr: shortAddress(shown) }) : t('site.hc.connect')}
       >
         {shown ? <span className={`st-connect__dot${session ? '' : ' is-hollow'}`} aria-hidden="true" /> : <Icon name="wallet" size={20} className="kb-btn__lead" />}
         <span className="kb-btn__label">
-          <span className={`kb-btn__text${shown ? ' num' : ''}`}>{shown ? shortAddress(shown) : 'Connect'}</span>
+          <span className={`kb-btn__text${shown ? ' num' : ''}`}>{shown ? shortAddress(shown) : t('site.connect')}</span>
         </span>
       </button>
       <Modal
         open={open}
         onClose={() => setOpen(false)}
-        kicker="Connect · Elysium"
-        title={session ? 'Signed in' : 'Bring a wallet'}
-        closeLabel="Close"
+        kicker={t('wl.kickerConnect')}
+        title={session ? t('site.hc.titleIn') : t('site.hc.title')}
+        closeLabel={t('common.close')}
       >
         <p className="st-connect__lede">
-          Any EVM wallet works. We ask for one signature to know it is you: free, and it sends no transaction. We will never ask for your seed phrase.
+          {t('site.hc.lede')}
         </p>
-        <WalletSignIn label="Sign in" onSession={() => setOpen(false)} />
+        <WalletSignIn label={t('site.hc.signIn')} onSession={() => setOpen(false)} />
       </Modal>
     </>
   );

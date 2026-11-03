@@ -1,6 +1,7 @@
 import { motion } from 'motion/react';
 import type { AnchorHTMLAttributes, CSSProperties, ReactNode } from 'react';
 import { CoinCharacter, FoodBit, Icon, useReducedMotion, type CoinMood, type FoodKind, type IconName, type SeedPaint } from '../../design';
+import { useT, type TKey } from '../../i18n';
 import { Link } from '../router';
 import { WaxSeal } from './MintRitual';
 
@@ -47,21 +48,22 @@ export function MintSky() {
 /* ------------------------------------------------------------------ */
 
 export type TrackStage = 'wl' | 'mint' | 'play';
-const STAGES: { id: TrackStage; label: string }[] = [
-  { id: 'wl', label: 'WL' },
-  { id: 'mint', label: 'Mint' },
-  { id: 'play', label: 'Play' },
+const STAGES: { id: TrackStage; label: TKey }[] = [
+  { id: 'wl', label: 'site.nav.wl' },
+  { id: 'mint', label: 'site.nav.mint' },
+  { id: 'play', label: 'site.nav.play' },
 ];
 
 /** The three stops of the journey, the current one a sun sticker, the ones behind ticked. */
 export function MintTrack({ at }: { at: TrackStage }) {
+  const t = useT();
   const idx = STAGES.findIndex((s) => s.id === at);
   return (
-    <ol className="mt-track" aria-label="WL, then mint, then play">
+    <ol className="mt-track" aria-label={t('mn.track')}>
       {STAGES.map((s, i) => (
         <li key={s.id} className={`mt-track__stop${i === idx ? ' is-on' : ''}${i < idx ? ' is-past' : ''}`} aria-current={i === idx ? 'step' : undefined}>
           {i < idx && <Icon name="check" size={14} />}
-          {s.label}
+          {t(s.label)}
         </li>
       ))}
     </ol>

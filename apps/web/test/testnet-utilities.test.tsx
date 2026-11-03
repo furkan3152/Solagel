@@ -359,5 +359,40 @@ describe('admin groups', () => {
     fireEvent.change(screen.getByLabelText('arena cap'), { target: { value: '5' } });
     fireEvent.click(screen.getByTestId('bots-save'));
     await waitFor(() => expect(put).toEqual({ kinds: { arena: { cap: 5 } } }));
+    // an older server without map settings: no map table
+    expect(screen.queryByTestId('maps-table')).toBeNull();
+  });
+
+  const WITH_MAPS: BotAdminView = {
+    ...BOTS,
+    settings: {
+      ...BOTS.settings,
+      maps: {
+        practiceRookie: { auto: true, perPlayer: 900, min: 3000, max: 9000 },
+        arena: { auto: true, perPlayer: 900, min: 3000, max: 9000 },
+      },
+    },
+    live: { ...BOTS.live, rooms: [{ ...BOTS.live.rooms[0], mapSide: 3600, mapAuto: true }] },
+  };
+
+  it('shows the map curve per room kind with a preview, and saves only what changed', async () => {
+    let put: unknown = null;
+    ({ restore } = mockFetch({
+      'GET /api/admin/bots': WITH_MAPS,
+      'PUT /api/admin/bots': (c: { body: unknown }) => {
+        put = c.body;
+        return WITH_MAPS;
+      },
+    }));
+    ui(<BotsCard ctx={ctxOf({ api: adminApi('t') })} arenaIds={[1]} />);
+    const table = await screen.findByTestId('maps-table');
+    // the curve at 5 / 10 / 25 / 50 / 100 players, and the live room's side
+    expect(table.textContent).toContain('3000 / 3000 / 4500 / 6400 / 9000');
+    expect(table.textContent).toContain('3600');
+    fireEvent.change(screen.getByLabelText('arena map per player'), { target: { value: '1000' } });
+    fireEvent.click(screen.getByLabelText('Practice · rookie map auto size'));
+    expect(table.textContent).toContain('preset');
+    fireEvent.click(screen.getByTestId('bots-save'));
+    await waitFor(() => expect(put).toEqual({ maps: { arena: { perPlayer: 1000 }, practiceRookie: { auto: false } } }));
   });
 });

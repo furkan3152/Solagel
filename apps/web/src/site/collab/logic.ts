@@ -13,7 +13,8 @@ import {
 
 import { siteHost } from '../settings';
 
-export { ROLE_LABEL, TYPE_LABEL } from './labels';
+export { ROLE_LABEL, TYPE_LABEL, roleLabel, typeLabel } from './labels';
+import { intlLocale, t } from '../../i18n';
 
 export interface ApplyDraft {
   community: string;
@@ -31,27 +32,26 @@ export const EMPTY_DRAFT: ApplyDraft = { community: '', type: '', members: '', c
 
 export type ApplyErrors = Partial<Record<keyof ApplyDraft, string>>;
 
-const X_POST = 'Paste a link to an X post, like https://x.com/yourcommunity/status/1234567890.';
 
 /** The apply form's inline errors: the server's rules (it checks them again). */
 export function applyErrors(d: ApplyDraft): ApplyErrors {
   const e: ApplyErrors = {};
   const community = d.community.trim();
-  if (community.length < 2) e.community = 'Give the community name (at least 2 characters).';
-  else if (community.length > SITE_LIMITS.community) e.community = `Keep it under ${SITE_LIMITS.community} characters.`;
-  if (!COLLAB_TYPES.includes(d.type as CollabType)) e.type = 'Pick a type.';
+  if (community.length < 2) e.community = t('cb.err.community');
+  else if (community.length > SITE_LIMITS.community) e.community = t('wp.err.long', { n: SITE_LIMITS.community });
+  if (!COLLAB_TYPES.includes(d.type as CollabType)) e.type = t('cb.err.type');
   const members = Number(d.members.replace(/[\s,._]/g, ''));
-  if (!d.members.trim()) e.members = 'How many members does it have?';
-  else if (!Number.isInteger(members) || members < 1 || members > SITE_LIMITS.members) e.members = 'Use a whole number from 1 to 10,000,000.';
-  if (!normalizeXHandle(d.communityX)) e.communityX = "That is not an X handle. Use the community's handle, like @elymumio.";
-  if (!normalizeXHandle(d.contactX)) e.contactX = 'That is not an X handle. Use your own handle, like @yourname.';
-  if (d.discord.trim().length > SITE_LIMITS.discord) e.discord = `Keep it under ${SITE_LIMITS.discord} characters.`;
-  if (!COLLAB_ROLES.includes(d.role as CollabRole)) e.role = 'Pick your role.';
-  if (!d.postUrl.trim()) e.postUrl = "Post about Elymum on your community's X first, then paste the link.";
-  else if (!isXStatusUrl(d.postUrl.trim())) e.postUrl = X_POST;
+  if (!d.members.trim()) e.members = t('cb.err.members');
+  else if (!Number.isInteger(members) || members < 1 || members > SITE_LIMITS.members) e.members = t('cb.err.membersN');
+  if (!normalizeXHandle(d.communityX)) e.communityX = t('cb.err.communityX');
+  if (!normalizeXHandle(d.contactX)) e.contactX = t('cb.err.contactX');
+  if (d.discord.trim().length > SITE_LIMITS.discord) e.discord = t('wp.err.long', { n: SITE_LIMITS.discord });
+  if (!COLLAB_ROLES.includes(d.role as CollabRole)) e.role = t('cb.err.role');
+  if (!d.postUrl.trim()) e.postUrl = t('cb.err.postFirst');
+  else if (!isXStatusUrl(d.postUrl.trim())) e.postUrl = t('cb.err.post');
   const about = d.about.trim();
-  if (!about) e.about = 'Tell us a little about your community.';
-  else if (about.length > SITE_LIMITS.about) e.about = `Keep it under ${SITE_LIMITS.about} characters.`;
+  if (!about) e.about = t('cb.err.about');
+  else if (about.length > SITE_LIMITS.about) e.about = t('wp.err.long', { n: SITE_LIMITS.about });
   return e;
 }
 
@@ -131,12 +131,12 @@ export function rowErrors(rows: CollabWalletRow[]): (string | null)[] {
   return rows.map((r, i) => {
     const w = r.wallet.trim();
     if (!w && !r.name.trim()) return null;
-    if (!w) return 'Add a wallet, or clear the name.';
-    if (!isUserWallet(w)) return /^0x[0-9a-fA-F]{40}$/.test(w) ? 'Checksum mismatch: check this address for a typo.' : 'Not an EVM wallet address (0x followed by 40 hex characters).';
-    if (r.name.trim().length > SITE_LIMITS.walletName) return `Keep the name under ${SITE_LIMITS.walletName} characters.`;
+    if (!w) return t('cb.row.noWallet');
+    if (!isUserWallet(w)) return /^0x[0-9a-fA-F]{40}$/.test(w) ? t('cb.row.checksum') : t('cb.row.notEvm');
+    if (r.name.trim().length > SITE_LIMITS.walletName) return t('cb.row.name', { n: SITE_LIMITS.walletName });
     const key = w.toLowerCase();
     const first = seen.get(key);
-    if (first !== undefined) return `Listed twice (row ${first + 1}).`;
+    if (first !== undefined) return t('cb.row.twice', { n: first + 1 });
     seen.set(key, i);
     return null;
   });
@@ -161,18 +161,17 @@ export function countdown(deadline: number, now: number): string {
 
 /** The raffle post the guide offers to copy. */
 export function rafflePost(community: string, spots: number | null, deadline: number | null, host: string = siteHost()): string {
-  const n = spots ? `${spots} ` : '';
-  const when = deadline ? new Date(deadline).toLocaleDateString('en-US', { day: 'numeric', month: 'short' }) : 'soon';
+  const when = deadline ? new Date(deadline).toLocaleDateString(intlLocale(), { day: 'numeric', month: 'short' }) : t('cb.post.soon');
   return [
-    `${community || 'Our community'} x @elymumio`,
+    t('cb.post.title', { community: community || t('cb.post.ours') }),
     '',
-    `We have ${n}Elymum WL spots to raffle. Coins eat coins on Elysium, and the arena opens soon.`,
+    spots ? t('cb.post.spotsN', { n: spots }) : t('cb.post.spots'),
     '',
-    'To enter:',
-    '1. Follow @elymumio',
-    '2. Like and repost this post',
-    '3. Reply with your EVM wallet (0x…)',
+    t('cb.post.enter'),
+    t('cb.post.s1'),
+    t('cb.post.s2'),
+    t('cb.post.s3'),
     '',
-    `Winners picked by ${when}. ${host}`,
+    t('cb.post.when', { when, host }),
   ].join('\n');
 }

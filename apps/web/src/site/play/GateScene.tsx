@@ -1,6 +1,7 @@
 import { ELYSIUM, SHADE } from '@elymum/shared';
 import { useEffect, useState, type ReactElement } from 'react';
 import { CoinCharacter, useOffscreenPause, useReducedMotion, type CoinMood } from '../../design';
+import { useT } from '../../i18n';
 
 /**
  * The gate to the ring, drawn as a little ferry gate on the night shore: two stone posts with
@@ -39,6 +40,7 @@ function Post({ x }: { x: number }) {
 }
 
 export function GateScene({ mode, attention = false }: { mode: GateMode; attention?: boolean }): ReactElement {
+  const t = useT();
   const reduced = useReducedMotion();
   const [ref, visible] = useOffscreenPause<HTMLDivElement>();
   // holders: asleep first, then a start, then awake and asking
@@ -111,7 +113,7 @@ export function GateScene({ mode, attention = false }: { mode: GateMode; attenti
           </svg>
           {mode === 'holders' && awake && (
             <span className="pg-gate__ask">
-              <span className="pg-gate__card mono">Emblem?</span>
+              <span className="pg-gate__card mono">{t('pg.emblemAsk')}</span>
             </span>
           )}
           {mode === 'checking' && (

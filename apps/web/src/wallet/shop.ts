@@ -3,6 +3,7 @@ import { erc20Abi, type Address, type Hash } from 'viem';
 import { SERVER } from '../config';
 import { isDevFake, loadDevFake } from './devFakeLoader';
 import { sendWithWallet, txErrorText, type TxPhase } from './tx';
+import { serverText, t } from '../i18n';
 
 /**
  * The power-up shop, client side: read the packs priced for the signed-in wallet, pay a pack with an
@@ -13,7 +14,7 @@ import { sendWithWallet, txErrorText, type TxPhase } from './tx';
 /** `GET /api/shop` (with the session token when signed in: holder prices and the wallet's charges). */
 export async function fetchShop(token: string | null, signal?: AbortSignal): Promise<ShopView> {
   const res = await fetch(`${SERVER.http}/api/shop`, { headers: token ? { Authorization: `Bearer ${token}` } : {}, signal });
-  if (!res.ok) throw new Error(res.status === 404 ? 'The shop is not available on this server.' : 'Cannot load the shop right now.');
+  if (!res.ok) throw new Error(res.status === 404 ? t('api.shopMissing') : t('api.shopLoad'));
   return (await res.json()) as ShopView;
 }
 
@@ -43,17 +44,17 @@ export async function claimPack(token: string, kind: BoostKind, txHash: string, 
         body: JSON.stringify({ kind, txHash }),
       });
     } catch {
-      last = new ShopError('network', 'Cannot reach the server right now.', txHash);
+      last = new ShopError('network', t('api.reach'), txHash);
       continue;
     }
     const body = (await res.json().catch(() => null)) as (ShopBuyResult & { error?: undefined }) | { error?: ShopBuyError; message?: string } | null;
     if (res.ok && body && 'ok' in body) return body;
     const code = (body && 'error' in body && body.error) || 'bad_request';
-    last = new ShopError(code, (body && 'message' in body && body.message) || (res.status === 401 ? 'Your sign-in expired. Verify your wallet again.' : 'The purchase was not accepted.'), txHash);
+    last = new ShopError(code, serverText(body && 'message' in body ? body.message : undefined, res.status === 401 ? t('api.expiredVerify') : t('api.shopRefused')), txHash);
     // only "not visible yet" and a busy chain are worth another look
     if (code !== 'tx_pending' && code !== 'chain_busy' && code !== ('network' as ShopBuyError)) break;
   }
-  throw last ?? new ShopError('bad_request', 'The purchase was not accepted.', txHash);
+  throw last ?? new ShopError('bad_request', t('api.shopRefused'), txHash);
 }
 
 export type BuyPhase = TxPhase | 'verifying';
@@ -67,7 +68,7 @@ export async function buyPack(
   pack: ShopPack,
   ctx: { token: string; owner: string; chain: ChainStatus; onPhase?: (p: BuyPhase) => void },
 ): Promise<ShopBuyResult> {
-  if (!view.open || !view.token || !view.sink) throw new ShopError('shop_closed', 'The shop is closed right now.');
+  if (!view.open || !view.token || !view.sink) throw new ShopError('shop_closed', t('shop.closed'));
   const amount = BigInt(pack.priceRaw);
   let hash: string;
   if (isDevFake(ctx.chain)) {

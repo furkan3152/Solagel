@@ -8,6 +8,7 @@ import {
   clamp,
   decodeClientInput,
   isBasicSkin,
+  isCountryCode,
   isFingerprint,
   parseJoinTarget,
   sanitizeName,
@@ -391,12 +392,15 @@ export class Gateway {
       }
       // the signed-in wallet's own profile picture, when it asked to wear it (guests and bots never have one)
       const avatar = msg.pic === true && conn.wallet ? (this.profiles?.avatar(conn.wallet) ?? null) : null;
+      // the flag by the name: an allowlisted ISO 3166-1 alpha-2 code exactly, anything else is no flag
+      // (a join that leaves it out entirely takes the signed-in wallet's saved one; '' means no flag)
+      const country = isCountryCode(msg.country) ? msg.country : msg.country === undefined && conn.wallet ? (this.profiles?.country(conn.wallet) ?? null) : null;
 
       if (target.mode === 'practice') {
         if (conn.player?.alive && conn.room?.opts.mode === 'practice') return; // already playing
         const room = this.rooms.practiceRoom(this.rooms.leagueFor(conn), conn.room);
         if (conn.player?.alive) conn.room?.leave(conn, 'switch');
-        room.join(conn, { name, skin, flags, avatar });
+        room.join(conn, { name, skin, flags, avatar, country });
         return;
       }
 
@@ -413,7 +417,7 @@ export class Gateway {
           return;
         }
         if (conn.player?.alive) conn.room?.leave(conn, 'switch');
-        room.join(conn, { name, skin, flags, avatar });
+        room.join(conn, { name, skin, flags, avatar, country });
         return;
       }
 
@@ -438,7 +442,7 @@ export class Gateway {
         return;
       }
       try {
-        await this.joinArena(conn, target.arenaId, { name, skin, flags, avatar });
+        await this.joinArena(conn, target.arenaId, { name, skin, flags, avatar, country });
       } catch (err) {
         if (!(err instanceof ChainBusyError)) throw err;
         // the RPC refused us even after the retries: the ticket is untouched on chain, the player tries again
@@ -472,11 +476,11 @@ export class Gateway {
   }
 
   /** The arena part of a join (the caller checked the wallet, the gate and the ban). Throws `ChainBusyError`. */
-  private async joinArena(conn: Conn, arenaId: number, look: { name: string; skin: number; flags: number; avatar: string | null }): Promise<void> {
+  private async joinArena(conn: Conn, arenaId: number, look: { name: string; skin: number; flags: number; avatar: string | null; country: string | null }): Promise<void> {
     if (!conn.wallet) return;
     const wallet = conn.wallet;
     const target = { arenaId };
-    const { name, skin, flags, avatar } = look;
+    const { name, skin, flags, avatar, country } = look;
     {
       // a live ticket comes back first, with no chain read at all: its coin is in this process already
       const existing = this.rooms.findArenaStake(target.arenaId, conn.wallet);
@@ -566,6 +570,7 @@ export class Gateway {
         name,
         skin,
         avatar,
+        country,
         flags: flags | PlayerFlag.Staker,
         stake: {
           player: conn.wallet,

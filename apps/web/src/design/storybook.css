@@ -146,6 +146,18 @@
   text-transform: uppercase;
   color: var(--teal-ink);
 }
+/* long words in other languages (Russian, Portuguese) break with a hyphen in big type, never out of the box */
+h1,
+h2,
+.display {
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+/* Chinese has no capitals and reads badly spaced out: the label tracking stays tight */
+:lang(zh) .kicker,
+:lang(zh) .mono {
+  letter-spacing: 0.02em;
+}
 .lede {
   font-size: var(--t-lede);
   line-height: 1.5;
@@ -1466,7 +1478,12 @@
   padding: 14px 24px 24px;
 }
 .kb-sheet.is-bottom .kb-sheet__foot > * {
-  flex: 1;
+  /* side by side while the labels fit; a long label (other languages) takes its own row */
+  flex: 1 0 auto;
+  max-width: 100%;
+}
+.kb-sheet__foot > .kb-btn {
+  max-width: 100%;
 }
 
 /* WalletPicker */

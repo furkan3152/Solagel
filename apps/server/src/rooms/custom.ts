@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { dirname, join } from 'node:path';
 import {
   CUSTOM_HOLDER_PERKS,
+  CUSTOM_MAP_SIZES,
   CUSTOM_MAP_WIDTH,
   CUSTOM_SETTINGS_DEFAULT,
   CUSTOM_SETTINGS_LIMITS,
@@ -11,6 +12,7 @@ import {
   customRoomPrice,
   validateCustomConfig,
   type CustomBest,
+  type CustomMapSize,
   type CustomRoomConfig,
   type CustomRoomError,
   type CustomRoomQuote,
@@ -70,25 +72,29 @@ export const CUSTOM_BOT_MIX: Record<CustomRoomConfig['difficulty'], BotMixWeight
 };
 
 const FOOD_MUL: Record<CustomRoomConfig['food'], number> = { low: 0.6, normal: 1, high: 1.6 };
-const POWERUPS: Record<CustomRoomConfig['mapSize'], number> = { XS: 2, S: 2, M: 3, L: 4, XL: 5 };
+const POWERUPS: Record<CustomMapSize, number> = { XS: 2, S: 2, M: 3, L: 4, XL: 5 };
 
 /**
  * The world of a config: food and rug cacti scale with the area like a practice pond's, food by the
  * food choice and cacti by the traps choice, both capped (`CUSTOM_WORLD_CAPS`) so an XL map with
- * plenty of everything stays cheap to simulate.
+ * plenty of everything stays cheap to simulate. An `auto` room passes its current `side`
+ * (without one it opens at M).
  */
-export function customWorld(c: CustomRoomConfig): WorldShape {
+export function customWorld(c: CustomRoomConfig, side?: number): WorldShape {
   const ref = WORLD_PRESETS.practice;
-  const w = CUSTOM_MAP_WIDTH[c.mapSize] ?? CUSTOM_MAP_WIDTH.M;
+  const fixed = c.mapSize !== 'auto' ? CUSTOM_MAP_WIDTH[c.mapSize] : undefined;
+  const w = side ?? fixed ?? CUSTOM_MAP_WIDTH.M;
   const ratio = (w * w) / (ref.width * ref.height);
   // rooms saved before traps existed read as `normal`
   const traps = CUSTOM_TRAP_MUL[c.traps ?? 'normal'];
+  // power-ups by the nearest fixed size at or above this side
+  const tier = CUSTOM_MAP_SIZES.find((m) => CUSTOM_MAP_WIDTH[m] >= w) ?? 'XL';
   return {
     width: w,
     height: w,
     foodTarget: Math.min(CUSTOM_WORLD_CAPS.food, Math.round(ref.foodTarget * ratio * FOOD_MUL[c.food])),
     virusTarget: traps === 0 ? 0 : Math.min(CUSTOM_WORLD_CAPS.viruses, Math.max(2, Math.round(ref.virusTarget * ratio * traps))),
-    maxPowerUps: c.powerUps ? POWERUPS[c.mapSize] : 0,
+    maxPowerUps: c.powerUps ? POWERUPS[c.mapSize !== 'auto' ? c.mapSize : tier] : 0,
   };
 }
 
@@ -280,6 +286,8 @@ export class CustomRoomService implements CustomRoomHooks {
       maxPlayers: r.config.maxPlayers,
       bots: customBots(r.config),
       world: customWorld(r.config),
+      // "Auto": the private rooms' curve, sized for the bots plus the people in the room
+      ...(r.config.mapSize === 'auto' ? { map: { scale: this.d.rooms.customMapScale(), shape: (side: number) => customWorld(r.config, side) } } : {}),
       powerUps: r.config.powerUps,
       custom: this.summary(r),
     });

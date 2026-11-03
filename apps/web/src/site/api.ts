@@ -1,5 +1,6 @@
 import type {
   CustomRoomSettings,
+  MapScaleSettings,
   CustomRoomView,
   AdminAvatarEntry,
   BoostKind,
@@ -41,6 +42,7 @@ import type {
   WlTask,
 } from '@elymum/shared';
 import { SERVER } from '../config';
+import { getLocale, t, type TKey } from '../i18n';
 
 /**
  * The site API (`/api/site/*`, `/api/admin/*`, `/api/auth/*`). Every error is a
@@ -90,6 +92,35 @@ const FALLBACK: Partial<Record<SiteApiError['code'], string>> = {
   price_unavailable: 'The HYPE price feed is unavailable right now.',
 };
 
+/**
+ * The same fallbacks in the reader's language. Outside English the client's own words win over the
+ * server's English message for these codes (a form error with a field keeps the server's detail).
+ */
+const LOCAL: Partial<Record<SiteApiError['code'], TKey>> = {
+  network: 'api.network',
+  unauthorized: 'api.unauthorized',
+  forbidden: 'api.forbidden',
+  rate_limited: 'api.rate_limited',
+  wl_closed: 'api.wl_closed',
+  collab_closed: 'api.collab_closed',
+  already_applied: 'api.already_applied',
+  handle_taken: 'api.handle_taken',
+  collab_limit: 'api.collab_limit',
+  wrong_state: 'api.wrong_state',
+  deadline_passed: 'api.deadline_passed',
+  too_many_wallets: 'api.too_many_wallets',
+  auth_failed: 'api.auth_failed',
+  bad_request: 'api.bad_request',
+  game_closed: 'api.game_closed',
+  price_unavailable: 'api.price_unavailable',
+};
+
+function message(code: SiteApiError['code'], server: string | undefined, field: string | undefined): string {
+  const key = LOCAL[code];
+  if (key && getLocale() !== 'en' && !(field && server)) return t(key);
+  return server || FALLBACK[code] || t('api.wrong');
+}
+
 /** A 5xx with no JSON error: the proxy answered for a server that is down or waking up. */
 export const SERVER_DOWN = 'The game server is not answering right now. Try again in a moment.';
 
@@ -109,7 +140,7 @@ async function send(path: string, { method = 'GET', body, token, signal }: Reque
     res = await fetch(`${SERVER.http}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal });
   } catch (err) {
     if ((err as Error)?.name === 'AbortError') throw err;
-    throw new SiteApiError(0, 'network', FALLBACK.network!);
+    throw new SiteApiError(0, 'network', message('network', undefined, undefined));
   }
   if (!res.ok) {
     let data: { error?: SiteErrorCode; message?: string; field?: string } = {};
@@ -120,9 +151,9 @@ async function send(path: string, { method = 'GET', body, token, signal }: Reque
     }
     // a 5xx without the server's JSON error is the proxy in front of it (the server is down, restarting or
     // waking up): not "Something in the form is not right"
-    if (!data.error && res.status >= 500) throw new SiteApiError(res.status, 'network', SERVER_DOWN);
+    if (!data.error && res.status >= 500) throw new SiteApiError(res.status, 'network', getLocale() === 'en' ? SERVER_DOWN : t('api.down'));
     const code = data.error ?? (res.status === 429 ? 'rate_limited' : res.status === 401 ? 'unauthorized' : 'bad_request');
-    throw new SiteApiError(res.status, code, data.message || FALLBACK[code] || 'Something went wrong.', data.field);
+    throw new SiteApiError(res.status, code, message(code, data.message, data.field), data.field);
   }
   return res;
 }
@@ -410,6 +441,8 @@ export interface BotSettings {
     gasHype: string;
     arenas: Record<string, { stakedBots?: number; bankroll?: string }>;
   };
+  /** Adaptive map size per room kind (older servers leave it out). */
+  maps?: Record<string, MapScaleSettings>;
 }
 
 export interface BotRoomCount {
@@ -420,6 +453,9 @@ export interface BotRoomCount {
   humans: number;
   bots: number;
   stakedBots: number;
+  /** The room's map side now and whether it follows the player count (older servers leave them out). */
+  mapSide?: number;
+  mapAuto?: boolean;
 }
 
 export interface BotTotals {
@@ -443,6 +479,7 @@ export interface BotAdminView {
 
 export type BotSettingsPatch = {
   kinds?: Record<string, Partial<Omit<BotKindSettings, 'mix'>> & { mix?: Record<string, number> }>;
+  maps?: Record<string, Partial<MapScaleSettings>>;
   testnet?: Partial<Omit<BotSettings['testnet'], 'arenas'>> & { arenas?: Record<string, { stakedBots?: number; bankroll?: string } | null> };
 };
 

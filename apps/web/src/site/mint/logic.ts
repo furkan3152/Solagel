@@ -5,6 +5,21 @@
 import { MintPhase, elymumNFTAbi, mintRefusal, type DescribedError } from '@elymum/sdk';
 import { isMainnet, type GameAccess, type MintContractState, type MintProofResponse, type MintState } from '@elymum/shared';
 import { parseEventLogs, type Address, type Log } from 'viem';
+import { t } from '../../i18n';
+
+/** The SDK's English refusal reasons (`mintRefusal`), in the reader's language. */
+export function refusalText(why: string): string {
+  let m: RegExpExecArray | null;
+  if (why === 'choose at least one') return t('mn.why.qty');
+  if (why === 'the mint is closed') return t('mn.why.closed');
+  if (why === 'the public mint is not open yet') return t('mn.why.notPublic');
+  if (why === 'this wallet is not on the allowlist') return t('mn.why.notListed');
+  if (why === 'sold out') return t('mn.why.soldOut');
+  if ((m = /^only (\d+) left$/.exec(why))) return t('mn.why.left', { n: Number(m[1]) });
+  if ((m = /^allowlist limit is (\d+) per wallet \(minted (\d+)\)$/.exec(why))) return t('mn.why.wlLimit', { n: m[1], minted: m[2] });
+  if ((m = /^public limit is (\d+) per wallet \(minted (\d+)\)$/.exec(why))) return t('mn.why.pubLimit', { n: m[1], minted: m[2] });
+  return why;
+}
 
 /** What the page shows. `unavailable`: no NFT contract registered yet (or the chain is off). */
 export type MintView = 'unavailable' | 'closed' | 'allowlist' | 'public' | 'soldout';
@@ -38,17 +53,18 @@ export function mintBlocker(
   p: { kind: 'allowlist' | 'public'; qty: number; proof: MintProofResponse | null },
 ): string | null {
   if (p.kind === 'allowlist') {
-    if (!p.proof) return 'checking the allowlist';
-    if (!p.proof.eligible) return 'this wallet is not on the allowlist';
+    if (!p.proof) return t('mn.why.checking');
+    if (!p.proof.eligible) return t('mn.why.notListed');
     if (!p.proof.root || !p.proof.onchainRoot || p.proof.root.toLowerCase() !== p.proof.onchainRoot.toLowerCase()) {
-      return 'the allowlist is not published on the contract yet; try again soon';
+      return t('mn.why.unpublished');
     }
   }
-  return mintRefusal(
+  const why = mintRefusal(
     { phase: phaseNumber(c.phase), maxSupply: c.maxSupply, totalSupply: c.totalSupply, wlLimit: c.wlLimit, publicLimit: c.publicLimit },
     minted,
     { kind: p.kind, qty: p.qty, eligible: p.kind === 'allowlist' ? p.proof?.eligible : undefined },
   );
+  return why === null ? null : refusalText(why);
 }
 
 /** Token ids minted to `to` in a receipt (ERC-721 `Transfer` from the zero address). */
@@ -94,21 +110,21 @@ export function emblemPerks(
   const openToAll = fee.gameAccess == null || fee.gameAccess === 'public';
   const out: EmblemPerk[] = [
     testnet && openToAll
-      ? { id: 'access', title: 'Game access', note: 'On testnet the ring is open to everyone. On mainnet the emblem is the key.' }
+      ? { id: 'access', title: t('mn.perk.access'), note: t('mn.perk.accessTest') }
       : testnet && fee.gameAccess === 'holders'
-        ? { id: 'access', title: 'Game access', note: 'Right now the ring is open to holders only: the emblem is your key.' }
-      : { id: 'access', title: 'Game access', note: 'The emblem is your key to the ring when the doors are for holders.' },
+        ? { id: 'access', title: t('mn.perk.access'), note: t('mn.perk.accessHolders') }
+      : { id: 'access', title: t('mn.perk.access'), note: t('mn.perk.accessMain') },
     {
       id: 'fee',
-      title: `${holder} fee instead of ${normal}`,
+      title: t('mn.perk.fee', { holder, normal }),
       // the base follows the live arena (`ChainStatus.feeModel`): the legacy v1 arena takes it from the profit only
-      note: fee.feeModel === 'profit' ? 'Of your profit only, fixed into your ticket when you join.' : 'Of every entry fee, fixed into your ticket when you join.',
+      note: fee.feeModel === 'profit' ? t('mn.perk.feeProfit') : t('mn.perk.feeEntry'),
     },
-    { id: 'isles', title: 'The Isles of the Blessed', note: 'The top arena is for holders only.' },
+    { id: 'isles', title: t('mn.perk.isles'), note: t('mn.perk.islesNote') },
   ];
-  if (testnet) out.push({ id: 'wl', title: 'Testnet emblem, mainnet WL', note: 'Holders are carried onto the mainnet allowlist.' });
-  out.push({ id: 'skin', title: 'Your coin, in the game', note: 'Its face and colour as your skin, and a laurel on your name tag.' });
-  if (testnet) out.push({ id: 'faucet', title: '2x from the faucet', note: 'Holders claim twice the test tokens.' });
+  if (testnet) out.push({ id: 'wl', title: t('mn.perk.wl'), note: t('mn.perk.wlNote') });
+  out.push({ id: 'skin', title: t('mn.perk.skin'), note: t('mn.perk.skinNote') });
+  if (testnet) out.push({ id: 'faucet', title: t('mn.perk.faucet'), note: t('mn.perk.faucetNote') });
   return out;
 }
 
@@ -151,7 +167,7 @@ export function hypeText(wei: bigint): string {
  */
 export function fundsBlocker(balance: bigint | null, value: bigint): string | null {
   if (balance === null || balance >= value) return null;
-  return `this mint sends ${hypeText(value)} HYPE plus gas, and this wallet holds ${hypeText(balance)} HYPE`;
+  return t('mn.why.funds', { value: hypeText(value), balance: hypeText(balance) });
 }
 
 /**
@@ -159,19 +175,19 @@ export function fundsBlocker(balance: bigint | null, value: bigint): string | nu
  * rest falls back to `fallback` (the wallet layer's translated text).
  */
 export function mintErrorText(e: Pick<DescribedError, 'kind' | 'name' | 'message'>, fallback: string): string {
-  if (e.kind === 'rejected') return 'You cancelled in your wallet. Nothing was minted and nothing was paid.';
-  if (e.kind === 'insufficient-funds') return 'Not enough HYPE in this wallet for the mint and its gas. Nothing was minted.';
+  if (e.kind === 'rejected') return t('mn.err.rejected');
+  if (e.kind === 'insufficient-funds') return t('mn.err.funds');
   switch (e.name) {
     case 'SoldOut':
-      return 'Sold out: the last emblems went a moment ago. Nothing was charged.';
+      return t('mn.err.SoldOut');
     case 'PublicLimitExceeded':
-      return 'This wallet reached the public mint limit. Nothing was charged.';
+      return t('mn.err.PublicLimitExceeded');
     case 'WlLimitExceeded':
-      return 'This wallet reached the allowlist limit. Nothing was charged.';
+      return t('mn.err.WlLimitExceeded');
     case 'MintClosed':
-      return 'The mint closed a moment ago. Nothing was charged.';
+      return t('mn.err.MintClosed');
     case 'InsufficientPayment':
-      return 'The price changed a moment ago. Nothing was charged; try again.';
+      return t('mn.err.InsufficientPayment');
     default:
       return fallback;
   }

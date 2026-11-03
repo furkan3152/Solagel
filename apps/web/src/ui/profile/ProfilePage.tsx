@@ -12,6 +12,7 @@ import { useAddress } from '../../wallet/store';
 import { openModal, toast, updateSettings, useUi } from '../../store';
 import { CoinPortrait } from '../game/CoinPortrait';
 import { PageHead } from '../PageHead';
+import { CountryPicker } from './CountryPicker';
 import { PicturePanel, PictureTile, usePicture } from './PicturePicker';
 import { wearsPicture } from './picture';
 import { SettingsPage } from './SettingsPage';
@@ -160,7 +161,10 @@ export function NameAndCoin() {
   const holder = useChainData((s) => s.holder) === true;
   const skin = isBasicSkin(settings.skin) || (holder && settings.skin === EMBLEM_SKIN_ID) ? settings.skin : 0;
   const skins = holder ? [...BASIC_SKINS, { id: EMBLEM_SKIN_ID, name: 'Emblem' }] : BASIC_SKINS;
-  const serverDiff = !!token && (!profile || clean !== profile.name || skin !== profile.skin);
+  // the country is saved with the profile once the player picked one (the first-visit guess is not a pick)
+  const country = settings.countryAuto ? undefined : settings.country || null;
+  const countryDiff = country !== undefined && country !== (profile?.country ?? null);
+  const serverDiff = !!token && (!profile || clean !== profile.name || skin !== profile.skin || countryDiff);
   const localDiff = clean !== settings.name;
   const dirty = valid && (serverDiff || localDiff);
   const pic = usePicture();
@@ -173,7 +177,7 @@ export function NameAndCoin() {
       if (serverDiff && token) {
         setBusy(true);
         try {
-          const saved = await saveProfile(token, { name: clean, skin });
+          const saved = await saveProfile(token, { name: clean, skin, ...(country !== undefined ? { country } : {}) });
           useChainData.setState({ profile: saved });
           toast('success', t('pf.saved'), undefined, 2500);
         } catch (err) {
@@ -211,6 +215,7 @@ export function NameAndCoin() {
         suffix={`${bytes}/${MAX_NAME_BYTES}`}
         error={!valid && name.length > 0 ? t('tf.err.InvalidName') : undefined}
       />
+      <CountryPicker className="pf-country" />
 
       <fieldset className="pf-looks" disabled={busy}>
         <legend className="mono pf-cap">{t('pf.coin')}</legend>

@@ -1,4 +1,4 @@
-import { TICK_MS, arenaMeta, type BlockedArena, type League, type RoomInfo, type RoundWindow } from '@elymum/shared';
+import { TICK_MS, arenaMeta, type BlockedArena, type League, type MapScaleSettings, type RoomInfo, type RoundWindow } from '@elymum/shared';
 import { BotSettingsStore, botKindOf, defaultBotSettings, type BotRoomKind } from '../bots/settings';
 import type { ChainGateway } from '../chain/types';
 import type { ServerConfig } from '../config';
@@ -134,6 +134,7 @@ export class RoomManager {
         name: `${league === 'rookie' ? 'Rookie' : 'Pro'} Pond #${n}`,
         maxPlayers: this.cfg.practiceCapacity,
         bots: this.botSettings.options(league === 'rookie' ? 'practiceRookie' : 'practicePro'),
+        map: { scale: this.botSettings.mapScale(league === 'rookie' ? 'practiceRookie' : 'practicePro') },
       },
       this.deps,
     );
@@ -199,6 +200,7 @@ export class RoomManager {
         code: c,
         maxPlayers: this.cfg.privateRoomCapacity,
         bots: this.botSettings.options('private'),
+        map: { scale: this.botSettings.mapScale('private') },
       },
       this.deps,
     );
@@ -332,6 +334,7 @@ export class RoomManager {
         instance: n,
         maxPlayers: this.cfg.arenaInstanceCap,
         bots: this.botSettings.options('arena'),
+        map: { scale: this.botSettings.mapScale('arena') },
         stake: { arenaId, buyIn: arena.buyIn },
       },
       this.deps,
@@ -497,23 +500,32 @@ export class RoomManager {
   /* Bots                                                             */
   /* ---------------------------------------------------------------- */
 
-  /** Re-applies the bot settings to every room (an admin change, no restart). */
+  /** Re-applies the bot and map settings to every room (an admin change, no restart). */
   applyBotSettings(): void {
     for (const room of this.rooms.values()) {
-      // custom rooms keep the bots their creator chose
+      // custom rooms keep the bots and the map their creator chose
       if (room.opts.custom) continue;
-      room.setBotOptions(this.botSettings.options(botKindOf(room.opts.mode, room.opts.league)));
+      const kind = botKindOf(room.opts.mode, room.opts.league);
+      room.setBotOptions(this.botSettings.options(kind));
+      room.setMapScale(this.botSettings.mapScale(kind));
     }
   }
 
+  /** The curve a custom room whose creator picked "Auto" sizes its map by (the private rooms' curve, always on). */
+  customMapScale(): MapScaleSettings {
+    return { ...this.botSettings.mapScale('private'), auto: true };
+  }
+
   /** Live bot counts per room (for `GET /api/admin/bots`). */
-  botCounts(): { id: string; kind: BotRoomKind; name: string; arenaId?: number; humans: number; bots: number; stakedBots: number }[] {
+  botCounts(): { id: string; kind: BotRoomKind; name: string; arenaId?: number; humans: number; bots: number; stakedBots: number; mapSide: number; mapAuto: boolean }[] {
     return [...this.rooms.values()].map((r) => ({
       id: r.id,
       kind: botKindOf(r.opts.mode, r.opts.league),
       name: r.opts.name,
       ...(r.opts.stake ? { arenaId: r.opts.stake.arenaId } : {}),
       ...r.botCounts(),
+      mapSide: r.world.cfg.width,
+      mapAuto: r.mapScale()?.auto ?? false,
     }));
   }
 

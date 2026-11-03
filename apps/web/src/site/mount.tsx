@@ -8,6 +8,7 @@ import { installChunkRecovery, PageBoundary } from './recover';
 import { isSitePath, usePath } from './router';
 import { setPageHead } from './seo';
 import { SiteLoader } from './SiteLoader';
+import { useLocale, useT, type TKey } from '../i18n';
 
 // the form pages carry the wallet adapter; the landing does not. A page that was warmed (link
 // hover / touch, see pages.ts) renders directly, without Suspense, so it never flashes the loader.
@@ -50,21 +51,23 @@ function warmFromLanding(): () => void {
   };
 }
 
-const TITLES: Record<string, string> = {
-  '/': 'Elymum · Eat. Grow. Last the round.',
-  '/wl': 'Join the WL · Elymum',
-  '/collab': 'Collab · Elymum',
-  '/docs': 'Player guide · Elymum',
-  '/mint': 'Mint · Elymum NFT',
-  '/faucet': 'Faucet · Elymum testnet',
+const TITLES: Record<string, TKey> = {
+  '/': 'site.title.home',
+  '/wl': 'site.title.wl',
+  '/collab': 'site.title.collab',
+  '/docs': 'site.title.docs',
+  '/mint': 'site.title.mint',
+  '/faucet': 'site.title.faucet',
 };
 
 export function SiteApp() {
   const path = usePath();
+  const t = useT();
+  const locale = useLocale();
   useEffect(() => {
-    document.title = TITLES[path] ?? (isSitePath(path) ? TITLES['/'] : 'Off the map · Elymum');
+    document.title = t(TITLES[path] ?? (isSitePath(path) ? TITLES['/'] : 'site.nf.docTitle'));
     setPageHead(path, path === '/' || isLazyPage(path));
-  }, [path]);
+  }, [path, locale, t]);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => (path === '/' ? warmFromLanding() : undefined), [path]);
   if (path === '/')

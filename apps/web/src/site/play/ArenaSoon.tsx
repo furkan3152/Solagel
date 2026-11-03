@@ -4,6 +4,8 @@ import { X_URL } from '../settings';
 import { SitePage, XIcon } from '../Shell';
 import { LinkButton } from '../mint/MintArt';
 import { SiteWalletProvider, WalletSignIn } from '../wallet/SiteWallet';
+import { useT } from '../../i18n';
+import { em, T } from '../../i18n/rich';
 import { GateScene } from './GateScene';
 
 /*
@@ -15,30 +17,31 @@ import { GateScene } from './GateScene';
 export function ArenaSoon({ holders = false, onSignedIn }: { holders?: boolean; onSignedIn?: () => void }) {
   // the guard looks over while the visitor is at the sign-in
   const [attention, setAttention] = useState(false);
+  const t = useT();
   return (
     <SitePage className="pg-root">
-      <PlateLabel numeral="III" title={holders ? 'The ring, members only' : 'The ring, after hours'} aside="/play" className="pg-platelabel" />
+      <PlateLabel numeral="III" title={holders ? t('pg.plateHolders') : t('pg.plate')} aside="/play" className="pg-platelabel" />
       <Kb theme="night" className="pg-night">
         <RingScene time="night" variant="full" className="pg-scene">
           <div className="pg-wrap">
             <Sticker tone="cream" lift="lg" pad="lg" round="lg" tape className="pg-card" as="section">
-              <span className="kicker pg-kicker">{holders ? 'Arena · holders only' : 'Arena · closed'}</span>
+              <span className="kicker pg-kicker">{holders ? t('pg.kickerHolders') : t('pg.kicker')}</span>
               {holders ? (
                 <h1 className="pg-h display">
-                  Holders only.
+                  {t('pg.hHolders1')}
                   <br />
-                  <em>Mint</em> to play.
+                  <T k="pg.hHolders2" tags={{ em }} />
                 </h1>
               ) : (
                 <h1 className="pg-h display">
-                  The ring is closed.
+                  {t('pg.h1')}
                   <br />
-                  <em>For now.</em>
+                  <em>{t('pg.h2')}</em>
                 </h1>
               )}
               {holders ? (
                 <>
-                  <p className="pg-lede">Sign in with the wallet that holds your Elymum emblem and the gate swings open. No emblem yet? One dollar in HYPE.</p>
+                  <p className="pg-lede">{t('pg.ledeHolders')}</p>
                   <div
                     className="pg-signin"
                     onPointerEnter={() => setAttention(true)}
@@ -47,36 +50,36 @@ export function ArenaSoon({ holders = false, onSignedIn }: { holders?: boolean; 
                     onBlur={() => setAttention(false)}
                   >
                     <SiteWalletProvider>
-                      <WalletSignIn label="Sign in to play" onSession={() => onSignedIn?.()} />
+                      <WalletSignIn label={t('pg.signIn')} onSession={() => onSignedIn?.()} />
                     </SiteWalletProvider>
                   </div>
                   <div className="pg-actions">
                     <LinkButton href="/mint" variant="primary" size="lg" icon="arrow">
-                      Go to the mint
+                      {t('pg.mint')}
                     </LinkButton>
                     <LinkButton href="/wl" variant="secondary" size="md">
-                      Join the WL
+                      {t('ld.cta.wl')}
                     </LinkButton>
                   </div>
                 </>
               ) : (
                 <>
-                  <p className="pg-lede">The coins are asleep and the food is still cooking. Get on the WL, mint an emblem, and listen for the first bell on @elymumio.</p>
+                  <p className="pg-lede">{t('pg.lede')}</p>
                   <div className="pg-actions">
                     <LinkButton href="/wl" variant="primary" size="lg" icon="arrow">
-                      Join the WL
+                      {t('ld.cta.wl')}
                     </LinkButton>
                     <LinkButton href="/mint" variant="secondary" size="md">
-                      Go to the mint
+                      {t('pg.mint')}
                     </LinkButton>
                   </div>
                 </>
               )}
               <p className="pg-links">
-                <a href="/">Back home</a>
+                <a href="/">{t('pg.home')}</a>
                 <span aria-hidden="true">·</span>
                 <a href={X_URL} target="_blank" rel="noreferrer">
-                  <XIcon size={14} /> Follow @elymumio
+                  <XIcon size={14} /> {t('pg.follow')}
                 </a>
               </p>
             </Sticker>

@@ -1,6 +1,7 @@
 import { normalizeXHandle } from '@elymum/shared';
 import { useEffect, useRef, useState } from 'react';
 import { Button, useReducedMotion } from '../../design';
+import { useT } from '../../i18n';
 import { saveBlob } from '../api';
 import { ticketNo } from '../coinLook';
 import { cardBlob, cardFonts, drawTicketCard } from './card';
@@ -61,6 +62,7 @@ function assemblePass(canvas: HTMLCanvasElement, handle: string, onThump: () => 
  * motion: drawn whole).
  */
 export function CardPreview({ handle, compact = false, assemble = false }: { handle: string; compact?: boolean; assemble?: boolean }) {
+  const t = useT();
   const ref = useRef<HTMLCanvasElement>(null);
   const norm = normalizeXHandle(handle) ?? '';
   const [fontsReady, setFontsReady] = useState(false);
@@ -131,19 +133,20 @@ export function CardPreview({ handle, compact = false, assemble = false }: { han
           width={1200}
           height={675}
           role="img"
-          aria-label={norm ? `Your boarding pass: @${norm}, number ${ticketNo(norm)}` : 'Your boarding pass, waiting for your handle'}
+          aria-label={norm ? t('wp.card.label', { handle: norm, no: ticketNo(norm) }) : t('wp.card.labelEmpty')}
         />
         {thump > 0 && <InkSplat key={thump} className="wl-card__splat" seed={7} />}
       </div>
       <figcaption className="wl-card__cap mono">
-        <span>{norm ? `Pass No. ${ticketNo(norm)}` : 'Pass No. ????'}</span>
-        <span>{norm ? `@${norm}` : 'waiting for your handle'}</span>
+        <span>{norm ? t('wp.card.no', { no: ticketNo(norm) }) : t('wp.card.noEmpty')}</span>
+        <span>{norm ? `@${norm}` : t('wp.card.waiting')}</span>
       </figcaption>
     </figure>
   );
 }
 
-export function SaveCardButton({ handle, label = 'Save card' }: { handle: string; label?: string }) {
+export function SaveCardButton({ handle, label }: { handle: string; label?: string }) {
+  const t = useT();
   const norm = normalizeXHandle(handle);
   const [busy, setBusy] = useState(false);
   return (
@@ -165,7 +168,7 @@ export function SaveCardButton({ handle, label = 'Save card' }: { handle: string
         }
       }}
     >
-      {label}
+      {label ?? t('wp.card.save')}
     </Button>
   );
 }

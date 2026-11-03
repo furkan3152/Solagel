@@ -5,6 +5,8 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Address, Hash, Hex } from 'viem';
 import { AddressChip, ArcGauge, Button, CoinCharacter, FoodBit, HypeAmount, Icon, QuantityStepper, useMoves, useReducedMotion } from '../../design';
 import { SERVER } from '../../config';
+import { intlLocale, useT, type TKey } from '../../i18n';
+import { renderRich } from '../../i18n/rich';
 import { explorerTx } from '../../wallet/links';
 import { fetchServerChain, publicClientFor } from '../../wallet/network';
 import { useWallet } from '../../wallet/store';
@@ -61,12 +63,12 @@ function EmblemImage({ id }: { id: bigint }) {
   );
 }
 
-const PHASE_LABEL: Record<MintView, string> = {
-  unavailable: 'Not deployed',
-  closed: 'Closed',
-  allowlist: 'Allowlist',
-  public: 'Public',
-  soldout: 'Sold out',
+const PHASE_LABEL: Record<MintView, TKey> = {
+  unavailable: 'mn.phase.unavailable',
+  closed: 'mn.phase.closed',
+  allowlist: 'mn.phase.allowlist',
+  public: 'mn.phase.public',
+  soldout: 'mn.phase.soldout',
 };
 
 /** The contract fields of an on-chain read, in the server's shape. */
@@ -127,8 +129,7 @@ export function MintPage() {
 
 type Phase = 'idle' | 'preparing' | TxPhase | 'done' | 'error';
 
-const fmt = (n: number) => n.toLocaleString('en-US');
-const plural = (n: number, one: string, many = `${one}s`) => (n === 1 ? one : many);
+const fmt = (n: number) => n.toLocaleString(intlLocale());
 
 /** "4s ago", "3 min ago": how old the price on screen is. Ticks by itself. */
 function Age({ since }: { since: number }) {
@@ -137,12 +138,14 @@ function Age({ since }: { since: number }) {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
+  const t = useT();
   const s = Math.max(0, Math.round((now - since) / 1000));
-  return <>{s < 60 ? `${s}s ago` : `${Math.floor(s / 60)} min ago`}</>;
+  return <>{s < 60 ? t('mn.ageS', { s }) : t('mn.ageM', { m: Math.floor(s / 60) })}</>;
 }
 
 export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
   // the last state this browser saw paints the card at once; the server's answer replaces it
+  const t = useT();
   const [cached] = useState(() => readCachedMint());
   const [state, setState] = useState<MintState | null>(cached?.state ?? null);
   const [loadedAt, setLoadedAt] = useState(cached?.at ?? 0);
@@ -272,12 +275,12 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
         <div className="mt-wrap mt-wrap--quiet">
           <CoinCharacter paint="sun" mood="scared" size={120} sweat />
           <div>
-            <h1 className="mt-quiet__h display">The mint is not answering.</h1>
+            <h1 className="mt-quiet__h display">{t('mn.down')}</h1>
             <p className="mt-err" role="alert">
               {loadErr}
             </p>
             <Button variant="secondary" onClick={() => setTick((n) => n + 1)}>
-              Try again
+              {t('tf.retry')}
             </Button>
           </div>
         </div>
@@ -314,20 +317,20 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
     };
     // the server's chain (asked again here in case the first answer never came)
     const target = chain ?? (await fetchServerChain({ fresh: true }));
-    if (!target) return fail('The game server is not answering, so the network to mint on is unknown. Try again in a moment.');
+    if (!target) return fail(t('mn.fail.server'));
     if (!chain) setChain(target);
     const client = publicClientFor(target, provider);
-    if (!client) return fail('Cannot read the chain right now.');
+    if (!client) return fail(t('mn.fail.chain'));
     let price: bigint;
     try {
       // the latest price and limits, right before the wallet opens (a keeper may have re-priced)
       const [fresh, mine] = await Promise.all([getMintState(client, nft), getMintedBy(client, nft, address)]);
       setMinted(mine);
       const why = mintBlocker(toContractState(fresh), mine, { kind, qty: q, proof });
-      if (why) return fail(`Not minted: ${why}.`);
+      if (why) return fail(t('mn.fail.not', { why }));
       price = fresh.price;
     } catch {
-      return fail('Cannot read the mint contract right now. Try again in a moment.');
+      return fail(t('mn.fail.contract'));
     }
     const call =
       kind === 'allowlist' ? mintAllowlistCall(nft, { qty: q, proof: (proof?.proof ?? []) as Hex[], price }) : mintPublicCall(nft, { qty: q, price });
@@ -337,7 +340,7 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
     const bal = await readBalance(client, address);
     if (bal !== null) setBalance(bal);
     const short = fundsBlocker(bal, call.value ?? 0n);
-    if (short) return fail(`Not enough HYPE: ${short}.`);
+    if (short) return fail(t('mn.fail.funds', { why: short }));
     const dry = await dryRun(client, address, call);
     if (dry) return fail(dry);
     const res = await sendWalletCall(call, {
@@ -364,43 +367,30 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
         <div className="mt-wrap mt-wrap--done mt-done" data-testid="mt-done">
           <div className="mt-copy">
             <MintTrack at="play" />
-            <span className="kicker mt-kicker">Minted{n > 0 ? ` · No. ${ids.map((i) => i.toString()).join(', ')}` : ''}</span>
+            <span className="kicker mt-kicker">{n > 0 ? t('mn.done.kickerNo', { ids: ids.map((i) => i.toString()).join(', ') }) : t('mn.done.kicker')}</span>
             <h1 className="mt-h display">
-              {n <= 1 ? (
-                <>
-                  Your Elymum
-                  <br />
-                  <em>is here.</em>
-                </>
-              ) : (
-                <>
-                  Your {n} Elymum
-                  <br />
-                  <em>are here.</em>
-                </>
-              )}
+              {renderRich(n <= 1 ? t('mn.done.h1') : t('mn.done.hN', { n }), { br: () => <br />, em: (c) => <em>{c}</em> })}
             </h1>
             <p className="mt-lede">
-              {n <= 1 ? 'Unsealed and in your wallet.' : 'Unsealed, all of them, and in your wallet.'}{' '}
-              {playOpen ? 'The ring is open to holders. It is feeding time.' : 'The ring opens to holders soon. The first bell rings on @elymumio.'}
+              {n <= 1 ? t('mn.done.one') : t('mn.done.many')} {playOpen ? t('mn.done.open') : t('mn.done.soon')}
             </p>
             <div className="mt-done__cta">
               {playOpen ? (
                 <LinkButton href="/play" variant="primary" size="lg" icon="arrow" className="mt-play">
-                  Play
+                  {t('site.nav.play')}
                 </LinkButton>
               ) : (
                 <LinkButton href={X_URL} variant="primary" size="lg" target="_blank" rel="noreferrer">
-                  Follow @elymumio
+                  {t('pg.follow')}
                 </LinkButton>
               )}
               {tx && (
                 <LinkButton href={tx} variant="secondary" target="_blank" rel="noreferrer">
-                  View transaction
+                  {t('tf.viewTx')}
                 </LinkButton>
               )}
               <button type="button" className="mt-textlink" onClick={() => setPhase('idle')}>
-                Back to the mint
+                {t('mn.done.back')}
               </button>
             </div>
           </div>
@@ -420,7 +410,7 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
                       animate={!unsealed ? undefined : reduced ? { opacity: 1 } : { scale: 1, rotate: i % 2 ? 8 : -8 }}
                       transition={reduced ? { duration: 0.12, delay: 0.3 } : { type: 'spring', stiffness: 600, damping: 14, delay: 1.05 + i * 0.2 }}
                     >
-                      Yours
+                      {t('mn.done.yours')}
                     </motion.span>
                   </motion.li>
                 );
@@ -440,25 +430,25 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
   /* ---------------- the mint card ---------------- */
   const stage: TrackStage = view === 'soldout' ? 'play' : kind ? 'mint' : 'wl';
   const nextNo = c ? (view === 'soldout' ? c.maxSupply : c.totalSupply + 1) : null;
-  const noText = nextNo === null ? 'NO. ????' : kind && q > 1 ? `NO. ${nextNo}–${nextNo + q - 1}` : `NO. ${nextNo}`;
+  const noText = nextNo === null ? t('mn.noUnknown') : kind && q > 1 ? t('mn.noRange', { a: nextNo, b: nextNo + q - 1 }) : t('mn.no', { n: nextNo });
   const pct = c && c.maxSupply > 0 ? Math.floor((c.totalSupply / c.maxSupply) * 100) : 0;
   const gaugeCaption = !c
     ? null
     : view === 'soldout'
-      ? 'All of them. Every last snack.'
+      ? t('mn.gauge.all')
       : c.totalSupply === 0
-        ? 'None yet. Someone has to be first.'
-        : `${pct}% minted. The rest are still deciding.`;
+        ? t('mn.gauge.none')
+        : t('mn.gauge.pct', { pct });
 
   const emblem =
     view === 'unavailable' ? (
-      <EmblemPanel no={noText} mood="sleepy" ribbon="Not struck yet." phase={PHASE_LABEL[view]} />
+      <EmblemPanel no={noText} mood="sleepy" ribbon={t('mn.rib.unstruck')} phase={t(PHASE_LABEL[view])} />
     ) : view === 'closed' ? (
-      <EmblemPanel no={noText} mood="smug" ribbon="Sealed. For now." ribbonAs="h2" phase={PHASE_LABEL[view]} seal="sealed" />
+      <EmblemPanel no={noText} mood="smug" ribbon={t('ld.nft.rib')} ribbonAs="h2" phase={t(PHASE_LABEL[view])} seal="sealed" />
     ) : view === 'soldout' ? (
-      <EmblemPanel no={noText} mood="happy" ribbon="All gone. Good." phase={PHASE_LABEL[view]} phaseTone="done" />
+      <EmblemPanel no={noText} mood="happy" ribbon={t('mn.rib.gone')} phase={t(PHASE_LABEL[view])} phaseTone="done" />
     ) : (
-      <EmblemPanel no={noText} mood={busy ? 'open' : 'smug'} ribbon={busy ? 'Unsealing…' : 'Sealed. For now.'} phase={PHASE_LABEL[view]} phaseTone="live" seal={busy ? 'trembling' : 'sealed'} />
+      <EmblemPanel no={noText} mood={busy ? 'open' : 'smug'} ribbon={busy ? t('mn.rib.unsealing') : t('ld.nft.rib')} phase={t(PHASE_LABEL[view])} phaseTone="live" seal={busy ? 'trembling' : 'sealed'} />
     );
 
   const priceRow = c && (
@@ -469,39 +459,45 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
         </Flap>
       </span>
       <p className="mt-price__tick num">
-        {story === 'testnet' && 'Fixed testnet price · '}
-        {state.hypeUsd !== null ? <>HYPE/USD {state.hypeUsd.toFixed(2)} · updated {loadedAt ? <Age since={loadedAt} /> : 'just now'}</> : 'HYPE/USD feed is napping; the contract price stands'}
-        {' · gas on Elysium, also in HYPE'}
+        {story === 'testnet' && t('mn.tick.test')}
+        {state.hypeUsd !== null ? (
+          <>
+            {t('mn.tick.rate', { rate: state.hypeUsd.toFixed(2) })} {loadedAt ? <Age since={loadedAt} /> : t('mn.tick.now')}
+          </>
+        ) : (
+          t('mn.tick.napping')
+        )}
+        {t('mn.tick.gas')}
       </p>
     </div>
   );
 
-  const gauge = c && <ArcGauge value={c.totalSupply} max={c.maxSupply} caption={gaugeCaption} label="Emblems minted" />;
+  const gauge = c && <ArcGauge value={c.totalSupply} max={c.maxSupply} caption={gaugeCaption} label={t('mn.gauge.label')} />;
 
   let right: ReactNode;
   if (view === 'unavailable') {
     right = (
       <>
         <div className="mt-card__head">
-          <span className="kicker mt-card__kick">Status</span>
-          <h2 className="mt-card__h display">The mint is not live yet.</h2>
-          <p>The contract is not on Elysium yet. When it lands: one dollar in HYPE, the WL goes first, then everyone else.</p>
+          <span className="kicker mt-card__kick">{t('mn.na.status')}</span>
+          <h2 className="mt-card__h display">{t('mn.na.h')}</h2>
+          <p>{t('mn.na.body')}</p>
         </div>
         <dl className="mt-facts">
           <div>
-            <dt className="kicker">Price</dt>
-            <dd className="num">$1.00 in HYPE</dd>
+            <dt className="kicker">{t('mn.na.price')}</dt>
+            <dd className="num">{t('mn.na.priceV')}</dd>
           </div>
           <div>
-            <dt className="kicker">Order</dt>
-            <dd className="num">WL, then public</dd>
+            <dt className="kicker">{t('mn.na.order')}</dt>
+            <dd className="num">{t('mn.na.orderV')}</dd>
           </div>
         </dl>
         <LinkButton href="/wl" route variant="primary" size="lg" block icon="arrow">
-          Join the WL
+          {t('ld.cta.wl')}
         </LinkButton>
         <WlNote tone="idle" glyph="info">
-          A few small chores get you on the list. <b>About a minute, all told.</b>
+          {renderRich(t('mn.na.note'), { b: (c) => <b>{c}</b> })}
         </WlNote>
       </>
     );
@@ -510,22 +506,22 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
       <>
         {gauge}
         {priceRow}
-        <p className="mt-card__teaser">WL first, then public. The date lands on @elymumio before it lands anywhere else.</p>
+        <p className="mt-card__teaser">{t('mn.closed.teaser')}</p>
         {session ? (
           <ClosedWlStatus wl={wl} address={session.address} />
         ) : (
           <div className="mt-signin">
-            <span className="kicker mt-card__kick">Your WL status</span>
-            <WalletSignIn label="Sign in to see my WL status" />
+            <span className="kicker mt-card__kick">{t('mn.closed.status')}</span>
+            <WalletSignIn label={t('mn.closed.signIn')} />
           </div>
         )}
         {session && wl && wl.status === 'approved' ? (
           <LinkButton href={X_URL} variant="secondary" size="lg" block target="_blank" rel="noreferrer">
-            Follow @elymumio for the date
+            {t('mn.closed.follow')}
           </LinkButton>
         ) : (
           <LinkButton href="/wl" route variant="primary" size="lg" block icon="arrow">
-            Join the WL
+            {t('ld.cta.wl')}
           </LinkButton>
         )}
       </>
@@ -535,21 +531,21 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
       <>
         {gauge}
         <div className="mt-card__head">
-          <span className="kicker mt-card__kick">{fmt(state.holders)} {plural(state.holders, 'holder')}</span>
-          <h2 className="mt-card__h display">Sold out.</h2>
-          <p>Every emblem found a pocket. Holders, the ring is {playOpen ? 'open: go eat.' : 'warming up; the first bell rings on @elymumio.'}</p>
+          <span className="kicker mt-card__kick">{t('mn.so.holders', { n: state.holders, count: fmt(state.holders) })}</span>
+          <h2 className="mt-card__h display">{t('mn.so.h')}</h2>
+          <p>{playOpen ? t('mn.so.open') : t('mn.so.soon')}</p>
         </div>
         {playOpen ? (
           <LinkButton href="/play" variant="primary" size="lg" block icon="arrow">
-            Play
+            {t('site.nav.play')}
           </LinkButton>
         ) : (
           <LinkButton href={X_URL} variant="primary" size="lg" block target="_blank" rel="noreferrer">
-            Follow @elymumio
+            {t('pg.follow')}
           </LinkButton>
         )}
         <WlNote tone="idle" glyph="info">
-          Missed it? Emblems change hands on NFT marketplaces. The ring checks your wallet, not your receipt.
+          {t('mn.so.missed')}
         </WlNote>
       </>
     );
@@ -561,48 +557,45 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
         {priceRow}
         {!address ? (
           <div className="mt-signin" data-testid="mt-connect">
-            <span className="kicker mt-card__kick">{kind === 'allowlist' ? 'Allowlist mint' : 'Public mint'}</span>
+            <span className="kicker mt-card__kick">{kind === 'allowlist' ? t('mn.kind.allowlist') : t('mn.kind.public')}</span>
             {/* minting needs the wallet, not a sign-in: a session left from another page (the
                 arena signs in with the same key) must not hide the way to connect */}
             <p className="mt-card__teaser">
-              {session ? (
-                <>
-                  Signed in as <AddressChip address={session.address} size="sm" copy={false} />. Connect that wallet to mint; no new signature.
-                </>
-              ) : (
-                'Connect the wallet you mint with. No sign-in needed.'
-              )}
+              {session
+                ? renderRich(t('mn.connect.signed'), { chip: () => <AddressChip address={session.address} size="sm" copy={false} /> })
+                : t('mn.connect.plain')}
             </p>
-            <WalletConnect note="Connecting sends nothing. Minting is one transaction from your wallet." />
+            <WalletConnect note={t('mn.connect.note')} />
           </div>
         ) : (
           <>
             <div className="mt-qty">
               <div>
-                <div className="kicker mt-card__kick mt-qty__lbl">How many</div>
-                <QuantityStepper value={q} onChange={setQty} max={Math.max(1, left)} label="How many emblems" lessLabel="One less" disabled={busy || left <= 1} data-testid="mt-qty" />
+                <div className="kicker mt-card__kick mt-qty__lbl">{t('mn.qty')}</div>
+                <QuantityStepper value={q} onChange={setQty} max={Math.max(1, left)} label={t('mn.qtyLabel')} lessLabel={t('mn.qtyLess')} moreLabel={t('mn.qtyMore')} disabled={busy || left <= 1} data-testid="mt-qty" />
               </div>
               <EmblemHand count={q} />
               <div className="mt-total">
-                <span className="kicker mt-card__kick">Total</span>
+                <span className="kicker mt-card__kick">{t('cr.total')}</span>
                 <HypeAmount wei={priceWei * BigInt(q)} decimals={4} size="md" className="mt-total__fig" />
                 <span className="mt-total__sub num">
-                  {state.priceUsd !== null && `≈ ${usdText(state.priceUsd * q)} · `}max {left}
+                  {state.priceUsd !== null && `≈ ${usdText(state.priceUsd * q)} · `}
+                  {t('mn.max', { n: left })}
                 </span>
               </div>
             </div>
             <Button variant="primary" size="lg" block loading={busy} disabled={!busy && !!blocker} onClick={() => void mint()} className="mt-mintbtn">
-              {busy ? BUSY_LABEL[phase as keyof typeof BUSY_LABEL] : `Mint ${q} ${plural(q, 'emblem')}`}
+              {busy ? t(BUSY_LABEL[phase as keyof typeof BUSY_LABEL]) : t('mn.mintN', { n: q })}
             </Button>
             {steps}
             {blocker && !busy && (
               <p className="mt-why" role="alert" data-testid="mt-blocker">
-                <span className="kicker">{poor ? 'Not enough HYPE' : left === 0 ? 'Limit reached' : 'Not yet'}</span> {cap(blocker)}.
+                <span className="kicker">{poor ? t('mn.why.poor') : left === 0 ? t('mn.why.limit') : t('mn.why.notYet')}</span> {cap(blocker)}.
                 {poor && story === 'testnet' && (
                   <>
                     {' '}
                     <a href={HYPE_FAUCET_URL} target="_blank" rel="noreferrer">
-                      Get test HYPE
+                      {t('mn.testHype')}
                     </a>
                   </>
                 )}
@@ -610,24 +603,24 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
             )}
             {error && (
               <p className="mt-why mt-why--error" role="alert" data-testid="mt-error">
-                <span className="kicker">Hm</span> {error}
+                <span className="kicker">{t('mn.hm')}</span> {error}
               </p>
             )}
             {kind === 'allowlist' ? (
               <AllowlistStatus proof={proof} address={address} />
             ) : (
               <WlNote tone="ok" glyph="check">
-                <AddressChip address={address} size="sm" copy={false} /> <span>Public mint: any wallet, {c.publicLimit} max. Nobody&rsquo;s rushing you. Well, a little.</span>
+                <AddressChip address={address} size="sm" copy={false} /> <span>{t('mn.pubNote', { n: c.publicLimit })}</span>
               </WlNote>
             )}
-            <p className="mt-fine">Your wallet adds a tiny buffer to the price; the contract refunds anything above it in the same transaction.</p>
+            <p className="mt-fine">{t('mn.fine')}</p>
           </>
         )}
       </>
     );
   }
 
-  const kicker = c ? `Sealed emblems · supply ${fmt(c.maxSupply)}` : 'Sealed emblems · on Elysium';
+  const kicker = c ? t('mn.kickerSupply', { n: fmt(c.maxSupply) }) : t('mn.kicker');
 
   return (
     <NightPlate>
@@ -637,9 +630,7 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
           <MintHeadline story={story} price={c ? hypeText(priceWei) : null} />
           <MintTrack at={stage} />
           {c && (
-            <p className="mt-limits num">
-              Allowlist {c.wlLimit} per wallet · Public {c.publicLimit} per wallet
-            </p>
+            <p className="mt-limits num">{t('mn.limits', { wl: c.wlLimit, pub: c.publicLimit })}</p>
           )}
         </div>
         <motion.div className="mt-card kb-island" variants={mv.stickerDrop} custom={0.6} initial="hidden" animate="shown">
@@ -653,18 +644,19 @@ export function Mint({ pollMs = 30_000 }: { pollMs?: number }) {
   );
 }
 
-const BUSY_LABEL = {
-  preparing: 'Checking the price…',
-  switching: 'Switching network…',
-  signing: 'Confirm in your wallet…',
-  confirming: 'Minting…',
-} as const;
+const BUSY_LABEL: Record<'preparing' | 'switching' | 'signing' | 'confirming', TKey> = {
+  preparing: 'mn.busy.preparing',
+  switching: 'mn.busy.switching',
+  signing: 'mn.busy.signing',
+  confirming: 'mn.busy.confirming',
+};
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** The two wallet steps while a mint is in flight: sign, then the chain. */
 function MintSteps({ phase, hash, explorer }: { phase: Phase; hash: Hash | null; explorer: string | null }) {
-  const first = phase === 'preparing' ? 'Reading the fresh price' : phase === 'switching' ? 'Switch to Elysium' : 'Approve in your wallet';
+  const t = useT();
+  const first = phase === 'preparing' ? t('mn.step.price') : phase === 'switching' ? t('mn.step.switch') : t('mn.step.approve');
   const s1 = phase === 'confirming' || phase === 'error' ? 'done' : 'on';
   const s2 = phase === 'confirming' ? 'on' : phase === 'error' ? 'off' : 'wait';
   const link = hash ? explorerTx(hash, explorer) : null;
@@ -676,9 +668,9 @@ function MintSteps({ phase, hash, explorer }: { phase: Phase; hash: Hash | null;
       </li>
       <li className={`mt-steps__s is-${s2}`}>
         <span className="mt-steps__n num">2</span>
-        Minting on Elysium
+        {t('mn.step.mint')}
         {hash && (
-          <AddressChip address={hash} chars={4} size="sm" href={link ?? undefined} copy={false} label="Transaction" className="mt-steps__hash" />
+          <AddressChip address={hash} chars={4} size="sm" href={link ?? undefined} copy={false} label={t('mn.step.tx')} className="mt-steps__hash" />
         )}
       </li>
     </ol>
@@ -699,63 +691,65 @@ function WlNote({ tone, glyph, children, testId }: { tone: 'ok' | 'no' | 'wait' 
 
 /** Allowlist phase: is the connected wallet on the list (and is the list on the contract yet)? */
 function AllowlistStatus({ proof, address }: { proof: MintProofResponse | null; address: string }) {
+  const t = useT();
   const chip = <AddressChip address={address} size="sm" copy={false} />;
   if (proof === null)
     return (
       <WlNote tone="wait" glyph="info" testId="mt-eligibility">
-        Checking the allowlist for {chip}…
+        {renderRich(t('mn.al.checking'), { chip: () => chip })}
       </WlNote>
     );
   if (!proof.eligible)
     return (
       <WlNote tone="no" glyph="close" testId="mt-eligibility">
-        {chip} <span>is not on the allowlist. The public mint follows; or try the wallet you applied with.</span>
+        {chip} <span>{t('mn.al.no')}</span>
       </WlNote>
     );
   const published = !!proof.root && !!proof.onchainRoot && proof.root.toLowerCase() === proof.onchainRoot.toLowerCase();
   if (!published)
     return (
       <WlNote tone="wait" glyph="lock" testId="mt-eligibility">
-        {chip} <span>is on the allowlist. The list is not on the contract yet; give it a minute.</span>
+        {chip} <span>{t('mn.al.unpublished')}</span>
       </WlNote>
     );
   return (
     <WlNote tone="ok" glyph="check" testId="mt-eligibility">
-      {chip} <span>is on the allowlist. Nobody&rsquo;s rushing you. Well, a little.</span>
+      {chip} <span>{t('mn.al.yes')}</span>
     </WlNote>
   );
 }
 
 /** Closed phase: the signed-in visitor's WL entry. */
 function ClosedWlStatus({ wl, address }: { wl: WlEntryPublic | null | undefined; address: string }) {
+  const t = useT();
   const chip = <AddressChip address={address} size="sm" copy={false} />;
   if (wl === undefined)
     return (
       <WlNote tone="wait" glyph="info" testId="mt-wl">
-        Checking the WL for {chip}…
+        {renderRich(t('mn.wl.checking'), { chip: () => chip })}
       </WlNote>
     );
   if (wl === null)
     return (
       <WlNote tone="idle" glyph="info" testId="mt-wl">
-        {chip} <span>has no WL entry yet. Three chores fix that.</span>
+        {chip} <span>{t('mn.wl.none')}</span>
       </WlNote>
     );
   if (wl.status === 'approved')
     return (
       <WlNote tone="ok" glyph="check" testId="mt-wl">
-        {chip} <span>is on the list. You mint first when the seal breaks.</span>
+        {chip} <span>{t('mn.wl.approved')}</span>
       </WlNote>
     );
   if (wl.status === 'pending')
     return (
       <WlNote tone="wait" glyph="info" testId="mt-wl">
-        {chip} <span>is in the queue. Someone is reading your chores, slowly.</span>
+        {chip} <span>{t('mn.wl.pending')}</span>
       </WlNote>
     );
   return (
     <WlNote tone="no" glyph="close" testId="mt-wl">
-      {chip} <span>did not make the WL this time. The public mint is for you.</span>
+      {chip} <span>{t('mn.wl.rejected')}</span>
     </WlNote>
   );
 }

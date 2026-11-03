@@ -179,6 +179,8 @@ export class Player {
   shockFxUntil = 0;
   /** Stake rooms: disconnected and waiting for a reconnect. */
   afk = false;
+  /** The country the player plays for (`isCountryCode`), shown as a flag by the name; null: none. */
+  country: string | null = null;
 
   stats: PlayerStats;
 

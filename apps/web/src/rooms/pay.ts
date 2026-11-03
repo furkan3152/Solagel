@@ -2,6 +2,7 @@ import type { ChainStatus } from '@elymum/shared';
 import type { Address, Hash } from 'viem';
 import { isDevFake, loadDevFake } from '../wallet/devFakeLoader';
 import { sendWithWallet, txErrorText, type TxPhase } from '../wallet/tx';
+import { t } from '../i18n';
 
 export type PayResult = { ok: true; hash: Hash } | { ok: false; message: string; rejected: boolean; hash: Hash | null };
 
@@ -16,7 +17,7 @@ export async function payRoomFee(chain: ChainStatus, to: Address, wei: bigint, o
     if (fake) {
       const r = await fake.fakeHypePayment(wei, onPhase);
       if (r.ok) return r;
-      return { ok: false, rejected: r.name === 'UserRejected', hash: null, message: r.name === 'InsufficientFunds' ? 'Not enough HYPE in this wallet for the room fee and gas.' : 'The payment did not go through.' };
+      return { ok: false, rejected: r.name === 'UserRejected', hash: null, message: r.name === 'InsufficientFunds' ? t('api.roomFunds') : t('api.payFailed') };
     }
   }
   const res = await sendWithWallet((wallet, from) => wallet.sendTransaction({ account: from, to, value: wei, chain: wallet.chain ?? null }), { chain, onPhase });

@@ -2,6 +2,7 @@ import { Icon, Sheet } from '../../design';
 import { openBrief } from '../../game/brief';
 import { useT, type TKey } from '../../i18n';
 import { closeModal, useUi } from '../../store';
+import { CountryPicker } from '../profile/CountryPicker';
 import { SettingsPage } from '../profile/SettingsPage';
 
 /** Settings as a sheet (masthead gear, in-game top bar): the same print order as the profile page. */
@@ -10,6 +11,7 @@ export function SettingsSheet() {
   const open = useUi((st) => st.modal === 'settings');
   return (
     <Sheet open={open} onClose={closeModal} closeLabel={t('gs.close')} kicker={t('gs.kicker')} title={t('gs.title')} className="g-sheet g-settings">
+      <CountryPicker className="g-settings__country" />
       <SettingsPage />
     </Sheet>
   );

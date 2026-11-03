@@ -76,7 +76,8 @@ const fields = new WeakMap<World, FoodField>();
 function foodField(world: World): FoodField {
   let f = fields.get(world);
   if (!f) {
-    f = new FoodField(world.cfg.width, world.cfg.height);
+    // the whole coordinate space: a world that grows never needs a new field
+    f = new FoodField(world.spaceW, world.spaceH);
     fields.set(world, f);
   }
   f.refresh(world);
@@ -249,7 +250,15 @@ export class BotBrain {
     const cy = sy / total;
     const nCells = me.cells.length;
     const split = nCells > 1;
-    const { width: W, height: H } = world.cfg;
+    // the playable rectangle (an adaptive world sits centred in its space and grows in play)
+    const X0 = world.x0;
+    const Y0 = world.y0;
+    const X1 = world.x1;
+    const Y1 = world.y1;
+    const W = X1 - X0;
+    const H = Y1 - Y0;
+    const MX = X0 + W / 2;
+    const MY = Y0 + H / 2;
     const d = this.decision;
     d.split = false;
     d.eject = false;
@@ -392,18 +401,18 @@ export class BotBrain {
     /* ---------- walls and corners (much more so while fleeing) ---------- */
     const flee = dangerLevel > 0.25 ? Math.min(1, dangerLevel) : 0;
     const look = big.r + 240 + 420 * flee * P.wallSense;
-    map.addWalls(cx, cy, look, W, H, Math.min(big.r * 0.6, 200), 1.6 * (1 + flee * P.wallSense));
+    map.addWalls(cx - X0, cy - Y0, look, W, H, Math.min(big.r * 0.6, 200), 1.6 * (1 + flee * P.wallSense));
     if (flee > 0) {
       // run straight away (the danger map alone leaves every safe heading equal)
       map.addInterest(Math.atan2(awayY, awayX), 0.35 * flee, 2);
       // open space beats a corner: pull toward the middle the closer the walls are
-      const wallGap = Math.min(cx, cy, W - cx, H - cy);
+      const wallGap = Math.min(cx - X0, cy - Y0, X1 - cx, Y1 - cy);
       const cramped = clamp(1 - (wallGap - big.r) / 900, 0, 1);
-      if (cramped > 0) map.addInterest(angleTo(cx, cy, W / 2, H / 2), 0.5 * flee * cramped * P.wallSense, 1);
+      if (cramped > 0) map.addInterest(angleTo(cx, cy, MX, MY), 0.5 * flee * cramped * P.wallSense, 1);
       // against a wall: slide along it toward the far corner (the long way out), never into the near one
       if (P.skill > 0 && wallGap < big.r + 450) {
-        const vertical = Math.min(cx, W - cx) <= Math.min(cy, H - cy); // the nearest wall is left/right
-        const a = vertical ? (cy > H / 2 ? -Math.PI / 2 : Math.PI / 2) : cx > W / 2 ? Math.PI : 0;
+        const vertical = Math.min(cx - X0, X1 - cx) <= Math.min(cy - Y0, Y1 - cy); // the nearest wall is left/right
+        const a = vertical ? (cy > MY ? -Math.PI / 2 : Math.PI / 2) : cx > MX ? Math.PI : 0;
         map.addInterest(a, 0.6 * flee * P.wallSense, 2);
       }
     }
@@ -462,7 +471,7 @@ export class BotBrain {
           if (dist <= nearR || dist > fr) continue;
           let w = (k * m) / Math.pow(dist + 150, 1.22);
           // coins along the border are a trap to graze (one way out): less tempting
-          if (r === 0 || c === 0 || r === field.rows - 1 || c === field.cols - 1) w *= 0.55;
+          if (fx - X0 < FIELD_CELL || fy - Y0 < FIELD_CELL || X1 - fx < FIELD_CELL || Y1 - fy < FIELD_CELL) w *= 0.55;
           // a field guarded by something that eats us is not a field
           for (const t of threats) if (Math.abs(t.x - fx) < t.r + 350 && Math.abs(t.y - fy) < t.r + 350) w *= 0.15;
           map.addBinned(Math.atan2(dy, dx), w);
@@ -510,7 +519,7 @@ export class BotBrain {
           const away = dist > 1 ? (s.vx * (q.x - big.x) + s.vy * (q.y - big.y)) / dist : 0;
           if (away > mySpeed * 0.9 && dist > SPLIT_REACH * 1.3) w *= 0.35;
           // …but one pinned against a wall is (good players know)
-          if (P.skill === 2 && Math.min(q.x, q.y, W - q.x, H - q.y) < q.r + 220) w *= 1.4;
+          if (P.skill === 2 && Math.min(q.x - X0, q.y - Y0, X1 - q.x, Y1 - q.y) < q.r + 220) w *= 1.4;
         }
         if (w > bestPreyScore) {
           bestPreyScore = w;
@@ -551,7 +560,7 @@ export class BotBrain {
       const moved = Math.hypot(cx - this.anchorX, cy - this.anchorY);
       if (moved < 50 && dangerLevel < 0.2 && !bestPrey) {
         // stuck (a corner, a wall of bushes, nothing in sight): pick a fresh way out
-        this.wander = angleTo(cx, cy, W / 2 + (rng() - 0.5) * W * 0.6, H / 2 + (rng() - 0.5) * H * 0.6);
+        this.wander = angleTo(cx, cy, MX + (rng() - 0.5) * W * 0.6, MY + (rng() - 0.5) * H * 0.6);
         this.unstickUntil = now + 1500;
       }
       this.anchorX = cx;

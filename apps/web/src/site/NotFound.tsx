@@ -1,5 +1,7 @@
 import { ELYSIUM, SHADE } from '@elymum/shared';
 import { PlateLabel, useReducedMotion } from '../design';
+import { useT } from '../i18n';
+import { T } from '../i18n/rich';
 import { GazeCoin } from './landing/GazeCoin';
 import { SitePage, SiteLinkButton } from './Shell';
 import './notfound.css';
@@ -12,6 +14,7 @@ const INK = ELYSIUM.abyss;
  * the drop. Decoration (aria-hidden); the words live in the page.
  */
 function UnbuiltTerrace() {
+  const t = useT();
   return (
     <svg className="nf-art" viewBox="0 0 760 430" aria-hidden="true" focusable="false">
       <g strokeLinejoin="round" strokeLinecap="round">
@@ -67,7 +70,7 @@ function UnbuiltTerrace() {
           <path d="M100 300 V226" />
           <rect x={36} y={196} width={128} height={44} rx={8} fill={ELYSIUM.sun} transform="rotate(-4 100 218)" />
           <text x={100} y={225} textAnchor="middle" transform="rotate(-4 100 218)" className="nf-art__signtext" stroke="none" fill={INK}>
-            Terrace 404
+            {t('site.nf.sign')}
           </text>
         </g>
         {/* the cone at the drop */}
@@ -83,26 +86,27 @@ function UnbuiltTerrace() {
 
 /** Any path the site does not know: a lost coin on a terrace that is not built yet. */
 export function NotFound({ path: normal }: { path: string }) {
+  const t = useT();
   const reduced = useReducedMotion();
   // show the path as typed (the router lower-cases it for matching)
   const path = typeof location !== 'undefined' ? location.pathname : normal;
   return (
     <SitePage className="nf-root">
-      <PlateLabel numeral="404" title="Off the map" aside={path} />
+      <PlateLabel numeral="404" title={t('site.nf.plate')} aside={path} />
       <section className="nf" aria-labelledby="nf-title">
         <div className="nf__copy">
-          <p className="kicker">Error 404 · nothing here yet</p>
+          <p className="kicker">{t('site.nf.kicker')}</p>
           <h1 className="nf__title" id="nf-title">
-            This terrace hasn&rsquo;t been built yet.
+            {t('site.nf.title')}
           </h1>
           <p className="nf__lede">
-            The path <code className="nf__path mono">{path}</code> runs off the edge of the ring. The builders are on lunch, which on Elysium is most of the time.
+            <T k="site.nf.lede" vars={{ path }} tags={{ path: (c) => <code className="nf__path mono">{c}</code> }} />
           </p>
           <div className="nf__ctas">
             <SiteLinkButton href="/" variant="primary" icon="arrow">
-              Walk back to the plain
+              {t('site.nf.home')}
             </SiteLinkButton>
-            <SiteLinkButton href="/docs">Read the guide</SiteLinkButton>
+            <SiteLinkButton href="/docs">{t('site.nf.guide')}</SiteLinkButton>
           </div>
         </div>
         <div className="nf__scene">

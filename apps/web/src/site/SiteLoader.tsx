@@ -1,9 +1,10 @@
 import type { CSSProperties } from 'react';
 import { CoinCharacter, Kb } from '../design';
+import { useT, type TKey } from '../i18n';
 
 /** Seeds in the row (the coin eats them left to right). */
 const SEEDS = 8;
-const LINES = ['Setting the table', 'Peeling the pears', 'Counting the seeds', 'Polishing the coins'];
+const LINES: TKey[] = ['site.load.0', 'site.load.1', 'site.load.2', 'site.load.3'];
 
 /**
  * Waiting for a page: a little coin munches its way along a row of seeds, which sprout back
@@ -12,7 +13,8 @@ const LINES = ['Setting the table', 'Peeling the pears', 'Counting the seeds', '
  * fast load never flashes it. Reduced motion: a still coin by a full row, and the label.
  */
 export function SeedMuncher({ label }: { label?: string }) {
-  const line = label ?? LINES[Math.floor(Date.now() / 1000) % LINES.length];
+  const t = useT();
+  const line = label ?? t(LINES[Math.floor(Date.now() / 1000) % LINES.length]);
   return (
     <div className="st-load" role="status" aria-live="polite">
       <div className="st-load__row" aria-hidden="true">

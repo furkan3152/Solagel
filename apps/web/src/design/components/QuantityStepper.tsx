@@ -1,4 +1,5 @@
 import type { HTMLAttributes } from 'react';
+import { t } from '../../i18n';
 
 export interface QuantityStepperProps extends Omit<HTMLAttributes<HTMLDivElement>, 'onChange'> {
   value: number;
@@ -19,7 +20,7 @@ export interface QuantityStepperProps extends Omit<HTMLAttributes<HTMLDivElement
  * figure in Geist Mono. The figure is a spinbutton (Up/Down/Home/End work on
  * it); the buttons are the 44 px touch targets.
  */
-export function QuantityStepper({ value, onChange, min = 1, max, label, lessLabel = 'One fewer', moreLabel = 'One more', disabled = false, size = 'md', className, ...rest }: QuantityStepperProps) {
+export function QuantityStepper({ value, onChange, min = 1, max, label, lessLabel = t('ui.oneFewer'), moreLabel = t('mn.qtyMore'), disabled = false, size = 'md', className, ...rest }: QuantityStepperProps) {
   const set = (v: number) => {
     const n = Math.min(max, Math.max(min, v));
     if (n !== value) onChange(n);

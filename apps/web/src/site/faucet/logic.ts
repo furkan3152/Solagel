@@ -1,5 +1,6 @@
 import type { ContractsRegistry, FaucetConfig } from '@elymum/shared';
 import type { TestTokenFaucetConfig } from '@elymum/sdk';
+import { t } from '../../i18n';
 
 /** Kinetiq's HYPE faucet for Elysium Testnet gas. */
 export const HYPE_FAUCET_URL = 'https://elysium.kinetiq.xyz/testnet-faucet';
@@ -84,6 +85,6 @@ export function servedConfig(f: FaucetConfig | null | undefined, token: string):
 /** What a failed claim says. A wallet with no HYPE gets the gas reason, whatever the wallet or RPC reported (often a vague revert). */
 export function claimErrorText(error: { kind: string }, noGas: boolean, generic: string): string {
   if (error.kind === 'rejected') return generic;
-  if (noGas || error.kind === 'insufficient-funds') return 'This wallet has no HYPE for the network fee. The claim is free, the gas is not: get test HYPE from Kinetiq’s faucet below, then claim.';
+  if (noGas || error.kind === 'insufficient-funds') return t('fc.err.gas');
   return generic;
 }

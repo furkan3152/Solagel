@@ -1,4 +1,4 @@
-import { TICK_MS, WORLD_PRESETS } from '@elymum/shared';
+import { TICK_MS, WORLD_PRESETS, botCountry, isCountryCode } from '@elymum/shared';
 import { describe, expect, it } from 'vitest';
 import { BotBrain } from '../src/bots/brain';
 import { BotManager } from '../src/bots/manager';
@@ -226,6 +226,19 @@ describe('bots', () => {
     const world = new World(emptyCfg());
     const manager = new BotManager(world, { target: 0, min: 0, max: 0, mix: 'standard' }, mulberry32(21));
     for (let i = 0; i < 300; i++) expect(manager.spawnBot(30).player.skin).toBeLessThan(8);
+  });
+
+  it('bots play for a plausible country, the same one for the same name', () => {
+    const world = new World(emptyCfg());
+    const manager = new BotManager(world, { target: 0, min: 0, max: 0, mix: 'standard' }, mulberry32(5));
+    const flags = new Set<string>();
+    for (let i = 0; i < 40; i++) {
+      const p = manager.spawnBot(30).player;
+      expect(isCountryCode(p.country)).toBe(true);
+      expect(p.country).toBe(botCountry(p.name));
+      flags.add(p.country!);
+    }
+    expect(flags.size).toBeGreaterThan(3);
   });
 
   it('anticipates a charging threat from beyond its static danger zone', () => {

@@ -7,6 +7,8 @@ import { ticketNo } from '../coinLook';
 import { Link } from '../router';
 import { dropExpired, signOut } from '../session';
 import { X_HANDLE, X_URL, shortWallet, siteHost, useSiteSettings, xIntent } from '../settings';
+import { intlLocale, t, useT, type TKey } from '../../i18n';
+import { T } from '../../i18n/rich';
 import { SitePage, XIcon } from '../Shell';
 import { SiteWalletProvider, WalletSignIn, useSiteSession } from '../wallet/SiteWallet';
 import { Ascent } from './Ascent';
@@ -38,6 +40,7 @@ export function WlPlate({ title, children, className }: { title: ReactNode; chil
 }
 
 function Wl() {
+  const t = useT();
   const { settings, loaded } = useSiteSettings();
   const [tasks, setTasks] = useState<PublicWlTask[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -54,7 +57,7 @@ function Wl() {
     let live = true;
     setLoadError(null);
     site.tasks().then(
-      (t) => live && setTasks(t),
+      (list) => live && setTasks(list),
       (e: SiteApiError) => live && setLoadError(e.message),
     );
     return () => {
@@ -90,22 +93,22 @@ function Wl() {
   if (entry) return <WlStatus entry={entry} fresh={fresh} />;
   if (loadError)
     return (
-      <WlPlate title="A few small chores">
+      <WlPlate title={t('wp.plate.few')}>
         <Sticker className="wl-error" tone="white" tilt={-1}>
           <p className="st-err" role="alert">
             {loadError}
           </p>
           <Button variant="secondary" size="sm" onClick={() => setAttempt((n) => n + 1)}>
-            Try again
+            {t('tf.retry')}
           </Button>
         </Sticker>
       </WlPlate>
     );
   if (!tasks || !loaded || (booting && session))
     return (
-      <WlPlate title="A few small chores">
+      <WlPlate title={t('wp.plate.few')}>
         <div className="wl-loading">
-          <StampSpinner label="Loading" />
+          <StampSpinner label={t('mn.loading')} />
         </div>
       </WlPlate>
     );
@@ -125,31 +128,37 @@ function Wl() {
 
 function WlClosed() {
   const [signin, setSignin] = useState(false);
+  const t = useT();
   return (
-    <WlPlate title="The gate, shut for now" className="wl-plate--closed">
+    <WlPlate title={t('wp.closed.plate')} className="wl-plate--closed">
       <div className="wl-closed">
         <div className="wl-closed__text">
-          <span className="kicker wl-kicker">Whitelist · closed</span>
-          <h1 className="wl-title">Applications are closed.</h1>
+          <span className="kicker wl-kicker">{t('wp.closed.kicker')}</span>
+          <h1 className="wl-title">{t('wp.closed.h')}</h1>
           <p className="wl-deck">
-            We are not taking new WL entries right now. The next round gets announced on{' '}
-            <a href={X_URL} target="_blank" rel="noreferrer">
-              @elymumio
-            </a>{' '}
-            first. Nobody gets in early by asking nicely. We checked.
+            <T
+              k="wp.closed.body"
+              tags={{
+                x: (c) => (
+                  <a href={X_URL} target="_blank" rel="noreferrer">
+                    {c}
+                  </a>
+                ),
+              }}
+            />
           </p>
           <div className="wl-row">
             <a className="kb-btn kb-btn--teal kb-btn--md" href={X_URL} target="_blank" rel="noreferrer">
-              <XIcon /> Follow @elymumio
+              <XIcon /> {t('pg.follow')}
             </a>
             <button type="button" className="wl-textlink" onClick={() => setSignin((v) => !v)} aria-expanded={signin}>
-              Applied before? Sign in
+              {t('wp.closed.signin')}
             </button>
           </div>
           {signin && (
             <Sticker className="wl-signin-card" tone="white" pad="sm">
-              <p className="wl-signin-card__lede">Sign in with the wallet you applied with to see your status.</p>
-              <WalletSignIn label="Sign in to see my status" />
+              <p className="wl-signin-card__lede">{t('wp.closed.signinLede')}</p>
+              <WalletSignIn label={t('wp.signinStatus')} />
             </Sticker>
           )}
         </div>
@@ -158,8 +167,8 @@ function WlClosed() {
             <Moon size={92} />
           </span>
           <Sticker className="wl-closed__sign" tone="sun" tilt={-4} pad="sm" lift="md">
-            <span className="mono">Gate WL</span>
-            <strong>Back soon</strong>
+            <span className="mono">{t('wp.closed.gate')}</span>
+            <strong>{t('wp.closed.soon')}</strong>
           </Sticker>
           <span className="wl-closed__coin">
             <CoinCharacter paint="cream" mood="sleepy" size={150} feet ground />
@@ -172,81 +181,60 @@ function WlClosed() {
 }
 
 const STATUS_COPY = {
-  pending: {
-    title: "You're in the queue.",
-    stamp: 'Pending',
-    tone: 'sun',
-    pill: 'warn',
-    mood: 'smile',
-    sticker: 'Checked by hand',
-    body: 'Every entry is checked by a person: the follow, your post and your reply. Sign in with the same wallet any time to see where it stands.',
-  },
-  approved: {
-    title: "You're on the list.",
-    stamp: 'Approved',
-    tone: 'up',
-    pill: 'ok',
-    mood: 'happy',
-    sticker: 'Mint spot held',
-    body: 'Your wallet is on the Elymum WL. The mint date lands on @elymumio first. Keep the pass; it looks good on you.',
-  },
-  rejected: {
-    title: 'Not this time.',
-    stamp: 'Rejected',
-    tone: 'down',
-    pill: 'danger',
-    mood: 'scared',
-    sticker: 'Try next round',
-    body: 'We could not verify every chore on this entry. Follow @elymumio for the next round; the ring is patient.',
-  },
+  pending: { tone: 'sun', pill: 'warn', mood: 'smile' },
+  approved: { tone: 'up', pill: 'ok', mood: 'happy' },
+  rejected: { tone: 'down', pill: 'danger', mood: 'scared' },
 } as const;
+const statusKey = (s: WlEntryPublic['status'], part: 'title' | 'stamp' | 'sticker' | 'body' | 'pill') => `wp.st.${s}.${part}` as TKey;
 
 export function WlStatus({ entry, fresh = false }: { entry: WlEntryPublic; fresh?: boolean }) {
   const c = STATUS_COPY[entry.status];
   const reduced = useReducedMotion();
+  const t = useT();
+  const k = (part: Parameters<typeof statusKey>[1]) => t(statusKey(entry.status, part));
   return (
-    <WlPlate title="Your boarding pass">
+    <WlPlate title={t('wp.st.plate')}>
       <div className="wl-status" data-status={entry.status}>
         <div className="wl-status__text">
-          <span className="kicker wl-kicker">{fresh ? 'Entry received' : 'Your WL entry'}</span>
-          <h1 className="wl-title">{c.title}</h1>
-          <p className="wl-deck">{c.body}</p>
+          <span className="kicker wl-kicker">{fresh ? t('wp.st.received') : t('wp.st.yours')}</span>
+          <h1 className="wl-title">{k('title')}</h1>
+          <p className="wl-deck">{k('body')}</p>
           <dl className="wl-manifest">
             <div>
-              <dt>Status</dt>
+              <dt>{t('mn.na.status')}</dt>
               <dd>
                 <StatusPill tone={c.pill} data-testid="wl-status">
-                  {entry.status}
+                  {k('pill')}
                 </StatusPill>
               </dd>
             </div>
             <div>
-              <dt>Passenger</dt>
+              <dt>{t('wp.st.passenger')}</dt>
               <dd className="wl-manifest__handle">@{entry.xHandle}</dd>
             </div>
             <div>
-              <dt>Wallet</dt>
+              <dt>{t('wp.st.wallet')}</dt>
               <dd>
                 <code title={entry.wallet}>{shortWallet(entry.wallet)}</code>
               </dd>
             </div>
             <div>
-              <dt>Sent</dt>
-              <dd className="num">{new Date(entry.createdAt).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}</dd>
+              <dt>{t('wp.st.sent')}</dt>
+              <dd className="num">{new Date(entry.createdAt).toLocaleDateString(intlLocale(), { day: 'numeric', month: 'short', year: 'numeric' })}</dd>
             </div>
           </dl>
           <div className="wl-row wl-status__actions">
-            <SaveCardButton handle={entry.xHandle} label="Save my pass" />
+            <SaveCardButton handle={entry.xHandle} label={t('wp.st.save')} />
             <a className="kb-btn kb-btn--teal kb-btn--sm" href={X_URL} target="_blank" rel="noreferrer">
-              <XIcon /> Follow @elymumio
+              <XIcon /> {t('pg.follow')}
             </a>
           </div>
           <div className="wl-row">
             <Link className="wl-textlink" href="/">
-              Back home
+              {t('pg.home')}
             </Link>
             <button type="button" className="wl-textlink" onClick={() => signOut()}>
-              Sign out
+              {t('wp.st.signOut')}
             </button>
           </div>
         </div>
@@ -254,12 +242,12 @@ export function WlStatus({ entry, fresh = false }: { entry: WlEntryPublic; fresh
           <Sticker tone="night" lift="lg" pad="sm" round="lg" className="wl-status__frame">
             <CardPreview handle={entry.xHandle} assemble />
           </Sticker>
-          <Stamp className="wl-status__stamp" text={c.stamp} tone={c.tone} size="lg" rotate={-9} animateIn={fresh && !reduced} />
+          <Stamp className="wl-status__stamp" text={k('stamp')} tone={c.tone} size="lg" rotate={-9} animateIn={fresh && !reduced} />
           <span className="wl-status__coin" aria-hidden="true">
             <CoinCharacter paint={handlePaint(entry.xHandle)} mood={c.mood} size={112} feet ground bob={entry.status === 'approved'} sweat={entry.status === 'rejected'} look={[-3, -1]} />
           </span>
           <Sticker className={`wl-status__sticker is-${entry.status}`} tone={entry.status === 'approved' ? 'mint' : entry.status === 'rejected' ? 'white' : 'sun'} tilt={3} pad="sm" lift="sm" aria-hidden="true">
-            <span className="mono">{c.sticker}</span>
+            <span className="mono">{k('sticker')}</span>
           </Sticker>
         </div>
       </div>
@@ -267,33 +255,30 @@ export function WlStatus({ entry, fresh = false }: { entry: WlEntryPublic; fresh
   );
 }
 
-const WORDS = ['No', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve'];
-const countWord = (n: number) => WORDS[n] ?? String(n);
-
 function joinPlace(url: string | null): string {
-  if (!url) return 'invite';
+  if (!url) return t('wp.meta.invite');
   if (/discord/i.test(url)) return 'Discord';
   if (/t\.me|telegram/i.test(url)) return 'Telegram';
-  return 'invite';
+  return t('wp.meta.invite');
 }
 
 /** The mono line over a chore's title: where it happens and roughly how long it takes. */
 function metaFor(step: Step): string {
   switch (step.kind) {
     case 'handle':
-      return 'you · ten seconds';
+      return t('wp.meta.handle');
     case 'follow_x':
-      return 'X · five seconds';
+      return t('wp.meta.follow');
     case 'post_x':
-      return 'X · about a minute';
+      return t('wp.meta.post');
     case 'engage_x':
-      return step.task.available ? 'X · about 20 seconds' : 'X · not live yet';
+      return step.task.available ? t('wp.meta.engage') : t('wp.meta.engageSoon');
     case 'join_link':
-      return `${joinPlace(step.task.target)} · a minute`;
+      return t('wp.meta.join', { place: joinPlace(step.task.target) });
     case 'text':
-      return 'a sentence or two';
+      return t('wp.meta.text');
     case 'sign':
-      return 'wallet · free, no transaction';
+      return t('wp.meta.sign');
     default:
       return '';
   }
@@ -303,19 +288,19 @@ function metaFor(step: Step): string {
 function doneLine(step: Step, handle: string): string {
   switch (step.kind) {
     case 'handle':
-      return `@${normalizeXHandle(handle) ?? handle}. Your coin has a face now.`;
+      return t('wp.done.handle', { handle: `@${normalizeXHandle(handle) ?? handle}` });
     case 'follow_x':
-      return 'Done. The ring noticed, and so did our follower count.';
+      return t('wp.done.follow');
     case 'post_x':
-      return 'Posted. Your coin is a little bit famous.';
+      return t('wp.done.post');
     case 'engage_x':
-      return step.task.available ? 'Liked, reposted, replied. Very social of you.' : 'Skipped for now. It opens when the post is live.';
+      return step.task.available ? t('wp.done.engage') : t('wp.done.engageSkip');
     case 'join_link':
-      return 'In. Say hi when you are ready.';
+      return t('wp.done.join');
     case 'text':
-      return 'Noted. Someone will actually read it.';
+      return t('wp.done.text');
     default:
-      return 'Done.';
+      return t('wp.done.default');
   }
 }
 
@@ -324,11 +309,11 @@ function bodyFor(step: Step): string {
   if (step.body) return step.body;
   switch (step.kind) {
     case 'engage_x':
-      return 'The pinned feast post: like it, repost it, reply with your card.';
+      return t('wp.body.engage');
     case 'join_link':
-      return 'Come say hi. Lurking also counts, mostly.';
+      return t('wp.body.join');
     case 'text':
-      return 'Short is fine. Funny is better.';
+      return t('wp.body.text');
     default:
       return '';
   }
@@ -336,6 +321,7 @@ function bodyFor(step: Step): string {
 
 function StepHead({ i, step, state, handle, fresh = false, as: Title = 'h2' }: { i: number; step: Step; state: 'done' | 'active' | 'todo'; handle: string; fresh?: boolean; as?: 'h2' | 'span' }) {
   const soon = step.kind === 'engage_x' && !step.task.available;
+  const t = useT();
   return (
     <span className="wl-step__head">
       <span className="wl-step__art" aria-hidden="true">
@@ -343,7 +329,7 @@ function StepHead({ i, step, state, handle, fresh = false, as: Title = 'h2' }: {
       </span>
       <span className="wl-step__text">
         <span className="wl-step__meta mono">
-          Chore {i + 1} · {metaFor(step)}
+          {t('wp.chore', { n: i + 1, meta: metaFor(step) })}
         </span>
         <Title className="wl-step__title">{step.title}</Title>
         {state === 'done' && <span className="wl-step__done">{doneLine(step, handle)}</span>}
@@ -352,17 +338,17 @@ function StepHead({ i, step, state, handle, fresh = false, as: Title = 'h2' }: {
         {state === 'done' ? (
           <>
             <span className={`wl-step__stamp${fresh ? ' is-fresh' : ''}`}>
-              <Stamp text="Done" tone="up" rotate={-7} animateIn={fresh} />
+              <Stamp text={t('wp.stamp.done')} tone="up" rotate={-7} animateIn={fresh} />
               {fresh && <InkSplat seed={i + 2} reach={40} className="kb-tone-up" />}
             </span>
             <span className="wl-step__edit mono" aria-hidden="true">
-              Edit
+              {t('pf.edit')}
             </span>
           </>
         ) : soon ? (
-          <span className="kb-chip mono kb-tone-sun">Soon</span>
+          <span className="kb-chip mono kb-tone-sun">{t('ld.soon')}</span>
         ) : !step.required ? (
-          <span className="kb-chip mono kb-tone-ink">Optional</span>
+          <span className="kb-chip mono kb-tone-ink">{t('wp.optional')}</span>
         ) : null}
       </span>
     </span>
@@ -370,7 +356,8 @@ function StepHead({ i, step, state, handle, fresh = false, as: Title = 'h2' }: {
 }
 
 function WlStepper({ tasks, settings, onEntry }: { tasks: PublicWlTask[]; settings: SiteSettings; onEntry: (e: WlEntryPublic) => void }) {
-  const steps = useMemo(() => buildSteps(tasks), [tasks]);
+  const t = useT();
+  const steps = useMemo(() => buildSteps(tasks), [tasks, t]);
   const [active, setActive] = useState(0);
   const [done, setDone] = useState<Set<string>>(() => new Set());
   /** The chore that was just finished (its DONE stamp thumps on, once). */
@@ -426,7 +413,7 @@ function WlStepper({ tasks, settings, onEntry }: { tasks: PublicWlTask[]; settin
       onEntry(await site.submitWl(session.token, submitBody(steps, answers, handle, website)));
     } catch (err) {
       if (dropExpired(err)) {
-        setFormError('Your sign-in expired. Sign in again to send it.');
+        setFormError(t('wp.expired'));
         return;
       }
       const e = err as SiteApiError;
@@ -444,7 +431,7 @@ function WlStepper({ tasks, settings, onEntry }: { tasks: PublicWlTask[]; settin
         setActive(at);
         focusStep(at);
       } else {
-        setFormError(e.message || 'Something went wrong. Try again.');
+        setFormError(e.message || t('wp.wrong'));
       }
     } finally {
       setSending(false);
@@ -454,47 +441,45 @@ function WlStepper({ tasks, settings, onEntry }: { tasks: PublicWlTask[]; settin
   const total = steps.length;
   // the wallet chore counts as done once signed in (it is the last terrace before the feast)
   const doneCount = steps.filter((s) => done.has(s.key) || (s.kind === 'sign' && !!session)).length;
-  const postText = `I'm on my way to the @elymumio WL. Coins eat coins on Elysium, and the arena opens soon.${no ? ` Boarding pass No. ${no}.` : ''} ${siteHost()}/wl`;
+  const postText = `${no ? t('wp.post.no', { no }) : t('wp.post')} ${siteHost()}/wl`;
 
   return (
-    <WlPlate title={`${countWord(total)} small chores`}>
+    <WlPlate title={t('wp.plate.n', { n: total })}>
       <div className="wl-layout">
-        <aside className="wl-aside" aria-label="Your progress and boarding pass">
+        <aside className="wl-aside" aria-label={t('wp.aside')}>
           <div className="wl-aside__sticky">
-            <span className="kicker wl-kicker">Whitelist · the ascent</span>
+            <span className="kicker wl-kicker">{t('wp.kicker')}</span>
             <h1 className="wl-title">
-              {countWord(total)} small chores, then the <span className="wonk">feast.</span>
+              <T k="wp.h" vars={{ n: total }} tags={{ w: (c) => <span className="wonk">{c}</span> }} />
             </h1>
-            <p className="wl-deck">
-              Each chore lifts you one terrace up the ring. Finish them all and your wallet goes on the list, with a boarding pass to flex. Every entry is checked by hand.
-            </p>
+            <p className="wl-deck">{t('wp.deck')}</p>
             <div className="kb-stepper__prog wl-prog">
-              <span className="kb-stepper__bar" role="progressbar" aria-label="WL chores done" aria-valuemin={0} aria-valuemax={total} aria-valuenow={doneCount}>
+              <span className="kb-stepper__bar" role="progressbar" aria-label={t('wp.progress')} aria-valuemin={0} aria-valuemax={total} aria-valuenow={doneCount}>
                 <i style={{ width: `${total ? (doneCount / total) * 100 : 0}%` }} />
               </span>
               <span className="kb-stepper__count num">
-                {doneCount} of {total} done
+                {t('wp.doneCount', { done: doneCount, total })}
               </span>
             </div>
-            <Ascent total={total} done={doneCount} paint={handlePaint(norm ?? '')} active={active} />
-            <StickerAlbum slots={steps.map((s) => ({ key: s.key, kind: s.kind, done: done.has(s.key) || (s.kind === 'sign' && !!session) }))} handle={norm ?? ''} title="Chore stickers" />
+            <Ascent total={total} done={doneCount} paint={handlePaint(norm ?? '')} active={active} goal={t('wp.feast')} />
+            <StickerAlbum slots={steps.map((s) => ({ key: s.key, kind: s.kind, done: done.has(s.key) || (s.kind === 'sign' && !!session) }))} handle={norm ?? ''} title={t('wp.album')} />
             <div className="wl-aside__card wl-desk-only">
               <Sticker tone="night" lift="md" pad="sm" round="lg" tilt={-1} className="wl-pass">
                 <CardPreview handle={handle} assemble />
               </Sticker>
               <div className="wl-row">
                 <SaveCardButton handle={handle} />
-                <span className="wl-note">Save it, then attach it to your post on X.</span>
+                <span className="wl-note">{t('wp.saveNote')}</span>
               </div>
             </div>
             <div className="wl-row">
               <button type="button" className="wl-textlink" aria-expanded={showSignin} onClick={() => setShowSignin((v) => !v)}>
-                Applied before? Sign in to see your status
+                {t('wp.appliedBefore')}
               </button>
             </div>
             {showSignin && !session && (
               <Sticker className="wl-signin-card" tone="white" pad="sm" lift="sm">
-                <WalletSignIn label="Sign in to see my status" />
+                <WalletSignIn label={t('wp.signinStatus')} />
               </Sticker>
             )}
           </div>
@@ -511,7 +496,7 @@ function WlStepper({ tasks, settings, onEntry }: { tasks: PublicWlTask[]; settin
                 {state === 'active' ? (
                   <StepHead i={i} step={s} state={state} handle={handle} />
                 ) : (
-                  <button type="button" className="wl-step__toggle" onClick={() => { setActive(i); setJustDone(null); }} aria-label={`Step ${i + 1}: ${s.title}${state === 'done' ? ', done. Edit' : ''}`}>
+                  <button type="button" className="wl-step__toggle" onClick={() => { setActive(i); setJustDone(null); }} aria-label={state === 'done' ? t('wp.stepDone', { n: i + 1, title: s.title }) : t('wp.step', { n: i + 1, title: s.title })}>
                     <StepHead i={i} step={s} state={state} handle={handle} fresh={justDone === s.key} as="span" />
                   </button>
                 )}
@@ -539,9 +524,9 @@ function WlStepper({ tasks, settings, onEntry }: { tasks: PublicWlTask[]; settin
                               <input tabIndex={-1} autoComplete="off" value={website} onChange={(e) => setWebsite(e.target.value)} name="website" />
                             </label>
                             <Button variant="primary" size="lg" icon="arrow" onClick={() => void submit()} disabled={sending || !session} loading={sending}>
-                              Join the WL
+                              {t('ld.cta.wl')}
                             </Button>
-                            <p className="wl-note">We keep your handle, wallet and links only to run the WL. A person checks every entry before the mint.</p>
+                            <p className="wl-note">{t('wp.privacy')}</p>
                             {formError && (
                               <p className="wl-note is-error" role="alert">
                                 {formError}
@@ -551,7 +536,7 @@ function WlStepper({ tasks, settings, onEntry }: { tasks: PublicWlTask[]; settin
                         ) : (
                           <div className="wl-row wl-step__actions">
                             <Button variant="teal" size="sm" icon="arrow" onClick={() => next(i)}>
-                              {s.kind === 'engage_x' && !s.task.available ? 'Skip for now' : 'Next'}
+                              {s.kind === 'engage_x' && !s.task.available ? t('wp.skip') : t('g.next')}
                             </Button>
                           </div>
                         )}
@@ -604,22 +589,23 @@ function StepBody({
   settings: SiteSettings;
 }) {
   const xHandle = settings.xHandle || X_HANDLE;
+  const t = useT();
   switch (step.kind) {
     case 'handle':
       return (
         <div className="wl-grid">
           <Field
-            label="Your X handle"
+            label={t('wp.handle.title')}
             prefix="@"
             value={handle.replace(/^@/, '')}
             onChange={(e) => setHandle(e.target.value)}
-            placeholder="yourname"
+            placeholder={t('wp.handle.ph')}
             autoComplete="off"
             autoCapitalize="off"
             spellCheck={false}
             maxLength={100}
             error={err ?? undefined}
-            hint="Your pass, its number and its coin are made from your handle."
+            hint={t('wp.handle.hint')}
             onKeyDown={(e) => e.key === 'Enter' && (e.currentTarget.closest('.wl-step__inner')?.querySelector<HTMLButtonElement>('.wl-step__actions button')?.click())}
           />
           <div className="wl-mobile-only">
@@ -633,9 +619,9 @@ function StepBody({
       return (
         <div className="wl-row">
           <a className="kb-btn kb-btn--secondary kb-btn--sm" href={target} target="_blank" rel="noreferrer">
-            <XIcon /> Follow @{who}
+            <XIcon /> {t('wp.follow', { who: `@${who}` })}
           </a>
-          <Toggle on={answers[step.key] === true} onChange={(v) => set(step.key, v)} label="I follow" />
+          <Toggle on={answers[step.key] === true} onChange={(v) => set(step.key, v)} label={t('wp.iFollow')} />
         </div>
       );
     }
@@ -644,10 +630,10 @@ function StepBody({
         <div className="wl-row">
           {step.task.target && (
             <a className="kb-btn kb-btn--secondary kb-btn--sm" href={step.task.target} target="_blank" rel="noreferrer">
-              Open the invite <Icon name="arrow" size={16} />
+              {t('wp.openInvite')} <Icon name="arrow" size={16} />
             </a>
           )}
-          <Toggle on={answers[step.key] === true} onChange={(v) => set(step.key, v)} label="I joined" />
+          <Toggle on={answers[step.key] === true} onChange={(v) => set(step.key, v)} label={t('wp.iJoined')} />
         </div>
       );
     case 'post_x':
@@ -664,13 +650,13 @@ function StepBody({
             <li>
               <span className="wl-howto__n num">2</span>
               <a className="kb-btn kb-btn--secondary kb-btn--sm" href={xIntent(postText)} target="_blank" rel="noreferrer">
-                <XIcon /> Post on X
+                <XIcon /> {t('wp.postX')}
               </a>
             </li>
           </ol>
-          <p className="wl-note">Attach the card you saved: X cannot add images for you. Tag @{xHandle} so we can find it.</p>
+          <p className="wl-note">{t('wp.attach', { handle: `@${xHandle}` })}</p>
           <Field
-            label="Link to your post"
+            label={t('wp.linkPost')}
             value={String(answers[step.key] ?? '')}
             onChange={(e) => set(step.key, e.target.value)}
             placeholder="https://x.com/yourname/status/…"
@@ -690,13 +676,12 @@ function StepBody({
                 <CoinCharacter paint="foam" mood="sleepy" size={56} />
               </span>
               <p>
-                <strong>Opens when the post is live.</strong> Our launch post drops soon on @{xHandle}. This chore opens the moment it is up; you can send your entry
-                without it.
+                <T k="wp.soon" vars={{ handle: `@${xHandle}` }} tags={{ strong: (c) => <strong>{c}</strong> }} />
               </p>
             </div>
             <div className="wl-row">
               <a className="kb-btn kb-btn--ghost kb-btn--sm" href={`https://x.com/${xHandle}`} target="_blank" rel="noreferrer">
-                <XIcon /> Watch @{xHandle}
+                <XIcon /> {t('wp.watch', { handle: `@${xHandle}` })}
               </a>
             </div>
           </div>
@@ -709,23 +694,23 @@ function StepBody({
             {id ? (
               <>
                 <a className="kb-btn kb-btn--secondary kb-btn--sm" href={`https://x.com/intent/like?tweet_id=${id}`} target="_blank" rel="noreferrer">
-                  Like
+                  {t('wp.like')}
                 </a>
                 <a className="kb-btn kb-btn--secondary kb-btn--sm" href={`https://x.com/intent/retweet?tweet_id=${id}`} target="_blank" rel="noreferrer">
-                  Repost
+                  {t('wp.repost')}
                 </a>
-                <a className="kb-btn kb-btn--secondary kb-btn--sm" href={xIntent(`Boarding pass No. ${no || '0000'} is in. @${xHandle}`, id)} target="_blank" rel="noreferrer">
-                  <XIcon /> Reply with card
+                <a className="kb-btn kb-btn--secondary kb-btn--sm" href={xIntent(t('wp.replyText', { no: no || '0000', handle: `@${xHandle}` }), id)} target="_blank" rel="noreferrer">
+                  <XIcon /> {t('wp.replyCard')}
                 </a>
               </>
             ) : (
               <a className="kb-btn kb-btn--secondary kb-btn--sm" href={step.task.target ?? `https://x.com/${xHandle}`} target="_blank" rel="noreferrer">
-                <XIcon /> Open the post
+                <XIcon /> {t('wp.openPost')}
               </a>
             )}
           </div>
           <Field
-            label="Link to your reply"
+            label={t('wp.linkReply')}
             value={String(answers[step.key] ?? '')}
             onChange={(e) => set(step.key, e.target.value)}
             placeholder="https://x.com/yourname/status/…"
@@ -742,7 +727,7 @@ function StepBody({
       return (
         <div className="kb-field wl-textarea">
           <label className="kb-field__label mono" htmlFor={`wl-${step.key}`}>
-            Your answer{step.required ? '' : ' (optional)'}
+            {step.required ? t('wp.answer') : t('wp.answerOpt')}
           </label>
           <textarea
             id={`wl-${step.key}`}
@@ -769,12 +754,13 @@ function StepBody({
 /** The wallet step: sign in, then the EVM address that goes on the list, in full. */
 function SignStep() {
   const session = useSiteSession();
+  const t = useT();
   return (
     <div className="wl-grid">
       <WalletSignIn />
       {session && (
         <p className="wl-wallet" data-testid="wl-wallet">
-          <span className="mono wl-wallet__k">This EVM address goes on the list</span>
+          <span className="mono wl-wallet__k">{t('wp.walletGoes')}</span>
           <code>{session.address}</code>
         </p>
       )}

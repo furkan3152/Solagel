@@ -14,6 +14,9 @@ export interface BotRoomCount {
   humans: number;
   bots: number;
   stakedBots: number;
+  /** The room's map side now (world units) and whether it is sized for its player count. */
+  mapSide?: number;
+  mapAuto?: boolean;
 }
 
 /** What `/api/admin/bots` needs: the settings and the rooms' live counts. */

@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { memo, useEffect, useRef, useState } from 'react';
 import { Counter, DUR, Icon, Stamp, springs, useReducedMotion } from '../../design';
 import { engine } from '../../game/instance';
+import { Flag } from '../Flag';
 import { BotTag } from './BotTag';
 import { BoostBar } from './BoostBar';
 import { useT } from '../../i18n';
@@ -148,6 +149,7 @@ const StandingsRow = memo(function StandingsRow({ e, i, mine, climb, arena, redu
       </span>
       <span className="g-standings__sw" aria-hidden="true" style={{ background: lookForBasicSkin(e.skin).body }} />
       <span className="g-standings__name">
+        {e.country && <Flag code={e.country} size={11} className="g-standings__flag" />}
         <span className="g-standings__nm" title={mine ? undefined : e.name}>
           {mine ? t('g.youName') : e.name}
         </span>
@@ -175,6 +177,7 @@ function sameRow(a: RowProps, b: RowProps): boolean {
     x.score === y.score &&
     x.value === y.value &&
     x.verified === y.verified &&
+    x.country === y.country &&
     (x.isBot ?? x.bot) === (y.isBot ?? y.bot)
   );
 }
@@ -186,11 +189,13 @@ function MyDetachedRow({ rank, arena }: { rank: number; arena: boolean }) {
   const skin = useUi((s) => s.me?.skin ?? 0);
   const value = useUi((s) => s.hud.value);
   const mass = useUi((s) => (arena ? 0 : s.hud.mass));
+  const country = useUi((s) => s.settings.country);
   return (
     <li className="g-standings__row is-me is-detached">
       <span className="g-standings__rank mono">{rank}</span>
       <span className="g-standings__sw" aria-hidden="true" style={{ background: lookForBasicSkin(skin).body }} />
       <span className="g-standings__name">
+        {country && <Flag code={country} size={11} className="g-standings__flag" />}
         <span className="g-standings__nm">{t('g.youName')}</span>
       </span>
       <span className="g-standings__score num">{arena && value !== null ? tf.fmt(value, { compact: true, maxFrac: 1 }) : compactCount(mass)}</span>
@@ -265,7 +270,7 @@ function MapSheet({ size, inline = false }: { size: number; inline?: boolean }) 
       const e = engine();
       const me = e?.world.myStats();
       const c = me ?? (e ? { x: e.camera.x, y: e.camera.y } : null);
-      if (e && c) setSector(sectorOf(c.x, c.y, e.world.width, e.world.height));
+      if (e && c) setSector(sectorOf(c.x - e.world.x0, c.y - e.world.y0, e.world.width, e.world.height));
     }, 400);
     return () => clearInterval(id);
   }, [show]);

@@ -8,11 +8,14 @@ import '@fontsource-variable/dm-sans/opsz-italic.css';
 import '@fontsource-variable/geist-mono/wght.css';
 import './design/tokens.css';
 import './design/storybook.css';
+import { initLocale, t } from './i18n';
 
 const root = document.getElementById('root')!;
 const params = new URLSearchParams(location.search);
 
 const path = location.pathname.replace(/\/+$/, '') || '/';
+
+const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 
 /**
  * The entry's own chunk failed (a tab or cache from before a deploy, or the network): reload once,
@@ -33,24 +36,31 @@ function bootFailed(err: unknown): void {
   }
   root.innerHTML =
     '<main style="max-width:520px;margin:15vh auto;padding:24px;font-family:system-ui,sans-serif;text-align:center" role="alert" data-testid="boot-failed">' +
-    '<h1 style="font-size:28px;margin:0 0 12px">This page did not open.</h1>' +
-    '<p style="margin:0 0 20px;line-height:1.5">The site may have been updated while this tab was open, or the connection dropped.</p>' +
-    '<button type="button" onclick="location.reload()" style="font:inherit;padding:10px 18px;border-radius:12px;border:2px solid #0f2a30;background:#ffd23f;cursor:pointer">Reload the page</button></main>';
+    `<h1 style="font-size:28px;margin:0 0 12px">${esc(t('boot.title'))}</h1>` +
+    `<p style="margin:0 0 20px;line-height:1.5">${esc(t('boot.body'))}</p>` +
+    `<button type="button" onclick="location.reload()" style="font:inherit;padding:10px 18px;border-radius:12px;border:2px solid #0f2a30;background:#ffd23f;cursor:pointer">${esc(t('boot.reload'))}</button></main>`;
+}
+
+/** Mounts once the page's chunk and the visitor's language are both in (they download side by side). */
+function boot<M>(page: Promise<M>, start: (m: M) => void): void {
+  void Promise.all([page, initLocale()])
+    .then(([m]) => start(m))
+    .catch(bootFailed);
 }
 
 if (path === '/admin') {
-  // Operator panel (chain admin, WL, collabs, site settings): its own lazy chunk.
+  // Operator panel (chain admin, WL, collabs, site settings): its own lazy chunk, English only.
   void import('./admin/mount').then((m) => m.mount(root)).catch(bootFailed);
 } else if (params.has('gallery')) {
   // Design-system proof sheet (every component, both themes).
-  void import('./design/Gallery').then((m) => m.startDesignGallery(root)).catch(bootFailed);
+  boot(import('./design/Gallery'), (m) => m.startDesignGallery(root));
 } else if (params.has('coins')) {
   // Coin / world sprite sheet (was ?gallery before v2).
-  void import('./gallery').then((m) => m.startGallery(root)).catch(bootFailed);
+  boot(import('./gallery'), (m) => m.startGallery(root));
 } else if (path === '/play') {
   // The arena (lobby + game engine), behind the game gate: admins only until the game is public.
-  void import('./site/play/start').then((m) => m.startPlay(root)).catch(bootFailed);
+  boot(import('./site/play/start'), (m) => m.startPlay(root));
 } else {
   // The site: the landing, the WL and collab applications, the mint and the player guide. No game engine.
-  void import('./site/mount').then((m) => m.mount(root)).catch(bootFailed);
+  boot(import('./site/mount'), (m) => m.mount(root));
 }

@@ -4,11 +4,13 @@ import {
   EntityKind,
   HAS_PLAYER,
   HAS_VARIANT,
+  MAP_GROW,
   PlayerFlag,
   avatarIdEquals,
   avatarIdFromBytes,
   decodeUtf8,
   readSnapshot,
+  unpackCountry,
   type PlayerInfo,
   type ServerMessage,
   type SnapshotData,
@@ -98,8 +100,20 @@ export class ClientWorld implements SnapshotSink {
   readonly players = new Map<number, CPlayer>();
   myPid: number | null = null;
   serverView = { x: 0, y: 0, h: 1200, at: 0 };
+  /** The playable rectangle the server last sent: origin and size (an adaptive map grows in play). */
+  x0 = 0;
+  y0 = 0;
   width = 6800;
   height = 6800;
+  /**
+   * The border as drawn this frame (`edgeAt`): it eases from where it was to the new bounds over
+   * `MAP_GROW.animMs`, so a growing map opens smoothly instead of jumping. Updated in place.
+   */
+  readonly edge = { x0: 0, y0: 0, x1: 6800, y1: 6800 };
+  private readonly edgeFrom = { x0: 0, y0: 0, x1: 6800, y1: 6800 };
+  private edgeSince = -Infinity;
+  /** Bounds were set since the last `reset` (the first ones snap, later ones animate). */
+  private boundsKnown = false;
   lastSnapshotAt = 0;
   /** Arena rooms: my in-game value (raw token units), null outside arenas. */
   value: number | null = null;
@@ -119,6 +133,7 @@ export class ClientWorld implements SnapshotSink {
     this.players.clear();
     this.myPid = null;
     this.value = null;
+    this.boundsKnown = false;
     this.eatQueue = [];
     this.floatQueue = [];
     this.nameBytes.clear();
@@ -150,7 +165,8 @@ export class ClientWorld implements SnapshotSink {
   apply(s: SnapshotData, now: number): void {
     this.applyAt = now;
     this.snapshotBegin(s.tick, s.view.x, s.view.y, s.view.h);
-    for (const p of s.players) this.setPlayer(p.id, p.skin, p.flags, p.name, p.isBot ? undefined : p.avatar);
+    if (s.bounds) this.snapshotBounds(s.bounds.x0, s.bounds.y0, s.bounds.x1, s.bounds.y1);
+    for (const p of s.players) this.setPlayer(p.id, p.skin, p.flags, p.name, p.isBot ? undefined : p.avatar, p.country ?? null);
     for (const u of s.upserts) {
       const has = (u.playerId !== undefined || u.flags !== undefined ? HAS_PLAYER : 0) | (u.variant !== undefined ? HAS_VARIANT : 0);
       this.upsert(u.id, u.kind, u.x, u.y, u.r, has, u.playerId, u.flags, u.variant);
@@ -164,6 +180,59 @@ export class ClientWorld implements SnapshotSink {
     readSnapshot(buf, this);
   }
 
+  /**
+   * New playable bounds (the room's `joined` / `spectating` info, or a snapshot's v8 bounds). The
+   * first after a `reset` (or with `snap`) is taken at once; later ones animate the border.
+   */
+  setBounds(x0: number, y0: number, x1: number, y1: number, now: number, snap = false): void {
+    if (!(x1 > x0) || !(y1 > y0)) return;
+    const e = this.edge;
+    if (snap || !this.boundsKnown) {
+      e.x0 = x0;
+      e.y0 = y0;
+      e.x1 = x1;
+      e.y1 = y1;
+      this.edgeSince = -Infinity;
+    } else if (x0 !== this.x0 || y0 !== this.y0 || x1 !== this.x0 + this.width || y1 !== this.y0 + this.height) {
+      // start from wherever the border is drawn now (a step may land mid-animation)
+      this.edgeAt(now);
+      Object.assign(this.edgeFrom, e);
+      this.edgeSince = now;
+    }
+    this.boundsKnown = true;
+    this.x0 = x0;
+    this.y0 = y0;
+    this.width = x1 - x0;
+    this.height = y1 - y0;
+  }
+
+  /** The border to draw at `now` (eased toward the bounds; written into `edge`). */
+  edgeAt(now: number): { x0: number; y0: number; x1: number; y1: number } {
+    const e = this.edge;
+    const t = (now - this.edgeSince) / MAP_GROW.animMs;
+    const x1 = this.x0 + this.width;
+    const y1 = this.y0 + this.height;
+    if (!(t < 1)) {
+      e.x0 = this.x0;
+      e.y0 = this.y0;
+      e.x1 = x1;
+      e.y1 = y1;
+      return e;
+    }
+    // ease-out cubic: the floor opens fast and settles
+    const k = 1 - Math.pow(1 - Math.max(0, t), 3);
+    const f = this.edgeFrom;
+    e.x0 = f.x0 + (this.x0 - f.x0) * k;
+    e.y0 = f.y0 + (this.y0 - f.y0) * k;
+    e.x1 = f.x1 + (x1 - f.x1) * k;
+    e.y1 = f.y1 + (y1 - f.y1) * k;
+    return e;
+  }
+
+  snapshotBounds(x0: number, y0: number, x1: number, y1: number): void {
+    this.setBounds(x0, y0, x1, y1, this.applyAt);
+  }
+
   snapshotBegin(_tick: number, x: number, y: number, h: number): void {
     const now = this.applyAt;
     this.lastSnapshotAt = now;
@@ -174,7 +243,7 @@ export class ClientWorld implements SnapshotSink {
     v.at = now;
   }
 
-  snapshotPlayer(id: number, skin: number, flags: number, bytes: Uint8Array, at: number, len: number, avatarAt = -1): void {
+  snapshotPlayer(id: number, skin: number, flags: number, bytes: Uint8Array, at: number, len: number, avatarAt = -1, country = 0): void {
     // the name is decoded only when its bytes change (a snapshot carries every visible player 30 times a second)
     let known = this.nameBytes.get(id);
     const p = this.players.get(id);
@@ -187,10 +256,11 @@ export class ClientWorld implements SnapshotSink {
     // the avatar id (bots never wear one) is turned into a string only when it changes
     let avatar: string | undefined;
     if (avatarAt >= 0 && (flags & PlayerFlag.Bot) === 0) avatar = p && avatarIdEquals(p.avatar, bytes, avatarAt) ? p.avatar : avatarIdFromBytes(bytes, avatarAt);
-    this.setPlayer(id, skin, flags, same ? p!.name : decodeUtf8(bytes, at, len), avatar);
+    // the country: an interned allowlisted code (no string built), null when off the allowlist
+    this.setPlayer(id, skin, flags, same ? p!.name : decodeUtf8(bytes, at, len), avatar, country ? unpackCountry(country) : null);
   }
 
-  private setPlayer(id: number, skin: number, flags: number, name: string, avatar?: string): void {
+  private setPlayer(id: number, skin: number, flags: number, name: string, avatar: string | undefined, country: string | null): void {
     const existing = this.players.get(id);
     if (existing) {
       existing.skin = skin;
@@ -201,10 +271,13 @@ export class ClientWorld implements SnapshotSink {
       else if (existing.holder) delete existing.holder;
       if (avatar && !existing.isBot) existing.avatar = avatar;
       else if (existing.avatar) delete existing.avatar;
+      if (country) existing.country = country;
+      else if (existing.country) delete existing.country;
     } else {
       const p: CPlayer = { id, skin, flags, name, isBot: (flags & PlayerFlag.Bot) !== 0, emote: null };
       if ((flags & PlayerFlag.Holder) !== 0) p.holder = true;
       if (avatar && !p.isBot) p.avatar = avatar;
+      if (country) p.country = country;
       this.players.set(id, p);
     }
   }

@@ -2,7 +2,11 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AddressChip, Button, Icon, StatusPill } from '../../design';
 import { providerSigner } from '../../wallet/siwe';
 import { connectWallet, connected, disconnectWallet, initWallets, useWallet } from '../../wallet/store';
+import { useT } from '../../i18n';
+import { T } from '../../i18n/rich';
 import { signIn, signOut, useSession, type SiteSession } from '../session';
+
+const strong = (c: ReactNode) => <strong>{c}</strong>;
 import './wallet.css';
 
 /**
@@ -26,7 +30,9 @@ const same = (a: string | null | undefined, b: string | null | undefined) => !!a
  * Connect a wallet and sign in (one free SIWE message, no transaction). Shows the wallets found in
  * this browser; after the visitor picks one, it asks for the signature once by itself.
  */
-export function WalletSignIn({ label = 'Sign in with your wallet', onSession }: { label?: string; onSession?: (s: SiteSession) => void }) {
+export function WalletSignIn({ label: given, onSession }: { label?: string; onSession?: (s: SiteSession) => void }) {
+  const t = useT();
+  const label = given ?? t('sw.signIn');
   const providers = useWallet((s) => s.providers);
   const status = useWallet((s) => s.status);
   const current = useWallet((s) => s.current);
@@ -64,7 +70,7 @@ export function WalletSignIn({ label = 'Sign in with your wallet', onSession }: 
     const signed = (
       <div className="sw-signed">
         <StatusPill tone="ok" size="sm">
-          Signed in
+          {t('site.hc.titleIn')}
         </StatusPill>
         <AddressChip address={session.address} size="sm" />
         <button
@@ -77,7 +83,7 @@ export function WalletSignIn({ label = 'Sign in with your wallet', onSession }: 
             disconnectWallet();
           }}
         >
-          Switch wallet
+          {t('sw.switch')}
         </button>
       </div>
     );
@@ -87,7 +93,7 @@ export function WalletSignIn({ label = 'Sign in with your wallet', onSession }: 
     return (
       <div className="sw">
         {signed}
-        <WalletConnect note="Reconnect your wallet to send transactions. The same wallet needs no new signature." onPick={() => setPicked(true)} />
+        <WalletConnect note={t('sw.reconnect')} onPick={() => setPicked(true)} />
       </div>
     );
   }
@@ -97,19 +103,19 @@ export function WalletSignIn({ label = 'Sign in with your wallet', onSession }: 
       <div className="sw">
         <div className="sw-signed">
           <StatusPill tone="live" size="sm">
-            Connected
+            {t('sw.connected')}
           </StatusPill>
           <AddressChip address={address} size="sm" copy={false} />
           <button type="button" className="sw-link" onClick={() => disconnectWallet()}>
-            Use another wallet
+            {t('fc.another')}
           </button>
         </div>
         <div className="sw-row">
           <Button variant="teal" lead="wallet" onClick={() => void doSign()} disabled={signing} loading={signing}>
-            {signing ? 'Check your wallet…' : label}
+            {signing ? t('sw.check') : label}
           </Button>
         </div>
-        <p className="sw-note">Signing is free and sends no transaction.</p>
+        <p className="sw-note">{t('sw.free')}</p>
         {error && (
           <p className="sw-note is-error" role="alert">
             {error}
@@ -127,11 +133,11 @@ export function WalletSignIn({ label = 'Sign in with your wallet', onSession }: 
             <Icon name="wallet" size={22} />
           </span>
           <span>
-            <strong>No browser wallet found.</strong> Install MetaMask, Rabby or any browser wallet, or open this page in your wallet app&apos;s browser.
+            <T k="sw.none" tags={{ strong }} />
           </span>
         </p>
       ) : (
-        <div className="sw-wallets" role="group" aria-label="Wallets">
+        <div className="sw-wallets" role="group" aria-label={t('sw.wallets')}>
           {providers.map((d) => {
             const busy = connecting && current?.info.uuid === d.info.uuid;
             return (
@@ -157,7 +163,7 @@ export function WalletSignIn({ label = 'Sign in with your wallet', onSession }: 
           })}
         </div>
       )}
-      <p className="sw-note">{connecting ? 'Connecting… check your wallet.' : 'Signing in is free and sends no transaction.'}</p>
+      <p className="sw-note">{connecting ? t('sw.connecting') : t('sw.freeIn')}</p>
       {(error || walletError) && (
         <p className="sw-note is-error" role="alert">
           {error ?? walletError}
@@ -171,7 +177,9 @@ export function WalletSignIn({ label = 'Sign in with your wallet', onSession }: 
  * Connect only (no sign-in): for pages that need the wallet's address and its transactions but
  * not a session (the mint). Lists the wallets found in this browser.
  */
-export function WalletConnect({ note = 'Connecting sends nothing and costs nothing.', onPick }: { note?: string; onPick?: () => void }) {
+export function WalletConnect({ note: given, onPick }: { note?: string; onPick?: () => void }) {
+  const t = useT();
+  const note = given ?? t('sw.connectNote');
   const providers = useWallet((s) => s.providers);
   const status = useWallet((s) => s.status);
   const current = useWallet((s) => s.current);
@@ -187,13 +195,13 @@ export function WalletConnect({ note = 'Connecting sends nothing and costs nothi
           <Icon name="wallet" size={22} />
         </span>
         <span>
-          <strong>No browser wallet found.</strong> Install MetaMask, Rabby or any browser wallet, or open this page in your wallet app&apos;s browser.
+          <T k="sw.none" tags={{ strong }} />
         </span>
       </p>
     );
   return (
     <div className="sw" data-testid="sw-connect">
-      <div className="sw-wallets" role="group" aria-label="Wallets">
+      <div className="sw-wallets" role="group" aria-label={t('sw.wallets')}>
         {providers.map((d) => {
           const busy = connecting && current?.info.uuid === d.info.uuid;
           return (
@@ -211,13 +219,13 @@ export function WalletConnect({ note = 'Connecting sends nothing and costs nothi
               <span className="sw-opt__icon" aria-hidden="true">
                 {d.info.icon ? <img src={d.info.icon} alt="" /> : <Icon name="wallet" size={20} />}
               </span>
-              <span className="sw-opt__name">Connect {d.info.name}</span>
+              <span className="sw-opt__name">{t('sw.connectName', { name: d.info.name })}</span>
               <Icon name="arrow" size={18} className="sw-opt__go" />
             </button>
           );
         })}
       </div>
-      <p className="sw-note">{connecting ? 'Connecting… check your wallet.' : note}</p>
+      <p className="sw-note">{connecting ? t('sw.connecting') : note}</p>
       {walletError && (
         <p className="sw-note is-error" role="alert">
           {walletError}

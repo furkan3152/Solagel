@@ -1,5 +1,5 @@
 import { Button, CoinCharacter, Sheet } from '../../design';
-import { t } from '../../i18n';
+import { useT } from '../../i18n';
 import { useUi } from '../../store';
 
 /**
@@ -7,25 +7,26 @@ import { useUi } from '../../store';
  * only and this wallet is neither, or its sign-in expired). One calm sheet instead of an error loop.
  */
 export function GameClosedSheet() {
+  const t = useT();
   const open = useUi((s) => s.gameClosed);
   const close = () => useUi.setState({ gameClosed: false });
   return (
     <Sheet
       open={open}
       onClose={close}
-      kicker="Elymum arena · holders only"
-      title="Not open to this wallet yet."
+      kicker={t('gc.kicker')}
+      title={t('gc.title')}
       closeLabel={t('common.close')}
       footer={
         <>
           <Button variant="primary" icon="arrow" onClick={() => location.assign('/mint')}>
-            Mint
+            {t('site.nav.mint')}
           </Button>
           <Button variant="secondary" onClick={() => location.assign('/')}>
-            Back home
+            {t('pg.home')}
           </Button>
           <Button variant="ghost" size="sm" onClick={() => location.assign('/admin')}>
-            Admin sign-in
+            {t('gc.admin')}
           </Button>
         </>
       }
@@ -35,7 +36,7 @@ export function GameClosedSheet() {
         <div>
           <p style={{ margin: 0 }}>{t('err.game_closed')}</p>
           <p style={{ margin: '8px 0 0', fontSize: 14, color: 'var(--ink-2)' }}>
-            Holders: sign in with the wallet that holds your Elymum emblem. Admins: sign in on /admin, then open Play from there.
+            {t('gc.note')}
           </p>
         </div>
       </div>

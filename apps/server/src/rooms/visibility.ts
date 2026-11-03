@@ -17,11 +17,14 @@ export class ViewState {
   readonly known = new Map<number, Known>();
   readonly knownPlayers = new Map<number, string>();
   private gen = 0;
+  /** `World.boundsVersion` this client last heard (-1: never, the next snapshot carries the bounds). */
+  private boundsSent = -1;
 
   reset(): void {
     this.known.clear();
     this.knownPlayers.clear();
     this.gen = 0;
+    this.boundsSent = -1;
   }
 
   forgetPlayer(pid: number): void {
@@ -59,10 +62,13 @@ export class ViewState {
       if (e.kind === EntityKind.Cell) {
         const p = e.player;
         const avatar = p.isBot ? undefined : avatars?.get(p.id);
-        const sig = avatar ? `${p.skin}|${p.flags}|${p.name}|${avatar}` : `${p.skin}|${p.flags}|${p.name}`;
+        const sig = `${p.skin}|${p.flags}|${p.name}|${avatar ?? ''}|${p.country ?? ''}`;
         if (this.knownPlayers.get(p.id) !== sig) {
           this.knownPlayers.set(p.id, sig);
-          players.push(avatar ? { id: p.id, skin: p.skin, flags: p.flags, name: p.name, isBot: p.isBot, avatar } : { id: p.id, skin: p.skin, flags: p.flags, name: p.name, isBot: p.isBot });
+          const info: PlayerInfo = { id: p.id, skin: p.skin, flags: p.flags, name: p.name, isBot: p.isBot };
+          if (avatar) info.avatar = avatar;
+          if (p.country) info.country = p.country;
+          players.push(info);
         }
       }
     });
@@ -75,6 +81,10 @@ export class ViewState {
       }
     }
 
+    if (this.boundsSent !== world.boundsVersion) {
+      this.boundsSent = world.boundsVersion;
+      return { tick: world.tickCount, view, bounds: { x0: world.x0, y0: world.y0, x1: world.x1, y1: world.y1 }, players, upserts, removals };
+    }
     return { tick: world.tickCount, view, players, upserts, removals };
   }
 }

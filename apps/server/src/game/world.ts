@@ -32,6 +32,11 @@ export interface WorldConfig {
   powerUps: boolean;
   coinRain: boolean;
   seed?: number;
+  /**
+   * Coordinate space (square side) the playable rectangle sits centred in. The spatial grids span
+   * all of it, so `resize` never rebuckets anything. Default: the world's own size (origin 0, fixed).
+   */
+  space?: number;
   /** Override for tests: first coin rain delay (ms). */
   firstCoinRainMs?: number;
 }
@@ -93,6 +98,8 @@ export interface AddPlayerOptions {
   skin: number;
   flags?: number;
   isBot?: boolean;
+  /** ISO 3166-1 alpha-2 (the caller validated it); absent / null: no flag. */
+  country?: string | null;
   /** Fixed spawn position (tests); otherwise a safe spot is chosen. */
   x?: number;
   y?: number;
@@ -139,14 +146,116 @@ export class World {
   private foodBudget = 0;
   private lastDtMs = 0;
 
+  /**
+   * The playable rectangle is [x0, x0 + cfg.width] x [y0, y0 + cfg.height]: centred in the
+   * coordinate space (`WorldConfig.space`), so a world that grows opens up on every side and
+   * nothing that is already there moves. `cfg.width` / `cfg.height` are the live size.
+   */
+  x0 = 0;
+  y0 = 0;
+  /** Bumped by every `resize` that changed the bounds (connections resend them). */
+  boundsVersion = 0;
+  readonly spaceW: number;
+  readonly spaceH: number;
+  /** Scratch list of `resize` (reused: a resize builds no garbage beyond what it removes). */
+  private readonly outside: StaticEntity[] = [];
+
   constructor(readonly cfg: WorldConfig) {
     this.rng = mulberry32(cfg.seed ?? (Date.now() ^ 0x5eed) >>> 0);
-    this.staticGrid = new Grid(cfg.width, cfg.height, 256);
-    this.dynGrid = new Grid(cfg.width, cfg.height, 256);
+    this.spaceW = Math.max(cfg.width, cfg.space ?? 0);
+    this.spaceH = Math.max(cfg.height, cfg.space ?? 0);
+    this.x0 = (this.spaceW - cfg.width) / 2;
+    this.y0 = (this.spaceH - cfg.height) / 2;
+    this.staticGrid = new Grid(this.spaceW, this.spaceH, 256);
+    this.dynGrid = new Grid(this.spaceW, this.spaceH, 256);
     this.nextCoinRainAt = cfg.firstCoinRainMs ?? 150_000;
     this.nextAirdropAt = 15_000;
     this.fillFood(cfg.foodTarget);
     for (let i = 0; i < cfg.virusTarget; i++) this.spawnVirus();
+  }
+
+  /** Right edge of the playable rectangle. */
+  get x1(): number {
+    return this.x0 + this.cfg.width;
+  }
+
+  /** Bottom edge of the playable rectangle. */
+  get y1(): number {
+    return this.y0 + this.cfg.height;
+  }
+
+  /** Centre of the playable rectangle. */
+  center(): { x: number; y: number } {
+    return { x: this.x0 + this.cfg.width / 2, y: this.y0 + this.cfg.height / 2 };
+  }
+
+  /**
+   * Resizes the playable rectangle (kept centred in the space, clamped to it) and sets the new
+   * population targets. Growing only opens floor (the refill spreads food over it at the usual
+   * rate). Shrinking removes the food and power-ups left outside, moves cacti and loot inside (loot
+   * keeps its value), clamps cells and ejected mass in, and drops cacti over the new target.
+   * One pass over the entities, only when shrinking. False when the bounds did not change.
+   */
+  resize(width: number, height: number, pop: { foodTarget: number; virusTarget: number; maxPowerUps: number }): boolean {
+    const w = clamp(Math.round(width), 200, this.spaceW);
+    const h = clamp(Math.round(height), 200, this.spaceH);
+    this.cfg.foodTarget = pop.foodTarget;
+    this.cfg.virusTarget = pop.virusTarget;
+    this.cfg.maxPowerUps = pop.maxPowerUps;
+    if (w === this.cfg.width && h === this.cfg.height) return false;
+    const shrinking = w < this.cfg.width || h < this.cfg.height;
+    this.cfg.width = w;
+    this.cfg.height = h;
+    this.x0 = (this.spaceW - w) / 2;
+    this.y0 = (this.spaceH - h) / 2;
+    this.boundsVersion++;
+    if (shrinking) this.evictOutside();
+    return true;
+  }
+
+  private evictOutside(): void {
+    const { x0, y0 } = this;
+    const x1 = this.x1;
+    const y1 = this.y1;
+    const out = this.outside;
+    out.length = 0;
+    for (const e of this.entities.values()) {
+      if (e.kind === EntityKind.Cell || e.kind === EntityKind.Eject) continue;
+      if (e.x - e.r < x0 || e.x + e.r > x1 || e.y - e.r < y0 || e.y + e.r > y1) out.push(e);
+    }
+    for (const e of out) {
+      if (e.kind === EntityKind.Food) this.removeStatic(e, 0);
+      else if (e.kind === EntityKind.PowerUp) {
+        this.removeStatic(e, 0);
+        const i = this.powerUps.indexOf(e);
+        if (i >= 0) this.powerUps.splice(i, 1);
+      } else {
+        // cacti and loot come inside (loot is value: it is never dropped)
+        e.x = clamp(e.x, x0 + e.r, x1 - e.r);
+        e.y = clamp(e.y, y0 + e.r, y1 - e.r);
+        e.version = this.tickCount;
+        this.staticGrid.update(e);
+      }
+    }
+    out.length = 0;
+    // fewer cacti on a smaller floor
+    while (this.viruses.length > this.cfg.virusTarget) {
+      const v = this.viruses.pop()!;
+      this.removeStatic(v, 0);
+    }
+    for (const c of this.cells) {
+      if (c.removed) continue;
+      this.clampToWorld(c);
+      c.version = this.tickCount;
+      this.dynGrid.update(c);
+    }
+    for (const e of this.ejects) {
+      if (e.removed) continue;
+      e.x = clamp(e.x, x0 + e.r, x1 - e.r);
+      e.y = clamp(e.y, y0 + e.r, y1 - e.r);
+      e.version = this.tickCount;
+      this.dynGrid.update(e);
+    }
   }
 
   /* ---------------------------------------------------------------- */
@@ -176,6 +285,7 @@ export class World {
     const mass = opts.mass ?? RULES.startMass;
     const spot = opts.x !== undefined && opts.y !== undefined ? { x: opts.x, y: opts.y } : this.findSpawnSpot(massToRadius(mass));
     const p = new Player(this.newPlayerId(), opts.name, opts.skin, opts.flags ?? 0, opts.isBot ?? false, this.now, spot.x, spot.y);
+    p.country = opts.country ?? null;
     this.players.set(p.id, p);
     this.addCell(p, spot.x, spot.y, mass);
     p.stats.maxMass = mass;
@@ -198,8 +308,8 @@ export class World {
     if (!p || !Number.isFinite(x) || !Number.isFinite(y)) return;
     // allow aiming a little outside the world, never absurdly far
     const m = 2000;
-    p.targetX = clamp(x, -m, this.cfg.width + m);
-    p.targetY = clamp(y, -m, this.cfg.height + m);
+    p.targetX = clamp(x, this.x0 - m, this.x1 + m);
+    p.targetY = clamp(y, this.y0 - m, this.y1 + m);
   }
 
   queueSplit(pid: number): void {
@@ -283,8 +393,8 @@ export class World {
         const ux = d > 1e-6 ? dx / d : 1;
         const uy = d > 1e-6 ? dy / d : 0;
         const nd = d + (R - d) * s.foodPush;
-        f.x = clamp(c.x + ux * nd, f.r, this.cfg.width - f.r);
-        f.y = clamp(c.y + uy * nd, f.r, this.cfg.height - f.r);
+        f.x = clamp(c.x + ux * nd, this.x0 + f.r, this.x1 - f.r);
+        f.y = clamp(c.y + uy * nd, this.y0 + f.r, this.y1 - f.r);
         f.version = this.tickCount;
         this.staticGrid.update(f);
       });
@@ -301,11 +411,11 @@ export class World {
     const margin = Math.min(300, width / 4);
     const newborn = radiusToMass(radius);
     const shieldS = RULES.spawnShieldMs / 1000;
-    let best = { x: width / 2, y: height / 2 };
+    let best = this.center();
     let bestScore = -Infinity;
     for (let i = 0; i < 64; i++) {
-      const x = randRange(this.rng, margin, width - margin);
-      const y = randRange(this.rng, margin, height - margin);
+      const x = randRange(this.rng, this.x0 + margin, this.x0 + width - margin);
+      const y = randRange(this.rng, this.y0 + margin, this.y0 + height - margin);
       let score = 4000;
       for (const c of this.cells) {
         if (!canEat(c.mass, newborn)) continue;
@@ -375,8 +485,8 @@ export class World {
       (roll < goldChance ? FOOD_GOLD : roll < goldChance + 0.08 ? FOOD_GEM : Math.floor(this.rng() * 6));
     const f = new Food(
       this.newEntityId(),
-      x ?? randRange(this.rng, 20, this.cfg.width - 20),
-      y ?? randRange(this.rng, 20, this.cfg.height - 20),
+      x ?? randRange(this.rng, this.x0 + 20, this.x1 - 20),
+      y ?? randRange(this.rng, this.y0 + 20, this.y1 - 20),
       FOOD_MASS[variant],
       FOOD_RADIUS[variant],
       variant,
@@ -399,8 +509,8 @@ export class World {
     if (vx === undefined || vy === undefined) {
       // avoid spawning on top of a cell
       for (let attempt = 0; attempt < 10; attempt++) {
-        const cx = randRange(this.rng, r * 2, this.cfg.width - r * 2);
-        const cy = randRange(this.rng, r * 2, this.cfg.height - r * 2);
+        const cx = randRange(this.rng, this.x0 + r * 2, this.x1 - r * 2);
+        const cy = randRange(this.rng, this.y0 + r * 2, this.y1 - r * 2);
         let ok = true;
         for (const c of this.cells) {
           if (Math.hypot(c.x - cx, c.y - cy) < c.r + r + VIRUS_CELL_CLEARANCE) {
@@ -427,8 +537,8 @@ export class World {
     const t = type ?? POWERUP_TYPES[Math.floor(this.rng() * POWERUP_TYPES.length)];
     const pu = new PowerUp(
       this.newEntityId(),
-      x ?? randRange(this.rng, 200, this.cfg.width - 200),
-      y ?? randRange(this.rng, 200, this.cfg.height - 200),
+      x ?? randRange(this.rng, this.x0 + 200, this.x1 - 200),
+      y ?? randRange(this.rng, this.y0 + 200, this.y1 - 200),
       t,
       this.now,
       this.now + POWERUP_LIFETIME_MS,
@@ -461,7 +571,7 @@ export class World {
   restoreLoot(items: { x: number; y: number; value: number }[]): void {
     for (const it of items) {
       if (!Number.isSafeInteger(it.value) || it.value <= 0) continue;
-      this.addLoot(Number.isFinite(it.x) ? it.x : this.cfg.width / 2, Number.isFinite(it.y) ? it.y : this.cfg.height / 2, it.value, 0, 0);
+      this.addLoot(Number.isFinite(it.x) ? it.x : this.x0 + this.cfg.width / 2, Number.isFinite(it.y) ? it.y : this.y0 + this.cfg.height / 2, it.value, 0, 0);
     }
   }
 
@@ -489,7 +599,7 @@ export class World {
 
   private addLoot(x: number, y: number, value: number, vx: number, vy: number): Loot {
     const r = RULES.lootRadius;
-    const l = new Loot(this.newEntityId(), clamp(x, r, this.cfg.width - r), clamp(y, r, this.cfg.height - r), value, vx, vy, this.tickCount);
+    const l = new Loot(this.newEntityId(), clamp(x, this.x0 + r, this.x1 - r), clamp(y, this.y0 + r, this.y1 - r), value, vx, vy, this.tickCount);
     this.lootList.push(l);
     this.staticGrid.insert(l);
     this.entities.set(l.id, l);
@@ -509,10 +619,10 @@ export class World {
         l.vx = 0;
         l.vy = 0;
       }
-      if (l.x < l.r || l.x > this.cfg.width - l.r) l.vx = -l.vx;
-      if (l.y < l.r || l.y > this.cfg.height - l.r) l.vy = -l.vy;
-      l.x = clamp(l.x, l.r, this.cfg.width - l.r);
-      l.y = clamp(l.y, l.r, this.cfg.height - l.r);
+      if (l.x < this.x0 + l.r || l.x > this.x1 - l.r) l.vx = -l.vx;
+      if (l.y < this.y0 + l.r || l.y > this.y1 - l.r) l.vy = -l.vy;
+      l.x = clamp(l.x, this.x0 + l.r, this.x1 - l.r);
+      l.y = clamp(l.y, this.y0 + l.r, this.y1 - l.r);
       this.staticGrid.update(l);
       l.version = this.tickCount;
     }
@@ -618,8 +728,8 @@ export class World {
   spawnEject(x: number, y: number, vx: number, vy: number, ownerId: number, skin: number): Eject {
     const e = new Eject(
       this.newEntityId(),
-      clamp(x, 0, this.cfg.width),
-      clamp(y, 0, this.cfg.height),
+      clamp(x, this.x0, this.x1),
+      clamp(y, this.y0, this.y1),
       RULES.ejectMass,
       vx,
       vy,
@@ -636,8 +746,8 @@ export class World {
 
   private clampToWorld(e: { x: number; y: number; r: number }): void {
     const m = Math.min(e.r * 0.5, this.cfg.width / 2, this.cfg.height / 2);
-    e.x = clamp(e.x, m, this.cfg.width - m);
-    e.y = clamp(e.y, m, this.cfg.height - m);
+    e.x = clamp(e.x, this.x0 + m, this.x1 - m);
+    e.y = clamp(e.y, this.y0 + m, this.y1 - m);
   }
 
   private moveCells(dt: number, dtMs: number): void {
@@ -687,10 +797,10 @@ export class World {
         e.vy = 0;
       }
       // bounce off the world border
-      if (e.x < e.r || e.x > this.cfg.width - e.r) e.vx = -e.vx;
-      if (e.y < e.r || e.y > this.cfg.height - e.r) e.vy = -e.vy;
-      e.x = clamp(e.x, e.r, this.cfg.width - e.r);
-      e.y = clamp(e.y, e.r, this.cfg.height - e.r);
+      if (e.x < this.x0 + e.r || e.x > this.x1 - e.r) e.vx = -e.vx;
+      if (e.y < this.y0 + e.r || e.y > this.y1 - e.r) e.vy = -e.vy;
+      e.x = clamp(e.x, this.x0 + e.r, this.x1 - e.r);
+      e.y = clamp(e.y, this.y0 + e.r, this.y1 - e.r);
       e.version = this.tickCount;
     }
     for (const v of this.viruses) {
@@ -703,10 +813,10 @@ export class World {
         v.vx = 0;
         v.vy = 0;
       }
-      if (v.x < v.r || v.x > this.cfg.width - v.r) v.vx = -v.vx;
-      if (v.y < v.r || v.y > this.cfg.height - v.r) v.vy = -v.vy;
-      v.x = clamp(v.x, v.r, this.cfg.width - v.r);
-      v.y = clamp(v.y, v.r, this.cfg.height - v.r);
+      if (v.x < this.x0 + v.r || v.x > this.x1 - v.r) v.vx = -v.vx;
+      if (v.y < this.y0 + v.r || v.y > this.y1 - v.r) v.vy = -v.vy;
+      v.x = clamp(v.x, this.x0 + v.r, this.x1 - v.r);
+      v.y = clamp(v.y, this.y0 + v.r, this.y1 - v.r);
       this.staticGrid.update(v);
       v.version = this.tickCount;
     }

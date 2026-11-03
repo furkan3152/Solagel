@@ -1,5 +1,6 @@
 import type { CustomRoomConfig, CustomRoomError, CustomRoomQuote, CustomRoomView } from '@elymum/shared';
 import { SERVER } from '../config';
+import { serverText, t } from '../i18n';
 
 /** A refusal of the custom room API, with the server's code and friendly message. */
 export class RoomApiError extends Error {
@@ -24,14 +25,14 @@ async function call<T>(path: string, opts: { method?: 'GET' | 'POST' | 'DELETE';
   try {
     res = await fetch(`${SERVER.http}${path}`, { method: opts.method ?? 'GET', headers, body: opts.body === undefined ? undefined : JSON.stringify(opts.body) });
   } catch {
-    throw new RoomApiError(0, 'network', 'Cannot reach the server right now. Check your connection and try again.');
+    throw new RoomApiError(0, 'network', t('api.network'));
   }
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok) {
     const code = (typeof data.error === 'string' ? data.error : res.status === 429 ? 'rate_limited' : res.status === 401 ? 'unauthorized' : 'bad_request') as RoomApiError['code'];
     const fallback =
-      code === 'unauthorized' ? 'Your sign-in expired. Verify your wallet again.' : code === 'rate_limited' ? 'Too many tries. Wait a minute and try again.' : 'Something went wrong.';
-    throw new RoomApiError(res.status, code, typeof data.message === 'string' ? data.message : fallback, typeof data.field === 'string' ? data.field : undefined, data.paid === true);
+      code === 'unauthorized' ? t('api.expiredVerify') : code === 'rate_limited' ? t('api.rate_limited') : t('api.wrong');
+    throw new RoomApiError(res.status, code, serverText(typeof data.message === 'string' ? data.message : undefined, fallback), typeof data.field === 'string' ? data.field : undefined, data.paid === true);
   }
   return data as T;
 }

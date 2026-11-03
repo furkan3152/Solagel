@@ -1,3 +1,5 @@
+import { useT } from '../../i18n';
+import { em, T } from '../../i18n/rich';
 import type { PriceStory } from './logic';
 
 /**
@@ -6,30 +8,20 @@ import type { PriceStory } from './logic';
  * otherwise the HYPE price as it stands.
  */
 export function MintHeadline({ story, price }: { story: PriceStory; price: string | null }) {
+  const t = useT();
   if (story === 'testnet')
     return (
       <>
         <h1 className="mt-h display" data-story="testnet">
-          One emblem.
+          {t('mn.h.one')}
           <br />
-          {price ? (
-            <>
-              <em>{price} HYPE</em> on testnet.
-            </>
-          ) : (
-            <>
-              A <em>testnet</em> mint.
-            </>
-          )}
+          {price ? <T k="mn.h.testPrice" vars={{ price }} tags={{ em }} /> : <T k="mn.h.testMint" tags={{ em }} />}
           <br />
-          Many snacks.
+          {t('mn.h.snacks')}
         </h1>
-        <p className="mt-lede">
-          Your emblem is your ticket to the ring. {price ? <>Testnet mint: {price} HYPE, a fixed test price paid in test HYPE.</> : 'The testnet mint is paid in test HYPE.'} We do the arithmetic;
-          you do the eating.
-        </p>
+        <p className="mt-lede">{price ? t('mn.lede.testPrice', { price }) : t('mn.lede.test')}</p>
         <p className="mt-note" data-testid="mt-mainnet-note">
-          The mainnet mint will be much cheaper.
+          {t('mn.mainnetNote')}
         </p>
       </>
     );
@@ -37,36 +29,25 @@ export function MintHeadline({ story, price }: { story: PriceStory; price: strin
     return (
       <>
         <h1 className="mt-h display" data-story="dollar">
-          One emblem.
+          {t('mn.h.one')}
           <br />
-          One <em>dollar.</em>
+          <T k="mn.h.dollar" tags={{ em }} />
           <br />
-          Many snacks.
+          {t('mn.h.snacks')}
         </h1>
-        <p className="mt-lede">
-          Your emblem is your ticket to the ring. The price is pinned to a dollar and paid in HYPE, so the number on the button wiggles with the market. We do the arithmetic; you do the
-          eating.
-        </p>
+        <p className="mt-lede">{t('mn.lede.dollar')}</p>
       </>
     );
   return (
     <>
       <h1 className="mt-h display" data-story="plain">
-        One emblem.
+        {t('mn.h.one')}
         <br />
-        {price ? (
-          <>
-            <em>{price} HYPE.</em>
-          </>
-        ) : (
-          <>
-            Paid in <em>HYPE.</em>
-          </>
-        )}
+        {price ? <T k="mn.h.plainPrice" vars={{ price }} tags={{ em }} /> : <T k="mn.h.plain" tags={{ em }} />}
         <br />
-        Many snacks.
+        {t('mn.h.snacks')}
       </h1>
-      <p className="mt-lede">Your emblem is your ticket to the ring. The price is set on the contract and paid in HYPE. We do the arithmetic; you do the eating.</p>
+      <p className="mt-lede">{t('mn.lede.plain')}</p>
     </>
   );
 }

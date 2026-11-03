@@ -260,7 +260,8 @@ export class GameEngine {
     const { settings } = useUi.getState();
     this.lastJoin = { room };
     // `pic`: wear the profile picture (the server takes it from the signed-in wallet's profile; guests get the basic coin)
-    this.net.send({ t: 'join', room, name: settings.name || 'Coinie', skin: settings.skin, fp: fingerprint(), ...(settings.picture ? { pic: true } : {}) });
+    // `country`: the flag by the name ('' for none: the server then shows no flag, not the profile's)
+    this.net.send({ t: 'join', room, name: settings.name || 'Coinie', skin: settings.skin, fp: fingerprint(), country: settings.country, ...(settings.picture ? { pic: true } : {}) });
   }
 
   spectate(room?: string): void {
@@ -510,8 +511,7 @@ export class GameEngine {
         caller.life();
         // no join sound or welcome line: the owner turned the start sounds off
         this.world.myPid = m.playerId;
-        this.world.width = m.room.width;
-        this.world.height = m.room.height;
+        this.world.setBounds(m.room.x0 ?? 0, m.room.y0 ?? 0, (m.room.x0 ?? 0) + m.room.width, (m.room.y0 ?? 0) + m.room.height, performance.now(), true);
         this.ticketRetry = null;
         this.reclaiming = false;
         this.wasArena = m.room.mode === 'arena' ? (m.room.arenaId ?? null) : null;
@@ -548,8 +548,7 @@ export class GameEngine {
         this.thaw();
         // a fresh view on the server with every `spectating` (same room or not): a fresh mirror here
         this.world.reset();
-        this.world.width = m.room.width;
-        this.world.height = m.room.height;
+        this.world.setBounds(m.room.x0 ?? 0, m.room.y0 ?? 0, (m.room.x0 ?? 0) + m.room.width, (m.room.y0 ?? 0) + m.room.height, performance.now(), true);
         useUi.setState({ room: m.room, spectateTarget: m.targetPid });
         return;
       }
@@ -941,7 +940,8 @@ export class GameEngine {
     // (not on the round's receipt: the next round's clock is none of its business)
     this.cues.update(ui.room?.mode === 'arena' && ui.screen !== 'lobby' && ui.screen !== 'roundover' ? currentRound(ui.room.arenaId ?? null) : null);
 
-    // camera
+    // camera (its centre stays on the floor: no flying off past a border that just moved)
+    this.camera.limit = world.edgeAt(now);
     const me = world.myStats();
     if (me) {
       let short = this.camera.visibleShortFor(me.mass);

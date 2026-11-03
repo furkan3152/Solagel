@@ -53,6 +53,11 @@ export const PlayerFlag = {
    * id after the name (protocol v7). Never set for bots.
    */
   Avatar: 16,
+  /**
+   * The player plays for a country (`country`): the wire record carries its 2-letter ISO 3166-1 code
+   * (two ASCII capitals) after the name and the avatar id (protocol v8).
+   */
+  Country: 32,
 } as const;
 
 /** Binary client → server opcodes (first byte). */
@@ -92,6 +97,11 @@ export interface PlayerInfo {
    * wire this is `PlayerFlag.Avatar` in `flags` plus 8 bytes after the name; absent for bots and guests.
    */
   avatar?: string;
+  /**
+   * The country the player plays for (`isCountryCode`), shown as a flag by the name. On the wire this
+   * is `PlayerFlag.Country` in `flags` plus 2 bytes after the avatar id; absent for "no country".
+   */
+  country?: string;
 }
 
 export interface EntityRecord {
@@ -118,9 +128,22 @@ export interface SnapshotData {
   tick: number;
   /** Server-side view centre and visible height (used for spectating). */
   view: { x: number; y: number; h: number };
+  /**
+   * The world's playable rectangle (v8), sent when it changed since this connection last heard it
+   * (and with the first snapshot of a fresh view). Absent: unchanged.
+   */
+  bounds?: WorldBounds;
   players: PlayerInfo[];
   upserts: EntityRecord[];
   removals: Removal[];
+}
+
+/** A world's playable rectangle in world units: [x0, x1) x [y0, y1). Adaptive maps grow it in play. */
+export interface WorldBounds {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
 }
 
 /* ------------------------------------------------------------------ */
@@ -133,8 +156,12 @@ export interface RoomInfo {
   name: string;
   /** Practice rooms only. */
   league?: League;
+  /** Playable size now (an adaptive map grows in play: snapshots carry the live `bounds`). */
   width: number;
   height: number;
+  /** Origin of the playable square (v8; absent: 0). Adaptive maps sit centred in `MAP_SPACE`. */
+  x0?: number;
+  y0?: number;
   players: number;
   bots: number;
   maxPlayers: number;
@@ -260,6 +287,11 @@ export type ClientMessage =
        * guests and wallets without a picture; the coin keeps `skin` as its rim colour.
        */
       pic?: boolean;
+      /**
+       * The country the player plays for (ISO 3166-1 alpha-2, `isCountryCode`); absent or anything
+       * off the allowlist: none. Shown as a flag by the name (bots wear one too).
+       */
+      country?: string;
     }
   | { t: 'spectate'; room?: string; next?: boolean }
   | { t: 'leave' }
@@ -294,6 +326,8 @@ export interface StandingRow {
   holder?: boolean;
   /** Profile picture id (`avatarPath(id)`); humans only. */
   avatar?: string;
+  /** The country the player plays for (ISO 3166-1 alpha-2), absent for none. */
+  country?: string;
   /** Arena rooms: the player's connection dropped; the coin stays in play until the bell. */
   away?: boolean;
 }
@@ -310,6 +344,8 @@ export interface LbEntry {
   /** The row is a server bot: show the BOT tag. */
   isBot?: boolean;
   verified?: boolean;
+  /** The country the player plays for (ISO 3166-1 alpha-2), absent for none. */
+  country?: string;
 }
 
 /**

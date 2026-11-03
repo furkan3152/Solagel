@@ -16,6 +16,8 @@ export class Camera {
   private intro: { t: number; dur: number; from: number } | null = null;
   /** Death slow motion: a slight push in (multiplier, eased back by the engine). */
   push = 1;
+  /** The world's playable rectangle: the camera centre never leaves it (null: unclamped). */
+  limit: { x0: number; y0: number; x1: number; y1: number } | null = null;
 
   /** Starts the fall into the world (lobby → game). `dur` in seconds; 0 cancels. */
   zoomIntro(dur: number, from = 0.42): void {
@@ -47,6 +49,11 @@ export class Camera {
       this.y += (ty - this.y) * k;
       const kz = 1 - Math.exp(-dt * 4.5);
       this.base += (targetZoom - this.base) * kz;
+    }
+    const L = this.limit;
+    if (L && L.x1 > L.x0 && L.y1 > L.y0) {
+      this.x = clamp(this.x, L.x0, L.x1);
+      this.y = clamp(this.y, L.y0, L.y1);
     }
     let mul = this.push;
     if (this.intro) {

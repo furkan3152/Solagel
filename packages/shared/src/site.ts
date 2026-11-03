@@ -485,6 +485,11 @@ export interface ProfileView {
    * uploaded, deleted, or removed by an admin). Worn in game with `join.pic`.
    */
   avatar?: string | null;
+  /**
+   * The country the player plays for (ISO 3166-1 alpha-2, `isCountryCode`); null: none picked
+   * ("no flag"); absent: never saved (older profiles).
+   */
+  country?: string | null;
 }
 
 /** `GET /api/admin/avatars`: a player's profile picture, newest first. */
@@ -516,6 +521,8 @@ export interface ProfileResponse {
 export interface ProfileUpdate {
   name: string;
   skin: number;
+  /** ISO 3166-1 alpha-2 code, or null for no flag; absent: unchanged. */
+  country?: string | null;
 }
 
 /* ------------------------------------------------------------------ */

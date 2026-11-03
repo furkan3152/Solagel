@@ -163,7 +163,9 @@ function busyWorld(): { world: ClientWorld; camera: Camera } {
   const upserts: SnapshotData['upserts'] = [];
   const players: SnapshotData['players'] = [];
   for (let i = 0; i < 40; i++) {
-    players.push({ id: i + 1, skin: i % 12, flags: i % 3 === 0 ? 1 : i % 5 === 0 ? 4 : 0, name: `coin_${i}` });
+    // most coins play for a country (drawn flags and a code badge, TV); some for none
+    const country = i % 4 === 3 ? undefined : ['US', 'DE', 'BR', 'TV', 'JP', 'GB'][i % 6];
+    players.push({ id: i + 1, skin: i % 12, flags: i % 3 === 0 ? 1 : i % 5 === 0 ? 4 : 0, name: `coin_${i}`, ...(country ? { country } : {}) });
     upserts.push(add(EntityKind.Cell, 18 + rnd() ** 2 * 230, { playerId: i + 1, flags: i === 3 ? 1 : i === 5 ? 4 : 0 }));
   }
   for (let i = 0; i < 300; i++) upserts.push(add(EntityKind.Food, 10, { variant: i % 8 }));

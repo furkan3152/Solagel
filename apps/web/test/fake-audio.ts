@@ -129,6 +129,12 @@ export class FakeAudioContext {
   createMediaStreamDestination() {
     return new FakeStreamDest(this, 'stream');
   }
+  /** The node a media element (the player's own music file) plays through. */
+  createMediaElementSource(el: FakeMediaElement) {
+    const node = new FakeNode(this, 'media');
+    (node as FakeNode & { el?: FakeMediaElement }).el = el;
+    return node;
+  }
   createBuffer(_ch: number, length: number, sampleRate: number) {
     const data = new Float32Array(length);
     return { duration: length / sampleRate, length, sampleRate, numberOfChannels: 1, getChannelData: () => data };
@@ -144,6 +150,23 @@ export class FakeAudioContext {
   }
   sources(): FakeSource[] {
     return this.nodes.filter((n): n is FakeSource => n instanceof FakeSource);
+  }
+}
+
+/** An <audio> stand-in: records play / pause, and can fail like an undecodable file. */
+export class FakeMediaElement {
+  paused = true;
+  loop = false;
+  plays = 0;
+  onerror: (() => void) | null = null;
+  constructor(public src: string) {}
+  play() {
+    this.paused = false;
+    this.plays++;
+    return Promise.resolve();
+  }
+  pause() {
+    this.paused = true;
   }
 }
 

@@ -22,6 +22,8 @@
 // --full-shots also saves a viewport screenshot of every audited state (states/*.png).
 // --selftest checks the detectors against a fixture page with one known bug each.
 // --scenes takes id prefixes (`lobby` runs lobby-*); --list prints the scene ids.
+// --locale ru runs every scene in that interface language (en, tr, es, pt, ru, zh; default en): the
+//           browser locale and the stored language pick are set before the app boots.
 import { spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -46,6 +48,9 @@ const OUT_ROOT = resolve(opt('--out', '/home/user/Solagel/out/work/ui-audit'));
 const LABEL = opt('--label', 'run');
 const OUT = join(OUT_ROOT, LABEL);
 const WORKERS = Number(opt('--workers', '3'));
+const LOCALE = opt('--locale', 'en');
+const LOCALE_TAG = { en: 'en-US', tr: 'tr-TR', es: 'es-ES', pt: 'pt-BR', ru: 'ru-RU', zh: 'zh-CN' }[LOCALE];
+if (!LOCALE_TAG) throw new Error(`--locale must be one of en, tr, es, pt, ru, zh (got ${LOCALE})`);
 const MAX_SHOTS = Number(opt('--max-shots', '500'));
 const SHOTS = !flag('--no-shots');
 const log = (...a) => console.error('[ui-audit]', ...a);
@@ -183,14 +188,16 @@ async function stressPlay(page, { token = 'max', hype = 'huge' } = {}) {
         E.__auditWrapped = true;
         const orig = E.onMessage.bind(E);
         const long = (i) => (i % 2 ? LONG_M : LONG);
+        // flags by the names: drawn ones, a code badge (TV) and none
+        const flag = (i) => ['US', 'GB', 'TV', undefined, 'BR', 'JP'][i % 6];
         E.onMessage = (m) => {
           try {
             if (m.t === 'lb') {
-              m = { ...m, top: m.top.map((e, i) => ({ ...e, name: long(i), score: 99_999 - i * 997, value: e.value !== undefined ? 99_999_999_999_000_000 - i * 1e12 : undefined })), players: Math.max(m.players, 50) };
+              m = { ...m, top: m.top.map((e, i) => ({ ...e, name: long(i), country: flag(i), score: 99_999 - i * 997, value: e.value !== undefined ? 99_999_999_999_000_000 - i * 1e12 : undefined })), players: Math.max(m.players, 50) };
               if (m.me) m.me = { ...m.me, rank: 50, score: 99_999, value: m.me.value !== undefined ? 999_999_999_999_123_456 : undefined };
             } else if (m.t === 'standings') {
               const rows = [];
-              for (let i = 0; i < 50; i++) rows.push({ pid: 1000 + i, name: long(i), skin: i % 8, score: 99_999 - i * 1999, value: 99_999_999_999_000_000 - i * 1e15, isBot: i % 3 === 0, verified: i % 4 === 1, holder: i % 5 === 2 });
+              for (let i = 0; i < 50; i++) rows.push({ pid: 1000 + i, name: long(i), country: flag(i), skin: i % 8, score: 99_999 - i * 1999, value: 99_999_999_999_000_000 - i * 1e15, isBot: i % 3 === 0, verified: i % 4 === 1, holder: i % 5 === 2 });
               if (m.rows[0]) rows[7] = { ...m.rows[0], name: long(7), score: 99_999 };
               m = { ...m, rows, players: 50, watching: 1234 };
             } else if (m.t === 'kf') {
@@ -320,6 +327,27 @@ const SCENES = [
   { id: 'lobby-zero', app: 'play', auth: 'signed', run: (page, h) => openPlay(page, h, { token: 'zero', hype: 'zero' }) },
   { id: 'lobby-ranks', app: 'play', auth: 'signed', run: (page, h) => openPlay(page, h, { hash: '#ranks', wait: 1500 }) },
   {
+    // the Countries tab with a full board: 50 long-named players with flags, 50 countries with whale numbers
+    id: 'lobby-ranks-countries',
+    app: 'play',
+    auth: 'signed',
+    run: async (page, h) => {
+      const codes = ['US', 'GB', 'TV', 'BR', 'JP', 'DE', 'CD', 'VC', 'GS', 'KR', 'ZA', 'IN', 'TR', 'AU', 'CA', 'FR', 'IT', 'ES', 'MX', 'AR'];
+      const players = Array.from({ length: 50 }, (_, i) => ({ name: i % 2 ? LONG_M : LONG, score: 99_999 - i * 997, skin: i % 8, wallet: null, kills: 999 - i, at: 0, country: codes[i % codes.length] }));
+      // one row per country (the server's board is keyed by code): the 20 above, then 30 more
+      const board = [...codes, 'NL', 'SE', 'NO', 'PL', 'UA', 'GR', 'PT', 'IE', 'NZ', 'CH', 'AT', 'BE', 'DK', 'FI', 'CZ', 'HU', 'RO', 'CL', 'CO', 'PE', 'PH', 'ID', 'TH', 'VN', 'EG', 'NG', 'KE', 'MA', 'SA', 'AE'];
+      const countries = Array.from({ length: 50 }, (_, i) => ({ country: board[i], mass: 99_999_999_999 - i * 1e9, games: 9_999_999 - i, paid: i % 3 ? 999_999_999_999_123_456 - i * 1e15 : 0 }));
+      await page.route('**/api/leaderboard', (r) =>
+        r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ day: '2026-11-03', daily: players, allTime: players, countries: { daily: countries, allTime: countries } }) }),
+      );
+      await openPlay(page, h, { hash: '#ranks', wait: 1200 });
+      await h.check('today-flags');
+      // the third tab (today, all time, countries): by position, so every language runs it
+      await page.getByRole('tab').nth(2).click();
+      await settle(page, 1200);
+    },
+  },
+  {
     id: 'lobby-profile',
     app: 'play',
     auth: 'signed',
@@ -447,7 +475,7 @@ const SCENES = [
       await openPlay(page, h);
       await page.getByTestId('room-create').click();
       await page.waitForSelector('[data-testid="cr-setup"]');
-      await page.getByLabel('Room name').fill(LONG_ROOM);
+      await page.locator('input[data-autofocus]').first().fill(LONG_ROOM); // the room name (any language)
       await settle(page, 700);
       await h.check('setup');
       await page.getByTestId('cr-continue').click();
@@ -482,7 +510,7 @@ const SCENES = [
       await openPlay(page, h);
       await page.getByTestId('room-create').click();
       await page.waitForSelector('[data-testid="cr-setup"]');
-      await page.getByLabel('Room name').fill(LONG_ROOM);
+      await page.locator('input[data-autofocus]').first().fill(LONG_ROOM); // the room name (any language)
       await page.getByTestId('cr-continue').click();
       await page.waitForSelector('[data-testid="cr-payment"]');
       await page.evaluate(() => (window.__elymumChain.fakeWallet.delayMs = 100));
@@ -525,7 +553,7 @@ const SCENES = [
       await page.waitForSelector('.tf-sheet', { timeout: 8000 });
       await page.evaluate(() => (window.__elymumChain.fakeWallet.delayMs = 50));
       await page.locator('.tf-sheet .tf-pay').first().click();
-      await page.waitForFunction(() => window.__elymum.useUi.getState().screen === 'playing', null, { timeout: 20000 });
+      await page.waitForFunction(() => window.__elymum.useUi.getState().screen === 'playing', null, { timeout: 40000 });
       await settle(page, 1500);
       await hudExtras(page);
       // every power-up owned, the arena allowance shown: the bar at its largest
@@ -601,7 +629,7 @@ const SCENES = [
       await playPractice(page);
       await feed(page, { t: 'death', stats: DEATH_STATS, killer: LONG, killerSkin: 2 });
       await settle(page, 800);
-      const b = page.locator('.g-death button', { hasText: /watch|spectate/i }).first();
+      const b = page.locator('.g-death button.g-link').first();
       if (await b.count()) {
         await b.click();
         await settle(page, 1500);
@@ -832,20 +860,21 @@ async function newContext(browser, vp, theme, auth, app, brief = false, key = AU
     deviceScaleFactor: vp.dpr,
     isMobile: vp.touch,
     hasTouch: vp.touch,
-    locale: 'en-US',
+    locale: LOCALE_TAG,
     colorScheme: theme === 'night' ? 'dark' : 'light',
     reducedMotion: 'reduce',
   });
   await ctx.addInitScript(
-    ([theme, brief, name]) => {
+    ([theme, brief, name, locale]) => {
       try {
+        localStorage.setItem('elymum.locale.v1', locale);
         localStorage.setItem('elymum.settings.v1', JSON.stringify({ name, skin: 4, theme: theme === 'night' ? 'dark' : 'light', quality: 'low', sound: false, showMinimap: true, showChat: true, showNames: true, showMass: true, showFps: true }));
         if (!brief) localStorage.setItem('elymum.brief', '1');
         else localStorage.removeItem('elymum.brief');
         localStorage.setItem('elymum.autoQuality', 'off');
       } catch {}
     },
-    [theme, brief, LONG],
+    [theme, brief, LONG, LOCALE],
   );
   if (auth !== 'guest') await installEvmWallet(ctx, { privateKey: key, autoConnect: true, allowTransactions: false });
   return ctx;

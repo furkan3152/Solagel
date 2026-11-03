@@ -79,6 +79,8 @@ export const WORLD_THEMES: Record<'light' | 'dark', WorldTheme> = {
 
 /** Contour arcs: concentric circles around a point below the map (the floor curving up like the ring). */
 const CONTOUR_STEP = 250;
+/** The contour rings centre this far below the middle of the map (a 6800 pond: 1.3 x its height, as before). */
+const CONTOUR_DROP = 5440;
 /** Grass tuft / pebble grid cell (world units); about a third of the cells get one. */
 const TUFT_CELL = 210;
 /** Map edge corner radius (world units): the floor curves up into the wall. */
@@ -224,7 +226,7 @@ export class Renderer {
   private readonly coin: CoinOpts = { time: 0, lookX: 0, lookY: 0, expression: 'happy', pxPerUnit: 1, jelly: null, flags: 0, seed: 0, interior: undefined, minPrintPx: 14, picture: null };
   /** Profile pictures of the players in view (shared with the portraits). */
   private readonly avatars: AvatarCache = avatars;
-  private readonly label: StickerLabel = { name: null, value: null, verified: false, bot: false, holder: false, mine: false, x: 0, y: 0, fs: 1, devicePx: 1, zoom: 1, alpha: 1 };
+  private readonly label: StickerLabel = { name: null, value: null, verified: false, bot: false, holder: false, country: null, mine: false, x: 0, y: 0, fs: 1, devicePx: 1, zoom: 1, alpha: 1 };
 
   /** Sorts a visible entity into its layer (culled against `this.view`; see `draw`). */
   private readonly collect = (e: CEntity): void => {
@@ -393,18 +395,21 @@ export class Renderer {
    */
   private drawFloor(view: { x0: number; y0: number; x1: number; y1: number }, f: FrameInput, theme: WorldTheme): void {
     const { ctx } = this;
-    const w = f.world;
     const z = f.camera.zoom;
-    const W = w.width;
-    const H = w.height;
+    // the border as it is drawn now (an adaptive map eases outward when it grows)
+    const edge = f.world.edgeAt(f.now);
+    const X0 = edge.x0;
+    const Y0 = edge.y0;
+    const W = edge.x1 - edge.x0;
+    const H = edge.y1 - edge.y0;
     const er = Math.min(EDGE_RADIUS, W / 4, H / 4);
 
     // beyond the edge: the wall (only when the view reaches it)
-    const nearEdge = view.x0 < er || view.y0 < er || view.x1 > W - er || view.y1 > H - er;
+    const nearEdge = view.x0 < X0 + er || view.y0 < Y0 + er || view.x1 > X0 + W - er || view.y1 > Y0 + H - er;
     if (nearEdge) {
       ctx.beginPath();
       ctx.rect(view.x0 - 10, view.y0 - 10, view.x1 - view.x0 + 20, view.y1 - view.y0 + 20);
-      ctx.roundRect(0, 0, W, H, er);
+      ctx.roundRect(X0, Y0, W, H, er);
       ctx.fillStyle = theme.outside;
       ctx.fill('evenodd');
     }
@@ -412,12 +417,13 @@ export class Renderer {
     ctx.save();
     if (nearEdge) {
       ctx.beginPath();
-      ctx.roundRect(0, 0, W, H, er);
+      ctx.roundRect(X0, Y0, W, H, er);
       ctx.clip();
     }
-    // contour arcs, centred below the map; only the visible stretch of each is stroked
-    const cx = W / 2;
-    const cy = H * 1.3;
+    // contour arcs, centred below the map's middle (a fixed drop, so they hold still while it grows);
+    // only the visible stretch of each is stroked
+    const cx = X0 + W / 2;
+    const cy = Y0 + H / 2 + CONTOUR_DROP;
     let dMax = 0;
     let aMin = Infinity;
     let aMax = -Infinity;
@@ -456,10 +462,10 @@ export class Renderer {
 
     // grass tufts and pebbles: one path each (skipped when they would be specks)
     if (TUFT_CELL * z > 26) {
-      const i0 = Math.max(0, Math.floor(view.x0 / TUFT_CELL));
-      const i1 = Math.min(Math.ceil(W / TUFT_CELL), Math.ceil(view.x1 / TUFT_CELL));
-      const j0 = Math.max(0, Math.floor(view.y0 / TUFT_CELL));
-      const j1 = Math.min(Math.ceil(H / TUFT_CELL), Math.ceil(view.y1 / TUFT_CELL));
+      const i0 = Math.max(Math.floor(X0 / TUFT_CELL), Math.floor(view.x0 / TUFT_CELL));
+      const i1 = Math.min(Math.ceil((X0 + W) / TUFT_CELL), Math.ceil(view.x1 / TUFT_CELL));
+      const j0 = Math.max(Math.floor(Y0 / TUFT_CELL), Math.floor(view.y0 / TUFT_CELL));
+      const j1 = Math.min(Math.ceil((Y0 + H) / TUFT_CELL), Math.ceil(view.y1 / TUFT_CELL));
       ctx.beginPath();
       let pebbles = 0;
       for (let pass = 0; pass < 2; pass++) {
@@ -504,7 +510,7 @@ export class Renderer {
     if (nearEdge) {
       ctx.save();
       ctx.beginPath();
-      ctx.roundRect(0, 0, W, H, er);
+      ctx.roundRect(X0, Y0, W, H, er);
       ctx.strokeStyle = INK;
       ctx.lineWidth = 8 / z;
       ctx.stroke();
@@ -513,7 +519,7 @@ export class Renderer {
       ctx.stroke();
       const off = 18 / z;
       ctx.beginPath();
-      ctx.roundRect(-off, -off, W + off * 2, H + off * 2, er + off);
+      ctx.roundRect(X0 - off, Y0 - off, W + off * 2, H + off * 2, er + off);
       ctx.strokeStyle = theme.lights;
       ctx.lineWidth = 3.4 / z;
       ctx.lineCap = 'round';
@@ -796,6 +802,7 @@ export class Renderer {
     l.verified = (player.flags & PlayerFlag.Verified) !== 0;
     l.bot = (player.flags & PlayerFlag.Bot) !== 0;
     l.holder = (player.flags & PlayerFlag.Holder) !== 0;
+    l.country = player.country ?? null;
     l.mine = mine;
     l.x = e.x;
     l.y = y;
@@ -961,7 +968,13 @@ export class Renderer {
     // the arena square inscribed in the disc
     const inner = (size / 2 - 2) * Math.SQRT2 * 0.9;
     const o = (size - inner) / 2;
-    const s = inner / Math.max(f.world.width, f.world.height);
+    // the live border (it eases outward when an adaptive map grows): the square always fills the disc
+    const edge = f.world.edgeAt(f.now);
+    const X0 = edge.x0;
+    const Y0 = edge.y0;
+    const X1 = edge.x1;
+    const Y1 = edge.y1;
+    const s = inner / Math.max(X1 - X0, Y1 - Y0);
 
     // the arena's edge
     ctx.strokeStyle = wt.mapRing;
@@ -972,10 +985,10 @@ export class Renderer {
 
     // camera view: a cream frame (clamped to the arena)
     const v = f.camera.visibleRectInto(this.view, 0);
-    const x0 = o + Math.max(0, v.x0) * s;
-    const y0 = o + Math.max(0, v.y0) * s;
-    const x1 = o + Math.min(f.world.width, v.x1) * s;
-    const y1 = o + Math.min(f.world.height, v.y1) * s;
+    const x0 = o + (Math.max(X0, v.x0) - X0) * s;
+    const y0 = o + (Math.max(Y0, v.y0) - Y0) * s;
+    const x1 = o + (Math.min(X1, v.x1) - X0) * s;
+    const y1 = o + (Math.min(Y1, v.y1) - Y0) * s;
     ctx.strokeStyle = ELYSIUM.cream;
     ctx.lineWidth = 1.6;
     ctx.beginPath();
@@ -988,7 +1001,7 @@ export class Renderer {
     ctx.lineWidth = 1.4;
     for (const l of f.leaders) {
       ctx.beginPath();
-      ctx.arc(o + l.x * s, o + l.y * s, 3.6, 0, TAU);
+      ctx.arc(o + (l.x - X0) * s, o + (l.y - Y0) * s, 3.6, 0, TAU);
       ctx.fill();
       ctx.stroke();
     }
@@ -996,8 +1009,8 @@ export class Renderer {
     // me: a cyan dot with a ring that pulses outward
     const me = f.world.myStats();
     if (me) {
-      const x = o + me.x * s;
-      const y = o + me.y * s;
+      const x = o + (me.x - X0) * s;
+      const y = o + (me.y - Y0) * s;
       if (!f.reduced) {
         const p = (f.now / 1400) % 1;
         ctx.strokeStyle = ELYSIUM.cyan;

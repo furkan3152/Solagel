@@ -2,6 +2,7 @@ import { getAddress, isAddress, type Address } from 'viem';
 import { create } from 'zustand';
 import { describeError } from '@elymum/sdk';
 import { discoverProviders, type Eip1193Provider, type ProviderDetail } from './eip6963';
+import { t } from '../i18n';
 
 /**
  * The browser wallet (EIP-1193 via EIP-6963): which wallets this browser has, which one is
@@ -173,7 +174,7 @@ export function takeUserConnect(): boolean {
 export async function connectWallet(detail: ProviderDetail | string, opts: { silent?: boolean } = {}): Promise<Address | null> {
   const d = typeof detail === 'string' ? useWallet.getState().providers.find((x) => x.info.uuid === detail || x.info.rdns === detail) : detail;
   if (!d) {
-    useWallet.setState({ error: 'That wallet is not available in this browser.' });
+    useWallet.setState({ error: t('api.noSuchWallet') });
     return null;
   }
   if (!opts.silent) userInitiated = true;

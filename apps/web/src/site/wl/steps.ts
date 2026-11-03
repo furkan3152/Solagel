@@ -1,4 +1,5 @@
 import { SITE_LIMITS, WL_TASK_X_HANDLE, isXStatusUrl, normalizeXHandle, type PublicWlTask, type WlSubmitRequest } from '@elymum/shared';
+import { t } from '../../i18n';
 
 /**
  * The WL stepper, built from the server's task list. Two steps are structural and pinned:
@@ -19,8 +20,8 @@ export function buildSteps(tasks: readonly PublicWlTask[]): Step[] {
     {
       key: 'handle',
       kind: 'handle',
-      title: handleTask?.title || 'Your X handle',
-      body: handleTask?.body || 'Your ticket card, its number and its coin are made from your handle.',
+      title: handleTask?.title || t('wp.handle.title'),
+      body: handleTask?.body || t('wp.handle.body'),
       required: true,
       task: handleTask,
     },
@@ -28,8 +29,8 @@ export function buildSteps(tasks: readonly PublicWlTask[]): Step[] {
     {
       key: 'wallet',
       kind: 'sign',
-      title: walletTask?.title || 'Your EVM wallet',
-      body: walletTask?.body || 'Sign in with the wallet that should go on the list. It is free and sends no transaction.',
+      title: walletTask?.title || t('wp.wallet.title'),
+      body: walletTask?.body || t('wp.wallet.body'),
       required: true,
       task: walletTask,
     },
@@ -38,31 +39,31 @@ export function buildSteps(tasks: readonly PublicWlTask[]): Step[] {
 
 export type Answers = Record<string, string | boolean | undefined>;
 
-export const X_LINK_HINT = 'It looks like https://x.com/yourname/status/1234567890.';
+export const xLinkHint = () => t('wp.err.linkHint');
 
 /** The inline error of a step, or null when it may move on. The same rules as the server. */
 export function stepError(step: Step, answers: Answers, handle: string, signedIn: boolean): string | null {
   switch (step.kind) {
     case 'handle':
-      if (!handle.trim()) return 'Enter your X handle.';
-      return normalizeXHandle(handle) ? null : 'That is not an X handle. Use 1 to 15 letters, numbers or underscores, like @elymumio.';
+      if (!handle.trim()) return t('wp.err.handleEmpty');
+      return normalizeXHandle(handle) ? null : t('wp.err.handleBad');
     case 'sign':
-      return signedIn ? null : 'Sign in with your wallet to finish.';
+      return signedIn ? null : t('wp.err.sign');
     case 'follow_x':
     case 'join_link':
       if (!step.required) return null;
-      return answers[step.key] === true ? null : step.kind === 'follow_x' ? 'Tick this once you follow.' : 'Tick this once you have joined.';
+      return answers[step.key] === true ? null : step.kind === 'follow_x' ? t('wp.err.follow') : t('wp.err.join');
     case 'post_x':
     case 'engage_x': {
       if (step.kind === 'engage_x' && !step.task.available) return null;
       const v = String(answers[step.key] ?? '').trim();
-      if (!v) return step.required ? (step.kind === 'post_x' ? 'Paste the link to your post.' : 'Paste the link to your reply.') : null;
-      return isXStatusUrl(v) ? null : `That is not a link to an X post. ${X_LINK_HINT}`;
+      if (!v) return step.required ? (step.kind === 'post_x' ? t('wp.err.post') : t('wp.err.reply')) : null;
+      return isXStatusUrl(v) ? null : t('wp.err.notPost', { hint: xLinkHint() });
     }
     case 'text': {
       const v = String(answers[step.key] ?? '').trim();
-      if (!v) return step.required ? 'Answer this to continue.' : null;
-      return v.length > SITE_LIMITS.textAnswer ? `Keep it under ${SITE_LIMITS.textAnswer} characters.` : null;
+      if (!v) return step.required ? t('wp.err.answer') : null;
+      return v.length > SITE_LIMITS.textAnswer ? t('wp.err.long', { n: SITE_LIMITS.textAnswer }) : null;
     }
     default:
       return null;

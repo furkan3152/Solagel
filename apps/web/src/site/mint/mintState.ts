@@ -1,4 +1,5 @@
 import type { MintState } from '@elymum/shared';
+import { t } from '../../i18n';
 import { SiteApiError, site } from '../api';
 
 /**
@@ -90,7 +91,7 @@ export async function fetchMintState({ timeoutMs = 8000, retries = 2, backoff = 
       return s;
     } catch (e) {
       if (signal?.aborted) throw e;
-      last = timedOut ? new SiteApiError(0, 'network', 'The mint is taking too long to answer. Try again in a moment.') : e;
+      last = timedOut ? new SiteApiError(0, 'network', t('api.mintSlow')) : e;
       if (!retryable(last)) break;
     } finally {
       clearTimeout(timer);

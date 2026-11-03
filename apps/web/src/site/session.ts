@@ -2,6 +2,7 @@ import { getAddress } from 'viem';
 import { create } from 'zustand';
 import { describeError } from '@elymum/sdk';
 import { allowedDomains, expectedLoginMessage, fetchNonce, type MessageSigner, type NonceResponse } from '../wallet/siwe';
+import { t } from '../i18n';
 import { SiteApiError, auth } from './api';
 
 /**
@@ -64,7 +65,7 @@ export const isUserCancel = (err: unknown): boolean =>
  * chain, when the page knows it (the message must name it).
  */
 export async function signIn(wallet: MessageSigner, opts: { force?: boolean; chainId?: number | null } = {}): Promise<SiteSession> {
-  if (!wallet.address) throw new Error('Connect a wallet first.');
+  if (!wallet.address) throw new Error(t('api.connectFirst'));
   const address = getAddress(wallet.address);
   const stored = readStoredSession();
   const existing = opts.force ? null : (sessionFor(address) ?? (stored && same(stored.address, address) ? stored : null));
@@ -80,12 +81,12 @@ export async function signIn(wallet: MessageSigner, opts: { force?: boolean; cha
     } catch (err) {
       const status = (err as { status?: number }).status;
       if (status) {
-        throw new SiteApiError(status, status === 429 ? 'rate_limited' : 'bad_request', status === 429 ? 'Too many tries. Wait a minute and try again.' : 'Sign-in is unavailable right now.');
+        throw new SiteApiError(status, status === 429 ? 'rate_limited' : 'bad_request', status === 429 ? t('api.rate_limited') : t('api.signInDown'));
       }
-      throw new SiteApiError(0, 'network', 'Cannot reach the server right now. Check your connection and try again.');
+      throw new SiteApiError(0, 'network', t('api.network'));
     }
     const message = expectedLoginMessage(nonce, address, allowedDomains(), { chainId: opts.chainId ?? null });
-    if (!message) throw new Error('The sign-in message did not match this site, so it was not signed.');
+    if (!message) throw new Error(t('api.siweMismatch'));
     const signature = await wallet.signMessage(message);
     const res = await auth.login(address, message, signature);
     const session: SiteSession = { address: res.address, token: res.token, admin: res.admin };
@@ -93,7 +94,7 @@ export async function signIn(wallet: MessageSigner, opts: { force?: boolean; cha
     useSession.setState({ session, signing: false, error: null });
     return session;
   } catch (err) {
-    const msg = isUserCancel(err) ? 'Signing was cancelled.' : (err as Error)?.message || 'Sign-in failed.';
+    const msg = isUserCancel(err) ? t('api.signCancelled') : (err as Error)?.message || t('api.signFailed');
     useSession.setState({ signing: false, error: msg });
     throw err;
   } finally {

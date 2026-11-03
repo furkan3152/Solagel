@@ -23,7 +23,7 @@ describe('full standings (standings sheet)', () => {
     const me = fakeConn('0x1111111111111111111111111111111111111111');
     const other = fakeConn(null);
     const watcher = fakeConn(null);
-    const p = room.join(me, { name: 'Daphne', skin: 4, flags: PlayerFlag.Verified | PlayerFlag.Holder, avatar: '0123456789abcdef' });
+    const p = room.join(me, { name: 'Daphne', skin: 4, flags: PlayerFlag.Verified | PlayerFlag.Holder, avatar: '0123456789abcdef', country: 'NL' });
     room.join(other, { name: 'Guest', skin: 2, flags: 0 });
     room.spectate(watcher, false);
 
@@ -41,7 +41,9 @@ describe('full standings (standings sheet)', () => {
     const scores = first.rows.map((r) => r.score);
     expect([...scores].sort((a, b) => b - a)).toEqual(scores);
     const mine = first.rows.find((r) => r.pid === p.id)!;
-    expect(mine).toMatchObject({ name: 'Daphne', skin: 4, holder: true, verified: true, avatar: '0123456789abcdef' });
+    expect(mine).toMatchObject({ name: 'Daphne', skin: 4, holder: true, verified: true, avatar: '0123456789abcdef', country: 'NL' });
+    expect(first.rows.find((r) => r.name === 'Guest')?.country).toBeUndefined();
+    for (const b of first.rows.filter((r) => r.isBot)) expect(b.country).toMatch(/^[A-Z]{2}$/);
     expect(mine.isBot).toBeUndefined();
     const bots = first.rows.filter((r) => r.isBot);
     expect(bots.length).toBeGreaterThan(0);

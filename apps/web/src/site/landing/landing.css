@@ -551,6 +551,10 @@
   .ld-menu__price {
     align-self: start;
     margin-top: 4px;
+    /* a long price note (other languages) wraps instead of squeezing the dish */
+    max-width: 7.5em;
+    white-space: normal;
+    text-align: right;
   }
   .ld-menu__foot {
     flex-direction: column;

@@ -3,6 +3,7 @@ import { Suspense, lazy, useEffect, useState } from 'react';
 import { Kb, useReducedMotion } from '../../design';
 import { auth, site } from '../api';
 import { readStoredSession, type SiteSession } from '../storedSession';
+import { useT } from '../../i18n';
 import { GateScene } from './GateScene';
 import './play.css';
 
@@ -85,13 +86,14 @@ export function PlayGate({
 }
 
 function GateWait({ state }: { state: 'checking' | 'open' }) {
+  const t = useT();
   return (
     <Kb theme="night" className="pg-wait">
       <div className="pg-wait__gate">
         <GateScene mode={state === 'open' ? 'open' : 'checking'} />
       </div>
       <span className="mono pg-wait__label" role="status">
-        {state === 'open' ? 'Opening the ring…' : 'Checking the gate…'}
+        {state === 'open' ? t('pg.opening') : t('pg.checking')}
       </span>
     </Kb>
   );

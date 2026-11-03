@@ -84,7 +84,7 @@ export function usePicture(): PictureState {
       if (!file) return;
       void decodeFile(file).then(
         (src) => setEditing({ src, crop: centerCrop(src.width, src.height, STAGE) }),
-        (err) => fail(err instanceof PictureError ? err : new PictureError('That picture cannot be read.')),
+        (err) => fail(err instanceof PictureError ? err : new PictureError(t('pic.unreadable'))),
       );
     },
     setCrop(c) {

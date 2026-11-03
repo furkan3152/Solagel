@@ -46,7 +46,7 @@ the code is laid out and how it is run. The source of truth for everything is
 | Food | pastel coins (1 mass), gems (2), golden coins (8); refills at 60 per second |
 | Power-ups | Magnet (10 s), Pump (6 s, × 1.4 speed), Shield (8 s), Bag (+15 % mass, at least 40) |
 | Spawn shield | 3 s |
-| Room sizes | Practice 5600², Arena 6400²; humans per instance: Practice 40, Arena 50 |
+| Room sizes | Adaptive (default): side = 900 · √(expected players), 3,000..9,000 (5 / 10 / 25 / 50 / 100 players: 3,000 / 3,000 / 4,500 / 6,400 / 9,000); auto off: Practice 6800², Private 4600², Arena 7800². Humans per instance: Practice 40, Arena 50 |
 
 ### 2.2 Controls
 
@@ -70,6 +70,26 @@ the code is laid out and how it is run. The source of truth for everything is
   2,500, private rooms none. A bot sheds what it eats past the cap within a second or two.
 - `pnpm -F @elymum/server bot-bench <room|rookie|duel> [minutes] [seeds]` measures tick cost, newcomer survival,
   virus deaths, stuck time and new-vs-old duels headlessly.
+
+### 2.2.2 Adaptive map size
+
+- Each room's square map is sized for the players it expects: the people in it plus the bots that fill it
+  (`packages/shared/src/map-scale.ts`). Side = `perPlayer · √players`, rounded up to 100 and kept within
+  `min..max`; every player gets about `perPlayer²` of floor. Food, cacti and power-ups follow the area at a
+  practice pond's density (capped at 4,000 food and 40 cacti).
+- Admin (`/api/admin/bots` `maps`, stored in `DATA_DIR/site/bots.json`): per room kind, `auto` on/off,
+  `perPlayer` (300..2,000, default 900), `min` and `max` side (2,000..12,000, default 3,000 and 9,000). Auto off
+  keeps the mode's fixed preset.
+- When: arenas take the new size at each round start (sized for the people at the bell); during a round the map
+  only grows, by at most 600 units every 4 s, so nobody is trapped against a closing wall. Free rooms (no
+  rounds) grow the same way and shrink step by step only over empty floor (no person's coin near the band
+  that goes). The playable square sits centred in a fixed 12,000 space, so it opens on every side and the
+  server's spatial grids never need rebuilding. Clients get the bounds in the snapshot (protocol v8) and ease the
+  border, minimap and camera over 1.5 s.
+- Custom rooms: "Auto" (the default) follows the private rooms' curve for its bots plus its people; a chosen
+  size (XS..XL) never changes.
+- `pnpm -F @elymum/server exec tsx scripts/bench/map-bench.ts [players] [people] [seconds]` times a full room on
+  the adaptive map against the fixed arena preset, and the resizes themselves.
 
 ### 2.3 Value inside an arena (off-chain ledger)
 

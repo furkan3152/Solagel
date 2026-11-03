@@ -5,12 +5,13 @@ import { engine } from '../../game/instance';
 import { useT } from '../../i18n';
 import { lookForSkin as lookForBasicSkin } from '../../render/looks';
 import { closeModal, useUi } from '../../store';
+import { Flag } from '../Flag';
 import { BotTag } from './BotTag';
 import { useTokenFormat } from './format';
 
 /** The leaderboard's top rows as standings rows (shown until the server's full list arrives). */
 export function rowsFromLb(lb: readonly LbEntry[]): StandingRow[] {
-  return lb.map((e) => ({ pid: e.pid, name: e.name, skin: e.skin, score: e.score, value: e.value, isBot: e.isBot ?? e.bot, verified: e.verified }));
+  return lb.map((e) => ({ pid: e.pid, name: e.name, skin: e.skin, score: e.score, value: e.value, isBot: e.isBot ?? e.bot, verified: e.verified, country: e.country }));
 }
 
 /** The coin of a row: the uploaded picture in the skin's rim, else the skin's paint. */
@@ -45,6 +46,7 @@ const FullRow = memo(function FullRow({ r, rank, mine, arena }: RowProps) {
       </span>
       <RowCoin skin={r.skin} avatar={r.avatar} />
       <span className="g-full__name">
+        {r.country && <Flag code={r.country} size={13} className="g-full__flag" />}
         <span className="g-full__nm" title={r.name}>
           {mine ? t('g.full.you', { name: r.name }) : r.name}
         </span>

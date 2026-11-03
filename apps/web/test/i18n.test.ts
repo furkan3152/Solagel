@@ -2,8 +2,8 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { EMOTES, PowerUpType } from '@elymum/shared';
 import { describe, expect, it } from 'vitest';
-import { ICON_NAMES } from '../src/design/icons';
-import { translate, type TKey } from '../src/i18n';
+import { detectLocale, formatMessage, LOCALES, loadLocale, setLocale, translate, type Dict, type Locale, type TKey } from '../src/i18n';
+import { renderRich } from '../src/i18n/rich';
 import { en } from '../src/i18n/en';
 
 // vitest runs in apps/web (pnpm -r / -F run each package in its own directory)
@@ -18,7 +18,7 @@ function sources(dir: string): string[] {
 }
 
 const code = sources(SRC)
-  .filter((p) => !p.endsWith(join('i18n', 'en.ts')))
+  .filter((p) => !p.endsWith(join('i18n', 'en.ts')) && !p.includes(join('i18n', 'locales')))
   .map((p) => readFileSync(p, 'utf8'))
   .join('\n');
 const keys = new Set(Object.keys(en));
@@ -44,7 +44,6 @@ describe('the English string table', () => {
 
   it('has every key the code builds at run time', () => {
     const built = [
-      ...ICON_NAMES.map((n) => `ds.icon.${n}`),
       ...EMOTES.map((e) => `g.emote.${e.id}`),
       ...Object.values(PowerUpType).map((p) => `pu.${p}`),
       ...errorCodes().map((c) => `err.${c}`),

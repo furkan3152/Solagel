@@ -307,3 +307,26 @@
     animation: none;
   }
 }
+
+/* flags: before a name on the podium and in the deck; the countries board leads with them */
+.nw-podium__flag {
+  margin-right: 5px;
+  vertical-align: -1px;
+}
+.nw-deck__flag {
+  vertical-align: -2px;
+}
+.nw-table__who > .kb-flag {
+  flex: none;
+}
+.nw-table--countries .nw-table__who {
+  gap: 12px;
+}
+@media (max-width: 420px) {
+  .nw-table__who {
+    gap: 7px;
+  }
+  .nw-table--countries .nw-table__who {
+    gap: 9px;
+  }
+}

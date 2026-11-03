@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { useT } from '../i18n';
 
 /**
  * Recovery for the site's lazily loaded pages.
@@ -47,21 +48,22 @@ export function installChunkRecovery(win: Window = window): void {
 
 /** What a page shows when it could not open: a short note, Try again and Reload. */
 export function PageTrouble({ chunk, onRetry }: { chunk: boolean; onRetry: () => void }) {
+  const t = useT();
   return (
     <main className="site-trouble" role="alert" data-testid="site-crash">
       <div className="site-trouble__card">
-        <span className="kicker">{chunk ? 'A fresh version is out' : 'Something tripped'}</span>
-        <h1 className="site-trouble__h display">This page did not open.</h1>
-        <p>{chunk ? 'The site was updated while this tab was open. Reload to get the new version.' : 'A part of this page fell over. Try again; if it keeps happening, reload the page.'}</p>
+        <span className="kicker">{chunk ? t('site.trouble.fresh') : t('site.trouble.tripped')}</span>
+        <h1 className="site-trouble__h display">{t('boot.title')}</h1>
+        <p>{chunk ? t('site.trouble.freshBody') : t('site.trouble.trippedBody')}</p>
         <div className="site-trouble__row">
           <button type="button" className="kb-btn kb-btn--primary kb-btn--md" onClick={() => window.location.reload()}>
             <span className="kb-btn__label">
-              <span className="kb-btn__text">Reload the page</span>
+              <span className="kb-btn__text">{t('boot.reload')}</span>
             </span>
           </button>
           <button type="button" className="kb-btn kb-btn--secondary kb-btn--md" onClick={onRetry}>
             <span className="kb-btn__label">
-              <span className="kb-btn__text">Try again</span>
+              <span className="kb-btn__text">{t('tf.retry')}</span>
             </span>
           </button>
         </div>

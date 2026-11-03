@@ -4,6 +4,8 @@ import { Button, CoinCharacter, Field, FoodBit, Icon, Stamp, StampSpinner, Stick
 import { SiteApiError, site } from '../api';
 import { dropExpired } from '../session';
 import { X_URL, useSiteSettings, xProfile } from '../settings';
+import { intlLocale, useT, type TKey } from '../../i18n';
+import { renderRich, strong, T } from '../../i18n/rich';
 import { SitePage, XIcon } from '../Shell';
 import { SiteWalletProvider, WalletSignIn, useSiteSession } from '../wallet/SiteWallet';
 import { Ascent } from '../wl/Ascent';
@@ -13,8 +15,8 @@ import { StoryPlate } from '../wl/Plate';
 import { CollabGuide } from './CollabGuide';
 import {
   EMPTY_DRAFT,
-  ROLE_LABEL,
-  TYPE_LABEL,
+  roleLabel,
+  typeLabel,
   applyBody,
   applyErrors,
   countdown,
@@ -39,13 +41,20 @@ export function CollabPage() {
   );
 }
 
-const PHASE: Record<CollabPublic['phase'], { label: string; tone: 'sun' | 'down' | 'up' | 'teal' | 'ink' }> = {
-  in_review: { label: 'In review', tone: 'sun' },
-  rejected: { label: 'Not this time', tone: 'down' },
-  approved: { label: 'Approved', tone: 'up' },
-  submitted: { label: 'Submitted', tone: 'teal' },
-  closed: { label: 'Closed', tone: 'ink' },
+const PHASE: Record<CollabPublic['phase'], { label: TKey; tone: 'sun' | 'down' | 'up' | 'teal' | 'ink' }> = {
+  in_review: { label: 'cb.ph.in_review', tone: 'sun' },
+  rejected: { label: 'cb.ph.rejected', tone: 'down' },
+  approved: { label: 'cb.ph.approved', tone: 'up' },
+  submitted: { label: 'cb.ph.submitted', tone: 'teal' },
+  closed: { label: 'cb.ph.closed', tone: 'ink' },
 };
+const fmtDate = (ms: number, time = false) =>
+  new Date(ms).toLocaleString(intlLocale(), time ? { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' } : { day: 'numeric', month: 'short' });
+const xLink = (c: ReactNode) => (
+  <a className="cb-link" href={X_URL} target="_blank" rel="noreferrer">
+    {c}
+  </a>
+);
 
 function stepOf(view: 'new' | CollabPublic | null): number {
   if (!view || view === 'new') return 0;
@@ -54,6 +63,7 @@ function stepOf(view: 'new' | CollabPublic | null): number {
 }
 
 function Collab() {
+  const t = useT();
   const { settings, loaded } = useSiteSettings();
   const session = useSiteSession();
   const [collabs, setCollabs] = useState<CollabPublic[] | null>(null);
@@ -107,10 +117,10 @@ function Collab() {
   const reviewing = collabs?.some((c) => c.phase === 'in_review') ?? false;
   useEffect(() => {
     if (!session || !reviewing) return;
-    const t = setInterval(() => {
+    const id = setInterval(() => {
       if (!document.hidden) void refresh(session.token);
     }, 60_000);
-    return () => clearInterval(t);
+    return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, reviewing]);
 
@@ -119,21 +129,21 @@ function Collab() {
   const replace = (c: CollabPublic) => setCollabs((list) => (list ? list.map((x) => (x.id === c.id ? c : x)) : [c]));
   const guideFor = current && current !== 'new' ? current : null;
 
-  const STEPS = ['Apply', 'Review', 'Add wallets'];
+  const STEPS = [t('cb.step.apply'), t('cb.step.review'), t('cb.step.wallets')];
   return (
-    <StoryPlate numeral="V" title="Bring your community" aside="/collab" className="cb-plate">
+    <StoryPlate numeral="V" title={t('cb.plate')} aside="/collab" className="cb-plate">
       <div className="cb-page">
         <header className="cb-head">
           <div className="cb-head__text">
-            <span className="kicker wl-kicker">Collab · Elymum NFT</span>
+            <span className="kicker wl-kicker">{t('cb.kicker')}</span>
             <h1 className="wl-title">
-              Bring your community to the <span className="wonk">table.</span>
+              <T k="cb.h" tags={{ w: (c) => <span className="wonk">{c}</span> }} />
             </h1>
-            <p className="wl-deck">DAOs, guilds, alpha groups and NFT projects can get Elymum WL spots to raffle to their members. Tell us about yours; a person reads every one.</p>
+            <p className="wl-deck">{t('cb.deck')}</p>
           </div>
           <div className="cb-head__map">
-            <Ascent total={3} done={current && current !== 'new' && current.phase === 'submitted' ? 3 : step} active={step} paint="sun" labels={['APPLY', 'REVIEW', 'WALLETS']} goal="Spots" />
-            <ol className="cb-progress" aria-label="Collab steps">
+            <Ascent total={3} done={current && current !== 'new' && current.phase === 'submitted' ? 3 : step} active={step} paint="sun" labels={[t('cb.map.apply'), t('cb.map.review'), t('cb.map.wallets')]} goal={t('cb.map.goal')} />
+            <ol className="cb-progress" aria-label={t('cb.steps')}>
               {STEPS.map((label, i) => (
                 <li key={label} className={i === step ? 'is-on' : i < step ? 'is-done' : ''} aria-current={i === step ? 'step' : undefined}>
                   <span className="cb-progress__n num" aria-hidden="true">
@@ -153,47 +163,47 @@ function Collab() {
               <span className="cb-guidecard__art" aria-hidden="true">
                 <ChoreArt kind="text" />
               </span>
-              <span className="cb-guidecard__k mono">Collab guide</span>
-              <strong>Read this first</strong>
-              <span>How to run your raffle and hand out your spots. Two minutes, with a post you can copy.</span>
+              <span className="cb-guidecard__k mono">{t('cb.g.kicker')}</span>
+              <strong>{t('cb.gc.read')}</strong>
+              <span>{t('cb.gc.body')}</span>
               <span className="cb-guidecard__open mono">
-                Open <Icon name="arrow" size={16} />
+                {t('cb.gc.open')} <Icon name="arrow" size={16} />
               </span>
             </button>
 
             <Sticker as="section" className="cb-mine" tone="white" pad="sm" lift="sm" aria-labelledby="cb-mine-h">
               <h2 id="cb-mine-h" className="cb-mine__h mono">
-                Mission log · your communities
+                {t('cb.mine.h')}
               </h2>
               {!session ? (
                 <>
-                  <p className="wl-note">Applied before? Sign in with the same wallet to see your communities.</p>
+                  <p className="wl-note">{t('cb.mine.before')}</p>
                   {signin ? (
-                    <WalletSignIn label="Sign in" />
+                    <WalletSignIn label={t('site.hc.signIn')} />
                   ) : (
                     <Button variant="secondary" size="sm" lead="wallet" onClick={() => setSignin(true)}>
-                      Sign in
+                      {t('site.hc.signIn')}
                     </Button>
                   )}
                 </>
               ) : collabs === null ? (
-                <StampSpinner label="Loading" />
+                <StampSpinner label={t('mn.loading')} />
               ) : (
                 <>
-                  {collabs.length === 0 && <p className="wl-note">No communities yet. Fill in the form to apply.</p>}
+                  {collabs.length === 0 && <p className="wl-note">{t('cb.mine.none')}</p>}
                   <ul className="cb-mine__list">
                     {collabs.map((c) => (
                       <li key={c.id}>
                         <button type="button" className={`cb-mine__item${current !== 'new' && current?.id === c.id ? ' is-on' : ''}`} onClick={() => setSelected(c.id)} aria-current={current !== 'new' && current?.id === c.id ? 'true' : undefined}>
                           <span className="cb-mine__name">{c.community}</span>
-                          <span className={`kb-chip mono kb-tone-${PHASE[c.phase].tone}`}>{PHASE[c.phase].label}</span>
+                          <span className={`kb-chip mono kb-tone-${PHASE[c.phase].tone}`}>{t(PHASE[c.phase].label)}</span>
                         </button>
                       </li>
                     ))}
                   </ul>
                   {collabs.length > 0 && (
                     <button type="button" className="wl-textlink" onClick={() => setSelected('new')} disabled={!settings.collabOpen}>
-                      + Add another community
+                      {t('cb.mine.add')}
                     </button>
                   )}
                   <WalletSignIn />
@@ -206,18 +216,14 @@ function Collab() {
               )}
             </Sticker>
             <p className="wl-note">
-              Questions? DM{' '}
-              <a className="cb-link" href={X_URL} target="_blank" rel="noreferrer">
-                @elymumio
-              </a>{' '}
-              on X. We answer, slowly but kindly.
+              <T k="cb.questions" tags={{ x: xLink }} />
             </p>
           </aside>
 
           <section className="cb-main" aria-live="polite">
             {!loaded || current === null ? (
               <div className="cb-loading">
-                <StampSpinner label="Loading" />
+                <StampSpinner label={t('mn.loading')} />
               </div>
             ) : current === 'new' ? (
               settings.collabOpen ? (
@@ -300,26 +306,23 @@ function Vignette({
 }
 
 function ClosedCard({ onSignIn }: { onSignIn?: () => void }) {
+  const t = useT();
   return (
     <Sticker tone="white" lift="lg" pad="none" round="lg" className="cb-state" data-phase="shut">
-      <Vignette tone="night" plate="Plate V.0" caption="After hours" coin="cream" mood="sleepy" prop={<Moon size={84} />} night />
+      <Vignette tone="night" plate={t('cb.vig.plate', { n: '0' })} caption={t('cb.vig.after')} coin="cream" mood="sleepy" prop={<Moon size={84} />} night />
       <div className="cb-state__body">
-        <Stamp text="Closed" tone="ink" size="lg" rotate={-6} className="cb-state__stamp" />
-        <h2 className="cb-state__title">Applications are closed.</h2>
+        <Stamp text={t('cb.ph.closed')} tone="ink" size="lg" rotate={-6} className="cb-state__stamp" />
+        <h2 className="cb-state__title">{t('wp.closed.h')}</h2>
         <p className="cb-state__text">
-          We are not taking new communities right now. Follow{' '}
-          <a className="cb-link" href={X_URL} target="_blank" rel="noreferrer">
-            @elymumio
-          </a>{' '}
-          on X for the next round.
+          <T k="cb.closed.body" tags={{ x: xLink }} />
         </p>
         <div className="wl-row">
           <a className="kb-btn kb-btn--teal kb-btn--md" href={X_URL} target="_blank" rel="noreferrer">
-            <XIcon /> Follow @elymumio
+            <XIcon /> {t('pg.follow')}
           </a>
           {onSignIn && (
             <button type="button" className="wl-textlink" onClick={onSignIn}>
-              Applied before? Sign in
+              {t('wp.closed.signin')}
             </button>
           )}
         </div>
@@ -329,6 +332,7 @@ function ClosedCard({ onSignIn }: { onSignIn?: () => void }) {
 }
 
 function Select({ id, label, value, onChange, options, error }: { id: string; label: string; value: string; onChange: (v: string) => void; options: [string, string][]; error?: string }) {
+  const t = useT();
   return (
     <div className={`kb-field cb-field${error ? ' is-error' : ''}`}>
       <label className="kb-field__label mono" htmlFor={id}>
@@ -336,7 +340,7 @@ function Select({ id, label, value, onChange, options, error }: { id: string; la
       </label>
       <span className="cb-select">
         <select id={id} className="cb-input" value={value} onChange={(e) => onChange(e.target.value)} aria-invalid={error ? true : undefined} aria-describedby={error ? `${id}-err` : undefined}>
-          <option value="">Pick one</option>
+          <option value="">{t('cb.pick')}</option>
           {options.map(([v, l]) => (
             <option key={v} value={v}>
               {l}
@@ -358,6 +362,7 @@ const FIELD_OF: Record<string, keyof ApplyDraft> = { community: 'community', typ
 
 export function ApplyForm({ d, setD, onApplied, onCancel }: { d: ApplyDraft; setD: (f: (x: ApplyDraft) => ApplyDraft) => void; onApplied: (c: CollabPublic) => void; onCancel?: () => void }) {
   const session = useSiteSession();
+  const t = useT();
   const [errors, setErrors] = useState<ApplyErrors>({});
   const [website, setWebsite] = useState('');
   const [sending, setSending] = useState(false);
@@ -380,7 +385,7 @@ export function ApplyForm({ d, setD, onApplied, onCancel }: { d: ApplyDraft; set
       return;
     }
     if (!session) {
-      setFormErr('Sign in with your wallet below to send it.');
+      setFormErr(t('cb.f.signFirst'));
       return;
     }
     setSending(true);
@@ -389,12 +394,12 @@ export function ApplyForm({ d, setD, onApplied, onCancel }: { d: ApplyDraft; set
       onApplied(await site.applyCollab(session.token, applyBody(d, website)));
     } catch (err) {
       if (dropExpired(err)) {
-        setFormErr('Your sign-in expired. Sign in again to send it.');
+        setFormErr(t('wp.expired'));
         return;
       }
       const se = err as SiteApiError;
       const k = se.field ? FIELD_OF[se.field] : undefined;
-      if (k) setErrors((x) => ({ ...x, [k]: se.code === 'collab_limit' ? 'This X account has already applied twice.' : se.message }));
+      if (k) setErrors((x) => ({ ...x, [k]: se.code === 'collab_limit' ? t('cb.f.limit') : se.message }));
       else setFormErr(se.message);
     } finally {
       inFlight.current = false;
@@ -421,28 +426,28 @@ export function ApplyForm({ d, setD, onApplied, onCancel }: { d: ApplyDraft; set
           </span>
         </span>
         <div>
-          <span className="kicker cb-form__k">Plate V.i · the application</span>
+          <span className="kicker cb-form__k">{t('cb.f.kicker')}</span>
           <h2 className="cb-form__h" id="cb-form-h">
-            Apply with your community
+            {t('cb.f.h')}
           </h2>
-          <p className="cb-form__lede">Nine fields, one free signature. We DM you on X when there is news.</p>
+          <p className="cb-form__lede">{t('cb.f.lede')}</p>
         </div>
       </div>
       <div className="cb-form__grid">
-        <Field className="cb-span2" label="Community name" value={d.community} onChange={(e) => set('community')(e.target.value)} maxLength={SITE_LIMITS.community + 20} error={errors.community} autoComplete="off" />
-        <Select id="cb-type" label="Type" value={d.type} onChange={set('type')} options={COLLAB_TYPES.map((t) => [t, TYPE_LABEL[t]])} error={errors.type} />
-        <Field label="Members" value={d.members} onChange={(e) => set('members')(e.target.value)} inputMode="numeric" error={errors.members} placeholder="2500" autoComplete="off" />
-        <Field label="Community X" prefix="@" value={d.communityX.replace(/^@/, '')} onChange={(e) => set('communityX')(e.target.value)} error={errors.communityX} autoCapitalize="off" spellCheck={false} autoComplete="off" />
-        <Field label="Your X" prefix="@" value={d.contactX.replace(/^@/, '')} onChange={(e) => set('contactX')(e.target.value)} error={errors.contactX} autoCapitalize="off" spellCheck={false} autoComplete="off" />
-        <Field label="Your Discord (optional)" value={d.discord} onChange={(e) => set('discord')(e.target.value)} error={errors.discord} maxLength={SITE_LIMITS.discord + 10} autoComplete="off" />
-        <Select id="cb-role" label="Your role" value={d.role} onChange={set('role')} options={COLLAB_ROLES.map((r) => [r, ROLE_LABEL[r]])} error={errors.role} />
+        <Field className="cb-span2" label={t('cb.f.name')} value={d.community} onChange={(e) => set('community')(e.target.value)} maxLength={SITE_LIMITS.community + 20} error={errors.community} autoComplete="off" />
+        <Select id="cb-type" label={t('cb.f.type')} value={d.type} onChange={set('type')} options={COLLAB_TYPES.map((k) => [k, typeLabel(k)])} error={errors.type} />
+        <Field label={t('cb.f.members')} value={d.members} onChange={(e) => set('members')(e.target.value)} inputMode="numeric" error={errors.members} placeholder="2500" autoComplete="off" />
+        <Field label={t('cb.f.communityX')} prefix="@" value={d.communityX.replace(/^@/, '')} onChange={(e) => set('communityX')(e.target.value)} error={errors.communityX} autoCapitalize="off" spellCheck={false} autoComplete="off" />
+        <Field label={t('cb.f.yourX')} prefix="@" value={d.contactX.replace(/^@/, '')} onChange={(e) => set('contactX')(e.target.value)} error={errors.contactX} autoCapitalize="off" spellCheck={false} autoComplete="off" />
+        <Field label={t('cb.f.discord')} value={d.discord} onChange={(e) => set('discord')(e.target.value)} error={errors.discord} maxLength={SITE_LIMITS.discord + 10} autoComplete="off" />
+        <Select id="cb-role" label={t('cb.f.role')} value={d.role} onChange={set('role')} options={COLLAB_ROLES.map((r) => [r, roleLabel(r)])} error={errors.role} />
         <Field
           className="cb-span2"
-          label="Your post about Elymum on X"
+          label={t('cb.f.post')}
           value={d.postUrl}
           onChange={(e) => set('postUrl')(e.target.value)}
           error={errors.postUrl}
-          hint="Post about Elymum on your community's X (tag @elymumio), then paste the link here. You cannot apply without it."
+          hint={t('cb.f.postHint')}
           placeholder="https://x.com/yourcommunity/status/…"
           inputMode="url"
           spellCheck={false}
@@ -450,7 +455,7 @@ export function ApplyForm({ d, setD, onApplied, onCancel }: { d: ApplyDraft; set
         />
         <div className={`kb-field cb-span2${errors.about ? ' is-error' : ''}`}>
           <label className="kb-field__label mono" htmlFor="cb-about">
-            About your community
+            {t('cb.f.about')}
           </label>
           <textarea id="cb-about" className="wl-input" value={d.about} onChange={(e) => set('about')(e.target.value)} maxLength={SITE_LIMITS.about + 50} aria-invalid={errors.about ? true : undefined} aria-describedby="cb-about-note" />
           <p className={`kb-field__note${errors.about ? ' cb-err' : ' num'}`} id="cb-about-note" role={errors.about ? 'alert' : undefined}>
@@ -467,17 +472,17 @@ export function ApplyForm({ d, setD, onApplied, onCancel }: { d: ApplyDraft; set
           <ChoreArt kind="wallet" />
         </span>
         <div className="wl-grid">
-          <p className="wl-note">Your wallet signs once to send this: free, no transaction. Use the wallet you will come back with: it is how you add your winners later.</p>
-          {!session && <WalletSignIn label="Sign in to apply" />}
+          <p className="wl-note">{t('cb.f.signNote')}</p>
+          {!session && <WalletSignIn label={t('cb.f.signIn')} />}
         </div>
       </div>
       <div className="wl-row cb-form__actions">
         <Button type="submit" variant="primary" icon="arrow" disabled={!session} loading={sending}>
-          Apply
+          {t('cb.f.apply')}
         </Button>
         {onCancel && (
           <Button variant="ghost" onClick={onCancel}>
-            Cancel
+            {t('tf.cancel')}
           </Button>
         )}
       </div>
@@ -491,22 +496,23 @@ export function ApplyForm({ d, setD, onApplied, onCancel }: { d: ApplyDraft; set
 }
 
 function Summary({ c }: { c: CollabPublic }) {
+  const t = useT();
   return (
     <dl className="cb-summary">
       <div>
-        <dt>Community</dt>
+        <dt>{t('cb.s.community')}</dt>
         <dd>{c.community}</dd>
       </div>
       <div>
-        <dt>Type</dt>
-        <dd>{TYPE_LABEL[c.type]}</dd>
+        <dt>{t('cb.f.type')}</dt>
+        <dd>{typeLabel(c.type)}</dd>
       </div>
       <div>
-        <dt>Members</dt>
-        <dd className="num">{c.members.toLocaleString('en-US')}</dd>
+        <dt>{t('cb.f.members')}</dt>
+        <dd className="num">{c.members.toLocaleString(intlLocale())}</dd>
       </div>
       <div>
-        <dt>Community X</dt>
+        <dt>{t('cb.f.communityX')}</dt>
         <dd>
           <a className="cb-link" href={xProfile(c.communityX)} target="_blank" rel="noreferrer">
             @{c.communityX}
@@ -517,25 +523,26 @@ function Summary({ c }: { c: CollabPublic }) {
   );
 }
 
-const when = (t: number | null | undefined) => (t && t > 1e11 ? new Date(t).toLocaleDateString('en-US', { day: 'numeric', month: 'short' }) : null);
+const when = (ms: number | null | undefined) => (ms && ms > 1e11 ? fmtDate(ms) : null);
 
 /** The mission log: what happened to this application so far, one line per leg. */
 function MissionLog({ c }: { c: CollabPublic }) {
+  const t = useT();
   type Leg = { k: string; text: ReactNode; at?: string | null; state: 'done' | 'now' | 'bad' | 'todo' };
-  const legs: Leg[] = [{ k: 'applied', text: 'Applied with a post on X', at: when(c.createdAt), state: 'done' }];
+  const legs: Leg[] = [{ k: 'applied', text: t('cb.log.applied'), at: when(c.createdAt), state: 'done' }];
   if (c.phase === 'in_review') {
-    legs.push({ k: 'review', text: <>In review. We DM @{c.contactX} on X</>, state: 'now' });
-    legs.push({ k: 'wallets', text: 'Raffle and winners', state: 'todo' });
+    legs.push({ k: 'review', text: t('cb.log.review', { handle: `@${c.contactX}` }), state: 'now' });
+    legs.push({ k: 'wallets', text: t('cb.log.raffle'), state: 'todo' });
   } else if (c.phase === 'rejected') {
-    legs.push({ k: 'review', text: 'Reviewed: not this time', at: when(c.updatedAt), state: 'bad' });
+    legs.push({ k: 'review', text: t('cb.log.rejected'), at: when(c.updatedAt), state: 'bad' });
   } else {
-    legs.push({ k: 'review', text: `Approved: ${c.spots ?? 0} WL spots`, state: 'done' });
-    if (c.phase === 'approved') legs.push({ k: 'wallets', text: <>Winners due by {c.deadline ? new Date(c.deadline).toLocaleString('en-US', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'the deadline'}</>, state: 'now' });
-    if (c.phase === 'submitted') legs.push({ k: 'wallets', text: `List locked: ${c.wallets.length} ${c.wallets.length === 1 ? 'wallet' : 'wallets'}`, at: when(c.submittedAt), state: 'done' });
-    if (c.phase === 'closed') legs.push({ k: 'wallets', text: 'Deadline passed without a list', state: 'bad' });
+    legs.push({ k: 'review', text: t('cb.log.approved', { n: c.spots ?? 0 }), state: 'done' });
+    if (c.phase === 'approved') legs.push({ k: 'wallets', text: t('cb.log.due', { when: c.deadline ? fmtDate(c.deadline, true) : t('cb.deadline') }), state: 'now' });
+    if (c.phase === 'submitted') legs.push({ k: 'wallets', text: t('cb.log.locked', { n: c.wallets.length }), at: when(c.submittedAt), state: 'done' });
+    if (c.phase === 'closed') legs.push({ k: 'wallets', text: t('cb.log.closed'), state: 'bad' });
   }
   return (
-    <ol className="cb-log" aria-label="Mission log">
+    <ol className="cb-log" aria-label={t('cb.log')}>
       {legs.map((l) => (
         <li key={l.k} className={`cb-log__leg is-${l.state}`}>
           <span className="cb-log__dot" aria-hidden="true">
@@ -575,33 +582,29 @@ function StateCard({ stamp, tone, title, children, c, vignette }: { stamp: strin
 }
 
 export function CollabView({ collab: c, onChange, onGuide, onExpired }: { collab: CollabPublic; onChange: (c: CollabPublic) => void; onGuide: () => void; onExpired: () => void }) {
+  const t = useT();
   if (c.phase === 'in_review')
     return (
       <StateCard
-        stamp="In review"
+        stamp={t('cb.ph.in_review')}
         tone="sun"
-        title="Thanks for applying."
+        title={t('cb.rev.title')}
         c={c}
-        vignette={<Vignette tone="mist" plate="Plate V.ii" caption="Someone is reading it" coin="cyan" mood="smug" prop={<Inspection size={116} />} />}
+        vignette={<Vignette tone="mist" plate={t('cb.vig.plate', { n: 'ii' })} caption={t('cb.vig.reading')} coin="cyan" mood="smug" prop={<Inspection size={116} />} />}
       >
-        We are reviewing it and will DM <strong>@{c.contactX}</strong> on X. This page updates by itself once your spots are ready, so no need to refresh it every four
-        minutes. (We would.)
+        <T k="cb.rev.body" vars={{ handle: `@${c.contactX}` }} tags={{ strong }} />
       </StateCard>
     );
   if (c.phase === 'rejected')
     return (
       <StateCard
-        stamp="Not this time"
+        stamp={t('cb.ph.rejected')}
         tone="down"
-        title="Not this time."
+        title={t('cb.rej.title')}
         c={c}
-        vignette={<Vignette tone="linen" plate="Plate V.ii" caption="A little rain" coin="foam" mood="scared" coinSize={88} prop={<RainyCloud size={84} />} />}
+        vignette={<Vignette tone="linen" plate={t('cb.vig.plate', { n: 'ii' })} caption={t('cb.vig.rain')} coin="foam" mood="scared" coinSize={88} prop={<RainyCloud size={84} />} />}
       >
-        Thanks for applying. We cannot offer spots to this community this round. DM{' '}
-        <a className="cb-link" href={X_URL} target="_blank" rel="noreferrer">
-          @elymumio
-        </a>{' '}
-        on X if something changed.
+        <T k="cb.rej.body" tags={{ x: xLink }} />
       </StateCard>
     );
   return <SpotsView c={c} onChange={onChange} onGuide={onGuide} onExpired={onExpired} />;
@@ -637,6 +640,7 @@ function Clock({ text }: { text: string }) {
 
 function SpotsView({ c, onChange, onGuide, onExpired }: { c: CollabPublic; onChange: (c: CollabPublic) => void; onGuide: () => void; onExpired: () => void }) {
   const session = useSiteSession();
+  const t = useT();
   const spots = c.spots ?? 0;
   const locked = c.phase !== 'approved';
   const now = useNow(c.phase === 'approved');
@@ -686,12 +690,12 @@ function SpotsView({ c, onChange, onGuide, onExpired }: { c: CollabPublic; onCha
     setRows(next);
     setShown((s) => Math.min(spots, Math.max(s, i + parsed.length + 1)));
     const dropped = i + parsed.length - spots;
-    setMsg({ kind: dropped > 0 ? 'err' : 'ok', text: dropped > 0 ? `Pasted ${parsed.length - dropped} rows. ${dropped} did not fit in your ${spots} spots.` : `Pasted ${parsed.length} rows.` });
+    setMsg({ kind: dropped > 0 ? 'err' : 'ok', text: dropped > 0 ? t('cb.paste.over', { n: parsed.length - dropped, dropped, spots }) : t('cb.paste.ok', { n: parsed.length }) });
   };
 
   const fail = (err: unknown) => {
     if (dropExpired(err)) {
-      setMsg({ kind: 'err', text: 'Your sign-in expired. Sign in again with the same wallet.' });
+      setMsg({ kind: 'err', text: t('cb.expired') });
       return;
     }
     const se = err as SiteApiError;
@@ -709,19 +713,19 @@ function SpotsView({ c, onChange, onGuide, onExpired }: { c: CollabPublic; onCha
 
   const save = async () => {
     if (!session || errs.some(Boolean)) {
-      setMsg({ kind: 'err', text: 'Fix the rows marked in red first.' });
+      setMsg({ kind: 'err', text: t('cb.fixRows') });
       return;
     }
     const url = raffle.trim();
     if (url && !isXStatusUrl(url)) {
-      setRaffleErr('That is not a link to an X post. It looks like https://x.com/yourcommunity/status/1234567890.');
+      setRaffleErr(t('cb.notPost'));
       return;
     }
     setBusy('save');
     try {
       const next = await site.saveWallets(session.token, c.id, filled, url || null);
       onChange(next);
-      setMsg({ kind: 'ok', text: `Saved ${filled.length} ${filled.length === 1 ? 'wallet' : 'wallets'}.` });
+      setMsg({ kind: 'ok', text: t('cb.saved', { n: filled.length }) });
     } catch (err) {
       fail(err);
     } finally {
@@ -734,15 +738,15 @@ function SpotsView({ c, onChange, onGuide, onExpired }: { c: CollabPublic; onCha
     if (!session) return;
     const url = raffle.trim();
     if (!isXStatusUrl(url)) {
-      setRaffleErr(url ? 'That is not a link to an X post. It looks like https://x.com/yourcommunity/status/1234567890.' : 'Post the raffle on X first, then paste its link. You cannot submit without it.');
+      setRaffleErr(url ? t('cb.notPost') : t('cb.raffleFirst'));
       return;
     }
     if (errs.some(Boolean)) {
-      setMsg({ kind: 'err', text: 'Fix the rows marked in red first.' });
+      setMsg({ kind: 'err', text: t('cb.fixRows') });
       return;
     }
     if (filled.length === 0) {
-      setMsg({ kind: 'err', text: 'Add at least one winner first.' });
+      setMsg({ kind: 'err', text: t('cb.oneWinner') });
       return;
     }
     setBusy('submit');
@@ -759,14 +763,14 @@ function SpotsView({ c, onChange, onGuide, onExpired }: { c: CollabPublic; onCha
 
   const vignette =
     c.phase === 'submitted' ? (
-      <Vignette tone="sand" plate="Plate V.iv" caption="Sealed and sent" coin="teal" mood="happy" prop={<FlyingLetter size={104} />} />
+      <Vignette tone="sand" plate={t('cb.vig.plate', { n: 'iv' })} caption={t('cb.vig.sent')} coin="teal" mood="happy" prop={<FlyingLetter size={104} />} />
     ) : c.phase === 'closed' ? (
-      <Vignette tone="night" plate="Plate V.iv" caption="The bell rang" coin="cream" mood="sleepy" prop={<Moon size={80} />} night />
+      <Vignette tone="night" plate={t('cb.vig.plate', { n: 'iv' })} caption={t('cb.vig.bell')} coin="cream" mood="sleepy" prop={<Moon size={80} />} night />
     ) : (
       <Vignette
         tone="mint"
-        plate="Plate V.iii"
-        caption="Spots to hand out"
+        plate={t('cb.vig.plate', { n: 'iii' })}
+        caption={t('cb.vig.spots')}
         coin="sun"
         mood="happy"
         second={{ paint: 'cyan', mood: 'happy' }}
@@ -783,45 +787,40 @@ function SpotsView({ c, onChange, onGuide, onExpired }: { c: CollabPublic; onCha
   const head =
     c.phase === 'submitted' ? (
       <>
-        <Stamp text="Submitted" tone="teal" size="lg" rotate={-6} className="cb-state__stamp" />
-        <h2 className="cb-state__title">The list is in.</h2>
-        <p className="cb-state__text">
-          {c.wallets.length} {c.wallets.length === 1 ? 'wallet is' : 'wallets are'} on the way to the Elymum WL. The list is locked; DM{' '}
-          <a className="cb-link" href={X_URL} target="_blank" rel="noreferrer">
-            @elymumio
-          </a>{' '}
-          if you need a change.
-        </p>
+        <Stamp text={t('cb.ph.submitted')} tone="teal" size="lg" rotate={-6} className="cb-state__stamp" />
+        <h2 className="cb-state__title">{t('cb.sub.title')}</h2>
+        <p className="cb-state__text">{renderRich(t('cb.sub.body', { n: c.wallets.length }), { x: xLink })}</p>
       </>
     ) : c.phase === 'closed' ? (
       <>
-        <Stamp text="Closed" tone="ink" size="lg" rotate={-6} className="cb-state__stamp" />
-        <h2 className="cb-state__title">The deadline passed.</h2>
+        <Stamp text={t('cb.ph.closed')} tone="ink" size="lg" rotate={-6} className="cb-state__stamp" />
+        <h2 className="cb-state__title">{t('cb.late.title')}</h2>
         <p className="cb-state__text">
-          The list was not submitted in time. DM{' '}
-          <a className="cb-link" href={X_URL} target="_blank" rel="noreferrer">
-            @elymumio
-          </a>{' '}
-          on X if you need more time.
+          <T k="cb.late.body" tags={{ x: xLink }} />
         </p>
       </>
     ) : (
       <>
         <div className="cb-spots">
-          <Stamp text={`${spots} spots`} sub="approved" tone="up" round size="lg" rotate={-8} />
+          <Stamp text={t('cb.spots', { n: spots })} sub={t('cb.spotsSub')} tone="up" round size="lg" rotate={-8} />
           <div className="cb-timer" role="timer" aria-live="off">
             <Clock text={countdown(c.deadline ?? 0, now)} />
-            <span className="cb-timer__l mono">left to submit</span>
+            <span className="cb-timer__l mono">{t('cb.left')}</span>
           </div>
         </div>
-        <h2 className="cb-state__title">You have spots. Run your raffle.</h2>
+        <h2 className="cb-state__title">{t('cb.ap.title')}</h2>
         <p className="cb-state__text">
-          Post the raffle on your community&apos;s X (the{' '}
-          <button type="button" className="wl-textlink cb-inline" onClick={onGuide}>
-            collab guide
-          </button>{' '}
-          has a post ready), then add your winners here before{' '}
-          {c.deadline ? new Date(c.deadline).toLocaleString('en-US', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'the deadline'}.
+          <T
+            k="cb.ap.body"
+            vars={{ when: c.deadline ? fmtDate(c.deadline, true) : t('cb.deadline') }}
+            tags={{
+              guide: (g) => (
+                <button type="button" className="wl-textlink cb-inline" onClick={onGuide}>
+                  {g}
+                </button>
+              ),
+            }}
+          />
         </p>
       </>
     );
@@ -836,7 +835,7 @@ function SpotsView({ c, onChange, onGuide, onExpired }: { c: CollabPublic; onCha
           {locked ? (
             c.raffleUrl && (
               <p className="cb-raffle__locked">
-                <span className="mono cb-raffle__k">Raffle post</span>{' '}
+                <span className="mono cb-raffle__k">{t('cb.g.postLabel')}</span>{' '}
                 <a className="cb-link" href={c.raffleUrl} target="_blank" rel="noreferrer">
                   {c.raffleUrl}
                 </a>
@@ -844,14 +843,14 @@ function SpotsView({ c, onChange, onGuide, onExpired }: { c: CollabPublic; onCha
             )
           ) : (
             <Field
-              label="Your raffle post on X"
+              label={t('cb.r.label')}
               value={raffle}
               onChange={(e) => {
                 setRaffle(e.target.value);
                 setRaffleErr(null);
               }}
               error={raffleErr ?? undefined}
-              hint="Post the raffle on your community's X, then paste its link. You cannot submit without it."
+              hint={t('cb.r.hint')}
               placeholder="https://x.com/yourcommunity/status/…"
               inputMode="url"
               spellCheck={false}
@@ -862,7 +861,7 @@ function SpotsView({ c, onChange, onGuide, onExpired }: { c: CollabPublic; onCha
 
         <div className="cb-table-head">
           <h3 className="cb-table-h">
-            {locked ? 'Your WL winners' : 'Add your WL winners'}
+            {locked ? t('cb.t.locked') : t('cb.t.add')}
             {locked && <Icon name="lock" size={18} className="cb-table-h__lock" />}
           </h3>
           <span className="num cb-count" aria-live="polite">
@@ -872,7 +871,7 @@ function SpotsView({ c, onChange, onGuide, onExpired }: { c: CollabPublic; onCha
         <SeatRow spots={spots} filled={locked ? c.wallets.length : filled.length} locked={locked} />
         {!locked && (
           <p className="cb-paste">
-            <span className="kb-key">Paste</span> a list (a name and a wallet on each line) into any row: it fills the rows below. One person per row.
+            <T k="cb.t.paste" tags={{ key: (k) => <span className="kb-key">{k}</span> }} />
           </p>
         )}
         <div className={`cb-tablewrap${locked ? ' is-locked' : ''}`}>
@@ -880,8 +879,8 @@ function SpotsView({ c, onChange, onGuide, onExpired }: { c: CollabPublic; onCha
             <thead>
               <tr>
                 <th scope="col">#</th>
-                <th scope="col">Name</th>
-                <th scope="col">Wallet</th>
+                <th scope="col">{t('cb.t.name')}</th>
+                <th scope="col">{t('wp.st.wallet')}</th>
               </tr>
             </thead>
             <tbody>
@@ -894,7 +893,7 @@ function SpotsView({ c, onChange, onGuide, onExpired }: { c: CollabPublic; onCha
                       {locked ? (
                         <span className="cb-name">{r.name || '—'}</span>
                       ) : (
-                        <input className="cb-cell" aria-label={`Row ${i + 1} name`} value={r.name} maxLength={SITE_LIMITS.walletName + 10} onChange={(e) => setCell(i, 'name', e.target.value)} onPaste={onPaste(i)} placeholder="Discord or X" />
+                        <input className="cb-cell" aria-label={t('cb.t.rowName', { n: i + 1 })} value={r.name} maxLength={SITE_LIMITS.walletName + 10} onChange={(e) => setCell(i, 'name', e.target.value)} onPaste={onPaste(i)} placeholder={t('cb.t.namePh')} />
                       )}
                     </td>
                     <td>
@@ -904,14 +903,14 @@ function SpotsView({ c, onChange, onGuide, onExpired }: { c: CollabPublic; onCha
                         <>
                           <input
                             className="cb-cell cb-cell--wallet"
-                            aria-label={`Row ${i + 1} wallet`}
+                            aria-label={t('cb.t.rowWallet', { n: i + 1 })}
                             aria-invalid={err ? true : undefined}
                             value={r.wallet}
                             onChange={(e) => setCell(i, 'wallet', e.target.value.trim())}
                             onPaste={onPaste(i)}
                             spellCheck={false}
                             autoComplete="off"
-                            placeholder="0x… wallet"
+                            placeholder={t('cb.t.walletPh')}
                           />
                           {err && (
                             <span className="cb-cell__err" role="alert">
@@ -931,30 +930,30 @@ function SpotsView({ c, onChange, onGuide, onExpired }: { c: CollabPublic; onCha
           <>
             {table.length < spots && (
               <button type="button" className="wl-textlink" onClick={() => setShown((s) => Math.min(spots, s + 10))}>
-                + Show more rows ({spots - table.length} left)
+                {t('cb.t.more', { n: spots - table.length })}
               </button>
             )}
             <div className="wl-row cb-actions">
               <Button variant="secondary" onClick={() => void save()} disabled={busy !== null} loading={busy === 'save'}>
-                Save wallets
+                {t('cb.t.save')}
               </Button>
               {confirm ? (
-                <div className="cb-confirm" role="group" aria-label="Confirm submit">
+                <div className="cb-confirm" role="group" aria-label={t('cb.t.confirm')}>
                   <span>
-                    Submitting locks the list. Submit {filled.length} {filled.length === 1 ? 'wallet' : 'wallets'}?
+                    {t('cb.t.confirmQ', { n: filled.length })}
                   </span>
                   <div className="wl-row">
                     <Button variant="primary" size="sm" onClick={() => void submit()}>
-                      Yes, submit
+                      {t('cb.t.yes')}
                     </Button>
                     <Button variant="ghost" size="sm" onClick={() => setConfirm(false)}>
-                      Not yet
+                      {t('cb.t.no')}
                     </Button>
                   </div>
                 </div>
               ) : (
                 <Button variant="primary" icon="arrow" onClick={() => setConfirm(true)} disabled={busy !== null} loading={busy === 'submit'}>
-                  Submit wallets
+                  {t('cb.t.submit')}
                 </Button>
               )}
             </div>

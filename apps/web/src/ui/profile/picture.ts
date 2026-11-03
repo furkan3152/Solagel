@@ -1,4 +1,5 @@
 import { AVATAR_LIMITS, isAvatarId } from '@elymum/shared';
+import { t } from '../../i18n';
 
 /**
  * "Your picture" in the coin picker: what the player can do right now, and the crop / resize of an
@@ -87,7 +88,7 @@ export class PictureError extends Error {}
 /** Decodes a picked file; refuses other types and huge files. */
 export async function decodeFile(file: File): Promise<Source> {
   if (!SOURCE_TYPES.includes(file.type)) throw new PictureError('Pick a PNG, JPG, WebP or GIF picture.');
-  if (file.size > MAX_SOURCE_BYTES) throw new PictureError('That picture is too large (15 MB at most).');
+  if (file.size > MAX_SOURCE_BYTES) throw new PictureError(t('pic.big'));
   if (typeof createImageBitmap === 'function') {
     try {
       const bmp = await createImageBitmap(file);
@@ -103,7 +104,7 @@ export async function decodeFile(file: File): Promise<Source> {
     await img.decode();
     return { image: img, width: img.naturalWidth, height: img.naturalHeight, close: () => {} };
   } catch {
-    throw new PictureError('That picture cannot be read.');
+    throw new PictureError(t('pic.unreadable'));
   } finally {
     URL.revokeObjectURL(url);
   }
@@ -120,7 +121,7 @@ export async function encodePicture(src: Source, crop: Crop, stage: number, px: 
   const c = document.createElement('canvas');
   c.width = c.height = px;
   const ctx = c.getContext('2d');
-  if (!ctx) throw new PictureError('This browser cannot draw the picture.');
+  if (!ctx) throw new PictureError(t('pic.canvas'));
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(src.image, sx, sy, size, size, 0, 0, px, px);
@@ -131,5 +132,5 @@ export async function encodePicture(src: Source, crop: Crop, stage: number, px: 
   }
   const png = await toBlob(c, 'image/png');
   if (png && png.size <= AVATAR_LIMITS.maxBytes) return png;
-  throw new PictureError('That picture is too detailed to fit. Try another one.');
+  throw new PictureError(t('pic.detailed'));
 }

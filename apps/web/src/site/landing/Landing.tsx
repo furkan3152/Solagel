@@ -19,6 +19,8 @@ import {
   type CoinMood,
   type CoinPaint,
 } from '../../design';
+import { useT, type TKey } from '../../i18n';
+import { em, renderRich, T } from '../../i18n/rich';
 import { FACTS } from '../../ui/docs/facts';
 import { usePeelLetters } from '../peel';
 import { Link } from '../router';
@@ -44,73 +46,71 @@ function Hero({ collabOpen, gameAccess, wlOpen, sound }: { collabOpen: boolean; 
   const reduced = useReducedMotion();
   const m = useMoves();
   const peel = usePeelLetters<HTMLHeadingElement>();
+  const t = useT();
   return (
     <section className="ld-hero" aria-labelledby="ld-hero-title">
       <RingScene time="dawn" variant="full" animate={!reduced} className="ld-hero__ring">
         <div className="ld-hero__inner">
           <motion.div className="ld-hero__drop" variants={m.stickerDrop} custom={-1.6} initial="hidden" animate="shown">
             <Sticker pad="lg" lift="lg" tape className="ld-hero__card">
-              <p className="kicker ld-hero__kicker">A five-minute feast · on Elysium</p>
+              <p className="kicker ld-hero__kicker">{t('ld.hero.kicker')}</p>
               <h1 id="ld-hero-title" ref={peel.ref} className={`ld-hero__title ${peel.className}`}>
                 <Wordmark height={104} playful={!reduced} className="ld-hero__mark" />
               </h1>
-              <p className="ld-hero__tag">You are small change with a big appetite.</p>
-              <p className="ld-hero__lede">
-                Eat the food. Eat coins smaller than you. Run from the ones that are bigger. Five minutes later the bell rings and whatever you&rsquo;ve swallowed is
-                yours.
-              </p>
+              <p className="ld-hero__tag">{t('ld.hero.tag')}</p>
+              <p className="ld-hero__lede">{t('ld.hero.lede')}</p>
               <p className="ld-hero__homer">
-                <i className="quote">&ldquo;No snow is there, nor heavy storm, nor ever rain.&rdquo;</i>
+                <i className="quote">{t('ld.hero.quote')}</i>
                 <br />
-                Homer, on the Elysian plain. He didn&rsquo;t mention lunch.
+                {t('ld.hero.homer')}
               </p>
               <div className="ld-hero__ctas">
                 <SiteLinkButton href="/wl" variant="primary" icon="arrow" onClick={sound.click}>
-                  Join the WL
+                  {t('ld.cta.wl')}
                 </SiteLinkButton>
                 {collabOpen ? (
                   <SiteLinkButton href="/collab" onClick={sound.click}>
-                    Collab
+                    {t('site.nav.collab')}
                   </SiteLinkButton>
                 ) : (
-                  <Link href="/collab" className="kb-btn kb-btn--secondary kb-btn--md st-btn ld-soon" onClick={sound.click} aria-label="Collab, soon">
+                  <Link href="/collab" className="kb-btn kb-btn--secondary kb-btn--md st-btn ld-soon" onClick={sound.click} aria-label={t('ld.cta.collabSoon')}>
                     <span className="kb-btn__label">
-                      <span className="kb-btn__text">Collab</span>
+                      <span className="kb-btn__text">{t('site.nav.collab')}</span>
                     </span>
-                    <span className="ld-soon__tag mono">Soon</span>
+                    <span className="ld-soon__tag mono">{t('ld.soon')}</span>
                   </Link>
                 )}
                 {gameAccess !== 'admins' && (
                   <a href="/play" className="kb-btn kb-btn--teal kb-btn--md st-btn" onClick={sound.click}>
                     <Icon name="play" size={20} className="kb-btn__lead" />
                     <span className="kb-btn__label">
-                      <span className="kb-btn__text">{gameAccess === 'holders' ? 'Play (holders)' : 'Play'}</span>
+                      <span className="kb-btn__text">{gameAccess === 'holders' ? t('ld.cta.playHolders') : t('site.nav.play')}</span>
                     </span>
                   </a>
                 )}
               </div>
               <p className="ld-hero__note mono">
-                <span className="ld-flowline">WL → Mint → Play</span>
-                <span>{wlOpen ? 'WL is open · signing is free' : 'WL is closed for now'}</span>
+                <span className="ld-flowline">{t('ld.flowline')}</span>
+                <span>{wlOpen ? t('ld.wlOpen') : t('ld.wlClosed')}</span>
               </p>
             </Sticker>
           </motion.div>
           <motion.div className="ld-hero__badge-wrap" variants={m.popIn} initial="hidden" animate="shown" transition={{ delay: 0.5 }}>
             <Sticker tone="sun" pad="sm" tilt={4} className="ld-hero__badge">
               <span className="num ld-hero__badge-n">05:00</span>
-              <span className="mono ld-hero__badge-l">per round. Then lunch.</span>
+              <span className="mono ld-hero__badge-l">{t('ld.badge')}</span>
             </Sticker>
           </motion.div>
         </div>
         <CoinPond still={reduced} events={{ onEat: sound.chomp }} />
         {!reduced && (
           <p className="ld-pond__hint mono" aria-hidden="true">
-            Psst: tap a coin to feed it
+            {t('ld.pondHint')}
           </p>
         )}
         <button type="button" className="ld-sound mono" aria-pressed={sound.on} onClick={sound.toggle}>
           <Icon name={sound.on ? 'sound' : 'mute'} size={16} />
-          <span>Sound {sound.on ? 'on' : 'off'}</span>
+          <span>{sound.on ? t('ld.soundOn') : t('ld.soundOff')}</span>
         </button>
       </RingScene>
     </section>
@@ -137,50 +137,48 @@ function MenuLine({ art, dish, note, price }: { art: ReactNode; dish: string; no
 
 function Feast() {
   const m = useMoves();
+  const t = useT();
   return (
     <section className="ld-plate ld-feast" id="feast" aria-labelledby="ld-feast-h">
-      <PlateLabel numeral={2} title="The feast on Elysium" aside="What it is" />
+      <PlateLabel numeral={2} title={t('ld.feast.plate')} aside={t('ld.feast.aside')} />
       <div className="ld-wrap ld-feast__grid">
         <motion.div className="ld-feast__copy" variants={m.popIn} initial="hidden" whileInView="shown" viewport={view}>
-          <p className="kicker">What Elymum is</p>
+          <p className="kicker">{t('ld.feast.kicker')}</p>
           <h2 className="ld-h2" id="ld-feast-h">
-            On Elysium, everything is a <span className="wonk ld-ul">feast.</span> Including you.
+            <T k="ld.feast.h" tags={{ u: (c) => <span className="wonk ld-ul">{c}</span> }} />
           </h2>
-          <p className="lede">
-            Elymum is a coin-eats-coin arena on Elysium, Kinetiq&rsquo;s ring in orbit. You are a coin. Rounds run five minutes on the wall clock, every arena on the same
-            bell. Eat food and smaller coins to grow; whatever you are worth at the bell is paid to your wallet in {SYMBOL}.
-          </p>
-          <ul className="ld-facts" aria-label="In numbers">
+          <p className="lede">{t('ld.feast.lede', { sym: SYMBOL })}</p>
+          <ul className="ld-facts" aria-label={t('ld.facts')}>
             <li>
               <b className="num">{FACTS.rules.roundMin}:00</b>
-              <span className="mono">a round</span>
+              <span className="mono">{t('ld.fact.round')}</span>
             </li>
             <li>
               <b className="num">{FACTS.capacity.arena}</b>
-              <span className="mono">coins a room</span>
+              <span className="mono">{t('ld.fact.room')}</span>
             </li>
             <li>
               <b className="num">{pct(FACTS.fee.bps)}</b>
-              <span className="mono">of each entry, no more</span>
+              <span className="mono">{t('ld.fact.fee')}</span>
             </li>
           </ul>
         </motion.div>
         <motion.div className="ld-feast__menu-wrap" variants={m.stickerDrop} custom={1.2} initial="hidden" whileInView="shown" viewport={view}>
           <Sticker tone="white" pad="lg" lift="lg" className="ld-menu">
             <header className="ld-menu__head">
-              <span className="kicker">Menu · served every five minutes</span>
-              <h3 className="ld-menu__title">Today on the plain</h3>
+              <span className="kicker">{t('ld.menu.kicker')}</span>
+              <h3 className="ld-menu__title">{t('ld.menu.title')}</h3>
             </header>
             <ul className="ld-menu__list">
-              <MenuLine art={<FoodBit kind="pear" size={44} />} dish="Pears" note="Ripe, slow, everywhere." price="a bite" />
-              <MenuLine art={<FoodBit kind="grapes" size={44} />} dish="Grapes" note="They glow a little after dark." price="a mouthful" />
-              <MenuLine art={<FoodBit kind="seed" size={34} paint="up" />} dish="Seeds" note="Crunchy. Count as food, not as friends." price="a crumb" />
-              <MenuLine art={<CoinCharacter paint="foam" mood="scared" size={46} />} dish="Coins smaller than you" note="Their whole till comes with them." price="market price" />
-              <MenuLine art={<CoinCharacter paint="sun" mood="smug" size={46} />} dish="Coins bigger than you" note="Not on the menu. You are." price="sold out" />
+              <MenuLine art={<FoodBit kind="pear" size={44} />} dish={t('ld.menu.pears')} note={t('ld.menu.pearsNote')} price={t('ld.menu.pearsPrice')} />
+              <MenuLine art={<FoodBit kind="grapes" size={44} />} dish={t('ld.menu.grapes')} note={t('ld.menu.grapesNote')} price={t('ld.menu.grapesPrice')} />
+              <MenuLine art={<FoodBit kind="seed" size={34} paint="up" />} dish={t('ld.menu.seeds')} note={t('ld.menu.seedsNote')} price={t('ld.menu.seedsPrice')} />
+              <MenuLine art={<CoinCharacter paint="foam" mood="scared" size={46} />} dish={t('ld.menu.small')} note={t('ld.menu.smallNote')} price={t('ld.menu.smallPrice')} />
+              <MenuLine art={<CoinCharacter paint="sun" mood="smug" size={46} />} dish={t('ld.menu.big')} note={t('ld.menu.bigNote')} price={t('ld.menu.bigPrice')} />
             </ul>
             <footer className="ld-menu__foot">
-              <span className="mono">Service ends at the bell. Leftovers are burned.</span>
-              <Stamp text="Chef's pick" tone="teal" size="sm" rotate={-9} className="ld-menu__stamp" />
+              <span className="mono">{t('ld.menu.foot')}</span>
+              <Stamp text={t('ld.menu.stamp')} tone="teal" size="sm" rotate={-9} className="ld-menu__stamp" />
             </footer>
           </Sticker>
         </motion.div>
@@ -191,22 +189,24 @@ function Feast() {
 
 /* ── Plate III · a round, in orbit ────────────────────────────────────── */
 
-const STATIONS: { no: string; title: string; body: string }[] = [
-  { no: '01', title: 'Ticket', body: `Pick an arena and buy a ticket in ${SYMBOL}. Two signatures at most: an exact approval, then the ticket.` },
-  { no: '02', title: 'Eat', body: 'Food makes you bigger. Smaller coins make you richer: their whole till moves into yours.' },
-  { no: '03', title: 'Bell', body: `Every five minutes, in every arena at once. Joins close ${FACTS.rules.joinCloseS} seconds before it rings.` },
-  { no: '04', title: 'Paid', body: `Alive at the bell? Your whole till goes to your wallet; the only fee was ${pct(FACTS.fee.bps)} of your entry. Eaten? Someone else says thanks.` },
+const STATIONS: { no: string; title: TKey; body: TKey }[] = [
+  { no: '01', title: 'ld.stop.ticket', body: 'ld.stop.ticketBody' },
+  { no: '02', title: 'ld.stop.eat', body: 'ld.stop.eatBody' },
+  { no: '03', title: 'ld.stop.bell', body: 'ld.stop.bellBody' },
+  { no: '04', title: 'ld.stop.paid', body: 'ld.stop.paidBody' },
 ];
+const stationVars = () => ({ sym: SYMBOL, s: FACTS.rules.joinCloseS, fee: pct(FACTS.fee.bps) });
 
 function Round() {
   const m = useMoves();
+  const t = useT();
   return (
     <section className="ld-plate ld-round" id="round" aria-labelledby="ld-round-h">
-      <PlateLabel numeral={3} title="A round, in orbit" aside="05:00 a lap" />
+      <PlateLabel numeral={3} title={t('ld.round.plate')} aside={t('ld.round.aside')} />
       <div className="ld-wrap ld-round__grid">
         <motion.div className="ld-round__orbit-wrap" variants={m.stickerDrop} custom={-0.8} initial="hidden" whileInView="shown" viewport={view}>
           <Sticker tone="night" pad="none" lift="lg" round="lg" className="ld-orbit">
-            <span className="ld-orbit__tag kb-tag">Round 418 · in progress</span>
+            <span className="ld-orbit__tag kb-tag">{t('ld.round.tag')}</span>
             <OrbitDots
               width={640}
               height={330}
@@ -214,12 +214,12 @@ function Round() {
               duration={20}
               tone="night"
               className="ld-orbit__svg"
-              title="A round as an orbit: ticket, eat, bell, paid"
+              title={t('ld.round.svg')}
               stations={[
-                { at: 0, label: 'Ticket', done: true },
-                { at: 0.25, label: 'Eat', done: true },
-                { at: 0.5, label: 'Bell' },
-                { at: 0.75, label: 'Paid' },
+                { at: 0, label: t('ld.stop.ticket'), done: true },
+                { at: 0.25, label: t('ld.stop.eat'), done: true },
+                { at: 0.5, label: t('ld.stop.bell') },
+                { at: 0.75, label: t('ld.stop.paid') },
               ]}
             />
             <span className="ld-orbit__core" aria-hidden="true">
@@ -229,9 +229,9 @@ function Round() {
           </Sticker>
         </motion.div>
         <div className="ld-round__copy">
-          <p className="kicker">How a round goes</p>
+          <p className="kicker">{t('ld.round.kicker')}</p>
           <h2 className="ld-h2" id="ld-round-h">
-            One lap, four stops, then lunch.
+            {t('ld.round.h')}
           </h2>
           <ol className="ld-stops">
             {STATIONS.map((s, i) => (
@@ -240,8 +240,8 @@ function Round() {
                   {s.no}
                 </span>
                 <span className="ld-stop__text">
-                  <strong className="ld-stop__title">{s.title}</strong>
-                  <span>{s.body}</span>
+                  <strong className="ld-stop__title">{t(s.title)}</strong>
+                  <span>{t(s.body, stationVars())}</span>
                 </span>
               </motion.li>
             ))}
@@ -254,33 +254,31 @@ function Round() {
 
 /* ── Plate IV · the cast ──────────────────────────────────────────────── */
 
-const CAST: { handle: string; paint: CoinPaint; mood: CoinMood; size: number; worth: string; bio: string; look: [number, number]; sweat?: boolean }[] = [
-  { handle: 'nibbler', paint: 'foam', mood: 'scared', size: 64, worth: '$0.71', bio: 'Small, fast, mostly worried.', look: [3, -1], sweat: true },
-  { handle: 'gm_crumbs', paint: 'cream', mood: 'happy', size: 92, worth: '$2.41', bio: 'Says gm to everyone. Eats some of them.', look: [0, 0] },
-  { handle: 'big_aurelius', paint: 'sun', mood: 'smug', size: 176, worth: '$9.80', bio: 'Has eaten forty-one coins. Mentions it.', look: [2, 0] },
-  { handle: 'obol', paint: 'spray', mood: 'sleepy', size: 82, worth: '$1.30', bio: 'Plays the long game. Very long.', look: [0, 0] },
-  { handle: 'lethe.hl', paint: 'teal', mood: 'open', size: 132, worth: '$6.12', bio: 'Forgot what it was doing. Still hungry.', look: [-2, 1] },
-  { handle: 'chompers', paint: 'coral', mood: 'chomp', size: 112, worth: '$4.37', bio: 'Knows one move. It works.', look: [-3, 1] },
-  { handle: 'penny_pincher', paint: 'up', mood: 'smile', size: 100, worth: '$3.05', bio: 'Counts every seed. Out loud.', look: [-3, 0] },
+const CAST: { handle: string; paint: CoinPaint; mood: CoinMood; size: number; worth: string; bio: TKey; look: [number, number]; sweat?: boolean }[] = [
+  { handle: 'nibbler', paint: 'foam', mood: 'scared', size: 64, worth: '$0.71', bio: 'ld.cast.0', look: [3, -1], sweat: true },
+  { handle: 'gm_crumbs', paint: 'cream', mood: 'happy', size: 92, worth: '$2.41', bio: 'ld.cast.1', look: [0, 0] },
+  { handle: 'big_aurelius', paint: 'sun', mood: 'smug', size: 176, worth: '$9.80', bio: 'ld.cast.2', look: [2, 0] },
+  { handle: 'obol', paint: 'spray', mood: 'sleepy', size: 82, worth: '$1.30', bio: 'ld.cast.3', look: [0, 0] },
+  { handle: 'lethe.hl', paint: 'teal', mood: 'open', size: 132, worth: '$6.12', bio: 'ld.cast.4', look: [-2, 1] },
+  { handle: 'chompers', paint: 'coral', mood: 'chomp', size: 112, worth: '$4.37', bio: 'ld.cast.5', look: [-3, 1] },
+  { handle: 'penny_pincher', paint: 'up', mood: 'smile', size: 100, worth: '$3.05', bio: 'ld.cast.6', look: [-3, 0] },
 ];
 
 function Cast() {
   const m = useMoves();
+  const t = useT();
   return (
     <section className="ld-plate ld-cast" id="cast" aria-labelledby="ld-cast-h">
-      <PlateLabel numeral={4} title="The cast" aside="Sizes are worth, not age" />
+      <PlateLabel numeral={4} title={t('ld.cast.plate')} aside={t('ld.cast.aside')} />
       <div className="ld-wrap">
         <div className="ld-cast__head">
           <div>
-            <p className="kicker">The line-up</p>
+            <p className="kicker">{t('ld.cast.kicker')}</p>
             <h2 className="ld-h2" id="ld-cast-h">
-              Usual suspects of the plain.
+              {t('ld.cast.h')}
             </h2>
           </div>
-          <p className="ld-cast__aside">
-            Every coin wears a face and a mood. A coin&rsquo;s size is what it carries: the bigger it stands, the more it is worth, and the more everyone else looks at it
-            like lunch.
-          </p>
+          <p className="ld-cast__aside">{t('ld.cast.body')}</p>
         </div>
         <div className="ld-lineup">
           <div className="ld-lineup__chart" aria-hidden="true">
@@ -301,7 +299,7 @@ function Cast() {
                     <GazeCoin paint={c.paint} mood={c.mood} size={c.size} look={c.look} sweat={c.sweat} wary={c.mood === 'scared'} feet ground bob phase={i * 0.37} title={`${c.handle}, ${c.mood}`} />
                   </span>
                 </span>
-                <span className="ld-suspect__bio">{c.bio}</span>
+                <span className="ld-suspect__bio">{t(c.bio)}</span>
               </motion.li>
             ))}
           </motion.ul>
@@ -322,6 +320,7 @@ const EMBLEMS: { paint: CoinPaint; tilt: number }[] = [
 const SLOTS = ['left', 'front', 'right'] as const;
 
 function Emblem({ paint, front, waking }: { paint: CoinPaint; front: boolean; waking: boolean }) {
+  const t = useT();
   return (
     <div className={`ld-emblem${front ? ' is-front' : ''}`}>
       <div className="ld-emblem__panel">
@@ -330,9 +329,9 @@ function Emblem({ paint, front, waking }: { paint: CoinPaint; front: boolean; wa
         <span className="ld-emblem__coin">
           <CoinCharacter paint={paint} mood={!front ? 'sleepy' : waking ? 'open' : 'smug'} size={150} look={waking ? [3, -3] : [2, 0]} bob={front} />
         </span>
-        <Stamp text="Sealed" tone="ink" size="sm" rotate={-12} className="ld-emblem__stamp" />
+        <Stamp text={t('ld.nft.sealed')} tone="ink" size="sm" rotate={-12} className="ld-emblem__stamp" />
       </div>
-      <span className="ld-emblem__rib">Sealed. For now.</span>
+      <span className="ld-emblem__rib">{t('ld.nft.rib')}</span>
     </div>
   );
 }
@@ -351,6 +350,7 @@ function EmblemFan() {
   const [turn, setTurn] = useState(0);
   const [hold, setHold] = useState(false);
   const [waking, setWaking] = useState(false);
+  const t = useT();
   const deal = () => {
     setTurn((t) => t + 1);
     setWaking(true);
@@ -388,10 +388,10 @@ function EmblemFan() {
       })}
       <motion.div className="ld-price" variants={m.popIn}>
         <span className="num ld-price__n">$1.00</span>
-        <span className="mono ld-price__l">in HYPE · each</span>
+        <span className="mono ld-price__l">{t('ld.nft.priceNote')}</span>
       </motion.div>
       <motion.button type="button" className="ld-fan__deal mono" onClick={deal} variants={m.popIn}>
-        Shuffle the deck
+        {t('ld.nft.shuffle')}
       </motion.button>
     </motion.div>
   );
@@ -399,40 +399,38 @@ function EmblemFan() {
 
 function Nft() {
   const m = useMoves();
+  const t = useT();
   return (
     <section className="ld-plate ld-nft" id="nft" aria-labelledby="ld-nft-h">
-      <PlateLabel numeral={5} title="The mint, after dark" aside="/mint" />
+      <PlateLabel numeral={5} title={t('ld.nft.plate')} aside="/mint" />
       <div className="ld-nft__body">
         <div className="ld-wrap ld-nft__grid">
           <motion.div className="ld-nft__copy" variants={m.popIn} initial="hidden" whileInView="shown" viewport={view}>
-            <p className="kicker">Elymum NFT · sealed emblems</p>
+            <p className="kicker">{t('ld.nft.kicker')}</p>
             <h2 className="ld-h2 ld-nft__title" id="ld-nft-h">
-              Your seat at the feast costs <em>one dollar.</em>
+              <T k="ld.nft.h" tags={{ em }} />
             </h2>
-            <p className="ld-nft__text">
-              An emblem is a sealed coin portrait and your way into the game when it opens for holders. The price is pinned to $1 and paid in HYPE, so the number on the
-              button moves with the market. We do the arithmetic; you do the eating.
-            </p>
+            <p className="ld-nft__text">{t('ld.nft.body')}</p>
             <p className="ld-nft__perks" data-testid="ld-perks">
-              Holders pay a 3% fee instead of 5%, enter the Isles of the Blessed and wear their coin in the game.
+              {t('ld.nft.perks')}
             </p>
-            <ol className="ld-flow" aria-label="The order of things">
+            <ol className="ld-flow" aria-label={t('ld.nft.order')}>
               <li className="is-on">
-                <span>WL</span>
+                <span>{t('site.nav.wl')}</span>
               </li>
               <li>
-                <span>Mint</span>
+                <span>{t('site.nav.mint')}</span>
               </li>
               <li>
-                <span>Play</span>
+                <span>{t('site.nav.play')}</span>
               </li>
             </ol>
             <div className="ld-nft__ctas">
               <SiteLinkButton href="/wl" variant="primary" icon="arrow">
-                Join the WL
+                {t('ld.cta.wl')}
               </SiteLinkButton>
               <SiteLinkButton href="/mint" variant="teal">
-                See the mint
+                {t('ld.nft.see')}
               </SiteLinkButton>
             </div>
           </motion.div>
@@ -446,11 +444,11 @@ function Nft() {
 
 /* ── Plate VI · the four arenas ───────────────────────────────────────── */
 
-const PLACES: Record<number, { line: string; x: number; y: number }> = {
-  1: { line: 'Where everyone starts. Mostly flowers, some teeth.', x: 12, y: 152 },
-  2: { line: 'Drink from the river and forget your last round. Handy.', x: 37, y: 57 },
-  3: { line: 'Bring a golden bough. Or fifty thousand.', x: 63, y: 57 },
-  4: { line: 'Heroes only. Heroes with a quarter of a million.', x: 88, y: 152 },
+const PLACES: Record<number, { line: TKey; x: number; y: number }> = {
+  1: { line: 'ld.place.1', x: 12, y: 152 },
+  2: { line: 'ld.place.2', x: 37, y: 57 },
+  3: { line: 'ld.place.3', x: 63, y: 57 },
+  4: { line: 'ld.place.4', x: 88, y: 152 },
 };
 
 // where the tram pulls in, beside each place's pin and clear of the tickets
@@ -460,21 +458,22 @@ function Arenas({ gameAccess }: { gameAccess: GameAccess }) {
   const m = useMoves();
   const reduced = useReducedMotion();
   const mapRef = useRef<HTMLDivElement>(null);
-  const open = gameAccess === 'public' ? { tone: 'live' as const, text: 'Open now' } : gameAccess === 'holders' ? { tone: 'ok' as const, text: 'Open to emblem holders' } : { tone: 'idle' as const, text: 'Opens after the mint' };
+  const t = useT();
+  const open = gameAccess === 'public' ? { tone: 'live' as const, text: t('ld.ar.open') } : gameAccess === 'holders' ? { tone: 'ok' as const, text: t('ld.ar.holders') } : { tone: 'idle' as const, text: t('ld.ar.after') };
   return (
     <section className="ld-plate ld-arenas" id="arenas" aria-labelledby="ld-arenas-h">
-      <PlateLabel numeral={6} title="Four places on the ring" aside="Arenas" />
+      <PlateLabel numeral={6} title={t('ld.ar.plate')} aside={t('ld.ar.aside')} />
       <div className="ld-wrap">
         <div className="ld-arenas__head">
           <div>
-            <p className="kicker">The arenas</p>
+            <p className="kicker">{t('ld.ar.kicker')}</p>
             <h2 className="ld-h2" id="ld-arenas-h">
-              Pick a table. Same rules, bigger plates.
+              {t('ld.ar.h')}
             </h2>
           </div>
           <div className="ld-arenas__aside">
             <StatusPill tone={open.tone}>{open.text}</StatusPill>
-            <p>Entry fees are in {SYMBOL}. Practice is free and needs no wallet at all.</p>
+            <p>{t('ld.ar.body', { sym: SYMBOL })}</p>
           </div>
         </div>
         <div className="ld-map" ref={mapRef}>
@@ -499,14 +498,14 @@ function Arenas({ gameAccess }: { gameAccess: GameAccess }) {
                   <span className="ld-place__pin" aria-hidden="true" />
                   <div className="ld-ticket">
                     <div className="ld-ticket__body">
-                      <span className="ld-ticket__no mono">Arena {a.id}</span>
+                      <span className="ld-ticket__no mono">{t('ld.ar.no', { n: a.id })}</span>
                       <h3 className="ld-ticket__name">{meta.name}</h3>
-                      <p className="ld-ticket__line">{p?.line}</p>
+                      <p className="ld-ticket__line">{p ? t(p.line) : null}</p>
                     </div>
                     <div className="ld-ticket__stub">
                       <b className="num ld-ticket__fee">{nf.format(a.entryTokens)}</b>
                       <span className="mono ld-ticket__unit">{SYMBOL}</span>
-                      <span className="mono ld-ticket__unit">entry</span>
+                      <span className="mono ld-ticket__unit">{t('ld.ar.entry')}</span>
                     </div>
                   </div>
                 </motion.li>
@@ -514,7 +513,7 @@ function Arenas({ gameAccess }: { gameAccess: GameAccess }) {
             })}
           </motion.ol>
           <div className="ld-map__here" aria-hidden="true">
-            <span className="kb-tag">You, at 05:00</span>
+            <span className="kb-tag">{t('ld.ar.you')}</span>
             <CoinCharacter paint="cyan" mood="happy" size={84} feet ground bob />
           </div>
         </div>
@@ -527,51 +526,29 @@ function Arenas({ gameAccess }: { gameAccess: GameAccess }) {
 
 function Faq({ handle }: { handle: string }) {
   const m = useMoves();
-  const items: { q: string; a: ReactNode }[] = [
-    {
-      q: 'Which wallet do I need?',
-      a: 'Any EVM wallet: MetaMask, Rabby, or whatever your browser speaks. When a transaction needs Elysium, the site asks your wallet to add or switch to it.',
-    },
-    {
-      q: 'What is Elysium?',
-      a: "Kinetiq's chain: an Arbitrum Orbit L2 that settles to HyperEVM. In our pictures it is a ring in orbit with fields on the inside. In practice it is where the arenas, their vaults and the emblems live.",
-    },
-    { q: 'Why do I need HYPE?', a: 'HYPE is the gas token on Elysium. Every transaction you send costs a little of it, and the mint is paid in it too.' },
-    {
-      q: 'How is the mint $1?',
-      a: 'The price is pinned to one US dollar and paid in HYPE at the current rate, so the HYPE figure moves a little with the market. The mint page shows both numbers before you sign.',
-    },
-    {
-      q: 'When does the game open?',
-      a: (
-        <>
-          After the mint: holders first. The date lands on{' '}
-          <a href={xProfile(handle)} target="_blank" rel="noreferrer">
-            @{handle}
-          </a>{' '}
-          before anywhere else. Until then, <Link href="/docs">the docs</Link> explain every rule.
-        </>
-      ),
-    },
-    { q: 'What does signing in cost?', a: 'Nothing. One message signature, no transaction. We never DM first and never ask for a seed phrase. Nobody should.' },
-    {
-      q: 'Can my community get WL spots?',
-      a: (
-        <>
-          DAOs, guilds and NFT projects can apply for spots to hand out to their members. <Link href="/collab">The collab page</Link> has the details.
-        </>
-      ),
-    },
-  ];
+  const t = useT();
+  const tags = {
+    x: (c: ReactNode) => (
+      <a href={xProfile(handle)} target="_blank" rel="noreferrer">
+        {c}
+      </a>
+    ),
+    docs: (c: ReactNode) => <Link href="/docs">{c}</Link>,
+    collab: (c: ReactNode) => <Link href="/collab">{c}</Link>,
+  };
+  const items: { q: string; a: ReactNode }[] = [1, 2, 3, 4, 5, 6, 7].map((n) => ({
+    q: t(`ld.faq.q${n}` as TKey),
+    a: renderRich(t(`ld.faq.a${n}` as TKey, { handle: `@${handle}` }), tags),
+  }));
   return (
     <section className="ld-plate ld-faq" id="faq" aria-labelledby="ld-faq-h">
-      <PlateLabel numeral={7} title="Small print" aside="FAQ" />
+      <PlateLabel numeral={7} title={t('ld.faq.plate')} aside={t('ld.faq.aside')} />
       <div className="ld-wrap ld-faq__grid">
         <div className="ld-faq__side">
           <div>
-            <p className="kicker">Questions</p>
+            <p className="kicker">{t('ld.faq.kicker')}</p>
             <h2 className="ld-h2" id="ld-faq-h">
-              Small print, large font.
+              {t('ld.faq.h')}
             </h2>
           </div>
           <span className="ld-faq__coin" aria-hidden="true">
@@ -601,16 +578,17 @@ function Faq({ handle }: { handle: string }) {
 export function Landing() {
   const { settings } = useSiteSettings();
   const sound = useLandingSound();
+  const t = useT();
   return (
     <Kb theme="paper" className="st-root ld-root">
       <a className="st-skip" href="#main">
-        Skip to content
+        {t('site.skip')}
       </a>
       <SiteHeader>
         <SeedRail />
       </SiteHeader>
       <main id="main" className="ld-main" tabIndex={-1}>
-        <PlateLabel numeral={1} title="The plain at dawn" aside="05:00 AM" className="ld-plate1" />
+        <PlateLabel numeral={1} title={t('ld.plate1')} aside={t('ld.plate1.aside')} className="ld-plate1" />
         <Hero collabOpen={settings.collabOpen} gameAccess={settings.gameAccess} wlOpen={settings.wlOpen} sound={sound} />
         <Feast />
         <Round />

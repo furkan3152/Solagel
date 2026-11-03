@@ -21,14 +21,14 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
-      # English only: fails on any Turkish-specific letter (c-cedilla, g-breve, dotless i, o-umlaut,
+      # English only (the translations under apps/web/src/i18n/locales/ excepted): fails on any Turkish-specific letter (c-cedilla, g-breve, dotless i, o-umlaut,
       # s-cedilla, u-umlaut and their capitals) in a tracked text file. The letters are written as
       # PCRE code points so this file passes its own check; images are skipped as binaries.
       - name: English-only guard (no Turkish letters in tracked text files)
         # git grep exits 0 on a match, 1 on no match, anything else on an error (which must fail too).
         run: |
           rc=0
-          LC_ALL=C.UTF-8 git grep -InP '[\x{e7}\x{11f}\x{131}\x{f6}\x{15f}\x{fc}\x{c7}\x{11e}\x{130}\x{d6}\x{15e}\x{dc}]' -- . ':!*.webp' ':!*.png' ':!*.jpg' || rc=$?
+          LC_ALL=C.UTF-8 git grep -InP '[\x{e7}\x{11f}\x{131}\x{f6}\x{15f}\x{fc}\x{c7}\x{11e}\x{130}\x{d6}\x{15e}\x{dc}]' -- . ':!*.webp' ':!*.png' ':!*.jpg' ':!apps/web/src/i18n/locales/*' || rc=$?
           if [ "$rc" -eq 0 ]; then echo "Turkish text found"; exit 1; fi
           if [ "$rc" -ne 1 ]; then echo "git grep failed (exit $rc)"; exit 1; fi
           echo "No Turkish text"

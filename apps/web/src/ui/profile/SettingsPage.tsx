@@ -4,6 +4,8 @@ import { sound } from '../../audio';
 import { APP_VERSION } from '../../config';
 import { useT, type TKey } from '../../i18n';
 import { openModal, updateSettings, useUi, type Settings } from '../../store';
+import { LanguagePicker } from '../LanguagePicker';
+import { MusicPicker } from './MusicPicker';
 
 type Flag = 'showNames' | 'showMass' | 'showChat' | 'showFps';
 
@@ -72,7 +74,7 @@ function Row({ label, note, children }: { label: string; note?: string; children
 
 /**
  * Settings as a print order: language, stock (paper / night), sound (master,
- * music, effects, announcer), the map sheet and performance mode first, then
+ * the soundtrack picker, music volume, effects, announcer), the map sheet and performance mode first, then
  * the in-room overlays. Used on the profile page and inside the settings sheet.
  */
 export function SettingsPage({ headings = true }: { headings?: boolean }) {
@@ -89,6 +91,9 @@ export function SettingsPage({ headings = true }: { headings?: boolean }) {
     <div className="gs-page">
       {headings && <h3 className="gs-h mono">{t('st.look')}</h3>}
       <div className="g-set">
+        <Row label={t('site.lang')}>
+          <LanguagePicker className="gs-lang" />
+        </Row>
         <Row label={t('gs.theme')}>
           <Chip icon="sun" selected={s.theme === 'light'} onClick={() => set({ theme: 'light' })}>
             {t('gs.paper')}
@@ -101,9 +106,7 @@ export function SettingsPage({ headings = true }: { headings?: boolean }) {
           <Punch on={s.sound} onChange={(v) => set({ sound: v })} label={t('gs.sound')} />
         </Row>
         <Level label={t('gs.volume')} value={s.volume} disabled={!s.sound} onChange={(v) => set({ volume: v })} onCommit={() => sound.click()} />
-        <Row label={t('gs.music')} note={t('gs.musicNote')}>
-          <Punch on={s.musicOn} onChange={(v) => set({ musicOn: v })} label={t('gs.music')} disabled={!s.sound} />
-        </Row>
+        <MusicPicker disabled={!s.sound} />
         <Level label={t('gs.musicVol')} value={s.music} disabled={!s.sound || !s.musicOn} onChange={(v) => set({ music: v })} />
         <Row label={t('gs.sfx')}>
           <Punch on={s.sfxOn} onChange={(v) => set({ sfxOn: v })} label={t('gs.sfx')} disabled={!s.sound} />

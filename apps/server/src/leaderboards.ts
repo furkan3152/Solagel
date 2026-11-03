@@ -1,6 +1,6 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { LEADERBOARD_SIZE } from '@elymum/shared';
+import { LEADERBOARD_SIZE, isCountryCode, type CountryBoardRow } from '@elymum/shared';
 
 export interface LbRecord {
   name: string;
@@ -9,7 +9,22 @@ export interface LbRecord {
   wallet: string | null;
   kills: number;
   at: number;
+  /** The country the player played for (ISO 3166-1 alpha-2); absent: none. */
+  country?: string;
 }
+
+/** What one finished game adds to its country's row (`Leaderboards.countryGame`). */
+export interface CountryGame {
+  country: string | null | undefined;
+  /** The game's best mass. */
+  mass: number;
+  /** Arena payout (raw token units) of a game that ended alive; 0 otherwise. */
+  paid: number;
+  at: number;
+}
+
+/** Most country rows a snapshot carries (there are 249 codes; the board shows the leaders). */
+export const COUNTRY_ROWS = 50;
 
 interface LbFile {
   /** The leaderboard epoch the records belong to (absent in files written before epochs existed: 1). */
@@ -17,6 +32,9 @@ interface LbFile {
   day: string;
   daily: LbRecord[];
   allTime: LbRecord[];
+  /** The countries board: per-country totals of today (same `day`) and of all time. */
+  countriesDaily?: CountryBoardRow[];
+  countriesAllTime?: CountryBoardRow[];
   /** When the boards were last reset (Unix ms) and by whom (`epoch` for the automatic reset of a deploy). */
   resetAt?: number;
   resetBy?: string;
@@ -51,6 +69,8 @@ export class Leaderboards {
   private day: string;
   private daily: LbRecord[] = [];
   private allTime: LbRecord[] = [];
+  private countriesDaily = new Map<string, CountryBoardRow>();
+  private countriesAllTime = new Map<string, CountryBoardRow>();
   private dirty = false;
   private epoch = LEADERBOARD_EPOCH;
   private resetAt: number | null = null;
@@ -80,6 +100,8 @@ export class Leaderboards {
         }
         this.allTime = Array.isArray(data.allTime) ? data.allTime : [];
         this.daily = data.day === this.day && Array.isArray(data.daily) ? data.daily : [];
+        this.countriesAllTime = countryMap(data.countriesAllTime);
+        this.countriesDaily = data.day === this.day ? countryMap(data.countriesDaily) : new Map();
         this.resetAt = typeof data.resetAt === 'number' ? data.resetAt : null;
         this.resetBy = typeof data.resetBy === 'string' ? data.resetBy : null;
         if (fileEpoch > epoch) this.epoch = fileEpoch;
@@ -111,18 +133,50 @@ export class Leaderboards {
     this.dirty = true;
   }
 
+  /**
+   * One finished game of a human counts for its country (no country: nothing). Bots never get here,
+   * and custom rooms keep their own rules (the caller skips them like `submit`).
+   */
+  countryGame(g: CountryGame): void {
+    if (!isCountryCode(g.country)) return;
+    const mass = nat(g.mass);
+    const paid = nat(g.paid);
+    if (mass <= 0 && paid <= 0) return;
+    this.rollover(g.at);
+    for (const board of [this.countriesDaily, this.countriesAllTime]) {
+      let row = board.get(g.country);
+      if (!row) {
+        row = { country: g.country, mass: 0, games: 0, paid: 0 };
+        board.set(g.country, row);
+      }
+      row.mass += mass;
+      row.games += 1;
+      row.paid += paid;
+    }
+    this.dirty = true;
+  }
+
   private rollover(now: number): void {
     const d = dayOf(now);
     if (d !== this.day) {
       this.day = d;
       this.daily = [];
+      this.countriesDaily = new Map();
       this.dirty = true;
     }
   }
 
-  snapshot(limit = LEADERBOARD_SIZE, now = Date.now()): { day: string; daily: LbRecord[]; allTime: LbRecord[] } {
+  snapshot(
+    limit = LEADERBOARD_SIZE,
+    now = Date.now(),
+  ): { day: string; daily: LbRecord[]; allTime: LbRecord[]; countries: { daily: CountryBoardRow[]; allTime: CountryBoardRow[] } } {
     this.rollover(now);
-    return { day: this.day, daily: this.daily.slice(0, limit), allTime: this.allTime.slice(0, limit) };
+    return {
+      day: this.day,
+      daily: this.daily.slice(0, limit),
+      allTime: this.allTime.slice(0, limit),
+      countries: { daily: rankCountries(this.countriesDaily), allTime: rankCountries(this.countriesAllTime) },
+    };
   }
 
   info(now = Date.now()): LeaderboardInfo {
@@ -143,6 +197,8 @@ export class Leaderboards {
     const backup = this.backup('reset', now);
     this.daily = [];
     this.allTime = [];
+    this.countriesDaily = new Map();
+    this.countriesAllTime = new Map();
     this.resetAt = now;
     this.resetBy = by;
     this.dirty = true;
@@ -171,6 +227,8 @@ export class Leaderboards {
       day: this.day,
       daily: this.daily,
       allTime: this.allTime,
+      countriesDaily: [...this.countriesDaily.values()],
+      countriesAllTime: [...this.countriesAllTime.values()],
       ...(this.resetAt !== null ? { resetAt: this.resetAt } : {}),
       ...(this.resetBy !== null ? { resetBy: this.resetBy } : {}),
     };
@@ -178,4 +236,28 @@ export class Leaderboards {
     renameSync(tmp, this.path);
     this.dirty = false;
   }
+}
+
+function nat(v: unknown): number {
+  const n = Math.floor(Number(v));
+  return Number.isFinite(n) && n > 0 ? Math.min(n, Number.MAX_SAFE_INTEGER) : 0;
+}
+
+/** Rows read back from the file: allowlisted codes only, one row each, whole non-negative numbers. */
+function countryMap(rows: unknown): Map<string, CountryBoardRow> {
+  const m = new Map<string, CountryBoardRow>();
+  if (!Array.isArray(rows)) return m;
+  for (const r of rows as Partial<CountryBoardRow>[]) {
+    if (!r || !isCountryCode(r.country) || m.has(r.country)) continue;
+    m.set(r.country, { country: r.country, mass: nat(r.mass), games: nat(r.games), paid: nat(r.paid) });
+  }
+  return m;
+}
+
+/** Best first: by total mass, then games, then code (stable for ties). */
+function rankCountries(board: ReadonlyMap<string, CountryBoardRow>): CountryBoardRow[] {
+  return [...board.values()]
+    .sort((a, b) => b.mass - a.mass || b.games - a.games || (a.country < b.country ? -1 : 1))
+    .slice(0, COUNTRY_ROWS)
+    .map((r) => ({ ...r }));
 }

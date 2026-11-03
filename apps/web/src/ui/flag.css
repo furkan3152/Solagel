@@ -1,0 +1,66 @@
+/* ── Country flags: small ink-edged stickers (ui/Flag.tsx) ─────────────── */
+.kb-flag {
+  --flag-h: 14px;
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: calc(var(--flag-h) * 1.5);
+  height: var(--flag-h);
+  overflow: hidden;
+  border: max(1.5px, calc(var(--flag-h) / 9)) solid var(--outline);
+  border-radius: max(2px, calc(var(--flag-h) * 0.2));
+  background: var(--cream);
+  vertical-align: middle;
+  line-height: 1;
+}
+.kb-flag > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+/* a country without a drawn flag: its code on cream */
+.kb-flag__code {
+  color: var(--ink-fixed);
+  font-size: calc(var(--flag-h) * 0.52);
+  font-weight: 700;
+  letter-spacing: 0;
+}
+/* no country picked: an empty dashed frame */
+.kb-flag.is-none {
+  border-style: dashed;
+  background: transparent;
+}
+
+/* ── Country picker (a Field box around a native select) ───────────────── */
+.kb-country .kb-field__box {
+  position: relative;
+}
+.kb-country__flag {
+  display: inline-flex;
+  flex: none;
+}
+.kb-country__select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 22px;
+  cursor: pointer;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kb-country__select option {
+  color: #04181c;
+  background: #ffffff;
+}
+.kb-country__chev {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  width: 12px;
+  height: 8px;
+  margin-top: -4px;
+  color: var(--ink-fixed);
+  pointer-events: none;
+}

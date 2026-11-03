@@ -1,3 +1,4 @@
+import { isCountryCode, suggestCountry } from '@elymum/shared';
 import type {
   BoostKind,
   BoostState,
@@ -12,6 +13,7 @@ import type {
 } from '@elymum/shared';
 import { create } from 'zustand';
 import { AUDIO_DEFAULTS } from './audio/mixer';
+import { DEFAULT_TRACK, musicChoice, type MusicChoice } from './audio/tracks';
 
 export type Screen = 'lobby' | 'playing' | 'dead' | 'spectating' | 'roundover';
 export type Quality = 'high' | 'low';
@@ -22,6 +24,13 @@ export interface Settings {
   skin: number;
   /** Wear the uploaded profile picture on the coin (signed-in wallets with a picture; `join.pic`). */
   picture: boolean;
+  /** The country the player plays for (ISO 3166-1 alpha-2, a flag by the name; `join.country`); '' for none. */
+  country: string;
+  /**
+   * `country` is only the first-visit guess (from the browser's languages), not a choice: a signed-in
+   * profile's saved country replaces it. Picking a country (or none) clears it.
+   */
+  countryAuto: boolean;
   theme: Theme;
   quality: Quality;
   /** Master switch (the header's mute) and master volume. */
@@ -29,7 +38,10 @@ export interface Settings {
   volume: number;
   /** Per-bus levels and switches (audio/mixer.ts). */
   music: number;
+  /** The music switch: off is "No music". */
   musicOn: boolean;
+  /** The soundtrack (audio/tracks.ts); `custom` is a file from the player's device. */
+  musicTrack: MusicChoice;
   sfx: number;
   sfxOn: boolean;
   voice: number;
@@ -170,21 +182,60 @@ export interface UiState {
   /** The server refused a room entry with `game_closed`: the game is admin-only and this session is no admin. */
   gameClosed: boolean;
   settings: Settings;
+  /** "Your own music" this session: the file's name and its blob URL (audio/custom.ts); never uploaded. */
+  customMusic: CustomMusic | null;
+  /** The last file picked was not audio (or too big). */
+  customMusicRefused: boolean;
+}
+
+export interface CustomMusic {
+  name: string;
+  url: string;
+  /** A copy is kept in this browser (IndexedDB) for the next visit. */
+  saved: boolean;
+  /** The browser would not play it. */
+  error: boolean;
 }
 
 const SETTINGS_KEY = 'elymum.settings.v1';
+
+/** The first-visit guess at the player's country: the browser's language regions (`suggestCountry`). */
+export function guessCountry(): string {
+  try {
+    return suggestCountry(typeof navigator !== 'undefined' ? (navigator.languages?.length ? navigator.languages : [navigator.language]) : null) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+/** Saved settings over the defaults; a country is kept only when it is on the allowlist. */
+export function mergeSettings(defaults: Settings, saved: Partial<Settings>): Settings {
+  const out = { ...defaults, ...saved };
+  if (typeof saved.country !== 'string') {
+    // saved before countries existed: the guess, until the player picks
+    out.country = defaults.country;
+    out.countryAuto = true;
+  } else if (saved.country !== '' && !isCountryCode(saved.country)) {
+    out.country = '';
+  }
+  out.countryAuto = out.countryAuto === true;
+  return out;
+}
 
 function loadSettings(): Settings {
   const defaults: Settings = {
     name: '',
     skin: 0,
     picture: false,
+    country: guessCountry(),
+    countryAuto: true,
     theme: 'light',
     quality: 'high',
     sound: true,
     volume: AUDIO_DEFAULTS.master,
     music: AUDIO_DEFAULTS.music,
     musicOn: true,
+    musicTrack: DEFAULT_TRACK,
     sfx: AUDIO_DEFAULTS.sfx,
     sfxOn: true,
     voice: AUDIO_DEFAULTS.voice,
@@ -201,7 +252,9 @@ function loadSettings(): Settings {
     if (raw) {
       // retired fields: `lang` (the interface is English only) and `passSkin` (the old pass is gone)
       const { lang: _lang, passSkin: _passSkin, ...saved } = JSON.parse(raw) as Partial<Settings> & { lang?: unknown; passSkin?: unknown };
-      return { ...defaults, ...saved };
+      const out = mergeSettings(defaults, saved);
+      out.musicTrack = musicChoice(out.musicTrack);
+      return out;
     }
   } catch {
     /* storage unavailable */
@@ -246,6 +299,8 @@ export const useUi = create<UiState>(() => ({
   auth: null,
   gameClosed: false,
   settings: loadSettings(),
+  customMusic: null,
+  customMusicRefused: false,
 }));
 
 export function updateSettings(patch: Partial<Settings>): void {
@@ -256,6 +311,15 @@ export function updateSettings(patch: Partial<Settings>): void {
   } catch {
     /* ignore */
   }
+}
+
+/**
+ * A signed-in profile was loaded: its saved country (or its "none") replaces the first-visit guess.
+ * A country the player picked on this device stays (saving the profile sends it to the server).
+ */
+export function adoptProfileCountry(profile: { country?: string | null } | null): void {
+  if (!profile || profile.country === undefined || !useUi.getState().settings.countryAuto) return;
+  updateSettings({ country: isCountryCode(profile.country) ? profile.country : '', countryAuto: false });
 }
 
 let toastId = 1;

@@ -4,6 +4,9 @@ import { FooterLife } from './FooterLife';
 import { usePeelLetters } from './peel';
 import { Link, usePath } from './router';
 import { isTestnetChain, useServerChain } from './serverChain';
+import { useT, type TKey } from '../i18n';
+import { strong, T } from '../i18n/rich';
+import { LanguagePicker } from '../ui/LanguagePicker';
 import { siteHost, useSiteSettings, xProfile } from './settings';
 import './site.css';
 
@@ -85,29 +88,31 @@ export function SiteLinkButton({
  * The site nav, kept short: Play, Mint, Faucet (testnet only), WL, Docs. Every link warms its page
  * on hover / touch (router `Link`), so the click turns the page at once.
  */
-export const NAV: { href: string; label: string; testnet?: true }[] = [
-  { href: '/play', label: 'Play' },
-  { href: '/mint', label: 'Mint' },
-  { href: '/faucet', label: 'Faucet', testnet: true },
-  { href: '/wl', label: 'WL' },
-  { href: '/docs', label: 'Docs' },
+export const NAV: { href: string; label: string; key: TKey; testnet?: true }[] = [
+  { href: '/play', label: 'Play', key: 'site.nav.play' },
+  { href: '/mint', label: 'Mint', key: 'site.nav.mint' },
+  { href: '/faucet', label: 'Faucet', key: 'site.nav.faucet', testnet: true },
+  { href: '/wl', label: 'WL', key: 'site.nav.wl' },
+  { href: '/docs', label: 'Docs', key: 'site.nav.docs' },
 ];
 
 /** The nav for a network: the Faucet link only where test tokens exist (hidden while unknown). */
 export const navFor = (testnet: boolean | null) => NAV.filter((n) => !n.testnet || testnet === true);
 
 function ConnectFallback() {
+  const t = useT();
   return (
     <button type="button" className="kb-btn kb-btn--secondary kb-btn--md st-connect" disabled aria-busy="true">
       <Icon name="wallet" size={20} className="kb-btn__lead" />
       <span className="kb-btn__label">
-        <span className="kb-btn__text">Connect</span>
+        <span className="kb-btn__text">{t('site.connect')}</span>
       </span>
     </button>
   );
 }
 
 export function SiteHeader({ cta: _cta = true, children }: { cta?: boolean; /** Extras hung under the header line (the landing's seed rail). */ children?: ReactNode }) {
+  const t = useT();
   const path = usePath();
   const peel = usePeelLetters<HTMLSpanElement>();
   const testnet = isTestnetChain(useServerChain());
@@ -145,23 +150,24 @@ export function SiteHeader({ cta: _cta = true, children }: { cta?: boolean; /** 
         aria-current={on ? 'page' : undefined}
         onClick={() => setMenu(false)}
       >
-        {n.label}
+        {t(n.key)}
       </Link>
     );
   });
   return (
     <header className="st-head">
       <div className="st-head__inner">
-        <Link href="/" className="st-head__home" aria-label="Elymum home">
+        <Link href="/" className="st-head__home" aria-label={t('lo.home')}>
           <CoinMark size={38} className="st-head__coin" />
           <span ref={peel.ref} className={peel.className}>
             <Wordmark />
           </span>
         </Link>
-        <nav className="st-nav" aria-label="Site">
+        <nav className="st-nav" aria-label={t('site.nav.label')}>
           {links}
         </nav>
         <div className="st-head__tools">
+          <LanguagePicker compact className="st-lang st-lang--head" />
           <Suspense fallback={<ConnectFallback />}>
             <HeaderConnect />
           </Suspense>
@@ -171,7 +177,7 @@ export function SiteHeader({ cta: _cta = true, children }: { cta?: boolean; /** 
             className="st-menu-btn"
             aria-expanded={menu}
             aria-controls="st-menu"
-            aria-label={menu ? 'Close the menu' : 'Open the menu'}
+            aria-label={menu ? t('site.menu.close') : t('site.menu.open')}
             onClick={() => setMenu((m) => !m)}
           >
             <Icon name={menu ? 'close' : 'menu'} size={22} />
@@ -180,13 +186,14 @@ export function SiteHeader({ cta: _cta = true, children }: { cta?: boolean; /** 
       </div>
       {menu && (
         <>
-          <button type="button" className="st-menu__scrim" aria-label="Close the menu" tabIndex={-1} onClick={() => setMenu(false)} />
+          <button type="button" className="st-menu__scrim" aria-label={t('site.menu.close')} tabIndex={-1} onClick={() => setMenu(false)} />
           {/* phones: a sheet from the bottom edge, so every link and the Play button sit under the thumb */}
-          <nav ref={sheet} id="st-menu" className="st-menu kb-sticker kb-sticker--cream" aria-label="Site menu">
+          <nav ref={sheet} id="st-menu" className="st-menu kb-sticker kb-sticker--cream" aria-label={t('site.menu.label')}>
             {links.filter((l) => l.key !== '/play')}
             <SiteLinkButton href="/play" variant="primary" size="lg" icon="arrow" className="st-menu__play" onClick={() => setMenu(false)}>
-              Play now
+              {t('site.menu.play')}
             </SiteLinkButton>
+            <LanguagePicker className="st-lang st-lang--menu" />
           </nav>
         </>
       )}
@@ -196,6 +203,7 @@ export function SiteHeader({ cta: _cta = true, children }: { cta?: boolean; /** 
 }
 
 export function SiteFooter() {
+  const t = useT();
   const { settings } = useSiteSettings();
   const handle = settings.xHandle.replace(/^@/, '');
   const testnetFoot = isTestnetChain(useServerChain()) === true;
@@ -207,26 +215,26 @@ export function SiteFooter() {
       <div className="st-foot__inner">
         <div className="st-foot__brand">
           <InkWordmark height={64} diecut playful={false} className="st-foot__mark" />
-          <p className="st-foot__line">Small change, big appetite. Five minutes at a time.</p>
+          <p className="st-foot__line">{t('site.foot.line')}</p>
           <p className="st-foot__eco">
-            Played on <strong>Elysium</strong>, the ring habitat in the Kinetiq ecosystem. Gas is HYPE. An independent game; the ring just lets us eat on it.
+            <T k="site.foot.eco" tags={{ strong }} />
           </p>
         </div>
-        <nav className="st-foot__links" aria-label="Footer">
+        <nav className="st-foot__links" aria-label={t('site.foot.nav')}>
           <a href={xProfile(handle)} target="_blank" rel="noreferrer" className="st-foot__x">
             <XIcon size={18} /> <span>@{handle}</span>
           </a>
-          <Link href="/play">Play</Link>
-          <Link href="/mint">Mint</Link>
-          {testnetFoot && <Link href="/faucet">Faucet</Link>}
-          <Link href="/wl">WL</Link>
-          <Link href="/collab">Collab</Link>
-          <Link href="/docs">Docs</Link>
+          <Link href="/play">{t('site.nav.play')}</Link>
+          <Link href="/mint">{t('site.nav.mint')}</Link>
+          {testnetFoot && <Link href="/faucet">{t('site.nav.faucet')}</Link>}
+          <Link href="/wl">{t('site.nav.wl')}</Link>
+          <Link href="/collab">{t('site.nav.collab')}</Link>
+          <Link href="/docs">{t('site.nav.docs')}</Link>
         </nav>
         <p className="st-foot__small mono">
           <span>Elymum · 2026</span>
           <span>{siteHost()}</span>
-          <span>Never DMs first. Never asks for a seed phrase.</span>
+          <span>{t('site.foot.safety')}</span>
         </p>
       </div>
     </footer>
@@ -236,10 +244,11 @@ export function SiteFooter() {
 
 /** A site page: paper stock, the header, the page and the footer. */
 export function SitePage({ children, className, cta = true }: { children: ReactNode; className?: string; cta?: boolean }) {
+  const t = useT();
   return (
     <Kb theme="paper" className={`st-root${className ? ` ${className}` : ''}`}>
       <a className="st-skip" href="#main">
-        Skip to content
+        {t('site.skip')}
       </a>
       <SiteHeader cta={cta} />
       <main id="main" className="st-main" tabIndex={-1}>

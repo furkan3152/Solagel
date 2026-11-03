@@ -8,6 +8,8 @@ import { explorerTx } from '../../wallet/links';
 import { ensureChain, publicClientFor, serverChainInfo } from '../../wallet/network';
 import { connectWallet, disconnectWallet, initWallets, useWallet } from '../../wallet/store';
 import { sendWalletCall, txErrorText, type TxPhase } from '../../wallet/tx';
+import { useT, type TKey } from '../../i18n';
+import { b, em, T } from '../../i18n/rich';
 import { site } from '../api';
 import { isTestnetChain, useServerChain } from '../serverChain';
 import { SiteLinkButton, SitePage } from '../Shell';
@@ -66,6 +68,7 @@ export function FaucetTap({ pouring, mood }: { pouring: boolean; mood: CoinMood 
 }
 
 function Faucet() {
+  const t = useT();
   const chain = useServerChain();
   const address = useWallet((s) => (s.status === 'connected' ? s.address : null));
   const provider = useWallet((s) => s.current?.provider ?? null);
@@ -157,8 +160,8 @@ function Faucet() {
       void loadDevFake().then((dev) => {
         if (!dev || !live) return;
         const f = dev.fakeFaucet;
-        const t = Math.floor(Date.now() / 1000);
-        const wait = Math.max(0, f.nextAt - t);
+        const nowS = Math.floor(Date.now() / 1000);
+        const wait = Math.max(0, f.nextAt - nowS);
         setInfo({ amount: f.holder ? f.holderAmount : f.amount, nextClaimAt: f.nextAt, canClaim: wait === 0, waitSecs: wait });
         setWei(dev.fakeWallet.wei);
       });
@@ -191,7 +194,7 @@ function Faucet() {
     return (
       <Plate>
         <div className="fc-wrap fc-wrap--quiet">
-          <StampSpinner label="Loading" />
+          <StampSpinner label={t('mn.loading')} />
         </div>
       </Plate>
     );
@@ -219,7 +222,7 @@ function Faucet() {
     };
     if (fake) {
       const dev = await loadDevFake();
-      if (!dev) return fail('The dev faucet is not available.');
+      if (!dev) return fail(t('fc.err.dev'));
       const h = await dev.fakeFaucetClaim((p, hh) => {
         setPhase(p);
         if (hh) setHash(hh);
@@ -259,14 +262,14 @@ function Faucet() {
     <Plate>
       <div className="fc-wrap">
         <div className="fc-copy">
-          <span className="kicker fc-kicker">Testnet · {chainName}</span>
+          <span className="kicker fc-kicker">{t('fc.kicker', { chain: chainName })}</span>
           <h1 className="fc-h display">
-            Free coins.
+            {t('fc.h1')}
             <br />
-            <em>Test</em> coins.
+            <T k="fc.h2" tags={{ em }} />
           </h1>
           <p className="fc-lede">
-            Fill your pockets with {m.symbol} and play the arenas on testnet. One claim an hour. These are test tokens: they have <b>no value</b> and never move to mainnet.
+            <T k="fc.lede" vars={{ sym: m.symbol }} tags={{ b }} />
           </p>
           <FaucetTap pouring={busy} mood={mood} />
         </div>
@@ -277,11 +280,11 @@ function Faucet() {
             </h2>
             {mult !== null && (
               <span className={`fc-bonus mono${isHolder ? ' is-mine' : ''}`} data-testid="fc-bonus">
-                <Laurel /> {isHolder ? `Holder: you get ${mult}x` : `Emblem holders get ${mult}x`}
+                <Laurel /> {isHolder ? t('fc.bonusYou', { n: mult }) : t('fc.bonus', { n: mult })}
               </span>
             )}
           </div>
-          <p className="fc-card__sub mono">per claim · every {Math.round(m.cfg.cooldownSecs / 60)} min</p>
+          <p className="fc-card__sub mono">{t('fc.every', { n: Math.round(m.cfg.cooldownSecs / 60) })}</p>
 
           {!address ? (
             <ConnectOnly />
@@ -295,29 +298,29 @@ function Faucet() {
                   </span>
                 ) : (
                   <button type="button" className="fc-net mono" onClick={() => provider && void ensureChain(provider, chain!).catch(() => {})}>
-                    Switch to {chainName}
+                    {t('wl.switch', { chain: chainName })}
                   </button>
                 )}
                 <button type="button" className="sw-link" onClick={() => disconnectWallet()}>
-                  Use another wallet
+                  {t('fc.another')}
                 </button>
               </div>
               {waiting && !busy ? (
                 <div className="fc-wait" data-testid="fc-wait" aria-live="polite">
-                  <span className="kicker">Next claim in</span>
+                  <span className="kicker">{t('fc.next')}</span>
                   <span className="fc-wait__t num">{formatWait(wait)}</span>
                 </div>
               ) : (
                 <Button variant="primary" size="lg" block loading={busy} disabled={busy || !info} onClick={() => void claim()} className="fc-claim" data-testid="fc-claim">
-                  {busy ? BUSY[phase as keyof typeof BUSY] : `Claim ${wholeTokens(amount, m.decimals)} ${m.symbol}`}
+                  {busy ? t(BUSY[phase as keyof typeof BUSY]) : t('fc.claim', { n: wholeTokens(amount, m.decimals), sym: m.symbol })}
                 </Button>
               )}
               {phase === 'done' && (
                 <p className="fc-ok" role="status" data-testid="fc-done">
-                  <Icon name="check" size={16} /> {wholeTokens(amount, m.decimals)} {m.symbol} landed in your wallet.{' '}
+                  <Icon name="check" size={16} /> {t('fc.done', { n: wholeTokens(amount, m.decimals), sym: m.symbol })}{' '}
                   {tx && (
                     <a href={tx} target="_blank" rel="noreferrer">
-                      View transaction
+                      {t('tf.viewTx')}
                     </a>
                   )}
                 </p>
@@ -329,16 +332,16 @@ function Faucet() {
               )}
               {noGas && !error && (
                 <p className="fc-gas" role="note">
-                  You need a little HYPE for gas first. Grab some from Kinetiq&rsquo;s faucet below.
+                  {t('fc.noGas')}
                 </p>
               )}
               <div className="fc-row">
                 <button type="button" className="fc-add" onClick={() => void addToken()} disabled={!provider || fake}>
-                  <Icon name="wallet" size={16} /> {added === 'ok' ? `${m.symbol} added` : `Add ${m.symbol} to wallet`}
+                  <Icon name="wallet" size={16} /> {added === 'ok' ? t('fc.added', { sym: m.symbol }) : t('fc.add', { sym: m.symbol })}
                 </button>
                 {phase === 'done' && (
                   <SiteLinkButton href="/play" variant="teal" size="sm" icon="arrow">
-                    Play
+                    {t('site.nav.play')}
                   </SiteLinkButton>
                 )}
               </div>
@@ -347,7 +350,7 @@ function Faucet() {
           <a className="fc-hype" href={hypeUrl} target="_blank" rel="noreferrer">
             <span className="fc-hype__dot" aria-hidden="true" />
             <span>
-              <b>Need HYPE for gas?</b> Kinetiq&rsquo;s testnet faucet
+              <T k="fc.hype" tags={{ b }} />
             </span>
             <Icon name="arrow" size={16} />
           </a>
@@ -357,16 +360,17 @@ function Faucet() {
   );
 }
 
-const BUSY = {
-  switching: 'Switching network…',
-  signing: 'Confirm in your wallet…',
-  confirming: 'Pouring…',
-} as const;
+const BUSY: Record<'switching' | 'signing' | 'confirming', TKey> = {
+  switching: 'mn.busy.switching',
+  signing: 'mn.busy.signing',
+  confirming: 'fc.pouring',
+};
 
 function Plate({ children }: { children: ReactNode }) {
+  const t = useT();
   return (
     <>
-      <PlateLabel numeral="IV" title="The tap at the edge of the ring" aside="/faucet" className="fc-platelabel" />
+      <PlateLabel numeral="IV" title={t('fc.plate')} aside="/faucet" className="fc-platelabel" />
       <Kb theme="paper" className="fc-plate">
         {children}
       </Kb>
@@ -380,6 +384,7 @@ function ConnectOnly() {
   const status = useWallet((s) => s.status);
   const current = useWallet((s) => s.current);
   const err = useWallet((s) => s.error);
+  const t = useT();
   const connecting = status === 'connecting';
   if (providers.length === 0)
     return (
@@ -388,13 +393,13 @@ function ConnectOnly() {
           <Icon name="wallet" size={22} />
         </span>
         <span>
-          <strong>No browser wallet found.</strong> Install MetaMask, Rabby or any browser wallet, or open this page in your wallet app&apos;s browser.
+          <T k="sw.none" tags={{ strong: (c) => <strong>{c}</strong> }} />
         </span>
       </p>
     );
   return (
     <div className="sw fc-connect">
-      <div className="sw-wallets" role="group" aria-label="Wallets">
+      <div className="sw-wallets" role="group" aria-label={t('sw.wallets')}>
         {providers.map((d) => {
           const busy = connecting && current?.info.uuid === d.info.uuid;
           return (
@@ -402,13 +407,13 @@ function ConnectOnly() {
               <span className="sw-opt__icon" aria-hidden="true">
                 {d.info.icon ? <img src={d.info.icon} alt="" /> : <Icon name="wallet" size={20} />}
               </span>
-              <span className="sw-opt__name">Connect {d.info.name}</span>
+              <span className="sw-opt__name">{t('sw.connectName', { name: d.info.name })}</span>
               <Icon name="arrow" size={18} className="sw-opt__go" />
             </button>
           );
         })}
       </div>
-      <p className="sw-note">{connecting ? 'Connecting… check your wallet.' : 'Connecting sends nothing. Claiming is one transaction (a little HYPE for gas).'}</p>
+      <p className="sw-note">{connecting ? t('sw.connecting') : t('fc.connectNote')}</p>
       {err && (
         <p className="sw-note is-error" role="alert">
           {err}
@@ -420,10 +425,11 @@ function ConnectOnly() {
 
 /** Mainnet, no chain, or no TestToken yet. */
 function Quiet({ view }: { view: 'mainnet' | 'offline' | 'no-token' }) {
+  const t = useT();
   const copy = {
-    mainnet: { h: 'Faucet is testnet only', p: 'On mainnet the game token is real, so there is no tap to open. Mint an emblem or join the WL instead.', mood: 'smug' as const },
-    offline: { h: 'The tap is dry right now', p: 'The game server is not answering, or it is not on a chain yet. Try again in a moment.', mood: 'sleepy' as const },
-    'no-token': { h: 'The tap is not plumbed in yet', p: 'The testnet token is not registered on this server yet. Follow @elymumio: it opens with the testnet arenas.', mood: 'sleepy' as const },
+    mainnet: { h: t('fc.q.mainnet'), p: t('fc.q.mainnetP'), mood: 'smug' as const },
+    offline: { h: t('fc.q.offline'), p: t('fc.q.offlineP'), mood: 'sleepy' as const },
+    'no-token': { h: t('fc.q.noToken'), p: t('fc.q.noTokenP'), mood: 'sleepy' as const },
   }[view];
   return (
     <Plate>
@@ -434,10 +440,10 @@ function Quiet({ view }: { view: 'mainnet' | 'offline' | 'no-token' }) {
           <p className="fc-lede">{copy.p}</p>
           <div className="fc-row">
             <SiteLinkButton href="/mint" variant="primary" icon="arrow">
-              Mint
+              {t('site.nav.mint')}
             </SiteLinkButton>
             <SiteLinkButton href="/wl" variant="secondary">
-              Join the WL
+              {t('ld.cta.wl')}
             </SiteLinkButton>
           </div>
         </div>

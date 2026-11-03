@@ -1,9 +1,13 @@
 import { useState } from 'react';
 import { Button, Sheet, Tape } from '../../design';
+import { useLocale, useT } from '../../i18n';
+import { strong, T } from '../../i18n/rich';
 import { rafflePost } from './logic';
 
 /** The collab guide: how the raffle works, the rules, and a post to copy. */
 export function CollabGuide({ open, onClose, community, spots, deadline }: { open: boolean; onClose: () => void; community: string; spots: number | null; deadline: number | null }) {
+  const t = useT();
+  useLocale();
   const post = rafflePost(community, spots, deadline);
   const [copied, setCopied] = useState(false);
   const copy = async () => {
@@ -17,47 +21,34 @@ export function CollabGuide({ open, onClose, community, spots, deadline }: { ope
     }
   };
   return (
-    <Sheet open={open} onClose={onClose} title="Run your raffle." kicker="Collab guide" closeLabel="Close the guide" className="cb-guide">
+    <Sheet open={open} onClose={onClose} title={t('cb.g.title')} kicker={t('cb.g.kicker')} closeLabel={t('cb.g.close')} className="cb-guide">
       <ol className="cb-guide__steps">
-        <li>
-          <strong>Apply</strong> with your community and a post about Elymum on its X. We review every application by hand and DM you on X.
-        </li>
-        <li>
-          <strong>Get your spots.</strong> Once approved, this page shows how many Elymum WL spots you have and a timer to hand them out.
-        </li>
-        <li>
-          <strong>Post your raffle</strong> on your community&apos;s X. Use the post below or your own, with @elymumio in it.
-        </li>
-        <li>
-          <strong>Add the winners</strong> here: a name (Discord or X) and an EVM wallet (0x…) per person. Paste a whole list at once if you like. Save as you go.
-        </li>
-        <li>
-          <strong>Submit</strong> with the link to your raffle post, before the timer ends. Submitted wallets go on the Elymum WL for the mint.
-        </li>
+        {[1, 2, 3, 4, 5].map((n) => (
+          <li key={n}>
+            <T k={`cb.g.step${n}` as 'cb.g.step1'} tags={{ strong }} />
+          </li>
+        ))}
       </ol>
-      <h3 className="cb-guide__h">Rules</h3>
+      <h3 className="cb-guide__h">{t('cb.g.rules')}</h3>
       <ul className="cb-guide__rules">
-        <li>One X account can send up to 2 applications.</li>
-        <li>The raffle runs in public, in a post on X. We need its link to take your list.</li>
-        <li>One person per spot, one wallet per person.</li>
-        <li>EVM wallets only (0x…). No exchange deposit addresses.</li>
-        <li>No bots, no farms. We may remove wallets that look like either, and flag wallets already on another list.</li>
-        <li>After you submit, the list is locked. DM @elymumio on X if you need a change.</li>
+        {[1, 2, 3, 4, 5, 6].map((n) => (
+          <li key={n}>{t(`cb.g.rule${n}` as 'cb.g.rule1')}</li>
+        ))}
       </ul>
-      <h3 className="cb-guide__h">A post for your raffle</h3>
+      <h3 className="cb-guide__h">{t('cb.g.postH')}</h3>
       <div className="cb-guide__note">
         <Tape rotate={-4} width={80} />
         <label className="kb-sr" htmlFor="cb-raffle-post">
-          Raffle post
+          {t('cb.g.postLabel')}
         </label>
         <textarea id="cb-raffle-post" className="cb-guide__post" readOnly value={post} rows={10} />
       </div>
       <div className="wl-row">
         <Button variant="primary" size="sm" lead={copied ? 'check' : undefined} onClick={() => void copy()}>
-          {copied ? 'Copied' : 'Copy the post'}
+          {copied ? t('cb.g.copied') : t('cb.g.copy')}
         </Button>
         <span className="wl-note" role="status">
-          {copied ? 'The post is on your clipboard.' : 'It mentions @elymumio and this site.'}
+          {copied ? t('cb.g.onClip') : t('cb.g.mentions')}
         </span>
       </div>
     </Sheet>
