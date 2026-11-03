@@ -267,6 +267,30 @@
     min-height: 40px;
   }
 }
+/* a phone's corner (portrait: too thin; landscape: too low) has no room for labelled buttons: they become round icon stickers side
+   by side (their aria-labels still name them), so the room tag does not push the feed down onto
+   the thumb stick */
+.g-hud.is-narrow .g-pond__custom,
+.g-hud.is-short .g-pond__custom {
+  flex-wrap: nowrap;
+}
+.g-hud.is-narrow .g-pond__btn,
+.g-hud.is-short .g-pond__btn {
+  justify-content: center;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  padding: 0;
+}
+.g-hud.is-narrow .g-pond__btn .g-pond__btnlabel,
+.g-hud.is-short .g-pond__btn .g-pond__btnlabel {
+  display: none;
+}
+.g-hud.is-narrow .g-pond__btn svg,
+.g-hud.is-short .g-pond__btn svg {
+  width: 18px;
+  height: 18px;
+}
 
 @media (max-width: 639px) {
   .cr-row .kb-qty {

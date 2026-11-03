@@ -10,6 +10,14 @@
 .nw-tabs {
   margin-bottom: 22px;
 }
+/* the smallest phones: all three tabs in view ("Countries" was cut to "C" at the edge) */
+@media (max-width: 374px) {
+  .nw-tabs .kb-tab {
+    gap: 6px;
+    padding: 0 9px;
+    font-size: 15px;
+  }
+}
 .nw-panel:focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 6px;

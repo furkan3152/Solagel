@@ -19,7 +19,8 @@
 // Themes: `day` (the app's light paper) and `night` (the app's dark theme, plus the OS dark scheme
 // for the site and admin pages, which are day pages by design).
 // --serve   only starts the stack (as --start does) and keeps it up, for repeated runs against --base.
-// --full-shots also saves a viewport screenshot of every audited state (states/*.png).
+// --full-shots also saves a viewport screenshot of every audited state (states/*.jpg); with
+//           --full-page the shot holds the whole scrolling page.
 // --selftest checks the detectors against a fixture page with one known bug each.
 // --scenes takes id prefixes (`lobby` runs lobby-*); --list prints the scene ids.
 // --locale ru runs every scene in that interface language (en, tr, es, pt, ru, zh; default en): the
@@ -64,14 +65,19 @@ const ONE = 10n ** 18n;
 const VIEWPORTS = [
   { name: '320x568', w: 320, h: 568, touch: true, dpr: 2 },
   { name: '360x640', w: 360, h: 640, touch: true, dpr: 2 },
+  { name: '360x800', w: 360, h: 800, touch: true, dpr: 2 },
   { name: '390x844', w: 390, h: 844, touch: true, dpr: 2 },
   { name: '414x896', w: 414, h: 896, touch: true, dpr: 2 },
+  { name: '430x932', w: 430, h: 932, touch: true, dpr: 2 },
   { name: '844x390', w: 844, h: 390, touch: true, dpr: 2 },
+  { name: '932x430', w: 932, h: 430, touch: true, dpr: 2 },
   { name: '768x1024', w: 768, h: 1024, touch: true, dpr: 1 },
   { name: '1024x768', w: 1024, h: 768, touch: true, dpr: 1 },
+  { name: '820x1180', w: 820, h: 1180, touch: true, dpr: 1 },
   { name: '1280x800', w: 1280, h: 800, touch: false, dpr: 1 },
   { name: '1440x900', w: 1440, h: 900, touch: false, dpr: 1 },
   { name: '1920x1080', w: 1920, h: 1080, touch: false, dpr: 1 },
+  { name: '2560x1440', w: 2560, h: 1440, touch: false, dpr: 1 },
 ];
 const THEMES = ['day', 'night'];
 
@@ -92,6 +98,8 @@ const HYPE = { huge: 12_345_678_900_000_000_000_000n, zero: 0n, tiny: 1_000_000_
 // ───────────────────────────── the stack (optional) ─────────────────────────────
 const kids = [];
 async function startStack() {
+  // another stack on these ports would be audited instead of this checkout's: refuse
+  if (await fetch(`${BASE}/api/health`).then((r) => r.ok, () => false)) throw new Error(`${BASE} already serves a stack: pick other --web-port / --server-port`);
   const data = mkdtempSync(join(tmpdir(), 'elymum-ui-audit-'));
   const server = spawn('npx', ['tsx', 'src/index.ts'], {
     cwd: join(ROOT, 'apps/server'),
@@ -268,6 +276,24 @@ const SCENES = [
   site('site-faucet', '/faucet'),
   site('site-faucet-guest', '/faucet', { auth: 'guest' }),
   site('site-docs', '/docs'),
+  // the language list open from the header tag (phones: from the menu sheet)
+  {
+    id: 'site-lang-open',
+    app: 'site',
+    auth: 'signed',
+    scroll: false,
+    run: async (page) => {
+      await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
+      await page.waitForLoadState('networkidle').catch(() => {});
+      await settle(page, 1500);
+      if (!(await page.locator('[data-testid="lang-pick"]:visible').count())) {
+        await page.locator('.st-menu-btn').click();
+        await settle(page, 700);
+      }
+      await page.locator('[data-testid="lang-pick"]:visible').first().click();
+      await settle(page, 600);
+    },
+  },
   // every free text field filled with long values (X handles, post links, names, wallets)
   ...['wl', 'collab'].map((pg) => ({
     id: `site-${pg}-filled`,
@@ -393,6 +419,19 @@ const SCENES = [
     },
   },
   { id: 'settings-sheet', app: 'play', auth: 'signed', run: async (page, h) => (await openPlay(page, h), await setUi(page, { modal: 'settings' }), await settle(page, 900)) },
+  {
+    id: 'settings-lang-open',
+    app: 'play',
+    auth: 'signed',
+    scroll: false,
+    run: async (page, h) => {
+      await openPlay(page, h);
+      await setUi(page, { modal: 'settings' });
+      await settle(page, 900);
+      await page.locator('[data-testid="lang-pick"]:visible').first().click();
+      await settle(page, 600);
+    },
+  },
   { id: 'howto-sheet', app: 'play', auth: 'signed', run: async (page, h) => (await openPlay(page, h), await setUi(page, { modal: 'howto' }), await settle(page, 900)) },
   { id: 'shop-sheet', app: 'play', auth: 'signed', run: async (page, h) => (await openPlay(page, h), await setUi(page, { modal: 'shop' }), await settle(page, 1200)) },
   { id: 'shop-sheet-guest', app: 'play', auth: 'guest', run: async (page, h) => (await openPlay(page, h, { signed: false }), await setUi(page, { modal: 'shop' }), await settle(page, 1200)) },
@@ -823,7 +862,10 @@ async function auditState(page, ctxInfo, sceneId, state, dedupe) {
   };
   if (flag('--full-shots')) {
     mkdirSync(join(OUT, 'states'), { recursive: true });
-    await page.screenshot({ path: join(OUT, 'states', `${sceneId}-${state}-${vp.name}-${theme}.png`) }).catch(() => {});
+    // JPEG keeps a full matrix of state shots small; --full-page captures the whole scrolling page
+    await page
+      .screenshot({ path: join(OUT, 'states', `${sceneId}-${state}-${vp.name}-${theme}.jpg`), type: 'jpeg', quality: 80, fullPage: flag('--full-page') })
+      .catch(() => {});
   }
   await one('top');
   if (ctxInfo.scroll === false) return;

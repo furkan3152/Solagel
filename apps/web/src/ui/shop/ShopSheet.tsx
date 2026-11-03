@@ -159,13 +159,6 @@ export function ShopSheet() {
       kicker={t('boost.shop')}
       title={t('shop.title')}
       className="g-sheet sh-sheet"
-      footer={
-        s?.sink ? (
-          <p className="sh-foot mono">
-            {t(s.sinkKind === 'burn' ? 'shop.sink.burn' : 'shop.sink.treasury', { addr: shortAddress(s.sink) })} {t('shop.keys')}
-          </p>
-        ) : undefined
-      }
     >
       <p className="sh-lede">{t('shop.lede', { n: s?.packs[0]?.charges ?? SHOP_DEFAULTS.packSize, sym: s?.token?.symbol ?? '$ELYMUM', max })}</p>
       {s?.holder ? (
@@ -210,6 +203,13 @@ export function ShopSheet() {
             {t('shop.signInBtn')}
           </Button>
         </div>
+      )}
+      {/* fine print at the end of the list: as a fixed footer it took three lines from the packs on
+          short screens */}
+      {s?.sink && (
+        <p className="sh-foot mono">
+          {t(s.sinkKind === 'burn' ? 'shop.sink.burn' : 'shop.sink.treasury', { addr: shortAddress(s.sink) })} {t('shop.keys')}
+        </p>
       )}
     </Sheet>
   );

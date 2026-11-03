@@ -152,6 +152,9 @@ h2,
 .display {
   overflow-wrap: break-word;
   hyphens: auto;
+  /* only long words, and never a stub of a few letters: Chrome had split "мо-неты" and "paralar-ı"
+     where the whole word fitted on the next line */
+  hyphenate-limit-chars: 10 4 4;
 }
 /* Chinese has no capitals and reads badly spaced out: the label tracking stays tight */
 :lang(zh) .kicker,
@@ -625,6 +628,13 @@ h2,
   padding: 0 26px;
   font-size: 20px;
   border-radius: 16px;
+}
+/* the smallest phones: a large label stays on one line inside a full-width sheet or dock */
+@media (max-width: 374px) {
+  .kb-btn--lg {
+    padding: 0 18px;
+    font-size: 18px;
+  }
 }
 .kb-btn--block {
   display: flex;
@@ -1457,6 +1467,40 @@ h2,
   font-size: var(--t-label);
   color: var(--teal-ink);
   margin-bottom: 6px;
+}
+/* landscape phones and low windows: a slimmer head and foot, so the body (the part that scrolls)
+   keeps most of the height instead of a sliver between them */
+@media (max-height: 500px) {
+  .kb-sheet-layer {
+    padding: 12px;
+  }
+  .kb-sheet {
+    max-height: calc(100vh - 24px);
+    max-height: calc(100dvh - 24px);
+  }
+  .kb-sheet__head {
+    padding: 12px 20px 10px;
+  }
+  .kb-sheet__kicker {
+    margin-bottom: 2px;
+  }
+  /* the slimmer head brings the kicker up into the corner tape: it starts further right */
+  .kb-sheet:not(.is-bottom) .kb-sheet__head .kb-sheet__kicker {
+    padding-left: 52px;
+  }
+  .kb-sheet__title {
+    font-size: 24px;
+  }
+  .kb-sheet__body {
+    padding: 12px 20px;
+  }
+  .kb-sheet__foot {
+    padding: 10px 20px 14px;
+  }
+}
+/* a bottom sheet has a grip, not tape: its kicker lines up with the title */
+.kb-sheet.is-bottom .kb-sheet__kicker {
+  padding-left: 0;
 }
 .kb-sheet__title {
   font-family: var(--font-display);

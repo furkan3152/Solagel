@@ -44,11 +44,11 @@ export function CustomRoomBar({ room }: { room: RoomInfo }) {
       </span>
       <span className="g-pond__custom">
         <button type="button" className="g-pond__btn mono" onClick={copy} aria-label={t('cr.inviteLabel')} data-testid="custom-invite">
-          <Icon name="users" size={14} /> {t('cr.invite')}
+          <Icon name="users" size={14} /> <span className="g-pond__btnlabel">{t('cr.invite')}</span>
         </button>
         {mineRoom && (
           <button type="button" className="g-pond__btn is-danger mono" onClick={() => void close()} disabled={busy} aria-label={t('cr.closeRoomLabel')} data-testid="custom-close">
-            <Icon name="close" size={14} /> {t('cr.closeRoom')}
+            <Icon name="close" size={14} /> <span className="g-pond__btnlabel">{t('cr.closeRoom')}</span>
           </button>
         )}
       </span>

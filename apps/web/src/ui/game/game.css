@@ -550,15 +550,21 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 4px;
+  /* room for the leader's crown, which pokes up above rank 1 */
+  margin-bottom: 8px;
 }
 .g-standings__title {
+  /* the whole name, on two balanced lines where the card is narrow ("Top of the food chain"
+     used to end in "Top of the food ch…" even on desktops) */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   min-width: 0;
   overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  text-wrap: balance;
+  overflow-wrap: break-word;
   font-size: 17px;
-  line-height: 1.1;
+  line-height: 1.05;
   font-variation-settings: var(--fv-wonk);
 }
 .g-standings__count {
@@ -671,6 +677,30 @@
 }
 .g-standings.is-compact .g-standings__title {
   font-size: 14px;
+}
+/* landscape phones: the left column runs down to the thumb stick, so the card drops its name
+   (the crown and the arrow say what it is; screen readers keep the section's label) */
+.g-hud.is-short .g-standings.is-compact .g-standings__title {
+  display: none;
+}
+.g-hud.is-short .g-standings.is-compact .g-standings__head {
+  justify-content: flex-end;
+  margin-bottom: 0;
+}
+/* the smallest phones: the corner is too thin for a BOT tag beside a name */
+@media (max-width: 359px) {
+  .g-hud.is-narrow .g-standings.is-compact .g-standings__name > .g-bot {
+    display: none;
+  }
+  /* and too thin for the card's name: the crown and the arrow say what it is (screen readers
+     still get the section's label) */
+  .g-hud.is-narrow .g-standings.is-compact .g-standings__title {
+    display: none;
+  }
+  .g-hud.is-narrow .g-standings.is-compact .g-standings__head {
+    justify-content: flex-end;
+    margin-bottom: 0;
+  }
 }
 .g-standings.is-compact .g-standings__all {
   padding: 1px 4px;
@@ -1138,6 +1168,12 @@
 .g-hud.is-narrow .g-kill {
   font-size: 11px;
 }
+/* short phones (iPhone SE): one feed line, so the corner column ends well above the thumb stick */
+@media (max-height: 660px) {
+  .g-hud.is-narrow .g-kills > :not(:last-child) {
+    display: none;
+  }
+}
 .g-hud.is-narrow .g-chat {
   width: min(280px, calc(100vw - 2 * var(--hud-gap)));
 }
@@ -1147,6 +1183,21 @@
 }
 .g-hud.is-narrow .g-spectate__name {
   font-size: 18px;
+}
+/* phones: the name gets its own line above the buttons instead of a few letters beside them */
+@media (max-width: 429px) {
+  .g-hud.is-narrow .g-spectate__paper {
+    flex-wrap: wrap;
+    gap: 6px 8px;
+    padding: 8px 8px 8px 12px;
+  }
+  .g-hud.is-narrow .g-spectate__who {
+    flex-basis: 100%;
+  }
+  .g-hud.is-narrow .g-spectate__actions {
+    flex: 1 1 auto;
+    justify-content: flex-end;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1199,6 +1250,13 @@
   color: var(--down-ink);
   font-size: clamp(52px, 9vw, 72px);
   text-transform: uppercase;
+}
+/* landscape phones: the verdict on one line, so the stats under it stay in view */
+@media (max-height: 500px) {
+  .g-death__title,
+  .g-roundover__title {
+    font-size: 36px;
+  }
 }
 .g-death__body {
   display: flex;
@@ -1540,7 +1598,8 @@
 }
 .gs-label {
   display: flex;
-  flex: 1 1 7em;
+  /* a short label ("Sky") keeps its two chips beside it on a 320 px phone */
+  flex: 1 1 4.5em;
   flex-direction: column;
   min-width: 0;
 }

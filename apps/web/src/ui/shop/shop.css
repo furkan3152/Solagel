@@ -131,7 +131,9 @@
   margin: 0;
 }
 .sh-foot {
-  margin: 0;
+  margin: 16px 0 0;
+  padding-top: 12px;
+  border-top: 2px dashed var(--rule);
   color: var(--ink-3);
   font-size: 11px;
   line-height: 1.4;
@@ -139,6 +141,8 @@
 @media (max-width: 520px) {
   .sh-pack {
     grid-template-columns: 52px minmax(0, 1fr);
+    /* the full-width buy button and its shadow clear the pack's bottom edge */
+    padding: 12px 14px 16px 12px;
   }
   .sh-pack__glyph {
     width: 48px;

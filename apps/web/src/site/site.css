@@ -298,6 +298,13 @@ body {
     display: none;
   }
 }
+/* the smallest phones: the wordmark was squeezed to a sliver beside the wallet chip; the coin alone
+   is the brand there, as in the game's phone masthead (the link keeps its accessible name) */
+@media (max-width: 359px) {
+  .st-head .st-mark {
+    display: none;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .st-menu,
   .st-menu__scrim {
@@ -927,4 +934,12 @@ html[data-turn='back']::view-transition-old(root) {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
+}
+
+/* wide screens: the plate captions line up with the header's 1312 px column instead of running to
+   the far edges of a 2560 px window (their rules still span the page) */
+@media (min-width: 1440px) {
+  .st-root .kb-plate {
+    padding-inline: calc((100vw - 1312px) / 2 + var(--gutter));
+  }
 }

@@ -1,4 +1,4 @@
-/* The language picker: a cream Storybook tag; the native select sits invisibly on top of it. */
+/* The language picker: a cream Storybook tag; it opens a sticker list (LanguagePicker.tsx). */
 .lang-pick {
   position: relative;
   display: inline-flex;
@@ -6,6 +6,7 @@
   gap: 6px;
   min-height: 44px;
   max-width: 100%;
+  margin: 0;
   padding: 0 12px;
   border: var(--stroke-sm) solid var(--outline);
   border-radius: 11px;
@@ -17,16 +18,18 @@
   font-weight: 600;
   line-height: 1.1;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
   transition: transform 140ms var(--ease-press), box-shadow 140ms var(--ease-press);
 }
-.lang-pick:hover {
+.lang-pick:hover,
+.lang-pick.is-open {
   background: var(--sun, #ffd23f);
 }
 .lang-pick:active {
   transform: translate(2px, 2px);
   box-shadow: var(--sh-press);
 }
-.lang-pick:focus-within {
+.lang-pick:focus-visible {
   outline: 3px solid var(--focus, var(--teal));
   outline-offset: 2px;
 }
@@ -48,18 +51,180 @@
 .lang-pick__chev {
   transform: rotate(90deg);
   opacity: 0.7;
+  transition: transform 160ms var(--ease-press);
 }
-.lang-pick__select {
+.lang-pick.is-open .lang-pick__chev {
+  transform: rotate(-90deg);
+}
+
+/* the list: a cream sticker that drops from the tag (a bottom sheet on phones) */
+.lang-pop-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  pointer-events: none;
+}
+.lang-pop-scrim {
   position: absolute;
   inset: 0;
-  width: 100%;
-  height: 100%;
+  background: var(--scrim);
+  pointer-events: auto;
+  animation: lang-fade 160ms linear both;
+}
+.lang-pop {
+  /* cream stock in both themes: day text tokens on it */
+  --ink-3: #6b655a;
+  --teal-ink: #2d7388;
+  --rule: #ddd6c7;
+  /* placed in the full-window layer, so its coordinates are the window's */
+  position: absolute;
+  max-height: min(420px, calc(100vh - 16px));
+  overflow-y: auto;
+  padding: 6px;
+  border: var(--stroke) solid var(--outline);
+  border-radius: 16px;
+  background: var(--sticker);
+  color: var(--ink-fixed);
+  box-shadow: var(--sh-3);
+  pointer-events: auto;
+  overscroll-behavior: contain;
+  transform-origin: top right;
+  animation: lang-drop 180ms var(--ease-out, ease-out) both;
+}
+.lang-pop.is-up {
+  transform-origin: bottom right;
+}
+.lang-pop__list {
   margin: 0;
-  border: 0;
-  opacity: 0;
+  padding: 0;
+  list-style: none;
+  outline: none;
+}
+.lang-pop__opt {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 12px 0 8px;
+  border-radius: 10px;
+  font-family: var(--font-body);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.2;
   cursor: pointer;
-  font-size: 16px; /* no iOS zoom on focus */
-  appearance: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.lang-pop__opt + .lang-pop__opt {
+  box-shadow: inset 0 1.5px 0 -0.5px var(--rule);
+}
+.lang-pop__opt.is-active,
+.lang-pop__opt.is-active + .lang-pop__opt {
+  box-shadow: none;
+}
+.lang-pop__opt.is-active {
+  background: var(--mist);
+}
+.lang-pop__list:focus-visible .lang-pop__opt.is-active {
+  outline: 2.5px solid var(--outline);
+  outline-offset: -2.5px;
+}
+.lang-pop__opt.is-on {
+  font-weight: 800;
+}
+.lang-pop__check {
+  display: grid;
+  place-items: center;
+  color: var(--teal-ink, #2d7388);
+}
+.lang-pop__name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.lang-pop__code {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--ink-3, #6b655a);
+}
+.lang-pop__opt.is-on .lang-pop__code {
+  color: var(--ink-fixed);
+}
+
+/* phones: a bottom sheet with a grip and a name, rows sized for thumbs */
+.lang-pop.is-sheet {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 80vh;
+  padding: 0 14px calc(14px + env(safe-area-inset-bottom, 0px));
+  border-width: var(--stroke) 0 0;
+  border-radius: var(--r-panel, 22px) var(--r-panel, 22px) 0 0;
+  box-shadow: 0 -5px 0 var(--sun);
+  transform-origin: bottom center;
+  animation: lang-rise 220ms var(--ease-out, ease-out) both;
+}
+.lang-pop__grip {
+  display: block;
+  width: 54px;
+  height: 6px;
+  margin: 10px auto 6px;
+  border-radius: 3px;
+  background: var(--sand-2);
+}
+.lang-pop__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 10px;
+  border-bottom: 2px dashed var(--rule);
+  margin-bottom: 6px;
+  font-family: var(--font-display);
+  font-variation-settings: var(--fv-display);
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.lang-pop__title .kb-icon,
+.lang-pop__title svg {
+  color: var(--teal-ink, #2d7388);
+}
+.lang-pop.is-sheet .lang-pop__opt {
+  min-height: 52px;
+  font-size: 17px;
+}
+@keyframes lang-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.97);
+  }
+}
+.lang-pop.is-up {
+  animation-name: lang-lift;
+}
+@keyframes lang-lift {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
+  }
+}
+@keyframes lang-rise {
+  from {
+    transform: translateY(100%);
+  }
+}
+@keyframes lang-fade {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lang-pop,
+  .lang-pop-scrim,
+  .lang-pick__chev {
+    animation: none;
+    transition: none;
+  }
 }
 
 /* site header: the compact tag beside Connect (phones pick it from the menu sheet instead) */

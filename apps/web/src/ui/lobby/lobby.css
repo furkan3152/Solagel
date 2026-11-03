@@ -11,6 +11,9 @@
  * ------------------------------------------------------------------------- */
 
 .kl-root {
+  /* wide screens (2560): the page keeps a 1760 px measure in the middle, its rules still run edge to
+     edge (the gutter grows instead of the board stretching into a thin, sparse strip) */
+  --gutter: max(clamp(16px, 4.4vw, 64px), calc((100vw - 1760px) / 2));
   position: fixed;
   inset: 0;
   z-index: 5;
@@ -995,6 +998,12 @@
     display: none;
   }
 }
+/* translations of the kicker run longer ("Арена · в Elysium"): they need a wider window still */
+@media (max-width: 1599px) {
+  html:not(:lang(en)) .kl-root.is-wide .kl-mast__kicker {
+    display: none;
+  }
+}
 /* the plate's status line ("arenas open · fee · N online") wraps instead of running off a 768 px screen */
 .kl-root.is-mid .kl-plate .kb-plate__aside {
   flex: 0 1 auto;
@@ -1004,6 +1013,13 @@
 .kl-root.is-mid .kl-plate .kb-plate__aside .kl-status {
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+/* portrait tablets: every ticket row already prints its fee, so the caption drops it and
+   "N online" stays beside the pill instead of wrapping alone under it */
+@media (max-width: 959px) {
+  .kl-root.is-mid .kl-plate .kl-status > li:nth-child(2):nth-last-child(2) {
+    display: none;
+  }
 }
 @media (max-width: 959px) {
   .kl-root.is-mid .kl-sections__item {
@@ -1065,6 +1081,12 @@
 }
 .kl-root.is-phone .kl-status {
   padding: 0 16px 2px;
+  row-gap: 6px;
+}
+/* phones: the status pill on its own line, the fee and the online count together under it (the
+   count used to drop alone onto a third line) */
+.kl-root.is-phone .kl-status > li:first-child:nth-last-child(3) {
+  flex-basis: 100%;
 }
 .kl-root.is-phone .kl-board {
   margin: 0 -4px;
@@ -1078,9 +1100,28 @@
 .kl-board__titles {
   min-width: 0;
 }
+/* phones: the kicker sits beside the bell, the title takes the board's full width below them, so
+   "Departures" (and its longer translations) never breaks mid-word next to the bell badge */
+.kl-root.is-phone .kl-board__head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: 'kick bell' 'title title';
+  align-items: center;
+  gap: 4px 12px;
+}
+.kl-root.is-phone .kl-board__titles {
+  display: contents;
+}
+.kl-root.is-phone .kl-board__kicker {
+  grid-area: kick;
+  align-self: center;
+}
+.kl-root.is-phone .kl-bell {
+  grid-area: bell;
+}
 .kl-root.is-phone .kl-board__title {
-  font-size: clamp(26px, 9vw, 34px);
-  overflow-wrap: anywhere;
+  grid-area: title;
+  font-size: clamp(30px, 10vw, 40px);
 }
 .kl-root.is-phone .kl-bell {
   padding: 7px 10px 6px;
@@ -1123,6 +1164,13 @@
 .kl-root.is-phone .kl-ticket__round {
   font-size: 11px;
 }
+/* the smallest phones: "Round ends in 0:42" keeps its clock on the same line */
+@media (max-width: 359px) {
+  .kl-root.is-phone .kl-ticket__round {
+    padding: 2px 6px;
+    letter-spacing: 0;
+  }
+}
 .kl-root.is-phone .kl-board__head {
   align-items: center;
 }
@@ -1148,6 +1196,19 @@
 }
 .kl-dock .kl-cta.kb-btn--lg {
   min-height: 64px;
+}
+/* the tab bar runs edge to edge under the CTA (it was a cream box inset in a paper frame); it
+   carries the home-indicator inset itself */
+.kl-dock {
+  padding-bottom: 0;
+}
+.kl-dock > .kl-tabs {
+  margin: 0 -14px;
+}
+/* off the Play page the dock is the tab bar alone */
+.kl-dock:not(:has(.kl-dock__cta)) {
+  padding-top: 0;
+  border-top: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1317,7 +1378,10 @@
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  margin-top: 10px;
+  /* the whole label is the tap target: a thumb-sized row */
+  min-height: 44px;
+  padding: 4px 0;
+  margin-top: 6px;
   font-size: var(--t-small);
   color: var(--ink-2);
   cursor: pointer;

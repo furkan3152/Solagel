@@ -276,7 +276,7 @@ function Faucet() {
         <Sticker tone="cream" lift="lg" pad="lg" round="lg" tape className="fc-card" as="section" aria-labelledby="fc-card-h">
           <div className="fc-card__top">
             <h2 className="fc-card__h display" id="fc-card-h">
-              <span className="num">{wholeTokens(amount, m.decimals)}</span> {m.symbol}
+              <span className="num">{wholeTokens(amount, m.decimals)}</span> <span className="fc-card__sym">{m.symbol}</span>
             </h2>
             {mult !== null && (
               <span className={`fc-bonus mono${isHolder ? ' is-mine' : ''}`} data-testid="fc-bonus">

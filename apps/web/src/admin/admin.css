@@ -97,6 +97,13 @@ body {
   font-size: var(--t-small);
   color: var(--ink-2);
 }
+/* tablets and small laptops: the chip already names the network, so the session cluster keeps the
+   header's one line instead of dropping alone onto a second row */
+@media (max-width: 1199px) {
+  .ad-top__chain {
+    display: none;
+  }
+}
 
 /* the session cluster (wallet, badges, sign in) */
 .ad-session {
