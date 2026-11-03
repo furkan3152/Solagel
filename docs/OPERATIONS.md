@@ -199,6 +199,12 @@ the switch. To switch (`/admin` → Game → the arena contract shows a "legacy 
    wallet if it is not the deployer.
 5. Staked testnet bots follow by themselves (their wallets keep their tokens; the bankroll is re-minted when low).
 
+Testnet shortcut: to switch without closing and sweeping the old arena, set `ARENA_ADDRESS` to the new arena and
+`JOURNAL_ABANDON_CONTRACT` to the OLD arena address on the server. On start the server copies the journal's records
+of the old arena to `journal.json.abandoned-<old>-<time>` and clears them, so the new arena opens. Nothing is sent to
+the old contract any more: its unsettled tickets fall back to the contract's 24 h self-refund. Never use this on
+mainnet; remove both variables once the switch is done if you want `/admin` to register arenas again.
+
 Mainnet deploys the v2 arena from the start.
 
 ## Resetting the leaderboards

@@ -387,6 +387,8 @@ export class EvmChain implements ChainGateway {
         );
         return;
       }
+      const abandon = this.cfg.chain.journalAbandonContract;
+      if (abandon && abandon.toLowerCase() !== this.arena.toLowerCase()) this.journal.abandonContract(abandon);
       const bound = this.journal.bindContract(this.arena);
       if (!bound) {
         this.log(

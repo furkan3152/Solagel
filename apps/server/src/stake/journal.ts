@@ -392,6 +392,33 @@ export class Journal {
     return true;
   }
 
+  /**
+   * Testnet escape hatch (`JOURNAL_ABANDON_CONTRACT`): when the journal is bound to `oldAddress` and still
+   * holds records for it, copies the whole journal to `<path>.abandoned-<old>-<time>` and clears it, so it can
+   * bind to a new arena. Returns how many records were set aside (0 when it is bound to anything else).
+   * Nothing on chain changes: what the old contract owes stays collectable there (`refund` after 24 h).
+   */
+  abandonContract(oldAddress: string): number {
+    const old = oldAddress.toLowerCase();
+    if (this.contractV !== old || this.isIdle()) return 0;
+    const n = this.pendingItems.length + this.live().length + [...this.lootByRoom.values()].flat().length;
+    if (this.path) {
+      const backup = `${this.path}.abandoned-${old}-${Date.now()}`;
+      try {
+        writeFileSync(backup, readFileSync(this.path, 'utf8'));
+      } catch {
+        /* nothing persisted yet */
+      }
+      this.log(`!!! journal: ${n} record(s) of arena ${old} set aside in ${backup} (JOURNAL_ABANDON_CONTRACT)`);
+    }
+    this.pendingItems = [];
+    this.liveByRoom.clear();
+    this.lootByRoom.clear();
+    this.adopted.clear();
+    this.persist();
+    return n;
+  }
+
   /* ---------------------------------------------------------------- */
   /* Integrity holds                                                  */
   /* ---------------------------------------------------------------- */

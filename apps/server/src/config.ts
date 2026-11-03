@@ -81,6 +81,11 @@ export interface ServerConfig {
     /** `SERVER_PRIVATE_KEY`: `auto` (generated once into `DATA_DIR/server-key.json`), a 0x hex key, or a path to a file holding one. */
     serverKey: string | null;
     stakeEnabled: boolean;
+    /**
+     * `JOURNAL_ABANDON_CONTRACT` (testnet escape hatch): the old arena whose unsent journal records are set aside
+     * (copied to a backup file, then cleared) so a newly registered arena can open. Never set it on mainnet.
+     */
+    journalAbandonContract: string | null;
     /** Arena ids to open as stake rooms (empty = discover on-chain). */
     arenaIds: number[];
     /** Display symbol of the game token (`TOKEN_SYMBOL`, default `$ELYMUM`). */
@@ -298,6 +303,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       tokenAddress: blank(env.TOKEN_ADDRESS),
       serverKey: blank(env.SERVER_PRIVATE_KEY),
       stakeEnabled: bool(env.STAKE_ENABLED, true),
+      journalAbandonContract: blank(env.JOURNAL_ABANDON_CONTRACT),
       arenaIds: (env.STAKE_ARENA_IDS ?? '')
         .split(',')
         .map((s) => s.trim())

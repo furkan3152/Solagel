@@ -191,4 +191,15 @@ describe('sweep ids and the contract binding (EVM)', () => {
     expect(j.bindContract('0x00000000000000000000000000000000000000BB')).toBe(true);
     expect(j.lastSweepId(1)).toBe(0);
   });
+  it('JOURNAL_ABANDON_CONTRACT sets the old arena records aside so a new arena can bind', () => {
+    const j = new Journal(null);
+    j.bindContract('0x00000000000000000000000000000000000000AA');
+    j.enqueue(sweep('x'));
+    expect(j.abandonContract('0x00000000000000000000000000000000000000cc')).toBe(0); // not the bound one
+    expect(j.bindContract('0x00000000000000000000000000000000000000BB')).toBe(false);
+    expect(j.abandonContract('0x00000000000000000000000000000000000000AA')).toBe(1);
+    expect(j.isIdle()).toBe(true);
+    expect(j.bindContract('0x00000000000000000000000000000000000000BB')).toBe(true);
+    expect(j.abandonContract('0x00000000000000000000000000000000000000AA')).toBe(0); // once bound elsewhere, a no-op
+  });
 });
