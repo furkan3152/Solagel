@@ -165,6 +165,21 @@ describe('contracts registry', () => {
     expect((await h.call('DELETE', '/api/admin/contracts?kind=bogus', { wallet: ADMIN })).status).toBe(400);
   });
 
+  it('switching the arena is refused while the registered one has open tickets (not in the journal); owed payouts do not block', async () => {
+    const NEW = '0x00000000000000000000000000000000000000b2';
+    h.evm.addArena(7, 1_000n);
+    const s = h.evm.join(7, wallet());
+    const busy = await h.call('POST', '/api/admin/contracts', { wallet: ADMIN, body: { kind: 'arena', address: NEW } });
+    expect([busy.status, busy.body.error]).toEqual([409, 'wrong_state']);
+    expect(busy.body.message).toMatch(/still has open tickets \(#7: 1\)/);
+    expect(h.app.contracts.view().arena).toBe(ARENA);
+    h.evm.close(7, s.player);
+    const ok = await h.call('POST', '/api/admin/contracts', { wallet: ADMIN, body: { kind: 'arena', address: NEW } });
+    expect(ok.status).toBe(201);
+    // back to the first one for the next tests
+    expect((await h.call('POST', '/api/admin/contracts', { wallet: ADMIN, body: { kind: 'arena', address: ARENA } })).status).toBe(201);
+  });
+
   it('admins see the server key balance in /api/config; others do not', async () => {
     expect((await h.call('GET', '/api/config')).body.server).toBeUndefined();
     expect((await h.call('GET', '/api/config', { wallet: wallet() })).body.server).toBeUndefined();

@@ -211,7 +211,7 @@ function LegacyArenaCard({ ctx }: { ctx: ChainCtx }) {
       <ol className="ad-steps">
         <li>Close every arena here (Start / stop) and wait until every open ticket is settled (the open-ticket column at 0; unplayed tickets are refunded by the server within about 15 minutes).</li>
         <li>Still on this (old) arena: sweep each disabled arena's vault to the fee wallet (Advanced → sweep). What is left there is loot dust and rounding; payouts waiting to be collected stay reserved for their players and remain collectable on the old address.</li>
-        <li>Deploy the new arena (the button below, the bundled v2 contract; it gets a NEW address). It registers with the server by itself: the server switches only when its journal owes nothing on the old arena (step 1) and reads the new fee rule by itself.</li>
+        <li>Deploy the new arena (the button below, the bundled v2 contract; it gets a NEW address). It registers with the server by itself: the server switches only when its journal owes nothing on the old arena and no ticket is open there (step 1) and reads the new fee rule by itself.</li>
         <li>Setup: set the same game token on the new arena, create the four arenas, set the holder perks (and holders-only #4) and, if wanted, the fee wallet again.</li>
         <li>On testnet, the staked bots buy their tickets on the new arena by themselves: no re-funding needed (their wallets keep their tokens; the bankroll is minted again when low).</li>
         <li>If the server has ARENA_ADDRESS set (Render), it overrides the registry: change it to the new address instead.</li>

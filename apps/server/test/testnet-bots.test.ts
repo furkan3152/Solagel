@@ -98,6 +98,22 @@ describe('testnet staked bots: funding and tickets', () => {
     expect(t.source.status()).toMatchObject({ active: true, wallets: 1, playing: 1, problem: null });
   });
 
+  it('a new arena contract (the v2 redeploy) is read at once, not served from the old contract cache', async () => {
+    const t = setup();
+    // the old contract: arena #1 closed for the migration, read (and cached) by a purchase attempt
+    t.evm.arenaMap.get(1)!.enabled = false;
+    expect(await t.source.acquire(1, 'arena-1-1')).toBeNull();
+    // the registry switched to the new contract, where arena #1 is open
+    t.evm.arenaMap.get(1)!.enabled = true;
+    t.view.arena = '0x00000000000000000000000000000000000000b2';
+    const before = t.evm.sentBy.length;
+    await t.source.acquire(1, 'arena-1-1');
+    // a purchase was attempted on the new contract (the fake keeps one token ledger, so it may fail there)
+    // (the approve of the new contract as spender: the old contract was approved already)
+    const sent = t.evm.sentBy.slice(before).map((x) => ({ fn: x.call.functionName, spender: String((x.call.args as unknown[])[0]).toLowerCase() }));
+    expect(sent).toContainEqual({ fn: 'approve', spender: '0x00000000000000000000000000000000000000b2' });
+  });
+
   it('a wallet with a live ticket is not reused; a released one is, once its session is closed on chain (no new mint, no new approve)', async () => {
     const t = setup();
     const a = (await t.source.acquire(1, 'r'))!;

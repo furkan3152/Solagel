@@ -14,7 +14,8 @@
     "sim": "tsx scripts/sim.ts",
     "integrity-sim": "tsx scripts/integrity-sim.ts",
     "bot-bench": "tsx scripts/bench/bot-bench.ts",
-    "e2e": "tsx scripts/e2e.ts"
+    "e2e": "tsx scripts/e2e.ts",
+    "e2e:migration": "tsx scripts/e2e-migration.ts"
   },
   "dependencies": {
     "@elymum/sdk": "workspace:*",

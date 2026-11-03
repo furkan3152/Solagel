@@ -401,7 +401,9 @@ export class EvmChain implements ChainGateway {
       // stale (read again below), but it knows the token and the authority while the RPC refuses us
       if (kept && typeof kept.serverAuthority === 'string') this.applyConfig(kept, 0);
     }
-    await this.currentConfig(configMaxAgeMs);
+    // until the token is set and the server key is the settler, every 30 s pass reads the config (a freshly
+    // registered arena opens within 30 s of its Setup, not after the 3-minute cache)
+    await this.currentConfig(this.token() && this.authorized === true ? configMaxAgeMs : 0);
   }
 
   /** The game token of the cached config, null while it is unset (or unknown). */

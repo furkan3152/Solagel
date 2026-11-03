@@ -191,8 +191,10 @@ the switch. To switch (`/admin` → Game → the arena contract shows a "legacy 
 2. Sweep each disabled arena's vault of the OLD arena to the fee wallet (Advanced → sweep) while it is still the
    registered one. Owed payouts of finalized sessions stay collectable on the old address.
 3. Deploy the new arena (the legacy card's button, or Setup → Deploy); it registers by itself. The server refuses
-   the switch while its journal still owes money on the old arena. If `ARENA_ADDRESS` is set on the server it
-   overrides the registry: change it instead.
+   the switch while its journal still owes money on the old arena or the old arena still has open tickets (a
+   refused deploy is kept: register it later from Setup). If `ARENA_ADDRESS` is set on the server it overrides
+   the registry: change it instead. The server opens the arenas within 30 s of step 4.
+   `pnpm -F @elymum/server e2e:migration` runs these steps against a local Hardhat node and the real server.
 4. Setup: set the same game token, create the four arenas, the holder perks (3 %) and holders-only #4, and the fee
    wallet if it is not the deployer.
 5. Staked testnet bots follow by themselves (their wallets keep their tokens; the bankroll is re-minted when low).

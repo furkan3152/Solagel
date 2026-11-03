@@ -128,6 +128,8 @@ async function startServer(serverKey: string): Promise<void> {
     PORT: String(port),
     HOST: '127.0.0.1',
     NODE_ENV: 'production',
+    // production refuses to start without it (the SIWE domain)
+    PUBLIC_URL: httpUrl,
     DATA_DIR: dataDir,
     EVM_RPC_URL: rpcUrl,
     SERVER_PRIVATE_KEY: serverKey,

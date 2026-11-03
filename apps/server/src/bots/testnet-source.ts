@@ -167,7 +167,7 @@ export class TestnetBotSource implements StakedBotSource {
   private readonly roundBuys = new Map<number, { round: number; n: number }>();
   /** When the purchases of the last minute were made (the global per-minute cap). */
   private readonly buyTimes: number[] = [];
-  private readonly arenaCache = new Map<number, { at: number; value: ArenaInfo }>();
+  private readonly arenaCache = new Map<number, { at: number; arena: string; value: ArenaInfo }>();
   private readonly holderCache = new Map<string, { at: number; value: boolean }>();
   private minter: { at: number; token: string; value: boolean } | null = null;
   private problemV: string | null = null;
@@ -421,9 +421,10 @@ export class TestnetBotSource implements StakedBotSource {
 
   private async arenaInfo(ctx: { client: EvmClient; arena: Address }, id: number): Promise<ArenaInfo> {
     const hit = this.arenaCache.get(id);
-    if (hit && this.now() - hit.at < ARENA_TTL_MS) return hit.value;
+    // keyed by contract too: after an arena redeploy the old contract's (closed) arenas are not served
+    if (hit && hit.arena === ctx.arena.toLowerCase() && this.now() - hit.at < ARENA_TTL_MS) return hit.value;
     const value = await ctx.client.arena(ctx.arena, id);
-    this.arenaCache.set(id, { at: this.now(), value });
+    this.arenaCache.set(id, { at: this.now(), arena: ctx.arena.toLowerCase(), value });
     if (value.exists) this.seenArenas.set(id, value.holdersOnly);
     else this.seenArenas.delete(id);
     return value;

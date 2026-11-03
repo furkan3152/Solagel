@@ -185,6 +185,22 @@ export async function registerContract(deps: RegisterDeps, body: Record<string, 
     if (j && j.contract && !same(j.contract, address) && !j.isIdle()) {
       throw new SiteFail(409, 'wrong_state', `The journal still owes money on arena ${j.contract}; register it again or settle the journal first.`);
     }
+    // a ticket bought on the old arena and not seated yet is not in the journal: after the switch the server
+    // would no longer refund it (the stale sweeper reads the registered arena only) and the lobby would not
+    // show it, so the player would wait for the contract's 24 h self-refund. Finalized sessions (owed
+    // payouts) do not count as open: they stay collectable on the old address.
+    const old = deps.store.effective(chainId).arena?.address;
+    if (old && !same(old, address) && (await client.codeCheck(old as Address, 'arena')) === 'ok') {
+      const open = (await client.arenas(old as Address)).filter((a) => a.openSessions > 0);
+      if (open.length > 0) {
+        throw new SiteFail(
+          409,
+          'wrong_state',
+          `The registered arena ${old} still has open tickets (${open.map((a) => `#${a.id}: ${a.openSessions}`).join(', ')}). ` +
+            'Close its arenas and wait until every ticket is settled or refunded (about 15 minutes) before switching.',
+        );
+      }
+    }
   }
   const record: ContractRecord = { address, txHash: (txHash as Hash | null) ?? null, chainId, registeredAt: deps.now, registeredBy: admin };
   deps.store.set(k, record);

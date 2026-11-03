@@ -5,7 +5,7 @@ import { fromLedger, type SessionInfo } from '@elymum/sdk';
 import { generatePrivateKey } from 'viem/accounts';
 import { describe, expect, it } from 'vitest';
 import { createChain } from '../src/chain';
-import { EvmChain, LOW_BALANCE_WEI, RECHECK_MS, type ContractsView } from '../src/chain/evm';
+import { CONFIG_TTL_MS, EvmChain, LOW_BALANCE_WEI, RECHECK_MS, type ContractsView } from '../src/chain/evm';
 import { NullChain, parseSessionKey, sessionKey, type SettledEvent } from '../src/chain/types';
 import { loadConfig, type ServerConfig } from '../src/config';
 import { Journal, sweepKey, type SettlementItem, type SweepItem } from '../src/stake/journal';
@@ -268,6 +268,21 @@ describe('contracts and the token watcher', () => {
     expect(h.logs.join()).toMatch(/game token set/);
     await h.chain.refresh();
     expect(h.statusChanges).toBe(1);
+  });
+
+  it('the 30 s watcher re-reads the config every time while the token is unset (not after the 3-minute cache)', async () => {
+    // a freshly registered arena (the v2 redeploy): Setup sets the token right after the switch
+    const h = await harness({ setup: (e) => (e.config.token = null) });
+    expect(h.chain.status().tokenReady).toBe(false);
+    h.evm.config.token = TOKEN;
+    h.clock.now += 30_000;
+    await h.chain.refresh({ configMaxAgeMs: CONFIG_TTL_MS });
+    expect(h.chain.status()).toMatchObject({ tokenReady: true, arenasEnabled: true });
+    // once the token is set the watcher goes back to the cache
+    const reads = h.evm.configReads;
+    h.clock.now += 30_000;
+    await h.chain.refresh({ configMaxAgeMs: CONFIG_TTL_MS });
+    expect(h.evm.configReads).toBe(reads);
   });
 
   it('a server booting with the token already set does not announce a flip', async () => {
