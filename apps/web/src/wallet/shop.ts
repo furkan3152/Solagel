@@ -86,7 +86,55 @@ export async function buyPack(
     hash = res.hash;
   }
   ctx.onPhase?.('verifying');
-  return claimPack(ctx.token, pack.kind, hash);
+  // the tokens are spent from here on: keep the hash until the server has credited it, so a claim
+  // that cannot get through now (network, a slow chain, an expired session) is tried again later
+  // instead of the player paying a second time
+  savePendingClaim({ owner: ctx.owner, kind: pack.kind, txHash: hash, at: Date.now() });
+  return settleClaim(ctx.token, ctx.owner, pack.kind, hash);
+}
+
+/** A paid pack the server has not credited yet (kept in this browser, per wallet). */
+export interface PendingClaim {
+  owner: string;
+  kind: BoostKind;
+  txHash: string;
+  at: number;
+}
+
+const CLAIM_KEY = 'elymum.shop.claim.v1';
+/** Refusals that are final for a payment (it was credited already, or it is not a valid payment). */
+const FINAL: readonly string[] = ['tx_used', 'tx_failed', 'no_transfer', 'wrong_token', 'wrong_sender', 'wrong_recipient', 'wrong_amount', 'tx_stale'];
+
+export function savePendingClaim(p: PendingClaim | null): void {
+  try {
+    if (p) localStorage.setItem(CLAIM_KEY, JSON.stringify(p));
+    else localStorage.removeItem(CLAIM_KEY);
+  } catch {
+    /* storage unavailable: the claim lasts for this page only */
+  }
+}
+
+/** The pending claim of `owner`, if one is kept. */
+export function loadPendingClaim(owner: string | null | undefined): PendingClaim | null {
+  if (!owner) return null;
+  try {
+    const p = JSON.parse(localStorage.getItem(CLAIM_KEY) ?? 'null') as PendingClaim | null;
+    return p && typeof p.txHash === 'string' && typeof p.owner === 'string' && p.owner.toLowerCase() === owner.toLowerCase() ? p : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Claims a paid pack; the kept hash is dropped once credited or finally refused. */
+export async function settleClaim(token: string, owner: string, kind: BoostKind, txHash: string, opts: { retryMs?: readonly number[] } = {}): Promise<ShopBuyResult> {
+  try {
+    const r = await claimPack(token, kind, txHash, opts);
+    if (loadPendingClaim(owner)?.txHash === txHash) savePendingClaim(null);
+    return r;
+  } catch (e) {
+    if (e instanceof ShopError && FINAL.includes(e.code) && loadPendingClaim(owner)?.txHash === txHash) savePendingClaim(null);
+    throw e;
+  }
 }
 
 /** Total charges (the HUD shows the shop button with a count). */

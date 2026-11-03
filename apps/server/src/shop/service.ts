@@ -44,6 +44,7 @@ const BUY_MESSAGES: Record<ShopBuyError, string> = {
   wrong_sender: 'That payment was not sent from your signed-in wallet.',
   wrong_recipient: 'That payment did not go to the shop address.',
   wrong_amount: 'That payment does not match the pack price.',
+  tx_stale: 'That payment is too old to be credited as a new purchase.',
   chain_busy: 'The network is busy. Your payment is safe: try again in a moment.',
 };
 
@@ -188,7 +189,7 @@ export class ShopService {
         }
         if (receipt) break;
       }
-      const check = verifyPurchase(receipt, { token: token.address, from: wallet, to: sink, amounts: discounted === full ? [full] : [full, discounted] });
+      const check = verifyPurchase(receipt, { token: token.address, from: wallet, to: sink, amounts: discounted === full ? [full] : [full, discounted], now: this.now() });
       if (!check.ok) return fail(check.code === 'tx_pending' ? 409 : 400, check.code);
       // the discounted price is only for emblem holders (re-read on chain when the cache says no)
       if (check.paid !== full) {

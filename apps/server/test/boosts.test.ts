@@ -9,7 +9,7 @@ import { Room } from '../src/rooms/room';
 import { BoostInventory } from '../src/shop/inventory';
 import { ShopFail, ShopService, type UseContext } from '../src/shop/service';
 import { ShopSettingsError, ShopSettingsStore, applyShopSettings } from '../src/shop/settings';
-import { verifyPurchase } from '../src/shop/verify';
+import { SHOP_PAYMENT_MAX_AGE_MS, verifyPurchase } from '../src/shop/verify';
 import { ArenaChain, MID_ROUND, fakeConn, roomDeps } from './helpers';
 
 const cfg = (over: Partial<WorldConfig> = {}): WorldConfig => ({
@@ -181,6 +181,14 @@ describe('boosts: verifyPurchase', () => {
     });
     expect(verifyPurchase(r, exp).ok).toBe(true);
   });
+  it('refuses a payment older than SHOP_PAYMENT_MAX_AGE_MS (a lost used-hash list cannot re-credit old purchases)', () => {
+    const now = 1_900_000_000_000;
+    expect(verifyPurchase(receipt({ timestamp: now - SHOP_PAYMENT_MAX_AGE_MS + 1 }), { ...exp, now })).toEqual({ ok: true, paid: 300n * ONE });
+    expect(verifyPurchase(receipt({ timestamp: now - SHOP_PAYMENT_MAX_AGE_MS - 1 }), { ...exp, now })).toEqual({ ok: false, code: 'tx_stale' });
+    expect(verifyPurchase(receipt({ timestamp: now - 10 * 60_000 }), { ...exp, now, maxAgeMs: 60_000 })).toEqual({ ok: false, code: 'tx_stale' });
+    // a wrong payment keeps its own, more specific reason
+    expect(verifyPurchase(receipt({ timestamp: 0, transfers: [{ token: TOKEN, from: WALLET, to: BURN_ADDRESS, value: 1n }] }), { ...exp, now })).toEqual({ ok: false, code: 'wrong_amount' });
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -271,6 +279,16 @@ describe('boosts: buying', () => {
     expect(inventory.get(WALLET).magnet).toBe(3);
     // a refused payment is not burned as "used": once it is right (it never will be on chain) it could count
     expect(inventory.isUsed(hash(3))).toBe(false);
+  });
+
+  it('refuses a payment mined more than a day ago (tx_stale), credits a recent one', async () => {
+    const { chain, shop, inventory, tick } = shopFixture();
+    const now = tick(0);
+    chain.receipts.set(hash(1), { status: 'success', blockNumber: 1n, timestamp: now - SHOP_PAYMENT_MAX_AGE_MS - 1000, transfers: [{ token: TOKEN, from: WALLET, to: BURN_ADDRESS, value: 1500n * ONE }] });
+    expect(await buyFails(shop.buy(WALLET, { kind: 'magnet', txHash: hash(1) }))).toBe('tx_stale');
+    expect(inventory.isUsed(hash(1))).toBe(false);
+    chain.receipts.set(hash(2), { status: 'success', blockNumber: 2n, timestamp: now - 60_000, transfers: [{ token: TOKEN, from: WALLET, to: BURN_ADDRESS, value: 1500n * ONE }] });
+    expect(await shop.buy(WALLET, { kind: 'magnet', txHash: hash(2) })).toMatchObject({ ok: true, added: 3 });
   });
 
   it('two requests for the same hash at once credit it once', async () => {

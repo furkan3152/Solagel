@@ -113,6 +113,66 @@ contract ElymumArenaTest is Test {
         return abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, who);
     }
 
+    // ---------------------------------------------------------------- security: server key blast radius
+
+    /// @dev A stolen server key can pay one ticket the whole vault of an arena (every open ticket's value), but
+    ///      never the reserved fees (they only go to the fee wallet) nor payouts already held as `owed`, and the
+    ///      owner stops it at once by rotating the authority.
+    function test_security_compromisedServerKey_blastRadiusIsTheOpenVault() public {
+        (ElymumArena a, BlockingToken blk) = _blockingArena();
+        address attacker = makeAddr("attacker");
+        blk.mint(attacker, 10 * FEE);
+        vm.prank(attacker);
+        blk.approve(address(a), type(uint256).max);
+        // a finalized, uncollected payout (bob's transfer failed) must survive the attack
+        vm.prank(bob);
+        a.join(ID);
+        blk.setBlocked(bob, true);
+        ElymumArena.Settlement[] memory bobs = _one(ID, bob, a.getSession(ID, bob).id, VAL);
+        vm.prank(server);
+        a.settle(bobs);
+        blk.setBlocked(bob, false);
+        assertTrue(a.getSession(ID, bob).finalized);
+        vm.prank(alice);
+        a.join(ID);
+        vm.prank(carol);
+        a.join(ID);
+        vm.prank(attacker);
+        a.join(ID);
+        assertEq(a.getArena(ID).vault, 3 * VAL);
+        assertEq(a.getArena(ID).owed, VAL);
+
+        uint256 attackerBefore = blk.balanceOf(attacker);
+        ElymumArena.Settlement[] memory items = new ElymumArena.Settlement[](3);
+        items[0] = ElymumArena.Settlement(ID, alice, a.getSession(ID, alice).id, 0);
+        items[1] = ElymumArena.Settlement(ID, carol, a.getSession(ID, carol).id, 0);
+        items[2] = ElymumArena.Settlement(ID, attacker, a.getSession(ID, attacker).id, 3 * VAL);
+        vm.prank(server);
+        a.settle(items);
+        // stolen: every open ticket's value (the attacker's own included); the fees still reached the fee wallet
+        assertEq(blk.balanceOf(attacker) - attackerBefore, 3 * VAL);
+        assertEq(blk.balanceOf(feeWallet), 4 * CUT);
+        assertEq(a.getArena(ID).vault, 0);
+        // bob's owed payout is untouched and still collectable
+        assertEq(a.getArena(ID).owed, VAL);
+        vm.prank(bob);
+        a.refund(ID);
+        assertEq(a.getArena(ID).owed, 0);
+
+        // the owner rotates the authority: the old key can do nothing any more
+        vm.prank(admin);
+        a.setServerAuthority(makeAddr("newServer"));
+        vm.prank(alice);
+        a.join(ID);
+        ElymumArena.Settlement[] memory again = _one(ID, alice, a.getSession(ID, alice).id, VAL);
+        vm.prank(server);
+        vm.expectRevert(ElymumArena.NotServer.selector);
+        a.settle(again);
+        vm.prank(server);
+        vm.expectRevert(ElymumArena.NotServer.selector);
+        a.sweepLoot(ID, 99, VAL);
+    }
+
     // ---------------------------------------------------------------- constructor & config
 
     function test_constructor_setsConfig() public {

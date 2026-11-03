@@ -157,6 +157,21 @@ describe('the room creator', () => {
     expect(screen.getByTestId('cr-code')).toBeTruthy();
   });
 
+  it('a payment the server refuses for good is not offered again as the kept payment', async () => {
+    signIn();
+    spies.create.mockRejectedValueOnce(new RoomApiError(400, 'payment_low', 'That payment is below the room price.', undefined, false));
+    await open();
+    fireEvent.change(screen.getByLabelText('Room name'), { target: { value: 'Short room' } });
+    fireEvent.click(screen.getByTestId('cr-continue'));
+    await settle();
+    fireEvent.click(screen.getByTestId('cr-pay'));
+    await settle();
+    expect(screen.getByRole('alert').textContent).toMatch(/below the room price/);
+    expect(screen.getByRole('alert').textContent).not.toMatch(/Your payment is kept/);
+    expect(loadPendingPayment(ALICE)).toBeNull();
+    expect(screen.getByTestId('cr-pay').textContent).not.toMatch(/Open with my payment/);
+  });
+
   it('a holder with a free room opens it without a payment', async () => {
     signIn();
     spies.quote.mockResolvedValue(quote({ holder: true, holderPerk: 'free_daily', freeAvailable: true, youPayWei: '0' }));

@@ -28,6 +28,25 @@ function worldWithMe(now = 0): ClientWorld {
   return w;
 }
 
+describe('ClientWorld · players', () => {
+  it('lets go of players with no coin left in the mirror (bots respawn under new ids all session)', () => {
+    const w = worldWithMe(0);
+    for (let i = 0; i < 40; i++) {
+      const pid = 100 + i;
+      const t = 100 + i * 400;
+      w.apply(snap({ players: [{ id: pid, skin: 1, flags: 0, name: `bot${i}`, isBot: true }], upserts: [{ id: 1000 + i, kind: EntityKind.Cell, x: 500, y: 500, r: 30, playerId: pid }] }), t);
+      w.apply(snap({ removals: [{ id: 1000 + i, eaterId: 1 }] }), t + 10);
+      w.update(t + 300, 0.016);
+    }
+    // a little later every eaten bot is gone; my own record stays (no coin while dead, still me)
+    w.apply(snap({ removals: [{ id: 1, eaterId: 0 }] }), 40_010);
+    w.update(41_000, 0.016);
+    w.update(47_000, 0.016);
+    expect(w.players.size).toBe(1);
+    expect(w.players.has(ME)).toBe(true);
+  });
+});
+
 describe('ClientWorld · loot', () => {
   it('loot entities are created, interpolated and removed with eater animation', () => {
     const w = worldWithMe(0);

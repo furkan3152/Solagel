@@ -10,7 +10,7 @@ import { ClientWorld } from '../src/game/state';
 import { useUi } from '../src/store';
 import { BoostBar, cooldownFrac, shownKinds } from '../src/ui/game/BoostBar';
 import { ShopSheet, priceText } from '../src/ui/shop/ShopSheet';
-import { ShopError, claimPack, totalCharges } from '../src/wallet/shop';
+import { ShopError, claimPack, loadPendingClaim, savePendingClaim, settleClaim, totalCharges } from '../src/wallet/shop';
 import { chainStatus } from './evm-helpers';
 
 const initial = useUi.getState();
@@ -208,6 +208,51 @@ describe('claimPack', () => {
     const err = await claimPack('tok', 'magnet', `0x${'2'.repeat(64)}`, { retryMs: [0, 1] }).catch((e) => e);
     expect(err).toBeInstanceOf(ShopError);
     expect(err).toMatchObject({ code: 'wrong_amount', txHash: `0x${'2'.repeat(64)}` });
+  });
+});
+
+describe('a paid pack whose claim did not get through', () => {
+  const OWNER = '0x1111111111111111111111111111111111111111';
+  const HASH = `0x${'3'.repeat(64)}`;
+  afterEach(() => savePendingClaim(null));
+
+  it('keeps the payment while the claim cannot reach the server, and drops it once credited or finally refused', async () => {
+    savePendingClaim({ owner: OWNER, kind: 'magnet', txHash: HASH, at: Date.now() });
+    vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new TypeError('offline'))));
+    await expect(settleClaim('tok', OWNER, 'magnet', HASH, { retryMs: [0] })).rejects.toBeInstanceOf(ShopError);
+    expect(loadPendingClaim(OWNER)?.txHash).toBe(HASH);
+    // another wallet does not see it
+    expect(loadPendingClaim('0x2222222222222222222222222222222222222222')).toBeNull();
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ ok: true, kind: 'magnet', added: 3, charges: { magnet: 3, shock: 0, speed: 0 } }), { status: 200 })));
+    await settleClaim('tok', OWNER, 'magnet', HASH, { retryMs: [0] });
+    expect(loadPendingClaim(OWNER)).toBeNull();
+    savePendingClaim({ owner: OWNER, kind: 'magnet', txHash: HASH, at: Date.now() });
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'tx_used', message: 'used' }), { status: 409 })));
+    await expect(settleClaim('tok', OWNER, 'magnet', HASH, { retryMs: [0] })).rejects.toMatchObject({ code: 'tx_used' });
+    expect(loadPendingClaim(OWNER)).toBeNull();
+  });
+
+  it('the shop offers to claim it again (no second payment)', async () => {
+    savePendingClaim({ owner: OWNER, kind: 'speed', txHash: HASH, at: Date.now() });
+    const fetchMock = vi.fn(async (url: string) =>
+      String(url).endsWith('/api/shop/buy')
+        ? new Response(JSON.stringify({ ok: true, kind: 'speed', added: 3, charges: { magnet: 4, shock: 0, speed: 3 } }), { status: 200 })
+        : new Response(JSON.stringify(VIEW), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    act(() => useUi.setState({ chain: chainStatus(), modal: 'shop', auth: { address: OWNER, token: 'tok', profile: null } }));
+    render(
+      <Kb>
+        <ShopSheet />
+      </Kb>,
+    );
+    await waitFor(() => expect(screen.getByTestId('shop-claim')).toBeTruthy());
+    expect(screen.getByTestId('shop-pending').textContent).toMatch(/payment for Speed burst went through/i);
+    fireEvent.click(screen.getByTestId('shop-claim'));
+    await waitFor(() => expect(screen.queryByTestId('shop-pending')).toBeNull());
+    const claimCall = fetchMock.mock.calls.find(([u]) => String(u).endsWith('/api/shop/buy')) as unknown as [string, RequestInit];
+    expect(JSON.parse(claimCall[1].body as string)).toEqual({ kind: 'speed', txHash: HASH });
+    expect(loadPendingClaim(OWNER)).toBeNull();
   });
 });
 

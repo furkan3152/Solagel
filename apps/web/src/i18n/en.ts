@@ -686,6 +686,8 @@ export const en = {
   'shop.verifying': 'Checking the payment…',
   'shop.done': '+{n} {name} added.',
   'shop.failed': 'Purchase failed: {msg}',
+  'shop.pending': 'Your payment for {name} went through, but the charges have not arrived yet.',
+  'shop.claim': 'Claim them',
   'shop.keys': 'Keys: R magnet, F shockwave, G speed.',
   'shop.cooldown': '{s}s cooldown',
   // boot, site frame, loader, not found

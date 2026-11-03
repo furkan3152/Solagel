@@ -1,4 +1,5 @@
 import { CARD_PAPER, ELYSIUM, INK, TEXT_INKS } from '@elymum/art';
+import { t } from '../i18n';
 import { FlagCache } from './flags';
 
 const MONO_FONT = '"Geist Mono Variable", "Geist Mono", ui-monospace, monospace';
@@ -102,6 +103,17 @@ export class LabelCache {
     }
   }
 
+  /** The bot chip's word in the interface language (the HUD's `BotTag` says the same). */
+  private botLabel = t('g.botTag');
+
+  /** The language changed: the chip's word follows, and the cached stickers are drawn again. */
+  private syncBotLabel(): void {
+    const label = t('g.botTag');
+    if (label === this.botLabel) return;
+    this.botLabel = label;
+    this.gen++;
+  }
+
   clear(): void {
     this.map.clear();
     this.bytes = 0;
@@ -141,6 +153,7 @@ export class LabelCache {
   drawSticker(ctx: CanvasRenderingContext2D, o: StickerLabel, owner?: object): void {
     const want = o.fs * o.devicePx;
     if (want < 4 || (!o.name && !o.value)) return;
+    if (o.bot) this.syncBotLabel();
     if (owner) {
       this.drawCached(ctx, o, owner, want);
       return;
@@ -229,7 +242,7 @@ export class LabelCache {
     const n = name ? this.text(name, INK, want) : null;
     const v = value ? this.text(value, mine ? INK : TEXT_INKS.day.teal, want) : null;
     const tick = name && verified ? fs * 0.95 : 0;
-    const bot = name && isBot ? this.text('BOT', CARD_PAPER, want * 0.72) : null;
+    const bot = name && isBot ? this.text(this.botLabel, CARD_PAPER, want * 0.72) : null;
     const botPad = fs * 0.28;
     const botW = bot ? bot.tw * ((fs * 0.72) / bot.px) : 0;
     const botBox = bot ? botW + botPad * 2 : 0;
@@ -251,7 +264,7 @@ export class LabelCache {
     const value = o.value ? this.text(o.value, o.mine ? INK : TEXT_INKS.day.teal, want) : null;
     const tick = o.name && o.verified ? fs * 0.95 : 0;
     // the BOT chip: paper letters on an ink pill, a size smaller than the name (one cached sprite)
-    const bot = o.name && o.bot ? this.text('BOT', CARD_PAPER, want * 0.72) : null;
+    const bot = o.name && o.bot ? this.text(this.botLabel, CARD_PAPER, want * 0.72) : null;
     const botPad = fs * 0.28;
     const botS = bot ? (fs * 0.72) / bot.px : 0; // world units per BOT sprite px
     const botW = bot ? bot.tw * botS : 0;

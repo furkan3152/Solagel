@@ -22,6 +22,8 @@ import { JellyBody } from '../render/jelly';
 /** Movement between two snapshots is eased over this window (classic agar feel). */
 const LERP_MS = 120;
 const DIE_MS = 160;
+/** How often the players without a coin in view are dropped (ms). */
+const PRUNE_PLAYERS_MS = 5000;
 /** Loot is sucked into the eater a little slower, so the pickup reads. */
 const LOOT_DIE_MS = 240;
 
@@ -401,6 +403,32 @@ export class ClientWorld implements SnapshotSink {
     this.stepDt = dt;
     this.entities.forEach(this.step);
     this.players.forEach(this.expireEmote);
+    // a player is kept while one of its coins is in the mirror (a snapshot sends every visible
+    // player again): the ones gone (eaten bots respawn under new ids) are let go now and then
+    if (now - this.prunedAt > PRUNE_PLAYERS_MS) {
+      this.prunedAt = now;
+      this.prunePlayers();
+    }
+  }
+
+  private prunedAt = 0;
+  private readonly seenPids = new Set<number>();
+  private readonly markPid = (e: CEntity): void => {
+    if (e.kind === EntityKind.Cell) this.seenPids.add(e.playerId);
+  };
+  private readonly dropUnseen = (_p: CPlayer, id: number): void => {
+    if (!this.seenPids.has(id) && id !== this.myPid) {
+      this.players.delete(id);
+      this.nameBytes.delete(id);
+    }
+  };
+
+  /** Drops the players that have no coin in the mirror any more (the map would grow all session). */
+  prunePlayers(): void {
+    this.seenPids.clear();
+    this.entities.forEach(this.markPid);
+    this.players.forEach(this.dropUnseen);
+    this.seenPids.clear();
   }
 
   private stepNow = 0;

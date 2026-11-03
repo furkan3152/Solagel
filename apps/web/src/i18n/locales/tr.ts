@@ -668,6 +668,8 @@ const tr: Dict = {
   'shop.verifying': "Ödeme kontrol ediliyor…",
   'shop.done': "+{n} {name} eklendi.",
   'shop.failed': "Satın alma başarısız: {msg}",
+  'shop.pending': "{name} ödemen geçti ama şarjlar henüz gelmedi.",
+  'shop.claim': "Şimdi al",
   'shop.keys': "Tuşlar: R mıknatıs, F şok dalgası, G hız.",
   'shop.cooldown': "{s} sn bekleme",
   'boot.title': "Bu sayfa açılmadı.",

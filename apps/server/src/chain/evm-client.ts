@@ -109,7 +109,7 @@ export interface EvmClient {
   /** Simulates (throws the decoded revert) then sends `call` signed by the server key. */
   send(call: ContractCall): Promise<Hash>;
   /** One look at a receipt: status and its ERC-20 `Transfer` logs; null when it is not mined. Throws on RPC errors. */
-  tokenReceipt?(hash: Hash): Promise<{ status: 'success' | 'reverted'; blockNumber: bigint; transfers: { token: Address; from: Address; to: Address; value: bigint }[] } | null>;
+  tokenReceipt?(hash: Hash): Promise<{ status: 'success' | 'reverted'; blockNumber: bigint; timestamp?: number; transfers: { token: Address; from: Address; to: Address; value: bigint }[] } | null>;
   /** The receipt of `hash`; null when it is not mined within `timeoutMs`. */
   receipt(hash: Hash, arena: Address | null, timeoutMs: number): Promise<TxReceipt | null>;
   /** On-chain signature check (EOA, ERC-1271 and ERC-6492). */
@@ -360,9 +360,12 @@ export function viemEvmClient(
         throw err;
       }
       const logs = parseEventLogs({ abi: erc20TransferAbi, eventName: 'Transfer', logs: r.logs, strict: true });
+      // the block time: a purchase is credited only for a recent payment (see `SHOP_PAYMENT_MAX_AGE_MS`)
+      const block = await publicClient.getBlock({ blockNumber: r.blockNumber });
       return {
         status: r.status,
         blockNumber: r.blockNumber,
+        timestamp: Number(block.timestamp) * 1000,
         transfers: logs.map((l) => ({ token: getAddress(l.address), from: getAddress(l.args.from), to: getAddress(l.args.to), value: l.args.value })),
       };
     },

@@ -14,6 +14,8 @@ export class Net {
   private retry = 0;
   private closedByUser = false;
   private pingTimer: number | null = null;
+  /** The pending reconnect after a drop (cleared by `close`: a closed engine stays offline). */
+  private retryTimer: number | null = null;
   rtt = 0;
 
   constructor(
@@ -22,6 +24,7 @@ export class Net {
   ) {}
 
   connect(): void {
+    this.retryTimer = null;
     this.closedByUser = false;
     const ws = new WebSocket(this.url);
     ws.binaryType = 'arraybuffer';
@@ -57,7 +60,7 @@ export class Net {
       this.handlers.onClose();
       if (!this.closedByUser) {
         const delay = Math.min(8000, 500 * 2 ** this.retry++);
-        window.setTimeout(() => this.connect(), delay);
+        this.retryTimer = window.setTimeout(() => this.connect(), delay);
       }
     };
     ws.onerror = () => ws.close();
@@ -77,6 +80,8 @@ export class Net {
 
   close(): void {
     this.closedByUser = true;
+    if (this.retryTimer !== null) clearTimeout(this.retryTimer);
+    this.retryTimer = null;
     this.ws?.close();
   }
 }

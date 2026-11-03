@@ -3,7 +3,8 @@ import { assertPublicUrl, invalidAdminWallets, loadConfig } from './config';
 import { redactUrls } from './http';
 import { installProcessGuards } from './process-guards';
 
-const log = (m: string) => console.log(`[${new Date().toISOString()}] ${m}`);
+// every line is URL-redacted: `EVM_RPC_URL` (which may carry an API key) appears in chain logs and RPC errors
+const log = (m: string) => console.log(`[${new Date().toISOString()}] ${redactUrls(m)}`);
 
 async function main(): Promise<void> {
   const cfg = loadConfig();
@@ -38,6 +39,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error(err);
+  console.error(redactUrls(String((err as Error)?.stack ?? err)));
   process.exit(1);
 });

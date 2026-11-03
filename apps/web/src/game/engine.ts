@@ -17,7 +17,7 @@ import {
 import { ledgerDecimals } from '@elymum/sdk';
 import { SERVER } from '../config';
 import { DROP_LAND, DUR, SLOWMO_TOTAL, slowmoScale } from '../design/curves';
-import { t } from '../i18n';
+import { serverText, t } from '../i18n';
 import { FrameGovernor } from '../render/governor';
 import { Renderer, type FrameInput } from '../render/renderer';
 import { FOOD_COLORS } from '../render/sprites';
@@ -42,6 +42,8 @@ const WHALE_MASS = 500;
 /** The world stands still this long on the bell (the receipt prints over it), then catches up. */
 export const BELL_FREEZE_MS = 2500;
 
+/** No frame for this long (a hidden tab): the snapshots themselves keep the mirror tidy, this often. */
+const BACKGROUND_STEP_MS = 500;
 /** A near miss: scared this long (ms) and then safe again, still alive. */
 const NEAR_MISS_MS = 450;
 /** At most one "phew" this often (ms). */
@@ -393,7 +395,29 @@ export class GameEngine {
   }
 
   authToken(token: string): void {
+    this.tokenSent = token;
     this.net.send({ t: 'auth', token });
+  }
+
+  /** The session token last sent (`auth` by token), until the server answers it. */
+  private tokenSent: string | null = null;
+
+  /**
+   * The server refused the session token we sent (expired, or signed with a secret it no longer
+   * has): forget it, here and in storage, so the lobby asks for a fresh sign-in instead of looking
+   * signed in while the server treats this connection as a guest.
+   */
+  private dropRefusedToken(): void {
+    const token = this.tokenSent;
+    this.tokenSent = null;
+    if (!token) return;
+    if (useUi.getState().auth?.token === token) useUi.setState({ auth: null });
+    try {
+      const raw = localStorage.getItem(TOKEN_KEY);
+      if (raw && (JSON.parse(raw) as { token?: unknown }).token === token) localStorage.removeItem(TOKEN_KEY);
+    } catch {
+      /* storage blocked or garbled: nothing kept to forget */
+    }
   }
 
   /** SIWE sign-in: `message` is the rebuilt `siweMessage`, `signature` the wallet's `personal_sign` (0x hex). */
@@ -439,8 +463,22 @@ export class GameEngine {
       this.snapQueue.push(decodeSnapshot(buf));
       return;
     }
-    this.world.applyBinary(buf, performance.now());
+    // the freeze is over but no frame has thawed it yet: the held (older) deltas go first, else they
+    // would land on top of this one (an entity it removed would come back as a ghost)
+    if (this.snapQueue.length > 0) this.thaw();
+    const now = performance.now();
+    this.world.applyBinary(buf, now);
+    // no frames (a hidden tab: the browser stops requestAnimationFrame) while the snapshots keep
+    // coming: the mirror still lets go of what left or was eaten, and nobody sees the eats
+    if (now - this.last > BACKGROUND_STEP_MS && now - this.lastBackgroundStep > BACKGROUND_STEP_MS) {
+      this.lastBackgroundStep = now;
+      this.world.update(now, 0);
+      this.world.drainEats();
+      this.world.drainFloats();
+    }
   }
+
+  private lastBackgroundStep = 0;
 
   private onMessage(m: ServerMessage): void {
     const now = performance.now();
@@ -465,7 +503,9 @@ export class GameEngine {
           this.reclaiming = true;
           this.play(`arena:${this.wasArena}`);
         } else {
-          if (screen === 'playing') useUi.setState({ screen: 'lobby' });
+          // a free game is not kept across a reconnect: back to the lobby, with nothing of that game
+          // left over (an open chat line would pop up again over the next game)
+          if (screen === 'playing') useUi.setState({ screen: 'lobby', chatOpen: false, powerups: [], boosts: null, valueDelta: null });
           this.net.send({ t: 'spectate' });
         }
         return;
@@ -478,6 +518,7 @@ export class GameEngine {
         useUi.setState({ rooms: m.rooms, online: m.online, blockedArenas: (m.blocked ?? []).map((b) => b.arenaId) });
         return;
       case 'authed': {
+        this.tokenSent = null;
         useUi.setState({ auth: { address: m.address, token: m.token, profile: m.profile } });
         try {
           localStorage.setItem(TOKEN_KEY, JSON.stringify({ address: m.address, token: m.token, exp: Date.now() + 23 * 3600_000 }));
@@ -696,6 +737,7 @@ export class GameEngine {
         return;
       }
       case 'error': {
+        if (m.code === 'auth_failed') this.dropRefusedToken();
         if (this.reclaiming && m.code !== 'rate_limited' && m.code !== 'round_ended' && m.code !== 'game_closed') {
           // the coin we came back for is gone (eaten while the socket was down, or settled when the
           // server restarted): nothing is left to hold or retry; leave the empty game for the lobby
@@ -740,7 +782,8 @@ export class GameEngine {
           // a custom room closed (time up, or closed by its creator): back to the lobby with the reason
           if (useUi.getState().screen !== 'lobby') this.backToLobby();
           else this.net.send({ t: 'spectate' });
-          toast('info', m.message || t('err.room_closed'), undefined, 8000);
+          // the server's reason (creator / admin / time up) is English: other languages get their own line
+          toast('info', serverText(m.message, t('err.room_closed')), undefined, 8000);
           return;
         }
         if (m.code === 'game_closed') {

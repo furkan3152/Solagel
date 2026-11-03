@@ -109,4 +109,59 @@ describe('engine: the world mirror starts afresh with the server view', () => {
     welcome();
     expect(engine.world.entities.size).toBe(0);
   });
+
+  it('a reconnect out of a free game goes back to the lobby with nothing of that game left over', () => {
+    joined(A);
+    useUi.setState({ chatOpen: true, powerups: [{ type: 1 as never, until: Date.now() + 9000 }] });
+    welcome();
+    const s = useUi.getState();
+    expect(s.screen).toBe('lobby');
+    // the open chat line would otherwise pop up over the next game
+    expect(s.chatOpen).toBe(false);
+    expect(s.powerups).toEqual([]);
+  });
 });
+
+describe('engine: snapshots with no frame in between', () => {
+  /** A one-food snapshot: food `id` upserted, or removed (eaten by nobody: it left the view). */
+  const food = (tick: number, id: number, remove = false): ArrayBuffer =>
+    encodeSnapshot({
+      tick,
+      view: { x: 1000, y: 1000, h: 1200 },
+      players: [],
+      upserts: remove ? [] : [{ id, kind: EntityKind.Food, x: 900 + tick, y: 900, r: 10, variant: 1 }],
+      removals: remove ? [{ id, eaterId: 0 }] : [],
+    });
+  let clock = 0;
+  beforeEach(() => {
+    clock = performance.now();
+    vi.spyOn(performance, 'now').mockImplementation(() => clock);
+  });
+
+  it('after the bell freeze, the held (older) snapshots go before a newer one: no ghost comes back', () => {
+    joined(A);
+    recv({ t: 'roundOver', round: 1, payout: 0, stats: null as never, standings: [] });
+    // held during the freeze: the food moves
+    net.handlers!.onSnapshot(food(1, 300));
+    clock += 3000;
+    // the freeze is over; before any frame, a newer snapshot says the food left the view
+    net.handlers!.onSnapshot(food(2, 300, true));
+    // the next frame thaws whatever is still held
+    (engine as unknown as { thaw(): void }).thaw();
+    const e = engine.world.entities.get(300);
+    expect(!e || e.dying > 0).toBe(true);
+  });
+
+  it('a hidden tab (no frames) still lets go of what left the view', () => {
+    clock += 5000;
+    for (let i = 0; i < 50; i++) {
+      net.handlers!.onSnapshot(food(10 + i, 1000 + i));
+      clock += 100;
+      net.handlers!.onSnapshot(food(10 + i, 1000 + i, true));
+      clock += 100;
+    }
+    // without frames every gone food would stay in the mirror, and every eat in its queue
+    expect(engine.world.entities.size).toBeLessThan(10);
+  });
+});
+

@@ -178,6 +178,18 @@ describe('Input keys', () => {
     btn.remove();
   });
 
+  it('a HUD control that handled Enter / Space itself (a focused power-up) does not also open the chat or split', () => {
+    const { actions } = make(true);
+    const boost = document.createElement('button');
+    boost.addEventListener('keydown', (e) => e.preventDefault());
+    document.body.append(boost);
+    boost.dispatchEvent(new KeyboardEvent('keydown', { code: 'Enter', key: 'Enter', bubbles: true, cancelable: true }));
+    boost.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space', key: ' ', bubbles: true, cancelable: true }));
+    expect(actions.openChat).not.toHaveBeenCalled();
+    expect(actions.split).not.toHaveBeenCalled();
+    boost.remove();
+  });
+
   it('in a game Space splits even over a clicked HUD button, but a dialog keeps its keys', () => {
     const { actions } = make(true);
     const hud = document.createElement('button');

@@ -186,7 +186,10 @@ export function RoomCreator({ open, onClose }: { open: boolean; onClose: () => v
           continue;
         }
         const err = e as RoomApiError;
-        setError(`${err.message}${err instanceof RoomApiError && ['payment_invalid', 'payment_low', 'payment_stale', 'payment_used'].includes(err.code) ? '' : ` ${t('cr.keptPayment')}`}`);
+        const final = err instanceof RoomApiError && ['payment_invalid', 'payment_low', 'payment_stale', 'payment_used'].includes(err.code);
+        // a payment the server refuses for good is not offered again ("Use the kept payment")
+        if (final) savePendingPayment(null);
+        setError(`${err.message}${final ? '' : ` ${t('cr.keptPayment')}`}`);
         break;
       }
     }

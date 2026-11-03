@@ -180,6 +180,14 @@ export function initLocale(maxWaitMs = 1500): Promise<void> {
   }
   const l = forced ?? detectLocale();
   if (l === 'en') {
+    // `?lang=en` over a stored other language is remembered too (like any forced pick)
+    if (forced) {
+      try {
+        localStorage.setItem(STORAGE_KEY, 'en');
+      } catch {
+        /* private mode: this visit only */
+      }
+    }
     apply('en', en);
     return Promise.resolve();
   }

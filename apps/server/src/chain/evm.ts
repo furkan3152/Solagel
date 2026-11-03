@@ -27,6 +27,7 @@ import { ChainCache } from './chain-cache';
 import { hasMulticall3, readChainId, viemEvmClient, withTimeout, type ArenaEvent, type EvmClient } from './evm-client';
 import { isRateLimited, isTransientRpcError, withRpcPriority } from './rpc-budget';
 import { loadServerKey } from './server-key';
+import { isTestChain } from './state-dir';
 import { ChainBusyError, sessionKey, type ChainArena, type ChainGateway, type ChainSession, type ServerKeyInfo, type SettledEvent, type TokenReceipt } from './types';
 
 /* ------------------------------------------------------------------ */
@@ -74,6 +75,16 @@ const short = (s: string): string => (s.length > 14 ? `${s.slice(0, 6)}…${s.sl
 const firstLine = (err: unknown): string => String((err as Error)?.message ?? err).split('\n')[0].slice(0, 240);
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms).unref());
 const isEvm = (s: unknown): s is string => typeof s === 'string' && isAddress(s, { strict: false });
+
+/**
+ * What `JOURNAL_ABANDON_CONTRACT` may do on this chain: `abandon` (set the old arena's journal records aside)
+ * only on the Elysium testnet or the localnet; `refused` on any other chain (mainnet: the journal holds real
+ * players' unpaid winnings, which the escape hatch would wipe); null when it is unset or names the current arena.
+ */
+export function journalAbandonDecision(abandon: string | null, arena: string, chainId: number | null): 'abandon' | 'refused' | null {
+  if (!abandon || abandon.toLowerCase() === arena.toLowerCase()) return null;
+  return isTestChain(chainId) ? 'abandon' : 'refused';
+}
 
 /** The contracts the gateway works with: the registry (written by `/admin`) with the env overrides applied. */
 export interface ContractsView {
@@ -388,7 +399,11 @@ export class EvmChain implements ChainGateway {
         return;
       }
       const abandon = this.cfg.chain.journalAbandonContract;
-      if (abandon && abandon.toLowerCase() !== this.arena.toLowerCase()) this.journal.abandonContract(abandon);
+      const decision = journalAbandonDecision(abandon, this.arena, this.chainId);
+      if (decision === 'abandon') this.journal.abandonContract(abandon!);
+      else if (decision === 'refused') {
+        this.warn('abandon', `!!! chain: JOURNAL_ABANDON_CONTRACT is ignored on chain ${this.chainId} (testnet and localnet only): unset it`);
+      }
       const bound = this.journal.bindContract(this.arena);
       if (!bound) {
         this.log(

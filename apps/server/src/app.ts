@@ -7,7 +7,7 @@ import { assertDevFakeChainAllowed, createChain, dataFileNames } from './chain';
 import { PriceKeeper } from './chain/price-keeper';
 import type { ChainGateway } from './chain/types';
 import type { ServerConfig } from './config';
-import { createHttpServer, publicBaseUrl } from './http';
+import { createHttpServer, publicBaseUrl, redactUrls } from './http';
 import { IntegrityService } from './integrity/service';
 import { IntegrityStore } from './integrity/store';
 import { Leaderboards } from './leaderboards';
@@ -101,7 +101,7 @@ export async function createApp(
     customNow?: () => number;
   } = {},
 ): Promise<App> {
-  const log = opts.log ?? ((m: string) => console.log(`[${new Date().toISOString()}] ${m}`));
+  const log = opts.log ?? ((m: string) => console.log(`[${new Date().toISOString()}] ${redactUrls(m)}`));
   const persist = opts.persist ?? true;
   // refuse a misconfigured DEV_FAKE_CHAIN before any file is opened
   assertDevFakeChainAllowed(cfg);

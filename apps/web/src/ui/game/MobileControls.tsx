@@ -63,6 +63,16 @@ export function MobileControls() {
     if (knob.current) knob.current.style.transform = '';
     engine()?.input.releaseStick();
   };
+  // the controls leave mid-press (eaten, the bell, back to the lobby): no pointerup ever reaches
+  // them, so a held stick or Tip would keep steering / tipping into the next life
+  useEffect(
+    () => () => {
+      const input = engine()?.input;
+      input?.releaseStick();
+      input?.stopEject();
+    },
+    [],
+  );
 
   return (
     <>
@@ -78,6 +88,7 @@ export function MobileControls() {
         onPointerMove={(e) => e.buttons && move(e.clientX, e.clientY)}
         onPointerUp={end}
         onPointerCancel={end}
+        onLostPointerCapture={end}
       >
         <div ref={knob} className="g-stick__knob">
           <svg viewBox="0 0 40 40" aria-hidden="true">

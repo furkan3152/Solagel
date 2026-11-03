@@ -186,6 +186,7 @@ export type ShopBuyError =
   | 'wrong_sender'
   | 'wrong_recipient'
   | 'wrong_amount'
+  | 'tx_stale'
   | 'chain_busy';
 
 /**

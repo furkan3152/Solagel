@@ -2,7 +2,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { EMOTES, PowerUpType } from '@elymum/shared';
 import { describe, expect, it } from 'vitest';
-import { detectLocale, formatMessage, LOCALES, loadLocale, setLocale, translate, type Dict, type Locale, type TKey } from '../src/i18n';
+import { detectLocale, formatMessage, getLocale, initLocale, LOCALES, loadLocale, setLocale, translate, type Dict, type Locale, type TKey } from '../src/i18n';
 import { renderRich } from '../src/i18n/rich';
 import { en } from '../src/i18n/en';
 
@@ -63,5 +63,22 @@ describe('the English string table', () => {
   it('fills placeholders and leaves unknown keys readable', () => {
     expect(translate('lo.onFloor', { n: '84,200', sym: '$ELYMUM' })).toBe('84,200 $ELYMUM on the floor');
     expect(translate('nope.missing' as TKey)).toBe('nope.missing');
+  });
+});
+
+describe('?lang=', () => {
+  it('is remembered like a pick, English included (a stored other language does not come back)', async () => {
+    localStorage.setItem('elymum.locale.v1', 'ru');
+    history.replaceState(null, '', '/?lang=en');
+    try {
+      await initLocale();
+      expect(getLocale()).toBe('en');
+      expect(localStorage.getItem('elymum.locale.v1')).toBe('en');
+      history.replaceState(null, '', '/');
+      expect(detectLocale(['ru-RU'])).toBe('en');
+    } finally {
+      history.replaceState(null, '', '/');
+      localStorage.removeItem('elymum.locale.v1');
+    }
   });
 });

@@ -668,6 +668,8 @@ const zh: Dict = {
   'shop.verifying': "正在核对付款…",
   'shop.done': "已添加 +{n} {name}。",
   'shop.failed': "购买失败：{msg}",
+  'shop.pending': "{name} 的付款已完成，但次数还没到账。",
+  'shop.claim': "领取",
   'shop.keys': "按键：R 磁铁，F 冲击波，G 加速。",
   'shop.cooldown': "冷却 {s} 秒",
   'boot.title': "页面没能打开。",

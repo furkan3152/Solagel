@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Button, Chip, Sheet, shortAddress } from '../../design';
 import { useT } from '../../i18n';
 import { closeModal, openModal, toast, useUi } from '../../store';
-import { ShopError, buyPack, fetchShop, type BuyPhase } from '../../wallet/shop';
+import { ShopError, buyPack, fetchShop, loadPendingClaim, settleClaim, type BuyPhase, type PendingClaim } from '../../wallet/shop';
 import { summaryAmount } from '../amount';
 import { BOOST_PATH } from '../game/BoostBar';
 import './shop.css';
@@ -104,6 +104,30 @@ export function ShopSheet() {
     return () => ac.abort();
   }, [open, load]);
 
+  // a pack paid for earlier whose claim did not get through: offered again (never paid twice)
+  const [pending, setPending] = useState<PendingClaim | null>(null);
+  useEffect(() => {
+    if (open) setPending(loadPendingClaim(auth?.address));
+  }, [open, auth?.address, buying]);
+  const [claiming, setClaiming] = useState(false);
+  const claim = async (p: PendingClaim) => {
+    if (!auth || claiming) return;
+    setClaiming(true);
+    try {
+      const r = await settleClaim(auth.token, auth.address, p.kind, p.txHash);
+      setView((v) => (v ? { ...v, charges: r.charges } : v));
+      useUi.setState((s) => (s.boosts ? { boosts: { ...s.boosts, charges: r.charges } } : {}));
+      toast('success', t('shop.done', { n: r.added, name: t(`boost.${r.kind}` as 'boost.magnet') }));
+    } catch (e) {
+      toast('error', t('shop.failed', { msg: (e as Error).message }), undefined, 8000);
+      // a claim credited meanwhile: the counts on the packs catch up
+      void load();
+    } finally {
+      setClaiming(false);
+      setPending(loadPendingClaim(auth.address));
+    }
+  };
+
   const charges = live ?? view?.charges ?? null;
   const buy = async (pack: ShopPack) => {
     if (!view || !auth || !chain) return;
@@ -151,6 +175,14 @@ export function ShopSheet() {
       ) : (
         <p className="sh-hint mono">{t('shop.holderHint', { pct, extra })}</p>
       )}
+      {pending && auth && (
+        <div className="sh-closed sh-pending" role="status" data-testid="shop-pending">
+          <p>{t('shop.pending', { name: t(`boost.${pending.kind}` as 'boost.magnet') })}</p>
+          <Button variant="primary" size="sm" loading={claiming} disabled={claiming || !!buying} onClick={() => void claim(pending)} data-testid="shop-claim">
+            {t('shop.claim')}
+          </Button>
+        </div>
+      )}
       {closed && <p className="sh-closed">{closed}</p>}
       {err && <p className="sh-closed">{err}</p>}
       {s ? (
@@ -163,7 +195,7 @@ export function ShopSheet() {
               owned={charges ? charges[p.kind] : null}
               busy={buying?.kind === p.kind}
               phase={buying?.kind === p.kind ? buying.phase : null}
-              canBuy={!!auth && s.open && !buying}
+              canBuy={!!auth && s.open && !buying && !claiming}
               onBuy={() => void buy(p)}
             />
           ))}

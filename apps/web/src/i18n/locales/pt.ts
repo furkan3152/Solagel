@@ -668,6 +668,8 @@ const pt: Dict = {
   'shop.verifying': "Conferindo o pagamento…",
   'shop.done': "+{n} {name} adicionados.",
   'shop.failed': "A compra falhou: {msg}",
+  'shop.pending': "Seu pagamento de {name} foi feito, mas as cargas ainda não chegaram.",
+  'shop.claim': "Resgatar",
   'shop.keys': "Teclas: R ímã, F onda de choque, G velocidade.",
   'shop.cooldown': "{s} s de recarga",
   'boot.title': "Esta página não abriu.",

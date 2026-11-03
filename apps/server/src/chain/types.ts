@@ -121,6 +121,8 @@ export interface TokenTransfer {
 export interface TokenReceipt {
   status: 'success' | 'reverted';
   blockNumber: bigint;
+  /** Unix ms of the block (the real chain always reads it; the purchase age check needs it). */
+  timestamp?: number;
   transfers: TokenTransfer[];
 }
 

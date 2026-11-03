@@ -193,7 +193,9 @@ export class Input {
     }
     if (this.typing(e)) return;
     // outside a game Space scrolls the page and Enter / Space activate the focused control
-    if ((e.code === 'Space' || e.code === 'Enter' || e.code === 'NumpadEnter') && (this.controlOwnsKey(e) || !this.actions.steering())) return;
+    // (a HUD control that acted on the key itself, like a focused power-up button, marks it handled:
+    // Enter there fires the power-up, it does not also open the chat line)
+    if ((e.code === 'Space' || e.code === 'Enter' || e.code === 'NumpadEnter') && (e.defaultPrevented || this.controlOwnsKey(e) || !this.actions.steering())) return;
     if (e.code in MOVE_KEYS) {
       if (!this.actions.steering()) return;
       // arrows would scroll the page under the game
