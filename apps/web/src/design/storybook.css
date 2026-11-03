@@ -99,6 +99,10 @@
   --green-ink: #2B7465;
   --red-ink: #C42F2F;
   --card: #F6EEDA;
+  /* fields painted with the page colour (inputs, wells) stay day paper on the cream stock:
+     at night --paper goes deep teal and the dark ink above would be dark on dark */
+  --paper: #F8F7F4;
+  --surface: #F1EFE8;
   --on-ink: #F6EEDA;
   --on-ink-2: #BFD8DD;
   --line: rgba(4, 24, 28, 0.32);
@@ -387,6 +391,8 @@
 }
 .kb-island .kb-stamp,
 .kb-sticker:not(.kb-sticker--night) .kb-stamp,
+.kb-sheet .kb-stamp,
+.kb-toast__slip .kb-stamp,
 .kb-step .kb-stamp,
 .kb-receipt .kb-stamp,
 .kb-ticket .kb-stamp {
@@ -672,6 +678,17 @@
   text-transform: uppercase;
   line-height: 1.1;
   white-space: nowrap;
+  /* a long label (a room name, a handle) ends in an ellipsis inside its column instead of running out */
+  max-width: 100%;
+  min-width: 0;
+}
+.kb-chip > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kb-chip > svg {
+  flex: none;
 }
 .kb-chip.kb-tone-on-dark {
   border-color: var(--foam);
@@ -1075,15 +1092,16 @@
 }
 .kb-receipt__line {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: 8px;
+  gap: 0 8px;
   min-height: 35px;
   padding-top: 8px;
 }
 .kb-receipt__line dt {
   display: flex;
   align-items: baseline;
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
   gap: 8px;
 }
@@ -1095,11 +1113,16 @@
   transform: translateY(-4px);
 }
 .kb-receipt__line dd {
+  /* a long amount takes its own line (right aligned) instead of running over the label */
+  margin-left: auto;
+  max-width: 100%;
+  min-width: 0;
   font-family: var(--font-mono);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   text-align: right;
   white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .kb-receipt__line.is-muted {
   color: var(--ink-3);
@@ -1121,7 +1144,8 @@
   border-bottom-color: transparent;
 }
 .kb-receipt__line.is-strong dd {
-  font-size: 28px;
+  font-size: clamp(20px, 6.4vw, 28px);
+  white-space: normal;
   letter-spacing: -0.02em;
   line-height: 1;
 }
@@ -1270,6 +1294,20 @@
 .kb-toasts > * {
   pointer-events: auto;
 }
+/* a burst of slips never runs off the screen: the newest few stay, the older ones wait out of sight */
+.kb-toasts > :nth-last-child(n + 5) {
+  display: none;
+}
+@media (max-height: 640px) {
+  .kb-toasts > :nth-last-child(n + 3) {
+    display: none;
+  }
+}
+@media (max-height: 430px) {
+  .kb-toasts > :nth-last-child(n + 2) {
+    display: none;
+  }
+}
 /* in a game the top-right corner belongs to the leaderboard: slips hang under the weight sticker */
 .kb-toasts.kb-toasts--game {
   top: 168px;
@@ -1323,12 +1361,24 @@
   font-weight: 800;
   font-size: 18px;
   line-height: 1.15;
+  /* long errors (hashes, addresses, 16-letter names) wrap inside the slip, at most five lines */
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+  overflow: hidden;
 }
 .kb-toast__msg {
   margin-top: 3px;
   font-size: var(--t-small);
   color: var(--ink-2);
   line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.kb-toast__msg a {
+  display: inline-block;
+  padding: 10px 0;
+  margin: -10px 0;
 }
 .kb-toast .kb-iconbtn--sm {
   margin: -4px 0;
@@ -2459,5 +2509,36 @@
   .kb-wallet:hover,
   .kb-wallet:active {
     transform: none;
+  }
+}
+
+/* touch screens (kept last: it overrides the base rules above): compact controls keep their look, their hit area grows to 44 px */
+@media (pointer: coarse) {
+  .kb-iconbtn--sm {
+    position: relative;
+  }
+  .kb-iconbtn--sm::after {
+    content: '';
+    position: absolute;
+    inset: -5px;
+    border-radius: 50%;
+  }
+  .kb-chip.is-button {
+    min-height: 40px;
+  }
+  /* the address chip lets its copy key's hit area out (the key keeps the chip's rounded corner) */
+  .kb-addr {
+    overflow: visible;
+  }
+  .kb-addr__copy {
+    border-radius: 0 8px 8px 0;
+  }
+  .kb-addr--sm .kb-addr__copy {
+    border-radius: 0 6px 6px 0;
+  }
+  .kb-addr__copy::after {
+    content: '';
+    position: absolute;
+    inset: -12px -6px;
   }
 }

@@ -24,7 +24,8 @@
   --hud-gap: 20px;
   --floor-text: #f6eeda;
   --floor-text-2: #93d9ee;
-  --floor-strip: rgba(4, 24, 28, 0.78);
+  /* nearly opaque: the strips carry small cream text over a busy, bright map */
+  --floor-strip: rgba(4, 24, 28, 0.92);
 }
 .g-hud.is-narrow {
   --hud-gap: 10px;
@@ -39,6 +40,7 @@
 .g-spectate__paper,
 .g-chat,
 .g-pu__chip,
+.g-banner,
 .g-touch__emotes {
   --ink: #04181c;
   --ink-2: #4a453b;
@@ -61,12 +63,16 @@
 }
 .g-corner > * {
   pointer-events: auto;
+  /* a corner is a column of a fixed width: its stickers shrink to it, never run under the next one */
+  max-width: 100%;
+  min-width: 0;
 }
 .g-corner--tl {
   left: calc(var(--hud-gap) + env(safe-area-inset-left, 0px));
   top: calc(var(--hud-gap) + env(safe-area-inset-top, 0px));
   align-items: flex-start;
-  max-width: min(380px, 42vw);
+  /* ends before the centre column (the till and the power-up chips, at most 260 px wide) */
+  max-width: min(380px, 42vw, calc(50vw - 150px));
 }
 .g-corner--tr {
   right: calc(var(--hud-gap) + env(safe-area-inset-right, 0px));
@@ -170,12 +176,24 @@
   display: block;
   flex: none;
 }
+.g-pond {
+  max-width: 100%;
+  min-width: 0;
+  /* a narrow corner: the room code drops under the name instead of squeezing it to nothing */
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
 .g-pond__text {
   display: flex;
+  flex: 1 1 72px;
   flex-direction: column;
+  min-width: 0;
   line-height: 1.1;
 }
 .g-pond__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: var(--font-display);
   font-variation-settings: var(--fv-display);
   font-weight: 800;
@@ -183,15 +201,18 @@
   letter-spacing: -0.01em;
 }
 .g-pond__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 11px;
   color: var(--ink-3);
 }
 .g-pond__code {
+  flex: none;
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  min-height: 32px;
+  min-height: 40px;
   padding: 2px 9px;
   border: var(--stroke-sm) solid var(--outline);
   border-radius: var(--r-key);
@@ -241,9 +262,21 @@
 .g-kill b {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 0 5px;
+  min-width: 0;
+  max-width: 100%;
   font-weight: 600;
   color: var(--floor-text);
+}
+.g-kill__nm {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.g-kill b > .g-dot,
+.g-kill b > .g-bot {
+  flex: none;
 }
 .g-kill b.is-me {
   color: var(--sun);
@@ -445,6 +478,7 @@
   flex-wrap: wrap;
   justify-content: center;
   gap: 8px;
+  max-width: 260px;
 }
 .g-pu__chip {
   position: relative;
@@ -597,6 +631,9 @@
   gap: 4px;
   min-width: 0;
 }
+.g-standings__name > .g-bot {
+  flex: none;
+}
 .g-standings__nm {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -627,6 +664,7 @@
 }
 .g-standings.is-compact {
   width: 184px;
+  max-width: 100%;
   padding: 6px 9px 4px;
   border-radius: 14px;
   box-shadow: var(--sh-1);
@@ -642,6 +680,17 @@
   gap: 5px;
   padding: 1px 0;
   font-size: 12px;
+}
+/* my row keeps the others' text column (its sun band bleeds out by its own padding) */
+.g-standings.is-compact .g-standings__row.is-me {
+  padding: 1px 6px;
+}
+/* a phone's narrow corner: no swatch, so the name and its BOT tag keep their room */
+.g-hud.is-narrow .g-standings.is-compact .g-standings__row {
+  grid-template-columns: minmax(12px, auto) minmax(0, 1fr) auto;
+}
+.g-hud.is-narrow .g-standings.is-compact .g-standings__sw {
+  display: none;
 }
 .g-standings.is-compact .g-standings__sw {
   width: 13px;
@@ -703,6 +752,10 @@
   align-items: center;
   gap: 6px 14px;
   max-width: calc(50vw - 260px);
+  /* on an ink strip like the kill feed: the hints sat straight on the bright map */
+  padding: 4px 10px;
+  border-radius: var(--r-tag);
+  background: var(--floor-strip);
   color: var(--floor-text-2);
   font-size: 12px;
   letter-spacing: 0.02em;
@@ -826,8 +879,14 @@
 }
 .g-spectate__who {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   min-width: 0;
+}
+.g-spectate__kicker {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .g-spectate__kicker {
   font-size: 11px;
@@ -846,6 +905,7 @@
 }
 .g-spectate__actions {
   display: flex;
+  flex: none;
   align-items: center;
   gap: 8px;
 }
@@ -1020,6 +1080,9 @@
   gap: 7px;
   padding: 3px 11px 3px 3px;
 }
+.g-hud.is-narrow .g-pond {
+  border-radius: 22px;
+}
 .g-hud.is-narrow .g-round__dial,
 .g-hud.is-narrow .g-pond__coin {
   width: 34px;
@@ -1036,6 +1099,8 @@
   font-size: 14px;
 }
 .g-hud.is-narrow .g-center {
+  /* the right column ends where the left corner (100vw - 200px) begins */
+  max-width: 172px;
   left: auto;
   right: calc(var(--hud-gap) + env(safe-area-inset-right, 0px));
   top: calc(var(--hud-gap) + 54px + env(safe-area-inset-top, 0px));
@@ -1165,6 +1230,8 @@
   border-radius: 2px;
 }
 .g-death__line {
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-family: var(--font-display);
   font-variation-settings: var(--fv-display);
   font-weight: 700;
@@ -1193,13 +1260,17 @@
 }
 .g-death__loss dd {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   gap: 6px;
+  min-width: 0;
 }
 .g-death__amount {
   font-size: 22px;
   line-height: 1.05;
-  color: var(--down-ink);
+  /* a deeper red on the pink slip (the day red ink read 4.49:1 there) */
+  color: #a82424;
+  overflow-wrap: anywhere;
 }
 .g-death__unit {
   font-size: 12px;
@@ -1405,6 +1476,11 @@
 }
 .g-board__value {
   font-size: 14px;
+  white-space: nowrap;
+}
+.g-board__name > .g-you,
+.g-board__name > .g-bot {
+  flex: none;
 }
 .g-board__row.is-me {
   border-radius: var(--r-tag);
@@ -1997,6 +2073,10 @@
   align-items: center;
   gap: 5px;
   min-width: 0;
+  overflow: hidden;
+}
+.g-full__name > .g-bot {
+  flex: none;
 }
 .g-full__nm {
   overflow: hidden;
@@ -2027,4 +2107,12 @@
 .g-full__empty {
   margin: 16px 0 0;
   color: var(--ink-3);
+}
+
+/* a phone's right column: the power-up chips stack to its right edge instead of reaching over the feed */
+.g-hud.is-narrow .g-pu {
+  justify-content: flex-end;
+}
+.g-hud.is-narrow .g-pu__chip {
+  max-width: 100%;
 }

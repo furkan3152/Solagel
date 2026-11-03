@@ -42,7 +42,7 @@ export function ProfileCard({ onEdit }: { onEdit?: () => void }) {
           />
         </span>
         <div className="kl-profile__id">
-          <h3 id="kl-profile-h" className="kl-profile__name">
+          <h3 id="kl-profile-h" className="kl-profile__name" title={name}>
             {name}
           </h3>
           {connected ? (

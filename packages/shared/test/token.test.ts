@@ -123,8 +123,14 @@ describe('formatToken', () => {
       expect(formatToken(999_999_500, 6, { compact: true })).toBe('1K');
     });
 
+    it('uses T for trillions, so a whale amount stays short', () => {
+      expect(formatToken(1_000_000_000_000_000_000n, 6, { compact: true })).toBe('1T');
+      expect(formatToken(999_999_999_999_123_456n, 6, { compact: true, maxFrac: 2 })).toBe('1T');
+      expect(formatToken(1_109_986_257_991_550_000_000_000n, 18, { compact: true })).toBe('1.11M');
+    });
+
     it('stays in the largest tier for huge amounts and keeps the sign', () => {
-      expect(formatToken(1_000_000_000_000_000_000n, 6, { compact: true })).toBe('1,000B');
+      expect(formatToken(1_000_000_000_000_000_000_000n, 6, { compact: true })).toBe('1,000T');
       expect(formatToken(-12_400_000_000, 6, { compact: true })).toBe('-12.4K');
     });
 

@@ -764,6 +764,7 @@ body {
   font-weight: 600;
   line-height: 1.4;
   white-space: nowrap;
+  max-width: 100%;
   color: var(--ink-fixed);
   background: var(--white);
 }
@@ -2425,4 +2426,38 @@ body {
 }
 .ad-choice__opt input {
   accent-color: var(--teal);
+}
+
+/* a long status line (an RPC error) wraps inside its row instead of running off the card */
+.ad-kv dd .ad-code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* touch screens: every control of the workshop is at least 40 px tall */
+@media (pointer: coarse) {
+  .ad-golink,
+  .ad-input--num,
+  .ad-botarena .ad-input--num,
+  .ad-rail__site {
+    min-height: 40px;
+  }
+  .ad-rail__site {
+    display: flex;
+    align-items: center;
+  }
+  .ad-switch--inline {
+    min-width: 40px;
+    min-height: 40px;
+    justify-content: center;
+  }
+  .ad-rooms summary {
+    display: flex;
+    align-items: center;
+    min-height: 40px;
+  }
+  .ad-copy {
+    width: 40px;
+    height: 40px;
+  }
 }

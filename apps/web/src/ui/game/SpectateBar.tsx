@@ -14,7 +14,9 @@ export function SpectateBar() {
       <div className="g-spectate__paper">
         <div className="g-spectate__who">
           <span className="mono g-spectate__kicker">{t('g.watching')}</span>
-          <b className="g-spectate__name">{name}</b>
+          <b className="g-spectate__name" title={name}>
+            {name}
+          </b>
         </div>
         <div className="g-spectate__actions">
           <button

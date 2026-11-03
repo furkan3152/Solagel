@@ -17,6 +17,8 @@ export interface ChipProps extends Omit<HTMLAttributes<HTMLElement>, 'onClick' |
  * area is padded out to 44 px while the tag stays compact.
  */
 export function Chip({ children, tone = 'ink', icon, selected, onClick, className, ...rest }: ChipProps) {
+  // a label that may end in an ellipsis keeps its full text in the tooltip
+  if (rest.title === undefined && (typeof children === 'string' || typeof children === 'number')) rest = { ...rest, title: String(children) };
   const cls = `kb-chip mono kb-tone-${tone}${selected ? ' is-on' : ''}${onClick ? ' is-button' : ''}${className ? ` ${className}` : ''}`;
   const inner = (
     <>

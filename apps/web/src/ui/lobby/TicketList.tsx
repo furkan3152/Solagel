@@ -140,7 +140,7 @@ export function TicketList({
             <span className="kl-ticket__head">
               <span className="kb-ticket__title">{name}</span>
             </span>
-            <span className="kb-ticket__meta mono">
+            <span className="kb-ticket__meta mono" title={typeof meta === 'string' ? meta : undefined}>
               {tk.humans > 0 && <span className="kl-live-dot" aria-hidden="true" />}
               {meta}
             </span>

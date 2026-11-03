@@ -38,13 +38,14 @@ const DECIMAL = '.';
 
 /**
  * Compact tiers, ascending. `exp` is the power of ten of whole tokens the suffix
- * stands for: K / M / B (thousand / million / billion), the crypto convention.
+ * stands for: K / M / B / T (thousand / million / billion / trillion), the crypto convention.
  */
 const TIERS = [
   { exp: 0, suffix: '' },
   { exp: 3, suffix: 'K' },
   { exp: 6, suffix: 'M' },
   { exp: 9, suffix: 'B' },
+  { exp: 12, suffix: 'T' },
 ] as const;
 
 const PLAIN = [{ exp: 0, suffix: '' }] as const;
@@ -72,7 +73,7 @@ function roundFixed(abs: bigint, decimals: number, maxFrac: number): { whole: bi
  * - Thousands are grouped with `,` and decimals use `.`.
  * - At most `maxFrac` decimals (default 2, never more than the token has),
  *   rounded half up, trailing zeros stripped: `1,234.5`.
- * - `compact` shortens amounts from one thousand tokens up with K / M / B:
+ * - `compact` shortens amounts from one thousand tokens up with K / M / B / T:
  *   `12.4K`, `3.2M`. Rounding that reaches 1000 moves up a tier (999.999K prints as 1M).
  * - Negative amounts (value deltas) get a leading `-`. A `number` input is
  *   rounded to whole base units; NaN and infinities throw `RangeError`.

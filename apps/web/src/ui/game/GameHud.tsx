@@ -11,7 +11,7 @@ import { openModal, useUi } from '../../store';
 import { useTicker } from '../ticker';
 import { EmoteBar } from './EmoteBar';
 import { Feed } from './Feed';
-import { counterFrac, roomName, sectorOf, useTokenFormat } from './format';
+import { compactCount, counterFrac, roomName, sectorOf, useTokenFormat } from './format';
 import { MobileControls, useIsTouch } from './MobileControls';
 import { RoundIntro, SunsetSky, ValueFlyers } from './Moments';
 import { RoundChip, RoundCountdown } from './RoundChip';
@@ -100,7 +100,9 @@ function PondTag() {
         <path d="M12 20c3 3 6 3 9 0s6-3 9 0 6 3 9 0" className="g-pond__wave" />
       </svg>
       <span className="g-pond__text">
-        <b className="g-pond__name">{roomName(room)}</b>
+        <b className="g-pond__name" title={roomName(room)}>
+          {roomName(room)}
+        </b>
         {room.custom ? <CustomRoomBar room={room} /> : <span className="g-pond__label mono">{t('g.practiceTag')}</span>}
       </span>
       {room.mode === 'private' && room.code && (
@@ -146,11 +148,13 @@ const StandingsRow = memo(function StandingsRow({ e, i, mine, climb, arena, redu
       </span>
       <span className="g-standings__sw" aria-hidden="true" style={{ background: lookForBasicSkin(e.skin).body }} />
       <span className="g-standings__name">
-        <span className="g-standings__nm">{mine ? t('g.youName') : e.name}</span>
+        <span className="g-standings__nm" title={mine ? undefined : e.name}>
+          {mine ? t('g.youName') : e.name}
+        </span>
         {(e.isBot ?? e.bot) && <BotTag />}
         {e.verified && <Icon name="check" size={12} className="g-standings__ver" />}
       </span>
-      <span className="g-standings__score num">{arena && e.value !== undefined ? tf.fmt(e.value, { compact: true, maxFrac: 1 }) : Math.floor(e.score).toLocaleString('en-US')}</span>
+      <span className="g-standings__score num">{arena && e.value !== undefined ? tf.fmt(e.value, { compact: true, maxFrac: 1 }) : compactCount(e.score)}</span>
     </motion.li>
   );
 }, sameRow);
@@ -189,7 +193,7 @@ function MyDetachedRow({ rank, arena }: { rank: number; arena: boolean }) {
       <span className="g-standings__name">
         <span className="g-standings__nm">{t('g.youName')}</span>
       </span>
-      <span className="g-standings__score num">{arena && value !== null ? tf.fmt(value, { compact: true, maxFrac: 1 }) : Math.floor(mass).toLocaleString('en-US')}</span>
+      <span className="g-standings__score num">{arena && value !== null ? tf.fmt(value, { compact: true, maxFrac: 1 }) : compactCount(mass)}</span>
     </li>
   );
 }

@@ -191,6 +191,11 @@
   gap: 14px;
   align-items: flex-start;
 }
+.ad-task__main > div {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .ad-task__main strong {
   font-family: var(--font-display);
   font-variation-settings: var(--fv-display);

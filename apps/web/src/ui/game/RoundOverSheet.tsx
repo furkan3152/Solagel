@@ -231,7 +231,9 @@ export function RoundOverSheet() {
                 <li key={`${i}-${s.name}`} className={`g-board__row${s.you ? ' is-me' : ''}`}>
                   <span className="g-board__rank num">{String(i + 1).padStart(2, '0')}</span>
                   <span className="g-board__name">
-                    <span className="g-board__nm">{s.name}</span>
+                    <span className="g-board__nm" title={s.name}>
+                      {s.name}
+                    </span>
                     {s.isBot && <BotTag />}
                     {s.you && <span className="g-you mono">{t('gr.you')}</span>}
                   </span>

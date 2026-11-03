@@ -20,8 +20,13 @@ export function useTokenFormat(): TokenFormat {
   return tokenFormat(ledgerDecimals(token?.decimals ?? 18), token?.symbol ?? TOKEN_SYMBOL_DEFAULT);
 }
 
+/** Whole tokens from which summaries switch to the compact form (`1.2B`) unless a caller asks otherwise. */
+export const COMPACT_FROM_TOKENS = 1e9;
+
 export function tokenFormat(decimals: number, symbol: string): TokenFormat {
-  const fmt = (raw: number, opts?: { maxFrac?: number; compact?: boolean }) => formatToken(raw, decimals, opts);
+  // summaries never print a 13-digit whole part: from a billion tokens up they read `1.2B` / `1T`
+  const fmt = (raw: number, opts?: { maxFrac?: number; compact?: boolean }) =>
+    formatToken(raw, decimals, { ...opts, compact: opts?.compact ?? Math.abs(raw) >= COMPACT_FROM_TOKENS * 10 ** decimals });
   return {
     symbol,
     decimals,
@@ -32,6 +37,26 @@ export function tokenFormat(decimals: number, symbol: string): TokenFormat {
       return `${raw < 0 ? '−' : '+'}${text}`;
     },
   };
+}
+
+/**
+ * A mass (or any count) for a tight column: grouped up to 9,999, then compact with one decimal
+ * (`99.9K`, `1.2M`), so a 99,999 mass never widens a standings row.
+ */
+export function compactCount(n: number): string {
+  const v = Math.floor(Math.max(0, n));
+  if (v < 10_000) return v.toLocaleString('en-US');
+  for (const [d, s] of [
+    [1e9, 'B'],
+    [1e6, 'M'],
+    [1e3, 'K'],
+  ] as const) {
+    if (v >= d) {
+      const x = Math.floor((v / d) * 10) / 10;
+      return `${x >= 1000 ? Math.floor(x).toLocaleString('en-US') : x.toFixed(x < 100 ? 1 : 0).replace(/\.0$/, '')}${s}`;
+    }
+  }
+  return v.toLocaleString('en-US');
 }
 
 /** Whole tokens for the counters (two decimals while the amount is under 100 tokens). */

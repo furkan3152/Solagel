@@ -38,7 +38,9 @@ export function Toast({ tone = 'info', title, message, icon, onClose, closeLabel
           <Icon name={icon ?? TONE_ICON[tone]} size={18} />
         </span>
         <div className="kb-toast__text">
-          <div className="kb-toast__title">{title}</div>
+          <div className="kb-toast__title" title={typeof title === 'string' ? title : undefined}>
+            {title}
+          </div>
           {message != null && <div className="kb-toast__msg">{message}</div>}
         </div>
         {onClose && (

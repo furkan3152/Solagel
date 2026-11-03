@@ -214,9 +214,10 @@
 }
 .cr-card__mine {
   flex-basis: 100%;
+  min-width: 0;
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 10px 6px;
   margin-top: 4px;
 }
 
@@ -243,7 +244,13 @@
 }
 .g-pond__btn.is-danger {
   background: var(--down);
-  color: #fff;
+  /* ink on the alert pink: white on it read 3.2:1 */
+  color: var(--ink-fixed);
+}
+@media (pointer: coarse) {
+  .g-pond__btn {
+    min-height: 40px;
+  }
 }
 
 @media (max-width: 639px) {

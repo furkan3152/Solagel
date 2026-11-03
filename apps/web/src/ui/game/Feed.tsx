@@ -32,7 +32,9 @@ function KillLine({ k, myName }: { k: KillItem; myName: string | null }) {
     return (
       <b className={me ? 'is-me' : undefined} key={mark}>
         <InkDot skin={skin} />
-        {me ? t('g.youName') : name}
+        <span className="g-kill__nm" title={me ? undefined : name}>
+          {me ? t('g.youName') : name}
+        </span>
         {bot && <BotTag />}
       </b>
     );

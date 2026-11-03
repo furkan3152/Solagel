@@ -105,7 +105,7 @@ function MemberCard() {
           )}
         </span>
         <div className="pf-card__id">
-          <h3 id="pf-card-h" className="pf-card__name">
+          <h3 id="pf-card-h" className="pf-card__name" title={name}>
             {name}
           </h3>
           {owner ? (

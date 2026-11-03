@@ -158,9 +158,14 @@ body {
 }
 .st-connect {
   min-height: 44px;
+  min-width: 0;
   padding: 0 16px;
   font-size: 15px;
   gap: 8px;
+}
+/* the short address never breaks over two lines (0x5d5c… / 00D2) */
+.st-connect .kb-btn__text {
+  white-space: nowrap;
 }
 .st-connect__dot {
   width: 12px;
@@ -180,6 +185,7 @@ body {
 }
 .st-menu-btn {
   display: none;
+  flex: none;
   place-items: center;
   width: 44px;
   height: 44px;

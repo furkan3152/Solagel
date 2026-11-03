@@ -1,16 +1,17 @@
-import { BOOST_KEY_LABELS, SHOP_DEFAULTS, boostCooldownMs, formatToken, type BoostKind, type ShopPack, type ShopView } from '@elymum/shared';
+import { BOOST_KEY_LABELS, SHOP_DEFAULTS, boostCooldownMs, type BoostKind, type ShopPack, type ShopView } from '@elymum/shared';
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Chip, Sheet, shortAddress } from '../../design';
 import { useT } from '../../i18n';
 import { closeModal, openModal, toast, useUi } from '../../store';
 import { ShopError, buyPack, fetchShop, type BuyPhase } from '../../wallet/shop';
+import { summaryAmount } from '../amount';
 import { BOOST_PATH } from '../game/BoostBar';
 import './shop.css';
 
 /** A pack price for display: `210 tELYMUM` (whole tokens, at most two decimals). */
 export function priceText(raw: string, view: Pick<ShopView, 'token'>): string {
   const decimals = view.token?.decimals ?? 18;
-  return `${formatToken(BigInt(raw), decimals, { maxFrac: 2 })} ${view.token?.symbol ?? '$ELYMUM'}`;
+  return `${summaryAmount(BigInt(raw), decimals)} ${view.token?.symbol ?? '$ELYMUM'}`;
 }
 
 function PackCard({

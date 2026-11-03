@@ -45,7 +45,9 @@ const FullRow = memo(function FullRow({ r, rank, mine, arena }: RowProps) {
       </span>
       <RowCoin skin={r.skin} avatar={r.avatar} />
       <span className="g-full__name">
-        <span className="g-full__nm">{mine ? t('g.full.you', { name: r.name }) : r.name}</span>
+        <span className="g-full__nm" title={r.name}>
+          {mine ? t('g.full.you', { name: r.name }) : r.name}
+        </span>
         {r.holder && (
           <span className="g-full__laurel" title={t('g.full.holder')}>
             <Laurel size={14} />
