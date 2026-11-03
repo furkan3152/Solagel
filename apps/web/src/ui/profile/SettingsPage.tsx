@@ -60,7 +60,7 @@ function Level({ label, value, disabled, onChange, onCommit }: { label: string; 
   );
 }
 
-function Row({ label, note, children }: { label: string; note?: string; children: ReactNode }) {
+export function Row({ label, note, children }: { label: string; note?: string; children: ReactNode }) {
   return (
     <div className="g-set__row">
       <span className="gs-label">

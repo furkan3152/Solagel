@@ -112,9 +112,9 @@ describe('snapshot codec', () => {
       { id: 65535, skin: 255, flags: 255, name: 'Renée🚀' },
     ];
     const decoded = decodeSnapshot(encodeSnapshot({ tick: 9, view: { x: 1, y: 2, h: 3 }, players, upserts: [], removals: [] }));
-    // the Avatar and Country bits travel only with an avatar id / a country (a bare bit is dropped)
+    // the Avatar, Country and FlagSkin bits travel only with an avatar id / a country (a bare bit is dropped)
     expect(decoded.players).toEqual(
-      players.map((p) => ({ ...p, flags: p.flags & ~PlayerFlag.Avatar & ~PlayerFlag.Country, isBot: (p.flags & PlayerFlag.Bot) !== 0, ...((p.flags & PlayerFlag.Holder) !== 0 ? { holder: true } : {}) })),
+      players.map((p) => ({ ...p, flags: p.flags & ~PlayerFlag.Avatar & ~PlayerFlag.Country & ~PlayerFlag.FlagSkin, isBot: (p.flags & PlayerFlag.Bot) !== 0, ...((p.flags & PlayerFlag.Holder) !== 0 ? { holder: true } : {}) })),
     );
     expect(decoded.players.map((p) => (p.flags & PlayerFlag.Staker) !== 0)).toEqual([false, false, true, true]);
   });
@@ -375,6 +375,38 @@ describe('country codes in player records (v9)', () => {
     const noop = { snapshotBegin() {}, snapshotPlayer() {}, snapshotUpsert() {}, snapshotRemoval() {} };
     expect(() => readSnapshot(cut, noop)).toThrow(RangeError);
     expect(() => decodeSnapshot(cut)).toThrow(RangeError);
+  });
+});
+
+describe('the flag skin in player records (v10)', () => {
+  const base = (players: PlayerInfo[]): SnapshotData => ({ tick: 1, view: { x: 0, y: 0, h: 1000 }, players, upserts: [], removals: [] });
+
+  it('round-trips the FlagSkin bit with a country, at no extra bytes, and clears it without one', () => {
+    const snap = base([
+      { id: 1, skin: 3, flags: 0, name: 'tr', country: 'TR', flagSkin: true },
+      { id: 2, skin: 1, flags: PlayerFlag.Bot | PlayerFlag.FlagSkin, name: 'bot', isBot: true, country: 'US' },
+      { id: 3, skin: 0, flags: PlayerFlag.FlagSkin, name: 'no country', flagSkin: true },
+      { id: 4, skin: 0, flags: 0, name: 'off', country: 'JP' },
+    ]);
+    const d = decodeSnapshot(encodeSnapshot(snap));
+    expect(d.players[0]).toEqual({ id: 1, skin: 3, flags: PlayerFlag.Country | PlayerFlag.FlagSkin, name: 'tr', isBot: false, country: 'TR', flagSkin: true });
+    expect(d.players[1]).toEqual({ id: 2, skin: 1, flags: PlayerFlag.Bot | PlayerFlag.Country | PlayerFlag.FlagSkin, name: 'bot', isBot: true, country: 'US', flagSkin: true });
+    expect(d.players[2]).toEqual({ id: 3, skin: 0, flags: 0, name: 'no country', isBot: false });
+    expect(d.players[3]).toEqual({ id: 4, skin: 0, flags: PlayerFlag.Country, name: 'off', isBot: false, country: 'JP' });
+    const without = encodeSnapshot(base(snap.players.map(({ flagSkin: _f, ...p }) => ({ ...p, flags: p.flags & ~PlayerFlag.FlagSkin }))));
+    expect(encodeSnapshot(snap).byteLength).toBe(without.byteLength);
+  });
+
+  it('streams the bit to the sink', async () => {
+    const { readSnapshot } = await import('../src/index');
+    let seen = 0;
+    readSnapshot(encodeSnapshot(base([{ id: 5, skin: 1, flags: 0, name: 'me', country: 'BR', flagSkin: true }])), {
+      snapshotBegin() {},
+      snapshotPlayer: (_id, _skin, flags) => void (seen = flags),
+      snapshotUpsert() {},
+      snapshotRemoval() {},
+    });
+    expect(seen & PlayerFlag.FlagSkin).toBe(PlayerFlag.FlagSkin);
   });
 });
 

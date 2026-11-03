@@ -395,6 +395,10 @@ export class Gateway {
       // the flag by the name: an allowlisted ISO 3166-1 alpha-2 code exactly, anything else is no flag
       // (a join that leaves it out entirely takes the signed-in wallet's saved one; '' means no flag)
       const country = isCountryCode(msg.country) ? msg.country : msg.country === undefined && conn.wallet ? (this.profiles?.country(conn.wallet) ?? null) : null;
+      // the flag skin: the coin painted with that flag (needs a country; a worn picture wins, so it is
+      // not sent with one). A join that leaves `flag` out takes the signed-in wallet's saved choice.
+      const wantsFlag = msg.flag === true || (msg.flag === undefined && !!conn.wallet && (this.profiles?.flagSkin(conn.wallet) ?? false));
+      if (wantsFlag && country && !avatar) flags |= PlayerFlag.FlagSkin;
 
       if (target.mode === 'practice') {
         if (conn.player?.alive && conn.room?.opts.mode === 'practice') return; // already playing

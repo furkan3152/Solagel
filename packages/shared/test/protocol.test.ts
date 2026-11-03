@@ -12,11 +12,11 @@ import {
   type ServerMessage,
 } from '../src';
 
-describe('protocol v9 constants', () => {
-  it('pins the wire values (v6: isBot on player-facing messages, feed left lines; v7: avatar ids; v8: map bounds; v9: countries)', () => {
-    expect(PROTOCOL_VERSION).toBe(9);
+describe('protocol v10 constants', () => {
+  it('pins the wire values (v6: isBot on player-facing messages, feed left lines; v7: avatar ids; v8: map bounds; v9: countries; v10: the flag skin)', () => {
+    expect(PROTOCOL_VERSION).toBe(10);
     expect(EntityKind.Loot).toBe(6);
-    expect(PlayerFlag).toEqual({ Bot: 1, Verified: 2, Staker: 4, Holder: 8, Avatar: 16, Country: 32 });
+    expect(PlayerFlag).toEqual({ Bot: 1, Verified: 2, Staker: 4, Holder: 8, Avatar: 16, Country: 32, FlagSkin: 64 });
   });
 
   it('keeps entity kinds and player flags distinct', () => {

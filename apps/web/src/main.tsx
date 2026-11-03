@@ -57,6 +57,9 @@ if (path === '/admin') {
 } else if (params.has('coins')) {
   // Coin / world sprite sheet (was ?gallery before v2).
   boot(import('./gallery'), (m) => m.startGallery(root));
+} else if (params.has('flagskins')) {
+  // Flag skin proof sheet (coins painted with their flags; `?flagskins=TR,US` for a list, `all` for every flag).
+  boot(import('./flag-gallery'), (m) => m.startFlagGallery(root, params.get('flagskins') ?? ''));
 } else if (path === '/play') {
   // The arena (lobby + game engine), behind the game gate: admins only until the game is public.
   boot(import('./site/play/start'), (m) => m.startPlay(root));

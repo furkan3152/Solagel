@@ -1,4 +1,4 @@
-import { BASIC_SKINS, PlayerFlag, botCountry, clamp, pickBotName, type LeftReason } from '@elymum/shared';
+import { BASIC_SKINS, PlayerFlag, botCountry, botWearsFlag, clamp, pickBotName, type LeftReason } from '@elymum/shared';
 import type { Player } from '../game/entities';
 import { randRange, type Rng } from '../game/rng';
 import type { World } from '../game/world';
@@ -22,6 +22,13 @@ export interface BotManagerOptions {
    * spawn above it and shed whatever they eat past it within a second or two. Absent: no cap.
    */
   massCap?: number;
+  /**
+   * Bot strength in percent (admin `strength`, default 100): above 100 bots hunt harder, react
+   * faster and aim better; below, the reverse (see `BotBrain.strength`).
+   */
+  strength?: number;
+  /** Most bots chasing one person at once (admin `maxChasers`; absent: no limit). */
+  maxChasers?: number;
 }
 
 /** Share of a capped bot's excess mass that stays after one second (the rest is shed). */
@@ -150,7 +157,8 @@ export class BotManager {
     const player = this.world.addPlayer({
       name,
       skin: this.pickSkin(),
-      flags: staked ? PlayerFlag.Bot | PlayerFlag.Staker : PlayerFlag.Bot,
+      // some bots paint their coin with their flag (the flag skin), always the same ones by name
+      flags: (staked ? PlayerFlag.Bot | PlayerFlag.Staker : PlayerFlag.Bot) | (botWearsFlag(name) ? PlayerFlag.FlagSkin : 0),
       isBot: true,
       // a plausible flag, the same one every time this name plays
       country: botCountry(name),
@@ -162,17 +170,27 @@ export class BotManager {
       retireAt: staked ? Infinity : this.world.now + randRange(this.rng, 4 * 60_000, 12 * 60_000),
       ...(staked ? { staked } : {}),
     };
-    if (this.opts.massCap !== undefined) bot.brain.massCap = this.opts.massCap;
+    this.tune(bot);
     this.bots.set(player.id, bot);
     this.orderDirty = true;
     if (this.rng() < 0.2) this.pendingEmotes.push({ pid: player.id, id: EMOTE_GM });
     return bot;
   }
 
+  /** Applies the room's mass cap, strength and chaser limit to a bot's brain. */
+  private tune(bot: Bot): void {
+    const b = bot.brain;
+    b.pid = bot.player.id;
+    b.massCap = this.opts.massCap ?? Infinity;
+    b.strength = (this.opts.strength ?? 100) / 100;
+    b.maxChasers = this.opts.maxChasers !== undefined && this.opts.maxChasers > 0 ? this.opts.maxChasers : Infinity;
+  }
+
   /** The world reported this bot's death: forget it and maybe respawn later. */
   onDeath(pid: number, now: number): void {
     const bot = this.bots.get(pid);
     if (!bot) return;
+    bot.brain.releaseClaim(this.world);
     this.bots.delete(pid);
     this.orderDirty = true;
     this.remember(bot.player.name);
@@ -182,6 +200,7 @@ export class BotManager {
   /** A bot goes home now: it leaves the world and a departure is recorded. */
   private sendHome(bot: Bot, reason: LeftReason): void {
     const p = bot.player;
+    bot.brain.releaseClaim(this.world);
     this.bots.delete(p.id);
     this.orderDirty = true;
     this.world.removePlayer(p.id);
@@ -226,7 +245,7 @@ export class BotManager {
   /** New admin settings, applied live: bots over the new cap (or all, when off) go home now. */
   setOptions(opts: BotManagerOptions, humans: number): number {
     this.opts = { ...opts };
-    for (const b of this.bots.values()) b.brain.massCap = opts.massCap ?? Infinity;
+    for (const b of this.bots.values()) this.tune(b);
     return this.trimTo(this.desired(humans), 'settings');
   }
 

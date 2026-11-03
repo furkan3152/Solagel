@@ -3,6 +3,7 @@ import { decodeFunctionData, erc20Abi, type Address } from 'viem';
 import { describe, expect, it } from 'vitest';
 import {
   approveCall,
+  MAX_ALLOWANCE,
   chunkSettlements,
   createArenaCall,
   createDefaultArenaCalls,
@@ -146,6 +147,29 @@ describe('arena calls', () => {
     const enough = await planJoin(reads(1000n) as never, { arena: ARENA, arenaId: 1, player: P1, token: TOKEN });
     expect(enough.calls.map((c) => c.functionName)).toEqual(['join']);
     await expect(planJoin(reads(0n, 5n) as never, { arena: ARENA, arenaId: 1, player: P1, token: TOKEN })).rejects.toThrow(/balance/);
+  });
+
+  it('planJoin can approve the largest allowance once (later tickets: join only)', async () => {
+    const reads = (allowance: bigint) => ({
+      readContract: async ({ functionName }: { functionName: string }) => {
+        switch (functionName) {
+          case 'getArena':
+            return { id: 1, entryFee: 1000n, vault: 0n, owed: 0n, maxSessions: 10, openSessions: 0, enabled: true, exists: true, totalDeposited: 0n, totalPaidOut: 0n, totalBurned: 0n, lastSweepId: 0n };
+          case 'allowance':
+            return allowance;
+          case 'balanceOf':
+            return 10n ** 30n;
+          default:
+            throw new Error(functionName);
+        }
+      },
+    });
+    const first = await planJoin(reads(0n) as never, { arena: ARENA, arenaId: 1, player: P1, token: TOKEN, approve: 'unlimited' });
+    expect(first.approve!.args).toEqual([ARENA, MAX_ALLOWANCE]);
+    expect(MAX_ALLOWANCE).toBe(2n ** 256n - 1n);
+    // the allowance left after a ticket is still far above any entry fee
+    const later = await planJoin(reads(MAX_ALLOWANCE - 1000n) as never, { arena: ARENA, arenaId: 1, player: P1, token: TOKEN, approve: 'unlimited' });
+    expect(later.calls.map((c) => c.functionName)).toEqual(['join']);
   });
 });
 

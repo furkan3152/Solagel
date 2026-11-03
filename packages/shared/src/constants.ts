@@ -1,9 +1,10 @@
 /**
  * Bumped whenever the wire format changes in an incompatible way (v6: bot flags on every
  * player-facing message, `feed` left lines; v7: player avatar ids in snapshots; v8: snapshots carry
- * an extras byte and, when the world was resized, its playable bounds; v9: player country codes).
+ * an extras byte and, when the world was resized, its playable bounds; v9: player country codes; v10: the
+ * flag coin skin, `PlayerFlag.FlagSkin`, and `join.flag`).
  */
-export const PROTOCOL_VERSION = 9;
+export const PROTOCOL_VERSION = 10;
 
 /** Simulation + snapshot rate. */
 export const TICK_RATE = 30;

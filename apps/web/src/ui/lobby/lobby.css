@@ -1312,6 +1312,27 @@
   font-size: var(--t-small);
   color: var(--ink-2);
 }
+/* "Approve only this ticket" (off by default: one approval covers every later ticket) */
+.tf-approve-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: var(--t-small);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.tf-approve-choice input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+  accent-color: var(--ink);
+}
+.tf-approve-choice small {
+  display: block;
+  color: var(--ink-3, var(--ink-2));
+}
 
 /* the boarding pass */
 .tf-ticket {

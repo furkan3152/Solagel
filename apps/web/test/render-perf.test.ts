@@ -1,4 +1,4 @@
-import { EntityKind, encodeSnapshot, type SnapshotData } from '@elymum/shared';
+import { EntityKind, PlayerFlag, encodeSnapshot, type SnapshotData } from '@elymum/shared';
 import { Session } from 'node:inspector/promises';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Camera } from '../src/game/camera';
@@ -163,9 +163,10 @@ function busyWorld(): { world: ClientWorld; camera: Camera } {
   const upserts: SnapshotData['upserts'] = [];
   const players: SnapshotData['players'] = [];
   for (let i = 0; i < 40; i++) {
-    // most coins play for a country (drawn flags and a code badge, TV); some for none
-    const country = i % 4 === 3 ? undefined : ['US', 'DE', 'BR', 'TV', 'JP', 'GB'][i % 6];
-    players.push({ id: i + 1, skin: i % 12, flags: i % 3 === 0 ? 1 : i % 5 === 0 ? 4 : 0, name: `coin_${i}`, ...(country ? { country } : {}) });
+    // most coins play for a country (drawn flags, a colours-only one, KY, and a code badge, TV); some
+    // for none; half of them wear the flag skin (the coin painted with the flag)
+    const country = i % 4 === 3 ? undefined : ['US', 'DE', 'BR', 'TV', 'JP', 'GB', 'TR', 'KY'][i % 8];
+    players.push({ id: i + 1, skin: i % 12, flags: i % 3 === 0 ? 1 : i % 5 === 0 ? 4 : 0, name: `coin_${i}`, ...(country ? { country, flagSkin: i % 2 === 0 } : {}) });
     upserts.push(add(EntityKind.Cell, 18 + rnd() ** 2 * 230, { playerId: i + 1, flags: i === 3 ? 1 : i === 5 ? 4 : 0 }));
   }
   for (let i = 0; i < 300; i++) upserts.push(add(EntityKind.Food, 10, { variant: i % 8 }));
@@ -199,6 +200,27 @@ describe('frame budget: no garbage per frame', () => {
     // ~10 KB is left: the numbers boxed to pass into canvas calls (a real canvas costs the same). The
     // frame before this work made ~150 KB here (literals per coin, per label, per dash pattern, per
     // Map step, and per-frame arrays regrown from empty).
+    expect(perFrame).toBeLessThan(20_000);
+  });
+
+  it('flag-skinned coins (the flag skin) draw from the sprite cache without per-frame garbage', async () => {
+    const { flagSkins } = await import('../src/render/flagskin');
+    const { world, camera } = busyWorld();
+    // every coin of a country wears its flag, all big enough for the face (and the jelly wobble)
+    for (const p of world.players.values()) if (p.country) p.flags |= PlayerFlag.FlagSkin;
+    const renderer = new Renderer(document.createElement('canvas'));
+    renderer.resize(390, 844);
+    const particles = new Particles();
+    flagSkins.clear();
+    const input: FrameInput = { now: 0, dt: 1 / 60, world, camera, particles, settings: SETTINGS, reduced: false, aim: null, coinRain: false, rand: Math.random, drop: null };
+    renderer.draw(input);
+    // the flags were painted once into the cache (drawn flags and a colours-only one)
+    expect(flagSkins.size).toBeGreaterThan(0);
+    const perFrame = await bytesPerCall((i) => {
+      input.now = 1000 + i * 16.7;
+      world.update(input.now, 1 / 60);
+      renderer.draw(input);
+    });
     expect(perFrame).toBeLessThan(20_000);
   });
 

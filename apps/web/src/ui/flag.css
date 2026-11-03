@@ -64,3 +64,29 @@
   color: var(--ink-fixed);
   pointer-events: none;
 }
+
+/* "Wear the flag on my coin": a switch row under the country picker, with a little preview coin */
+.cp-flagskin {
+  margin-top: 4px;
+}
+.cp-flagskin .g-set__row {
+  border-bottom: 0;
+}
+.cp-flagskin .g-set__ctl {
+  align-items: center;
+  gap: 10px;
+}
+.cp-flagskin__coin {
+  display: block;
+  flex: none;
+  transition: opacity 160ms ease, filter 160ms ease;
+}
+.cp-flagskin__coin.is-off {
+  opacity: 0.5;
+  filter: saturate(0.4);
+}
+@media (prefers-reduced-motion: reduce) {
+  .cp-flagskin__coin {
+    transition: none;
+  }
+}

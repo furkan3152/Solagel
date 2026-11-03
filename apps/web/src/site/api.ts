@@ -429,6 +429,10 @@ export interface BotKindSettings {
   mix: Record<string, number>;
   /** Most mass one bot keeps (0: no cap; older servers leave it out). */
   massCap?: number;
+  /** Bot strength, percent (25..200, 100 = as tuned; older servers leave it out). */
+  strength?: number;
+  /** Most bots chasing one person at once (0: no limit; older servers leave it out). */
+  maxChasers?: number;
 }
 
 export interface BotSettings {

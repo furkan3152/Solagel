@@ -86,6 +86,13 @@ export interface CoinState {
    * and the face is left out (the picture is the face). Accessories and flag effects stay.
    */
   picture?: CanvasImageSource | null;
+  /**
+   * A skin painted over the whole body (the flag skin): a square image whose inscribed circle is the
+   * coin's face at radius r, with its shade, groove and highlight already in it. It
+   * stands in for the body paint, the cached interior and the embossed symbol; the ink outline, the
+   * face, accessories and flag effects are drawn over it as usual. A `picture` wins over it.
+   */
+  skinFill?: CanvasImageSource | null;
 }
 
 /** Radius of the profile picture on the face (fraction of r): the inner groove sits on its edge. */
@@ -280,11 +287,28 @@ export function drawRisoCoin(ctx: CanvasRenderingContext2D, look: CoinLook, r: n
   const small = detail < (state.minPrintPx ?? 0);
   const anchor = symbolAnchor(look.accessory, r, ANCHOR);
   const picture = detail > 7 ? (state.picture ?? null) : null;
-  const cached = !small && detail > 22 && ctx.globalAlpha >= 0.999 && jellyCalm(state.jelly, Math.max(0.003, W / (2 * r) - (1 - INTERIOR_DISC))) ? (state.interior?.(look, r) ?? null) : null;
+  const fill = !picture && detail > 7 ? (state.skinFill ?? null) : null;
+  const cached = !fill && !small && detail > 22 && ctx.globalAlpha >= 0.999 && jellyCalm(state.jelly, Math.max(0.003, W / (2 * r) - (1 - INTERIOR_DISC))) ? (state.interior?.(look, r) ?? null) : null;
   if (cached) {
     const k = r / cached.radius;
     const half = (cached.size / 2) * k;
     ctx.drawImage(cached.image, -half, -half, cached.size * k, cached.size * k);
+  } else if (fill) {
+    // the skin over the whole body: straight onto the circle while the outline stays near it (the
+    // ink outline covers the edge), else clipped to the wobbly outline over the body paint (a bulge
+    // past the circle shows the paint, the flag's main colour; the flag itself never jumps in size)
+    const tol = Math.max(0.003, W / (2 * r));
+    if (state.jelly && detail > 16 && !jellyCalm(state.jelly, tol)) {
+      bodyPath(ctx, r, state.jelly, detail);
+      ctx.fillStyle = look.body;
+      ctx.fill();
+      ctx.save();
+      ctx.clip();
+      ctx.drawImage(fill, -r, -r, r * 2, r * 2);
+      ctx.restore();
+    } else {
+      ctx.drawImage(fill, -r, -r, r * 2, r * 2);
+    }
   } else {
     // flat body + the shade crescent (clipped to the wobbly outline when it is drawn)
     const wobbly = !!state.jelly && detail > 16;

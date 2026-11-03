@@ -37,6 +37,8 @@ export interface ProfileRecord {
   avatarAt?: number | null;
   /** The country the player plays for (ISO 3166-1 alpha-2); null: none picked; absent: never saved. */
   country?: string | null;
+  /** Wear the country's flag as the coin skin (`join.flag`); absent: never saved (off). */
+  flagSkin?: boolean;
 }
 
 interface ProfilesFile {
@@ -49,7 +51,7 @@ const FLUSH_MS = 10_000;
 /** Why a profile update is refused. */
 export class ProfileError extends Error {
   constructor(
-    readonly field: 'name' | 'skin' | 'country',
+    readonly field: 'name' | 'skin' | 'country' | 'flagSkin',
     message: string,
   ) {
     super(message);
@@ -95,6 +97,7 @@ export class ProfileStore {
           avatar: isAvatarId(p.avatar) ? p.avatar : null,
           avatarAt: isAvatarId(p.avatar) && typeof p.avatarAt === 'number' ? p.avatarAt : null,
           ...(p.country === null || isCountryCode(p.country) ? { country: p.country } : {}),
+          ...(typeof p.flagSkin === 'boolean' ? { flagSkin: p.flagSkin } : {}),
         });
       }
     } catch (err) {
@@ -122,7 +125,12 @@ export class ProfileStore {
   view(wallet: string): ProfileView {
     const p = this.get(wallet);
     const stats: ProfileStats = { games: p?.games ?? 0, kills: p?.kills ?? 0, best: p?.best ?? 0 };
-    return { wallet: getAddress(wallet), name: p?.name ?? null, skin: p?.skin ?? 0, stats, updatedAt: p?.updatedAt ?? null, avatar: p?.avatar ?? null, ...(p && p.country !== undefined ? { country: p.country } : {}) };
+    return { wallet: getAddress(wallet), name: p?.name ?? null, skin: p?.skin ?? 0, stats, updatedAt: p?.updatedAt ?? null, avatar: p?.avatar ?? null, ...(p && p.country !== undefined ? { country: p.country } : {}), ...(p && p.flagSkin !== undefined ? { flagSkin: p.flagSkin } : {}) };
+  }
+
+  /** Whether the wallet chose to wear its country's flag as the coin skin (false: off, never saved, unknown wallet). */
+  flagSkin(wallet: string | null | undefined): boolean {
+    return (!!wallet && this.byWallet.get(wallet.toLowerCase())?.flagSkin) === true;
   }
 
   /** The wallet's saved country (ISO 3166-1 alpha-2), or null (none picked, never saved, unknown wallet). */
@@ -178,7 +186,7 @@ export class ProfileStore {
    * `PUT /api/profile`: validates and stores the name and skin. `emblem`: the wallet holds an Elymum
    * emblem (the caller checked on chain), so `EMBLEM_SKIN_ID` may be picked too.
    */
-  update(wallet: string, body: { name?: unknown; skin?: unknown; country?: unknown }, opts: { emblem?: boolean } = {}): ProfileView {
+  update(wallet: string, body: { name?: unknown; skin?: unknown; country?: unknown; flagSkin?: unknown }, opts: { emblem?: boolean } = {}): ProfileView {
     if (typeof body.name !== 'string') throw new ProfileError('name', 'name is required');
     if ([...body.name.replace(/\s+/g, ' ').trim()].length > MAX_NAME_LENGTH) throw new ProfileError('name', `name is longer than ${MAX_NAME_LENGTH} characters`);
     const name = sanitizeName(body.name, '');
@@ -189,10 +197,13 @@ export class ProfileStore {
     } else if (typeof body.skin !== 'number' || !isBasicSkin(body.skin)) throw new ProfileError('skin', 'that skin cannot be picked');
     // the country: an allowlisted ISO 3166-1 alpha-2 code exactly, or null for no flag; absent keeps the saved one
     if (body.country !== undefined && body.country !== null && !isCountryCode(body.country)) throw new ProfileError('country', 'that country cannot be picked');
+    // the flag skin: true or false exactly; absent keeps the saved choice
+    if (body.flagSkin !== undefined && typeof body.flagSkin !== 'boolean') throw new ProfileError('flagSkin', 'flagSkin must be true or false');
     const p = this.record(wallet);
     p.name = name;
     p.skin = body.skin;
     if (body.country !== undefined) p.country = body.country as string | null;
+    if (body.flagSkin !== undefined) p.flagSkin = body.flagSkin as boolean;
     p.updatedAt = this.now();
     this.touch();
     return this.view(wallet);

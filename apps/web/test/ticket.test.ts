@@ -1,4 +1,4 @@
-import { elymumArenaAbi, planJoin, refundCall, sessionRefundState } from '@elymum/sdk';
+import { MAX_ALLOWANCE, elymumArenaAbi, planJoin, refundCall, sessionRefundState } from '@elymum/sdk';
 import type { RoomInfo } from '@elymum/shared';
 import { erc20Abi, type Address } from 'viem';
 import { describe, expect, it } from 'vitest';
@@ -13,6 +13,8 @@ import {
   sessionsToCollect,
   ticketGate,
   ticketSteps,
+  approveAmount,
+  approveMode,
   type GateInput,
   type TicketModel,
 } from '../src/wallet/ticket';
@@ -65,6 +67,16 @@ describe('the ticket calls (approve, then join)', () => {
     expect(plan.join).toMatchObject({ address: ARENA, functionName: 'join', args: [3] });
     const enough = await planJoin(reader({ allowance: 1000n * ONE }), { arena: ARENA, arenaId: 3, player: ALICE, token: TOKEN });
     expect(enough.calls.map((c) => c.functionName)).toEqual(['join']);
+  });
+
+  it('approves once for every ticket by default, or exactly one entry fee when asked', () => {
+    expect(approveMode(undefined)).toBe('unlimited');
+    expect(approveMode(false)).toBe('unlimited');
+    expect(approveMode(true)).toBe('exact');
+    expect(approveAmount('exact', 1000n * ONE)).toBe(1000n * ONE);
+    expect(approveAmount('unlimited', 1000n * ONE)).toBe(MAX_ALLOWANCE);
+    // after one unlimited approval (and a ticket spent from it) the next ticket is join only
+    expect(ticketSteps(MAX_ALLOWANCE - 1000n * ONE, 50_000n * ONE)).toEqual(['join']);
   });
 
   it('ticketSteps mirrors it (an unknown allowance asks for the approval)', () => {

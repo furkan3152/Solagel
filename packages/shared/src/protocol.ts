@@ -58,6 +58,11 @@ export const PlayerFlag = {
    * (two ASCII capitals) after the name and the avatar id (protocol v8).
    */
   Country: 32,
+  /**
+   * The player wears its country's flag as the coin skin (protocol v10): only with `Country` (the
+   * encoder clears it otherwise). No extra bytes. A worn profile picture wins over it on screen.
+   */
+  FlagSkin: 64,
 } as const;
 
 /** Binary client → server opcodes (first byte). */
@@ -102,6 +107,11 @@ export interface PlayerInfo {
    * is `PlayerFlag.Country` in `flags` plus 2 bytes after the avatar id; absent for "no country".
    */
   country?: string;
+  /**
+   * The coin is painted with the flag of `country` (the flag skin). On the wire this is
+   * `PlayerFlag.FlagSkin` in `flags` (never without a country); `decodeSnapshot` sets it only when true.
+   */
+  flagSkin?: boolean;
 }
 
 export interface EntityRecord {
@@ -292,6 +302,11 @@ export type ClientMessage =
        * off the allowlist: none. Shown as a flag by the name (bots wear one too).
        */
       country?: string;
+      /**
+       * Wear the country's flag as the coin skin (needs a country; a worn picture wins). Absent: the
+       * signed-in wallet's saved choice (`ProfileView.flagSkin`), else off.
+       */
+      flag?: boolean;
     }
   | { t: 'spectate'; room?: string; next?: boolean }
   | { t: 'leave' }

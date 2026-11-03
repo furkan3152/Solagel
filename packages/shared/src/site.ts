@@ -490,6 +490,10 @@ export interface ProfileView {
    * ("no flag"); absent: never saved (older profiles).
    */
   country?: string | null;
+  /**
+   * Wear the country's flag as the coin skin (`join.flag`); absent: never saved (off).
+   */
+  flagSkin?: boolean;
 }
 
 /** `GET /api/admin/avatars`: a player's profile picture, newest first. */
@@ -523,6 +527,8 @@ export interface ProfileUpdate {
   skin: number;
   /** ISO 3166-1 alpha-2 code, or null for no flag; absent: unchanged. */
   country?: string | null;
+  /** Wear the country's flag as the coin skin; absent: unchanged. */
+  flagSkin?: boolean;
 }
 
 /* ------------------------------------------------------------------ */

@@ -110,9 +110,26 @@ describe('ticket confirm sheet', () => {
     expect(within(dialog).getByText(/paid in HYPE on Elysium Testnet · you have 0.42 HYPE/)).toBeTruthy();
     expect(within(dialog).getByText('12,450 → 11,450 $ELYMUM')).toBeTruthy();
     const steps = within(within(dialog).getByRole('region', { name: 'Your wallet signs' })).getAllByRole('listitem');
-    // no allowance yet: an exact approval first, then the ticket
-    expect(steps.map((s) => s.textContent)).toEqual(['1Allow the arena to take exactly 1,000 $ELYMUM', '2Buy the ticket · Asphodel Meadow']);
+    // no allowance yet: one approval for every ticket first, then the ticket
+    expect(steps.map((s) => s.textContent)).toEqual(['1Allow the arena to take $ELYMUM for your tickets (once: later tickets skip this step)', '2Buy the ticket · Asphodel Meadow']);
     expect((within(dialog).getByRole('button', { name: /Pay 1,000 \$ELYMUM/ }) as HTMLButtonElement).disabled).toBe(false);
+    // the exact-approval choice, off by default
+    expect((within(dialog).getByRole('checkbox', { name: /Approve only this ticket/ }) as HTMLInputElement).checked).toBe(false);
+  });
+
+  it('"Approve only this ticket": an exact approval, remembered for next time', async () => {
+    const view = open(PENNY);
+    act(() => screen.getByRole('checkbox', { name: /Approve only this ticket/ }).click());
+    expect(useUi.getState().settings.exactApprove).toBe(true);
+    const steps = within(screen.getByRole('region', { name: 'Your wallet signs' })).getAllByRole('listitem');
+    expect(steps[0].textContent).toBe('1Allow the arena to take exactly 1,000 $ELYMUM');
+    act(() => screen.getByRole('button', { name: /^Pay / }).click());
+    await settle();
+    expect(spies.planJoin.mock.calls[0][1]).toMatchObject({ approve: 'exact' });
+    view.unmount();
+    // the next sheet starts with the choice still ticked
+    open(PENNY);
+    expect((screen.getByRole('checkbox', { name: /Approve only this ticket/ }) as HTMLInputElement).checked).toBe(true);
   });
 
   it('the legacy fee-on-profit arena (v1, still on testnet until redeployed) keeps its own copy', () => {
@@ -129,6 +146,8 @@ describe('ticket confirm sheet', () => {
     open(PENNY);
     const steps = within(screen.getByRole('region', { name: 'Your wallet signs' })).getAllByRole('listitem');
     expect(steps.map((s) => s.textContent)).toEqual(['1Buy the ticket · Asphodel Meadow']);
+    // nothing to approve: no approval choice either
+    expect(screen.queryByRole('checkbox', { name: /Approve only this ticket/ })).toBeNull();
   });
 
   it('cannot sign without a wallet', () => {
@@ -181,8 +200,10 @@ describe('ticket flow: two prompts, progress and races', () => {
     open(PENNY);
     act(() => screen.getByRole('button', { name: /^Pay / }).click());
     await settle();
-    expect(screen.getByTestId('tf-step').textContent).toBe('Step 1 of 2 · Allow the arena to take exactly 1,000 $ELYMUM');
-    expect(screen.getByText('Approve the amount in your wallet')).toBeTruthy();
+    expect(screen.getByTestId('tf-step').textContent).toBe('Step 1 of 2 · Allow the arena to take $ELYMUM for your tickets (once: later tickets skip this step)');
+    expect(screen.getByText('Approve the game token in your wallet')).toBeTruthy();
+    // one approval for every later ticket (the default)
+    expect(spies.planJoin.mock.calls[0][1]).toMatchObject({ approve: 'unlimited' });
     await act(async () => release());
     await settle();
     expect(spies.sendWalletCall).toHaveBeenCalledTimes(2);
@@ -206,7 +227,7 @@ describe('ticket flow: two prompts, progress and races', () => {
     await settle();
     expect(spies.planJoin).toHaveBeenCalledTimes(1);
     expect(spies.sendWalletCall).toHaveBeenCalledTimes(1);
-    expect(spies.planJoin.mock.calls[0][1]).toEqual({ arena: ARENA, arenaId: 1, player: ALICE, token: TOKEN });
+    expect(spies.planJoin.mock.calls[0][1]).toEqual({ arena: ARENA, arenaId: 1, player: ALICE, token: TOKEN, approve: 'unlimited' });
   });
 
   it('a failed approval stops before the join, and the retry re-plans', async () => {

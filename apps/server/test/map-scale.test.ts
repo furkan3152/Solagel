@@ -5,6 +5,7 @@ import {
   MAP_GROW,
   MAP_SCALE_DEFAULT,
   MAP_SPACE,
+  OLD_MAP_SCALE_DEFAULT,
   TICK_MS,
   WORLD_PRESETS,
   decodeSnapshot,
@@ -25,7 +26,12 @@ import { Journal } from '../src/stake/journal';
 import { ArenaChain, arena, fakeConn, roomDeps, stakeJoin } from './helpers';
 
 const ROUND = { roundMs: 60_000, closeMs: 10_000 };
-const scale = (p: Partial<MapScaleSettings> = {}): MapScaleSettings => ({ ...MAP_SCALE_DEFAULT, ...p });
+/**
+ * The resize mechanics are tested on the old default curve (3000..9000): it spans many growth steps.
+ * The live default (10000..12000) is checked in 'map settings with the bot settings'.
+ */
+const CURVE: MapScaleSettings = { auto: true, ...OLD_MAP_SCALE_DEFAULT };
+const scale = (p: Partial<MapScaleSettings> = {}): MapScaleSettings => ({ ...CURVE, ...p });
 
 function resizable(side: number, seed = 3): World {
   return new World({ ...worldForSide(side), powerUps: true, coinRain: false, seed, space: MAP_SPACE });
@@ -133,7 +139,7 @@ const ticks = (room: Room, ms: number) => {
 describe('room map sizing', () => {
   it('opens at the size its bots call for and reports the origin in room info', () => {
     const room = new Room({ id: 'p', mode: 'practice', name: 'Pond', maxPlayers: 40, bots: { target: 12, min: 4, max: 12 }, seed: 1, map: { scale: scale() } }, roomDeps(new ArenaChain([])));
-    expect(room.world.cfg.width).toBe(mapSideFor(12, MAP_SCALE_DEFAULT));
+    expect(room.world.cfg.width).toBe(mapSideFor(12, CURVE));
     const info = room.info();
     expect(info.width).toBe(room.world.cfg.width);
     expect(info.x0).toBe((MAP_SPACE - info.width) / 2);
@@ -185,7 +191,7 @@ describe('room map sizing', () => {
     for (let i = 0; i < 6; i++) room.join(fakeConn(`x${i}`), stakeJoin(1, 1000));
     clock.now = next.endsAt;
     room.tick(TICK_MS);
-    expect(room.world.cfg.width).toBe(mapSideFor(6, MAP_SCALE_DEFAULT));
+    expect(room.world.cfg.width).toBe(mapSideFor(6, CURVE));
     expect(room.world.cfg.foodTarget).toBe(worldForSide(3000).foodTarget);
   });
 
@@ -194,11 +200,11 @@ describe('room map sizing', () => {
     const conns = Array.from({ length: 50 }, (_, i) => fakeConn(`z${i}`));
     for (const c of conns) room.join(c, { name: 'p', skin: 1, flags: 0 });
     ticks(room, 30_000);
-    expect(room.world.cfg.width).toBe(mapSideFor(50, MAP_SCALE_DEFAULT));
+    expect(room.world.cfg.width).toBe(mapSideFor(50, CURVE));
     // one leaves: within the hysteresis, nothing moves
     room.leave(conns.pop()!, 'left');
     ticks(room, 10_000);
-    expect(room.world.cfg.width).toBe(mapSideFor(50, MAP_SCALE_DEFAULT));
+    expect(room.world.cfg.width).toBe(mapSideFor(50, CURVE));
     // all but one leave; the last one sits right at the edge: the floor never closes in on them
     for (const c of conns.splice(1)) room.leave(c, 'left');
     const last = conns[0].player!;
@@ -209,12 +215,12 @@ describe('room map sizing', () => {
     }
     w.setTarget(last.id, w.x0 + 60, w.y0 + 60);
     ticks(room, 10_000);
-    expect(room.world.cfg.width).toBe(mapSideFor(50, MAP_SCALE_DEFAULT));
+    expect(room.world.cfg.width).toBe(mapSideFor(50, CURVE));
     // they walk to the middle: now it shrinks, step by step, down to the 1-player size
     const c = w.center();
     w.setTarget(last.id, c.x, c.y);
     ticks(room, 60_000);
-    expect(room.world.cfg.width).toBe(MAP_SCALE_DEFAULT.min);
+    expect(room.world.cfg.width).toBe(CURVE.min);
   });
 
   it('admin changes reach a live room: auto off returns to the preset (growing now, shrinking when allowed)', () => {
@@ -262,12 +268,12 @@ describe('custom rooms: "Auto" or a chosen size', () => {
       { id: 'priv-AUTOS', mode: 'private', code: 'AUTOS', name: 'Auto', maxPlayers: 20, bots: customBots(c), seed: 3, world: customWorld(c), map: { scale: scale(), shape: (side) => customWorld(c, side) } },
       roomDeps(new ArenaChain([])),
     );
-    expect(auto.world.cfg.width).toBe(mapSideFor(12, MAP_SCALE_DEFAULT));
+    expect(auto.world.cfg.width).toBe(mapSideFor(12, CURVE));
     for (let i = 0; i < 20; i++) auto.join(fakeConn(`c${i}`), { name: 'p', skin: 1, flags: 0 });
     ticks(auto, 30_000);
     // 12 bots + 20 people (a few may be eaten meanwhile: the map never shrinks back while people play)
-    expect(auto.world.cfg.width).toBeGreaterThan(mapSideFor(24, MAP_SCALE_DEFAULT));
-    expect(auto.world.cfg.width).toBeLessThanOrEqual(mapSideFor(32, MAP_SCALE_DEFAULT));
+    expect(auto.world.cfg.width).toBeGreaterThan(mapSideFor(24, CURVE));
+    expect(auto.world.cfg.width).toBeLessThanOrEqual(mapSideFor(32, CURVE));
     expect(auto.world.cfg.foodTarget).toBe(customWorld(c, auto.world.cfg.width).foodTarget);
     const fixed = cfg({ mapSize: 'S', bots: 12 });
     const room = new Room({ id: 'priv-FIXED', mode: 'private', code: 'FIXED', name: 'Fixed', maxPlayers: 20, bots: customBots(fixed), seed: 3, world: customWorld(fixed) }, roomDeps(new ArenaChain([])));

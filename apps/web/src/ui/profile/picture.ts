@@ -1,4 +1,4 @@
-import { AVATAR_LIMITS, isAvatarId } from '@elymum/shared';
+import { AVATAR_LIMITS, isAvatarId, isCountryCode } from '@elymum/shared';
 import { t } from '../../i18n';
 
 /**
@@ -23,6 +23,11 @@ export function pictureStatus(o: { owner: string | null; token: string | null; a
 /** The coin wears the picture: the player chose it and there is one (a removed picture falls back to the basic coin). */
 export function wearsPicture(chosen: boolean, avatar: string | null | undefined): boolean {
   return chosen && isAvatarId(avatar);
+}
+
+/** The country whose flag the coin wears (the flag skin turned on with a country picked), or null. */
+export function wornFlag(s: { flagSkin?: boolean; country?: string }): string | null {
+  return s.flagSkin && isCountryCode(s.country) ? s.country : null;
 }
 
 /** Files larger than this are refused before decoding (the upload itself is a few KB). */

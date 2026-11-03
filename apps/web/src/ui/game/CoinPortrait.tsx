@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useReducedMotion } from '../../design';
 import { avatars } from '../../render/avatars';
 import { drawCoinLook } from '../../render/coin';
+import { flagSkins } from '../../render/flagskin';
 import { JellyBody } from '../../render/jelly';
 import { LookCache } from '../../render/looks';
 import { canvasDpr } from '../../render/renderer';
@@ -25,6 +26,7 @@ export function CoinPortrait({
   look,
   avatar,
   picture,
+  flag,
 }: {
   skin: number;
   size: number;
@@ -39,6 +41,8 @@ export function CoinPortrait({
   avatar?: string | null;
   /** A picture already at hand (the crop preview), cut to a disc or not: drawn clipped to the face. */
   picture?: CanvasImageSource | null;
+  /** Wear this country's flag as the coin skin (the flag skin); a picture wins over it. */
+  flag?: string | null;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const jelly = useRef(new JellyBody());
@@ -70,7 +74,9 @@ export function CoinPortrait({
     const lx = reduced ? 0 : Math.cos(now / 1400 + seed) * 0.4;
     const ly = reduced ? 0.2 : Math.sin(now / 1700 + seed) * 0.25;
     if (!reduced) jelly.current.update(dt, r, r, lx * 0.5, ly * 0.5, [], rand);
-    drawCoinLook(ctx, size / 2, size / 2 + size * 0.05, r, look ?? looks.lookFor(skin), {
+    const base = look ?? looks.lookFor(skin);
+    const fill = !pic && flag ? flagSkins.fill(flag, r * 2 * dpr) : null;
+    drawCoinLook(ctx, size / 2, size / 2 + size * 0.05, r, fill && flag ? flagSkins.look(base, flag) : base, {
       time: reduced ? 0 : now,
       lookX: lx,
       lookY: ly,
@@ -79,6 +85,7 @@ export function CoinPortrait({
       jelly: reduced ? null : jelly.current,
       seed,
       picture: pic,
+      skinFill: fill,
     });
   };
 
@@ -87,7 +94,7 @@ export function CoinPortrait({
   useEffect(() => {
     if (!loop) draw(0, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [skin, size, expression, loop, look, avatar, picture, loaded]);
+  }, [skin, size, expression, loop, look, avatar, picture, flag, loaded]);
 
   return <canvas ref={ref} className={className} style={{ width: size, height: size }} aria-hidden="true" />;
 }

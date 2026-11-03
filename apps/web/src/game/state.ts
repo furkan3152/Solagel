@@ -168,7 +168,7 @@ export class ClientWorld implements SnapshotSink {
     this.applyAt = now;
     this.snapshotBegin(s.tick, s.view.x, s.view.y, s.view.h);
     if (s.bounds) this.snapshotBounds(s.bounds.x0, s.bounds.y0, s.bounds.x1, s.bounds.y1);
-    for (const p of s.players) this.setPlayer(p.id, p.skin, p.flags, p.name, p.isBot ? undefined : p.avatar, p.country ?? null);
+    for (const p of s.players) this.setPlayer(p.id, p.skin, p.flagSkin ? p.flags | PlayerFlag.FlagSkin : p.flags, p.name, p.isBot ? undefined : p.avatar, p.country ?? null);
     for (const u of s.upserts) {
       const has = (u.playerId !== undefined || u.flags !== undefined ? HAS_PLAYER : 0) | (u.variant !== undefined ? HAS_VARIANT : 0);
       this.upsert(u.id, u.kind, u.x, u.y, u.r, has, u.playerId, u.flags, u.variant);

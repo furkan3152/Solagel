@@ -7,6 +7,7 @@ import {
   MAP_SCALE_LIMITS,
   MAP_SPACE,
   MAP_WORLD_CAPS,
+  OLD_MAP_SCALE_DEFAULT,
   VIRUS_PER_AREA,
   WORLD_PRESETS,
   mapScaleFieldError,
@@ -16,17 +17,20 @@ import {
 } from '../src';
 
 describe('adaptive map size curve', () => {
-  it('gives the documented sides for 5 / 10 / 25 / 50 / 100 players', () => {
-    expect([5, 10, 25, 50, 100].map((n) => mapSideFor(n, MAP_SCALE_DEFAULT))).toEqual([3000, 3000, 4500, 6400, 9000]);
+  it('gives the documented sides for 5 / 12 / 50 / 100 / 121 / 144 / 200 players', () => {
+    expect(MAP_SCALE_DEFAULT).toEqual({ auto: true, perPlayer: 1000, min: 10_000, max: 12_000 });
+    expect([5, 12, 50, 100, 121, 144, 200].map((n) => mapSideFor(n, MAP_SCALE_DEFAULT))).toEqual([10_000, 10_000, 10_000, 10_000, 11_000, 12_000, 12_000]);
+    // the old curve, still reachable from the admin page
+    expect([5, 10, 25, 50, 100].map((n) => mapSideFor(n, OLD_MAP_SCALE_DEFAULT))).toEqual([3000, 3000, 4500, 6400, 9000]);
   });
 
   it('keeps the area per player about constant between the clamps', () => {
     for (const n of [12, 20, 30, 40, 60, 80, 99]) {
-      const side = mapSideFor(n, MAP_SCALE_DEFAULT);
+      const side = mapSideFor(n, OLD_MAP_SCALE_DEFAULT);
       const perPlayer = (side * side) / n;
       // rounding the side up to 100 adds at most a few percent
-      expect(perPlayer / (MAP_SCALE_DEFAULT.perPlayer * MAP_SCALE_DEFAULT.perPlayer)).toBeGreaterThanOrEqual(1);
-      expect(perPlayer / (MAP_SCALE_DEFAULT.perPlayer * MAP_SCALE_DEFAULT.perPlayer)).toBeLessThan(1.1);
+      expect(perPlayer / (OLD_MAP_SCALE_DEFAULT.perPlayer * OLD_MAP_SCALE_DEFAULT.perPlayer)).toBeGreaterThanOrEqual(1);
+      expect(perPlayer / (OLD_MAP_SCALE_DEFAULT.perPlayer * OLD_MAP_SCALE_DEFAULT.perPlayer)).toBeLessThan(1.1);
     }
   });
 
@@ -43,12 +47,25 @@ describe('adaptive map size curve', () => {
     expect(mapSideFor(1000, { perPlayer: 2000, min: 2000, max: 99_999 })).toBe(MAP_SPACE);
     // a min above the max never wins
     expect(mapSideFor(1, { perPlayer: 900, min: 8000, max: 5000 })).toBe(8000);
-    expect(mapSideFor(Number.NaN, MAP_SCALE_DEFAULT)).toBe(3000);
+    expect(mapSideFor(Number.NaN, MAP_SCALE_DEFAULT)).toBe(10_000);
   });
 
-  it('spans the custom room sizes (XS..XL)', () => {
-    expect(MAP_SCALE_DEFAULT.min).toBe(CUSTOM_MAP_WIDTH.XS);
-    expect(MAP_SCALE_DEFAULT.max).toBe(CUSTOM_MAP_WIDTH.XL);
+  it('fits the coordinate space and the admin limits; the custom sizes (XS..XL) are fixed choices below it', () => {
+    expect(MAP_SCALE_DEFAULT.max).toBeLessThanOrEqual(MAP_SPACE);
+    expect(MAP_SCALE_DEFAULT.max).toBeLessThanOrEqual(MAP_SCALE_LIMITS.sideMax);
+    expect(MAP_SCALE_DEFAULT.perPlayer).toBeLessThanOrEqual(MAP_SCALE_LIMITS.perPlayerMax);
+    expect([OLD_MAP_SCALE_DEFAULT.min, OLD_MAP_SCALE_DEFAULT.max]).toEqual([CUSTOM_MAP_WIDTH.XS, CUSTOM_MAP_WIDTH.XL]);
+    expect(CUSTOM_MAP_WIDTH.XL).toBeLessThan(MAP_SCALE_DEFAULT.min);
+  });
+
+  it('a 10000..12000 room stays populated: food at pond density (capped), cacti and power-ups', () => {
+    const at10 = worldForSide(10_000);
+    expect(at10.foodTarget).toBe(Math.round(1e8 * FOOD_PER_AREA));
+    expect(at10.foodTarget).toBeGreaterThan(3000);
+    expect(at10.virusTarget).toBeGreaterThanOrEqual(25);
+    expect(at10.maxPowerUps).toBe(MAP_WORLD_CAPS.powerUps);
+    // 12000: the food cap holds (the server is small)
+    expect(worldForSide(12_000).foodTarget).toBe(MAP_WORLD_CAPS.food);
   });
 });
 

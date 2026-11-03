@@ -14,7 +14,7 @@ import { CoinPortrait } from '../game/CoinPortrait';
 import { PageHead } from '../PageHead';
 import { CountryPicker } from './CountryPicker';
 import { PicturePanel, PictureTile, usePicture } from './PicturePicker';
-import { wearsPicture } from './picture';
+import { wearsPicture, wornFlag } from './picture';
 import { SettingsPage } from './SettingsPage';
 import './profile.css';
 
@@ -94,7 +94,7 @@ function MemberCard() {
             animate={reduced || flip === 0 ? { rotateY: 0 } : { rotateY: [0, 90, -90, 0], y: [0, -12, -12, 0], scale: [1, 0.94, 0.94, 1] }}
             transition={{ duration: 0.42, times: [0, 0.38, 0.4, 1], ease: 'easeInOut' }}
           >
-            <CoinPortrait skin={shownSkin} size={104} expression="proud" seed={11} avatar={wearing ? profile?.avatar : null} />
+            <CoinPortrait skin={shownSkin} size={104} expression="proud" seed={11} avatar={wearing ? profile?.avatar : null} flag={wornFlag(settings)} />
           </motion.span>
           {!reduced && flip > 0 && (
             <span key={`spark-${flip}`} className="pf-card__spark" aria-hidden="true">
@@ -164,7 +164,8 @@ export function NameAndCoin() {
   // the country is saved with the profile once the player picked one (the first-visit guess is not a pick)
   const country = settings.countryAuto ? undefined : settings.country || null;
   const countryDiff = country !== undefined && country !== (profile?.country ?? null);
-  const serverDiff = !!token && (!profile || clean !== profile.name || skin !== profile.skin || countryDiff);
+  const flagSkinDiff = settings.flagSkin !== (profile?.flagSkin ?? false);
+  const serverDiff = !!token && (!profile || clean !== profile.name || skin !== profile.skin || countryDiff || flagSkinDiff);
   const localDiff = clean !== settings.name;
   const dirty = valid && (serverDiff || localDiff);
   const pic = usePicture();
@@ -177,7 +178,7 @@ export function NameAndCoin() {
       if (serverDiff && token) {
         setBusy(true);
         try {
-          const saved = await saveProfile(token, { name: clean, skin, ...(country !== undefined ? { country } : {}) });
+          const saved = await saveProfile(token, { name: clean, skin, flagSkin: settings.flagSkin, ...(country !== undefined ? { country } : {}) });
           useChainData.setState({ profile: saved });
           toast('success', t('pf.saved'), undefined, 2500);
         } catch (err) {

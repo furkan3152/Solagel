@@ -23,6 +23,8 @@ export interface CoinOpts {
   minPrintPx?: number;
   /** A profile picture cut to a disc (`AvatarCache.disc`): fills the face inside the rim, no face drawn. */
   picture?: CanvasImageSource | null;
+  /** A skin over the whole body (`FlagSkinCache.fill`, the flag skin): the face is drawn over it. */
+  skinFill?: CanvasImageSource | null;
 }
 
 /** Draws a coin character with an explicit look centred at (x, y) with world radius r. */

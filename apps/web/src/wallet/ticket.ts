@@ -8,12 +8,29 @@
  * are converted with `fromLedger` before they meet a chain amount.
  */
 import { DEFAULT_ARENAS, type FeeModel, type RoomInfo } from '@elymum/shared';
-import { DEFAULT_FEE_BPS, REFUND_DELAY_SECS, fromLedger, ticketValue } from '@elymum/sdk';
+import { DEFAULT_FEE_BPS, MAX_ALLOWANCE, REFUND_DELAY_SECS, fromLedger, ticketValue } from '@elymum/sdk';
 
 /* ── the ticket calls ───────────────────────────────────────────────── */
 
-/** `approve` (only when the allowance is short; exact amount) then `join`: two wallet prompts at most. */
+/**
+ * `approve` (only when the allowance is short) then `join`: two wallet prompts at most. By default
+ * the approval is the largest allowance (`MAX_ALLOWANCE`), given once: every later ticket is a
+ * single `join` prompt (2026-11 playtest: "after approving once it shouldn't ask again"). Players
+ * who prefer exact approvals tick "Approve only this ticket" (`Settings.exactApprove`).
+ */
 export type TicketStep = 'approve' | 'join';
+
+/** What the approval grants: `unlimited` (default) or `exact` (this ticket's entry fee). */
+export type ApproveMode = 'exact' | 'unlimited';
+
+export function approveMode(exactApprove: boolean | undefined): ApproveMode {
+  return exactApprove ? 'exact' : 'unlimited';
+}
+
+/** The amount an approval of `mode` grants for a ticket of `entryFee` (base units). */
+export function approveAmount(mode: ApproveMode, entryFee: bigint): bigint {
+  return mode === 'exact' ? entryFee : MAX_ALLOWANCE;
+}
 
 /** The calls a ticket needs, in order. `allowance` null (unknown) asks for the approval to be safe. */
 export function ticketSteps(allowance: bigint | null, entryFee: bigint): TicketStep[] {

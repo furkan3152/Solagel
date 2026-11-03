@@ -1,4 +1,4 @@
-import { DEFAULT_FEE_BPS, type ArenaConfig, type SessionInfo } from '@elymum/sdk';
+import { DEFAULT_FEE_BPS, MAX_ALLOWANCE, type ArenaConfig, type SessionInfo } from '@elymum/sdk';
 import type { ChainStatus } from '@elymum/shared';
 import type { Address, Hash } from 'viem';
 import { SERVER } from '../config';
@@ -74,7 +74,12 @@ export const isFakeHash = (h: string | null | undefined): boolean => !!h && h.st
 
 let nextSession = 1n;
 
-/** "Signs" and "confirms" a ticket (approve if needed, then join): applies its effects to the fake wallet. */
+/**
+ * "Signs" and "confirms" a ticket (approve if needed, then join): applies its effects to the fake
+ * wallet. `approveAmount` is what the approval grants (the entry fee, or `MAX_ALLOWANCE` once for
+ * every later ticket); the join spends the entry fee from it like `transferFrom` (an unlimited
+ * allowance stays unlimited, like OpenZeppelin's ERC-20).
+ */
 export async function fakeSendTicket(
   owner: Address,
   arenaId: number,
@@ -82,6 +87,7 @@ export async function fakeSendTicket(
   steps: readonly TicketStep[],
   feeBps: number,
   onPhase: (step: TicketStep, phase: TxPhase, hash?: Hash) => void,
+  approveAmount: bigint = entryFee,
 ): Promise<{ ok: true; hash: Hash } | { ok: false; name: string }> {
   let last: Hash = fakeHash();
   for (const step of steps) {
@@ -95,10 +101,10 @@ export async function fakeSendTicket(
     last = fakeHash();
     onPhase(step, 'confirming', last);
     await sleep(fakeWallet.delayMs);
-    if (step === 'approve') fakeWallet.allowance = entryFee;
+    if (step === 'approve') fakeWallet.allowance = approveAmount;
   }
   fakeWallet.tokenBalance -= entryFee;
-  fakeWallet.allowance = 0n;
+  if (fakeWallet.allowance !== MAX_ALLOWANCE) fakeWallet.allowance = fakeWallet.allowance >= entryFee ? fakeWallet.allowance - entryFee : 0n;
   fakeWallet.sessions[arenaId] = {
     arenaId,
     player: owner,

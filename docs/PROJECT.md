@@ -60,36 +60,56 @@ the code is laid out and how it is run. The source of truth for everything is
 
 ### 2.2.1 Bots
 
-- Three difficulties (easy, medium, hard), mixed per room kind by the admin (rookie league: 70 % easy, 30 % medium).
-  Bots react with a delay (about 450 / 260 / 150 ms), slip now and then, and treat bots and people alike; people who
-  joined less than 25 s ago are spared.
+- Three difficulties (easy, medium, hard), mixed per room kind by the admin (rookie league: 80 % easy, 20 % medium;
+  everywhere else 50 / 40 / 10). Bots react with a delay (about 400 / 310 / 230 ms, to threats and to prey), aim a
+  little off, slip now and then and have short lapses where they ignore threats; people who joined less than 25 s
+  ago are spared.
+- Fair to people (2026-11 playtest: "they're like cannibals, I can't escape"): each bot only knows what is in its
+  own view (no shared sight); at most `maxChasers` bots chase one person at once (rookie and private rooms 1, pro
+  league and arenas 2: a seat count, not shared information); a person weighs less as prey than another bot; a
+  chase on a person is given up after 2.5 / 3.5 / 4.5 s (half that when the person is by a thorn bush or a wall)
+  and that person is then left alone for 8-14 s; split attacks on people are rarer (20 / 40 / 55 % of the bot
+  chance), never double splits, aim wider and wait 12 / 9 / 7 s between them.
+- Strength per room kind (admin `strength`, percent 25..200, default 100, rookie league 85): scales hunting drive,
+  split attacks and chase length up and reaction delay, aim error and lapses down. `maxChasers` (0 = no limit) is
+  admin-set too. A saved `bots.json` whose mix still equals an old preset (70/30/0, 45/40/15) gets the new one on
+  load.
 - They judge threats by observed speed and split reach (hard bots also expect double splits), flee along walls
   instead of into corners, hide behind thorn bushes when small, split-kill when the landing is safe (hard bots
   double-split), regroup before merging, ignore bait, and head for dense coin fields.
 - Mass cap per room kind (admin, `/api/admin/bots` `massCap`, 0 = none): rookie league 300, pro league and arenas
   2,500, private rooms none. A bot sheds what it eats past the cap within a second or two.
 - `pnpm -F @elymum/server bot-bench <room|rookie|duel> [minutes] [seeds]` measures tick cost, newcomer survival,
-  virus deaths, stuck time and new-vs-old duels headlessly.
+  virus deaths, stuck time and new-vs-old duels headlessly. `bot-bench human [lives] [seeds]` plays a scripted
+  average human (reacts every ~250 ms, flees, chases smaller cells, splits now and then) 180 s lives against each
+  room kind's bots and reports survival, peak mass, kills and how often it is chased by one or two bots
+  (`BENCH_SIDE` sets the map side, `BENCH_STRENGTH` the strength).
 
 ### 2.2.2 Adaptive map size
 
 - Each room's square map is sized for the players it expects: the people in it plus the bots that fill it
   (`packages/shared/src/map-scale.ts`). Side = `perPlayer · √players`, rounded up to 100 and kept within
   `min..max`; every player gets about `perPlayer²` of floor. Food, cacti and power-ups follow the area at a
-  practice pond's density (capped at 4,000 food and 40 cacti).
+  practice pond's density (capped at 4,000 food and 40 cacti): a 10,000 room has about 3,500 coins, 30 cacti and
+  6 power-up slots.
 - Admin (`/api/admin/bots` `maps`, stored in `DATA_DIR/site/bots.json`): per room kind, `auto` on/off,
-  `perPlayer` (300..2,000, default 900), `min` and `max` side (2,000..12,000, default 3,000 and 9,000). Auto off
-  keeps the mode's fixed preset.
+  `perPlayer` (300..2,000, default 1,000), `min` and `max` side (2,000..12,000, default 10,000 and 12,000; 2026-11,
+  the owner wants rooms of ~12 players much bigger: every room up to 100 players is 10,000, 121 players 11,000, 144
+  and more 12,000). A saved curve still equal to the old default (900, 3,000, 9,000) gets the new one on load
+  (`auto` kept). Auto off keeps the mode's fixed preset.
 - When: arenas take the new size at each round start (sized for the people at the bell); during a round the map
   only grows, by at most 600 units every 4 s, so nobody is trapped against a closing wall. Free rooms (no
   rounds) grow the same way and shrink step by step only over empty floor (no person's coin near the band
   that goes). The playable square sits centred in a fixed 12,000 space, so it opens on every side and the
   server's spatial grids never need rebuilding. Clients get the bounds in the snapshot (protocol v8) and ease the
   border, minimap and camera over 1.5 s.
-- Custom rooms: "Auto" (the default) follows the private rooms' curve for its bots plus its people; a chosen
-  size (XS..XL) never changes.
+- Custom rooms: "Auto" (the default) follows the private rooms' curve for its bots plus its people (so 10,000 by
+  default); a chosen size (XS 3,000 .. XL 9,000) never changes.
 - `pnpm -F @elymum/server exec tsx scripts/bench/map-bench.ts [players] [people] [seconds]` times a full room on
-  the adaptive map against the fixed arena preset, and the resizes themselves.
+  the adaptive map against the fixed arena preset, and the resizes themselves; `map-bench.ts rooms [rooms]
+  [players] [people] [seconds]` times several quiet rooms in one process on the new and the old curve (6 rooms of
+  12 bots and a person at 10,000: about 3.5 ms per tick for all six on a dev machine, so ~7 ms on the 0.5 CPU
+  instance, well inside the 33 ms tick).
 
 ### 2.3 Value inside an arena (off-chain ledger)
 
@@ -188,7 +208,9 @@ flowchart LR
 
 **Hybrid model.** The server runs the physics; the contracts enforce the money rules; the browser signs its own
 transactions (approve, join, refund, mint); the server key signs only `settle`, `sweepLoot` and (as keeper)
-`setPrice`. Details: [ARCHITECTURE.md](ARCHITECTURE.md).
+`setPrice`. A ticket approves the game token once for every later ticket by default (the largest allowance), so
+later tickets are a single `join` prompt; "Approve only this ticket" in the confirm sheet (remembered per browser)
+approves exactly each entry fee instead. Shop packs and custom rooms pay with a plain `transfer` (no approval). Details: [ARCHITECTURE.md](ARCHITECTURE.md).
 
 | Path | What it is |
 |---|---|
@@ -316,4 +338,5 @@ lands** ([media/README.md](../media/README.md)).
 | 2026-10-16 | One simple model: flat 5 % fee on profit to the fee wallet; floor loot burned; the token set after deploy |
 | 2026-10-17 | Browser-wallet admin panel; the site becomes a landing page with WL and collab applications |
 | 2026-10-29 | The project becomes **Elymum on Elysium**: two Solidity contracts, EIP-6963 + viem wallets, SIWE, the Elymum NFT at $1 in HYPE, WL → Mint → Play, everything deployed from `/admin`, the Ring Storybook design |
+| 2026-11-03 | Playtest fixes: bots fair to people (one or two chasers per person, short chases, rare split attacks, reaction delay and aim error, admin `strength`), rooms of ~12 players at 10,000 (map default 1,000 / 10,000 / 12,000), one token approval for every ticket by default |
 | 2026-11-02 | The fee moves from profit to the entry: every played ticket pays 5 % of its entry fee (holders 3 %), win or lose; unplayed tickets are refunded in full. ElymumArena v2 (`version()` 2); the server handles the legacy v1 testnet arena until it is redeployed. The leaderboards are reset once (epoch 2) |

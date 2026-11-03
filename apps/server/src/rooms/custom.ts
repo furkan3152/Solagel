@@ -101,7 +101,8 @@ export function customWorld(c: CustomRoomConfig, side?: number): WorldShape {
 /** Bots of a config: exactly `bots` of them, whatever the humans do. */
 export function customBots(c: CustomRoomConfig): BotManagerOptions | null {
   if (c.bots <= 0) return null;
-  return { enabled: true, target: c.bots, min: c.bots, max: c.bots, mix: { ...CUSTOM_BOT_MIX[c.difficulty] } };
+  // never a pack on one person: one chaser at a time (two on hard)
+  return { enabled: true, target: c.bots, min: c.bots, max: c.bots, mix: { ...CUSTOM_BOT_MIX[c.difficulty] }, maxChasers: c.difficulty === 'hard' ? 2 : 1 };
 }
 
 const BEST_KEPT = 10;

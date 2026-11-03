@@ -245,6 +245,9 @@ export function getAllowance(client: ReadClient, token: Address, owner: Address,
   return client.readContract({ address: token, abi: erc20Abi, functionName: 'allowance', args: [owner, spender] });
 }
 
+/** The largest ERC-20 allowance (2^256 − 1): "unlimited", one approval for every later ticket. */
+export const MAX_ALLOWANCE = (1n << 256n) - 1n;
+
 export function approveCall(token: Address, spender: Address, amount: bigint): Erc20Call {
   checkAddress('spender', spender);
   if (amount < 0n || amount > (1n << 256n) - 1n) throw new RangeError(`approve amount out of range: ${amount}`);
@@ -283,7 +286,7 @@ export interface JoinPlan {
   holdersOnly: boolean;
   allowance: bigint;
   balance: bigint;
-  /** Exact-amount `approve` when the allowance is short, else null. */
+  /** `approve` when the allowance is short (exact entry fee, or `MAX_ALLOWANCE` with `approve: 'unlimited'`), else null. */
   approve: Erc20Call | null;
   join: ArenaCall;
   /** Calls in order (approve first when needed). */
@@ -293,13 +296,14 @@ export interface JoinPlan {
 /**
  * The ticket flow: reads the arena's entry fee, the fee rate the player will get (holder discount),
  * the player's allowance and balance, and returns `approve` (only when the allowance is short;
- * exact amount) + `join`. Throws a `RangeError` when the arena is missing, disabled or full, the
+ * the exact entry fee, or with `approve: 'unlimited'` the largest allowance so later tickets need
+ * `join` only) + `join`. Throws a `RangeError` when the arena is missing, disabled or full, the
  * token is not set, the arena is holders-only and the player holds no emblem (message contains
  * "holders only"), or the balance is short.
  */
 export async function planJoin(
   client: ReadClient,
-  p: { arena: Address; arenaId: number; player: Address; token?: Address },
+  p: { arena: Address; arenaId: number; player: Address; token?: Address; approve?: 'exact' | 'unlimited' },
 ): Promise<JoinPlan> {
   const [info, config, holder] = await Promise.all([
     getArena(client, p.arena, p.arenaId),
@@ -320,7 +324,7 @@ export async function planJoin(
   const fee = { feeBps, standardFeeBps, holder, holderDiscount: feeBps !== null && standardFeeBps !== null && feeBps < standardFeeBps, holdersOnly: info.holdersOnly };
   const [allowance, balance] = await Promise.all([getAllowance(client, token, p.player, p.arena), getTokenBalance(client, token, p.player)]);
   if (balance < info.entryFee) throw new RangeError(`balance too low for the ticket (need ${info.entryFee}, have ${balance} base units)`);
-  const approve = allowance < info.entryFee ? approveCall(token, p.arena, info.entryFee) : null;
+  const approve = allowance < info.entryFee ? approveCall(token, p.arena, p.approve === 'unlimited' ? MAX_ALLOWANCE : info.entryFee) : null;
   const join = joinCall(p.arena, p.arenaId);
   return { entryFee: info.entryFee, ...fee, allowance, balance, approve, join, calls: approve ? [approve, join] : [join] };
 }

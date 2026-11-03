@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { MAP_SCALE_DEFAULT, RULES, mapScaleFieldError, type MapScaleSettings, type RoomMode, type League } from '@elymum/shared';
+import { MAP_SCALE_DEFAULT, OLD_MAP_SCALE_DEFAULT, RULES, mapScaleFieldError, type MapScaleSettings, type RoomMode, type League } from '@elymum/shared';
 import type { BotManagerOptions } from './manager';
-import { mixWeights, type BotMixWeights } from './personality';
+import { BOT_MIX_PRESETS, OLD_BOT_MIX_PRESETS, mixWeights, type BotMixWeights } from './personality';
 
 /** The room kinds bots are configured for. */
 export const BOT_ROOM_KINDS = ['practiceRookie', 'practicePro', 'arena', 'private'] as const;
@@ -25,6 +25,14 @@ export interface BotKindSettings {
    * what they eat past it within a second or two. Defaults: `DEFAULT_BOT_MASS_CAPS`.
    */
   massCap: number;
+  /**
+   * Bot strength in percent (25..200; 100 = the difficulty levels as tuned): scales hunting drive,
+   * split attacks and chase length up, reaction delay, aim error and lapses down. Defaults:
+   * `DEFAULT_BOT_STRENGTH`.
+   */
+  strength: number;
+  /** Most bots chasing one person at once (0: no limit). Defaults: `DEFAULT_MAX_CHASERS`. */
+  maxChasers: number;
 }
 
 /** Testnet staked bots of one arena (overrides `BotTestnetSettings` defaults). */
@@ -62,7 +70,13 @@ export interface BotSettings {
 }
 
 /** Bounds of the admin values. */
-export const BOT_LIMITS = { cap: 64, target: 200, stakedPerArena: 32, arenaIds: 64, massCap: 200_000 } as const;
+export const BOT_LIMITS = { cap: 64, target: 200, stakedPerArena: 32, arenaIds: 64, massCap: 200_000, strengthMin: 25, strengthMax: 200, maxChasers: 12 } as const;
+
+/** Default bot strength (percent) per room kind: the rookie league a little softer. */
+export const DEFAULT_BOT_STRENGTH: Record<BotRoomKind, number> = { practiceRookie: 85, practicePro: 100, arena: 100, private: 100 };
+
+/** Default most bots chasing one person at once: one in rookie and private rooms, two in pro ponds and arenas. */
+export const DEFAULT_MAX_CHASERS: Record<BotRoomKind, number> = { practiceRookie: 1, practicePro: 2, arena: 2, private: 1 };
 
 export const BOT_TESTNET_DEFAULT: BotTestnetSettings = { stakedPerArena: 6, bankroll: '1000000', gasHype: '0.05', arenas: {} };
 
@@ -99,6 +113,8 @@ export function managerOptions(k: BotKindSettings): BotManagerOptions {
     max: k.cap,
     mix: { ...k.mix },
     ...(k.massCap > 0 ? { massCap: k.massCap } : {}),
+    strength: k.strength,
+    ...(k.maxChasers > 0 ? { maxChasers: k.maxChasers } : {}),
   };
 }
 
@@ -106,6 +122,8 @@ export function managerOptions(k: BotKindSettings): BotManagerOptions {
 export function kindFromOptions(o: BotManagerOptions, kind?: BotRoomKind): BotKindSettings {
   const cap = Math.max(0, Math.min(BOT_LIMITS.cap, Math.floor(o.max)));
   const massCap = o.massCap ?? (kind ? DEFAULT_BOT_MASS_CAPS[kind] : 0);
+  const strength = o.strength ?? (kind ? DEFAULT_BOT_STRENGTH[kind] : 100);
+  const maxChasers = o.maxChasers ?? (kind ? DEFAULT_MAX_CHASERS[kind] : 0);
   return {
     enabled: o.enabled !== false,
     cap,
@@ -113,6 +131,8 @@ export function kindFromOptions(o: BotManagerOptions, kind?: BotRoomKind): BotKi
     target: Math.max(0, Math.min(BOT_LIMITS.target, Math.floor(o.target))),
     mix: { ...mixWeights(o.mix) },
     massCap: Math.max(0, Math.min(BOT_LIMITS.massCap, Math.floor(massCap))),
+    strength: Math.max(BOT_LIMITS.strengthMin, Math.min(BOT_LIMITS.strengthMax, Math.round(strength))),
+    maxChasers: Math.max(0, Math.min(BOT_LIMITS.maxChasers, Math.floor(maxChasers))),
   };
 }
 
@@ -207,7 +227,7 @@ function applyInner(cur: BotSettings, body: Record<string, unknown>): BotSetting
       if (patch === undefined) continue;
       const at = `kinds.${kind}`;
       if (!isObj(patch)) throw new BotSettingsError(`${at} must be an object`, at);
-      onlyKeys(patch, ['enabled', 'cap', 'min', 'target', 'mix', 'massCap'], `${at}.`);
+      onlyKeys(patch, ['enabled', 'cap', 'min', 'target', 'mix', 'massCap', 'strength', 'maxChasers'], `${at}.`);
       const k = next.kinds[kind];
       if (patch.enabled !== undefined) {
         if (typeof patch.enabled !== 'boolean') throw new BotSettingsError(`${at}.enabled must be true or false`, `${at}.enabled`);
@@ -221,6 +241,8 @@ function applyInner(cur: BotSettings, body: Record<string, unknown>): BotSetting
         if (m > 0 && m < RULES.startMass * 2) throw new BotSettingsError(`${at}.massCap must be 0 (no cap) or at least ${RULES.startMass * 2}`, `${at}.massCap`);
         k.massCap = m;
       }
+      if (patch.strength !== undefined) k.strength = int(patch.strength, `${at}.strength`, BOT_LIMITS.strengthMin, BOT_LIMITS.strengthMax);
+      if (patch.maxChasers !== undefined) k.maxChasers = int(patch.maxChasers, `${at}.maxChasers`, 0, BOT_LIMITS.maxChasers);
       if (patch.mix !== undefined) {
         if (!isObj(patch.mix)) throw new BotSettingsError(`${at}.mix must be an object`, `${at}.mix`);
         onlyKeys(patch.mix, ['easy', 'medium', 'hard'], `${at}.mix.`);
@@ -261,6 +283,43 @@ function applyInner(cur: BotSettings, body: Record<string, unknown>): BotSetting
   return next;
 }
 
+const sameMix = (a: unknown, b: BotMixWeights): boolean => isObj(a) && a.easy === b.easy && a.medium === b.medium && a.hard === b.hard && Object.keys(a).length === 3;
+
+/**
+ * Upgrades a saved file in place: values still equal to an old default take the new default (the
+ * admin page saves every field, so an untouched old default looks like a choice). A difficulty mix
+ * equal to an old preset becomes the new preset (2026-11 softer bots); a map curve equal to the old
+ * default (perPlayer 900, min 3000, max 9000) becomes the new one (1000, 10000, 12000), `auto`
+ * kept. Returns what changed (for the log).
+ */
+export function upgradeSavedBotSettings(raw: Record<string, unknown>): string[] {
+  const out: string[] = [];
+  if (isObj(raw.kinds)) {
+    for (const [kind, k] of Object.entries(raw.kinds)) {
+      if (!isObj(k)) continue;
+      for (const preset of ['rookie', 'standard'] as const) {
+        if (sameMix(k.mix, OLD_BOT_MIX_PRESETS[preset])) {
+          k.mix = { ...BOT_MIX_PRESETS[preset] };
+          out.push(`kinds.${kind}.mix -> ${preset} preset`);
+          break;
+        }
+      }
+    }
+  }
+  if (isObj(raw.maps)) {
+    for (const [kind, m] of Object.entries(raw.maps)) {
+      if (!isObj(m)) continue;
+      if (m.perPlayer === OLD_MAP_SCALE_DEFAULT.perPlayer && m.min === OLD_MAP_SCALE_DEFAULT.min && m.max === OLD_MAP_SCALE_DEFAULT.max) {
+        m.perPlayer = MAP_SCALE_DEFAULT.perPlayer;
+        m.min = MAP_SCALE_DEFAULT.min;
+        m.max = MAP_SCALE_DEFAULT.max;
+        out.push(`maps.${kind} -> ${MAP_SCALE_DEFAULT.perPlayer}/${MAP_SCALE_DEFAULT.min}/${MAP_SCALE_DEFAULT.max}`);
+      }
+    }
+  }
+  return out;
+}
+
 /** Where the settings live under `DATA_DIR`. */
 export const BOT_SETTINGS_FILE = join('site', 'bots.json');
 
@@ -292,6 +351,8 @@ export class BotSettingsStore {
     try {
       const raw: unknown = JSON.parse(readFileSync(p, 'utf8'));
       if (!isObj(raw)) throw new Error('not an object');
+      const upgraded = upgradeSavedBotSettings(raw);
+      if (upgraded.length) this.log(`bots: old defaults in ${BOT_SETTINGS_FILE} upgraded: ${upgraded.join(', ')}`);
       // the file is applied over the defaults like an admin update, so a bad field cannot sneak in
       this.cur = applyBotSettings(this.defaults, raw, { strict: false });
     } catch (err) {

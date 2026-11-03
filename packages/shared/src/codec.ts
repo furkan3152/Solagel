@@ -157,7 +157,8 @@ export class BinaryReader {
  *   u8 extras (v8; bit 0 `SNAP_BOUNDS`) [f32 x0 | f32 y0 | f32 x1 | f32 y1 with SNAP_BOUNDS]
  *   u8 nPlayers   { u16 id | u8 skin | u8 flags | str8 name | [8 bytes avatar id] | [2 bytes country] }
  *        (flags: PlayerFlag; Bot ⇒ `isBot`; the avatar id follows only with `PlayerFlag.Avatar`, v7;
- *        the country code, two ASCII capitals, only with `PlayerFlag.Country`, v9)
+ *        the country code, two ASCII capitals, only with `PlayerFlag.Country`, v9; `PlayerFlag.FlagSkin`
+ *        only with a country, v10)
  *   u16 nUpserts  { u32 id | u8 kind | f32 x | f32 y | f32 r | kind data }
  *        Cell: u16 playerId | u8 flags ; Food/Eject/PowerUp/Loot: u8 variant ; Virus: –
  *   u16 nRemovals { u32 id | u32 eaterId }
@@ -189,6 +190,8 @@ export function writeSnapshot(w: BinaryWriter, s: SnapshotData): void {
     let flags = (p.isBot ? p.flags | PlayerFlag.Bot : p.flags) | (p.holder ? PlayerFlag.Holder : 0);
     flags = avatar ? flags | PlayerFlag.Avatar : flags & ~PlayerFlag.Avatar;
     flags = country ? flags | PlayerFlag.Country : flags & ~PlayerFlag.Country;
+    // the flag skin paints the coin with the country's flag: never without a country
+    flags = country && (p.flagSkin || (flags & PlayerFlag.FlagSkin) !== 0) ? flags | PlayerFlag.FlagSkin : flags & ~PlayerFlag.FlagSkin;
     w.u8(flags);
     w.str8(p.name);
     if (avatar) w.avatarId(avatar);
@@ -266,6 +269,7 @@ export function decodeSnapshot(buf: ArrayBuffer | ArrayBufferView): SnapshotData
       const country = unpackCountry((hi << 8) | r.u8());
       if (country) p.country = country;
     }
+    if ((flags & PlayerFlag.FlagSkin) !== 0 && p.country) p.flagSkin = true;
     players[i] = p;
   }
 

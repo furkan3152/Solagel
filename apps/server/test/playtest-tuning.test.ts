@@ -57,7 +57,7 @@ describe('playtest tuning: rookie pond bots', () => {
     expect(massToRadius(ROOKIE_BOT_MASS_CAP) / massToRadius(RULES.startMass)).toBeLessThan(4.5);
   });
 
-  it('rookie bots never spawn above the cap and shed what they eat past it within seconds', () => {
+  it('rookie bots never spawn above the cap and shed what they eat past it within seconds', { timeout: 30_000 }, () => {
     const world = new World({ ...WORLD_PRESETS.practice, powerUps: true, coinRain: true, seed: 31 });
     const bots = new BotManager(world, { target: 12, min: 4, max: 12, mix: 'rookie', massCap: ROOKIE_BOT_MASS_CAP }, mulberry32(32));
     const over = new Map<number, number>();

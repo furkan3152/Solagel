@@ -31,6 +31,11 @@ export interface Settings {
    * profile's saved country replaces it. Picking a country (or none) clears it.
    */
   countryAuto: boolean;
+  /**
+   * Wear the country's flag as the coin skin (`join.flag`; saved with a signed-in profile). Needs a
+   * country; a worn profile picture wins over it.
+   */
+  flagSkin: boolean;
   theme: Theme;
   quality: Quality;
   /** Master switch (the header's mute) and master volume. */
@@ -54,6 +59,11 @@ export interface Settings {
   showChat: boolean;
   /** Last arena the player bought a ticket for (Quick Play goes back there). */
   lastArena: number | null;
+  /**
+   * "Approve only this ticket": each ticket approves exactly its entry fee (two wallet prompts
+   * every time). Off (default): the first ticket approves once for all later ones.
+   */
+  exactApprove: boolean;
 }
 
 export interface KillItem {
@@ -219,6 +229,7 @@ export function mergeSettings(defaults: Settings, saved: Partial<Settings>): Set
     out.country = '';
   }
   out.countryAuto = out.countryAuto === true;
+  out.flagSkin = out.flagSkin === true;
   return out;
 }
 
@@ -229,6 +240,7 @@ function loadSettings(): Settings {
     picture: false,
     country: guessCountry(),
     countryAuto: true,
+    flagSkin: false,
     theme: 'light',
     quality: 'high',
     sound: true,
@@ -246,6 +258,7 @@ function loadSettings(): Settings {
     showMinimap: true,
     showChat: true,
     lastArena: null,
+    exactApprove: false,
   };
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
@@ -317,8 +330,11 @@ export function updateSettings(patch: Partial<Settings>): void {
  * A signed-in profile was loaded: its saved country (or its "none") replaces the first-visit guess.
  * A country the player picked on this device stays (saving the profile sends it to the server).
  */
-export function adoptProfileCountry(profile: { country?: string | null } | null): void {
-  if (!profile || profile.country === undefined || !useUi.getState().settings.countryAuto) return;
+export function adoptProfileCountry(profile: { country?: string | null; flagSkin?: boolean } | null): void {
+  if (!profile) return;
+  // the flag skin turned on on another device follows the player here (turning it on here saves it)
+  if (profile.flagSkin === true && !useUi.getState().settings.flagSkin) updateSettings({ flagSkin: true });
+  if (profile.country === undefined || !useUi.getState().settings.countryAuto) return;
   updateSettings({ country: isCountryCode(profile.country) ? profile.country : '', countryAuto: false });
 }
 

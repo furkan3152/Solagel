@@ -84,6 +84,54 @@ function foodField(world: World): FoodField {
   return f;
 }
 
+/**
+ * Who is chasing which person, per world: a bot only takes up a chase on a person while fewer than
+ * its room's `maxChasers` other bots hold one (rookie and private rooms 1, pro and arenas 2), so
+ * people are never ganged up on. This is a seat count, not shared sight: no bot learns where a
+ * person is from another one; each still sees only its own view. A claim lapses unless renewed.
+ */
+const CLAIM_MS = 900;
+export class HuntClaims {
+  private readonly byPrey = new Map<number, Map<number, number>>();
+
+  /** Other bots holding a live claim on person `prey`. */
+  others(prey: number, bot: number, now: number): number {
+    const m = this.byPrey.get(prey);
+    if (!m) return 0;
+    let n = 0;
+    for (const [b, until] of m) {
+      if (until <= now) m.delete(b);
+      else if (b !== bot) n++;
+    }
+    if (m.size === 0) this.byPrey.delete(prey);
+    return n;
+  }
+
+  claim(prey: number, bot: number, until: number): void {
+    let m = this.byPrey.get(prey);
+    if (!m) this.byPrey.set(prey, (m = new Map()));
+    m.set(bot, until);
+  }
+
+  release(prey: number, bot: number): void {
+    const m = this.byPrey.get(prey);
+    if (!m) return;
+    m.delete(bot);
+    if (m.size === 0) this.byPrey.delete(prey);
+  }
+
+  /** Bots holding a live claim on `prey`. */
+  count(prey: number, now: number): number {
+    return this.others(prey, -1, now);
+  }
+}
+const claims = new WeakMap<World, HuntClaims>();
+export function huntClaims(world: World): HuntClaims {
+  let c = claims.get(world);
+  if (!c) claims.set(world, (c = new HuntClaims()));
+  return c;
+}
+
 /** What a bot remembers of another cell between two thoughts. */
 interface Seen {
   x: number;
@@ -119,6 +167,14 @@ export class BotBrain {
   private readonly seen = new Map<number, Seen>();
   /** Player id → when the bot first noticed that player as a threat, and last saw it (reaction delay). */
   private readonly noticed = new Map<number, { first: number; last: number }>();
+  /** The same for prey: a cell that just came into view is not chased before the reaction delay. */
+  private readonly spotted = new Map<number, { first: number; last: number }>();
+  /** A short lapse (threats ignored) runs until then. */
+  private lapseUntil = 0;
+  /** No split attack on a person before then. */
+  private humanSplitUntil = 0;
+  /** The person this bot holds a chase claim on (-1: none). */
+  private claimId = -1;
   /** A double split in progress: the second split goes out at `followUpAt`, aimed at `followUp`. */
   private followUpAt = 0;
   private readonly followUp = { x: 0, y: 0 };
@@ -176,6 +232,15 @@ export class BotBrain {
   private unstickUntil = 0;
   /** Most mass the room lets a bot keep (set by the manager; Infinity: no cap). */
   massCap = Infinity;
+  /**
+   * Room strength (admin `strength`, 1 = 100 %): scales hunting drive, split attacks and chase
+   * length up, and reaction delay, aim error and lapses down (and the reverse below 1).
+   */
+  strength = 1;
+  /** Most bots chasing one person at once (admin `maxChasers`; Infinity: no limit). */
+  maxChasers = Infinity;
+  /** This bot's player id (for chase claims; set by the manager). */
+  pid = -1;
   /** Exposed for tests / debugging. */
   lastDanger = 0;
 
@@ -187,6 +252,11 @@ export class BotBrain {
     this.wander = rng() * Math.PI * 2;
     // stagger the first thought so a room's bots never all think on the same tick
     this.nextThinkAt = now + rng() * personality.thinkMs;
+  }
+
+  /** The player this bot is chasing right now (-1: none). */
+  get chasing(): number {
+    return this.chaseId;
   }
 
   shouldThink(now: number): boolean {
@@ -218,20 +288,42 @@ export class BotBrain {
     return s;
   }
 
+  /** Seen for at least the reaction delay (out of sight over 4 s: noticed afresh). */
+  private noticedLongEnough(m: Map<number, { first: number; last: number }>, id: number, now: number, delay: number): boolean {
+    let n = m.get(id);
+    if (!n) {
+      n = { first: now, last: now };
+      m.set(id, n);
+    } else if (now - n.last > 4000) n.first = now;
+    n.last = now;
+    return now - n.first >= delay;
+  }
+
+  /** Gives back the chase seat on a person (the bot died, left or chases something else). */
+  releaseClaim(world: World): void {
+    if (this.claimId >= 0) huntClaims(world).release(this.claimId, this.pid);
+    this.claimId = -1;
+  }
+
   private prune(now: number): void {
     if (now - this.lastPrune < 2000) return;
     this.lastPrune = now;
     for (const [id, s] of this.seen) if (now - s.t > FORGET_MS) this.seen.delete(id);
     for (const [id, n] of this.noticed) if (now - n.last > 10_000) this.noticed.delete(id);
+    for (const [id, n] of this.spotted) if (now - n.last > 10_000) this.spotted.delete(id);
   }
 
   think(world: World, me: Player, now: number): BotDecision | null {
     const P = this.personality;
     if (me.cells.length === 0) {
       this.nextThinkAt = now + P.thinkMs;
+      this.releaseClaim(world);
       return null;
     }
     const rng = this.rng;
+    // room strength: 0.25..2 (admin percent / 100)
+    const S = clamp(this.strength, 0.25, 2);
+    const reactionMs = P.reactionMs / S;
 
     // centre, mass, biggest and smallest cell (no allocation: Player.center() makes an object)
     let total = 0;
@@ -336,19 +428,15 @@ export class BotBrain {
     // the "straight away from it all" direction, weighted like the danger
     let awayX = 0;
     let awayY = 0;
-    const distracted = rng() < P.distraction;
+    // a lapse: for half a second or so the bot simply does not look (it may wander into something)
+    if (now >= this.lapseUntil && rng() < P.lapseRate / S) this.lapseUntil = now + 400 + rng() * 500;
+    const distracted = rng() < P.distraction / S || now < this.lapseUntil;
     // split pieces are smaller and cannot run as one: be more careful (good bots know it)
     const caution = P.caution * (split && P.skill > 0 ? 1.25 : 1);
     if (!distracted && !shielded) {
       for (const t of threats) {
-        let n = this.noticed.get(t.player.id);
-        if (!n) {
-          n = { first: now, last: now };
-          this.noticed.set(t.player.id, n);
-        } else if (now - n.last > 4000) n.first = now; // out of sight a while: noticed afresh
-        n.last = now;
-        // only reacts after the reaction delay
-        if (now - n.first < P.reactionMs) continue;
+        // only reacts after the reaction delay (out of sight a while: noticed afresh)
+        if (!this.noticedLongEnough(this.noticed, t.player.id, now, reactionMs)) continue;
         const s = this.seen.get(t.id)!;
         // boost velocity (a lunging half) is visible motion too
         const vx = s.vx + t.vx;
@@ -502,13 +590,24 @@ export class BotBrain {
     let bestPrey: Cell | null = null;
     let bestPreyScore = 0;
     const mySpeed = speedForRadius(big.r);
+    const hunts = huntClaims(world);
     if (!shielded) {
-      const aggression = P.aggression * (atCap ? AT_CAP_DRIVE : 1);
+      const aggression = P.aggression * (atCap ? AT_CAP_DRIVE : 1) * S;
       for (const q of prey) {
+        // a cell that just came into view is not chased yet (the same delay as for threats)
+        if (!this.noticedLongEnough(this.spotted, q.player.id, now, reactionMs)) continue;
+        const human = !q.player.isBot;
+        // never a pack: a person already chased by enough bots is left to them
+        if (human && q.player.id !== this.claimId && hunts.others(q.player.id, this.pid, now) >= this.maxChasers) continue;
         const dist = Math.hypot(q.x - big.x, q.y - big.y);
         let w = (aggression * q.mass * 6) / Math.pow(dist + 80, 1.05);
-        // a chase that went nowhere: leave that one alone for a while (unless it is right here)
-        if (q.player.id === this.giveUpId && now < this.giveUpUntil && dist > big.r + 120) w *= 0.08;
+        if (human) w *= P.humanBias;
+        // a chase that went nowhere: leave that one alone for a while (unless it is right here);
+        // a person is left alone entirely
+        if (q.player.id === this.giveUpId && now < this.giveUpUntil && dist > big.r + 120) {
+          if (human) continue;
+          w *= 0.08;
+        }
         for (const t of threats) if (Math.hypot(t.x - q.x, t.y - q.y) < t.r + 320) w *= 0.4;
         if (canPop && P.virusAware) {
           for (const v of viruses) if (Math.hypot(v.x - q.x, v.y - q.y) < v.r + q.r + 20) w *= 0.3;
@@ -536,15 +635,34 @@ export class BotBrain {
       }
     }
 
-    // chase fatigue: people give up a chase that takes too long
+    // chase fatigue: people give up a chase that takes too long (sooner on a person, sooner still
+    // when that person hides by a thorn bush or runs along a wall)
     if (!bestPrey) this.chaseId = -1;
     else if (bestPrey.player.id !== this.chaseId) {
       this.chaseId = bestPrey.player.id;
       this.chaseSince = now;
-    } else if (now - this.chaseSince > P.chaseMs) {
-      this.giveUpId = this.chaseId;
-      this.giveUpUntil = now + 5000 + rng() * 5000;
-      this.chaseId = -1;
+    } else {
+      const q: Cell = bestPrey;
+      const human = !q.player.isBot;
+      let limit = P.chaseMs * S * (human ? 1 : 1.6);
+      if (human) {
+        let cover = Math.min(q.x - X0, q.y - Y0, X1 - q.x, Y1 - q.y) < q.r + 350;
+        if (!cover && canPop) for (const v of viruses) if (Math.hypot(v.x - q.x, v.y - q.y) < v.r + q.r + 200) cover = true;
+        if (cover) limit *= 0.5;
+      }
+      if (now - this.chaseSince > limit) {
+        this.giveUpId = this.chaseId;
+        this.giveUpUntil = now + (human ? 8000 + rng() * 6000 : 5000 + rng() * 5000);
+        this.chaseId = -1;
+        bestPrey = null;
+      }
+    }
+    // the chase seat on a person: taken while chasing them, given back otherwise
+    const chasingHuman = bestPrey !== null && !bestPrey.player.isBot ? bestPrey.player.id : -1;
+    if (chasingHuman !== this.claimId) this.releaseClaim(world);
+    if (chasingHuman >= 0) {
+      hunts.claim(chasingHuman, this.pid, now + Math.max(CLAIM_MS, P.thinkMs * 3));
+      this.claimId = chasingHuman;
     }
 
     /* ---------- power-ups ---------- */
@@ -571,7 +689,7 @@ export class BotBrain {
 
     // commit to a way out while fleeing (dithering between two exits is how coins get caught)
     let angle = map.choose(this.prevAngle, 1.0, 0.12 + 0.25 * flee);
-    const noise = P.aimNoise * (dangerLevel > 0.8 ? 0.5 : 1) * (mistake ? 3 : 1);
+    const noise = ((P.aimNoise * (dangerLevel > 0.8 ? 0.5 : 1)) / S) * (mistake ? 3 : 1);
     angle += (rng() * 2 - 1) * noise;
     this.prevAngle = angle;
 
@@ -588,16 +706,21 @@ export class BotBrain {
 
     /* ---------- split attack (single or double) ---------- */
     const maxCellsForSplit = P.skill === 2 ? 4 : 2;
-    if (bestPrey && !shielded && now >= this.splitCooldownUntil && nCells <= maxCellsForSplit && P.splitBravery > 0) {
-      const splits = this.splitPlan(bestPrey, big, me, now, mistake, dangerLevel);
-      if (splits > 0 && rng() < P.splitBravery * 0.65) {
+    const splitOnHuman = bestPrey !== null && !bestPrey.player.isBot;
+    if (bestPrey && !shielded && now >= this.splitCooldownUntil && (!splitOnHuman || now >= this.humanSplitUntil) && nCells <= maxCellsForSplit && P.splitBravery > 0) {
+      let splits = this.splitPlan(bestPrey, big, me, now, mistake, dangerLevel);
+      // no double split on a person
+      if (splitOnHuman && splits === 2) splits = 0;
+      const chance = Math.min(0.95, P.splitBravery * 0.65 * S * (splitOnHuman ? P.humanSplit : 1));
+      if (splits > 0 && rng() < chance) {
         const q = bestPrey;
         const s = P.leadsTargets ? this.seen.get(q.id) : undefined;
         const lead = splits === 2 ? 0.32 : 0.22;
         const lx = q.x + (s ? s.vx * lead : 0);
         const ly = q.y + (s ? s.vy * lead : 0);
         const dist = Math.hypot(lx - big.x, ly - big.y);
-        const a = angleTo(big.x, big.y, lx, ly) + (rng() * 2 - 1) * P.aimNoise * 0.3;
+        // aim error (wider on a person: their split attacks miss now and then)
+        const a = angleTo(big.x, big.y, lx, ly) + ((rng() * 2 - 1) * P.aimNoise * (splitOnHuman ? 0.7 : 0.3)) / S;
         d.target.x = big.x + Math.cos(a) * (dist + 220);
         d.target.y = big.y + Math.sin(a) * (dist + 220);
         this.prevAngle = a;
@@ -609,6 +732,7 @@ export class BotBrain {
           this.nextThinkAt = this.followUpAt;
         }
         this.splitCooldownUntil = now + 2500 + rng() * 2000;
+        if (splitOnHuman) this.humanSplitUntil = now + (P.humanSplitCooldownMs * (0.85 + rng() * 0.3)) / S;
       }
     }
 

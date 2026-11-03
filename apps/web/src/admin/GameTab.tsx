@@ -228,7 +228,15 @@ export function botsPatch(
     const s = saved.kinds[kind];
     if (!s) continue;
     const p: Record<string, unknown> = {};
-    for (const f of ["enabled", "cap", "min", "target", "massCap"] as const)
+    for (const f of [
+      "enabled",
+      "cap",
+      "min",
+      "target",
+      "massCap",
+      "strength",
+      "maxChasers",
+    ] as const)
       if (d[f] !== s[f] && d[f] !== undefined) p[f] = d[f];
     const mix: Record<string, number> = {};
     for (const [lvl, w] of Object.entries(d.mix))
@@ -549,6 +557,9 @@ export function BotsCard({
   const hasMassCap = Object.values(draft.kinds).some(
     (k) => k.massCap !== undefined,
   );
+  const hasStrength = Object.values(draft.kinds).some(
+    (k) => k.strength !== undefined,
+  );
   const levels = Object.keys(
     Object.values(draft.kinds)[0]?.mix ?? { easy: 1, medium: 1, hard: 1 },
   );
@@ -587,6 +598,24 @@ export function BotsCard({
                 >
                   Mass cap
                 </th>
+              )}
+              {hasStrength && (
+                <>
+                  <th
+                    scope="col"
+                    className="is-num"
+                    title="Bot strength in percent (25..200; 100 = as tuned). Lower: slower reactions, worse aim, shorter chases, fewer split attacks."
+                  >
+                    Strength %
+                  </th>
+                  <th
+                    scope="col"
+                    className="is-num"
+                    title="Most bots chasing one person at once; 0 = no limit"
+                  >
+                    Chasers
+                  </th>
+                </>
               )}
               {levels.map((l) => (
                 <th key={l} scope="col" className="is-num">
@@ -652,6 +681,26 @@ export function BotsCard({
                         onChange={(n) => setKind(kind, { massCap: n })}
                       />
                     </td>
+                  )}
+                  {hasStrength && (
+                    <>
+                      <td className="is-num">
+                        <NumCell
+                          value={k.strength ?? 100}
+                          max={200}
+                          label={`${kind} strength`}
+                          onChange={(n) => setKind(kind, { strength: n })}
+                        />
+                      </td>
+                      <td className="is-num">
+                        <NumCell
+                          value={k.maxChasers ?? 0}
+                          max={12}
+                          label={`${kind} chasers per person`}
+                          onChange={(n) => setKind(kind, { maxChasers: n })}
+                        />
+                      </td>
+                    </>
                   )}
                   {levels.map((l) => (
                     <td key={l} className="is-num">

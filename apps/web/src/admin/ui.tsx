@@ -285,6 +285,8 @@ const FIELD_WORDS: Record<string, string> = {
   min: 'min',
   target: 'target',
   massCap: 'mass cap',
+  strength: 'strength %',
+  maxChasers: 'chasers per person',
   mix: 'difficulty mix',
   testnet: 'Staked bots',
   stakedPerArena: 'per arena',

@@ -7,8 +7,16 @@
  * BENCH_PRO=1 / BENCH_CAP=n: `rookie` runs the newcomer in a standard-mix room / with that bot
  * mass cap (`room` takes BENCH_CAP too). BENCH_OVERRIDE=key:value,... tweaks every personality.
  * BENCH_TRACE=1 prints newcomer deaths and stuck bots.
+ *
+ * `human [trials] [seeds]`: a scripted average human (reacts every ~250 ms with a little aim
+ * jitter, runs from what can eat it, chases smaller cells, splits now and then, else eats the
+ * nearest coins) plays 180 s lives against each room kind's bots (rookie, pro, arena: 12 bots,
+ * the kind's default mix and mass cap) on a square map of BENCH_SIDE (default 10000) units.
+ * Reports survival, peak mass, the human's kills and how many bots chased it at once.
  */
-import { EntityKind, RULES, TICK_MS, WORLD_PRESETS, canEat, viewSize } from '@elymum/shared';
+import { EntityKind, RULES, TICK_MS, WORLD_PRESETS, canEat, massToRadius, viewSize, worldForSide } from '@elymum/shared';
+import { SPLIT_REACH } from '../../src/bots/brain';
+import { DEFAULT_BOT_MASS_CAPS, DEFAULT_BOT_STRENGTH, DEFAULT_MAX_CHASERS } from '../../src/bots/settings';
 import { BotManager, type Bot, type BotManagerOptions } from '../../src/bots/manager';
 import { rollPersonality } from '../../src/bots/personality';
 import type { Player } from '../../src/game/entities';
@@ -32,7 +40,7 @@ function makeRoom(seed: number, preset: 'practice' | 'arena', opts: BotManagerOp
   const orig = bots.spawnBot.bind(bots);
   bots.spawnBot = (mass, staked) => {
     const b = orig(mass, staked);
-    if (legacyAll && Legacy) b.brain = new Legacy(b.brain.personality, rng);
+    if (legacyAll && Legacy) b.brain = Object.assign(new Legacy(b.brain.personality, rng), { releaseClaim() {} });
     // BENCH_OVERRIDE=foodRouting:0,chaseMs:2000 tweaks every bot's personality
     for (const kv of (process.env.BENCH_OVERRIDE ?? '').split(',').filter(Boolean)) {
       const [k, v] = kv.split(':');
@@ -238,7 +246,7 @@ function duel(seed: number) {
     void i;
     const side = a <= bb ? 'A' : 'B';
     team.set(b.player.id, side);
-    if (side === 'B') b.brain = new Legacy!(rollPersonality(mulberry32(b.player.id * 7 + seed), { easy: 0, medium: 0, hard: 100 }), mulberry32(b.player.id + seed));
+    if (side === 'B') b.brain = Object.assign(new Legacy!(rollPersonality(mulberry32(b.player.id * 7 + seed), { easy: 0, medium: 0, hard: 100 }), mulberry32(b.player.id + seed)), { releaseClaim() {} });
     else b.brain = new (b.brain.constructor as BrainCtor)(rollPersonality(mulberry32(b.player.id * 7 + seed), { easy: 0, medium: 0, hard: 100 }), mulberry32(b.player.id + seed));
   });
   const kills = { A: 0, B: 0 };
@@ -281,6 +289,148 @@ function duel(seed: number) {
   return { kills, deaths, massA: massSum.A / samples / 6, massB: massSum.B / samples / 6, topShareA: topA / samples };
 }
 
+/* ---------------- human: a scripted average player against each room kind ---------------- */
+/** One decision of the average human (biggest cell steers; a target plus an optional split). */
+function averageHuman(world: World, me: Player, rng: () => number, st: { splitAt: number }): { x: number; y: number; split: boolean } {
+  const c = me.center();
+  const m = me.totalMass();
+  let big = me.cells[0];
+  let small = big;
+  for (const x of me.cells) {
+    if (x.mass > big.mass) big = x;
+    if (x.mass < small.mass) small = x;
+  }
+  const v = viewSize(m, 16 / 9);
+  const hw = v.w / 2;
+  const hh = v.h / 2;
+  let fx = 0;
+  let fy = 0;
+  let threat = false;
+  let prey: { x: number; y: number; d: number; mass: number } | null = null;
+  let food: { x: number; y: number } | null = null;
+  let foodD = Infinity;
+  world.forEachVisible(c.x - hw, c.y - hh, c.x + hw, c.y + hh, (e) => {
+    if (e.kind === EntityKind.Cell) {
+      if (e.player === me) return;
+      const d = Math.hypot(c.x - e.x, c.y - e.y) - e.r;
+      if (canEat(e.mass, small.mass)) {
+        // a person notices what can eat them a bit late and only when it is fairly close
+        if (d > 480 + big.r) return;
+        threat = true;
+        const w = 1 / Math.max(30, d);
+        fx += ((c.x - e.x) / Math.max(1, d + e.r)) * w;
+        fy += ((c.y - e.y) / Math.max(1, d + e.r)) * w;
+      } else if (canEat(big.mass, e.mass) && d < 650 && (!prey || d < prey.d)) prey = { x: e.x, y: e.y, d, mass: e.mass };
+    } else if (e.kind === EntityKind.Food) {
+      const d = Math.hypot(c.x - e.x, c.y - e.y);
+      if (d < foodD) {
+        foodD = d;
+        food = e;
+      }
+    }
+  });
+  const jitter = () => (rng() - 0.5) * 60;
+  const X0 = world.x0;
+  const Y0 = world.y0;
+  const X1 = world.x1;
+  const Y1 = world.y1;
+  if (threat) {
+    const edge = 400;
+    if (c.x - X0 < edge) fx += 0.004 * (1 - (c.x - X0) / edge);
+    if (X1 - c.x < edge) fx -= 0.004 * (1 - (X1 - c.x) / edge);
+    if (c.y - Y0 < edge) fy += 0.004 * (1 - (c.y - Y0) / edge);
+    if (Y1 - c.y < edge) fy -= 0.004 * (1 - (Y1 - c.y) / edge);
+    const n = Math.hypot(fx, fy) || 1;
+    return { x: c.x + (fx / n) * 400 + jitter(), y: c.y + (fy / n) * 400 + jitter(), split: false };
+  }
+  const p = prey as { x: number; y: number; d: number; mass: number } | null;
+  if (p) {
+    // an average player splits on prey in easy reach now and then
+    const canSplit = me.cells.length === 1 && canEat(big.mass / 2, p.mass * 1.05) && p.d < SPLIT_REACH * 0.7 + massToRadius(big.mass / 2) * 0.3;
+    const split = canSplit && world.now >= st.splitAt && rng() < 0.35;
+    if (split) st.splitAt = world.now + 4000;
+    return { x: p.x + jitter(), y: p.y + jitter(), split };
+  }
+  const f = food as { x: number; y: number } | null;
+  if (f) return { x: f.x + jitter() * 0.3, y: f.y + jitter() * 0.3, split: false };
+  return { x: (X0 + X1) / 2, y: (Y0 + Y1) / 2, split: false };
+}
+
+type HumanKind = 'rookie' | 'pro' | 'arena';
+function humanVsKind(kind: HumanKind, seed: number, trials: number) {
+  const side = Number(process.env.BENCH_SIDE ?? 10_000);
+  const shape = worldForSide(side);
+  const world = new World({ ...shape, powerUps: true, coinRain: kind !== 'arena', seed });
+  const rng = mulberry32(seed + 1);
+  const kindKey = kind === 'rookie' ? 'practiceRookie' : kind === 'pro' ? 'practicePro' : 'arena';
+  const opts: BotManagerOptions = { target: 13, min: 12, max: 12, mix: kind === 'rookie' ? 'rookie' : 'standard', massCap: DEFAULT_BOT_MASS_CAPS[kindKey],
+    strength: Number(process.env.BENCH_STRENGTH ?? DEFAULT_BOT_STRENGTH[kindKey]),
+    maxChasers: DEFAULT_MAX_CHASERS[kindKey],
+  };
+  const bots = new BotManager(world, opts, rng);
+  const hrng = mulberry32(seed + 99);
+  let humanKills = 0;
+  const step = (humanId: number | null) => {
+    const ev = world.tick(TICK_MS);
+    let died = false;
+    for (const k of ev.kills) {
+      if (k.victim.id === humanId) died = true;
+      else bots.onDeath(k.victim.id, world.now);
+      if (humanId !== null && k.killer?.id === humanId) humanKills++;
+      world.removePlayer(k.victim.id);
+    }
+    bots.update(world.now, humanId === null ? 0 : 1);
+    return died;
+  };
+  for (let i = 0; i < 60_000 / TICK_MS; i++) step(null);
+  const survival: number[] = [];
+  const peak: number[] = [];
+  const kills: number[] = [];
+  let chaseSamples = 0;
+  let chased2 = 0;
+  let chasedAny = 0;
+  for (let t = 0; t < trials; t++) {
+    const p = world.addPlayer({ name: `human${t}`, skin: 0 });
+    const start = world.now;
+    const st = { splitAt: 0 };
+    let alive = true;
+    let next = 0;
+    let top = 0;
+    const k0 = humanKills;
+    while (alive && world.now - start < 180_000) {
+      if (world.now >= next) {
+        const tg = averageHuman(world, p, hrng, st);
+        world.setTarget(p.id, tg.x, tg.y);
+        if (tg.split) world.queueSplit(p.id);
+        next = world.now + 200 + hrng() * 100;
+      }
+      top = Math.max(top, p.totalMass());
+      if (step(p.id)) alive = false;
+      // how many bots are closing in on the human right now (bigger, near, moving toward it)
+      if (alive && Math.round(world.now / TICK_MS) % 15 === 0) {
+        const hc = p.center();
+        const hm = p.totalMass();
+        let n = 0;
+        for (const b of bots.bots.values()) {
+          const bc = b.player.biggestCell();
+          if (!bc || !canEat(bc.mass, hm / Math.max(1, p.cells.length))) continue;
+          const d = Math.hypot(bc.x - hc.x, bc.y - hc.y);
+          if (d > 900) continue;
+          if (b.brain.chasing === p.id) n++;
+        }
+        chaseSamples++;
+        if (n >= 1) chasedAny++;
+        if (n >= 2) chased2++;
+      }
+    }
+    if (alive) world.removePlayer(p.id);
+    survival.push((world.now - start) / 1000);
+    peak.push(top);
+    kills.push(humanKills - k0);
+  }
+  return { survival, peak, kills, chasedAny: chasedAny / Math.max(1, chaseSamples), chased2: chased2 / Math.max(1, chaseSamples) };
+}
+
 const killers = new Map<string, number>();
 const f = (x: number, d = 2) => x.toFixed(d);
 if (mode === 'cpu' || mode === 'room') {
@@ -302,6 +452,26 @@ if (mode === 'cpu' || mode === 'room') {
   }
   const lived = surv.filter((x) => x >= 120).length;
   console.log(`${process.env.BENCH_PRO === '1' ? 'pro' : 'rookie'} newcomer x${surv.length}${legacyAll ? ' (LEGACY brains)' : ''}: survival median ${f(pct(surv, 0.5), 1)}s p25 ${f(pct(surv, 0.25), 1)}s, lived 120s ${lived}/${surv.length}, peak mass median ${f(pct(peak, 0.5), 0)} | killed by ${[...killers].map(([k, v]) => `${k}:${v}`).join(' ')}`);
+} else if (mode === 'human') {
+  const trials = Math.max(1, Math.round(Number(process.argv[3] ?? 4)));
+  console.log(`average human x${trials} lives x${seeds} seeds per kind, 180 s max per life, 12 bots, map ${process.env.BENCH_SIDE ?? 10_000}${legacyAll ? ' (LEGACY brains)' : ''}`);
+  for (const kind of ['rookie', 'pro', 'arena'] as const) {
+    const surv: number[] = [];
+    const peak: number[] = [];
+    const kills: number[] = [];
+    let any = 0;
+    let two = 0;
+    for (let s = 0; s < seeds; s++) {
+      const r = humanVsKind(kind, 400 + s, trials);
+      surv.push(...r.survival);
+      peak.push(...r.peak);
+      kills.push(...r.kills);
+      any += r.chasedAny / seeds;
+      two += r.chased2 / seeds;
+    }
+    const lived = surv.filter((x) => x >= 180).length;
+    console.log(`  ${kind.padEnd(6)}: survival median ${f(pct(surv, 0.5), 0)}s mean ${f(mean(surv), 0)}s, lived 180s ${lived}/${surv.length}, peak mass median ${f(pct(peak, 0.5), 0)}, kills/life ${f(mean(kills), 2)} | chased by >=1 bot ${f(any * 100, 0)}% of the time, by >=2 ${f(two * 100, 1)}%`);
+  }
 } else if (mode === 'duel') {
   const tot = { kA: 0, kB: 0, dA: 0, dB: 0, mA: 0, mB: 0, top: 0 };
   for (let s = 0; s < seeds; s++) {

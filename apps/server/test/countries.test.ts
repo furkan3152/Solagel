@@ -79,6 +79,25 @@ describe('country on the profile', () => {
       expect(() => p.update(w, { name: 'Ada', skin: 0, country: bad })).toThrow(ProfileError);
     }
   });
+
+  it('stores the flag skin as true or false, keeps it when left out, persists it and refuses anything else', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'elymum-flagskin-'));
+    const path = join(dir, 'profiles.json');
+    const p = new ProfileStore(path);
+    expect(p.view(w).flagSkin).toBeUndefined();
+    expect(p.flagSkin(w)).toBe(false);
+    expect(p.update(w, { name: 'Ada', skin: 0, country: 'TR', flagSkin: true }).flagSkin).toBe(true);
+    expect(p.flagSkin(w)).toBe(true);
+    expect(p.update(w, { name: 'Ada', skin: 1 }).flagSkin).toBe(true);
+    for (const bad of ['yes', 1, 0, null, {}]) {
+      expect(() => p.update(w, { name: 'Ada', skin: 0, flagSkin: bad })).toThrow(ProfileError);
+    }
+    p.flush();
+    const again = new ProfileStore(path);
+    expect(again.view(w)).toMatchObject({ country: 'TR', flagSkin: true });
+    expect(again.update(w, { name: 'Ada', skin: 0, flagSkin: false }).flagSkin).toBe(false);
+    expect(again.flagSkin(w)).toBe(false);
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -197,5 +216,44 @@ describe('flags in game', () => {
     c.players.clear();
     expect((await c.joinAs({ name: 'x', country: '' })).country).toBeUndefined();
     c.close();
+  }, 20_000);
+
+  it('the flag skin: worn with a country when asked (or saved), never without a country, and on some bots', async () => {
+    const a = await Ws.open(port);
+    const tr = await a.joinAs({ name: 'Turkey', country: 'TR', flag: true });
+    expect(tr.flags & PlayerFlag.FlagSkin).toBe(PlayerFlag.FlagSkin);
+    expect(tr.flagSkin).toBe(true);
+    a.close();
+
+    for (const msg of [{ country: 'TR', flag: false }, { country: 'TR' }, { country: '', flag: true }, { country: 'TR', flag: 'yes' }]) {
+      const c = await Ws.open(port);
+      const p = await c.joinAs({ name: 'Plain', ...msg });
+      expect(p.flags & PlayerFlag.FlagSkin, JSON.stringify(msg)).toBe(0);
+      c.close();
+    }
+
+    // a signed-in wallet that saved the flag skin wears it when the join leaves `flag` out
+    const w = testSigner().address;
+    const token = app.auth.issueToken(w);
+    const res = await fetch(`http://127.0.0.1:${port}/api/profile`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ name: 'Saved', skin: 0, country: 'JP', flagSkin: true }),
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { profile: { flagSkin: boolean } }).profile.flagSkin).toBe(true);
+    const bad = await fetch(`http://127.0.0.1:${port}/api/profile`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ name: 'Saved', skin: 0, flagSkin: 'on' }),
+    });
+    expect(bad.status).toBe(400);
+    const s = await Ws.open(port);
+    s.send({ t: 'auth', token });
+    await s.next('authed');
+    const saved = await s.joinAs({ name: 'x' });
+    expect(saved.country).toBe('JP');
+    expect(saved.flagSkin).toBe(true);
+    s.close();
   }, 20_000);
 });

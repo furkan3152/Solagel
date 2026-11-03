@@ -12,9 +12,20 @@ describe('100-player room on the auto-sized map (bench)', () => {
   it('grows to the 100-player size and ticks well inside the budget', { timeout: 120_000 }, () => {
     const r = runMapRoom({ players: 100, humans: 40, seconds: 5, map: { ...MAP_SCALE_DEFAULT } });
     console.log(`100-player room: side ${r.side}, ${r.players} players, ${r.food} food, ${r.cacti} cacti; tick mean ${r.mean.toFixed(2)} ms, p95 ${r.p95.toFixed(2)} ms, max ${r.max.toFixed(2)} ms`);
-    expect(r.side).toBe(9000);
+    expect(r.side).toBe(10_000);
     expect(r.players).toBeGreaterThanOrEqual(90);
     expect(r.mean).toBeLessThan(20);
+  });
+
+  it('six quiet rooms (12 bots and a person each) at the 10000 default tick well inside the budget', { timeout: 180_000 }, () => {
+    const r = runMapRoom({ players: 13, humans: 1, seconds: 3, rooms: 6, map: { ...MAP_SCALE_DEFAULT } });
+    console.log(`6 rooms x 13 players: side ${r.side}, ${r.food} food, ${r.cacti} cacti each; all rooms per tick mean ${r.mean.toFixed(2)} ms, p95 ${r.p95.toFixed(2)} ms`);
+    expect(r.side).toBe(10_000);
+    // food at pond density: a big room is not a desert
+    expect(r.food).toBeGreaterThan(3000);
+    expect(r.cacti).toBeGreaterThanOrEqual(25);
+    // half a CPU in production: half of the 33 ms tick, with room to spare
+    expect(r.mean).toBeLessThan(16);
   });
 
   it('a resize costs no more than one pass over the entities (and growing next to nothing)', () => {

@@ -290,8 +290,9 @@ describe('bot settings (validation)', () => {
   const base = defaultBotSettings(loadConfig({}).bots);
 
   it('defaults: cap 12, presets as weights, 6 staked bots per testnet arena', () => {
-    expect(base.kinds.arena).toEqual({ massCap: 2500, enabled: true, cap: 12, min: 2, target: 12, mix: { easy: 45, medium: 40, hard: 15 } });
-    expect(base.kinds.practiceRookie.mix).toEqual({ easy: 70, medium: 30, hard: 0 });
+    expect(base.kinds.arena).toEqual({ massCap: 2500, enabled: true, cap: 12, min: 2, target: 12, mix: { easy: 50, medium: 40, hard: 10 }, strength: 100, maxChasers: 2 });
+    expect(base.kinds.practiceRookie.mix).toEqual({ easy: 80, medium: 20, hard: 0 });
+    expect(base.kinds.practiceRookie).toMatchObject({ strength: 85, maxChasers: 1 });
     expect(base.testnet).toEqual({ stakedPerArena: 6, bankroll: '1000000', gasHype: '0.05', arenas: {} });
   });
 

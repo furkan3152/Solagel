@@ -40,15 +40,26 @@ export interface Personality {
   wallSense: number;
   /** Double-splits prey that one split cannot reach (hard bots). */
   doubleSplit: boolean;
-  /** Gives up chasing one target after this many ms (and leaves it alone for a while). */
+  /**
+   * Gives up chasing a person after this many ms (and leaves them alone for a while); another bot
+   * is chased up to 1.6x as long. Halved when the person is next to a thorn bush or a wall.
+   */
   chaseMs: number;
+  /** Prey weight of a person relative to a bot (below 1: bots go for each other a little more). */
+  humanBias: number;
+  /** Multiplier on the split-attack chance against a person (bots split on bots more readily). */
+  humanSplit: number;
+  /** Least time between two split attacks on people (ms). */
+  humanSplitCooldownMs: number;
+  /** Chance per thought of a short lapse: threats are ignored for about half a second. */
+  lapseRate: number;
 }
 
 const STYLE_BASE: Record<BotStyle, Pick<Personality, 'aggression' | 'greed' | 'caution' | 'splitBravery'>> = {
-  farmer: { aggression: 0.45, greed: 1.25, caution: 1.15, splitBravery: 0.25 },
-  hunter: { aggression: 1.45, greed: 0.8, caution: 0.9, splitBravery: 0.85 },
-  coward: { aggression: 0.35, greed: 1.0, caution: 1.6, splitBravery: 0.15 },
-  balanced: { aggression: 0.95, greed: 1.0, caution: 1.05, splitBravery: 0.55 },
+  farmer: { aggression: 0.4, greed: 1.3, caution: 1.15, splitBravery: 0.2 },
+  hunter: { aggression: 1.15, greed: 0.95, caution: 0.9, splitBravery: 0.7 },
+  coward: { aggression: 0.3, greed: 1.05, caution: 1.6, splitBravery: 0.12 },
+  balanced: { aggression: 0.75, greed: 1.1, caution: 1.05, splitBravery: 0.45 },
 };
 
 type SkillFields = Exclude<keyof Personality, 'style' | 'skill' | 'aggression' | 'greed' | 'caution' | 'splitBravery'>;
@@ -56,56 +67,71 @@ type SkillFields = Exclude<keyof Personality, 'style' | 'skill' | 'aggression' |
 /**
  * Per difficulty. Easy bots stay beatable for newcomers: slow to react, short-sighted, often
  * distracted, sloppy aim, no virus tricks. Hard bots play like a decent human (they still react
- * with a delay and slip now and then).
+ * with a delay, aim a little off, give up long chases and slip now and then). Against people
+ * every level holds back: shorter chases, rarer split attacks with a long cooldown, and a
+ * slightly lower prey weight than other bots (people should be a little favoured; 2026-11
+ * playtest: "they're like cannibals, I can't escape").
  */
 const SKILL_BASE: Record<BotSkill, Pick<Personality, SkillFields>> = {
   0: {
     thinkMs: 300,
-    aimNoise: 0.32,
+    aimNoise: 0.36,
     perception: 0.75,
     distraction: 0.18,
     virusAware: false,
     leadsTargets: false,
     virusShooter: false,
-    reactionMs: 450,
+    reactionMs: 400,
     predictS: 0.12,
-    mistakeRate: 0.08,
+    mistakeRate: 0.09,
     foodRouting: 0.35,
     wallSense: 0.6,
     doubleSplit: false,
-    chaseMs: 3500,
+    chaseMs: 2500,
+    humanBias: 0.65,
+    humanSplit: 0.2,
+    humanSplitCooldownMs: 12_000,
+    lapseRate: 0.025,
   },
   1: {
     thinkMs: 190,
-    aimNoise: 0.14,
+    aimNoise: 0.18,
     perception: 0.92,
-    distraction: 0.04,
+    distraction: 0.06,
     virusAware: true,
     leadsTargets: true,
     virusShooter: false,
-    reactionMs: 260,
+    reactionMs: 310,
     predictS: 0.3,
-    mistakeRate: 0.03,
+    mistakeRate: 0.04,
     foodRouting: 0.8,
     wallSense: 1,
     doubleSplit: false,
-    chaseMs: 6000,
+    chaseMs: 3500,
+    humanBias: 0.7,
+    humanSplit: 0.4,
+    humanSplitCooldownMs: 9000,
+    lapseRate: 0.01,
   },
   2: {
     thinkMs: 120,
-    aimNoise: 0.05,
+    aimNoise: 0.09,
     perception: 1.05,
-    distraction: 0,
+    distraction: 0.02,
     virusAware: true,
     leadsTargets: true,
     virusShooter: true,
-    reactionMs: 150,
+    reactionMs: 230,
     predictS: 0.45,
-    mistakeRate: 0.008,
+    mistakeRate: 0.015,
     foodRouting: 1,
     wallSense: 1.25,
     doubleSplit: true,
-    chaseMs: 9000,
+    chaseMs: 4500,
+    humanBias: 0.75,
+    humanSplit: 0.55,
+    humanSplitCooldownMs: 7000,
+    lapseRate: 0.004,
   },
 };
 
@@ -122,8 +148,17 @@ export interface BotMixWeights {
  */
 export type BotMix = 'rookie' | 'standard' | BotMixWeights;
 
-/** The presets as weights: `standard` 45 % easy, 40 % medium, 15 % hard; `rookie` 70 % easy, 30 % medium. */
+/** The presets as weights: `standard` 50 % easy, 40 % medium, 10 % hard; `rookie` 80 % easy, 20 % medium. */
 export const BOT_MIX_PRESETS: Record<'rookie' | 'standard', BotMixWeights> = {
+  rookie: { easy: 80, medium: 20, hard: 0 },
+  standard: { easy: 50, medium: 40, hard: 10 },
+};
+
+/**
+ * The presets before the 2026-11 playtest. A saved `bots.json` whose mix still equals one of these
+ * (the admin saved the page without touching the mix) is upgraded to the new preset on load.
+ */
+export const OLD_BOT_MIX_PRESETS: Record<'rookie' | 'standard', BotMixWeights> = {
   rookie: { easy: 70, medium: 30, hard: 0 },
   standard: { easy: 45, medium: 40, hard: 15 },
 };

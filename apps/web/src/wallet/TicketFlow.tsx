@@ -15,7 +15,7 @@ import { loadDevFake } from './devFakeLoader';
 import { explorerTx } from './links';
 import { serverChainInfo } from './network';
 import { useAddress } from './store';
-import { bpsPercent, feeBps, feeModelOf, planErrorName, ticketFeeBps, ticketPlays, ticketSteps, type TicketModel, type TicketStep } from './ticket';
+import { approveAmount, approveMode, bpsPercent, feeBps, feeModelOf, planErrorName, ticketFeeBps, ticketPlays, ticketSteps, type ApproveMode, type TicketModel, type TicketStep } from './ticket';
 import { sendWalletCall, txErrorText, type TxPhase } from './tx';
 
 /** `collect`: a finalized session's payout; `refund`: an unsettled ticket after 24 h. */
@@ -35,8 +35,10 @@ const PLAY_AT_MS = 2_000;
 
 /**
  * Cutting a ticket: a confirm sheet that shows exactly what is signed (entry fee, fee policy,
- * every call), then at most two wallet prompts, `approve` (only when the allowance is short,
- * for exactly the entry fee) and `join`, each confirmed by its receipt, then the stamp lands,
+ * every call), then at most two wallet prompts, `approve` (only when the allowance is short:
+ * once for every later ticket by default, or for exactly this entry fee when the player ticks
+ * "Approve only this ticket", remembered in `Settings.exactApprove`) and `join`, each confirmed by
+ * its receipt, then the stamp lands,
  * the stub tears off and the player enters the room. The same sheet collects a finalized game's
  * payout (any time) and refunds an unsettled ticket after 24 h, each with one `refund` call.
  *
@@ -57,6 +59,7 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
   const serverBps = useUi((s) => s.chain?.feeBps ?? null);
   const model = useUi((s) => feeModelOf(s.chain));
   const tokenReady = useUi((s) => s.chain?.tokenReady === true);
+  const exactApprove = useUi((s) => s.settings.exactApprove === true);
 
   const [phase, setPhase] = useState<Phase>('review');
   /** The call in flight (buy: approve or join). */
@@ -110,7 +113,7 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
   const steps: TicketStep[] = ticketSteps(data.allowance, fee);
   const busy = phase === 'preparing' || phase === 'switching' || phase === 'signing' || phase === 'confirming' || phase === 'stamped';
   const owed = session?.finalized ? session.owed : 0n;
-  const live: Review = { steps, fee, bps, balance: data.tokenBalance, wei: data.balance, owed, sessionId: session?.id ?? null };
+  const live: Review = { steps, fee, bps, balance: data.tokenBalance, wei: data.balance, owed, sessionId: session?.id ?? null, approve: approveMode(exactApprove) };
   const v = frozen ?? live;
   const lowGas = data.balance !== null && data.balance === 0n;
   // the transaction landed after all (e.g. the receipt timed out): never offer to pay twice
@@ -170,7 +173,7 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
     if (data.fake) {
       const dev = await loadDevFake();
       if (!dev) return failName('NetworkError');
-      const res = await dev.fakeSendTicket(owner, arenaId, review.fee, review.steps, review.bps, (s, p, h) => onPhase(s)(p, h));
+      const res = await dev.fakeSendTicket(owner, arenaId, review.fee, review.steps, review.bps, (s, p, h) => onPhase(s)(p, h), approveAmount(review.approve, review.fee));
       if (!res.ok) return failName(res.name);
       setHash(res.hash);
       return enterRoom(res.hash);
@@ -183,7 +186,7 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
       // re-read the arena, the allowance and the config: the price and the fee rate (fixed into the
       // ticket at join) signed must be the ones shown
       const [p, fresh] = await Promise.all([
-        planJoin(client, { arena: arenaAddress, arenaId, player: owner, token: config.token! }),
+        planJoin(client, { arena: arenaAddress, arenaId, player: owner, token: config.token!, approve: review.approve }),
         getArenaConfig(client, arenaAddress),
       ]);
       if (p.entryFee !== review.fee) return failName('PriceChanged');
@@ -261,8 +264,11 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
   const stepIndex = step ? v.steps.indexOf(step) + 1 : 0;
   /** Calls already confirmed on the way (the boarding sequence ticks them off). */
   const doneCount = phase === 'stamped' ? v.steps.length : stepIndex > 0 ? stepIndex - 1 : 0;
-  const stepLabel =
-    step === 'approve' ? t('tf.step.approve', { fee: tok.exact(v.fee), sym: tok.symbol }) : step === 'join' ? t('tf.step.join', { room }) : null;
+  const approveLabel =
+    v.approve === 'exact' ? t('tf.step.approve', { fee: tok.exact(v.fee), sym: tok.symbol }) : t('tf.step.approveOnce', { sym: tok.symbol });
+  const stepLabel = step === 'approve' ? approveLabel : step === 'join' ? t('tf.step.join', { room }) : null;
+  // the choice is offered while an approval is still ahead (after it, later tickets only join)
+  const showApproveChoice = mode === 'buy' && !landed && (phase === 'review' || phase === 'error') && v.steps.includes('approve');
 
   const footer = landed ? (
     <>
@@ -315,7 +321,9 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
                 : phase === 'signing'
                   ? mode === 'buy'
                     ? step === 'approve'
-                      ? t('tf.approvingNote', { fee: tok.exact(v.fee), sym: tok.symbol })
+                      ? v.approve === 'exact'
+                        ? t('tf.approvingNote', { fee: tok.exact(v.fee), sym: tok.symbol })
+                        : t('tf.approvingNoteOnce', { sym: tok.symbol })
                       : t('tf.signingNote', { fee: tok.exact(v.fee), sym: tok.symbol })
                     : t('tf.signingSimple')
                   : t('tf.confirmingNote')}
@@ -372,7 +380,7 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
                 </span>
                 <span>
                   {s === 'approve'
-                    ? t('tf.step.approve', { fee: tok.exact(v.fee), sym: tok.symbol })
+                    ? approveLabel
                     : s === 'collect'
                       ? t('tf.step.collect', { room })
                       : s === 'refund'
@@ -382,6 +390,15 @@ export function TicketFlow({ open, mode, ticket, onClose }: { open: boolean; mod
               </li>
             ))}
           </ol>
+          {showApproveChoice && (
+            <label className="tf-approve-choice" data-testid="tf-exact-approve">
+              <input type="checkbox" checked={exactApprove} onChange={(e) => updateSettings({ exactApprove: e.currentTarget.checked })} />
+              <span>
+                {t('tf.exactApprove')}
+                <small>{exactApprove ? t('tf.exactApproveOn') : t('tf.exactApproveOff')}</small>
+              </span>
+            </label>
+          )}
         </section>
 
         {mode === 'collect' && (
@@ -441,6 +458,8 @@ interface Review {
   owed: bigint;
   /** On-chain id of the session the sheet showed (re-checked before signing). */
   sessionId: bigint | null;
+  /** What an approval grants (frozen at confirm with the rest). */
+  approve: ApproveMode;
 }
 
 function Line({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {

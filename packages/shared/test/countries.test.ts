@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { COUNTRY_CODES, botCountry, isCountryCode, normalizeCountry, packCountry, suggestCountry, unpackCountry } from '../src';
+import { BOT_FLAG_SKIN_PERCENT, COUNTRY_CODES, botCountry, botWearsFlag, isCountryCode, normalizeCountry, packCountry, suggestCountry, unpackCountry } from '../src';
 
 describe('country allowlist', () => {
   it('holds the 249 ISO 3166-1 alpha-2 codes, sorted and unique', () => {
@@ -65,5 +65,16 @@ describe('botCountry', () => {
     }
     // a board of bots shows a few different flags, not one
     expect(seen.size).toBeGreaterThan(2);
+  });
+});
+
+describe('botWearsFlag', () => {
+  it('is stable per name (any case) and picks about BOT_FLAG_SKIN_PERCENT % of the names', () => {
+    expect(botWearsFlag('jake_r')).toBe(botWearsFlag('JAKE_R'));
+    let on = 0;
+    const n = 2000;
+    for (let i = 0; i < n; i++) if (botWearsFlag(`bot_${i}_${i * 7}`)) on++;
+    expect(on / n).toBeGreaterThan(BOT_FLAG_SKIN_PERCENT / 100 - 0.05);
+    expect(on / n).toBeLessThan(BOT_FLAG_SKIN_PERCENT / 100 + 0.05);
   });
 });

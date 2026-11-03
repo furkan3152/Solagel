@@ -94,16 +94,32 @@ const BOT_COUNTRY_POOL: readonly string[] = [
   'IE', 'NZ', 'DE', 'FR', 'NL', 'SE', 'BR', 'PH', 'IN', 'MX', 'PL', 'ES', 'IT', 'ZA',
 ];
 
-/** A bot's country: always the same one for the same name (any case), so a regular keeps its flag. */
-export function botCountry(name: string): string {
-  // FNV-1a over the lower-cased name
-  let h = 0x811c9dc5;
+/** FNV-1a over the lower-cased name, from `seed`. */
+function nameHash(name: string, seed: number): number {
+  let h = seed >>> 0;
   const s = name.toLowerCase();
   for (let i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i);
     h = Math.imul(h, 0x01000193) >>> 0;
   }
-  return BOT_COUNTRY_POOL[h % BOT_COUNTRY_POOL.length];
+  return h;
+}
+
+/** A bot's country: always the same one for the same name (any case), so a regular keeps its flag. */
+export function botCountry(name: string): string {
+  return BOT_COUNTRY_POOL[nameHash(name, 0x811c9dc5) % BOT_COUNTRY_POOL.length];
+}
+
+/** Share of bots that paint their coin with their country's flag (the flag skin), in percent. */
+export const BOT_FLAG_SKIN_PERCENT = 30;
+
+/**
+ * Whether a bot wears its country's flag as the coin skin (`PlayerFlag.FlagSkin`): about
+ * `BOT_FLAG_SKIN_PERCENT` % of the names, always the same answer for the same name (any case).
+ */
+export function botWearsFlag(name: string): boolean {
+  // a second hash (another seed), so the pick does not follow the country
+  return nameHash(name, 0x2f6b9d13) % 100 < BOT_FLAG_SKIN_PERCENT;
 }
 
 /**

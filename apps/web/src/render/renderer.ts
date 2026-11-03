@@ -9,6 +9,7 @@ import { qualityLevels, type QualityLevel } from './governor';
 import { stickerImage } from '../ui/game/stickers';
 import { avatars, type AvatarCache } from './avatars';
 import { drawCoinLook, type CoinOpts } from './coin';
+import { flagSkins, type FlagSkinCache } from './flagskin';
 import type { Neighbour } from './jelly';
 import { LabelCache, type StickerLabel } from './labels';
 import { LookCache } from './looks';
@@ -223,9 +224,11 @@ export class Renderer {
   // per-frame scratch objects (reused: no garbage per frame)
   private readonly view = { x0: 0, y0: 0, x1: 0, y1: 0 };
   private readonly dash = [0.01, 1];
-  private readonly coin: CoinOpts = { time: 0, lookX: 0, lookY: 0, expression: 'happy', pxPerUnit: 1, jelly: null, flags: 0, seed: 0, interior: undefined, minPrintPx: 14, picture: null };
+  private readonly coin: CoinOpts = { time: 0, lookX: 0, lookY: 0, expression: 'happy', pxPerUnit: 1, jelly: null, flags: 0, seed: 0, interior: undefined, minPrintPx: 14, picture: null, skinFill: null };
   /** Profile pictures of the players in view (shared with the portraits). */
   private readonly avatars: AvatarCache = avatars;
+  /** Flag skins (coins painted with their country's flag), shared with the portraits. */
+  private readonly flagSkins: FlagSkinCache = flagSkins;
   private readonly label: StickerLabel = { name: null, value: null, verified: false, bot: false, holder: false, country: null, mine: false, x: 0, y: 0, fs: 1, devicePx: 1, zoom: 1, alpha: 1 };
 
   /** Sorts a visible entity into its layer (culled against `this.view`; see `draw`). */
@@ -722,7 +725,6 @@ export class Renderer {
       ctx.stroke();
       ctx.restore();
     }
-    const look = this.lookFor(player?.skin ?? 0);
     const o = this.coin;
     o.time = f.reduced ? 0 : f.now;
     o.lookX = lx;
@@ -739,6 +741,12 @@ export class Renderer {
     // a player's profile picture fills the face (bots never wear one; the basic coin while it loads)
     const avatar = player && !player.isBot ? player.avatar : undefined;
     o.picture = avatar ? this.avatars.disc(avatar, r * this.ppu * PICTURE_R * 2) : null;
+    // the flag skin: the coin painted with its country's flag (a worn picture wins; every split
+    // cell of the player wears it too, they share the player record)
+    let look = this.lookFor(player?.skin ?? 0);
+    const flag = !o.picture && player && (player.flags & PlayerFlag.FlagSkin) !== 0 ? player.country : undefined;
+    o.skinFill = flag ? this.flagSkins.fill(flag, r * this.ppu * 2) : null;
+    if (flag && o.skinFill) look = this.flagSkins.look(look, flag);
     drawCoinLook(ctx, e.x, e.y, r, look, o);
   }
 
