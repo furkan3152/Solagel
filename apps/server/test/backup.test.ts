@@ -113,7 +113,8 @@ describe('migrationEnv', () => {
       RENDER_SERVICE_ID: 'srv-x',
       PUBLIC_URL: 'https://elymum.io',
       CHAIN_NAME: 'bad\nINJECT=1',
-      GAME_ACCESS: '',
+      GAME_ACCESS: 'admins',
+      STAKE_ENABLED: 'false',
     });
     expect(out).toEqual({
       ADMIN_WALLETS: '0xabc',
