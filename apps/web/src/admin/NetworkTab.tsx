@@ -281,6 +281,15 @@ function BackupCard({ ctx }: { ctx: ChainCtx }) {
       setNote({ ok: false, text: 'The browser refused the clipboard. Use Download backup instead.' });
     }
   };
+  const copyInstall = async () => {
+    if (!api) return;
+    try {
+      await navigator.clipboard.writeText(api.installCommand());
+      setNote({ ok: true, text: 'New-server command copied. Paste it into the new server (SSH, logged in as ubuntu). It copies the settings and the data; it works for 24 h.' });
+    } catch {
+      setNote({ ok: false, text: 'The browser refused the clipboard.' });
+    }
+  };
   return (
     <Card title="Backup & move" id="net-backup" lede="Everything the server keeps (journal, contracts registry, server key, profiles, pictures, site data) as one .tar.gz file: for moving the server to a new host, or a copy to keep.">
       <p className="ad-warn" data-testid="backup-warning">
@@ -293,6 +302,9 @@ function BackupCard({ ctx }: { ctx: ChainCtx }) {
         </Btn>
         <Btn testId="backup-copy" disabled={!api} onClick={() => void copy()}>
           Copy migration command
+        </Btn>
+        <Btn testId="backup-install" disabled={!api} onClick={() => void copyInstall()}>
+          Copy new-server command
         </Btn>
       </div>
       <NeedsSession api={api} />

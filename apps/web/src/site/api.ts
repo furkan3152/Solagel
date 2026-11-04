@@ -182,6 +182,13 @@ export function backupCurlCommand(serverHttp: string, token: string): string {
   return `curl -fsS -H ${quote(`Authorization: Bearer ${token}`)} ${quote(`${serverHttp.replace(/\/+$/, '')}/api/admin/backup`)} -o elymum-backup.tar.gz`;
 }
 
+/** The whole move to a new server as one line (deploy/vps/install.sh --from): settings and data. */
+export function installCommand(serverHttp: string, token: string): string {
+  const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
+  const raw = 'https://raw.githubusercontent.com/furkan3152/Solagel/ccr-8d9a5642-4vfmef/deploy/vps/install.sh';
+  return `curl -fsSL ${raw} -o install.sh && sudo bash install.sh --yes --from ${quote(serverHttp.replace(/\/+$/, ''))} --token ${quote(token)}`;
+}
+
 export function saveBlob(blob: Blob, name: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -339,6 +346,7 @@ export function adminApi(token: string) {
     backup: () => downloadCsv('/api/admin/backup', token, 'elymum-backup.tar.gz'),
     /** The `curl` command that downloads the same backup with this session (valid until the session expires, 24 h). */
     backupCommand: () => backupCurlCommand(SERVER.http, token),
+    installCommand: () => installCommand(SERVER.http, token),
   };
 }
 

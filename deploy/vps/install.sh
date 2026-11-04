@@ -3,6 +3,9 @@
 #   bash install.sh                       asks for the domain, repository and branch (Enter = default)
 #   bash install.sh --restore elymum-backup.tar.gz
 #   bash install.sh --restore-url https://slana-wo00.onrender.com --token <admin session token>
+#   bash install.sh --from https://slana-wo00.onrender.com --token <admin session token> --yes
+#       the whole move in one command: copies the old server's settings (.env) AND its data
+#       (/admin → Network → Backup & move → "Copy new-server command" writes this line for you)
 # Options: --domain D, --repo SSH_URL, --branch B, --yes (no questions; defaults or the given values).
 # Safe to run again: every step checks what is already done. Full guide: deploy/vps/README.md.
 set -euo pipefail
@@ -23,6 +26,7 @@ branch=""
 restore_file=""
 restore_url=""
 restore_token=""
+from_url=""
 yes=0
 
 say() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
@@ -39,6 +43,7 @@ while [[ $# -gt 0 ]]; do
     --branch) branch="${2:?--branch needs a value}"; shift 2 ;;
     --restore) restore_file="$(readlink -f "${2:?--restore needs a file}")"; shift 2 ;;
     --restore-url) restore_url="${2:?--restore-url needs a value}"; shift 2 ;;
+    --from) from_url="${2:?--from needs the old server URL}"; restore_url="$from_url"; shift 2 ;;
     --token) restore_token="${2:?--token needs a value}"; shift 2 ;;
     --yes | -y) yes=1; shift ;;
     -h | --help) sed -n '2,8p' "$0"; exit 0 ;;
@@ -248,6 +253,28 @@ else
 fi
 chmod 600 "$ELYMUM_ENV"
 env_set GAME_DOMAIN "$domain"
+if [[ -n "$from_url" ]]; then
+  [[ -n "$restore_token" ]] || die "--from needs --token (copy the command from /admin → Network → Backup & move)"
+  note "copying the settings from $from_url"
+  envjson="$(mktemp)"
+  chmod 600 "$envjson"
+  curl -fsS --max-time 30 -H "Authorization: Bearer $restore_token" "${from_url%/}/api/admin/migration-env" -o "$envjson" \
+    || die "could not read the settings from $from_url (is the token still valid? it lasts 24 h)"
+  # one KEY<TAB>VALUE line per setting; values never hold a newline (the server drops those)
+  while IFS=$'\t' read -r k v; do
+    [[ "$k" =~ ^[A-Z][A-Z0-9_]*$ ]] || continue
+    env_set "$k" "$v"
+  done < <(python3 -I -c 'import json,sys; [print(k + "\t" + str(v)) for k, v in json.load(open(sys.argv[1]))["env"].items()]' "$envjson")
+  direct="$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1])).get("directUrl") or "")' "$envjson")"
+  if [[ "$direct" =~ ^https://[A-Za-z0-9.-]+$ ]]; then
+    restore_url="$direct"
+    note "the backup comes straight from $direct"
+  fi
+  rm -f "$envjson"
+  # this host's own values (never copied): the site's origin for CORS
+  env_set CORS_ORIGIN "https://elymum.io"
+  note "settings copied ($(grep -c '=' "$ELYMUM_ENV") lines in $ELYMUM_ENV)"
+fi
 edit_env() {
   echo
   echo " The settings file opens in the nano editor. Fill in the values marked [FROM RENDER]"

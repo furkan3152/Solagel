@@ -14,7 +14,7 @@ import type { HolderReader } from '../chain/evm-client';
 import { ShopFail, type ShopService } from '../shop/service';
 import { ShopSettingsError, type ShopSettingsStore } from '../shop/settings';
 import type { BoostInventory } from '../shop/inventory';
-import { streamBackup } from './backup';
+import { migrationEnv, streamBackup } from './backup';
 import { botRoutes, type BotAdmin } from './bots';
 import { customRoomAdminRoutes, customRoomRoutes } from './custom-rooms';
 import type { CustomRoomService } from '../rooms/custom';
@@ -628,6 +628,18 @@ export class SiteApi {
         this.method(req, 'GET');
         if (!this.backups.allow(wallet.toLowerCase())) throw new SiteFail(429, 'rate_limited', 'Too many backups in the last hour. Try again later.');
         return streamBackup(req, res, wallet, { dataDir: this.ext.dataDir ?? null, chainId: this.chainId(), flush: () => this.flushAll?.(), log: this.ext.log });
+      }
+      case 'migration-env': {
+        // the server's own settings (secrets included) for the one-command move to a new server
+        // (deploy/vps/install.sh --from): admin-only, rate-limited like the backup, never logged
+        if (seg.length !== 1) break;
+        this.method(req, 'GET');
+        if (!this.backups.allow(wallet.toLowerCase())) throw new SiteFail(429, 'rate_limited', 'Too many backups in the last hour. Try again later.');
+        this.ext.log?.(`backup: settings for a server move requested by ${wallet}`);
+        res.setHeader('Cache-Control', 'no-store');
+        // directUrl: this host's own address (Render sets RENDER_EXTERNAL_URL), so the new server downloads the
+        // backup straight from here and not through the site's /api rewrite
+        return send(res, 200, { env: migrationEnv(process.env), directUrl: process.env.RENDER_EXTERNAL_URL || null });
       }
       case 'counts':
         this.method(req, 'GET');

@@ -114,3 +114,21 @@ export function streamBackup(_req: IncomingMessage, res: ServerResponse, wallet:
     });
   });
 }
+
+/**
+ * Settings a moved server needs (`GET /api/admin/migration-env`): every variable the server reads, minus
+ * the ones that describe this host (port, paths, proxy hops, Node mode), which the new host sets itself.
+ */
+const HOST_ONLY = new Set(['HOST', 'PORT', 'DATA_DIR', 'WEB_DIST', 'NODE_ENV', 'TRUST_PROXY', 'TRUST_PROXY_HOPS', 'CORS_ORIGIN', 'GAME_DOMAIN']);
+const MIGRATED =
+  /^(ADMIN_WALLETS|AUTH_SECRET|SERVER_PRIVATE_KEY|EVM_RPC_URL|PUBLIC_RPC_URL|TESTNET_RPC_URL|PUBLIC_URL|CHAIN_NAME|EXPLORER_URL|ARENA_ADDRESS|NFT_ADDRESS|TOKEN_ADDRESS|TOKEN_SYMBOL|JOURNAL_ABANDON_CONTRACT|GAME_ACCESS|STAKE_ENABLED|STAKE_ARENA_IDS|STALE_SWEEP_ACK|STALE_SESSION_AFTER_S|HYPE_FAUCET_URL|HYPE_PRICE_URL|MINT_USD_CENTS|LOG_CHUNK_BLOCKS|RPC_MAX_RPS|RPC_BURST|ROUND_SECONDS|ROUND_JOIN_CLOSE_SECONDS|MAX_CONNECTIONS|MAX_CONNECTIONS_PER_IP|FREE_ROOM_CAPACITY|PRACTICE_CAPACITY|PRIVATE_ROOM_CAPACITY|ARENA_INSTANCE_CAP|(ARENA_|PRIVATE_)?BOT_[A-Z_]+|BOT_TICKETS_PER_MIN)$/;
+export function migrationEnv(env: NodeJS.ProcessEnv): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(env)) {
+    if (v === undefined || v === '' || HOST_ONLY.has(k) || !MIGRATED.test(k)) continue;
+    // one line per value in the .env file: refuse anything that could break out of it
+    if (/[\r\n]/.test(v)) continue;
+    out[k] = v;
+  }
+  return out;
+}

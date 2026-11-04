@@ -95,3 +95,33 @@ describe('GET /api/admin/backup', () => {
     expect(backupFileName(null, Date.UTC(2026, 0, 1))).toBe('elymum-data-nochain-20260101-000000.tar.gz');
   });
 });
+
+describe('migrationEnv', () => {
+  it('keeps the settings a moved server needs and drops the host-specific ones', async () => {
+    const { migrationEnv } = await import('../src/site/backup');
+    const out = migrationEnv({
+      ADMIN_WALLETS: '0xabc',
+      AUTH_SECRET: 's3cret',
+      SERVER_PRIVATE_KEY: 'auto',
+      EVM_RPC_URL: 'https://rpc.example',
+      ARENA_BOT_TARGET: '12',
+      PORT: '10000',
+      DATA_DIR: '/data',
+      TRUST_PROXY_HOPS: '1',
+      CORS_ORIGIN: '*',
+      PATH: '/usr/bin',
+      RENDER_SERVICE_ID: 'srv-x',
+      PUBLIC_URL: 'https://elymum.io',
+      CHAIN_NAME: 'bad\nINJECT=1',
+      GAME_ACCESS: '',
+    });
+    expect(out).toEqual({
+      ADMIN_WALLETS: '0xabc',
+      AUTH_SECRET: 's3cret',
+      SERVER_PRIVATE_KEY: 'auto',
+      EVM_RPC_URL: 'https://rpc.example',
+      ARENA_BOT_TARGET: '12',
+      PUBLIC_URL: 'https://elymum.io',
+    });
+  });
+});
