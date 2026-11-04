@@ -1,0 +1,79 @@
+# Elymum game server on a VPS: the game server (app) behind Caddy (automatic HTTPS, WebSockets).
+# Do not run `docker compose` on this file directly: use deploy/vps/compose.sh, which passes the project
+# name and /opt/elymum/.env (for ${GAME_DOMAIN}). Paths below are relative to this folder.
+name: elymum
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
+services:
+  app:
+    image: elymum-app:latest
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      # empty: the browser bundle in this image is served same-origin (game.elymum.io); the real site
+      # (elymum.io on Vercel) is built by Vercel with its own VITE_* variables
+      args:
+        VITE_SERVER_URL: ""
+        VITE_RPC_URL: ""
+        VITE_PUBLIC_URL: ""
+    env_file:
+      - ../../.env
+    environment:
+      # fixed by this setup (Caddy is the one proxy in front): not taken from .env
+      DATA_DIR: /data
+      PORT: "8787"
+      HOST: 0.0.0.0
+      TRUST_PROXY: "1"
+      TRUST_PROXY_HOPS: "1"
+    volumes:
+      - elymum-data:/data
+    expose:
+      - "8787"
+    restart: unless-stopped
+    # SIGTERM: the server pays out every live stake player and flushes its files; give it time
+    stop_grace_period: 45s
+    stop_signal: SIGTERM
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    # the container has its own network namespace: the host's sysctl tuning does not reach it
+    sysctls:
+      net.core.somaxconn: 4096
+      net.ipv4.tcp_keepalive_time: 120
+      net.ipv4.tcp_keepalive_intvl: 30
+      net.ipv4.tcp_keepalive_probes: 4
+    # the healthcheck is the image's own (GET /api/health)
+    logging: *logging
+
+  caddy:
+    image: caddy:2.10
+    depends_on:
+      - app
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      GAME_DOMAIN: ${GAME_DOMAIN:?set GAME_DOMAIN in /opt/elymum/.env}
+    volumes:
+      # the folder, not the file: a git update replaces the file and a file mount would keep the old one
+      - ./caddy:/etc/caddy:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    logging: *logging
+
+volumes:
+  elymum-data:
+    # a fixed name: backup.sh, restore.sh and the README use it
+    name: elymum-data
+  caddy-data:
+    name: elymum-caddy-data
+  caddy-config:
+    name: elymum-caddy-config

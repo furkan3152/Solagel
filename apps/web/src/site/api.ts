@@ -172,6 +172,16 @@ export async function downloadCsv(path: string, token: string, fallbackName: str
   saveBlob(blob, name);
 }
 
+/**
+ * The one-line shell command that downloads a server backup with an admin session token (pure, tested):
+ * run on the new server to move the data without a laptop in between. The token is single-quoted
+ * (it is base64url and a dot, but quoted anyway).
+ */
+export function backupCurlCommand(serverHttp: string, token: string): string {
+  const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
+  return `curl -fsS -H ${quote(`Authorization: Bearer ${token}`)} ${quote(`${serverHttp.replace(/\/+$/, '')}/api/admin/backup`)} -o elymum-backup.tar.gz`;
+}
+
 export function saveBlob(blob: Blob, name: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -325,6 +335,10 @@ export function adminApi(token: string) {
     },
     /** `GET /api/admin/network`: the server's chain, RPC health, server key and the contracts' code checks. */
     network: () => request<NetworkInfo>('/api/admin/network', { token }),
+    /** `GET /api/admin/backup`: a gzip tar of the server's DATA_DIR (server key and secrets included), saved as a file. */
+    backup: () => downloadCsv('/api/admin/backup', token, 'elymum-backup.tar.gz'),
+    /** The `curl` command that downloads the same backup with this session (valid until the session expires, 24 h). */
+    backupCommand: () => backupCurlCommand(SERVER.http, token),
   };
 }
 

@@ -1,0 +1,11 @@
+[Unit]
+Description=Elymum: daily backup at 04:00 (server time)
+
+[Timer]
+OnCalendar=*-*-* 04:00:00
+# a backup missed while the server was off runs at the next boot
+Persistent=true
+RandomizedDelaySec=2min
+
+[Install]
+WantedBy=timers.target

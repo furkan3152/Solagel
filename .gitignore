@@ -42,3 +42,6 @@ media/how-to-play/cache/
 media/gameplay-film/audio/vo-human.wav
 media/gameplay-film/audio/vo-human/
 media/**/__pycache__/
+
+# VPS backups (deploy/vps/backup.sh; they hold the server key)
+backups/

@@ -4,6 +4,10 @@ This is the whole path from an empty host to a running game with an open mint. T
 then the owner deploys both contracts **from their own wallet in `/admin`** and the server registers them.
 Nothing here needs a terminal on the chain side: the CLI (`pnpm admin`, at the end) is an alternative.
 
+Moving the game server to your own VPS (Docker + Caddy, auto-deploy, daily backups, one-command install):
+[deploy/vps/README.md](../deploy/vps/README.md). `/admin` → Network → **Backup & move** downloads the server's
+whole data folder (`GET /api/admin/backup`, admin only).
+
 Day-to-day running: [OPERATIONS.md](OPERATIONS.md). How the money moves: [ARCHITECTURE.md](ARCHITECTURE.md).
 Source of truth: [the spec](specs/2026-10-29-elymum-on-elysium.md).
 

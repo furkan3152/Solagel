@@ -1,0 +1,19 @@
+# Caddy in front of the Elymum game server.
+# - Automatic HTTPS: Caddy gets and renews a Let's Encrypt certificate for GAME_DOMAIN by itself
+#   (the DNS A record must point at this server, and ports 80 and 443 must be open).
+# - WebSockets (/ws) are proxied as is; reverse_proxy handles the upgrade.
+# - Client IP: reverse_proxy sets X-Forwarded-For (and -Proto, -Host) itself. With no `trusted_proxies`
+#   configured (none here, on purpose) Caddy ignores any X-Forwarded-For a client sends and passes exactly
+#   one hop, the real client address. The app reads it with TRUST_PROXY=1 / TRUST_PROXY_HOPS=1 (set in
+#   docker-compose.yml), so per-IP limits see each player's own address. Do not add `trusted_proxies`.
+#   Keep the DNS record "DNS only" (no CDN proxy in front), or every player would share the CDN's IPs.
+# Reload after an edit: deploy/vps/compose.sh exec caddy caddy reload --config /etc/caddy/Caddyfile
+
+{$GAME_DOMAIN} {
+	encode zstd gzip
+
+	reverse_proxy app:8787 {
+		# stream responses (the admin backup download) instead of buffering them
+		flush_interval -1
+	}
+}

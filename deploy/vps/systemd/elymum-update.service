@@ -1,0 +1,12 @@
+[Unit]
+Description=Elymum: deploy the latest commit of the tracked branch
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/elymum/deploy/vps/update.sh
+# a build can take a few minutes on a small VPS
+TimeoutStartSec=45min
+Nice=5

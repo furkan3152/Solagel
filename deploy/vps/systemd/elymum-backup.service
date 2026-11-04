@@ -1,0 +1,11 @@
+[Unit]
+Description=Elymum: daily backup of the data volume
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/elymum/deploy/vps/backup.sh
+TimeoutStartSec=1h
+Nice=10
+IOSchedulingClass=idle

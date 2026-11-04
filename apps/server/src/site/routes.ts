@@ -14,6 +14,7 @@ import type { HolderReader } from '../chain/evm-client';
 import { ShopFail, type ShopService } from '../shop/service';
 import { ShopSettingsError, type ShopSettingsStore } from '../shop/settings';
 import type { BoostInventory } from '../shop/inventory';
+import { streamBackup } from './backup';
 import { botRoutes, type BotAdmin } from './bots';
 import { customRoomAdminRoutes, customRoomRoutes } from './custom-rooms';
 import type { CustomRoomService } from '../rooms/custom';
@@ -149,6 +150,10 @@ export class SiteApi {
   /** The power-up shop (`/api/shop`, `/api/shop/buy`, `/api/admin/shop`); absent in bare unit tests. */
   private shop: { service: ShopService; settings: ShopSettingsStore; inventory: BoostInventory } | null = null;
   private readonly shopBuys = new Limiter(30, 60_000);
+  /** `GET /api/admin/backup` per admin wallet (a full copy of DATA_DIR each time). */
+  private readonly backups = new Limiter(6, 60 * 60_000);
+  /** Writes every store's unsaved state to disk (before a backup); set by the app. */
+  private flushAll: (() => void) | null = null;
   /** Told when a wallet's picture is removed or replaced (live rooms drop it from the coin). */
   private avatarChanged: ((wallet: string) => void) | null = null;
   private readonly avatarIp: Limiter;
@@ -169,6 +174,11 @@ export class SiteApi {
   /** `fn(wallet)`: the wallet's picture was removed or replaced (the rooms take it off live coins). */
   onAvatarChange(fn: ((wallet: string) => void) | null): void {
     this.avatarChanged = fn;
+  }
+
+  /** `fn()`: flush every store to disk (the backup's consistent snapshot). */
+  setFlush(fn: (() => void) | null): void {
+    this.flushAll = fn;
   }
 
   setIntegrity(svc: IntegrityService | null): void {
@@ -611,6 +621,13 @@ export class SiteApi {
           return send(res, 200, quote);
         }
         break;
+      }
+      case 'backup': {
+        // a gzip tar of DATA_DIR (server key and secrets included): moving the server, offsite copies
+        if (seg.length !== 1) break;
+        this.method(req, 'GET');
+        if (!this.backups.allow(wallet.toLowerCase())) throw new SiteFail(429, 'rate_limited', 'Too many backups in the last hour. Try again later.');
+        return streamBackup(req, res, wallet, { dataDir: this.ext.dataDir ?? null, chainId: this.chainId(), flush: () => this.flushAll?.(), log: this.ext.log });
       }
       case 'counts':
         this.method(req, 'GET');

@@ -305,6 +305,14 @@ export async function createApp(
   });
   customRooms.restore();
   site.setCustomRooms(customRooms);
+  // `GET /api/admin/backup` writes every store's unsaved state first (the journal writes at once)
+  site.setFlush(() => {
+    mint.flush();
+    customRooms.flush();
+    integrity.flush();
+    leaderboards.flush();
+    profiles.flush();
+  });
   shop.onCharges((wallet) => rooms.pushBoosts(wallet));
   // a removed (or replaced) picture comes off the live coins at once
   site.onAvatarChange((wallet) => void rooms.clearAvatar(wallet));

@@ -6,7 +6,7 @@ import { parseEther, type Address } from 'viem';
 import { HYPE_FAUCET_URL } from '../site/faucet/logic';
 import { NetPill } from './NetPill';
 import type { AdminNetwork } from './net';
-import { Addr, Btn, Card, Input, Mark, Row, type ChainCtx } from './ui';
+import { Addr, Btn, Card, Input, Mark, NeedsSession, Row, type ChainCtx } from './ui';
 
 /** Below this the server key gets a "fund it" hint (a settlement costs a little gas). */
 export const LOW_SERVER_HYPE = 10n ** 16n; // 0.01 HYPE
@@ -245,7 +245,63 @@ export function NetworkTab({ ctx, registry }: { ctx: ChainCtx; registry: Contrac
           })}
         </ol>
       </Card>
+
+      <BackupCard ctx={ctx} />
     </div>
+  );
+}
+
+/**
+ * "Backup & move": downloads a gzip tar of the server's DATA_DIR, or copies the `curl` command that does
+ * the same from another machine (the new server), with this admin session's token in it.
+ */
+function BackupCard({ ctx }: { ctx: ChainCtx }) {
+  const api = ctx.api;
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
+  const download = async () => {
+    if (!api) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      await api.backup();
+      setNote({ ok: true, text: 'Backup downloaded. Keep it somewhere private.' });
+    } catch (e) {
+      setNote({ ok: false, text: (e as Error).message || 'The backup could not be downloaded.' });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const copy = async () => {
+    if (!api) return;
+    try {
+      await navigator.clipboard.writeText(api.backupCommand());
+      setNote({ ok: true, text: 'Command copied. Paste it on the new server; it works until your session expires (24 h).' });
+    } catch {
+      setNote({ ok: false, text: 'The browser refused the clipboard. Use Download backup instead.' });
+    }
+  };
+  return (
+    <Card title="Backup & move" id="net-backup" lede="Everything the server keeps (journal, contracts registry, server key, profiles, pictures, site data) as one .tar.gz file: for moving the server to a new host, or a copy to keep.">
+      <p className="ad-warn" data-testid="backup-warning">
+        <strong>The file contains the server key and secrets.</strong> Anyone holding it can sign settlements as the server. Never share it or upload it anywhere public. The copied command
+        contains your admin session token, which expires in 24 h: paste it only into your own server&apos;s terminal.
+      </p>
+      <div className="ad-fund">
+        <Btn sun icon="lock" testId="backup-download" disabled={!api || busy} onClick={() => void download()}>
+          {busy ? 'Preparing backup…' : 'Download backup'}
+        </Btn>
+        <Btn testId="backup-copy" disabled={!api} onClick={() => void copy()}>
+          Copy migration command
+        </Btn>
+      </div>
+      <NeedsSession api={api} />
+      {note && (
+        <p className={note.ok ? 'ad-note' : 'ad-bad'} role={note.ok ? 'status' : 'alert'} data-testid="backup-note">
+          {note.text}
+        </p>
+      )}
+    </Card>
   );
 }
 
